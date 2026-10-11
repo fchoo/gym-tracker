@@ -16,6 +16,20 @@ const FIXTURE_PLAN_GLOBS = [
 ] as const;
 const fixturePlanPredicate = (column: string) =>
   FIXTURE_PLAN_GLOBS.map((glob) => `${column} GLOB '${glob}'`).join(" OR ");
+/** The only dynamic escape hatch is the fully-consumed dev-test envelope. It
+ * contains materialized IDs read from the exact action receipt, never a prefix
+ * scan, so an ordinary product row cannot be deleted by fixture teardown. */
+const manifestContains = (path: string, column: string) => `EXISTS (
+  SELECT 1
+  FROM app_settings envelope
+  JOIN json_each(envelope.value_json, '$.cleanupManifest.${path}') item
+  WHERE envelope.key = 'development-test.phase17.action-envelope.v1'
+    AND json_extract(envelope.value_json, '$.version') = 3
+    AND json_extract(envelope.value_json, '$.cleanupManifest.family') = 'A'
+    AND item.value = ${column}
+)`;
+const fixturePlanOrManifest = (column: string) =>
+  `(${fixturePlanPredicate(column)} OR ${manifestContains("planIds", column)})`;
 const DIRECT_PLAN_TABLES = [
   "running_plan_events", "running_session_revisions", "running_session_slots",
   "running_opportunities", "running_session_slot_roots",
@@ -35,11 +49,11 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
     await transaction.execute("DROP TRIGGER IF EXISTS owned_plan_days_no_permanent_delete");
     await transaction.execute(`CREATE TRIGGER owned_plans_no_permanent_delete
       BEFORE DELETE ON plans
-      WHEN OLD.origin IN ('custom', 'copied') AND NOT (${fixturePlanPredicate("OLD.id")})
+      WHEN OLD.origin IN ('custom', 'copied') AND NOT (${fixturePlanOrManifest("OLD.id")})
       BEGIN SELECT RAISE(ABORT, 'owned_plan_permanent_delete_forbidden'); END`);
     await transaction.execute(`CREATE TRIGGER owned_plan_days_no_permanent_delete
       BEFORE DELETE ON plan_days
-      WHEN NOT (${fixturePlanPredicate("OLD.plan_id")}) AND EXISTS (
+      WHEN NOT (${fixturePlanOrManifest("OLD.plan_id")}) AND EXISTS (
         SELECT 1 FROM owned_plan_aggregate_states WHERE plan_id = OLD.plan_id
       )
       BEGIN SELECT RAISE(ABORT, 'owned_plan_day_permanent_delete_forbidden'); END`);
@@ -77,6 +91,78 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
         WHERE root.id = OLD.slot_root_id AND (${fixturePlanPredicate("root.plan_id")})
       )
       BEGIN SELECT RAISE(ABORT, 'running_session_slot_revisions_immutable'); END`);
+
+    // Migration 8/9 immutable receipts and schedule history remain protected
+    // unless their primary/foreign key is listed in the active exact manifest.
+    for (const trigger of [
+      "owned_plan_requests_immutable_delete", "activation_requests_immutable_delete",
+      "schedule_versions_immutable_delete", "schedule_bindings_immutable_delete",
+      "schedule_events_immutable_delete", "consumed_overrides_immutable_delete",
+      "consumed_opportunities_immutable_delete", "owned_starter_sources_immutable_delete",
+      "owned_day_sources_immutable_delete", "owned_occurrence_sources_immutable_delete",
+      "owned_plan_occurrences_no_permanent_delete", "owned_plan_warmups_no_permanent_delete",
+      "owned_plan_targets_no_permanent_delete", "owned_plan_policies_no_permanent_delete",
+    ]) await transaction.execute(`DROP TRIGGER IF EXISTS ${trigger}`);
+    await transaction.execute(`CREATE TRIGGER owned_plan_requests_immutable_delete
+      BEFORE DELETE ON owned_plan_mutation_requests
+      WHEN NOT (${manifestContains("requestIds", "OLD.request_id")}
+        OR (OLD.request_id GLOB 'phase17:fixture:owned-plan-create:*:setup'
+          AND (${fixturePlanPredicate("OLD.result_plan_id")})))
+      BEGIN SELECT RAISE(ABORT, 'owned_plan_request_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER activation_requests_immutable_delete
+      BEFORE DELETE ON starter_plan_activation_requests
+      WHEN NOT ${manifestContains("requestIds", "OLD.request_id")}
+      BEGIN SELECT RAISE(ABORT, 'activation_request_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER schedule_events_immutable_delete
+      BEFORE DELETE ON owned_plan_schedule_events
+      WHEN NOT ${manifestContains("scheduleEventIds", "OLD.id")}
+      BEGIN SELECT RAISE(ABORT, 'schedule_event_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER schedule_versions_immutable_delete
+      BEFORE DELETE ON owned_plan_schedule_versions
+      WHEN NOT ${manifestContains("scheduleIds", "OLD.schedule_id")}
+      BEGIN SELECT RAISE(ABORT, 'schedule_version_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER schedule_bindings_immutable_delete
+      BEFORE DELETE ON owned_plan_schedule_bindings
+      WHEN NOT EXISTS (SELECT 1 FROM owned_plan_schedule_versions version WHERE version.id = OLD.schedule_version_id AND ${manifestContains("scheduleIds", "version.schedule_id")})
+      BEGIN SELECT RAISE(ABORT, 'schedule_binding_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER consumed_overrides_immutable_delete
+      BEFORE DELETE ON owned_plan_schedule_overrides
+      WHEN OLD.state = 'consumed' AND NOT ${manifestContains("scheduleIds", "OLD.schedule_id")}
+      BEGIN SELECT RAISE(ABORT, 'consumed_override_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER consumed_opportunities_immutable_delete
+      BEFORE DELETE ON owned_plan_schedule_opportunities
+      WHEN OLD.state = 'consumed' AND NOT ${manifestContains("scheduleIds", "OLD.schedule_id")}
+      BEGIN SELECT RAISE(ABORT, 'consumed_opportunity_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER owned_starter_sources_immutable_delete
+      BEFORE DELETE ON owned_plan_starter_sources
+      WHEN NOT ${manifestContains("planIds", "OLD.plan_id")}
+      BEGIN SELECT RAISE(ABORT, 'owned_starter_source_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER owned_day_sources_immutable_delete
+      BEFORE DELETE ON owned_plan_day_sources
+      WHEN NOT ${manifestContains("planIds", "OLD.plan_id")}
+      BEGIN SELECT RAISE(ABORT, 'owned_day_source_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER owned_occurrence_sources_immutable_delete
+      BEFORE DELETE ON owned_plan_occurrence_sources
+      WHEN NOT EXISTS (SELECT 1 FROM plan_days day WHERE day.id = OLD.plan_day_id AND ${manifestContains("planIds", "day.plan_id")})
+      BEGIN SELECT RAISE(ABORT, 'owned_occurrence_source_immutable'); END`);
+    await transaction.execute(`CREATE TRIGGER owned_plan_occurrences_no_permanent_delete
+      BEFORE DELETE ON owned_plan_day_exercises
+      WHEN NOT EXISTS (SELECT 1 FROM plan_days day WHERE day.id = OLD.plan_day_id AND ${fixturePlanOrManifest("day.plan_id")})
+      BEGIN SELECT RAISE(ABORT, 'owned_plan_occurrence_permanent_delete_forbidden'); END`);
+    for (const [table, child] of [["owned_plan_warmup_sets", "owned_plan_warmup_permanent_delete_forbidden"], ["owned_plan_working_set_targets", "owned_plan_target_permanent_delete_forbidden"], ["owned_plan_progression_policies", "owned_plan_policy_permanent_delete_forbidden"]] as const) {
+      await transaction.execute(`CREATE TRIGGER ${table === "owned_plan_warmup_sets" ? "owned_plan_warmups_no_permanent_delete" : table === "owned_plan_working_set_targets" ? "owned_plan_targets_no_permanent_delete" : "owned_plan_policies_no_permanent_delete"}
+        BEFORE DELETE ON ${table}
+        WHEN NOT EXISTS (SELECT 1 FROM owned_plan_day_exercises occurrence JOIN plan_days day ON day.id = occurrence.plan_day_id WHERE occurrence.id = OLD.plan_day_exercise_id AND ${fixturePlanOrManifest("day.plan_id")})
+        BEGIN SELECT RAISE(ABORT, '${child}'); END`);
+    }
+    // `custom_exercise_mutation_receipts` is introduced by migration 42, so
+    // its equivalent exact-envelope trigger is installed there after the
+    // table exists. Metric events already exist at this migration boundary.
+    await transaction.execute("DROP TRIGGER IF EXISTS metric_profile_migration_events_phase17_fixture_delete");
+    await transaction.execute(`CREATE TRIGGER metric_profile_migration_events_phase17_fixture_delete
+      BEFORE DELETE ON metric_profile_migration_events
+      WHEN NOT ${manifestContains("requestIds", "OLD.idempotency_key")}
+      BEGIN SELECT RAISE(ABORT, 'metric_profile_migration_events_immutable'); END`);
   },
   async verify(transaction: SqliteTransactionExecutor) {
     const rows = await transaction.queryAll<{ name: string }>(

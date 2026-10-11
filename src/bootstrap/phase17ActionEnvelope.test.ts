@@ -6,6 +6,8 @@ import {
   phase17ActionEnvelopePlan,
   phase17ActionEnvelopeSourceEnabled,
 } from "./phase17ActionEnvelope";
+import { assertPhase17FamilyACleanupCoverage, createPhase17FamilyACleanupManifest } from "./phase17FamilyACleanup";
+import { PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../testing/contracts/phase17LibraryRunning.contract";
 
 const contracts = [{ id: "library.running-recovery", proofMode: "mutating" as const }] as any;
 const token = "phase17:1234567890abcdef";
@@ -24,6 +26,15 @@ function fixture(identity = { packageName: "com.fchoo.gymtracker.devtest", build
 }
 
 describe("Phase 17 action envelope source", () => {
+  it("owns an exact cleanup manifest and has a handler for every Family A durable receipt", () => {
+    expect(assertPhase17FamilyACleanupCoverage()).toBe(true);
+    for (const [caseId] of PHASE17_FAMILY_A_MUTATION_RECEIPTS) {
+      expect(createPhase17FamilyACleanupManifest(caseId, token, {
+        ownedPlanId: `phase17:owned-plan:${token.slice("phase17:".length)}`,
+        customExerciseId: `phase17:custom:${token.slice("phase17:".length)}`,
+      })).toMatchObject({ caseId, fixtureToken: token, requestIds: [`phase17:${caseId}:${token.slice("phase17:".length)}:action`] });
+    }
+  });
   it("creates setup-only identities only during a token-scoped dev-test setup", () => {
     const setup = createPhase17FixtureSetupIdentityFactory({ identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }) });
     expect(() => setup.requestId("custom-exercise-create")).toThrow("phase17_fixture_setup_inactive");

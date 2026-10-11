@@ -353,7 +353,13 @@ import {
   phase17ActionEnvelopePlan,
 } from "./phase17ActionEnvelope";
 import {
+  cleanupPhase17FamilyAManifest,
+  createPhase17FamilyACleanupManifest,
+  materializePhase17FamilyACleanupManifest,
+} from "./phase17FamilyACleanup";
+import {
   assertPhase17FamilyARegistry,
+  isPhase17FamilyACaseId,
   phase17FamilyASelectorSchema,
 } from "./phase17FamilyAFixture";
 import {
@@ -4410,14 +4416,12 @@ export function WorkoutAppRuntimeProvider({
           if (rowCount !== 1) throw new Error("phase17_family_a_action_receipt_missing");
           return Object.freeze({ rowCount, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${JSON.stringify(facts)}`), facts });
         },
-        cleanup: async (_caseId, _fixtureToken, selectors) => {
+        cleanup: async (caseId, fixtureToken, selectors) => {
           const ownedPlanId = selectors.ownedPlanId;
           const customExerciseId = selectors.customExerciseId;
           if (ownedPlanId === undefined || customExerciseId === undefined) throw new Error("phase17_fixture_selector_invalid");
-          await services.kernel.write(async (transaction) => {
-            await transaction.execute("DELETE FROM plans WHERE id = ?", [ownedPlanId]);
-            await transaction.execute("DELETE FROM exercises WHERE id = ?", [customExerciseId]);
-          });
+          const manifest = createPhase17FamilyACleanupManifest(caseId, fixtureToken, { ownedPlanId, customExerciseId });
+          await cleanupPhase17FamilyAManifest(services.kernel, manifest);
         },
         },
       }),
@@ -4468,10 +4472,17 @@ export function WorkoutAppRuntimeProvider({
     setupPhase17Fixture: async (caseId) => {
       const fixture = await phase17FixtureProtocol().setup(caseId);
       if (fixture.actionReceiptId !== null) {
+        const cleanupManifest = isPhase17FamilyACaseId(fixture.caseId)
+          ? createPhase17FamilyACleanupManifest(fixture.caseId, fixture.fixtureToken, {
+            ownedPlanId: fixture.selectors.ownedPlanId!,
+            customExerciseId: fixture.selectors.customExerciseId!,
+          })
+          : undefined;
         await phase17ActionEnvelopeSource().activate({
           caseId: fixture.caseId,
           fixtureToken: fixture.fixtureToken,
           envelopes: phase17ActionEnvelopePlan(fixture.caseId, fixture.fixtureToken),
+          ...(cleanupManifest === undefined ? {} : { cleanupManifest }),
         });
       }
       return fixture;
@@ -4479,7 +4490,18 @@ export function WorkoutAppRuntimeProvider({
     probePhase17Fixture: (input) => phase17FixtureProtocol().probe(input),
     cleanupPhase17Fixture: async (input) => {
       if (PHASE17_CASE_ACTION_CONTRACTS.some(({ id, proofMode }) => id === input.caseId && proofMode === "mutating")) {
-        await phase17ActionEnvelopeSource().assertConsumed(input);
+        const source = phase17ActionEnvelopeSource();
+        await source.assertConsumed(input);
+        if (isPhase17FamilyACaseId(input.caseId)) {
+          const cleanupManifest = createPhase17FamilyACleanupManifest(input.caseId, input.fixtureToken, {
+            ownedPlanId: `phase17:owned-plan:${input.fixtureToken.slice("phase17:".length)}`,
+            customExerciseId: `phase17:custom:${input.fixtureToken.slice("phase17:".length)}`,
+          });
+          await source.updateCleanupManifest({
+            ...input,
+            cleanupManifest: await materializePhase17FamilyACleanupManifest(requireServices().kernel, cleanupManifest),
+          });
+        }
       }
       return phase17FixtureProtocol().cleanup(input);
     },

@@ -1,4 +1,5 @@
 import type { Phase17CaseActionContract } from "../testing/contracts/phase17LibraryRunning.contract";
+import type { Phase17FamilyACleanupManifest } from "./phase17FamilyACleanup";
 
 const TOKEN = /^phase17:[a-z0-9-]{16,128}$/u;
 const REQUEST_ID = /^phase17:[a-z0-9.-]{1,160}:[a-z0-9-]{16,128}:action(?::[a-z0-9-]+)?$/u;
@@ -36,12 +37,14 @@ export type Phase17ActionEnvelopeClaim = Readonly<{
 }>;
 
 export type Phase17ActionEnvelopeContext = Readonly<{
-  version: 2;
+  version: 3;
   caseId: string;
   fixtureToken: string;
   envelopes: readonly Phase17ActionEnvelope[];
   claims: readonly Phase17ActionEnvelopeClaim[];
   nextEnvelope: number;
+  /** Present only for Family A: guards exact cleanup IDs in migrated SQLite. */
+  cleanupManifest?: Phase17FamilyACleanupManifest;
 }>;
 
 export type Phase17NativeContractIdentity = Readonly<{
@@ -136,7 +139,7 @@ function validContext(
   contracts: readonly Phase17CaseActionContract[],
   context: Phase17ActionEnvelopeContext,
 ): boolean {
-  if (context.version !== 2 || !TOKEN.test(context.fixtureToken)
+  if (context.version !== 3 || !TOKEN.test(context.fixtureToken)
     || !contracts.some(({ id, proofMode }) => id === context.caseId && proofMode === "mutating")
     || !Number.isSafeInteger(context.nextEnvelope)
     || context.nextEnvelope < 0 || context.nextEnvelope > context.envelopes.length
@@ -147,7 +150,16 @@ function validContext(
   const envelopesAreValid = context.envelopes.length === planned.length && context.envelopes.every(({ label, requestId }, index) => label === planned[index]?.label
     && requestId === planned[index]?.requestId && label.length > 0 && !requestIds.has(requestId)
     && (requestIds.add(requestId), REQUEST_ID.test(requestId)));
-  return envelopesAreValid && context.claims.every((claim, index) => {
+  const manifest = context.cleanupManifest;
+  const manifestIsValid = manifest === undefined || (
+    manifest.version === 1 && manifest.family === "A" && manifest.caseId === context.caseId
+    && manifest.fixtureToken === context.fixtureToken && manifest.requestIds.length === 1
+    && manifest.requestIds[0] === phase17ActionEnvelopePlan(context.caseId, context.fixtureToken)[0]?.requestId
+    && manifest.planIds.length >= 1 && manifest.exerciseIds.length >= 1
+    && [manifest.requestIds, manifest.planIds, manifest.exerciseIds, manifest.scheduleIds, manifest.scheduleEventIds]
+      .every((values) => values.every((value) => typeof value === "string" && value.length > 0))
+  );
+  return manifestIsValid && envelopesAreValid && context.claims.every((claim, index) => {
     const envelope = context.envelopes[index];
     return envelope !== undefined
       && claim.claimToken === `${context.fixtureToken}:claim:${index}`
@@ -221,7 +233,7 @@ export function createPhase17ActionEnvelopeSource(input: Readonly<{
   return Object.freeze({
     async activate(context: Omit<Phase17ActionEnvelopeContext, "version" | "nextEnvelope" | "claims">): Promise<Phase17ActionEnvelopeContext> {
       requireEnabled();
-      const active: Phase17ActionEnvelopeContext = Object.freeze({ ...context, version: 2, nextEnvelope: 0, claims: Object.freeze([]), envelopes: Object.freeze(context.envelopes.map((envelope) => Object.freeze({ ...envelope }))) });
+      const active: Phase17ActionEnvelopeContext = Object.freeze({ ...context, version: 3, nextEnvelope: 0, claims: Object.freeze([]), envelopes: Object.freeze(context.envelopes.map((envelope) => Object.freeze({ ...envelope }))) });
       if (!validContext(input.contracts, active)) throw new Error("phase17_action_envelope_invalid");
       if (await input.store.read() !== null) throw new Error("phase17_action_envelope_active");
       await input.store.write(active);
@@ -245,6 +257,18 @@ export function createPhase17ActionEnvelopeSource(input: Readonly<{
     },
     async assertConsumed(inputValue: Readonly<{ caseId: string; fixtureToken: string }>): Promise<void> {
       await assertConsumed(inputValue);
+    },
+    async updateCleanupManifest(inputValue: Readonly<{ caseId: string; fixtureToken: string; cleanupManifest: Phase17FamilyACleanupManifest }>): Promise<void> {
+      await assertConsumed(inputValue);
+      const active = await input.store.read();
+      if (active === null || active.cleanupManifest === undefined
+        || active.caseId !== inputValue.caseId || active.fixtureToken !== inputValue.fixtureToken) {
+        throw new Error("phase17_action_envelope_cleanup_manifest_missing");
+      }
+      const next: Phase17ActionEnvelopeContext = Object.freeze({ ...active, cleanupManifest: inputValue.cleanupManifest });
+      if (!validContext(input.contracts, next)) throw new Error("phase17_action_envelope_cleanup_manifest_invalid");
+      await input.store.write(next);
+      cached = next;
     },
     async clear(inputValue: Readonly<{ caseId: string; fixtureToken: string }>): Promise<void> {
       requireEnabled();
