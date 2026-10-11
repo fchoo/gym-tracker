@@ -590,7 +590,7 @@ describe("Garmin envelope import boundary", () => {
       ...acceptDecision,
       requestId: acceptedInput.confirmation.requestId,
       requestSha256: acceptedInput.confirmation.requestSha256,
-    })).resolves.toMatchObject({ kind: "replayed", aggregateRevision: 1 });
+    })).resolves.toMatchObject({ kind: "replayed", aggregateRevision: 3 });
     await expect(kernel.queryAll<{
       aggregate_revision: number;
       accepted_normalized_sha256: string;

@@ -24,6 +24,10 @@ const discoveryFixture = JSON.parse(
     "utf8",
   ),
 );
+const nativeDiscoveryFixture = Object.freeze({
+  activityId: discoveryFixture.activityId,
+  activityType: discoveryFixture.activityType,
+});
 
 function envelope(externalActivityId: string): GarminSourceEnvelope {
   return {
@@ -89,7 +93,7 @@ function fixtures() {
       return {
         status: "ok" as const,
         generation: 1,
-        data: { items: [discoveryFixture], nextStart: 1 },
+        data: { items: [nativeDiscoveryFixture], nextStart: 1 },
       };
     }),
     getActivity: jest.fn(async (input) => {

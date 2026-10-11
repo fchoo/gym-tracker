@@ -7,7 +7,7 @@ import {
   PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
   PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER,
   phase18GarminAdversarialEnabled,
-  runPhase18GarminAdversarialNativeSuite,
+  runPhase18GarminAdversarialNativeSuite as collectAdversarialReport,
 } from "../src/testing/phase18GarminAdversarial";
 
 const INITIAL_STATUS = "native-proof-running";
@@ -17,7 +17,7 @@ function Phase18GarminAdversarialContent() {
   const [status, setStatus] = React.useState(INITIAL_STATUS);
   React.useEffect(() => {
     let active = true;
-    void runPhase18GarminAdversarialNativeSuite().then((report) => {
+    void collectAdversarialReport().then((report) => {
       if (!active) return;
       for (const entry of report.cases) {
         console.log(`${PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER}${JSON.stringify(entry)}`);

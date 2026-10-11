@@ -38,6 +38,10 @@ const discoveryFixture = JSON.parse(
     "utf8",
   ),
 );
+const nativeDiscoveryFixture = Object.freeze({
+  activityId: discoveryFixture.activityId,
+  activityType: discoveryFixture.activityType,
+});
 
 function envelope(): GarminSourceEnvelope {
   const normalized = {
@@ -740,7 +744,7 @@ describe("Garmin import runtime", () => {
       },
     });
     const discovery = (activityId: number | string) => ({
-      ...discoveryFixture,
+      ...nativeDiscoveryFixture,
       activityId,
     });
     mockGarminNativeModule = {
