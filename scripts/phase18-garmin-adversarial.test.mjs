@@ -333,6 +333,41 @@ test("Phase 20 runner validates before writing and never writes final evidence",
   });
 });
 
+test("runner rejects private native records before any raw report write", () => {
+  const exact = evidence();
+  const writes = [];
+  assert.throws(
+    () => executePhase18GarminAdversarialRunner([
+      "--manifest", MANIFEST,
+      "--record", RECORD,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ], {
+      readJson: (path) => path === MANIFEST
+        ? manifest()
+        : {
+          status: exact.status,
+          cases: exact.cases.map((entry, index) => index === 6
+            ? { ...entry, token: "synthetic-private-value" }
+            : entry),
+          native_report: exact.native_report,
+          privacy_scan: exact.privacy_scan,
+          current_identity: {
+            currentHead: HEAD,
+            currentSourceTreeSha256: HASH,
+            currentPythonLockSha256: HASH,
+            retainedApkSha256: HASH,
+            retainedSignatureSha256: HASH,
+            deviceIdentitySha256: HASH,
+          },
+        },
+      writeRawReport: (report) => writes.push(report),
+    }),
+    /phase18_garmin_adversarial_record_privacy_invalid/u,
+  );
+  assert.equal(writes.length, 0);
+});
+
 test("verifier sealing is write-once and requires explicit Phase 20 authority", () => {
   const exact = evidence();
   const reads = (path) => path === MANIFEST ? manifest() : exact;
