@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import secrets
@@ -42,6 +43,17 @@ _MAX_JSON_NODES = 25_000
 _MAX_JSON_STRING_LENGTH = 16_384
 _MAX_PAGE_START = 10_000
 _MAX_PAGE_SIZE = 50
+
+
+def _silence_provider_logging() -> None:
+    provider_logger = logging.getLogger("garminconnect")
+    provider_logger.handlers.clear()
+    provider_logger.addHandler(logging.NullHandler())
+    provider_logger.propagate = False
+    provider_logger.disabled = True
+
+
+_silence_provider_logging()
 
 
 class _BridgeInputError(Exception):
@@ -362,22 +374,29 @@ class GarminBridge:
 
     @staticmethod
     def _classify_error(error: Exception, operation: str) -> tuple[str, int | None]:
-        name = type(error).__name__
-        response = getattr(error, "response", None)
+        current: BaseException | None = error
+        response = None
+        names: set[str] = set()
+        for _ in range(4):
+            if current is None:
+                break
+            names.add(type(current).__name__)
+            response = response or getattr(current, "response", None)
+            current = current.__cause__ or current.__context__
         status = getattr(response, "status_code", None)
-        if status == 429 or name == "GarminConnectTooManyRequestsError":
+        if status == 429 or "GarminConnectTooManyRequestsError" in names:
             return "rate_limited", GarminBridge._retry_after_ms(response)
         if status == 403 and operation.startswith("get"):
             return "data_access_denied", None
-        if name == "GarminConnectAuthenticationError":
+        if status == 401 or "GarminConnectAuthenticationError" in names:
             if operation == "resumeMfa":
                 return "mfa_expired", None
             if operation == "restoreSession" or operation.startswith("get"):
                 return "sign_in_required", None
             return "invalid_credentials", None
-        if isinstance(error, TimeoutError) or "Timeout" in name:
+        if any("Timeout" in name for name in names):
             return "timeout", None
-        if isinstance(error, ConnectionError) or name in {"ConnectionError", "ConnectionResetError"}:
+        if names.intersection({"ConnectionError", "ConnectionResetError", "ConnectionAbortedError"}):
             return "offline", None
         return "temporary_failure", None
 

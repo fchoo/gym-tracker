@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 import sys
 import unittest
@@ -161,10 +162,13 @@ class GarminBridgeTests(unittest.TestCase):
                 "tokenPayload": b'{"di_client_id":"fixture-client","di_refresh_token":"fixture-refresh","di_token":"fixture"}'
             },
         )
+        corrupt_result = restore.dispatch("restoreSession", {"tokenPayload": b"not-json"})
 
         self.assertEqual(invalid_result, {"status": "error", "error": {"code": "invalid_credentials"}})
         self.assertEqual(mfa_result, {"status": "error", "error": {"code": "mfa_expired"}})
         self.assertEqual(restore_result, {"status": "error", "error": {"code": "sign_in_required"}})
+        self.assertEqual(corrupt_result, {"status": "error", "error": {"code": "sign_in_required"}})
+        self.assertTrue(logging.getLogger("garminconnect").disabled)
 
     def test_read_failures_are_distinct_bounded_and_single_attempt(self):
         cases = (
