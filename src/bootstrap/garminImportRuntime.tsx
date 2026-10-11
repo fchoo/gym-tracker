@@ -310,8 +310,8 @@ function createProductionGarminSource(sha256: GarminSha256): GarminActivitySourc
       return rememberAccountNamespace(await adapter.resumeMfa(input), accountNamespace);
     },
     async logout() {
-      accountNamespace.current = null;
       await adapter.logout();
+      accountNamespace.current = null;
     },
     listRunningSummaries: (input) => adapter.listRunningSummaries(input),
     readActivity: (externalActivityId) => adapter.readActivity(externalActivityId),

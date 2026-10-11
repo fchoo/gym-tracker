@@ -48,6 +48,7 @@ internal interface GarminSessionStore {
 
 internal interface GarminAtomicWriter {
   fun replace(target: File, bytes: ByteArray, verify: (File) -> Unit)
+  fun remove(target: File)
 }
 
 internal class AndroidGarminAtomicWriter : GarminAtomicWriter {
@@ -78,6 +79,24 @@ internal class AndroidGarminAtomicWriter : GarminAtomicWriter {
       throw GarminTokenStoreException("garmin_token_write_failed")
     } finally {
       temporary.delete()
+    }
+  }
+
+  override fun remove(target: File) {
+    if (!target.exists()) return
+    val parent = target.parentFile ?: throw GarminTokenStoreException("garmin_token_clear_failed")
+    val tombstone = File(parent, ".${target.name}.deleted")
+    try {
+      if (tombstone.exists() && !tombstone.delete()) {
+        throw GarminTokenStoreException("garmin_token_clear_failed")
+      }
+      Os.rename(target.absolutePath, tombstone.absolutePath)
+      fsyncDirectory(parent)
+      if (tombstone.exists() && tombstone.delete()) fsyncDirectory(parent)
+    } catch (error: GarminTokenStoreException) {
+      throw error
+    } catch (_: Throwable) {
+      throw GarminTokenStoreException("garmin_token_clear_failed")
     }
   }
 
@@ -193,9 +212,7 @@ internal class GarminTokenStore(
   }
 
   override fun clear() {
-    if (recordFile.exists() && !recordFile.delete()) {
-      throw GarminTokenStoreException("garmin_token_clear_failed")
-    }
+    atomicWriter.remove(recordFile)
   }
 
   internal fun recordFileForTest(): File = recordFile

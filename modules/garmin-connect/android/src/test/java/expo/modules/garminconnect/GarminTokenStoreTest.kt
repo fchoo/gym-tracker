@@ -115,6 +115,29 @@ class GarminTokenStoreTest {
   }
 
   @Test
+  fun `failed durable deletion keeps the live worker session connected`() {
+    val store = MemorySessionStore(failClear = true)
+    val dispatcher = RecordingDispatcher(
+      ArrayDeque(
+        listOf(
+          success(1, mapOf("kind" to "connected", "account_namespace" to "account-fixture")),
+          success(1, mapOf("kind" to "connected", "account_namespace" to "account-fixture")),
+        )
+      )
+    )
+    dispatcher.pendingTokens = "first-session".toByteArray()
+    val worker = GarminClientWorker(dispatcher, store)
+    worker.login("owner", "synthetic-secret")
+
+    val error = assertThrows(GarminWorkerException::class.java) { worker.logout() }
+
+    assertEquals("garmin_token_clear_failed", error.code)
+    assertEquals(1L, worker.generationForTest())
+    assertEquals("connected", (worker.connectionState()["data"] as Map<*, *>)["kind"])
+    assertEquals(listOf("login", "connectionState"), dispatcher.calls.map { it.first })
+  }
+
+  @Test
   fun `worker injects decrypted bytes only into restore and persists the verified rotation`() {
     val store = MemorySessionStore("stored-session".toByteArray())
     val dispatcher = RecordingDispatcher(
@@ -163,7 +186,10 @@ class GarminTokenStoreTest {
   )
 }
 
-private class MemorySessionStore(initial: ByteArray? = null) : GarminSessionStore {
+private class MemorySessionStore(
+  initial: ByteArray? = null,
+  private val failClear: Boolean = false,
+) : GarminSessionStore {
   var value: ByteArray? = initial?.copyOf()
 
   override fun read(): ByteArray? = value?.copyOf()
@@ -173,6 +199,7 @@ private class MemorySessionStore(initial: ByteArray? = null) : GarminSessionStor
   }
 
   override fun clear() {
+    if (failClear) throw GarminTokenStoreException("garmin_token_clear_failed")
     value?.fill(0)
     value = null
   }
@@ -217,6 +244,13 @@ private class JvmAtomicWriter : GarminAtomicWriter {
       temporary.delete()
     }
   }
+
+  override fun remove(target: File) {
+    if (!target.exists()) return
+    val tombstone = File(target.parentFile, ".${target.name}.deleted")
+    Files.move(target.toPath(), tombstone.toPath(), StandardCopyOption.ATOMIC_MOVE)
+    Files.deleteIfExists(tombstone.toPath())
+  }
 }
 
 private class VerifyThenFailWriter : GarminAtomicWriter {
@@ -233,6 +267,8 @@ private class VerifyThenFailWriter : GarminAtomicWriter {
       temporary.delete()
     }
   }
+
+  override fun remove(target: File) = JvmAtomicWriter().remove(target)
 }
 
 private class JvmAesGcmCipher : GarminTokenCipher {

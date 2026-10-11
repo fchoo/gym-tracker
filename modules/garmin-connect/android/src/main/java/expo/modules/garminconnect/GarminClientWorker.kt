@@ -73,6 +73,7 @@ internal class GarminClientWorker(
 ) {
   private val lock = ReentrantLock()
   private var generation = 0L
+  private var sessionAvailable = false
 
   fun connectionState(): Map<String, Any?> = lock.withLock {
     val result = safeDispatch("connectionState", mutableMapOf())
@@ -90,6 +91,7 @@ internal class GarminClientWorker(
         val result = safeDispatch("login", arguments)
         requireGeneration(result, generation)
         persistPendingTokens(result)
+        sessionAvailable = connected(result)
         result
       } finally {
         arguments.clear()
@@ -110,6 +112,7 @@ internal class GarminClientWorker(
         val result = safeDispatch("resumeMfa", arguments)
         requireGeneration(result, startedGeneration)
         persistPendingTokens(result)
+        sessionAvailable = connected(result)
         result
       } finally {
         arguments.clear()
@@ -129,6 +132,7 @@ internal class GarminClientWorker(
       val result = safeDispatch("restoreSession", arguments)
       requireGeneration(result, generation)
       persistPendingTokens(result)
+      sessionAvailable = connected(result)
       result
     } finally {
       tokenPayload.fill(0)
@@ -137,17 +141,22 @@ internal class GarminClientWorker(
   }
 
   fun logout(): Map<String, Any?> = lock.withLock {
-    generation += 1
-    var clearFailed = false
     try {
       sessionStore.clear()
     } catch (_: GarminTokenStoreException) {
-      clearFailed = true
+      throw GarminWorkerException("garmin_token_clear_failed")
     }
+    generation += 1
+    sessionAvailable = false
     val result = safeDispatch("logout", mutableMapOf())
-    requireGeneration(result, generation)
-    if (clearFailed) throw GarminWorkerException("garmin_token_clear_failed")
-    result
+    if (result["status"] == "ok") {
+      requireGeneration(result, generation)
+    }
+    mapOf(
+      "status" to "ok",
+      "generation" to generation,
+      "data" to mapOf("kind" to "disconnected")
+    )
   }
 
   fun getActivities(start: Int, limit: Int): Map<String, Any?> {
@@ -191,6 +200,7 @@ internal class GarminClientWorker(
     operation: String,
     arguments: MutableMap<String, Any> = mutableMapOf()
   ): Map<String, Any?> = lock.withLock {
+    if (!sessionAvailable) return@withLock error("sign_in_required")
     val startedGeneration = generation
     val result = safeDispatch(operation, arguments)
     if (result["status"] == "ok" && resultGeneration(result) != startedGeneration) {
@@ -230,6 +240,11 @@ internal class GarminClientWorker(
     } finally {
       tokenBytes.fill(0)
     }
+  }
+
+  private fun connected(result: Map<String, Any?>): Boolean {
+    val data = result["data"] as? Map<*, *> ?: return false
+    return result["status"] == "ok" && data["kind"] == "connected"
   }
 
   private fun safeDispatch(

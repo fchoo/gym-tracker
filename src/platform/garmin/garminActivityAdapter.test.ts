@@ -445,6 +445,28 @@ describe("Garmin activity adapter", () => {
       .rejects.toMatchObject({ code: "stale_generation" });
   });
 
+  it("keeps the authoritative connected state when native logout fails before deletion", async () => {
+    const { driver, mapper } = fixtures();
+    const failingDriver: GarminNativeDriver = {
+      ...driver,
+      connectionState: jest.fn(async () => ({
+        status: "ok",
+        generation: 1,
+        data: { kind: "connected", account_namespace: accountNamespace },
+      })),
+      logout: jest.fn(async () => ({
+        status: "error",
+        error: { code: "temporary_failure" },
+      })),
+    };
+    const adapter = createGarminActivityAdapter({ driver: failingDriver, mapper });
+    await adapter.login({ email: "owner", password: "synthetic-secret" });
+    await adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" });
+
+    await expect(adapter.logout()).rejects.toMatchObject({ code: "temporary_failure" });
+    await expect(adapter.connectionState()).resolves.toMatchObject({ kind: "connected" });
+  });
+
   it("uses the packaged native module when no driver override is supplied", async () => {
     const fixture = fixtures();
     mockDefaultDriver = fixture.driver;

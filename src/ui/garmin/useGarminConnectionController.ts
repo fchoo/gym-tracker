@@ -542,9 +542,18 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       await loadHistory();
     } catch {
       if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      let connection: GarminConnectionControllerState["connection"] = state.connection;
+      try {
+        connection = connectionKind(
+          await inputRef.current.source.connectionState(),
+          challengeHandleRef,
+        );
+      } catch {
+        // Preserve the last visible state when the authoritative read also fails.
+      }
       setState((current) => ({
         ...current,
-        connection: "connected",
+        connection,
         operation: "idle",
         error: Object.freeze({ code: "logout_failed", retryable: true }),
       }));

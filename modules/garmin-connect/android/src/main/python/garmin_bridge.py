@@ -324,10 +324,7 @@ class GarminBridge:
 
     def _logout(self) -> dict[str, Any]:
         self._generation += 1
-        client = self._client
         self._clear_client()
-        if client is not None:
-            client.logout()
         return self._success({"kind": "disconnected"})
 
     def _require_client(self) -> Any:

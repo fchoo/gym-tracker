@@ -295,11 +295,11 @@ export function createGarminActivityAdapter(input: Readonly<{
       return next;
     },
     async logout() {
-      generation += 1;
-      currentState = { kind: "disconnected" };
+      const startedGeneration = generation;
       const result = await callNative<GarminNativeConnectionData>(() => driver.logout());
-      if (result.generation < generation) throw new GarminActivityAdapterError("stale_generation");
-      generation = result.generation;
+      if (result.generation <= startedGeneration) throw new GarminActivityAdapterError("stale_generation");
+      const next = acceptState(result);
+      if (next.kind !== "disconnected") throw new GarminActivityAdapterError("malformed_response");
     },
     async listRunningSummaries(pageInput) {
       const page = parsePage(pageInput);
