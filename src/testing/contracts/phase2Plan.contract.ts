@@ -381,7 +381,7 @@ async function prepareRuntime(
     && projection.revision === catalog.metadata.revision,
     "phase2_plan_workout_projection_missing",
   );
-  return { catalog, bundled };
+  return { catalog, bundled, bundledRevision: projection.revision };
 }
 
 type ContractSessionSetRow = Readonly<{
@@ -820,7 +820,7 @@ const contractCases: Record<Phase2PlanContractCaseId, ContractCase> = {
   },
 
   async "plan-custom-lifecycle"({ kernel }, adapter) {
-    const { bundled } = await prepareRuntime(kernel, adapter);
+    const { bundled, bundledRevision } = await prepareRuntime(kernel, adapter);
     const repository = createCustomExerciseRepository(kernel);
     const created = await createCustomExercise({
       repository,
@@ -861,12 +861,30 @@ const contractCases: Record<Phase2PlanContractCaseId, ContractCase> = {
       input: {
         requestId: "phase2-bundled-copy",
         sourceExerciseId: bundled.id,
-        expectedSourceRevision: 1,
+        expectedSourceRevision: bundledRevision,
         exerciseId: "phase2-custom-copy",
         name: "Independent accepted copy",
         createdAtMs: 1_787_000_004_000,
       },
     });
+    let staleRejected = false;
+    try {
+      await createCustomCopy({
+        repository,
+        invalidate: async () => undefined,
+        input: {
+          requestId: "phase2-bundled-copy-stale",
+          sourceExerciseId: bundled.id,
+          expectedSourceRevision: bundledRevision - 1,
+          exerciseId: "phase2-custom-copy-stale",
+          name: "Stale accepted copy",
+          createdAtMs: 1_787_000_004_001,
+        },
+      });
+    } catch (error) {
+      staleRejected = typeof error === "object" && error !== null
+        && "code" in error && error.code === "custom_exercise_revision_conflict";
+    }
     const preview = await previewCustomExerciseArchive({
       repository,
       input: {
@@ -918,6 +936,7 @@ const contractCases: Record<Phase2PlanContractCaseId, ContractCase> = {
       && created.progression.kind === "manual_hold"
       && hidden.hidden
       && copied.exercise.exerciseId === "phase2-custom-copy"
+      && staleRejected
       && source[0]?.origin === "custom"
       && source[0].source_namespace === null
       && source[0].upstream_id === null
