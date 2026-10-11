@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Completed 18-05-PLAN.md
-last_updated: "2026-10-11T08:42:46.840Z"
+stopped_at: Completed 18-06-PLAN.md
+last_updated: "2026-10-11T09:14:20.358Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: ef2f246ec8539d849b07567a7f6c124ab150e9f3
+state_head: 2d121de28ba97108b8d1e76728c9784cf91ded92
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 60
+  completed_plans: 61
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 6 of 14
+Plan: 7 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -100,6 +100,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P03 | 24m 3s | 2 tasks | 10 files |
 | Phase 18 P04 | 18m | 2 tasks | 6 files |
 | Phase 18 P05 | 21m 12s | 3 tasks | 5 files |
+| Phase 18 P06 | 27m 7s | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Plan 18-05: Garmin foreground sync keeps the existing source port; the adapter owns complete component reads and the coordinator owns finite iteration and commit-derived outcomes.
 - [Phase 18]: Plan 18-05: The shared importer rechecks connection generation after canonical request preparation and immediately before the exclusive SQLite command.
 - [Phase 18]: Plan 18-05: Cancellation occurs only at activity boundaries and no source or import retry is implicit.
+- [Phase 18]: Phase 18 Plan 06 keeps passwords, MFA codes, continuation handles, and account namespaces outside controller presentation state.
+- [Phase 18]: Phase 18 Plan 06 exposes a structural UI syncNow port so runtime composition can inject the platform coordinator without a UI-to-platform dependency.
+- [Phase 18]: Phase 18 Plan 06 keeps Disconnect available during sync so confirmed logout invalidates late work while retaining imported history.
 
 ### Pending Owner Review
 
@@ -239,7 +243,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T08:42:46.564Z
-Stopped at: Completed 18-05-PLAN.md
+Last session: 2026-10-11T09:14:19.985Z
+Stopped at: Completed 18-06-PLAN.md
 Resume file: None
 Next action: Execute 18-03 only when the owner initiates its attended installed-app proof.
