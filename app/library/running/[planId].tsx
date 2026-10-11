@@ -21,7 +21,10 @@ export default function RunningPlanDetailRoute() {
       onBack={() => router.back()}
       onEdit={() => router.push(`/library/running/${planId}/edit` as Href)}
       onEditSession={(sessionId) => router.push(`/library/running/${planId}/session/${sessionId}` as Href)}
-      onGarmin={() => undefined}
+      onGarmin={() => router.push({
+        pathname: "/garmin",
+        params: { origin: "library" },
+      } as Href)}
       onNewSession={() => router.push(`/library/running/${planId}/session/new` as Href)}
       planId={planId}
       createLifecycleRequestId={() => appRuntime.createPhase17ActionRequestId("running-lifecycle", runtime.createId("running-lifecycle"))}
