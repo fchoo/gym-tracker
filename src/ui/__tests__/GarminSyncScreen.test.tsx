@@ -76,19 +76,19 @@ describe("GarminSyncScreen connection tracer", () => {
 
     expect(await screen.findByText("Garmin not connected")).toBeOnTheScreen();
     expect(screen.getByText("Morning run")).toBeOnTheScreen();
-    fireEvent.press(screen.getByRole("button", { name: "Connect Garmin" }));
-    fireEvent.changeText(screen.getByLabelText("Email"), "owner@example.test");
-    fireEvent.changeText(screen.getByLabelText("Password"), "transient-input");
-    fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Connect Garmin" }));
+    await fireEvent.changeText(await screen.findByLabelText("Email"), "owner@example.test");
+    await fireEvent.changeText(screen.getByLabelText("Password"), "transient-input");
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByText("One-time code")).toBeOnTheScreen();
-    fireEvent.changeText(screen.getByLabelText("One-time code"), "transient-code");
-    fireEvent.press(screen.getByRole("button", { name: "Verify" }));
+    await fireEvent.changeText(screen.getByTestId("garmin-mfa-code-input"), "transient-code");
+    await fireEvent.press(screen.getByRole("button", { name: "Verify" }));
 
     expect(await screen.findByText("Connected to Garmin")).toBeOnTheScreen();
     expect(login).toHaveBeenCalledTimes(1);
     expect(resumeMfa).toHaveBeenCalledTimes(1);
-    fireEvent.press(screen.getByRole("button", { name: "Open Morning run" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Open Morning run" }));
     expect(onOpenActivity).toHaveBeenCalledWith("local-activity-1");
   });
 
@@ -109,17 +109,17 @@ describe("GarminSyncScreen connection tracer", () => {
     };
     await renderScreen({ source });
 
-    fireEvent.press(await screen.findByRole("button", { name: "Connect Garmin" }));
-    fireEvent.changeText(screen.getByLabelText("Email"), "owner@example.test");
-    fireEvent.changeText(screen.getByLabelText("Password"), "transient-input");
+    await fireEvent.press(await screen.findByRole("button", { name: "Connect Garmin" }));
+    await fireEvent.changeText(await screen.findByLabelText("Email"), "owner@example.test");
+    await fireEvent.changeText(screen.getByLabelText("Password"), "transient-input");
     const continueAction = screen.getByRole("button", { name: "Continue" });
-    fireEvent.press(continueAction);
-    fireEvent.press(continueAction);
+    await fireEvent.press(continueAction);
+    await fireEvent.press(continueAction);
 
     expect(await screen.findByText("Check your email and password, then try again.")).toBeOnTheScreen();
     expect(screen.getByLabelText("Email")).toHaveProp("value", "owner@example.test");
     expect(login).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.getByLabelText("Password")).toHaveProp("value", ""));
+    await waitFor(() => expect(screen.getByLabelText("Password")).toHaveProp("defaultValue", ""));
     expect(screen.queryByText("private provider detail")).not.toBeOnTheScreen();
   });
 });

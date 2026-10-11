@@ -73,7 +73,7 @@ describe("useGarminConnectionController connection tracer", () => {
     const clearPasswordInput = jest.fn();
     const clearMfaCodeInput = jest.fn();
 
-    render(<Harness
+    await render(<Harness
       clearMfaCodeInput={clearMfaCodeInput}
       clearPasswordInput={clearPasswordInput}
       coordinator={coordinator()}
@@ -82,11 +82,15 @@ describe("useGarminConnectionController connection tracer", () => {
     />);
 
     await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
-    act(() => {
+    await act(async () => {
       current?.openCredentials();
+    });
+    await waitFor(() => expect(current?.state.connection).toBe("credentials"));
+    await act(async () => {
       current?.setEmail("owner@example.test");
       current?.setPassword(secretMarker);
     });
+    await waitFor(() => expect(current?.state.email).toBe("owner@example.test"));
     await act(async () => {
       await Promise.all([
         current?.submitCredentials(),
@@ -101,7 +105,7 @@ describe("useGarminConnectionController connection tracer", () => {
     expect(JSON.stringify(current?.state)).not.toContain("opaque-continuation-handle-1234");
     expect(JSON.stringify(current?.state)).not.toContain("private-account-namespace");
 
-    act(() => current?.setMfaCode(codeMarker));
+    await act(async () => current?.setMfaCode(codeMarker));
     await act(async () => {
       await Promise.all([current?.submitMfa(), current?.submitMfa()]);
     });
@@ -121,7 +125,7 @@ describe("useGarminConnectionController connection tracer", () => {
     const logout = jest.fn(async () => undefined);
     const syncNow = jest.fn(async () => ({ kind: "success" as const, counts: emptyCounts }));
 
-    render(<Harness
+    await render(<Harness
       coordinator={{ syncNow }}
       loadActivities={async () => [activity]}
       source={source({
