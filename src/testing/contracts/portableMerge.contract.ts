@@ -3,6 +3,11 @@ import {
   type MergeLocalFacts,
 } from "../../domains/portability/mergeCommands";
 import {
+  BACKUP_LIMITS,
+  parseLogicalBackupSnapshot,
+  type LogicalBackupSnapshot,
+} from "../../domains/portability/backupContracts";
+import {
   buildPortableMergePlan,
   type PortableMergePlan,
   type PortableMergePlanSnapshot,
@@ -20,6 +25,9 @@ import {
 import {
   createHistoryProjectionRepository,
 } from "../../platform/sqlite/repositories/historyProjectionRepository";
+import {
+  createImportedActivityRepository,
+} from "../../platform/sqlite/repositories/importedActivityRepository";
 import {
   createRunningActivityMatchRepository,
 } from "../../platform/sqlite/repositories/runningActivityMatchRepository";
@@ -65,6 +73,10 @@ export const PORTABLE_MERGE_CONTRACT_CASES = [
   "portable-merge-deterministic-derivative-parity",
   "portable-merge-phase13-source-generation-once",
   "portable-merge-garmin-clean-restore",
+  "portable-merge-garmin-exact-repeat-noop",
+  "portable-merge-garmin-conflict-isolation",
+  "portable-merge-garmin-remap-tombstone-match",
+  "portable-merge-garmin-tamper-capacity-rollback",
 ] as const;
 
 export type PortableMergeContractCaseId =
@@ -300,7 +312,20 @@ const GARMIN_ACTIVITY_ID = "portable-garmin-activity";
 const GARMIN_OPPORTUNITY_ID = "portable-running-opportunity";
 const GARMIN_ACCEPTED_SHA256 = "a".repeat(64);
 
-async function seedGarminPortableGraph(kernel: SqliteKernel): Promise<void> {
+type GarminPortableSeed = Readonly<{
+  accountNamespace?: string;
+  acceptedSha256?: string;
+  externalActivityId?: string;
+  removed?: boolean;
+}>;
+
+async function seedGarminPortableGraph(
+  kernel: SqliteKernel,
+  options: GarminPortableSeed = {},
+): Promise<void> {
+  const accountNamespace = options.accountNamespace ?? "portable-account";
+  const acceptedSha256 = options.acceptedSha256 ?? GARMIN_ACCEPTED_SHA256;
+  const externalActivityId = options.externalActivityId ?? "4242";
   const runningPlans = createRunningPlanRepository(kernel);
   await runningPlans.createInactiveMinimum({
     planId: "portable-running-plan",
@@ -341,10 +366,10 @@ async function seedGarminPortableGraph(kernel: SqliteKernel): Promise<void> {
     const aggregate = JSON.stringify({
       confirmed_local_date: "2026-10-05",
       source_kind: "garmin_connect_account",
-      account_namespace: "portable-account",
-      external_activity_id: "4242",
+      account_namespace: accountNamespace,
+      external_activity_id: externalActivityId,
       normalization_version: 1,
-      normalized_json_sha256: GARMIN_ACCEPTED_SHA256,
+      normalized_json_sha256: acceptedSha256,
       raw_component_sha256: {
         activity: "b".repeat(64),
         splits: "c".repeat(64),
@@ -353,12 +378,12 @@ async function seedGarminPortableGraph(kernel: SqliteKernel): Promise<void> {
       sample_fidelity: "source_summary",
     });
     await transaction.execute(
-      "INSERT INTO imported_activities (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES (?, 'garmin_connect_account:portable-account', '4242', 1, ?, 2)",
-      [GARMIN_ACTIVITY_ID, aggregate],
+      "INSERT INTO imported_activities (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES (?, ?, ?, 1, ?, 2)",
+      [GARMIN_ACTIVITY_ID, `garmin_connect_account:${accountNamespace}`, externalActivityId, aggregate],
     );
     await transaction.execute(
       "INSERT INTO imported_activity_payloads (id, activity_id, payload_json, sha256) VALUES ('portable-garmin-payload', ?, ?, ?)",
-      [GARMIN_ACTIVITY_ID, JSON.stringify({ version: 1, sport: "running", distance_meters: 5_000 }), GARMIN_ACCEPTED_SHA256],
+      [GARMIN_ACTIVITY_ID, JSON.stringify({ version: 1, sport: "running", distance_meters: 5_000 }), acceptedSha256],
     );
     for (const [id, kind, value] of [
       ["portable-garmin-ref-activity", "raw_activity_sha256", "b".repeat(64)],
@@ -383,12 +408,16 @@ async function seedGarminPortableGraph(kernel: SqliteKernel): Promise<void> {
       [GARMIN_ACTIVITY_ID, "e".repeat(64)],
     );
     await transaction.execute(
-      "INSERT INTO imported_activity_identities (activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES (?, 'garmin_connect_account', 'portable-account', '4242', 1, ?, 'active')",
-      [GARMIN_ACTIVITY_ID, GARMIN_ACCEPTED_SHA256],
+      "INSERT INTO imported_activity_identities (activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES (?, 'garmin_connect_account', ?, ?, 1, ?, 'active')",
+      [GARMIN_ACTIVITY_ID, accountNamespace, externalActivityId, acceptedSha256],
     );
     await transaction.execute(
       "INSERT INTO imported_activity_events (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms) VALUES ('portable-garmin-import-event', ?, 1, 'imported', ?, 4)",
-      [GARMIN_ACTIVITY_ID, JSON.stringify({ accepted_normalized_sha256: GARMIN_ACCEPTED_SHA256 })],
+      [GARMIN_ACTIVITY_ID, JSON.stringify({ accepted_normalized_sha256: acceptedSha256 })],
+    );
+    await transaction.execute(
+      "INSERT INTO imported_activity_current_lifecycle (activity_id, aggregate_revision, removal_state, lifecycle_event_id) VALUES (?, 1, 'active', 'portable-garmin-import-event')",
+      [GARMIN_ACTIVITY_ID],
     );
   });
 
@@ -398,7 +427,7 @@ async function seedGarminPortableGraph(kernel: SqliteKernel): Promise<void> {
     action: "match",
     activityId: GARMIN_ACTIVITY_ID,
     expectedActivityRevision: 1,
-    expectedAcceptedPayloadSha256: GARMIN_ACCEPTED_SHA256,
+    expectedAcceptedPayloadSha256: acceptedSha256,
     opportunityId: GARMIN_OPPORTUNITY_ID,
     expectedOpportunityRevision: 1,
     expectedRelationRevision: 0,
@@ -416,6 +445,51 @@ async function seedGarminPortableGraph(kernel: SqliteKernel): Promise<void> {
     occurredAtMs: 5,
   });
   invariant(matched.kind === "matched", "portable_merge_garmin_match_seed_failed");
+  if (options.removed === true) {
+    const removed = await createImportedActivityRepository(kernel).changeGarminActivityLifecycle({
+      requestId: "portable-garmin-remove-request",
+      requestSha256: "8".repeat(64),
+      operation: "remove",
+      activityId: GARMIN_ACTIVITY_ID,
+      expectedAggregateRevision: 1,
+      reason: "owner_removed",
+      occurredAtMs: 6,
+    });
+    invariant(removed.kind === "removed", "portable_merge_garmin_remove_seed_failed");
+  }
+}
+
+function mergePlanSnapshot(
+  backup: LogicalBackupSnapshot,
+  owner: string,
+  tables: LogicalBackupSnapshot["tables"] = backup.tables,
+): PortableMergePlanSnapshot {
+  return Object.freeze({
+    version: 2 as const,
+    schemaVersion: backup.schemaVersion,
+    tables: Object.freeze({
+      ...tables,
+      portable_owner_identity: [{ id: 1, owner_namespace: owner }],
+    }),
+  });
+}
+
+function snapshotWithTables(
+  backup: LogicalBackupSnapshot,
+  tables: LogicalBackupSnapshot["tables"],
+): LogicalBackupSnapshot {
+  const rowCounts = Object.freeze(Object.fromEntries(
+    Object.entries(tables).map(([table, rows]) => [table, rows.length]),
+  ));
+  return Object.freeze({
+    ...backup,
+    tables,
+    manifest: Object.freeze({
+      catalogReferenceCount: backup.catalogReferences.length,
+      rowCounts,
+      totalRows: Object.values(rowCounts).reduce((total, count) => total + count, 0),
+    }),
+  });
 }
 
 async function canonicalGarminPortableSource(kernel: SqliteKernel): Promise<string> {
@@ -943,6 +1017,241 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
       "portable_merge_garmin_projection_rebuild_changed_match");
       invariant(await canonicalGarminPortableSource(local.kernel) === archivedSource,
         "portable_merge_garmin_rebuild_changed_source");
+    });
+  },
+
+  async "portable-merge-garmin-exact-repeat-noop"(adapter, caseId) {
+    await withRuntimes(adapter, caseId, async (archive, local) => {
+      await seedGarminPortableGraph(archive.kernel);
+      const first = await plannedFullMerge(adapter, archive.kernel, local.kernel);
+      await commitFullPlan(adapter, local.kernel, first);
+      await reconciliation(local.kernel).reconcileAndRebuild();
+      const before = await canonicalState(local.kernel);
+      const [generationBefore] = await local.kernel.queryAll<{ mutation_generation: number }>(
+        "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+      );
+
+      const replay = await plannedFullMerge(adapter, archive.kernel, local.kernel);
+      const sourceOperation = replay.plan.operations.find(
+        (operation) => operation.aggregateClass === "source_graph",
+      );
+      invariant(sourceOperation?.kind === "duplicate"
+        && replay.plan.aggregates.length === 0
+        && replay.plan.preview.conflicts === 0,
+      "portable_merge_garmin_repeat_not_noop");
+      const replayResult = await commitFullPlan(adapter, local.kernel, replay);
+      const [generationAfter] = await local.kernel.queryAll<{ mutation_generation: number }>(
+        "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+      );
+      invariant(replayResult.state === "ready"
+        && generationAfter?.mutation_generation === generationBefore?.mutation_generation
+        && await canonicalState(local.kernel) === before,
+      "portable_merge_garmin_repeat_changed_local");
+    });
+  },
+
+  async "portable-merge-garmin-conflict-isolation"(adapter, caseId) {
+    await withRuntimes(adapter, caseId, async (archive, local) => {
+      await seedGarminPortableGraph(archive.kernel);
+      const first = await plannedFullMerge(adapter, archive.kernel, local.kernel);
+      await commitFullPlan(adapter, local.kernel, first);
+      await reconciliation(local.kernel).reconcileAndRebuild();
+      const before = await canonicalState(local.kernel);
+      const [archiveBackup, localFacts] = await Promise.all([
+        snapshot(archive.kernel, "portable-garmin-changed-revision"),
+        createSqliteMergeLocalFactsPort(local.kernel).read(),
+      ]);
+      const changedDigest = "7".repeat(64);
+      const changedTables = Object.freeze({
+        ...archiveBackup.tables,
+        imported_activities: archiveBackup.tables.imported_activities!.map((row) => ({
+          ...row,
+          aggregate_json: JSON.stringify({
+            ...(JSON.parse(String(row.aggregate_json)) as Record<string, unknown>),
+            normalized_json_sha256: changedDigest,
+          }),
+        })),
+        imported_activity_payloads: archiveBackup.tables.imported_activity_payloads!.map((row) => ({
+          ...row,
+          sha256: changedDigest,
+        })),
+        imported_activity_identities: archiveBackup.tables.imported_activity_identities!.map((row) => ({
+          ...row,
+          accepted_normalized_sha256: changedDigest,
+        })),
+      });
+      const conflictPlan = await buildPortableMergePlan({
+        archive: mergePlanSnapshot(archiveBackup, localFacts.ownerNamespace, changedTables),
+        local: mergePlanSnapshot({
+          ...archiveBackup,
+          schemaVersion: localFacts.schemaVersion,
+          tables: localFacts.tables,
+        }, localFacts.ownerNamespace, localFacts.tables),
+        payloadDigest: adapter.sha256,
+      });
+      const sourceConflict = conflictPlan.operations.find(
+        (operation) => operation.aggregateClass === "source_graph",
+      );
+      invariant(sourceConflict?.kind === "conflict"
+        && conflictPlan.preview.conflicts === 1
+        && !conflictPlan.aggregates.some(({ aggregateClass }) => aggregateClass === "source_graph"),
+      "portable_merge_garmin_changed_revision_not_previewed");
+      let conflictRejected = false;
+      try {
+        await createFullPlanLogicalMergeWriter(local.kernel, {
+          nowMs: () => 99,
+          sha256: adapter.sha256,
+        }).commitFullPlan({
+          localFingerprint: await adapter.sha256(canonicalMergeValue(localFacts)),
+          plan: conflictPlan,
+        });
+      } catch {
+        conflictRejected = true;
+      }
+      invariant(conflictRejected && await canonicalState(local.kernel) === before,
+        "portable_merge_garmin_conflict_mutated_local");
+
+      const foreignBackup = await snapshot(archive.kernel, "portable-garmin-foreign-owner");
+      let foreignOwnerRejected = false;
+      try {
+        await buildPortableMergePlan({
+          archive: mergePlanSnapshot(foreignBackup, foreignBackup.tables.portable_owner_identity![0]!.owner_namespace as string),
+          local: mergePlanSnapshot({
+            ...foreignBackup,
+            schemaVersion: localFacts.schemaVersion,
+            tables: localFacts.tables,
+          }, localFacts.ownerNamespace, localFacts.tables),
+          payloadDigest: adapter.sha256,
+        });
+      } catch {
+        foreignOwnerRejected = true;
+      }
+      invariant(foreignOwnerRejected && await canonicalState(local.kernel) === before,
+        "portable_merge_garmin_foreign_owner_not_isolated");
+    });
+  },
+
+  async "portable-merge-garmin-remap-tombstone-match"(adapter, caseId) {
+    await withRuntimes(adapter, caseId, async (archive, local) => {
+      await seedGarminPortableGraph(local.kernel, { accountNamespace: "local-account" });
+      await seedGarminPortableGraph(archive.kernel, {
+        accountNamespace: "portable-account",
+        removed: true,
+      });
+      const input = await plannedFullMerge(adapter, archive.kernel, local.kernel);
+      invariant(input.plan.preview.keptBoth >= 1
+        && input.plan.preview.remapped >= 1
+        && input.plan.preview.conflicts === 0,
+      "portable_merge_garmin_remap_preview_invalid");
+      await commitFullPlan(adapter, local.kernel, input);
+      const rebuilt = await reconciliation(local.kernel).reconcileAndRebuild();
+      invariant(rebuilt.outcome === "rebuilt" && rebuilt.state === "ready",
+        "portable_merge_garmin_remap_rebuild_failed");
+
+      const identities = await local.kernel.queryAll<{
+        activity_id: string;
+        account_namespace: string;
+        external_activity_id: string;
+        accepted_normalized_sha256: string;
+      }>(`SELECT activity_id, account_namespace, external_activity_id,
+                 accepted_normalized_sha256
+            FROM imported_activity_identities ORDER BY account_namespace`);
+      invariant(identities.length === 2
+        && identities.every((row) => row.external_activity_id === "4242"
+          && row.accepted_normalized_sha256 === GARMIN_ACCEPTED_SHA256)
+        && identities[0]?.account_namespace === "local-account"
+        && identities[1]?.account_namespace === "portable-account"
+        && identities[1]?.activity_id !== GARMIN_ACTIVITY_ID,
+      "portable_merge_garmin_account_identity_coalesced");
+      const portableActivityId = identities[1]!.activity_id;
+      const portableEvents = await local.kernel.queryAll<{
+        action: string;
+        activity_revision: number;
+        opportunity_id: string;
+        relation_revision: number;
+      }>(`SELECT action, activity_revision, opportunity_id, relation_revision
+            FROM running_activity_match_events WHERE activity_id = ?
+           ORDER BY relation_revision`, [portableActivityId]);
+      invariant(canonicalMergeValue(portableEvents.map(({ action, activity_revision, relation_revision }) => ({
+        action,
+        activity_revision,
+        relation_revision,
+      }))) === canonicalMergeValue([
+        { action: "matched", activity_revision: 1, relation_revision: 1 },
+        { action: "invalidated", activity_revision: 1, relation_revision: 2 },
+      ])
+        && portableEvents.every(({ opportunity_id }) => opportunity_id !== GARMIN_OPPORTUNITY_ID),
+      "portable_merge_garmin_pinned_match_changed");
+      const [removal] = await local.kernel.queryAll<{ activity_id: string }>(
+        "SELECT activity_id FROM imported_activity_removal_events WHERE activity_id = ?",
+        [portableActivityId],
+      );
+      const current = await local.kernel.queryAll<{ account_namespace: string }>(
+        `SELECT identity.account_namespace FROM running_activity_current_matches current
+         JOIN imported_activity_identities identity ON identity.activity_id = current.activity_id`,
+      );
+      invariant(removal?.activity_id === portableActivityId
+        && current.length === 1
+        && current[0]?.account_namespace === "local-account",
+      "portable_merge_garmin_tombstone_or_projection_invalid");
+    });
+  },
+
+  async "portable-merge-garmin-tamper-capacity-rollback"(adapter, caseId) {
+    await withRuntimes(adapter, caseId, async (archive, local) => {
+      await seedGarminPortableGraph(archive.kernel);
+      const [archiveBackup, localFacts] = await Promise.all([
+        snapshot(archive.kernel, "portable-garmin-adversarial"),
+        createSqliteMergeLocalFactsPort(local.kernel).read(),
+      ]);
+      const before = await canonicalState(local.kernel);
+      const danglingTables = Object.freeze({
+        ...archiveBackup.tables,
+        running_activity_match_events: archiveBackup.tables.running_activity_match_events!.map((row) => ({
+          ...row,
+          opportunity_id: "dangling-opportunity",
+        })),
+      });
+      let danglingRejected = false;
+      try {
+        await buildPortableMergePlan({
+          archive: mergePlanSnapshot(archiveBackup, localFacts.ownerNamespace, danglingTables),
+          local: mergePlanSnapshot({
+            ...archiveBackup,
+            schemaVersion: localFacts.schemaVersion,
+            tables: localFacts.tables,
+          }, localFacts.ownerNamespace, localFacts.tables),
+          payloadDigest: adapter.sha256,
+        });
+      } catch {
+        danglingRejected = true;
+      }
+      invariant(danglingRejected, "portable_merge_garmin_dangling_match_not_rejected");
+
+      const overflowEvents = Object.freeze(Array.from(
+        { length: BACKUP_LIMITS.maxRowsPerTable + 1 },
+        (_, index) => Object.freeze({
+          id: `overflow-event-${index}`,
+          activity_id: GARMIN_ACTIVITY_ID,
+          aggregate_revision: 1,
+          event_type: "imported",
+          payload_json: "{}",
+          created_at_ms: index,
+        }),
+      ));
+      const overflow = snapshotWithTables(archiveBackup, Object.freeze({
+        ...archiveBackup.tables,
+        imported_activity_events: overflowEvents,
+      }));
+      let capacityRejected = false;
+      try {
+        parseLogicalBackupSnapshot(overflow);
+      } catch (error) {
+        capacityRejected = typeof error === "object" && error !== null
+          && "code" in error && error.code === "backup_snapshot_limit_exceeded";
+      }
+      invariant(capacityRejected && await canonicalState(local.kernel) === before,
+        "portable_merge_garmin_adversarial_input_mutated_local");
     });
   },
 };

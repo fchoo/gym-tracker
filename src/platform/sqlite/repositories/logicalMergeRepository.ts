@@ -756,6 +756,14 @@ function assertFullPlanMatchesLocal(
       }
       continue;
     }
+    if (operation.aggregateClass === "source_graph") {
+      const [owner] = local.tables.portable_owner_identity ?? [];
+      if (operation.kind === "duplicate"
+        && (owner?.id !== 1 || owner.owner_namespace !== operation.portableId)) {
+        fail();
+      }
+      continue;
+    }
     const sameIdentity = exercises.filter((row) =>
       (row.origin === "custom" || row.origin === "copied")
       && row.portable_id === operation.portableId,

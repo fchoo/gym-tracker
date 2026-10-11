@@ -794,7 +794,7 @@ function countFor(
     localWon: operation.kind === "local_won" ? 1 : 0,
     keptBoth: operation.kind === "keep_both" ? 1 : 0,
     remapped: 0,
-    conflicts: 0,
+    conflicts: operation.kind === "conflict" ? 1 : 0,
   });
 }
 
@@ -1739,15 +1739,23 @@ async function sourceGraphPlan(
     payloadDigest(archiveCanonical), payloadDigest(localCanonical),
   ]);
   if (!/^[a-f0-9]{64}$/u.test(archiveDigest) || !/^[a-f0-9]{64}$/u.test(localDigest)) invalid();
+  const archiveIdentityKeys = new Set(
+    rowsFor(archive, "imported_activity_identities").map(sourceIdentityKey),
+  );
+  const sharesAcceptedIdentity = rowsFor(local, "imported_activity_identities")
+    .some((row) => archiveIdentityKeys.has(sourceIdentityKey(row)));
   const operation = Object.freeze({
     aggregateClass: "source_graph" as const,
-    kind: archiveCanonical === localCanonical ? "duplicate" as const
-      : "insert" as const,
+    kind: archiveCanonical === localCanonical
+      ? "duplicate" as const
+      : sharesAcceptedIdentity
+        ? "conflict" as const
+        : "insert" as const,
     portableId: ownerNamespace(archive),
     archiveId: "phase13-source-graph" as const,
     localId: "phase13-source-graph" as const,
   });
-  if (operation.kind === "duplicate") return Object.freeze({ operation });
+  if (operation.kind !== "insert") return Object.freeze({ operation });
   let tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
   try {
     tables = mappedGraphRows(archive, local, externalReferenceMaps);
