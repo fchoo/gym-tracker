@@ -121,7 +121,9 @@ class GarminBridgeTests(unittest.TestCase):
     def test_restore_rotation_and_logout_keep_tokens_out_of_dispatch_results(self):
         fake = FakeClient()
         bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
-        restore_arguments = {"tokenPayload": b'{"di_token":"fixture"}'}
+        restore_arguments = {
+            "tokenPayload": b'{"di_client_id":"fixture-client","di_refresh_token":"fixture-refresh","di_token":"fixture"}'
+        }
 
         restored = bridge.dispatch("restoreSession", restore_arguments)
         first_tokens = bridge.take_persistable_tokens()
@@ -151,9 +153,14 @@ class GarminBridgeTests(unittest.TestCase):
         mfa_result = mfa.dispatch("resumeMfa", {"challengeHandle": "opaque-challenge", "code": "123456"})
 
         restore_client = FakeClient()
-        restore_client.login = lambda tokenstore=None: (_ for _ in ()).throw(provider_error("GarminConnectConnectionError"))
+        restore_client.login = lambda tokenstore=None: (_ for _ in ()).throw(provider_error("GarminConnectAuthenticationError"))
         restore = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: restore_client)
-        restore_result = restore.dispatch("restoreSession", {"tokenPayload": b'{"di_token":"fixture"}'})
+        restore_result = restore.dispatch(
+            "restoreSession",
+            {
+                "tokenPayload": b'{"di_client_id":"fixture-client","di_refresh_token":"fixture-refresh","di_token":"fixture"}'
+            },
+        )
 
         self.assertEqual(invalid_result, {"status": "error", "error": {"code": "invalid_credentials"}})
         self.assertEqual(mfa_result, {"status": "error", "error": {"code": "mfa_expired"}})

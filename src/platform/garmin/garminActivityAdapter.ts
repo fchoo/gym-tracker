@@ -15,6 +15,20 @@ const EXTERNAL_ACTIVITY_ID = /^[1-9][0-9]{0,18}$/u;
 const SAFE_CODE = /^[a-z][a-z0-9_]{0,63}$/u;
 const FORBIDDEN_KEY = /(authorization|ciphertext|cookie|credential|email|password|refresh|token|traceback|url)/iu;
 const URL_VALUE = /^(?:https?|ftp):\/\//iu;
+const NATIVE_ERROR_CODES: ReadonlySet<GarminNativeErrorCode> = new Set([
+  "invalid_credentials",
+  "mfa_expired",
+  "sign_in_required",
+  "data_access_denied",
+  "rate_limited",
+  "offline",
+  "timeout",
+  "temporary_failure",
+  "malformed_response",
+  "stale_generation",
+  "operation_rejected",
+  "arguments_rejected",
+]);
 
 export type GarminNativeErrorCode =
   | "invalid_credentials"
@@ -102,7 +116,7 @@ function assertSafeJson(value: unknown, depth = 0, budget = { nodes: 0 }): unkno
   }
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isSafeInteger(value)) throw new GarminActivityAdapterError("malformed_response");
+    if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) throw new GarminActivityAdapterError("malformed_response");
     return value;
   }
   if (typeof value === "string") {
@@ -128,11 +142,17 @@ function parseNativeResult<T>(value: unknown): GarminNativeSuccess<T> {
     if (typeof error.code !== "string" || !SAFE_CODE.test(error.code)) {
       throw new GarminActivityAdapterError("malformed_response");
     }
-    const retryAfterMs = error.retryAfterMs;
-    if (retryAfterMs !== undefined && (!Number.isSafeInteger(retryAfterMs) || (retryAfterMs as number) < 0)) {
+    const code = NATIVE_ERROR_CODES.has(error.code as GarminNativeErrorCode)
+      ? error.code as GarminNativeErrorCode
+      : "temporary_failure";
+    const nativeRetryAfterMs = error.retryAfterMs;
+    if (nativeRetryAfterMs !== undefined && (!Number.isSafeInteger(nativeRetryAfterMs) || (nativeRetryAfterMs as number) < 0)) {
       throw new GarminActivityAdapterError("malformed_response");
     }
-    throw new GarminActivityAdapterError(error.code as GarminNativeErrorCode, retryAfterMs as number | undefined);
+    const retryAfterMs = code === "rate_limited" && nativeRetryAfterMs !== undefined
+      ? Math.min(900_000, Math.max(1_000, nativeRetryAfterMs as number))
+      : undefined;
+    throw new GarminActivityAdapterError(code, retryAfterMs);
   }
   if (result.status !== "ok") throw new GarminActivityAdapterError("malformed_response");
   return {
@@ -155,6 +175,9 @@ function connectionState(result: GarminNativeSuccess<GarminNativeConnectionData>
 }
 
 function parsePage(input: Readonly<{ cursor?: string; limit: number }>): Readonly<{ start: number; limit: number }> {
+  if (input.cursor !== undefined && !/^(?:0|[1-9][0-9]{0,4})$/u.test(input.cursor)) {
+    throw new GarminActivityAdapterError("garmin_page_invalid");
+  }
   const start = input.cursor === undefined ? 0 : Number(input.cursor);
   if (!Number.isSafeInteger(start) || start < 0 || start > MAX_PAGE_START || !Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > MAX_PAGE_SIZE) {
     throw new GarminActivityAdapterError("garmin_page_invalid");
@@ -173,6 +196,15 @@ export function createGarminActivityAdapter(input: Readonly<{
   const driver = input.driver ?? getGarminConnectNativeModule();
   let currentState: GarminConnectionState = { kind: "disconnected" };
   let generation = 0;
+
+  async function callNative<T>(operation: () => Promise<unknown>): Promise<GarminNativeSuccess<T>> {
+    try {
+      return parseNativeResult<T>(await operation());
+    } catch (error) {
+      if (error instanceof GarminActivityAdapterError) throw error;
+      throw new GarminActivityAdapterError("temporary_failure");
+    }
+  }
 
   function acceptState(value: unknown): GarminConnectionState {
     const next = connectionState(parseNativeResult<GarminNativeConnectionData>(value));
@@ -194,22 +226,30 @@ export function createGarminActivityAdapter(input: Readonly<{
 
   return Object.freeze({
     async connectionState() {
-      return acceptState(await driver.connectionState());
+      return acceptState(await callNative<GarminNativeConnectionData>(() => driver.connectionState()));
     },
     async login(credentials) {
       generation += 1;
       currentState = { kind: "disconnected" };
-      return acceptState(await driver.login(credentials));
+      return acceptState(await callNative<GarminNativeConnectionData>(() => driver.login(credentials)));
     },
     async resumeMfa(challenge) {
       if (currentState.kind !== "mfa_required" || challenge.challenge_handle !== currentState.challenge_handle) {
         throw new GarminActivityAdapterError("mfa_expired");
       }
       const pendingGeneration = currentState.generation;
-      const next = acceptState(await driver.resumeMfa({
-        challengeHandle: challenge.challenge_handle,
-        code: challenge.code,
-      }));
+      let next: GarminConnectionState;
+      try {
+        next = acceptState(await callNative<GarminNativeConnectionData>(() => driver.resumeMfa({
+          challengeHandle: challenge.challenge_handle,
+          code: challenge.code,
+        })));
+      } catch (error) {
+        if (error instanceof GarminActivityAdapterError && error.code === "mfa_expired") {
+          currentState = { kind: "disconnected" };
+        }
+        throw error;
+      }
       if (next.kind !== "connected" || next.generation !== pendingGeneration) {
         throw new GarminActivityAdapterError("stale_generation");
       }
@@ -218,7 +258,7 @@ export function createGarminActivityAdapter(input: Readonly<{
     async logout() {
       generation += 1;
       currentState = { kind: "disconnected" };
-      const result = parseNativeResult<GarminNativeConnectionData>(await driver.logout());
+      const result = await callNative<GarminNativeConnectionData>(() => driver.logout());
       if (result.generation < generation) throw new GarminActivityAdapterError("stale_generation");
       generation = result.generation;
     },
@@ -226,8 +266,8 @@ export function createGarminActivityAdapter(input: Readonly<{
       const page = parsePage(pageInput);
       if (currentState.kind !== "connected") throw new GarminActivityAdapterError("sign_in_required");
       const startedGeneration = generation;
-      const result = parseNativeResult<Readonly<{ items: readonly unknown[]; nextStart?: number }>>(
-        await driver.getActivities({ ...page, activityType: "running" }),
+      const result = await callNative<Readonly<{ items: readonly unknown[]; nextStart?: number }>>(
+        () => driver.getActivities({ ...page, activityType: "running" }),
       );
       requireCurrent(result.generation, startedGeneration);
       const data = record(result.data);
@@ -244,11 +284,11 @@ export function createGarminActivityAdapter(input: Readonly<{
       validateActivityId(externalActivityId);
       if (currentState.kind !== "connected") throw new GarminActivityAdapterError("sign_in_required");
       const startedGeneration = generation;
-      const activity = parseNativeResult<unknown>(await driver.getActivity({ externalActivityId }));
+      const activity = await callNative<unknown>(() => driver.getActivity({ externalActivityId }));
       requireCurrent(activity.generation, startedGeneration);
-      const splits = parseNativeResult<unknown>(await driver.getActivitySplits({ externalActivityId }));
+      const splits = await callNative<unknown>(() => driver.getActivitySplits({ externalActivityId }));
       requireCurrent(splits.generation, startedGeneration);
-      const details = parseNativeResult<unknown>(await driver.getActivityDetails({
+      const details = await callNative<unknown>(() => driver.getActivityDetails({
         externalActivityId,
         maxchart: 2_000,
         maxpoly: 4_000,

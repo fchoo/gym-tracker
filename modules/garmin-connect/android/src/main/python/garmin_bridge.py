@@ -84,9 +84,9 @@ def _bounded_json(value: Any, *, depth: int = 0, budget: list[int] | None = None
             raise _BridgeInputError("malformed_response")
         return value
     if isinstance(value, float):
-        if not math.isfinite(value) or not value.is_integer() or abs(value) > 9_007_199_254_740_991:
+        if not math.isfinite(value) or abs(value) > 9_007_199_254_740_991:
             raise _BridgeInputError("malformed_response")
-        return int(value)
+        return value
     if isinstance(value, str):
         if len(value) > _MAX_JSON_STRING_LENGTH or _URL_VALUE.match(value):
             raise _BridgeInputError("malformed_response")
@@ -153,7 +153,8 @@ class GarminBridge:
         except _BridgeInputError as error:
             return self._error(str(error))
         except Exception as error:  # Boundary intentionally discards exception text and traceback.
-            return self._error(self._classify_error(error))
+            code, retry_after_ms = self._classify_error(error, operation)
+            return self._error(code, retry_after_ms)
         return self._error("operation_rejected")
 
     def take_persistable_tokens(self) -> bytes | None:
@@ -165,8 +166,11 @@ class GarminBridge:
         return {"status": "ok", "generation": self._generation, "data": _bounded_json(data)}
 
     @staticmethod
-    def _error(code: str) -> dict[str, Any]:
-        return {"status": "error", "error": {"code": code}}
+    def _error(code: str, retry_after_ms: int | None = None) -> dict[str, Any]:
+        error: dict[str, Any] = {"code": code}
+        if code == "rate_limited" and retry_after_ms is not None:
+            error["retryAfterMs"] = retry_after_ms
+        return {"status": "error", "error": error}
 
     def _connection_state(self) -> dict[str, Any]:
         if self._pending_handle is not None:
@@ -266,6 +270,21 @@ class GarminBridge:
         self._clear_client()
         try:
             tokenstore = bytes(payload).decode("utf-8")
+            token_data = json.loads(tokenstore)
+            if not isinstance(token_data, dict) or any(
+                not isinstance(token_data.get(key), str) or not token_data[key]
+                for key in ("di_token", "di_refresh_token", "di_client_id")
+            ):
+                raise _BridgeInputError("sign_in_required")
+            tokenstore = json.dumps(
+                {
+                    "di_client_id": token_data["di_client_id"],
+                    "di_refresh_token": token_data["di_refresh_token"],
+                    "di_token": token_data["di_token"],
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
             client = self._client_factory(
                 email=None,
                 password=None,
@@ -342,17 +361,36 @@ class GarminBridge:
         self._account_namespace = None
 
     @staticmethod
-    def _classify_error(error: Exception) -> str:
+    def _classify_error(error: Exception, operation: str) -> tuple[str, int | None]:
         name = type(error).__name__
+        response = getattr(error, "response", None)
+        status = getattr(response, "status_code", None)
+        if status == 429 or name == "GarminConnectTooManyRequestsError":
+            return "rate_limited", GarminBridge._retry_after_ms(response)
+        if status == 403 and operation.startswith("get"):
+            return "data_access_denied", None
         if name == "GarminConnectAuthenticationError":
-            return "invalid_credentials"
-        if name == "GarminConnectTooManyRequestsError":
-            return "rate_limited"
-        if isinstance(error, TimeoutError):
-            return "timeout"
-        if isinstance(error, ConnectionError):
-            return "offline"
-        return "temporary_failure"
+            if operation == "resumeMfa":
+                return "mfa_expired", None
+            if operation == "restoreSession" or operation.startswith("get"):
+                return "sign_in_required", None
+            return "invalid_credentials", None
+        if isinstance(error, TimeoutError) or "Timeout" in name:
+            return "timeout", None
+        if isinstance(error, ConnectionError) or name in {"ConnectionError", "ConnectionResetError"}:
+            return "offline", None
+        return "temporary_failure", None
+
+    @staticmethod
+    def _retry_after_ms(response: Any) -> int | None:
+        headers = getattr(response, "headers", None)
+        if not isinstance(headers, dict):
+            return None
+        value = headers.get("Retry-After") or headers.get("retry-after")
+        if not isinstance(value, str) or re.fullmatch(r"[0-9]{1,10}", value) is None:
+            return None
+        seconds = int(value)
+        return min(900_000, max(1_000, seconds * 1_000))
 
 
 def create_bridge(

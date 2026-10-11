@@ -6,6 +6,7 @@ import {
   createGarminActivityAdapter,
   type GarminActivityMapper,
   type GarminNativeDriver,
+  type GarminNativeErrorCode,
 } from "./garminActivityAdapter";
 
 const hash = (character: string) => character.repeat(64);
@@ -97,6 +98,19 @@ function fixtures() {
   return { calls, driver, mapper };
 }
 
+const errorCases: Array<[GarminNativeErrorCode, boolean]> = [
+  ["invalid_credentials", false],
+  ["mfa_expired", false],
+  ["sign_in_required", false],
+  ["data_access_denied", false],
+  ["rate_limited", true],
+  ["offline", true],
+  ["timeout", true],
+  ["temporary_failure", true],
+  ["malformed_response", false],
+  ["stale_generation", false],
+];
+
 describe("Garmin activity adapter", () => {
   it("keeps MFA on the same generation and exposes no secret fields", async () => {
     const { calls, driver, mapper } = fixtures();
@@ -139,6 +153,7 @@ describe("Garmin activity adapter", () => {
   });
 
   it.each([
+    ["empty cursor", { cursor: "", limit: 1 }],
     ["negative cursor", { cursor: "-1", limit: 1 }],
     ["non-integer cursor", { cursor: "1.5", limit: 1 }],
     ["zero limit", { cursor: "0", limit: 0 }],
@@ -164,18 +179,7 @@ describe("Garmin activity adapter", () => {
     },
   );
 
-  it.each([
-    ["invalid_credentials", false],
-    ["mfa_expired", false],
-    ["sign_in_required", false],
-    ["data_access_denied", false],
-    ["rate_limited", true],
-    ["offline", true],
-    ["timeout", true],
-    ["temporary_failure", true],
-    ["malformed_response", false],
-    ["stale_generation", false],
-  ] as const)("preserves the distinct %s failure without leaking native detail", async (code, retryable) => {
+  it.each(errorCases)("preserves the distinct %s failure without leaking native detail", async (code, retryable) => {
     const { driver: baseDriver, mapper } = fixtures();
     const driver: GarminNativeDriver = {
       ...baseDriver,

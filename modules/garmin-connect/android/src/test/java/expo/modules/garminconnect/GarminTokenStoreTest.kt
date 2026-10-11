@@ -147,7 +147,7 @@ class GarminTokenStoreTest {
     val worker = GarminClientWorker(dispatcher, MemorySessionStore())
 
     assertEquals(
-      mapOf("status" to "error", "error" to mapOf("code" to "rate_limited", "retryAfterMs" to 900_000)),
+      mapOf("status" to "error", "error" to mapOf("code" to "rate_limited", "retryAfterMs" to 900_000L)),
       worker.connectionState(),
     )
     assertEquals(
