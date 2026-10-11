@@ -10,6 +10,11 @@ import type {
   GarminConnectionState,
   GarminDurableSyncSummary,
 } from "../../domains/activities/garminActivitySourcePort";
+import type {
+  GarminImportDateDecision,
+  GarminImportDateResult,
+  GarminPendingDateReview,
+} from "../../bootstrap/garminImportRuntime";
 
 export type GarminSyncCounts = Readonly<{
   pages: number;
@@ -103,7 +108,8 @@ export type GarminConnectionControllerState = Readonly<{
   error: GarminConnectionControllerError | null;
   sync: GarminSyncPresentation;
   lastSuccessfulSync: GarminDurableSyncSummary | null;
-  lastSuccessfulSyncLoadFailed: boolean;
+  lastSuccessfulSyncStatus: "ready" | "failed";
+  pendingDateReview: GarminPendingDateReview | null;
 }>;
 
 export type GarminConnectionControllerInput = Readonly<{
@@ -112,6 +118,8 @@ export type GarminConnectionControllerInput = Readonly<{
   loadActivities(): Promise<readonly GarminActivityListItem[]>;
   loadLastSuccessfulSync?(): Promise<GarminDurableSyncSummary | null>;
   saveLastSuccessfulSync?(summary: GarminDurableSyncSummary): Promise<void>;
+  getPendingDateReview?(): GarminPendingDateReview | null;
+  confirmPendingDateReview?(decision: GarminImportDateDecision): Promise<GarminImportDateResult | null>;
   clearPasswordInput?(): void;
   clearMfaCodeInput?(): void;
   now?(): number;
@@ -126,7 +134,8 @@ const INITIAL_STATE: GarminConnectionControllerState = Object.freeze({
   error: null,
   sync: Object.freeze({ kind: "idle" }),
   lastSuccessfulSync: null,
-  lastSuccessfulSyncLoadFailed: false,
+  lastSuccessfulSyncStatus: "ready",
+  pendingDateReview: null,
 });
 
 const CONNECTION_ERROR_CODES = new Set<GarminConnectionControllerError["code"]>([
@@ -252,26 +261,33 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
     }
   }, []);
 
-  const loadLastSuccessfulSync = useCallback(async (generation: number): Promise<void> => {
+  const loadLastSuccessfulSync = useCallback(async (): Promise<boolean> => {
     if (inputRef.current.loadLastSuccessfulSync === undefined) {
-      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
-      setState((current) => ({ ...current, lastSuccessfulSyncLoadFailed: false }));
-      return;
+      if (!mountedRef.current) return false;
+      setState((current) => ({
+        ...current,
+        lastSuccessfulSync: null,
+        lastSuccessfulSyncStatus: "ready",
+      }));
+      return true;
     }
+    const generation = connectionGenerationRef.current;
     try {
       const summary = await inputRef.current.loadLastSuccessfulSync();
-      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return false;
       setState((current) => ({
         ...current,
         lastSuccessfulSync: summary,
-        lastSuccessfulSyncLoadFailed: false,
+        lastSuccessfulSyncStatus: "ready",
       }));
+      return true;
     } catch {
-      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return false;
       setState((current) => ({
         ...current,
-        lastSuccessfulSyncLoadFailed: true,
+        lastSuccessfulSyncStatus: "failed",
       }));
+      return false;
     }
   }, []);
 
@@ -294,7 +310,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       }));
     });
     void loadHistory();
-    void loadLastSuccessfulSync(generation);
+    void loadLastSuccessfulSync();
     return () => {
       mountedRef.current = false;
       connectionGenerationRef.current += 1;
@@ -514,8 +530,9 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
           setState((current) => ({
             ...current,
             operation: "idle",
+            pendingDateReview: null,
             lastSuccessfulSync: durableSummary,
-            lastSuccessfulSyncLoadFailed: false,
+            lastSuccessfulSyncStatus: "ready",
             sync: Object.freeze({
               kind: "success",
               counts: result!.counts,
@@ -529,6 +546,9 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
           setState((current) => ({
             ...current,
             operation: "idle",
+            pendingDateReview: partial.failure.code === "date_confirmation_required"
+              ? inputRef.current.getPendingDateReview?.() ?? null
+              : null,
             sync: Object.freeze({
               kind: "partial",
               counts: partial.counts,
@@ -542,6 +562,9 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
           setState((current) => ({
             ...current,
             operation: "idle",
+            pendingDateReview: failed.failure.code === "date_confirmation_required"
+              ? inputRef.current.getPendingDateReview?.() ?? null
+              : null,
             sync: Object.freeze({
               kind: "failure",
               counts: failed.counts,
@@ -554,6 +577,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
           setState((current) => ({
             ...current,
             operation: "idle",
+            pendingDateReview: null,
             sync: Object.freeze({ kind: "idle" }),
           }));
           break;
@@ -572,6 +596,29 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       }
     }
   }, [loadHistory, state.connection]);
+
+  const retryLastSuccessfulSync = useCallback(async () => {
+    await loadLastSuccessfulSync();
+  }, [loadLastSuccessfulSync]);
+
+  const confirmPendingDateReview = useCallback(async (
+    decision: GarminImportDateDecision,
+  ): Promise<GarminImportDateResult | null> => {
+    const result = await inputRef.current.confirmPendingDateReview?.(decision) ?? null;
+    const nextPending = inputRef.current.getPendingDateReview?.() ?? null;
+    if (result !== null && result.kind !== "not_committed") {
+      await loadHistory();
+    }
+    if (!mountedRef.current) return result;
+    setState((current) => ({
+      ...current,
+      pendingDateReview: nextPending,
+      ...(result !== null && result.kind !== "not_committed"
+        ? { sync: Object.freeze({ kind: "idle" as const }) }
+        : {}),
+    }));
+    return result;
+  }, [loadHistory]);
 
   const disconnect = useCallback(async () => {
     if (connectionLatchRef.current || state.connection !== "connected") return;
@@ -620,11 +667,6 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
     setState((current) => ({ ...current, error: null }));
   }, []);
 
-  const retryLastSuccessfulSync = useCallback(async () => {
-    const generation = connectionGenerationRef.current;
-    await loadLastSuccessfulSync(generation);
-  }, [loadLastSuccessfulSync]);
-
   return Object.freeze({
     state,
     openCredentials,
@@ -635,8 +677,9 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
     submitMfa,
     cancelConnection,
     syncNow,
+    retryLastSuccessfulSync,
+    confirmPendingDateReview,
     disconnect,
     clearError,
-    retryLastSuccessfulSync,
   });
 }

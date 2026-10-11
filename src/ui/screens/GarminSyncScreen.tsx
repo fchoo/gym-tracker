@@ -40,6 +40,7 @@ import {
 } from "../garmin/useGarminConnectionController";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import {
+  fontFamilies,
   radius,
   sizes,
   space,
@@ -139,9 +140,11 @@ function errorCopy(error: GarminConnectionControllerError): Readonly<{
 function GarminHeader({
   onAppearance,
   appearanceRef,
+  headingRef,
 }: Readonly<{
   onAppearance(): void;
   appearanceRef: React.RefObject<View | null>;
+  headingRef: React.RefObject<FocusTarget | null>;
 }>) {
   const { colors } = useAppTheme();
   return (
@@ -158,6 +161,8 @@ function GarminHeader({
         accessibilityLabel="Garmin Sync"
         accessibilityRole="header"
         accessible
+        focusable
+        ref={headingRef}
         style={styles.headerTitleColumn}
       >
         <Text
@@ -218,7 +223,14 @@ function ImportedActivities({
       ) : null}
       {activities.map((activity) => (
         <FocusablePressable
-          accessibilityLabel={`Open ${activity.title}`}
+          accessibilityLabel={[
+            `Open ${activity.title}.`,
+            `${activity.activityType}. ${activity.confirmedLocalDate}.`,
+            "Type-only title.",
+            activity.matchState === "matched" ? "Matched." : "Unmatched.",
+            activity.revisionState === "needs_review" ? "Needs review." : "Accepted source facts.",
+            activity.summary === undefined ? null : `${activity.summary}.`,
+          ].filter((value): value is string => value !== null).join(" ")}
           accessibilityRole="button"
           accessibilityState={{ selected: activity.activityId === returnFocusActivityId }}
           key={activity.activityId}
@@ -232,14 +244,22 @@ function ImportedActivities({
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 {`${activity.activityType} · ${activity.confirmedLocalDate}`}
               </Text>
+              <Text style={[typeScale.label as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                Type-only title
+              </Text>
               {activity.summary === undefined ? null : (
-                <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                <Text style={[styles.numericSecondary, { color: colors.contentCardTextSecondary }]}>
                   {activity.summary}
                 </Text>
               )}
-              {activity.revisionState === "needs_review" ? (
-                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.timerAttention }]}>Needs review</Text>
-              ) : null}
+              <Text
+                style={[
+                  typeScale.bodyStrong as TextStyle,
+                  { color: activity.revisionState === "needs_review" ? colors.timerAttention : colors.contentCardTextSecondary },
+                ]}
+              >
+                {`${activity.matchState === "matched" ? "Matched" : "Unmatched"} · ${activity.revisionState === "needs_review" ? "Needs review" : "Accepted source facts"}`}
+              </Text>
             </View>
           </ContentCard>
         </FocusablePressable>
@@ -289,49 +309,60 @@ function countLabel(count: number, singular: string, plural = `${singular}s`): s
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function validLocalDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/u.test(value);
+}
+
+function normalizeLocalTime(value: string): string | null {
+  if (/^\d{2}:\d{2}$/u.test(value)) {
+    return `${value}:00`;
+  }
+  return /^\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/u.test(value) ? value : null;
+}
+
+function validTimeZone(value: string): boolean {
+  return value.trim() === value && value.length >= 1 && value.length <= 120;
+}
+
 function SyncResult({
   lastSuccessfulSync,
-  lastSuccessfulSyncLoadFailed,
+  lastSuccessfulSyncStatus,
   sync,
   onRetry,
-  onRetrySummary,
   onSignIn,
+  onRetryLastSuccessfulSync,
+  onReviewPendingDate,
+  hasPendingDateReview,
 }: Readonly<{
   lastSuccessfulSync: GarminDurableSyncSummary | null;
-  lastSuccessfulSyncLoadFailed: boolean;
+  lastSuccessfulSyncStatus: "ready" | "failed";
   sync: GarminSyncPresentation;
   onRetry(): void;
-  onRetrySummary(): void;
   onSignIn(): void;
+  onRetryLastSuccessfulSync(): void;
+  onReviewPendingDate(): void;
+  hasPendingDateReview: boolean;
 }>) {
   const { colors } = useAppTheme();
-  const durableSummary = lastSuccessfulSync === null || sync.kind === "success"
-    ? null
-    : (
-      <View style={styles.resultGroup}>
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
-          {`${lastSuccessfulSync.counts.newActivities} new · ${lastSuccessfulSync.counts.unchangedActivities} unchanged · ${lastSuccessfulSync.counts.reviewActivities} need review`}
-        </Text>
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
-          {`Last successful sync: ${new Date(lastSuccessfulSync.completedAtMs).toISOString()}`}
-        </Text>
-      </View>
-    );
-  const durableSummaryFailure = !lastSuccessfulSyncLoadFailed
-    ? null
-    : (
-      <View style={styles.resultGroup}>
-        <InlineNotice
-          body="The retained sync receipt could not be read. Retry to reload the last successful sync."
-          heading="Last successful sync unavailable"
-          tone="error"
-        />
-        <SecondaryAction label="Retry sync summary" onPress={onRetrySummary} />
-        {durableSummary}
-      </View>
-    );
-  const durableSummaryBlock = durableSummaryFailure ?? durableSummary;
-  if (sync.kind === "idle") return durableSummaryBlock;
+  const durableSummary = lastSuccessfulSync === null || sync.kind === "success" ? null : (
+    <View style={styles.resultGroup}>
+      <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
+        {`${lastSuccessfulSync.counts.newActivities} new · ${lastSuccessfulSync.counts.unchangedActivities} unchanged · ${lastSuccessfulSync.counts.reviewActivities} need review`}
+      </Text>
+      <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
+        {`Last successful sync: ${new Date(lastSuccessfulSync.completedAtMs).toISOString()}`}
+      </Text>
+    </View>
+  );
+  const durableSummaryReadError = lastSuccessfulSyncStatus === "failed" ? (
+    <InlineNotice
+      action={<SecondaryAction label="Retry sync summary" onPress={onRetryLastSuccessfulSync} />}
+      body="The last successful Garmin sync summary could not be read. Imported activities remain available."
+      heading="Sync summary unavailable"
+      tone="error"
+    />
+  ) : null;
+  if (sync.kind === "idle") return durableSummaryReadError ?? durableSummary;
   if (sync.kind === "syncing") {
     const counts = sync.progress?.counts;
     const detail = counts === undefined
@@ -340,7 +371,8 @@ function SyncResult({
     return (
       <View style={styles.resultGroup}>
         <InlineNotice body={detail} heading="Syncing Garmin activities" tone="neutral" />
-        {durableSummaryBlock}
+        {durableSummaryReadError}
+        {durableSummary}
       </View>
     );
   }
@@ -362,10 +394,10 @@ function SyncResult({
       <View style={styles.resultGroup}>
         <InlineNotice body={body} heading={heading} tone={reviewCopy === null ? "completed" : "attention"} />
         {reviewCopy === null ? null : <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{reviewCopy}</Text>}
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+        <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
           {`${sync.counts.newActivities} new · ${sync.counts.unchangedActivities} unchanged · ${sync.counts.reviewActivities} need review`}
         </Text>
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+        <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
           {`Last successful sync: ${new Date(sync.completedAtMs).toISOString()}`}
         </Text>
       </View>
@@ -377,6 +409,8 @@ function SyncResult({
     : 0;
   const action = sync.failure.code === "sign_in_required" || sync.failure.code === "data_access_denied"
     ? <SecondaryAction label="Sign in again" onPress={onSignIn} />
+    : sync.failure.code === "date_confirmation_required" && hasPendingDateReview
+      ? <SecondaryAction label="Review activity date" onPress={onReviewPendingDate} />
     : sync.failure.retryable
       ? <SecondaryAction label="Retry Garmin sync" onPress={onRetry} />
       : null;
@@ -390,6 +424,7 @@ function SyncResult({
         heading={sync.kind === "partial" ? "Sync partly completed" : copy.heading}
         tone="error"
       />
+      {durableSummaryReadError}
       {sync.kind === "partial" ? (
         <>
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{copy.heading}</Text>
@@ -412,11 +447,20 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
   const connectRef = useRef<View>(null);
   const appearanceRef = useRef<View>(null);
   const disconnectRef = useRef<View>(null);
+  const dateReviewActionRef = useRef<View>(null);
+  const headingRef = useRef<FocusTarget>(null);
   const errorSummaryRef = useRef<FocusTarget>(null);
   const [passwordInputVersion, setPasswordInputVersion] = useState(0);
   const [mfaInputVersion, setMfaInputVersion] = useState(0);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
+  const [dateReviewOpen, setDateReviewOpen] = useState(false);
+  const [dateInput, setDateInput] = useState("");
+  const [timeInput, setTimeInput] = useState("");
+  const [timeZoneInput, setTimeZoneInput] = useState("");
+  const [offsetInput, setOffsetInput] = useState("");
+  const [dateReviewError, setDateReviewError] = useState<string | null>(null);
+  const [dateReviewBusy, setDateReviewBusy] = useState(false);
   const clearPasswordInput = useCallback(() => {
     passwordInputRef.current?.clear();
     setPasswordInputVersion((current) => current + 1);
@@ -436,6 +480,27 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
     if (state.error !== null) focusAccessible(errorSummaryRef);
   }, [state.error]);
 
+  useEffect(() => {
+    if (props.returnFocusActivityId === undefined) {
+      focusAccessible(headingRef);
+    }
+  }, [props.returnFocusActivityId]);
+
+  useEffect(() => {
+    const pending = state.pendingDateReview;
+    if (pending === null) {
+      setDateReviewOpen(false);
+      setDateReviewBusy(false);
+      setDateReviewError(null);
+      return;
+    }
+    setDateInput(pending.suggestedLocalDate);
+    setTimeInput(pending.suggestedLocalTime);
+    setTimeZoneInput(pending.suggestedTimeZone);
+    setOffsetInput(String(pending.suggestedUtcOffsetMinutes));
+    setDateReviewError(null);
+  }, [state.pendingDateReview]);
+
   const cancelConnection = useCallback(() => {
     void controller.cancelConnection();
   }, [controller]);
@@ -443,6 +508,10 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
   const requestBack = useCallback(() => {
     if (appearanceOpen) {
       setAppearanceOpen(false);
+      return;
+    }
+    if (dateReviewOpen) {
+      setDateReviewOpen(false);
       return;
     }
     if (disconnectOpen) {
@@ -454,12 +523,77 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
       return;
     }
     props.onBack?.();
-  }, [appearanceOpen, cancelConnection, disconnectOpen, props.onBack, state.connection]);
+  }, [appearanceOpen, cancelConnection, dateReviewOpen, disconnectOpen, props.onBack, state.connection]);
+
+  const openPendingDateReview = useCallback(() => {
+    setDateReviewError(null);
+    setDateReviewOpen(true);
+  }, []);
+
+  const submitPendingDateReview = useCallback(async () => {
+    const pending = state.pendingDateReview;
+    const normalizedTime = normalizeLocalTime(timeInput);
+    const offsetMinutes = Number.parseInt(offsetInput, 10);
+    if (pending === null) {
+      setDateReviewError("The pending activity changed. Retry Garmin sync to load it again.");
+      return;
+    }
+    if (!validLocalDate(dateInput)) {
+      setDateReviewError("Enter the local date as YYYY-MM-DD.");
+      return;
+    }
+    if (normalizedTime === null) {
+      setDateReviewError("Enter the local time as HH:MM or HH:MM:SS.");
+      return;
+    }
+    if (!validTimeZone(timeZoneInput)) {
+      setDateReviewError("Enter a bounded time zone label.");
+      return;
+    }
+    if (!Number.isSafeInteger(offsetMinutes) || offsetMinutes < -840 || offsetMinutes > 840) {
+      setDateReviewError("Enter a UTC offset from -840 to 840 minutes.");
+      return;
+    }
+    setDateReviewBusy(true);
+    setDateReviewError(null);
+    try {
+      const result = await controller.confirmPendingDateReview({
+        kind: "confirmed",
+        localDate: dateInput,
+        localTime: normalizedTime,
+        timeZone: timeZoneInput,
+        utcOffsetMinutes: offsetMinutes,
+      });
+      if (result === null) {
+        setDateReviewError("The pending activity changed. Retry Garmin sync to load it again.");
+        return;
+      }
+      if (result.kind === "not_committed") {
+        setDateReviewError(
+          result.reason === "stale"
+            ? "The pending activity changed. Retry Garmin sync to load the current review."
+            : result.reason === "dst_gap"
+              ? "That local time falls in a daylight-saving gap. Enter another time."
+              : "That activity date could not be confirmed. Update the fields and try again.",
+        );
+        return;
+      }
+      setDateReviewOpen(false);
+    } catch {
+      setDateReviewError("The pending activity changed. Retry Garmin sync to load the current review.");
+    } finally {
+      setDateReviewBusy(false);
+    }
+  }, [controller, dateInput, offsetInput, state.pendingDateReview, timeInput, timeZoneInput]);
 
   const error = state.error === null ? null : errorCopy(state.error);
   const primary = (
     <>
-      <GarminHeader appearanceRef={appearanceRef} onAppearance={() => setAppearanceOpen(true)} />
+      <GarminHeader
+        appearanceRef={appearanceRef}
+        headingRef={headingRef}
+        onAppearance={() => setAppearanceOpen(true)}
+      />
       {state.connection === "loading" ? (
         <Text
           accessibilityLiveRegion="polite"
@@ -554,10 +688,12 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
             />
           </View>
           <SyncResult
+            hasPendingDateReview={state.pendingDateReview !== null}
             lastSuccessfulSync={state.lastSuccessfulSync}
-            lastSuccessfulSyncLoadFailed={state.lastSuccessfulSyncLoadFailed}
+            lastSuccessfulSyncStatus={state.lastSuccessfulSyncStatus}
             onRetry={() => { void controller.syncNow(); }}
-            onRetrySummary={() => { void controller.retryLastSuccessfulSync(); }}
+            onRetryLastSuccessfulSync={() => { void controller.retryLastSuccessfulSync(); }}
+            onReviewPendingDate={openPendingDateReview}
             onSignIn={controller.openCredentials}
             sync={state.sync}
           />
@@ -585,6 +721,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
         {...(state.connection === "credentials"
           || state.connection === "mfa"
           || appearanceOpen
+          || dateReviewOpen
           || disconnectOpen
           || props.onBack !== undefined
             ? { onRequestBack: requestBack }
@@ -631,6 +768,88 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
           disabled={state.operation === "verifying_mfa"}
           label="Cancel"
           onPress={cancelConnection}
+        />
+      </BottomSheet>
+      <BottomSheet
+        cancelDisabled={dateReviewBusy}
+        cancelLabel="Keep pending review"
+        heading="Confirm activity date"
+        onCancel={() => setDateReviewOpen(false)}
+        restoreFocusRef={dateReviewActionRef}
+        visible={dateReviewOpen && state.pendingDateReview !== null}
+      >
+        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+          Use the accepted local date, time, time zone, and UTC offset for this Garmin activity before it can be saved.
+        </Text>
+        <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>
+          {`Source start: ${new Date(state.pendingDateReview?.absoluteStartedAtMs ?? 0).toISOString()}`}
+        </Text>
+        <View style={styles.fieldGroup}>
+          <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Local date</Text>
+          <TextInput
+            accessibilityLabel="Local date"
+            autoCapitalize="none"
+            editable={!dateReviewBusy}
+            inputMode="numeric"
+            onChangeText={setDateInput}
+            style={[styles.input, styles.numericInput, { borderColor: colors.divider, color: colors.textPrimary }]}
+            value={dateInput}
+          />
+        </View>
+        <View style={styles.fieldGroup}>
+          <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Local time</Text>
+          <TextInput
+            accessibilityLabel="Local time"
+            autoCapitalize="none"
+            editable={!dateReviewBusy}
+            inputMode="numeric"
+            onChangeText={setTimeInput}
+            style={[styles.input, styles.numericInput, { borderColor: colors.divider, color: colors.textPrimary }]}
+            value={timeInput}
+          />
+        </View>
+        <View style={styles.fieldGroup}>
+          <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Time zone</Text>
+          <TextInput
+            accessibilityLabel="Time zone"
+            autoCapitalize="none"
+            editable={!dateReviewBusy}
+            onChangeText={setTimeZoneInput}
+            style={[styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
+            value={timeZoneInput}
+          />
+        </View>
+        <View style={styles.fieldGroup}>
+          <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>UTC offset minutes</Text>
+          <TextInput
+            accessibilityLabel="UTC offset minutes"
+            autoCapitalize="none"
+            editable={!dateReviewBusy}
+            inputMode="numeric"
+            onChangeText={setOffsetInput}
+            style={[styles.input, styles.numericInput, { borderColor: colors.divider, color: colors.textPrimary }]}
+            value={offsetInput}
+          />
+        </View>
+        {dateReviewError === null ? null : (
+          <InlineNotice
+            body={dateReviewError}
+            heading="Activity date needs attention"
+            tone="error"
+          />
+        )}
+        <PrimaryAction
+          busy={dateReviewBusy}
+          label="Use activity date"
+          onPress={() => {
+            void submitPendingDateReview();
+          }}
+        />
+        <SecondaryAction
+          disabled={dateReviewBusy}
+          label="Keep for later"
+          onPress={() => setDateReviewOpen(false)}
+          ref={dateReviewActionRef}
         />
       </BottomSheet>
       <ConfirmationDialog
@@ -712,4 +931,13 @@ const styles = StyleSheet.create({
   resultGroup: {
     gap: space[2],
   },
+  numericSecondary: {
+    ...typeScale.secondary,
+    fontFamily: fontFamilies.numericRegular,
+    fontVariant: ["tabular-nums"],
+  } as TextStyle,
+  numericInput: {
+    fontFamily: fontFamilies.numericRegular,
+    fontVariant: ["tabular-nums"],
+  } as TextStyle,
 });

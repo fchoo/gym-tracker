@@ -48,6 +48,8 @@ const counts = Object.freeze({
   failedActivities: 0,
 });
 
+const morningRunRowName = /Open Morning run\./u;
+
 async function renderScreen(input: Readonly<{
   source: GarminActivitySourcePort;
   coordinator?: GarminSyncControllerPort;
@@ -116,7 +118,7 @@ describe("GarminSyncScreen connection tracer", () => {
     await act(async () => acknowledgeCommit?.());
 
     expect(await screen.findByText("Morning run")).toBeOnTheScreen();
-    const committedRow = screen.getByRole("button", { name: "Open Morning run" });
+    const committedRow = screen.getByRole("button", { name: morningRunRowName });
     expect(committedRow).toHaveProp(
       "accessibilityState",
       expect.objectContaining({ selected: true }),
@@ -161,7 +163,7 @@ describe("GarminSyncScreen connection tracer", () => {
     expect(await screen.findByText("Connected to Garmin")).toBeOnTheScreen();
     expect(login).toHaveBeenCalledTimes(1);
     expect(resumeMfa).toHaveBeenCalledTimes(1);
-    await fireEvent.press(screen.getByRole("button", { name: "Open Morning run" }));
+    await fireEvent.press(screen.getByRole("button", { name: morningRunRowName }));
     expect(onOpenActivity).toHaveBeenCalledWith("local-activity-1");
   });
 
@@ -498,7 +500,7 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
 
   it("keyboard-activates each full-row target once and ignores D-pad movement", async () => {
     const { onOpenActivity } = await renderScreen({ source: connectedSource() });
-    const row = await screen.findByRole("button", { name: "Open Morning run" });
+    const row = await screen.findByRole("button", { name: morningRunRowName });
 
     await fireEvent(row, "keyDown", { nativeEvent: { key: "Enter" } });
     await fireEvent(row, "keyDown", { nativeEvent: { key: " " } });
@@ -531,7 +533,7 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
       screen.getByRole("button", { name: "Appearance" }),
       screen.getByRole("button", { name: "Sync now" }),
       screen.getByRole("button", { name: "Disconnect Garmin" }),
-      screen.getByRole("button", { name: "Open Morning run" }),
+      screen.getByRole("button", { name: morningRunRowName }),
     ]) {
       expect(StyleSheet.flatten(action.props.style).minHeight).toBeGreaterThanOrEqual(48);
     }

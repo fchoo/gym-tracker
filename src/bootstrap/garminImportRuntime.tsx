@@ -103,6 +103,18 @@ export type GarminImportDateResult = GarminImportResult | Readonly<{
   reason: Exclude<GarminImportDateDecision["kind"], "confirmed">;
 }>;
 
+export type GarminPendingDateReview = Readonly<{
+  activityId: string;
+  absoluteStartedAtMs: number;
+  sourceLocalDateTime?: string;
+  sourceTimeZone?: string;
+  sourceUtcOffsetMinutes?: number;
+  suggestedLocalDate: string;
+  suggestedLocalTime: string;
+  suggestedTimeZone: string;
+  suggestedUtcOffsetMinutes: number;
+}>;
+
 export type GarminImportRuntime = Readonly<{
   prepareEnvelope(input: Readonly<{
     envelope: GarminSourceEnvelope;
@@ -191,7 +203,52 @@ export type GarminRootRuntime = Readonly<{
   loadActivities(): Promise<readonly GarminImportedActivityListItem[]>;
   loadLastSuccessfulSync(): Promise<GarminDurableSyncSummary | null>;
   saveLastSuccessfulSync(summary: GarminDurableSyncSummary): Promise<void>;
+  getPendingDateReview(): GarminPendingDateReview | null;
+  confirmPendingDateReview(decision: GarminImportDateDecision): Promise<GarminImportDateResult | null>;
 }>;
+
+type PendingDateReviewState = Readonly<{
+  proposal: GarminImportPreparedDateProposal;
+  request: Omit<GarminImportConfirmation, "confirmedLocalDate">;
+  assertCurrentGeneration: () => Promise<void>;
+  review: GarminPendingDateReview;
+}>;
+
+function isoLocalParts(absoluteStartedAtMs: number): Readonly<{
+  localDate: string;
+  localTime: string;
+}> {
+  const iso = new Date(absoluteStartedAtMs).toISOString();
+  return Object.freeze({
+    localDate: iso.slice(0, 10),
+    localTime: iso.slice(11, 19),
+  });
+}
+
+function pendingDateReviewFromProposal(
+  proposal: GarminImportPreparedDateProposal,
+  activityId: string,
+): GarminPendingDateReview {
+  const fallback = isoLocalParts(proposal.date.absoluteStartedAtMs);
+  const sourceLocalDateTime = proposal.date.sourceLocalDateTime;
+  const sourceUtcOffsetMinutes = proposal.date.sourceUtcOffsetMinutes;
+  return Object.freeze({
+    activityId,
+    absoluteStartedAtMs: proposal.date.absoluteStartedAtMs,
+    ...(sourceLocalDateTime === undefined ? {} : { sourceLocalDateTime }),
+    ...(proposal.date.sourceTimeZone === undefined
+      ? {}
+      : { sourceTimeZone: proposal.date.sourceTimeZone }),
+    ...(sourceUtcOffsetMinutes === undefined ? {} : { sourceUtcOffsetMinutes }),
+    suggestedLocalDate: sourceLocalDateTime?.slice(0, 10) ?? fallback.localDate,
+    suggestedLocalTime: sourceLocalDateTime?.slice(11) ?? fallback.localTime,
+    suggestedTimeZone: proposal.date.sourceTimeZone
+      ?? (sourceUtcOffsetMinutes === undefined
+        ? "UTC+00:00"
+        : sourceOffsetZone(sourceUtcOffsetMinutes)),
+    suggestedUtcOffsetMinutes: sourceUtcOffsetMinutes ?? 0,
+  });
+}
 
 export function createGarminRootRuntime(input: Readonly<{
   source: GarminActivitySourcePort;
@@ -204,6 +261,7 @@ export function createGarminRootRuntime(input: Readonly<{
   enforceSourceDatePolicy?: boolean;
 }>): GarminRootRuntime {
   const revisionReviews = new Set<string>();
+  let pendingDateReview: PendingDateReviewState | null = null;
   const coordinator = createGarminSyncCoordinator({
     source: input.source,
     importActivity: async (envelope, assertCurrentGeneration) => {
@@ -220,7 +278,24 @@ export function createGarminRootRuntime(input: Readonly<{
       if (input.enforceSourceDatePolicy === true) {
         const sourceLocalDateTime = envelope.normalized.source_local_date_time;
         const sourceUtcOffsetMinutes = envelope.normalized.source_utc_offset_minutes;
+        const { confirmedLocalDate: _ignoredDate, ...request } = confirmation;
         if (sourceLocalDateTime === undefined || sourceUtcOffsetMinutes === undefined) {
+          const proposal = await importer.prepareEnvelope({
+            envelope,
+            sourceDate: {
+              ...(sourceLocalDateTime === undefined ? {} : { sourceLocalDateTime }),
+              ...(envelope.normalized.source_time_zone === undefined
+                ? {}
+                : { sourceTimeZone: envelope.normalized.source_time_zone }),
+              ...(sourceUtcOffsetMinutes === undefined ? {} : { sourceUtcOffsetMinutes }),
+            },
+          });
+          pendingDateReview = Object.freeze({
+            proposal,
+            request,
+            assertCurrentGeneration,
+            review: pendingDateReviewFromProposal(proposal, confirmation.activityId),
+          });
           return Object.freeze({ kind: "date_confirmation_required" as const });
         }
         const proposal = await importer.prepareEnvelope({
@@ -233,7 +308,6 @@ export function createGarminRootRuntime(input: Readonly<{
             sourceUtcOffsetMinutes,
           },
         });
-        const { confirmedLocalDate: _ignoredDate, ...request } = confirmation;
         const confirmed = await importer.confirmPreparedDate({
           proposal,
           request,
@@ -272,6 +346,30 @@ export function createGarminRootRuntime(input: Readonly<{
     },
     loadLastSuccessfulSync: input.loadLastSuccessfulSync ?? (async () => null),
     saveLastSuccessfulSync: input.saveLastSuccessfulSync ?? (async () => undefined),
+    getPendingDateReview() {
+      return pendingDateReview?.review ?? null;
+    },
+    async confirmPendingDateReview(decision) {
+      const pending = pendingDateReview;
+      if (pending === null) {
+        return null;
+      }
+      const importer = createGarminImportRuntime({
+        services: input.services,
+        sha256: input.sha256,
+        assertCurrentGeneration: pending.assertCurrentGeneration,
+        invalidateReads: async () => undefined,
+      });
+      const result = await importer.confirmPreparedDate({
+        proposal: pending.proposal,
+        request: pending.request,
+        decision,
+      });
+      if (result.kind !== "not_committed" || result.reason === "stale") {
+        pendingDateReview = null;
+      }
+      return result;
+    },
   });
 }
 
