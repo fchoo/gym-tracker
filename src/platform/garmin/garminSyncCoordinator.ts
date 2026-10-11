@@ -230,9 +230,10 @@ export function createGarminSharedImportCommitter(input: Readonly<{
   sha256: GarminSha256;
   requestFor: GarminSharedImportRequestFactory;
 }>): GarminSyncImportActivity {
-  return async (envelope) => {
+  return async (envelope, assertCurrentGeneration) => {
     const staged = await prepareGarminImport(envelope, input.sha256);
     const request = await input.requestFor(staged);
+    await assertCurrentGeneration();
     return confirmGarminImportDate(input.repository, { ...request, staged });
   };
 }
@@ -297,7 +298,10 @@ export function createGarminSyncCoordinator(input: Readonly<{
                 return Object.freeze({ kind: "cancelled", counts: snapshot(counts) });
               }
               await assertCurrentConnection(input.source, fence);
-              const result = await input.importActivity(envelope);
+              const result = await input.importActivity(
+                envelope,
+                () => assertCurrentConnection(input.source, fence),
+              );
               switch (result.kind) {
                 case "imported":
                   counts.newActivities += 1;

@@ -70,6 +70,7 @@ export type GarminSyncOptions = Readonly<{
 
 export type GarminSyncImportActivity = (
   envelope: GarminSourceEnvelope,
+  assertCurrentGeneration: () => Promise<void>,
 ) => Promise<GarminImportResult>;
 
 export type GarminSharedImportRequest = Readonly<{

@@ -193,6 +193,7 @@ describe("Garmin sync coordinator", () => {
       "getActivityDetails",
       "normalizeGarminActivity",
       "connectionState",
+      "connectionState",
     ]);
     expect(driver.getActivity).toHaveBeenCalledTimes(1);
     expect(driver.getActivitySplits).toHaveBeenCalledTimes(1);
