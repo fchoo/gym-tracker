@@ -189,7 +189,16 @@ import {
 import type {
   ConfirmGarminImportInput,
   GarminImportResult,
+  GarminRevisionDecisionInput,
+  GarminRevisionDecisionResult,
+  GarminRevisionReview,
 } from "../domains/activities/importCommands";
+import {
+  resolveGarminImportRevision,
+} from "../domains/activities/importCommands";
+import {
+  canonicalJson,
+} from "../domains/activities/importContracts";
 import {
   confirmRunningActivityMatch,
   prepareRunningActivityMatchInput,
@@ -643,12 +652,34 @@ export type RestAlertPreferenceSaveResult = Readonly<{
   preferences: RestAlertPreferences;
 }>;
 
+export type GarminRevisionReviewDetail = Readonly<{
+  activityId: string;
+  acceptedRevision: number;
+  proposedRevision: number;
+  expectedProposedSha256: string;
+  changedFields: readonly Readonly<{
+    field: string;
+    accepted: string;
+    proposed: string;
+  }>[];
+}>;
+
 function sameRestAlertPreferences(
   left: RestAlertPreferences,
   right: RestAlertPreferences,
 ): boolean {
   return left.soundEnabled === right.soundEnabled
     && left.vibrationEnabled === right.vibrationEnabled;
+}
+
+function revisionDisplayValue(value: unknown): string {
+  if (value === undefined) {
+    return "Unavailable";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return canonicalJson(value);
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
@@ -739,6 +770,9 @@ type RuntimeValue = RuntimeState & Readonly<{
   ): Promise<NotificationExpiryExerciseCode>;
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
+  listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
+  resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
   loadImportedActivityDetail(activityId: string): Promise<ImportedActivityDetailReadResult>;
   loadRunningActivityMatch(activityId: string): Promise<RunningActivityMatchReadResult>;
   confirmActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
@@ -2754,6 +2788,68 @@ export function WorkoutAppRuntimeProvider({
 
   const saveLastGarminSync = useCallback((summary: Parameters<GarminImportApplicationPort["saveLastGarminSync"]>[0]) => (
     requireServices().garminSyncSummaries.save(summary)
+  ), [requireServices]);
+
+  const listGarminRevisionReviews = useCallback(async () => (
+    requireServices().importedActivities.listGarminRevisionReviews()
+  ), [requireServices]);
+
+  const loadGarminRevisionReview = useCallback(async (
+    activityId: string,
+  ): Promise<GarminRevisionReviewDetail | null> => {
+    const localActivityId = parseImportedActivityLocalId(activityId);
+    if (localActivityId === null) {
+      return null;
+    }
+    const [row] = await requireServices().kernel.queryAll<{
+      accepted_revision: number;
+      accepted_aggregate_json: string;
+      proposed_revision: number;
+      proposed_sha256: string;
+      proposed_aggregate_json: string;
+    }>(
+      `SELECT identity.aggregate_revision AS accepted_revision,
+              activity.aggregate_json AS accepted_aggregate_json,
+              proposal.proposed_revision,
+              proposal.normalized_sha256 AS proposed_sha256,
+              proposal.envelope_json AS proposed_aggregate_json
+         FROM imported_activity_revision_proposals proposal
+         JOIN imported_activity_identities identity ON identity.activity_id = proposal.activity_id
+         JOIN imported_activities activity ON activity.id = proposal.activity_id
+         LEFT JOIN imported_activity_revision_decisions decision
+           ON decision.activity_id = proposal.activity_id
+          AND decision.proposed_revision = proposal.proposed_revision
+        WHERE proposal.activity_id = ?
+          AND decision.request_id IS NULL
+        ORDER BY proposal.proposed_revision DESC
+        LIMIT 1`,
+      [localActivityId],
+    );
+    if (row === undefined) {
+      return null;
+    }
+    const accepted = JSON.parse(row.accepted_aggregate_json) as Readonly<{ normalized?: Record<string, unknown> }>;
+    const proposed = JSON.parse(row.proposed_aggregate_json) as Readonly<{ normalized?: Record<string, unknown> }>;
+    const acceptedFacts = accepted.normalized ?? {};
+    const proposedFacts = proposed.normalized ?? {};
+    const keys = [...new Set([...Object.keys(acceptedFacts), ...Object.keys(proposedFacts)])]
+      .filter((key) => canonicalJson(acceptedFacts[key]) !== canonicalJson(proposedFacts[key]))
+      .sort();
+    return Object.freeze({
+      activityId: localActivityId,
+      acceptedRevision: row.accepted_revision,
+      proposedRevision: row.proposed_revision,
+      expectedProposedSha256: row.proposed_sha256,
+      changedFields: Object.freeze(keys.map((field) => Object.freeze({
+        field,
+        accepted: revisionDisplayValue(acceptedFacts[field]),
+        proposed: revisionDisplayValue(proposedFacts[field]),
+      }))),
+    });
+  }, [requireServices]);
+
+  const resolveGarminRevision = useCallback(async (input: GarminRevisionDecisionInput) => (
+    resolveGarminImportRevision(requireServices().importedActivities, input)
   ), [requireServices]);
 
   const garminImport = useMemo<GarminImportApplicationPort>(() => Object.freeze({
@@ -4891,6 +4987,9 @@ export function WorkoutAppRuntimeProvider({
     finishStarterSwitchWorkout,
     getActiveWorkout,
     getSessionDetail,
+    loadGarminRevisionReview,
+    listGarminRevisionReviews,
+    resolveGarminRevision,
     loadImportedActivityDetail,
     loadRunningActivityMatch,
     confirmActivityMatch,
@@ -5040,6 +5139,9 @@ export function WorkoutAppRuntimeProvider({
     garminImport,
     getActiveWorkout,
     getSessionDetail,
+    loadGarminRevisionReview,
+    listGarminRevisionReviews,
+    resolveGarminRevision,
     loadImportedActivityDetail,
     loadRunningActivityMatch,
     confirmActivityMatch,

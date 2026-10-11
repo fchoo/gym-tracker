@@ -1,9 +1,12 @@
 import React, {
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
+  findNodeHandle,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -29,6 +32,7 @@ import {
 } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import {
+  fontFamilies,
   radius,
   sizes,
   space,
@@ -38,6 +42,19 @@ import {
 
 export type ImportedActivityDetailScreenState =
   | ImportedActivityDetailReadResult
+  | Readonly<{
+    kind: "revision_review";
+    review: Readonly<{
+      activityId: string;
+      acceptedRevision: number;
+      proposedRevision: number;
+      changedFields: readonly Readonly<{
+        field: string;
+        accepted: string;
+        proposed: string;
+      }>[];
+    }>;
+  }>
   | Readonly<{ kind: "loading" }>;
 
 export type ImportedActivityDetailScreenProps = Readonly<{
@@ -45,17 +62,47 @@ export type ImportedActivityDetailScreenProps = Readonly<{
   onBack(): void;
   onMatch(): void;
   onRetry(): void;
+  onAcceptRevision?(): Promise<void>;
+  onKeepRevision?(): Promise<void>;
   width?: number;
 }>;
+
+type RevisionReviewState = Extract<
+  ImportedActivityDetailScreenState,
+  Readonly<{ kind: "revision_review" }>
+>;
+
+function hasRevisionReview(
+  state: RevisionReviewState,
+): state is Extract<RevisionReviewState, Readonly<{ review: unknown }>> {
+  return "review" in state;
+}
+
+type FocusTarget = View & Readonly<{ focus?: () => void }>;
+
+function focusAccessible(ref: React.RefObject<FocusTarget | null>): void {
+  ref.current?.focus?.();
+  let node: number | null = null;
+  try {
+    node = findNodeHandle(ref.current);
+  } catch {
+    // Host renderers may not provide a native handle.
+  }
+  if (typeof node === "number" && node > 0) {
+    AccessibilityInfo.setAccessibilityFocus(node);
+  }
+}
 
 function DetailHeader({
   onAppearance,
   onBack,
   appearanceRef,
+  headingRef,
 }: Readonly<{
   onAppearance(): void;
   onBack(): void;
   appearanceRef: React.RefObject<View | null>;
+  headingRef: React.RefObject<FocusTarget | null>;
 }>) {
   const { colors } = useAppTheme();
   return (
@@ -68,6 +115,7 @@ function DetailHeader({
         accessibilityRole="header"
         accessible
         focusable
+        ref={headingRef}
         style={styles.headerTitleColumn}
       >
         <Text
@@ -96,9 +144,9 @@ function Fact({ label, value, detail }: Readonly<{
   return (
     <View accessibilityLabel={`${label}. ${value}.${detail === undefined ? "" : ` ${detail}.`}`} accessible style={styles.fact}>
       <Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{value}</Text>
+      <Text style={[styles.numericStrong, { color: colors.textPrimary }]}>{value}</Text>
       {detail === undefined ? null : (
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{detail}</Text>
+        <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>{detail}</Text>
       )}
     </View>
   );
@@ -188,7 +236,7 @@ function LapCell({ children, label, stacked }: Readonly<{
       >
         {label}
       </Text>
-      <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{children}</Text>
+      <Text style={[styles.numericStrong, { color: colors.textPrimary }]}>{children}</Text>
     </View>
   );
 }
@@ -271,10 +319,14 @@ function ReadyDetail({ detail, onMatch, stackedLaps }: Readonly<{
         <View
           accessibilityLabel={`Average heart rate. ${detail.averageHeartRate}.`}
           accessible
-          style={[styles.heartRate, { borderColor: colors.divider }]}
+          style={[
+            styles.heartRate,
+            stackedLaps && styles.heartRateStacked,
+            { borderColor: colors.divider },
+          ]}
         >
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Average heart rate</Text>
-          <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{detail.averageHeartRate}</Text>
+          <Text style={[styles.numericStrong, { color: colors.textPrimary }]}>{detail.averageHeartRate}</Text>
         </View>
       )}
       <LapTable laps={detail.laps} stacked={stackedLaps} />
@@ -287,11 +339,17 @@ function ReadyDetail({ detail, onMatch, stackedLaps }: Readonly<{
 function NonReadyDetail({
   state,
   onRetry,
+  onAcceptRevision,
+  onKeepRevision,
 }: Readonly<{
   state: Exclude<ImportedActivityDetailScreenState, Readonly<{ kind: "ready" }>>;
   onRetry(): void;
+  onAcceptRevision?: () => Promise<void>;
+  onKeepRevision?: () => Promise<void>;
 }>) {
   const { colors } = useAppTheme();
+  const [busy, setBusy] = useState<"accept" | "keep" | null>(null);
+  const [resolution, setResolution] = useState<"stale" | "save_failure" | null>(null);
   switch (state.kind) {
     case "loading":
       return (
@@ -328,12 +386,74 @@ function NonReadyDetail({
         />
       );
     case "revision_review":
+      if (!hasRevisionReview(state)) {
+        return (
+          <EmptyState
+            body="Updated source facts are available, but the detailed comparison could not be loaded yet."
+            heading="Source revision needs review"
+            primaryAction={<PrimaryAction label="Retry activity details" onPress={onRetry} />}
+          />
+        );
+      }
       return (
-        <EmptyState
-          body="Accepted facts remain unchanged while the newer source revision is reviewed."
-          heading="Source revision needs review"
-          primaryAction={<PrimaryAction label="Retry activity details" onPress={onRetry} />}
-        />
+        <View style={styles.section}>
+          <SectionHeader
+            supportingText={`Accepted r${state.review.acceptedRevision} · Proposed r${state.review.proposedRevision}`}
+            title="Source revision needs review"
+          />
+          <InlineNotice
+            body="Accepted facts remain unchanged until you explicitly choose whether to use the updated source revision."
+            heading="Review required"
+            tone="attention"
+          />
+          {state.review.changedFields.map((field) => (
+            <View
+              accessibilityLabel={`${field.field}. Current ${field.accepted}. Updated ${field.proposed}.`}
+              accessible
+              key={field.field}
+              style={[styles.revisionRow, { borderColor: colors.divider }]}
+            >
+              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{field.field}</Text>
+              <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>{`Current: ${field.accepted}`}</Text>
+              <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>{`Updated: ${field.proposed}`}</Text>
+            </View>
+          ))}
+          {resolution === null ? null : (
+            <InlineNotice
+              body={resolution === "stale"
+                ? "The accepted or proposed revision changed. Reload before deciding again."
+                : "Nothing was changed. Retry after reloading if needed."}
+              heading={resolution === "stale" ? "Revision needs review" : "Revision decision failed"}
+              tone="error"
+            />
+          )}
+          <PrimaryAction
+            busy={busy === "accept"}
+            disabled={busy !== null || onAcceptRevision === undefined}
+            label="Use updated facts"
+            onPress={() => {
+              if (busy !== null || onAcceptRevision === undefined) return;
+              setBusy("accept");
+              setResolution(null);
+              void onAcceptRevision().catch((error: unknown) => {
+                setResolution(error instanceof Error && error.message === "stale" ? "stale" : "save_failure");
+              }).finally(() => setBusy(null));
+            }}
+          />
+          <SecondaryAction
+            disabled={busy !== null || onKeepRevision === undefined}
+            label="Keep current facts"
+            onPress={() => {
+              if (busy !== null || onKeepRevision === undefined) return;
+              setBusy("keep");
+              setResolution(null);
+              void onKeepRevision().catch((error: unknown) => {
+                setResolution(error instanceof Error && error.message === "stale" ? "stale" : "save_failure");
+              }).finally(() => setBusy(null));
+            }}
+          />
+          <SecondaryAction disabled={busy !== null} label="Retry activity details" onPress={onRetry} />
+        </View>
       );
   }
 }
@@ -343,26 +463,38 @@ export function ImportedActivityDetailScreen({
   onBack,
   onMatch,
   onRetry,
+  onAcceptRevision,
+  onKeepRevision,
   width,
 }: ImportedActivityDetailScreenProps) {
   const dimensions = useWindowDimensions();
   const stackedLaps = (width ?? dimensions.width) < 600 || dimensions.fontScale >= 2;
   const appearanceRef = useRef<View>(null);
+  const headingRef = useRef<FocusTarget>(null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  useEffect(() => {
+    focusAccessible(headingRef);
+  }, []);
   const primary = useMemo(() => (
     <>
       <DetailHeader
         appearanceRef={appearanceRef}
+        headingRef={headingRef}
         onAppearance={() => setAppearanceOpen(true)}
         onBack={onBack}
       />
       {state.kind === "ready" ? (
         <ReadyDetail detail={state.detail} onMatch={onMatch} stackedLaps={stackedLaps} />
       ) : (
-        <NonReadyDetail onRetry={onRetry} state={state} />
+        <NonReadyDetail
+          onAcceptRevision={onAcceptRevision}
+          onKeepRevision={onKeepRevision}
+          onRetry={onRetry}
+          state={state}
+        />
       )}
     </>
-  ), [onBack, onMatch, onRetry, stackedLaps, state]);
+  ), [headingRef, onAcceptRevision, onBack, onKeepRevision, onMatch, onRetry, stackedLaps, state]);
   return (
     <>
       <AdaptiveScreen
@@ -435,6 +567,11 @@ const styles = StyleSheet.create({
     minHeight: sizes.minimumTarget,
     paddingVertical: space[2],
   },
+  heartRateStacked: {
+    alignItems: "flex-start",
+    flexDirection: "column",
+    justifyContent: "flex-start",
+  },
   lapHeader: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
@@ -458,4 +595,21 @@ const styles = StyleSheet.create({
   lapCellLabelHidden: {
     display: "none",
   },
+  revisionRow: {
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: space[1],
+    padding: space[2],
+  },
+  numericStrong: {
+    ...typeScale.bodyStrong,
+    fontFamily: fontFamilies.numericRegular,
+    fontVariant: ["tabular-nums"],
+    fontWeight: "400",
+  } as TextStyle,
+  numericSecondary: {
+    ...typeScale.secondary,
+    fontFamily: fontFamilies.numericRegular,
+    fontVariant: ["tabular-nums"],
+  } as TextStyle,
 });

@@ -9,12 +9,21 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import {
+  CryptoDigestAlgorithm,
+  digestStringAsync,
+  randomUUID,
+} from "expo-crypto";
 
+import {
+  parseGarminRootOrigin,
+} from "../../../src/bootstrap/garminImportRuntime";
 import {
   parseImportedActivityLocalId,
   type ImportedActivityDetailReadResult,
 } from "../../../src/domains/activities/activityDetails";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
+import { GarminRouteShell } from "../../../src/ui/garmin/GarminRouteShell";
 import {
   ImportedActivityDetailScreen,
   type ImportedActivityDetailScreenState,
@@ -24,7 +33,7 @@ const CALENDAR_RETURN_TOKEN = /^calendar:[A-Za-z0-9:_-]{1,80}$/u;
 
 type ActivityDetailRouteInput = Readonly<{
   activityId: string;
-  origin: "calendar";
+  origin: "workout" | "calendar" | "library" | "progress";
   returnToken?: string;
 }>;
 
@@ -32,8 +41,19 @@ function scalar(value: string | readonly string[] | undefined): string | undefin
   return typeof value === "string" ? value : undefined;
 }
 
-function validCalendarContext(origin: unknown, returnToken: unknown): boolean {
-  if (origin !== undefined && origin !== "calendar") return false;
+function hasRevisionReview(
+  state: ImportedActivityDetailScreenState,
+): state is Extract<
+  ImportedActivityDetailScreenState,
+  Readonly<{ kind: "revision_review"; review: unknown }>
+> {
+  return state.kind === "revision_review" && "review" in state;
+}
+
+function validRouteContext(origin: unknown, returnToken: unknown): boolean {
+  if (origin !== undefined && origin !== "workout" && origin !== "calendar" && origin !== "library" && origin !== "progress") {
+    return false;
+  }
   if (returnToken === undefined) return true;
   return origin === "calendar"
     && typeof returnToken === "string"
@@ -43,7 +63,8 @@ function validCalendarContext(origin: unknown, returnToken: unknown): boolean {
 export function createImportedActivityDetailHref(input: ActivityDetailRouteInput): Href {
   const activityId = parseImportedActivityLocalId(input.activityId);
   if (activityId === null
-    || input.origin !== "calendar"
+    || !["workout", "calendar", "library", "progress"].includes(input.origin)
+    || (input.origin !== "calendar" && input.returnToken !== undefined)
     || (input.returnToken !== undefined && !CALENDAR_RETURN_TOKEN.test(input.returnToken))) {
     throw new Error("imported_activity_route_invalid");
   }
@@ -51,7 +72,7 @@ export function createImportedActivityDetailHref(input: ActivityDetailRouteInput
     pathname: "/garmin/activity/[activityId]",
     params: {
       activityId,
-      origin: "calendar",
+      origin: input.origin,
       ...(input.returnToken === undefined ? {} : { returnToken: input.returnToken }),
     },
   } as Href;
@@ -65,10 +86,10 @@ export default function ImportedActivityDetailRoute() {
   }>;
   const runtime = useWorkoutAppRuntime();
   const rawActivityId = scalar(params.activityId);
-  const origin = scalar(params.origin);
+  const origin = parseGarminRootOrigin(scalar(params.origin));
   const returnToken = scalar(params.returnToken);
   const activityId = useMemo(
-    () => validCalendarContext(origin, returnToken)
+    () => validRouteContext(origin, returnToken)
       ? parseImportedActivityLocalId(rawActivityId)
       : null,
     [origin, rawActivityId, returnToken],
@@ -84,8 +105,15 @@ export default function ImportedActivityDetailRoute() {
       return undefined;
     }
     let active = true;
-    void runtime.loadImportedActivityDetail(activityId).then((result: ImportedActivityDetailReadResult) => {
-      if (active) setState(result);
+    void runtime.loadImportedActivityDetail(activityId).then(async (result: ImportedActivityDetailReadResult) => {
+      if (!active) return;
+      if (result.kind !== "revision_review") {
+        setState(result);
+        return;
+      }
+      const review = await runtime.loadGarminRevisionReview(activityId);
+      if (!active) return;
+      setState(review === null ? result : { kind: "revision_review", review });
     }).catch(() => {
       if (active) {
         setState({ kind: "projection_error", code: "accepted_payload_unavailable" });
@@ -94,25 +122,62 @@ export default function ImportedActivityDetailRoute() {
     return () => {
       active = false;
     };
-  }, [activityId, attempt, runtime.loadImportedActivityDetail]);
+  }, [activityId, attempt, runtime.loadGarminRevisionReview, runtime.loadImportedActivityDetail]);
 
   const match = useCallback(() => {
     if (activityId === null) return;
     router.push({
       pathname: "/garmin/match/[activityId]",
-      params: { activityId },
+      params: { activityId, origin },
     } as Href);
-  }, [activityId]);
+  }, [activityId, origin]);
+
+  const resolveRevision = useCallback(async (action: "accept" | "keep") => {
+    if (activityId === null || !hasRevisionReview(state)) {
+      return;
+    }
+    const requestId = `garmin-revision-${action}-${randomUUID()}`;
+    const requestSha256 = await digestStringAsync(
+      CryptoDigestAlgorithm.SHA256,
+      JSON.stringify({
+        version: 1,
+        action,
+        activityId: state.review.activityId,
+        expectedAggregateRevision: state.review.acceptedRevision,
+        proposedRevision: state.review.proposedRevision,
+        expectedProposedSha256: state.review.expectedProposedSha256,
+      }),
+    );
+    const result = await runtime.resolveGarminRevision({
+      action,
+      requestId,
+      requestSha256,
+      activityId: state.review.activityId,
+      expectedAggregateRevision: state.review.acceptedRevision,
+      proposedRevision: state.review.proposedRevision,
+      expectedProposedSha256: state.review.expectedProposedSha256,
+      occurredAtMs: Date.now(),
+    });
+    if (result.kind === "conflict") {
+      throw new Error("stale");
+    }
+    setState({ kind: "loading" });
+    setAttempt((current) => current + 1);
+  }, [activityId, runtime, state]);
 
   return (
-    <ImportedActivityDetailScreen
-      onBack={() => router.back()}
-      onMatch={match}
-      onRetry={() => {
-        setState({ kind: "loading" });
-        setAttempt((current) => current + 1);
-      }}
-      state={state}
-    />
+    <GarminRouteShell origin={origin}>
+      <ImportedActivityDetailScreen
+        onAcceptRevision={() => resolveRevision("accept")}
+        onBack={() => router.back()}
+        onKeepRevision={() => resolveRevision("keep")}
+        onMatch={match}
+        onRetry={() => {
+          setState({ kind: "loading" });
+          setAttempt((current) => current + 1);
+        }}
+        state={state}
+      />
+    </GarminRouteShell>
   );
 }

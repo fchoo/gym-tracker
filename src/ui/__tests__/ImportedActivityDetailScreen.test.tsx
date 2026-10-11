@@ -176,7 +176,21 @@ describe("ImportedActivityDetailScreen route states and shared shell", () => {
     { state: { kind: "missing" }, heading: "Activity not found", retryable: false },
     { state: { kind: "removed" }, heading: "Activity removed", retryable: false },
     { state: { kind: "projection_error", code: "accepted_payload_unavailable" }, heading: "Activity details unavailable", retryable: true },
-    { state: { kind: "revision_review" }, heading: "Source revision needs review", retryable: true },
+    {
+      state: {
+        kind: "revision_review",
+        review: {
+          activityId: "activity-local-01",
+          acceptedRevision: 2,
+          proposedRevision: 3,
+          changedFields: [
+            { field: "distance_meters", accepted: "5000", proposed: "5050" },
+          ],
+        },
+      },
+      heading: "Source revision needs review",
+      retryable: true,
+    },
   ];
   for (const { state, heading, retryable } of cases) {
     it(`renders ${state.kind} without fabricated detail`, async () => {

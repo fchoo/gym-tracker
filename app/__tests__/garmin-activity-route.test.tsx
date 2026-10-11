@@ -30,6 +30,7 @@ let mockParams: Readonly<{
   origin?: string | readonly string[];
   returnToken?: string | readonly string[];
 }> = {};
+let mockShellProps: Readonly<Record<string, unknown>> = {};
 let pendingLoads: Array<Readonly<{
   resolve(result: ImportedActivityDetailReadResult): void;
   reject(error: Error): void;
@@ -47,6 +48,19 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
     loadImportedActivityDetail: mockLoadImportedActivityDetail,
   }),
+}));
+
+jest.mock("../../src/ui/garmin/GarminRouteShell", () => ({
+  GarminRouteShell: (props: Readonly<Record<string, unknown>>) => {
+    const ReactModule = require("react") as typeof import("react");
+    const { View: MockView } = require("react-native") as typeof import("react-native");
+    mockShellProps = props;
+    return ReactModule.createElement(
+      MockView,
+      { testID: "garmin-route-shell" },
+      props.children as React.ReactNode,
+    );
+  },
 }));
 
 import ImportedActivityDetailRoute, {
@@ -98,6 +112,7 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
       origin: "calendar",
       returnToken: "calendar:day:2026-10-04:agenda-1",
     };
+    mockShellProps = {};
     mockLoadImportedActivityDetail.mockImplementation(() => new Promise((resolve, reject) => {
       pendingLoads.push({ resolve, reject });
     }));
@@ -105,6 +120,8 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
 
   it("loads exactly one validated local activity and uses stack Back", async () => {
     await renderRoute();
+    expect(screen.getByTestId("garmin-route-shell")).toBeTruthy();
+    expect(mockShellProps.origin).toBe("calendar");
 
     await waitFor(() => {
       expect(mockLoadImportedActivityDetail).toHaveBeenCalledTimes(1);
@@ -131,7 +148,6 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
   });
 
   it.each([
-    { origin: "library", returnToken: undefined },
     { origin: "workout", returnToken: "calendar:day:2026-10-04:agenda-1" },
     { origin: "calendar", returnToken: "https://arbitrary.example" },
     { origin: ["calendar"], returnToken: "calendar:day:2026-10-04:agenda-1" },
@@ -148,6 +164,17 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     expect(mockLoadImportedActivityDetail).not.toHaveBeenCalled();
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  it.each(["workout", "library", "progress"] as const)(
+    "accepts Garmin detail opened from the %s root without a calendar token",
+    async (origin) => {
+      mockParams = { activityId: "activity-local-01", origin };
+      await renderRoute();
+
+      expect(mockShellProps.origin).toBe(origin);
+      await waitFor(() => expect(mockLoadImportedActivityDetail).toHaveBeenCalledWith("activity-local-01"));
+    },
+  );
 
   it("retries the same validated local ID after a bounded projection failure", async () => {
     await renderRoute();
@@ -171,7 +198,7 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
 
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/garmin/match/[activityId]",
-      params: { activityId: "activity-local-01" },
+      params: { activityId: "activity-local-01", origin: "calendar" },
     });
   });
 });
@@ -192,9 +219,26 @@ describe("createImportedActivityDetailHref calendar producer contract", () => {
     });
   });
 
+  it.each(["workout", "library", "progress"] as const)(
+    "publishes a validated %s origin without a calendar token",
+    (origin) => {
+      expect(createImportedActivityDetailHref({
+        activityId: "activity-local-01",
+        origin,
+      })).toEqual({
+        pathname: "/garmin/activity/[activityId]",
+        params: {
+          activityId: "activity-local-01",
+          origin,
+        },
+      });
+    },
+  );
+
   it.each([
     { activityId: "987654321", origin: "calendar" },
     { activityId: "activity-local-01", origin: "provider" },
+    { activityId: "activity-local-01", origin: "workout", returnToken: "calendar:day:2026-10-04:agenda-1" },
     { activityId: "activity-local-01", origin: "calendar", returnToken: "https://arbitrary.example" },
     { activityId: "activity-local-01", origin: "calendar", returnToken: `calendar:${"x".repeat(120)}` },
   ])("rejects unbounded or provider-facing params %#", (input) => {
