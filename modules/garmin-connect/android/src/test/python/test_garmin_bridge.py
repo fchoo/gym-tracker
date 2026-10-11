@@ -107,6 +107,26 @@ class GarminBridgeTests(unittest.TestCase):
 
         self.assertEqual(fake.calls, [])
 
+    def test_restore_rotation_and_logout_keep_tokens_out_of_dispatch_results(self):
+        fake = FakeClient()
+        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        restore_arguments = {"tokenPayload": b'{"di_token":"fixture"}'}
+
+        restored = bridge.dispatch("restoreSession", restore_arguments)
+        first_tokens = bridge.take_persistable_tokens()
+        read = bridge.dispatch("getActivity", {"externalActivityId": "42"})
+        rotated_tokens = bridge.take_persistable_tokens()
+        logged_out = bridge.dispatch("logout", {})
+        after_logout = bridge.dispatch("getActivity", {"externalActivityId": "42"})
+
+        self.assertEqual(restored["data"]["kind"], "connected")
+        self.assertEqual(restore_arguments, {})
+        self.assertIsInstance(first_tokens, bytes)
+        self.assertIsInstance(rotated_tokens, bytes)
+        self.assertNotIn("token", json.dumps([restored, read, logged_out, after_logout]))
+        self.assertEqual(logged_out["generation"], restored["generation"] + 1)
+        self.assertEqual(after_logout, {"status": "error", "error": {"code": "sign_in_required"}})
+
 
 if __name__ == "__main__":
     unittest.main()

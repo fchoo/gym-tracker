@@ -33,4 +33,5 @@ ext.garminConnectPython = [
 
 dependencies {
   compileOnly 'com.chaquo.python.runtime:chaquopy_java:17.0.0'
+  testImplementation 'junit:junit:4.13.2'
 }
