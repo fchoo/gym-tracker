@@ -1,6 +1,6 @@
 const shared = {
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
-  roots: ["<rootDir>/app", "<rootDir>/src", "<rootDir>/tests", "<rootDir>/modules"],
+  roots: ["<rootDir>/app", "<rootDir>/src", "<rootDir>/tests", "<rootDir>/modules", "<rootDir>/plugins"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
 };
@@ -41,6 +41,7 @@ module.exports = {
         "<rootDir>/src/**/*.test.ts",
         "<rootDir>/src/**/*.test.tsx",
         "<rootDir>/modules/**/src/**/*.test.ts",
+        "<rootDir>/plugins/**/*.test.ts",
       ],
       testPathIgnorePatterns: [
         ...shared.testPathIgnorePatterns,

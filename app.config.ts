@@ -68,6 +68,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ],
       './plugins/withAndroidBackupRules.ts',
       './plugins/withAndroidPhysicalTestService.ts',
+      './plugins/withGarminConnectModule.ts',
     ],
     experiments: {
       typedRoutes: true,

@@ -1,3 +1,7 @@
+import { describe, expect, it } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   applyGarminAppBuildGradle,
   applyGarminProjectBuildGradle,
@@ -26,6 +30,26 @@ describe("withGarminConnectModule", () => {
   it("rejects a host Gradle file without a plugins block", () => {
     expect(() => applyGarminProjectBuildGradle("buildscript {}\n")).toThrow(
       "garmin_cng_missing_plugins_block",
+    );
+  });
+
+  it("registers the local module and plugin without a runtime engine override", () => {
+    const root = process.cwd();
+    const appConfig = readFileSync(join(root, "app.config.ts"), "utf8");
+    const moduleConfig = readFileSync(
+      join(root, "modules/garmin-connect/expo-module.config.json"),
+      "utf8",
+    );
+    const packageConfig = readFileSync(
+      join(root, "modules/garmin-connect/package.json"),
+      "utf8",
+    );
+
+    expect(appConfig).toContain("./plugins/withGarminConnectModule.ts");
+    expect(moduleConfig).toContain("expo.modules.garminconnect.GarminConnectModule");
+    expect(packageConfig).toContain('"name": "garmin-connect"');
+    expect(`${appConfig}\n${moduleConfig}\n${packageConfig}`).not.toMatch(
+      /hermes|jsc|localhost|downloaded script|runtime agent/iu,
     );
   });
 });
