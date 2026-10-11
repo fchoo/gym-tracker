@@ -1,4 +1,6 @@
 import { describe, expect, it, jest } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import type { GarminSourceEnvelope } from "../../domains/activities/garminActivitySourcePort";
 import {
@@ -16,6 +18,12 @@ jest.mock("../../../modules/garmin-connect/src", () => ({
 
 const hash = (character: string) => character.repeat(64);
 const accountNamespace = "garmin:abcdefabcdefabcdefabcdefabcdefab";
+const discoveryFixture = JSON.parse(
+  readFileSync(
+    path.join(process.cwd(), "tests/fixtures/garmin-json/discovery-running-summary.json"),
+    "utf8",
+  ),
+);
 
 function envelope(externalActivityId: string): GarminSourceEnvelope {
   return {
@@ -81,7 +89,7 @@ function fixtures() {
       return {
         status: "ok" as const,
         generation: 1,
-        data: { items: [{ activityId: 42, activityType: { typeKey: "running" } }], nextStart: 1 },
+        data: { items: [discoveryFixture], nextStart: 1 },
       };
     }),
     getActivity: jest.fn(async (input) => {

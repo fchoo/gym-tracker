@@ -17,6 +17,10 @@ import {
   PHASE18_GARMIN_PROOF_CONFIRMATION,
   PHASE18_GARMIN_PROOF_RESULT_MARKER,
 } from "../src/testing/phase18GarminProof.ts";
+import {
+  assertPhase18PrivacySafe,
+  assertPhase18PrivateTextSafe,
+} from "./phase18-privacy-scan.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 
@@ -51,7 +55,6 @@ const TECHNICAL_REVIEW_CODES = new Set([
   "timeout",
 ]);
 const PROOF_TIMEOUT_MS = 15 * 60 * 1_000;
-const PRIVATE_LOG_PATTERN = /(?:access[_-]?token|refresh[_-]?token|credential|password|authorization|cookie|mfa[_-]?code|https?:\/\/|activity[_-]?id|latitude|longitude|heart[_-]?rate|bodyweight|sql[_-]?params?)/iu;
 const MANIFEST_KEYS = Object.freeze([
   "abi",
   "apk_sha256",
@@ -217,7 +220,7 @@ export function parsePhase18GarminProofMarker(line) {
     parsed.outcome !== undefined
     && !["completed", "not_requested"].includes(parsed.outcome)
   ) fail("marker_invalid");
-  if (PRIVATE_LOG_PATTERN.test(JSON.stringify(parsed))) fail("marker_privacy_invalid");
+  assertPhase18PrivacySafe(parsed, { prefix: "phase18_marker_privacy" });
   return Object.freeze(parsed);
 }
 
@@ -534,7 +537,7 @@ export function executePhase18GarminProofRunner(
     currentStage = failure?.id ?? "PH18-PRIVACY";
 
     const combinedLog = `${login.log}\n${restore.log}\n${rotatedRestoreLog}`;
-    if (PRIVATE_LOG_PATTERN.test(combinedLog)) fail("privacy_scan_failed");
+    assertPhase18PrivateTextSafe(combinedLog, "phase18_privacy_scan");
     const backupFiles = adbText(
       native,
       adb,

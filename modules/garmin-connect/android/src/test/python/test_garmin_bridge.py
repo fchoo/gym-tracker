@@ -11,6 +11,9 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "main" / "python"))
 import garmin_bridge
 
 ACCOUNT_NAMESPACE = "garmin:abcdefabcdefabcdefabcdefabcdefab"
+DISCOVERY_FIXTURE = json.loads(
+    (Path(__file__).parents[6] / "tests" / "fixtures" / "garmin-json" / "discovery-running-summary.json").read_text()
+)
 
 
 class FakeClient:
@@ -46,7 +49,7 @@ class FakeClient:
 
     def get_activities(self, start, limit, activitytype, activitysubtype=None):
         self.calls.append(("get_activities", start, limit, activitytype, activitysubtype))
-        return [{"activityId": 42, "activityType": {"typeKey": "running"}}]
+        return [DISCOVERY_FIXTURE]
 
     def get_activity(self, activity_id):
         self.calls.append(("get_activity", activity_id))
@@ -339,6 +342,13 @@ class GarminBridgeTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "malformed_response"):
                 garmin_bridge._bounded_json(value, **kwargs)
+        for value in (
+            "not-a-dict",
+            {"activityId": 1},
+            {"activityId": "1", "activityType": {"typeKey": "walking"}},
+        ):
+            with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "malformed_response"):
+                garmin_bridge._running_discovery_item(value)
         with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "malformed_response"):
             garmin_bridge._safe_namespace("provider-account")
         self.assertIsInstance(garmin_bridge.create_bridge(), garmin_bridge.GarminBridge)

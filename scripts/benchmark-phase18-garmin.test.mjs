@@ -91,6 +91,12 @@ function evidence(overrides = {}) {
       commands,
       sample_labels,
     },
+    producer_context: {
+      kind: "installed-route-log",
+      marker: "GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:",
+      run_nonce: "c".repeat(32),
+      source_pid: 123,
+    },
     skipped: 0,
     ...overrides,
   };
@@ -209,15 +215,17 @@ test("execute collects installed samples and writes evidence with source-owned b
     readJson: () => manifest(),
     readBytes: () => BASELINE_BYTES,
     collectMeasurements: () => ({
-      identity: collected.identity,
       measurements: collected.measurements,
       measurement_context: collected.measurement_context,
+      producer_context: collected.producer_context,
     }),
+    resolveCurrentIdentity: () => collected.identity,
     writeEvidence: (value) => writes.push(value),
   });
   assert.equal(result.sample_counts.python_cold_start_ms, 5);
   assert.equal(writes.length, 1);
   assert.equal("budgets" in writes[0], false);
+  assert.deepEqual(writes[0].producer_context, collected.producer_context);
 });
 
 test("focused coverage gate registers every Phase 18 integrity-critical module", () => {
@@ -240,10 +248,13 @@ test("focused coverage gate registers every Phase 18 integrity-critical module",
     "src/ui/garmin/useGarminConnectionController.ts",
   ]) assert.match(source, new RegExp(file.replace(/[./]/gu, "\\$&"), "u"));
   for (const testFile of [
+    "scripts/benchmark-phase18-garmin.test.mjs",
     "scripts/phase18-garmin-proof.test.mjs",
     "scripts/phase18-build-manifest.test.mjs",
     "scripts/phase18-garmin-acceptance.test.mjs",
     "scripts/phase18-garmin-adversarial.test.mjs",
+    "scripts/run-phase18-kotlin-coverage.test.mjs",
+    "scripts/phase18-language-coverage.test.mjs",
     "tests/integration/garmin-import-portability.test.ts",
     "tests/integration/imported-activity-facts.test.ts",
     "tests/integration/running-activity-match.test.ts",
@@ -253,6 +264,16 @@ test("focused coverage gate registers every Phase 18 integrity-critical module",
   assert.match(languageCoverage, /phase18\/python-coverage\.json/u);
   assert.match(languageCoverage, /phase18\/kotlin-coverage\.json/u);
   assert.match(source, /loadPhase18LanguageCoverageReports/u);
+  for (const evidenceFile of [
+    "scripts/benchmark-phase18-garmin.mjs",
+    "scripts/phase18-build-manifest.mjs",
+    "scripts/phase18-language-coverage.mjs",
+    "scripts/phase18-privacy-scan.mjs",
+    "scripts/run-phase18-kotlin-coverage.mjs",
+    "scripts/verify-phase18-garmin-acceptance.mjs",
+    "scripts/verify-phase18-garmin-adversarial.mjs",
+    "scripts/verify-phase18-garmin-proof.mjs",
+  ]) assert.match(source, new RegExp(evidenceFile.replace(/[./]/gu, "\\$&"), "u"));
   assert.match(source, /--test-coverage-lines=100/u);
   assert.match(source, /--test-coverage-branches=100/u);
   assert.match(source, /--test-coverage-functions=100/u);

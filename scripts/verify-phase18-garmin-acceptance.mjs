@@ -17,13 +17,16 @@ import {
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import {
+  executePhase18GarminProofVerifier,
   validatePhase18GarminProofCurrentIdentity,
   validatePhase18GarminProofEvidence,
 } from "./verify-phase18-garmin-proof.mjs";
 import {
+  executePhase18GarminAdversarialVerifier,
   validatePhase18GarminAdversarialCurrentIdentity,
   validatePhase18GarminAdversarialEvidence,
 } from "./verify-phase18-garmin-adversarial.mjs";
+import { assertPhase18PrivacySafe } from "./phase18-privacy-scan.mjs";
 
 const MANIFEST = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/build.json`;
 const APK = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-acceptance-devtest.apk`;
@@ -34,8 +37,6 @@ const MAESTRO_REPORT = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro-repor
 const PRIVACY_REPORT = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/privacy-report.json`;
 const HASH = /^[a-f0-9]{64}$/u;
 const SEMANTIC_STATE = /^[a-z][a-z0-9-]{0,63}$/u;
-const FORBIDDEN_KEY = /(?:^|_)(?:account|activity_id|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
-const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/iu;
 const EXPECTED_OBSERVATIONS = Object.freeze({
   appearance: ["Light", "Dark", "System"],
   viewports: [
@@ -65,19 +66,17 @@ function exactKeys(value, keys) {
 }
 
 function privacySafe(value) {
-  if (typeof value === "string" && FORBIDDEN_VALUE.test(value)) {
-    fail("privacy_invalid");
-  }
-  if (Array.isArray(value)) {
-    value.forEach(privacySafe);
-    return;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, entry] of Object.entries(value)) {
-      if (FORBIDDEN_KEY.test(key)) fail("privacy_invalid");
-      privacySafe(entry);
-    }
-  }
+  assertPhase18PrivacySafe(value, {
+    prefix: "phase18_acceptance_evidence_privacy",
+    allowString: (entry, context) => (
+      (context.endsWith(".artifact")
+        && (
+          entry === PROOF_EVIDENCE
+          || entry === ADVERSARIAL_EVIDENCE
+        ))
+      || (context === "native_flow.path" && entry === MAESTRO_SOURCE)
+    ),
+  });
 }
 
 function sha256(value) {
@@ -330,13 +329,23 @@ export function executePhase18GarminAcceptanceVerifier(
     privacyReportSha256: sha256(readBytes(PRIVACY_REPORT)),
   });
   const ownerArtifacts = [
-    [PROOF_EVIDENCE, validatePhase18GarminProofEvidence, validatePhase18GarminProofCurrentIdentity],
-    [ADVERSARIAL_EVIDENCE, validatePhase18GarminAdversarialEvidence, validatePhase18GarminAdversarialCurrentIdentity],
+    [
+      PROOF_EVIDENCE,
+      () => executePhase18GarminProofVerifier(["--manifest", "artifacts/native/phase18-garmin-proof/build.json"]),
+      validatePhase18GarminProofEvidence,
+      validatePhase18GarminProofCurrentIdentity,
+    ],
+    [
+      ADVERSARIAL_EVIDENCE,
+      () => executePhase18GarminAdversarialVerifier(["--manifest", "artifacts/native/phase18-garmin-adversarial/build.json"]),
+      validatePhase18GarminAdversarialEvidence,
+      validatePhase18GarminAdversarialCurrentIdentity,
+    ],
   ];
   const ownerVerifier = dependencies.verifyOwnerArtifact;
-  for (const [artifactPath, validateEvidence, validateIdentity] of ownerArtifacts) {
+  for (const [artifactPath, executeVerifier, validateEvidence, validateIdentity] of ownerArtifacts) {
     const ownerEvidence = readJson(artifactPath);
-    if (ownerVerifier === undefined) validateEvidence(ownerEvidence);
+    if (ownerVerifier === undefined) executeVerifier();
     else ownerVerifier(artifactPath, ownerEvidence);
     matchingArtifactIdentity(ownerEvidence.manifest, manifest);
     const artifactHash = sha256(readBytes(artifactPath));

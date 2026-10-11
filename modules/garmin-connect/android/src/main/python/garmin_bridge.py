@@ -86,6 +86,26 @@ def _activity_id(arguments: Any, *, details: bool = False) -> str:
     return identifier
 
 
+def _running_discovery_item(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise _BridgeInputError("malformed_response")
+    activity_id = value.get("activityId")
+    activity_type = value.get("activityType")
+    if isinstance(activity_id, int) and activity_id > 0:
+        activity_id = str(activity_id)
+    if (
+        not isinstance(activity_id, str)
+        or _ACTIVITY_ID.fullmatch(activity_id) is None
+        or not isinstance(activity_type, dict)
+        or activity_type.get("typeKey") != "running"
+    ):
+        raise _BridgeInputError("malformed_response")
+    return {
+        "activityId": int(activity_id),
+        "activityType": {"typeKey": "running"},
+    }
+
+
 def _bounded_json(value: Any, *, depth: int = 0, budget: list[int] | None = None) -> Any:
     if budget is None:
         budget = [0]
@@ -383,7 +403,7 @@ class GarminBridge:
         if not isinstance(items, list) or len(items) > limit:
             raise _BridgeInputError("malformed_response")
         self._capture_tokens()
-        data: dict[str, Any] = {"items": items}
+        data: dict[str, Any] = {"items": [_running_discovery_item(item) for item in items]}
         if len(items) == limit:
             data["nextStart"] = start + len(items)
         return self._success(data)

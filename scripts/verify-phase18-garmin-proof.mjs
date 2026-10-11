@@ -21,6 +21,7 @@ import {
   sanitizePhase18GarminProofBuildManifest,
   validatePhase18GarminProofBuildManifest,
 } from "./run-phase18-garmin-proof.mjs";
+import { assertPhase18PrivacySafe } from "./phase18-privacy-scan.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const ROOT = process.cwd();
@@ -45,8 +46,6 @@ const SAFE_FAILURE_CODES = new Set([
   "temporary_failure",
   "timeout",
 ]);
-const FORBIDDEN_KEY = /(?:account|activity[_-]?id|authorization|body[_-]?weight|cookie|credential|email|file[_-]?name|heart[_-]?rate|latitude|longitude|mfa[_-]?code|password|route|secret|sql[_-]?param|token|url)/iu;
-const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/iu;
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const fail = (code) => {
@@ -61,19 +60,10 @@ function exactKeys(value, keys) {
 }
 
 function privacySafe(value, location = "evidence") {
-  if (typeof value === "string" && FORBIDDEN_VALUE.test(value)) {
-    fail("privacy_invalid");
-  }
-  if (Array.isArray(value)) {
-    value.forEach((entry, index) => privacySafe(entry, `${location}[${index}]`));
-    return;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, entry] of Object.entries(value)) {
-      if (FORBIDDEN_KEY.test(key)) fail("privacy_invalid");
-      privacySafe(entry, `${location}.${key}`);
-    }
-  }
+  assertPhase18PrivacySafe(value, {
+    prefix: "phase18_evidence_privacy",
+    context: location,
+  });
 }
 
 function validateManifestShape(manifest) {

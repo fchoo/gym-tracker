@@ -63,8 +63,14 @@ const phase18EvidenceTests = [
   "scripts/run-phase18-kotlin-coverage.test.mjs",
 ];
 const phase18EvidenceFiles = [
+  "scripts/benchmark-phase18-garmin.mjs",
   "scripts/phase18-build-manifest.mjs",
   "scripts/phase18-language-coverage.mjs",
+  "scripts/phase18-privacy-scan.mjs",
+  "scripts/run-phase18-kotlin-coverage.mjs",
+  "scripts/verify-phase18-garmin-acceptance.mjs",
+  "scripts/verify-phase18-garmin-adversarial.mjs",
+  "scripts/verify-phase18-garmin-proof.mjs",
 ];
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",

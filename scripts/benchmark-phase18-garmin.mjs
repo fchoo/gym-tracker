@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import {
   GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
 } from "../tests/fixtures/garmin-json/fixture-manifest.ts";
+import { PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION } from "../src/testing/phase18GarminAcceptance.ts";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const MANIFEST = "artifacts/native/phase18-garmin-acceptance/build.json";
 const EVIDENCE = "artifacts/native/phase18-garmin-acceptance/benchmark.json";
@@ -16,6 +19,7 @@ const BASELINE = "tests/fixtures/garmin-json/phase18-performance-baseline.json";
 const BENCHMARK_MARKER = "GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:";
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
+const NONCE = /^[a-f0-9]{32}$/u;
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FORBIDDEN_KEY = /(?:^|_)(?:account|activity_id|authorization|ciphertext|cookie|credentials?|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|secret|serial|token|url)(?:$|_)/iu;
 const FORBIDDEN_ROUTE_KEY = /(?:^|_)route(?:$|_points?$)/iu;
@@ -102,6 +106,10 @@ function validateIdentity(identity, manifest) {
   ) fail("identity_invalid");
 }
 
+function exactPositiveInteger(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
 export function validatePhase18GarminBenchmarkEvidence(evidence, manifest, baseline, baselineBytes) {
   privacySafe(evidence);
   if (
@@ -111,6 +119,7 @@ export function validatePhase18GarminBenchmarkEvidence(evidence, manifest, basel
       "measurement_context",
       "measurements",
       "producer",
+      "producer_context",
       "schema_version",
       "skipped",
       "status",
@@ -137,6 +146,11 @@ export function validatePhase18GarminBenchmarkEvidence(evidence, manifest, basel
     || !exactKeys(baseline.metrics, PHASE18_GARMIN_BENCHMARK_METRICS)
     || !exactKeys(evidence.measurements, PHASE18_GARMIN_BENCHMARK_METRICS)
     || !exactKeys(evidence.measurement_context, ["commands", "device_identity_sha256", "profile", "sample_labels"])
+    || !exactKeys(evidence.producer_context, ["kind", "marker", "run_nonce", "source_pid"])
+    || evidence.producer_context.kind !== "installed-route-log"
+    || evidence.producer_context.marker !== BENCHMARK_MARKER
+    || !NONCE.test(evidence.producer_context.run_nonce ?? "")
+    || !exactPositiveInteger(evidence.producer_context.source_pid)
     || evidence.measurement_context.profile !== "physical-arm64"
     || evidence.measurement_context.device_identity_sha256 !== evidence.identity.device_identity_sha256
     || !exactKeys(evidence.measurement_context.commands, PHASE18_GARMIN_BENCHMARK_METRICS)
@@ -195,14 +209,130 @@ export function parsePhase18GarminBenchmarkArgs(args) {
   return options;
 }
 
+function command(program, args, options = {}) {
+  return execFileSync(program, args, { maxBuffer: 512 * 1024 * 1024, ...options });
+}
+
+function commandText(program, args) {
+  return command(program, args, { encoding: "utf8" }).trim();
+}
+
+function resolveAndroidTool(name) {
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+  if (sdk === undefined) fail("android_sdk_missing");
+  if (name === "adb") {
+    const executable = path.join(sdk, "platform-tools", "adb");
+    if (!existsSync(executable)) fail("adb_missing");
+    return executable;
+  }
+  const buildTools = path.join(sdk, "build-tools");
+  const candidates = existsSync(buildTools)
+    ? readdirSync(buildTools)
+      .map((version) => path.join(buildTools, version, name))
+      .filter((candidate) => existsSync(candidate))
+      .sort()
+    : [];
+  const executable = candidates.at(-1);
+  if (executable === undefined) fail(`${name}_missing`);
+  return executable;
+}
+
+function retainedSignatureSha256(apkPath) {
+  const output = commandText(resolveAndroidTool("apksigner"), [
+    "verify",
+    "--print-certs",
+    apkPath,
+  ]);
+  const match = output.match(/certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u);
+  if (match?.[1] === undefined) fail("signature_unreadable");
+  const digest = match[1].replaceAll(":", "").toLowerCase();
+  if (!HASH.test(digest)) fail("signature_unreadable");
+  return digest;
+}
+
+function resolveCurrentIdentity() {
+  const adb = resolveAndroidTool("adb");
+  const devices = commandText(adb, ["devices"])
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/u))
+    .filter(([, state]) => state === "device");
+  if (devices.length !== 1 || devices[0]?.[0] === undefined) fail("device_identity_invalid");
+  const serial = devices[0][0];
+  const adbText = (...args) => commandText(adb, ["-s", serial, ...args]);
+  const abi = adbText("shell", "getprop", "ro.product.cpu.abi");
+  const apiLevel = adbText("shell", "getprop", "ro.build.version.sdk");
+  const model = adbText("shell", "getprop", "ro.product.model");
+  const installedPath = adbText("shell", "pm", "path", PACKAGE).replace(/^package:/u, "");
+  if (abi !== "arm64-v8a" || !installedPath.startsWith("/data/app/")) fail("device_identity_invalid");
+  const installedBytes = command(adb, ["-s", serial, "exec-out", "cat", installedPath]);
+  const apkPath = path.join(process.cwd(), "artifacts/native/phase18-garmin-acceptance/gym-tracker-phase18-garmin-acceptance-devtest.apk");
+  const retainedBytes = readFileSync(apkPath);
+  return Object.freeze({
+    base_head: commandText("git", ["rev-parse", "HEAD"]),
+    source_tree_sha256: sourceTreeSha256(process.cwd()),
+    python_lock_sha256: createHash("sha256").update(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")).digest("hex"),
+    apk_sha256: createHash("sha256").update(retainedBytes).digest("hex"),
+    signature_sha256: retainedSignatureSha256(apkPath),
+    device_identity_sha256: createHash("sha256").update(JSON.stringify({ serial, abi, apiLevel, model })).digest("hex"),
+    package: PACKAGE,
+    profile: "development-test",
+    abi,
+  });
+}
+
+function parseBenchmarkMarker(payload, expectedNonce) {
+  if (
+    payload === null
+    || typeof payload !== "object"
+    || Array.isArray(payload)
+    || payload.run_nonce !== expectedNonce
+    || payload.source !== "installed-route-log"
+    || payload.measurements === null
+    || typeof payload.measurements !== "object"
+    || Array.isArray(payload.measurements)
+    || payload.measurement_context === null
+    || typeof payload.measurement_context !== "object"
+    || Array.isArray(payload.measurement_context)
+  ) fail("producer_invalid");
+  return Object.freeze({
+    measurements: Object.freeze(payload.measurements),
+    measurement_context: Object.freeze(payload.measurement_context),
+  });
+}
+
 function collectInstalledMeasurements() {
-  execFileSync("adb", ["logcat", "-c"], { stdio: "ignore" });
-  execFileSync("adb", ["shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", "gymtracker-devtest://__phase18-garmin-acceptance?mode=benchmark", PACKAGE], { stdio: "ignore" });
+  const adb = resolveAndroidTool("adb");
+  const runNonce = randomBytes(16).toString("hex");
+  execFileSync(adb, ["logcat", "-c"], { stdio: "ignore" });
+  execFileSync(adb, [
+    "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
+    `gymtracker-devtest://__phase18-garmin-acceptance?mode=benchmark&confirmation=${PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION}&nonce=${runNonce}`,
+    PACKAGE,
+  ], { stdio: "ignore" });
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const log = execFileSync("adb", ["logcat", "-d"], { encoding: "utf8" });
+    const pid = commandText(adb, ["shell", "pidof", PACKAGE]);
+    if (!/^\d+$/u.test(pid)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+      continue;
+    }
+    const log = execFileSync(adb, ["logcat", "--pid", pid, "-d"], { encoding: "utf8" });
     const line = log.split(/\r?\n/u).find((entry) => entry.includes(BENCHMARK_MARKER));
-    if (line !== undefined) return JSON.parse(line.slice(line.indexOf(BENCHMARK_MARKER) + BENCHMARK_MARKER.length));
+    if (line !== undefined) {
+      return Object.freeze({
+        producer_context: Object.freeze({
+          kind: "installed-route-log",
+          marker: BENCHMARK_MARKER,
+          run_nonce: runNonce,
+          source_pid: Number(pid),
+        }),
+        ...parseBenchmarkMarker(
+          JSON.parse(line.slice(line.indexOf(BENCHMARK_MARKER) + BENCHMARK_MARKER.length)),
+          runNonce,
+        ),
+      });
+    }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
   }
   fail("collector_timeout");
@@ -219,19 +349,22 @@ export function executePhase18GarminBenchmark(args = process.argv.slice(2), depe
   const readJson = dependencies.readJson ?? ((file) => JSON.parse(readFileSync(file, "utf8")));
   const readBytes = dependencies.readBytes ?? readFileSync;
   const collect = dependencies.collectMeasurements ?? collectInstalledMeasurements;
+  const currentIdentity = dependencies.resolveCurrentIdentity ?? resolveCurrentIdentity;
   const writeEvidence = dependencies.writeEvidence ?? ((value) => writeFileSync(options.evidence, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx" }));
   const manifest = readJson(options.manifest);
   const baselineBytes = readBytes(BASELINE);
   const baseline = JSON.parse(Buffer.from(baselineBytes).toString("utf8"));
   const collected = collect();
   const baselineSha256 = createHash("sha256").update(baselineBytes).digest("hex");
+  const identity = currentIdentity();
   const evidence = Object.freeze({
     schema_version: 1,
     suite: "phase18-garmin-acceptance",
     producer: "phase18-garmin-benchmark/v2",
+    producer_context: Object.freeze(collected.producer_context),
     status: "passed",
     identity: Object.freeze({
-      ...collected.identity,
+      ...identity,
       fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
       workout_baseline_sha256: baselineSha256,
     }),

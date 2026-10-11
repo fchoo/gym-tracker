@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it, jest } from "@jest/globals";
 import { act, renderHook } from "@testing-library/react-native";
 
@@ -30,6 +32,12 @@ jest.mock("expo-crypto", () => ({
 }));
 
 const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+const discoveryFixture = JSON.parse(
+  readFileSync(
+    path.join(process.cwd(), "tests/fixtures/garmin-json/discovery-running-summary.json"),
+    "utf8",
+  ),
+);
 
 function envelope(): GarminSourceEnvelope {
   const normalized = {
@@ -732,8 +740,8 @@ describe("Garmin import runtime", () => {
       },
     });
     const discovery = (activityId: number | string) => ({
+      ...discoveryFixture,
       activityId,
-      activityType: { typeKey: "running" },
     });
     mockGarminNativeModule = {
       runtimeInfo: jest.fn(async () => undefined),

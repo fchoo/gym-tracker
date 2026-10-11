@@ -303,7 +303,7 @@ printf 'build-current-native-test-apk: manifest=%s\n' "$build_manifest"
 printf 'build-current-native-test-apk: apk=%s\n' "$apk_path"
 printf 'build-current-native-test-apk: sha256=%s\n' "$apk_sha256"
 case "$suite" in
-  phase14 | phase14-* | phase18-garmin-proof)
+  phase14 | phase14-* | phase18-garmin-proof | phase18-garmin-acceptance | phase18-garmin-adversarial)
     printf 'build-current-native-test-apk: device_identity_sha256=%s api=%s abi=%s\n' \
       "$device_identity_sha256" "$device_api" "$device_abi"
     ;;

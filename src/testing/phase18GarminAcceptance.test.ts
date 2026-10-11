@@ -3,7 +3,10 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION,
+  PHASE18_GARMIN_BENCHMARK_MARKER,
+  createPhase18GarminBenchmarkMarkerReport,
   createPhase18GarminAcceptanceHarness,
+  phase18GarminAcceptanceBenchmarkEnabled,
   phase18GarminAcceptanceEnabled,
 } from "./phase18GarminAcceptance";
 import {
@@ -32,6 +35,33 @@ describe("Phase 18 deterministic acceptance harness", () => {
     ]) {
       expect(phase18GarminAcceptanceEnabled(rejected)).toBe(false);
     }
+  });
+
+  it("opens benchmark mode only for the guarded benchmark nonce path", () => {
+    const exact = {
+      buildProfile: "development-test",
+      nativeContractsEnabled: true,
+      suite: "phase18-garmin-acceptance",
+      confirmation: PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION,
+      mode: "benchmark",
+      nonce: "a".repeat(32),
+    };
+    expect(phase18GarminAcceptanceBenchmarkEnabled(exact)).toBe(true);
+    for (const rejected of [
+      { ...exact, mode: "view" },
+      { ...exact, nonce: "short" },
+      { ...exact, confirmation: "wrong" },
+    ]) {
+      expect(phase18GarminAcceptanceBenchmarkEnabled(rejected)).toBe(false);
+    }
+    expect(createPhase18GarminBenchmarkMarkerReport({
+      nonce: "a".repeat(32),
+      pid: 123,
+    })).toEqual(expect.objectContaining({
+      run_nonce: "a".repeat(32),
+      process_id: 123,
+      source: "installed-route-log",
+    }));
   });
 
   it("runs every host case in ledger order and leaves native proof explicitly deferred", async () => {
@@ -119,6 +149,9 @@ describe("Phase 18 deterministic acceptance harness", () => {
   it("keeps the route source-owned, guarded, synthetic-only, and free of proof relabeling", () => {
     const route = readFileSync("app/__phase18-garmin-acceptance.tsx", "utf8");
     expect(route).toContain("phase18GarminAcceptanceEnabled");
+    expect(route).toContain("phase18GarminAcceptanceBenchmarkEnabled");
+    expect(route).toContain("createPhase18GarminBenchmarkMarkerReport");
+    expect(route).toContain(PHASE18_GARMIN_BENCHMARK_MARKER);
     expect(route).toContain("synthetic-redacted-only");
     expect(route).toContain("host-passed-native-deferred");
     expect(route).not.toMatch(/status:\s*["']passed["']/u);

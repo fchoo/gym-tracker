@@ -1,0 +1,13 @@
+{
+  "activityId": 42,
+  "activityType": {
+    "typeKey": "running",
+    "typeId": 1
+  },
+  "summaryDTO": {
+    "startTimeGMT": "2026-06-20T00:00:00.000Z",
+    "distance": 5000,
+    "duration": 1500
+  },
+  "providerAddedUrl": "https://garmin.invalid/ignored-by-discovery-contract"
+}

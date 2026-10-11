@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
 import { Redirect, useLocalSearchParams } from "expo-router";
+import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
@@ -7,19 +8,50 @@ import {
   GARMIN_ACCEPTANCE_NATIVE_PREREQUISITE_IDS,
 } from "../src/testing/contracts/garminImport.contract";
 import {
+  PHASE18_GARMIN_BENCHMARK_MARKER,
+  createPhase18GarminBenchmarkMarkerReport,
+  phase18GarminAcceptanceBenchmarkEnabled,
   phase18GarminAcceptanceEnabled,
 } from "../src/testing/phase18GarminAcceptance";
 
+function Phase18GarminBenchmarkScreen({ nonce }: Readonly<{ nonce: string }>) {
+  const [status, setStatus] = React.useState("benchmark-pending");
+  React.useEffect(() => {
+    const report = createPhase18GarminBenchmarkMarkerReport({
+      nonce,
+      pid: 1,
+    });
+    console.log(`${PHASE18_GARMIN_BENCHMARK_MARKER}${JSON.stringify(report)}`);
+    setStatus("benchmark-ready");
+  }, [nonce]);
+  return (
+    <View style={styles.root} accessibilityLabel="Phase 18 Garmin benchmark">
+      <Text style={styles.title}>Phase 18 Garmin benchmark</Text>
+      <Text style={styles.status}>{status}</Text>
+      <Text style={styles.detail}>installed-route-log</Text>
+    </View>
+  );
+}
+
 export default function Phase18GarminAcceptanceScreen() {
-  const { confirmation } = useLocalSearchParams<{ confirmation?: string }>();
+  const { confirmation, mode, nonce } = useLocalSearchParams<{
+    confirmation?: string;
+    mode?: string;
+    nonce?: string;
+  }>();
   const extra = Constants.expoConfig?.extra;
-  const enabled = phase18GarminAcceptanceEnabled({
+  const params = {
     buildProfile: extra?.buildProfile,
     nativeContractsEnabled: extra?.nativeContractsEnabled,
     suite: extra?.nativeContractSuite,
     confirmation,
-  });
+    mode,
+    nonce,
+  };
+  const benchmarkEnabled = phase18GarminAcceptanceBenchmarkEnabled(params);
+  const enabled = phase18GarminAcceptanceEnabled(params);
 
+  if (benchmarkEnabled) return <Phase18GarminBenchmarkScreen nonce={nonce} />;
   if (!enabled) return <Redirect href="/" />;
 
   return (

@@ -195,7 +195,7 @@ function parseDiscovery(
   value: unknown,
   accountNamespace: string,
 ): GarminActivityDiscovery {
-  const summary = record(assertSafeJson(value));
+  const summary = record(value);
   const rawActivityId = summary.activityId;
   const externalActivityId = typeof rawActivityId === "number"
     && Number.isSafeInteger(rawActivityId)
@@ -203,9 +203,11 @@ function parseDiscovery(
       ? String(rawActivityId)
       : rawActivityId;
   const activityType = record(summary.activityType);
+  const typeKey = activityType.typeKey;
   if (typeof externalActivityId !== "string"
     || !EXTERNAL_ACTIVITY_ID.test(externalActivityId)
-    || activityType.typeKey !== "running") {
+    || typeof typeKey !== "string"
+    || typeKey !== "running") {
     throw new GarminActivityAdapterError("malformed_response");
   }
   return Object.freeze({

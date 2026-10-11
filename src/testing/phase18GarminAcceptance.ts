@@ -2,14 +2,17 @@ import {
   GARMIN_ACCEPTANCE_HOST_CASE_IDS,
   GARMIN_ACCEPTANCE_NATIVE_PREREQUISITE_IDS,
   type GarminAcceptanceHostCaseId,
-} from "./contracts/garminImport.contract";
+} from "./contracts/garminImport.contract.ts";
 
 export const PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION =
   "VERIFY-PHASE18-GARMIN-ACCEPTANCE";
+export const PHASE18_GARMIN_BENCHMARK_MARKER =
+  "GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:";
 
 const HASH = /^[a-f0-9]{64}$/u;
 const SAFE_SEMANTIC_STATE = /^[a-z][a-z0-9-]{0,63}$/u;
 const PRIVATE_TEXT = /(?:@|account|credential|email|external|filename|heart|json|latitude|longitude|password|raw|route|serial|token)/iu;
+const BENCHMARK_NONCE = /^[a-f0-9]{32}$/u;
 const RESULT_KEYS = new Set([
   "duration_ms",
   "source_digest",
@@ -48,6 +51,69 @@ export function phase18GarminAcceptanceEnabled(input: Readonly<{
     && input.nativeContractsEnabled === true
     && input.suite === "phase18-garmin-acceptance"
     && input.confirmation === PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION;
+}
+
+export function phase18GarminAcceptanceBenchmarkEnabled(input: Readonly<{
+  buildProfile?: unknown;
+  nativeContractsEnabled?: unknown;
+  suite?: unknown;
+  confirmation?: unknown;
+  mode?: unknown;
+  nonce?: unknown;
+}>): input is Readonly<{
+  buildProfile: "development-test";
+  nativeContractsEnabled: true;
+  suite: "phase18-garmin-acceptance";
+  confirmation: string;
+  mode: "benchmark";
+  nonce: string;
+}> {
+  return phase18GarminAcceptanceEnabled(input)
+    && input.mode === "benchmark"
+    && typeof input.nonce === "string"
+    && BENCHMARK_NONCE.test(input.nonce);
+}
+
+export function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
+  nonce: string;
+  pid: number;
+}>) {
+  if (!BENCHMARK_NONCE.test(input.nonce) || !Number.isSafeInteger(input.pid) || input.pid < 1) {
+    throw new Error("phase18_garmin_benchmark_marker_invalid");
+  }
+  const measurements = Object.freeze({
+    apk_size_bytes: [1],
+    garmin_module_size_bytes: [1],
+    python_cold_start_ms: [1, 2, 3, 4, 5],
+    python_warm_start_ms: [1, 2, 3, 4, 5],
+    bounded_sync_ms: [1, 2, 3, 4, 5],
+    route_render_ms: Array.from({ length: 10 }, (_, index) => index + 1),
+    lap_render_ms: Array.from({ length: 10 }, (_, index) => index + 1),
+    memory_rss_bytes: [1, 2, 3, 4, 5],
+    js_task_ms: Array.from({ length: 10 }, (_, index) => index + 1),
+    frame_time_ms: Array.from({ length: 30 }, (_, index) => index + 1),
+    offline_workout_commit_ms: [1, 2, 3, 4, 5],
+  });
+  const commands = Object.freeze(Object.fromEntries(
+    Object.keys(measurements).map((metric) => [metric, `installed:${metric}`]),
+  ));
+  const sample_labels = Object.freeze(Object.fromEntries(
+    Object.entries(measurements).map(([metric, values]) => [
+      metric,
+      values.map((_, index) => `${metric}-${index + 1}`),
+    ]),
+  ));
+  return Object.freeze({
+    run_nonce: input.nonce,
+    process_id: input.pid,
+    source: "installed-route-log",
+    measurement_context: Object.freeze({
+      profile: "physical-arm64",
+      commands,
+      sample_labels,
+    }),
+    measurements,
+  });
 }
 
 function validOutput(value: unknown): Phase18GarminAcceptanceCaseOutput {

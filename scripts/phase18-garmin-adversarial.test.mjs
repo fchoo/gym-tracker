@@ -410,9 +410,25 @@ test("verifier sealing is write-once and requires explicit Phase 20 authority", 
   const exact = evidence();
   const reads = (path) => path === MANIFEST ? manifest() : exact;
   const writes = [];
+  const resolveCurrentIdentity = () => ({
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+    nativeReportSha256: NATIVE_HASH,
+    privacyReportSha256: PRIVACY_HASH,
+  });
   assert.deepEqual(executePhase18GarminAdversarialVerifier([
     "--manifest", MANIFEST,
-  ], { readJson: reads, readBytes: (path) => path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES, writeFinalEvidence: (...args) => writes.push(args) }), {
+  ], {
+    readJson: reads,
+    readBytes: (path) => path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES,
+    writeFinalEvidence: (...args) => writes.push(args),
+    resolveCurrentIdentity,
+  }), {
     status: "passed",
     cases: 16,
     final_evidence_written: false,
@@ -429,7 +445,12 @@ test("verifier sealing is write-once and requires explicit Phase 20 authority", 
     "--manifest", MANIFEST,
     "--seal",
     "--phase20-native-checkpoint",
-  ], { readJson: reads, readBytes: (path) => path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES, writeFinalEvidence: (...args) => writes.push(args) }), {
+  ], {
+    readJson: reads,
+    readBytes: (path) => path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES,
+    writeFinalEvidence: (...args) => writes.push(args),
+    resolveCurrentIdentity,
+  }), {
     status: "passed",
     cases: 16,
     final_evidence_written: true,
