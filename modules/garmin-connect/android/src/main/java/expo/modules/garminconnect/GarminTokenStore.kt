@@ -94,7 +94,11 @@ internal class AndroidGarminAtomicWriter : GarminAtomicWriter {
       }
       Os.rename(target.absolutePath, tombstone.absolutePath)
       fsyncDirectory(parent)
-      if (tombstone.exists() && tombstone.delete()) fsyncDirectory(parent)
+      val deleted = !tombstone.exists() || tombstone.delete()
+      if (!deleted || tombstone.exists()) {
+        throw GarminTokenStoreException("garmin_token_clear_failed")
+      }
+      fsyncDirectory(parent)
     } catch (error: GarminTokenStoreException) {
       throw error
     } catch (_: Throwable) {

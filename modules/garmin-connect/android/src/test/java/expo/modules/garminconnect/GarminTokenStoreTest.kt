@@ -91,6 +91,21 @@ class GarminTokenStoreTest {
   }
 
   @Test
+  fun `clear fails closed when tombstone deletion leaves encrypted bytes on disk`() {
+    val root = temporaryFolder.newFolder("clear-tombstone-failure")
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), TombstoneDeleteFailWriter())
+    store.replace("synthetic-di-session".toByteArray())
+
+    val error = assertThrows(GarminTokenStoreException::class.java) {
+      store.clear()
+    }
+
+    assertEquals("garmin_token_clear_failed", error.code)
+    assertFalse(store.recordFileForTest().exists())
+    assertTrue(File(root, ".garmin-di-session.bin.deleted").exists())
+  }
+
+  @Test
   fun `worker persists login and refresh rotations then clears them on fenced logout`() {
     val store = MemorySessionStore()
     val dispatcher = RecordingDispatcher(
@@ -596,6 +611,23 @@ private class VerifyThenFailWriter : GarminAtomicWriter {
   }
 
   override fun remove(target: File) = JvmAtomicWriter().remove(target)
+}
+
+private class TombstoneDeleteFailWriter : GarminAtomicWriter {
+  override fun replace(target: File, bytes: ByteArray, verify: (File) -> Unit) =
+    JvmAtomicWriter().replace(target, bytes, verify)
+
+  override fun remove(target: File) {
+    if (!target.exists()) return
+    val tombstone = File(target.parentFile, ".${target.name}.deleted")
+    Files.move(
+      target.toPath(),
+      tombstone.toPath(),
+      StandardCopyOption.ATOMIC_MOVE,
+      StandardCopyOption.REPLACE_EXISTING,
+    )
+    throw GarminTokenStoreException("garmin_token_clear_failed")
+  }
 }
 
 private class JvmAesGcmCipher : GarminTokenCipher {

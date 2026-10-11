@@ -73,6 +73,28 @@ def provider_error(name, *, status=None, retry_after=None):
 
 
 class GarminBridgeTests(unittest.TestCase):
+    def test_logout_and_reauth_reuse_a_stable_opaque_namespace_for_the_same_account(self):
+        first = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: FakeClient())
+        second = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: FakeClient())
+        different = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: type(
+            "OtherClient",
+            (FakeClient,),
+            {"dumps": lambda self: json.dumps({"di_token": "fixture-1", "di_refresh_token": "fixture-refresh", "di_client_id": "other-client"})},
+        )())
+
+        first_connected = first.dispatch("login", {"email": "owner@example.test", "password": "synthetic-secret"})
+        first.dispatch("logout", {})
+        second_connected = second.dispatch("login", {"email": "renamed@example.test", "password": "synthetic-secret"})
+        different_connected = different.dispatch("login", {"email": "other@example.test", "password": "synthetic-secret"})
+
+        self.assertEqual(first_connected["data"]["account_namespace"], second_connected["data"]["account_namespace"])
+        self.assertNotEqual(first_connected["data"]["account_namespace"], different_connected["data"]["account_namespace"])
+        self.assertRegex(first_connected["data"]["account_namespace"], r"^garmin:[a-f0-9]{32}$")
+        self.assertNotRegex(
+            json.dumps([first_connected, second_connected, different_connected]),
+            r"owner@example|renamed@example|other@example|fixture-client|other-client",
+        )
+
     def test_account_namespace_is_locally_generated_and_survives_profile_rename(self):
         namespace = ACCOUNT_NAMESPACE
         first_client = FakeClient()

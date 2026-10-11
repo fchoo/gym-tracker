@@ -7,6 +7,7 @@ import {
   confirmGarminImportDate,
   prepareGarminImport,
   resolveGarminImportRevision,
+  type GarminRevisionDecisionInput,
   type ImportedActivityCommandRepository,
   type ImportedActivityLifecycleRepository,
   type ImportedActivityRevisionRepository,
@@ -70,7 +71,7 @@ describe("Garmin import commands", () => {
   it("validates revision decisions before forwarding them to the repository", async () => {
     const repository: ImportedActivityRevisionRepository = {
       listGarminRevisionReviews: jest.fn(async () => []),
-      resolveGarminRevision: jest.fn(async (input) => ({
+      resolveGarminRevision: jest.fn(async (input: GarminRevisionDecisionInput) => ({
         kind: input.action === "accept" ? "revision_accepted" as const : "revision_kept" as const,
         activityId: input.activityId,
         aggregateRevision: input.proposedRevision,

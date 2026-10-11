@@ -279,10 +279,10 @@ describe("Garmin import runtime", () => {
     expect(repository.confirmGarminImport).not.toHaveBeenCalled();
   });
 
-  it.each([
+  it.each<readonly [330 | -90, "UTC-01:30" | "UTC+05:30"]>([
     [-90, "UTC-01:30"],
     [330, "UTC+05:30"],
-  ] as const)("derives %s-minute source offsets as %s without consulting the phone zone", async (offset, expectedZone) => {
+  ])("derives %s-minute source offsets as %s without consulting the phone zone", async (offset, expectedZone) => {
     const sourceEnvelope = envelopeWithSourceDate({
       sourceLocalDateTime: "2026-06-20T08:00:00",
       sourceUtcOffsetMinutes: offset,

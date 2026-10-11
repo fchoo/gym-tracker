@@ -130,11 +130,11 @@ class GarminBridge:
         *,
         client_factory: Callable[..., Any] | None = None,
         handle_factory: Callable[[], str] | None = None,
-        namespace_factory: Callable[[], str] | None = None,
+        namespace_factory: Callable[..., str] | None = None,
     ) -> None:
         self._client_factory = client_factory or _default_client_factory
         self._handle_factory = handle_factory or (lambda: secrets.token_urlsafe(24))
-        self._namespace_factory = namespace_factory or (lambda: f"garmin:{secrets.token_hex(16)}")
+        self._namespace_factory = namespace_factory
         self._client: Any = None
         self._pending_client: Any = None
         self._pending_handle: str | None = None
@@ -200,9 +200,19 @@ class GarminBridge:
             return {"kind": "connected", "account_namespace": self._account_namespace}
         return {"kind": "disconnected"}
 
-    def _capture_tokens(self) -> None:
-        if self._client is None or self._account_namespace is None:
-            return
+    def _derive_account_namespace(self, client_id: str) -> str:
+        if self._namespace_factory is not None:
+            try:
+                candidate = self._namespace_factory(client_id)
+            except TypeError:
+                candidate = self._namespace_factory()
+            return _safe_namespace(candidate)
+        digest = hashlib.sha256(f"garmin-di-client:{client_id}".encode("utf-8")).hexdigest()
+        return _safe_namespace(f"garmin:{digest[:32]}")
+
+    def _read_token_data(self) -> dict[str, str]:
+        if self._client is None:
+            raise _BridgeInputError("sign_in_required")
         payload = self._client.client.dumps()
         if not isinstance(payload, str) or not payload:
             raise _BridgeInputError("sign_in_required")
@@ -215,6 +225,17 @@ class GarminBridge:
             for key in ("di_token", "di_refresh_token", "di_client_id")
         ):
             raise _BridgeInputError("sign_in_required")
+        return {
+            "di_client_id": token_data["di_client_id"],
+            "di_refresh_token": token_data["di_refresh_token"],
+            "di_token": token_data["di_token"],
+        }
+
+    def _capture_tokens(self, token_data: dict[str, str] | None = None) -> None:
+        if self._client is None or self._account_namespace is None:
+            return
+        if token_data is None:
+            token_data = self._read_token_data()
         self._pending_token_payload = json.dumps(
             {
                 "di_client_id": token_data["di_client_id"],
@@ -252,8 +273,9 @@ class GarminBridge:
                 self._pending_handle = handle
                 return self._success({"kind": "mfa_required", "challenge_handle": handle})
             self._client = client
-            self._account_namespace = _safe_namespace(self._namespace_factory())
-            self._capture_tokens()
+            token_data = self._read_token_data()
+            self._account_namespace = self._derive_account_namespace(token_data["di_client_id"])
+            self._capture_tokens(token_data)
             return self._success(self._connection_state())
         finally:
             values.pop("email", None)
@@ -274,8 +296,9 @@ class GarminBridge:
             self._client = self._pending_client
             self._pending_client = None
             self._pending_handle = None
-            self._account_namespace = _safe_namespace(self._namespace_factory())
-            self._capture_tokens()
+            token_data = self._read_token_data()
+            self._account_namespace = self._derive_account_namespace(token_data["di_client_id"])
+            self._capture_tokens(token_data)
             return self._success(self._connection_state())
         finally:
             values.pop("challengeHandle", None)

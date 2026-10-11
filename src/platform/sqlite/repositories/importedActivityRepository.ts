@@ -5,9 +5,13 @@ import type {
   GarminRevisionDecisionResult,
   GarminRevisionReview,
 } from "../../../domains/activities/importCommands";
-import { canonicalJson } from "../../../domains/activities/importContracts";
+import {
+  canonicalJson,
+  parseGarminSourceEnvelope,
+} from "../../../domains/activities/importContracts";
 import type { GarminActivityLifecycleInput } from "../../../domains/activities/importCommands";
 import { classifyGarminActivityIdentity } from "../../../domains/activities/activityIdentity";
+import { runtimeSha256 } from "../../crypto/runtimeSha256";
 import type { SqliteKernel } from "../sqliteKernel";
 
 type Receipt = Readonly<{ request_sha256: string; activity_id: string }>;
@@ -40,6 +44,7 @@ function aggregateJson(input: ConfirmGarminImportInput): string {
 }
 
 export function createImportedActivityRepository(kernel: SqliteKernel) {
+  const sha256 = runtimeSha256;
   return Object.freeze({
     async listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]> {
       const rows = await kernel.queryAll<{
@@ -91,6 +96,11 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
           if (receipt.request_sha256 !== input.requestSha256 || receipt.activity_id !== input.activityId) {
             return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision });
           }
+          const [identity] = await transaction.queryAll<{ aggregate_revision: number }>(
+            "SELECT aggregate_revision FROM imported_activity_identities WHERE activity_id = ?",
+            [receipt.activity_id],
+          );
+          const aggregateRevision = identity?.aggregate_revision ?? input.expectedAggregateRevision;
           const [decision] = await transaction.queryAll<{ action: "accept" | "keep" }>(
             "SELECT action FROM imported_activity_revision_decisions WHERE request_id = ?",
             [input.requestId],
@@ -98,7 +108,7 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
           return Object.freeze({
             kind: decision?.action === "accept" ? "revision_accepted" : decision?.action === "keep" ? "revision_kept" : "replayed",
             activityId: input.activityId,
-            aggregateRevision: decision?.action === "accept" ? input.proposedRevision : input.expectedAggregateRevision,
+            aggregateRevision: decision?.action === "accept" ? aggregateRevision : aggregateRevision,
           });
         }
         const [identity] = await transaction.queryAll<{
@@ -185,9 +195,33 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
     },
     async confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult> {
       return kernel.write(async (transaction) => {
+        const reparsedEnvelope = parseGarminSourceEnvelope(input.staged.envelope);
+        const canonicalPayloadJson = canonicalJson({
+          normalization_version: reparsedEnvelope.normalization_version,
+          normalized: reparsedEnvelope.normalized,
+        });
+        if (canonicalPayloadJson !== input.staged.canonical_payload_json) {
+          return Object.freeze({
+            kind: "conflict",
+            activityId: input.activityId,
+            aggregateRevision: input.expectedAggregateRevision,
+          });
+        }
+        const canonicalDigest = await sha256(canonicalPayloadJson);
+        if (canonicalDigest !== reparsedEnvelope.normalized_json_sha256) {
+          return Object.freeze({
+            kind: "conflict",
+            activityId: input.activityId,
+            aggregateRevision: input.expectedAggregateRevision,
+          });
+        }
         const [receipt] = await transaction.queryAll<Receipt>("SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?", [input.requestId]);
         if (receipt !== undefined) {
           if (receipt.request_sha256 !== input.requestSha256) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision });
+          const [identity] = await transaction.queryAll<{ aggregate_revision: number }>(
+            "SELECT aggregate_revision FROM imported_activity_identities WHERE activity_id = ?",
+            [receipt.activity_id],
+          );
           const [proposal] = await transaction.queryAll<{ proposed_revision: number }>(
             `SELECT proposal.proposed_revision
                FROM imported_activity_revision_proposals proposal
@@ -203,7 +237,7 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
             return Object.freeze({
               kind: "revision_review",
               activityId: receipt.activity_id,
-              aggregateRevision: proposal.proposed_revision - 1,
+              aggregateRevision: identity?.aggregate_revision ?? input.expectedAggregateRevision,
             });
           }
           const [replayed] = await transaction.queryAll<{ aggregate_revision: number; removal_state: "active" | "removed" }>(`SELECT identity.aggregate_revision,
@@ -214,7 +248,7 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
           if (replayed === undefined) throw new Error("imported_activity_receipt_orphaned");
           return Object.freeze({ kind: replayed.removal_state === "removed" ? "removed" : "replayed", activityId: receipt.activity_id, aggregateRevision: replayed.aggregate_revision });
         }
-        const envelope = input.staged.envelope;
+        const envelope = reparsedEnvelope;
         const [existing] = await transaction.queryAll<{ activity_id: string; aggregate_revision: number; accepted_normalized_sha256: string; removal_state: "active" | "removed" }>(
           `SELECT identity.activity_id, identity.aggregate_revision, identity.accepted_normalized_sha256,
                   COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state

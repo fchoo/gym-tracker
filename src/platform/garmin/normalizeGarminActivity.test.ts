@@ -219,7 +219,9 @@ describe("normalize Garmin activity", () => {
 
   it("preserves timezone-only evidence and canonicalizes fractional local time", async () => {
     const timezoneOnly = outdoorFixture();
-    timezoneOnly.activity.summaryDTO.timeZoneId = "Asia/Singapore";
+    Object.assign(timezoneOnly.activity.summaryDTO as { timeZoneId?: string }, {
+      timeZoneId: "Asia/Singapore",
+    });
     const fractional = outdoorFixture();
     Object.assign(fractional.activity.summaryDTO, {
       startTimeGMT: "2026-10-05T23:30:00.100Z",
