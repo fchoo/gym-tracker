@@ -33,6 +33,22 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const SAFE_CODE = /^[a-z][a-z0-9_]{0,63}$/u;
+const TECHNICAL_REVIEW_CODES = new Set([
+  "arguments_rejected",
+  "data_access_denied",
+  "invalid_credentials",
+  "malformed_response",
+  "mfa_expired",
+  "offline",
+  "operation_rejected",
+  "packaging_failed",
+  "privacy_scan_failed",
+  "rate_limited",
+  "sign_in_required",
+  "stale_generation",
+  "temporary_failure",
+  "timeout",
+]);
 const PROOF_TIMEOUT_MS = 15 * 60 * 1_000;
 const PRIVATE_LOG_PATTERN = /(?:access[_-]?token|refresh[_-]?token|credential|password|authorization|cookie|mfa[_-]?code|https?:\/\/|activity[_-]?id|latitude|longitude|heart[_-]?rate|bodyweight|sql[_-]?params?)/iu;
 const MANIFEST_KEYS = Object.freeze([
@@ -317,6 +333,63 @@ function orderedReportCases(cases) {
   return Object.freeze(sorted);
 }
 
+export function createPhase18GarminTechnicalReviewReport(input) {
+  validatePhase18GarminProofBuildManifest(input.manifest, {
+    currentHead: input.manifest?.base_head,
+    currentSourceTreeSha256: input.manifest?.source_tree_sha256,
+    currentPythonLockSha256: input.manifest?.python_lock_sha256,
+    retainedApkSha256: input.manifest?.apk_sha256,
+    retainedSignatureSha256: input.manifest?.signature_sha256,
+    deviceIdentitySha256: input.manifest?.device_identity_sha256,
+  });
+  const stageIndex = PHASE18_GARMIN_PROOF_CASE_IDS.indexOf(input.stage);
+  if (
+    stageIndex < 0
+    || stageIndex !== input.passedCases.length
+    || !TECHNICAL_REVIEW_CODES.has(input.code)
+    || input.passedCases.some((entry, index) => (
+      entry.id !== PHASE18_GARMIN_PROOF_CASE_IDS[index]
+      || entry.status !== "passed"
+    ))
+  ) fail("case_order_invalid");
+  const cases = Object.freeze([
+    ...input.passedCases,
+    Object.freeze({
+      id: input.stage,
+      status: "TECHNICAL_REVIEW_REQUIRED",
+      duration_ms: 0,
+      code: input.code,
+    }),
+  ]);
+  const reportDigest = sha256(JSON.stringify({
+    manifest: input.manifest,
+    cases,
+  }));
+  return Object.freeze({
+    schema_version: 1,
+    suite: "phase18-garmin-proof",
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    manifest: Object.freeze({ ...input.manifest }),
+    cases,
+    standalone: createPhase18GarminProofRunnerPlan().standalone,
+    privacy_scan: Object.freeze({
+      status: "passed",
+      scanned_artifact_count: 1,
+      report_sha256: reportDigest,
+    }),
+    failure_stage: input.stage,
+    failure_code: input.code,
+  });
+}
+
+function classifyRunnerFailure(stage, error) {
+  const message = error instanceof Error ? error.message : "";
+  if (/(?:privacy|backup_path)/u.test(message)) return "privacy_scan_failed";
+  if (stage === "PH18-PKG") return "packaging_failed";
+  if (/timeout/u.test(message)) return "timeout";
+  return "temporary_failure";
+}
+
 function writeFreshReport(report) {
   const directory = path.resolve(ROOT, PHASE18_GARMIN_PROOF_ARTIFACT_ROOT);
   mkdirSync(directory, { recursive: true });
@@ -342,124 +415,148 @@ export function executePhase18GarminProofRunner(
   const manifest = JSON.parse(readFileSync(path.resolve(ROOT, options.manifest), "utf8"));
   const apkPath = path.resolve(ROOT, PHASE18_GARMIN_PROOF_APK);
   if (!existsSync(apkPath)) fail("apk_missing");
-  const adb = resolveAndroidTool("adb");
-  const device = discoverDevice(native, adb);
   validatePhase18GarminProofBuildManifest(manifest, {
     currentHead: commandText(native, "git", ["rev-parse", "HEAD"]),
     currentSourceTreeSha256: sourceTreeSha256(ROOT),
     currentPythonLockSha256: sha256(readFileSync(path.resolve(ROOT, PYTHON_LOCK))),
     retainedApkSha256: sha256(readFileSync(apkPath)),
     retainedSignatureSha256: certificateSha256(native, apkPath),
-    deviceIdentitySha256: device.identitySha256,
   });
+  let completedCases = [];
+  let currentStage = "PH18-PKG";
+  let report;
+  try {
+    const adb = resolveAndroidTool("adb");
+    const device = discoverDevice(native, adb);
+    if (device.identitySha256 !== manifest.device_identity_sha256) {
+      fail("device_identity_invalid");
+    }
+    const packageStartedAt = Date.now();
+    adbText(native, adb, device.serial, "install", "-r", apkPath);
+    const installedPathOutput = adbText(
+      native,
+      adb,
+      device.serial,
+      "shell",
+      "pm",
+      "path",
+      PACKAGE,
+    );
+    const installedPath = installedPathOutput.replace(/^package:/u, "");
+    if (!installedPath.startsWith("/data/app/")) fail("installed_apk_path_invalid");
+    const installedBytes = native(adb, [
+      "-s",
+      device.serial,
+      "exec-out",
+      "cat",
+      installedPath,
+    ]);
+    if (sha256(installedBytes) !== manifest.apk_sha256) fail("installed_apk_mismatch");
+    const packageCase = Object.freeze({
+      id: "PH18-PKG",
+      status: "passed",
+      duration_ms: Date.now() - packageStartedAt,
+      result_sha256: manifest.apk_sha256,
+    });
+    completedCases = [packageCase];
+    currentStage = "PH18-LOGIN";
 
-  const packageStartedAt = Date.now();
-  adbText(native, adb, device.serial, "install", "-r", apkPath);
-  const installedPathOutput = adbText(
-    native,
-    adb,
-    device.serial,
-    "shell",
-    "pm",
-    "path",
-    PACKAGE,
-  );
-  const installedPath = installedPathOutput.replace(/^package:/u, "");
-  if (!installedPath.startsWith("/data/app/")) fail("installed_apk_path_invalid");
-  const installedBytes = native(adb, [
-    "-s",
-    device.serial,
-    "exec-out",
-    "cat",
-    installedPath,
-  ]);
-  if (sha256(installedBytes) !== manifest.apk_sha256) fail("installed_apk_mismatch");
-  const packageCase = Object.freeze({
-    id: "PH18-PKG",
-    status: "passed",
-    duration_ms: Date.now() - packageStartedAt,
-    result_sha256: manifest.apk_sha256,
-  });
-
-  adbText(native, adb, device.serial, "logcat", "-c");
-  launchRoute(native, adb, device.serial, "login");
-  const login = waitForCase(native, adb, device.serial, "PH18-READ");
-  const loginFailure = login.cases.some(
-    ({ status }) => status === "TECHNICAL_REVIEW_REQUIRED",
-  );
-  let restore = Object.freeze({ log: "", cases: Object.freeze([]) });
-  if (!loginFailure) {
-    adbText(native, adb, device.serial, "shell", "am", "force-stop", PACKAGE);
     adbText(native, adb, device.serial, "logcat", "-c");
-    launchRoute(native, adb, device.serial, "restore");
-    restore = waitForCase(native, adb, device.serial, "PH18-REFRESH");
-  }
-  const combinedLog = `${login.log}\n${restore.log}`;
-  if (PRIVATE_LOG_PATTERN.test(combinedLog)) fail("privacy_scan_failed");
-  const backupFiles = adbText(
-    native,
-    adb,
-    device.serial,
-    "shell",
-    "run-as",
-    PACKAGE,
-    "find",
-    "files",
-    "shared_prefs",
-    "databases",
-    "-type",
-    "f",
-  );
-  if (/(?:garmin|session|token)/iu.test(backupFiles)) fail("backup_path_invalid");
-  const proofCases = orderedReportCases([
-    packageCase,
-    ...login.cases,
-    ...restore.cases,
-  ]);
-  const failure = proofCases.find(
-    ({ status }) => status === "TECHNICAL_REVIEW_REQUIRED",
-  );
-  if (failure === undefined) {
-    adbText(
+    launchRoute(native, adb, device.serial, "login");
+    const login = waitForCase(native, adb, device.serial, "PH18-READ");
+    const loginFailure = login.cases.some(
+      ({ status }) => status === "TECHNICAL_REVIEW_REQUIRED",
+    );
+    completedCases = orderedReportCases([
+      packageCase,
+      ...login.cases.filter(({ status }) => status === "passed"),
+    ]);
+    let restore = Object.freeze({ log: "", cases: Object.freeze([]) });
+    if (!loginFailure) {
+      currentStage = "PH18-RESTART";
+      adbText(native, adb, device.serial, "shell", "am", "force-stop", PACKAGE);
+      adbText(native, adb, device.serial, "logcat", "-c");
+      launchRoute(native, adb, device.serial, "restore");
+      restore = waitForCase(native, adb, device.serial, "PH18-REFRESH");
+    }
+    const proofCases = orderedReportCases([
+      packageCase,
+      ...login.cases,
+      ...restore.cases,
+    ]);
+    const failure = proofCases.find(
+      ({ status }) => status === "TECHNICAL_REVIEW_REQUIRED",
+    );
+    completedCases = proofCases.filter(({ status }) => status === "passed");
+    currentStage = failure?.id ?? "PH18-PRIVACY";
+
+    const combinedLog = `${login.log}\n${restore.log}`;
+    if (PRIVATE_LOG_PATTERN.test(combinedLog)) fail("privacy_scan_failed");
+    const backupFiles = adbText(
       native,
       adb,
       device.serial,
       "shell",
       "run-as",
       PACKAGE,
-      "test",
-      "-f",
-      "no_backup/garmin-session/garmin-di-session.bin",
+      "find",
+      "files",
+      "shared_prefs",
+      "databases",
+      "-type",
+      "f",
     );
-  }
-  const cases = failure === undefined
-    ? orderedReportCases([
-      ...proofCases,
-      Object.freeze({
-        id: "PH18-PRIVACY",
+    if (/(?:garmin|session|token)/iu.test(backupFiles)) fail("backup_path_invalid");
+    if (failure === undefined) {
+      adbText(
+        native,
+        adb,
+        device.serial,
+        "shell",
+        "run-as",
+        PACKAGE,
+        "test",
+        "-f",
+        "no_backup/garmin-session/garmin-di-session.bin",
+      );
+    }
+    const cases = failure === undefined
+      ? orderedReportCases([
+        ...proofCases,
+        Object.freeze({
+          id: "PH18-PRIVACY",
+          status: "passed",
+          duration_ms: 0,
+          count: 1,
+          result_sha256: sha256(combinedLog),
+        }),
+      ])
+      : proofCases;
+    report = Object.freeze({
+      schema_version: 1,
+      suite: "phase18-garmin-proof",
+      status: failure === undefined ? "passed" : "TECHNICAL_REVIEW_REQUIRED",
+      manifest: Object.freeze({ ...manifest }),
+      cases,
+      standalone: plan.standalone,
+      privacy_scan: Object.freeze({
         status: "passed",
-        duration_ms: 0,
-        count: 1,
-        result_sha256: sha256(combinedLog),
+        scanned_artifact_count: 2,
+        report_sha256: sha256(combinedLog),
       }),
-    ])
-    : proofCases;
-  const report = Object.freeze({
-    schema_version: 1,
-    suite: "phase18-garmin-proof",
-    status: failure === undefined ? "passed" : "TECHNICAL_REVIEW_REQUIRED",
-    manifest: Object.freeze({ ...manifest }),
-    cases,
-    standalone: plan.standalone,
-    privacy_scan: Object.freeze({
-      status: "passed",
-      scanned_artifact_count: 2,
-      report_sha256: sha256(combinedLog),
-    }),
-    ...(failure === undefined
-      ? {}
-      : { failure_stage: failure.id, failure_code: failure.code }),
-  });
+      ...(failure === undefined
+        ? {}
+        : { failure_stage: failure.id, failure_code: failure.code }),
+    });
+  } catch (error) {
+    report = createPhase18GarminTechnicalReviewReport({
+      manifest,
+      passedCases: completedCases,
+      stage: currentStage,
+      code: classifyRunnerFailure(currentStage, error),
+      privateError: error,
+    });
+  }
   reportWriter(report);
   return Object.freeze({
     status: report.status,

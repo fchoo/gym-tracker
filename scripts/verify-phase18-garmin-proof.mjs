@@ -36,6 +36,8 @@ const SAFE_FAILURE_CODES = new Set([
   "mfa_expired",
   "offline",
   "operation_rejected",
+  "packaging_failed",
+  "privacy_scan_failed",
   "rate_limited",
   "sign_in_required",
   "stale_generation",
