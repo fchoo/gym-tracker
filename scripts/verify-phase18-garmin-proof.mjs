@@ -18,6 +18,7 @@ import {
   PHASE18_GARMIN_PROOF_APK,
   PHASE18_GARMIN_PROOF_ARTIFACT_ROOT,
   PHASE18_GARMIN_PROOF_RAW_REPORT,
+  sanitizePhase18GarminProofBuildManifest,
   validatePhase18GarminProofBuildManifest,
 } from "./run-phase18-garmin-proof.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
@@ -390,8 +391,15 @@ function currentIdentity(rawReportBytes) {
 
 export function executePhase18GarminProofVerifier(args = process.argv.slice(2)) {
   const options = parsePhase18GarminProofVerifierArgs(args);
-  const manifest = JSON.parse(readRegularFile(options.manifest, "manifest").toString("utf8"));
+  const retainedManifest = JSON.parse(
+    readRegularFile(options.manifest, "manifest").toString("utf8"),
+  );
   const rawReportBytes = readRegularFile(PHASE18_GARMIN_PROOF_RAW_REPORT, "raw_report");
+  const identity = currentIdentity(rawReportBytes);
+  const manifest = sanitizePhase18GarminProofBuildManifest(retainedManifest, {
+    currentPythonLockSha256: identity.currentPythonLockSha256,
+    retainedSignatureSha256: identity.retainedSignatureSha256,
+  });
   let evidence;
   if (options.seal) {
     const report = JSON.parse(rawReportBytes.toString("utf8"));
@@ -402,7 +410,7 @@ export function executePhase18GarminProofVerifier(args = process.argv.slice(2)) 
     });
     validatePhase18GarminProofCurrentIdentity(
       evidence,
-      currentIdentity(rawReportBytes),
+      identity,
     );
     writeFileSync(
       path.resolve(ROOT, FINAL_EVIDENCE),
@@ -412,9 +420,12 @@ export function executePhase18GarminProofVerifier(args = process.argv.slice(2)) 
   } else {
     evidence = JSON.parse(readRegularFile(FINAL_EVIDENCE, "final").toString("utf8"));
     validatePhase18GarminProofEvidence(evidence);
+    if (!isDeepStrictEqual(evidence.manifest, manifest)) {
+      fail("report_identity_invalid");
+    }
     validatePhase18GarminProofCurrentIdentity(
       evidence,
-      currentIdentity(rawReportBytes),
+      identity,
     );
   }
   return validatePhase18GarminProofEvidence(evidence);

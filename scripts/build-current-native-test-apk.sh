@@ -243,7 +243,7 @@ BUILD_MANIFEST="$build_manifest" \
   node <<'NODE'
 import { renameSync, writeFileSync } from 'node:fs';
 
-const privacyBoundedManifest = /^phase14(?:-|$)/u.test(process.env.SUITE ?? '');
+const privacyBoundedManifest = /^(?:phase14(?:-|$)|phase18-garmin-proof$)/u.test(process.env.SUITE ?? '');
 const manifest = {
   schema_version: 1,
   suite: process.env.SUITE,
@@ -302,5 +302,13 @@ NODE
 printf 'build-current-native-test-apk: manifest=%s\n' "$build_manifest"
 printf 'build-current-native-test-apk: apk=%s\n' "$apk_path"
 printf 'build-current-native-test-apk: sha256=%s\n' "$apk_sha256"
-printf 'build-current-native-test-apk: device=%s api=%s abi=%s\n' \
-  "$device_serial" "$device_api" "$device_abi"
+case "$suite" in
+  phase14 | phase14-* | phase18-garmin-proof)
+    printf 'build-current-native-test-apk: device_identity_sha256=%s api=%s abi=%s\n' \
+      "$device_identity_sha256" "$device_api" "$device_abi"
+    ;;
+  *)
+    printf 'build-current-native-test-apk: device=%s api=%s abi=%s\n' \
+      "$device_serial" "$device_api" "$device_abi"
+    ;;
+esac

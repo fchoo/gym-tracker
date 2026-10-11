@@ -23,7 +23,7 @@ const ROOT = process.cwd();
 export const PHASE18_GARMIN_PROOF_ARTIFACT_ROOT =
   "artifacts/native/phase18-garmin-proof";
 export const PHASE18_GARMIN_PROOF_APK =
-  `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/phase18-garmin-proof.apk`;
+  `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-proof-devtest.apk`;
 export const PHASE18_GARMIN_PROOF_RAW_REPORT =
   `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/raw-report.json`;
 
@@ -154,6 +154,55 @@ export function validatePhase18GarminProofBuildManifest(manifest, current) {
     )
   ) fail("manifest_invalid");
   return true;
+}
+
+export function sanitizePhase18GarminProofBuildManifest(retained, current) {
+  if (
+    retained?.schema_version !== 1
+    || retained.suite !== "phase18-garmin-proof"
+    || retained.profile !== "development-test"
+    || retained.build_variant !== "release"
+    || retained.js_bundle?.embedded !== true
+    || retained.package !== PACKAGE
+    || retained.apk?.path !== PHASE18_GARMIN_PROOF_APK
+    || !HASH.test(retained.apk?.sha256 ?? "")
+    || retained.apk?.page_alignment_verified !== true
+    || retained.installed_apk?.matches_retained_apk !== true
+    || retained.installed_apk?.sha256 !== retained.apk.sha256
+    || retained.device?.abi !== "arm64-v8a"
+    || !HASH.test(retained.device?.identity_sha256 ?? "")
+    || retained.device?.serial !== undefined
+    || retained.installed_apk?.device_path !== undefined
+  ) {
+    if (
+      retained?.device?.serial !== undefined
+      || retained?.installed_apk?.device_path !== undefined
+    ) fail("build_manifest_privacy_invalid");
+    fail("build_manifest_invalid");
+  }
+  const sanitized = Object.freeze({
+    schema_version: 1,
+    suite: "phase18-garmin-proof",
+    profile: "development-test",
+    package: PACKAGE,
+    abi: "arm64-v8a",
+    js_bundle_embedded: true,
+    base_head: retained.base_head,
+    source_tree_sha256: retained.source_tree_sha256,
+    python_lock_sha256: current.currentPythonLockSha256,
+    apk_sha256: retained.apk.sha256,
+    signature_sha256: current.retainedSignatureSha256,
+    device_identity_sha256: retained.device.identity_sha256,
+  });
+  validatePhase18GarminProofBuildManifest(sanitized, {
+    currentHead: retained.base_head,
+    currentSourceTreeSha256: retained.source_tree_sha256,
+    currentPythonLockSha256: current.currentPythonLockSha256,
+    retainedApkSha256: retained.apk.sha256,
+    retainedSignatureSha256: current.retainedSignatureSha256,
+    deviceIdentitySha256: retained.device.identity_sha256,
+  });
+  return sanitized;
 }
 
 export function parsePhase18GarminProofMarker(line) {
@@ -412,15 +461,23 @@ export function executePhase18GarminProofRunner(
 
   const native = dependencies.native ?? defaultNative;
   const reportWriter = dependencies.writeEvidence ?? writeFreshReport;
-  const manifest = JSON.parse(readFileSync(path.resolve(ROOT, options.manifest), "utf8"));
+  const retainedManifest = JSON.parse(readFileSync(path.resolve(ROOT, options.manifest), "utf8"));
   const apkPath = path.resolve(ROOT, PHASE18_GARMIN_PROOF_APK);
   if (!existsSync(apkPath)) fail("apk_missing");
+  const currentPythonLockSha256 = sha256(
+    readFileSync(path.resolve(ROOT, PYTHON_LOCK)),
+  );
+  const currentSignatureSha256 = certificateSha256(native, apkPath);
+  const manifest = sanitizePhase18GarminProofBuildManifest(retainedManifest, {
+    currentPythonLockSha256,
+    retainedSignatureSha256: currentSignatureSha256,
+  });
   validatePhase18GarminProofBuildManifest(manifest, {
     currentHead: commandText(native, "git", ["rev-parse", "HEAD"]),
     currentSourceTreeSha256: sourceTreeSha256(ROOT),
-    currentPythonLockSha256: sha256(readFileSync(path.resolve(ROOT, PYTHON_LOCK))),
+    currentPythonLockSha256,
     retainedApkSha256: sha256(readFileSync(apkPath)),
-    retainedSignatureSha256: certificateSha256(native, apkPath),
+    retainedSignatureSha256: currentSignatureSha256,
   });
   let completedCases = [];
   let currentStage = "PH18-PKG";
