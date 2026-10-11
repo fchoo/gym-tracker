@@ -126,6 +126,37 @@ describe("ActivityMatchRoute local identity boundary", () => {
     expect(mockBack).toHaveBeenCalledTimes(2);
     expect(mockConfirmActivityMatch).not.toHaveBeenCalled();
   });
+
+  it("reloads stale candidates before allowing a second confirmation", async () => {
+    mockConfirmActivityMatch.mockResolvedValueOnce({
+      kind: "conflict",
+      activityId: "activity-local-01",
+      opportunityId: "opportunity-0",
+      relationRevision: 1,
+    });
+    await renderRoute();
+    const initial = candidate(0);
+    await settleLoad({ kind: "ready", activityId: "activity-local-01", candidates: [initial] });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
+    expect(await screen.findByText("Match needs review")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry scheduled workouts" }));
+
+    expect(await screen.findByText("Loading scheduled workouts")).toBeOnTheScreen();
+    expect(mockLoadRunningActivityMatch).toHaveBeenCalledTimes(2);
+    const refreshed = Object.freeze({
+      ...initial,
+      expectedOpportunityRevision: 2,
+      expectedRelationRevision: 1,
+      targetSummary: "35 min · Z2",
+    });
+    await settleLoad({ kind: "ready", activityId: "activity-local-01", candidates: [refreshed] });
+
+    expect(await screen.findByText("35 min · Z2")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Confirm match" })).toBeEnabled();
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
+    await waitFor(() => expect(mockConfirmActivityMatch).toHaveBeenLastCalledWith(refreshed));
+  });
 });
 
 describe("createActivityMatchHref", () => {

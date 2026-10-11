@@ -126,7 +126,7 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
   const candidates = props.state.kind === "ready" ? props.state.candidates : [];
   const selected = candidates.find((candidate) => candidate.opportunityId === selectedOpportunityId);
   const confirm = async () => {
-    if (selected === undefined || busyRef.current || outcome === "matched") return;
+    if (selected === undefined || busyRef.current || outcome === "matched" || outcome === "stale") return;
     busyRef.current = true;
     setBusy(true);
     setOutcome(null);
@@ -147,6 +147,12 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
       setBusy(false);
     }
   };
+  const retryCandidates = () => {
+    if (busyRef.current) return;
+    setSelectedOpportunityId(null);
+    setOutcome(null);
+    props.onRetry();
+  };
 
   const primary = (
     <>
@@ -160,7 +166,16 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
       {props.state.kind === "no_candidates" ? <EmptyState body="There are no open Running occurrences to match." heading="No scheduled workouts" primaryAction={null} /> : null}
       {props.state.kind === "already_matched" ? <InlineNotice body="This activity already has one committed scheduled workout relation." heading="Already matched" tone="neutral" /> : null}
       {outcome === "matched" ? <InlineNotice body="The selected scheduled workout was linked after the match committed." heading="Matched" tone="neutral" /> : null}
-      {outcome === "stale" ? <View accessible focusable ref={statusRef}><InlineNotice body="The activity or scheduled workout changed. Reload before confirming again." heading="Match needs review" tone="error" /></View> : null}
+      {outcome === "stale" ? (
+        <View accessible focusable ref={statusRef}>
+          <InlineNotice
+            action={<SecondaryAction label="Retry scheduled workouts" onPress={retryCandidates} />}
+            body="The activity or scheduled workout changed. Reload before confirming again."
+            heading="Match needs review"
+            tone="error"
+          />
+        </View>
+      ) : null}
       {outcome === "save_failure" ? <View accessible focusable ref={statusRef}><InlineNotice body="Nothing was changed. Try confirming the same selection again." heading="Match could not be saved" tone="error" /></View> : null}
       {props.state.kind === "ready" ? (
         <View accessibilityRole="radiogroup" style={styles.candidates}>
@@ -170,7 +185,7 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
         </View>
       ) : null}
       <View style={styles.actions}>
-        <PrimaryAction busy={busy} disabled={selected === undefined || outcome === "matched"} label="Confirm match" onPress={() => { void confirm(); }} />
+        <PrimaryAction busy={busy} disabled={selected === undefined || outcome === "matched" || outcome === "stale"} label="Confirm match" onPress={() => { void confirm(); }} />
         <SecondaryAction disabled={busy} label="Leave unmatched" onPress={props.onLeaveUnmatched} />
       </View>
     </>

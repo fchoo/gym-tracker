@@ -3,7 +3,10 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { BackHandler, StyleSheet } from "react-native";
 
-import type { RunningActivityMatchCandidate } from "../../domains/running/activityMatchCommands";
+import type {
+  RunningActivityMatchCandidate,
+  RunningActivityMatchResult,
+} from "../../domains/running/activityMatchCommands";
 import { ActivityMatchScreen } from "../screens/ActivityMatchScreen";
 import { AppearanceProvider, createMemoryAppearanceStore, sizes } from "../theme";
 
@@ -114,6 +117,70 @@ describe("ActivityMatchScreen confirmation boundary", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
     await act(async () => finishConfirm?.({ kind: "matched", activityId: alternateCandidate.activityId, opportunityId: alternateCandidate.opportunityId, relationRevision: 1 }));
     await waitFor(() => expect(screen.getByText("Matched")).toBeOnTheScreen());
+  });
+
+  it("blocks stale reconfirmation until retry loads a refreshed candidate revision", async () => {
+    const staleResult = {
+      kind: "conflict" as const,
+      activityId: firstCandidate.activityId,
+      opportunityId: firstCandidate.opportunityId,
+      relationRevision: 1,
+    };
+    const onConfirm = jest.fn<(
+      candidate: RunningActivityMatchCandidate,
+    ) => Promise<RunningActivityMatchResult>>(async () => staleResult);
+    const onRetry = jest.fn();
+    const view = await render(
+      <AppearanceProvider>
+        <ActivityMatchScreen
+          onBack={jest.fn()}
+          onConfirm={onConfirm}
+          onLeaveUnmatched={jest.fn()}
+          onRetry={onRetry}
+          state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
+    expect(await screen.findByText("Match needs review")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Confirm match" })).toBeDisabled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Retry scheduled workouts" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Match needs review")).not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Confirm match" })).toBeDisabled();
+
+    const refreshedCandidate = Object.freeze({
+      ...firstCandidate,
+      expectedOpportunityRevision: 2,
+      expectedRelationRevision: 1,
+      targetSummary: "35 min · easy Z2",
+    });
+    onConfirm.mockResolvedValueOnce({
+      kind: "matched",
+      activityId: refreshedCandidate.activityId,
+      opportunityId: refreshedCandidate.opportunityId,
+      relationRevision: 2,
+    });
+    await act(async () => {
+      view.rerender(
+        <AppearanceProvider>
+          <ActivityMatchScreen
+            onBack={jest.fn()}
+            onConfirm={onConfirm}
+            onLeaveUnmatched={jest.fn()}
+            onRetry={onRetry}
+            state={{ kind: "ready", activityId: refreshedCandidate.activityId, candidates: [refreshedCandidate] }}
+          />
+        </AppearanceProvider>,
+      );
+    });
+
+    await waitFor(() => expect(screen.getByText("35 min · easy Z2")).toBeOnTheScreen());
+    expect(screen.getByRole("button", { name: "Confirm match" })).toBeEnabled();
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
+    await waitFor(() => expect(onConfirm).toHaveBeenLastCalledWith(refreshedCandidate));
   });
 
   it("preserves alternate selection through shared Appearance and gives modal Back priority", async () => {
