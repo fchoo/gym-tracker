@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 12
+open_count: 15
 waived_count: 0
 fixed_count: 88
-total_count: 100
-last_updated: 2026-10-11T11:59:20.622Z
+total_count: 103
+last_updated: 2026-10-11T12:16:42.968Z
 ---
 
 # Broken Windows Ledger
@@ -115,6 +115,9 @@ last_updated: 2026-10-11T11:59:20.622Z
 | 98 | 18 | deviation | .planning/REQUIREMENTS.md |  | Kept GAR-08, GAR-09, and GAR-14 pending until their broader terminal Phase 18 evidence is complete | fixed |  | 2026-10-11T11:26:35.342Z | 2026-10-11T11:27:05.001Z |
 | 99 | 18 | unrun-verify | scripts/benchmark-phase18-garmin.mjs |  | Exact APK module Python memory frame and offline-workout benchmark samples remain deferred to Phase 20 | open |  | 2026-10-11T11:58:58.881Z |  |
 | 100 | 18 | unrun-verify | maestro/phase18/garmin-sync.yaml |  | Fresh native Garmin acceptance and accessibility flow execution remains deferred to the Phase 20 comprehensive checkpoint | open |  | 2026-10-11T11:59:20.622Z |  |
+| 101 | 18 | unrun-verify | artifacts/native/phase18-garmin-adversarial/final-evidence.json |  | Real restore/refresh/read/logout/restart and adversarial native evidence is owner-deferred to Phase 20; no final evidence exists. | open |  | 2026-10-11T12:16:23.160Z |  |
+| 102 | 18 | deviation | .planning/phases/18-garmin-import/18-13-SUMMARY.md |  | Plan 18-13 is host-complete and native-deferred under the owner checkpoint override; no native PASS is claimed. | open |  | 2026-10-11T12:16:23.242Z |  |
+| 103 | 18 | deviation | app/_layout.tsx |  | Added the missing isolated development-test navigator for the guarded Plan 18-13 adversarial route. | open |  | 2026-10-11T12:16:42.968Z |  |
 
 ````json
 [
@@ -1316,6 +1319,42 @@ last_updated: 2026-10-11T11:59:20.622Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-11T11:59:20.622Z",
+    "resolved_at": null
+  },
+  {
+    "id": 101,
+    "kind": "unrun-verify",
+    "phase": "18",
+    "file": "artifacts/native/phase18-garmin-adversarial/final-evidence.json",
+    "line": null,
+    "description": "Real restore/refresh/read/logout/restart and adversarial native evidence is owner-deferred to Phase 20; no final evidence exists.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:16:23.160Z",
+    "resolved_at": null
+  },
+  {
+    "id": 102,
+    "kind": "deviation",
+    "phase": "18",
+    "file": ".planning/phases/18-garmin-import/18-13-SUMMARY.md",
+    "line": null,
+    "description": "Plan 18-13 is host-complete and native-deferred under the owner checkpoint override; no native PASS is claimed.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:16:23.242Z",
+    "resolved_at": null
+  },
+  {
+    "id": 103,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "app/_layout.tsx",
+    "line": null,
+    "description": "Added the missing isolated development-test navigator for the guarded Plan 18-13 adversarial route.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:16:42.968Z",
     "resolved_at": null
   }
 ]
