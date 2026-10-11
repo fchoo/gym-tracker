@@ -55,7 +55,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
       opportunityId: alternateCandidate.opportunityId,
       relationRevision: 1,
     }));
-    render(
+    await render(
       <AppearanceProvider>
         <ActivityMatchScreen
           onBack={jest.fn()}
@@ -72,9 +72,9 @@ describe("ActivityMatchScreen confirmation boundary", () => {
     );
 
     expect(onConfirm).not.toHaveBeenCalled();
-    fireEvent.press(screen.getByRole("radio", { name: /Intervals/ }));
+    await fireEvent.press(screen.getByRole("radio", { name: /Intervals/ }));
     expect(onConfirm).not.toHaveBeenCalled();
-    fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
     expect(onConfirm).toHaveBeenCalledWith(alternateCandidate);
