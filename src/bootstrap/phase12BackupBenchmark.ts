@@ -76,7 +76,8 @@ const OWNER_NAMESPACE = "f".repeat(32);
 const ROWS_PER_TABLE = BACKUP_LIMITS.maxRowsPerTable;
 const ALIAS_ROWS = 10_000;
 const REORDER_RECEIPT_ROWS = ROWS_PER_TABLE - ALIAS_ROWS;
-export const PHASE12_SQLITE_PRE_PADDING_BYTES = 23_242_083;
+/** Current schema-42 logical-backup graph before app_settings padding. */
+export const PHASE12_SQLITE_PRE_PADDING_BYTES = 23_242_361;
 const SQLITE_APP_SETTING_ROWS = PHASE12_MAX_SNAPSHOT_ROWS
   - 5
   - (ROWS_PER_TABLE * 3);

@@ -502,6 +502,12 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         34,
         35,
       36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -1071,8 +1077,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
-        currentVersion: 36,
+        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42],
+        currentVersion: 42,
       }));
       await expect(runtime.kernel.queryAll(
         "SELECT id, owner_namespace FROM portable_owner_identity",
@@ -1509,8 +1515,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         recoveryBackup: validatedBackup(),
       }).run();
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
-        currentVersion: 36,
+        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42],
+        currentVersion: 42,
       }));
       await expect(advancedTimingTargetOwnershipMigration.verify({
         execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
