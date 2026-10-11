@@ -274,7 +274,18 @@ export function createGarminActivityAdapter(input: Readonly<{
         })));
       } catch (error) {
         if (error instanceof GarminActivityAdapterError && error.code === "mfa_expired") {
-          currentState = { kind: "disconnected" };
+          try {
+            const authoritative = acceptState(await callNative<GarminNativeConnectionData>(
+              () => driver.connectionState(),
+            ));
+            if (authoritative.kind !== "mfa_required"
+              || authoritative.challenge_handle !== challenge.challenge_handle
+              || authoritative.generation !== pendingGeneration) {
+              currentState = { kind: "disconnected" };
+            }
+          } catch {
+            currentState = { kind: "disconnected" };
+          }
         }
         throw error;
       }

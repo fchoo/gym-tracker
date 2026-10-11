@@ -5,6 +5,10 @@ import { Text } from "react-native";
 
 import type { GarminActivitySourcePort } from "../../domains/activities/garminActivitySourcePort";
 import {
+  createGarminActivityAdapter,
+  type GarminNativeDriver,
+} from "../../platform/garmin/garminActivityAdapter";
+import {
   type GarminActivityListItem,
   type GarminSyncControllerPort,
   type GarminSyncFailureCode,
@@ -165,6 +169,74 @@ describe("useGarminConnectionController connection tracer", () => {
     });
     expect(JSON.stringify(current?.state)).not.toContain(codeMarker);
     expect(loadActivities).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows a second MFA code after the native continuation rejects the first code", async () => {
+    const accountNamespace = "garmin:abcdefabcdefabcdefabcdefabcdefab";
+    const resumeMfa = jest.fn<GarminNativeDriver["resumeMfa"]>()
+      .mockResolvedValueOnce({ status: "error", error: { code: "mfa_expired" } })
+      .mockResolvedValueOnce({
+        status: "ok",
+        generation: 1,
+        data: { kind: "connected", account_namespace: accountNamespace },
+      });
+    const adapter = createGarminActivityAdapter({
+      driver: {
+        restoreSession: jest.fn(async () => ({
+          status: "ok",
+          generation: 0,
+          data: { kind: "disconnected" },
+        })),
+        connectionState: jest.fn(async () => ({
+          status: "ok",
+          generation: 1,
+          data: { kind: "mfa_required", challenge_handle: "opaque-challenge" },
+        })),
+        login: jest.fn(async () => ({
+          status: "ok",
+          generation: 1,
+          data: { kind: "mfa_required", challenge_handle: "opaque-challenge" },
+        })),
+        resumeMfa,
+        logout: jest.fn(async () => ({
+          status: "ok",
+          generation: 2,
+          data: { kind: "disconnected" },
+        })),
+        getActivities: jest.fn(async () => ({ status: "error", error: { code: "operation_rejected" } })),
+        getActivity: jest.fn(async () => ({ status: "error", error: { code: "operation_rejected" } })),
+        getActivitySplits: jest.fn(async () => ({ status: "error", error: { code: "operation_rejected" } })),
+        getActivityDetails: jest.fn(async () => ({ status: "error", error: { code: "operation_rejected" } })),
+      },
+      mapper: {
+        fromActivity: async () => { throw new Error("not used"); },
+      },
+    });
+
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      source={adapter}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
+    await act(async () => {
+      current?.openCredentials();
+      current?.setEmail("synthetic-owner@example.test");
+      current?.setPassword("synthetic-secret");
+    });
+    await act(async () => current?.submitCredentials());
+    await act(async () => current?.setMfaCode("000000"));
+    await act(async () => current?.submitMfa());
+
+    expect(current?.state).toMatchObject({
+      connection: "mfa",
+      error: { code: "mfa_expired" },
+    });
+
+    await act(async () => current?.setMfaCode("111111"));
+    await act(async () => current?.submitMfa());
+    expect(current?.state.connection).toBe("connected");
+    expect(resumeMfa).toHaveBeenCalledTimes(2);
   });
 
   it("cancels an MFA continuation through logout without syncing or dropping retained history", async () => {

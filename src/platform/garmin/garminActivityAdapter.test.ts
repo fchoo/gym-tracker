@@ -347,19 +347,32 @@ describe("Garmin activity adapter", () => {
     await expect(wrongChallenge.resumeMfa({ challenge_handle: "wrong-challenge", code: "123456" }))
       .rejects.toMatchObject({ code: "mfa_expired" });
 
-    const expiredDriver = {
-      ...driver,
-      resumeMfa: jest.fn(async () => ({
+    const retryableMfa = jest.fn<GarminNativeDriver["resumeMfa"]>()
+      .mockResolvedValueOnce({
         status: "error",
         error: { code: "mfa_expired" },
+      })
+      .mockResolvedValueOnce({
+        status: "ok",
+        generation: 1,
+        data: { kind: "connected", account_namespace: accountNamespace },
+      });
+    const expiredDriver = {
+      ...driver,
+      connectionState: jest.fn(async () => ({
+        status: "ok",
+        generation: 1,
+        data: { kind: "mfa_required", challenge_handle: "opaque-challenge" },
       })),
+      resumeMfa: retryableMfa,
     };
     const expired = createGarminActivityAdapter({ driver: expiredDriver, mapper });
     await expired.login({ email: "owner", password: "synthetic-secret" });
     await expect(expired.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" }))
       .rejects.toMatchObject({ code: "mfa_expired" });
     await expect(expired.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" }))
-      .rejects.toMatchObject({ code: "mfa_expired" });
+      .resolves.toEqual({ kind: "connected", account_namespace: accountNamespace, generation: 1 });
+    expect(retryableMfa).toHaveBeenCalledTimes(2);
 
     const staleDriver = {
       ...driver,
