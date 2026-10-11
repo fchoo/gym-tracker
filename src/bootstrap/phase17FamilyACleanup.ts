@@ -107,6 +107,15 @@ export async function materializePhase17FamilyACleanupManifest(
     if (row === undefined) throw new Error("phase17_family_a_cleanup_receipt_missing");
     planIds = [...planIds, row.result_plan_id, ...(row.selected_plan_id === null ? [] : [row.selected_plan_id])];
     scheduleIds = [...scheduleIds, row.result_schedule_id];
+    const events = await kernel.queryAll<Readonly<{ id: string }>>(
+      `SELECT id
+       FROM owned_plan_schedule_events
+       WHERE schedule_id = ?
+         AND json_extract(payload_json, '$.requestId') = ?
+       ORDER BY id`,
+      [row.result_schedule_id, requestId],
+    );
+    scheduleEventIds = [...scheduleEventIds, ...events.map(({ id }) => id)];
   } else if (receipt[1] === "owned_plan_schedule_events") {
     const eventId = manifest.caseId === "library.schedule-editor"
       ? `schedule-command:${requestId}` : `plan-impact-command:${requestId}`;
