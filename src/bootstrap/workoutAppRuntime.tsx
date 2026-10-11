@@ -182,6 +182,11 @@ import type {
   AppError,
 } from "../domains/shared";
 import {
+  parseImportedActivityLocalId,
+  projectImportedActivityDetail,
+  type ImportedActivityDetailReadResult,
+} from "../domains/activities/activityDetails";
+import {
   createExpoHapticsAdapter,
 } from "../platform/haptics/expoHapticsAdapter";
 import {
@@ -708,6 +713,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   ): Promise<NotificationExpiryExerciseCode>;
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  loadImportedActivityDetail(activityId: string): Promise<ImportedActivityDetailReadResult>;
   loadHistoryCorrectionSession(sessionId: string): Promise<HistoryCorrectionEditorState>;
   listAvailableCorrectionExercises(): Promise<readonly AvailableCorrectionExercise[]>;
   correctHistorySession(
@@ -2641,6 +2647,42 @@ export function WorkoutAppRuntimeProvider({
 
   const getSessionDetail = useCallback((sessionId: string) => {
     return requireServices().outcomeRepository.getSessionDetail(sessionId);
+  }, [requireServices]);
+
+  const loadImportedActivityDetail = useCallback(async (
+    activityId: string,
+  ): Promise<ImportedActivityDetailReadResult> => {
+    const localActivityId = parseImportedActivityLocalId(activityId);
+    if (localActivityId === null) return Object.freeze({ kind: "missing" });
+    const rows = await requireServices().kernel.queryAll<{
+      activity_id: string;
+      aggregate_json: string;
+      aggregate_revision: number;
+      accepted_normalized_sha256: string;
+      removal_state: "active" | "removed";
+    }>(
+      `SELECT activity.id AS activity_id, activity.aggregate_json,
+              identity.aggregate_revision, identity.accepted_normalized_sha256,
+              COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state
+         FROM imported_activities activity
+         JOIN imported_activity_identities identity ON identity.activity_id = activity.id
+         LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+        WHERE activity.id = ?
+        LIMIT 2`,
+      [localActivityId],
+    );
+    if (rows.length === 0) return Object.freeze({ kind: "missing" });
+    if (rows.length !== 1) {
+      return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    }
+    const row = rows[0]!;
+    return projectImportedActivityDetail({
+      activityId: row.activity_id,
+      aggregateJson: row.aggregate_json,
+      aggregateRevision: row.aggregate_revision,
+      acceptedNormalizedSha256: row.accepted_normalized_sha256,
+      removalState: row.removal_state,
+    });
   }, [requireServices]);
 
   const loadHistoryCorrectionSession = useCallback((sessionId: string) =>
@@ -4672,6 +4714,7 @@ export function WorkoutAppRuntimeProvider({
     finishStarterSwitchWorkout,
     getActiveWorkout,
     getSessionDetail,
+    loadImportedActivityDetail,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctHistorySession: correctRuntimeHistorySession,
@@ -4817,6 +4860,7 @@ export function WorkoutAppRuntimeProvider({
     finishZeroSetWorkout,
     getActiveWorkout,
     getSessionDetail,
+    loadImportedActivityDetail,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctRuntimeHistorySession,

@@ -97,10 +97,15 @@ describe("ImportedActivityDetailScreen missing-channel and reflow matrix", () =>
       state: {
         kind: "ready",
         detail: {
-          ...outdoorDetail,
           activityType: "Treadmill run",
+          confirmedLocalDate: outdoorDetail.confirmedLocalDate,
+          distance: outdoorDetail.distance,
+          elapsed: "26:00",
+          secondaryDuration: { label: "Moving", value: "24:35" },
+          averagePace: { basis: "Moving time", value: "4:55/km" },
           route: { kind: "none" },
-          averageHeartRate: undefined,
+          laps: outdoorDetail.laps,
+          fidelity: outdoorDetail.fidelity,
         },
       },
     });
@@ -115,13 +120,12 @@ describe("ImportedActivityDetailScreen missing-channel and reflow matrix", () =>
       state: {
         kind: "ready",
         detail: {
-          ...outdoorDetail,
-          elapsed: undefined,
-          secondaryDuration: undefined,
-          averagePace: undefined,
+          activityType: outdoorDetail.activityType,
+          confirmedLocalDate: outdoorDetail.confirmedLocalDate,
+          distance: outdoorDetail.distance,
           route: { kind: "unavailable" },
-          averageHeartRate: undefined,
           laps: [],
+          fidelity: outdoorDetail.fidelity,
         },
       },
     });
@@ -163,31 +167,35 @@ describe("ImportedActivityDetailScreen missing-channel and reflow matrix", () =>
 });
 
 describe("ImportedActivityDetailScreen route states and shared shell", () => {
-  it.each([
-    [{ kind: "loading" }, "Loading activity details", false],
-    [{ kind: "missing" }, "Activity not found", false],
-    [{ kind: "removed" }, "Activity removed", false],
-    [{ kind: "projection_error" }, "Activity details unavailable", true],
-    [{ kind: "revision_review" }, "Source revision needs review", true],
-  ] as const)("renders %j without fabricated detail", async (state, heading, retryable) => {
-    const onRetry = jest.fn();
-    await renderScreen({
-      state: state as React.ComponentProps<typeof ImportedActivityDetailScreen>["state"],
-      onRetry,
-    });
+  const cases: readonly Readonly<{
+    state: React.ComponentProps<typeof ImportedActivityDetailScreen>["state"];
+    heading: string;
+    retryable: boolean;
+  }>[] = [
+    { state: { kind: "loading" }, heading: "Loading activity details", retryable: false },
+    { state: { kind: "missing" }, heading: "Activity not found", retryable: false },
+    { state: { kind: "removed" }, heading: "Activity removed", retryable: false },
+    { state: { kind: "projection_error", code: "accepted_payload_unavailable" }, heading: "Activity details unavailable", retryable: true },
+    { state: { kind: "revision_review" }, heading: "Source revision needs review", retryable: true },
+  ];
+  for (const { state, heading, retryable } of cases) {
+    it(`renders ${state.kind} without fabricated detail`, async () => {
+      const onRetry = jest.fn();
+      await renderScreen({ state, onRetry });
 
-    expect(screen.getByText(heading)).toBeTruthy();
-    expect(screen.queryByText("5.00 km")).toBeNull();
-    expect(screen.queryByText("152 bpm")).toBeNull();
-    expect(screen.queryByTestId("activity-detail-route")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Match to scheduled workout" })).toBeNull();
-    const retry = screen.queryByRole("button", { name: "Retry activity details" });
-    expect(retry === null).toBe(!retryable);
-    if (retry !== null) {
-      fireEvent.press(retry);
-      expect(onRetry).toHaveBeenCalledTimes(1);
-    }
-  });
+      expect(screen.getByText(heading)).toBeTruthy();
+      expect(screen.queryByText("5.00 km")).toBeNull();
+      expect(screen.queryByText("152 bpm")).toBeNull();
+      expect(screen.queryByTestId("activity-detail-route")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Match to scheduled workout" })).toBeNull();
+      const retry = screen.queryByRole("button", { name: "Retry activity details" });
+      expect(retry === null).toBe(!retryable);
+      if (retry !== null) {
+        fireEvent.press(retry);
+        expect(onRetry).toHaveBeenCalledTimes(1);
+      }
+    });
+  }
 
   it("uses shared Appearance, closes it before Back, and retains 48dp actions", async () => {
     const { props } = await renderScreen({ width: 390 });
@@ -197,10 +205,12 @@ describe("ImportedActivityDetailScreen route states and shared shell", () => {
       minHeight: 48,
       minWidth: 48,
     });
-    fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
-    expect(screen.getByRole("radiogroup")).toBeTruthy();
-    fireEvent.press(screen.getByRole("button", { name: "Close appearance" }));
-    expect(screen.queryByRole("radiogroup")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
+    expect(await screen.findByRole("radio", { name: "System" })).toBeTruthy();
+    const closeAppearance = screen.getAllByRole("button", { name: "Close appearance" }).at(-1);
+    expect(closeAppearance).toBeDefined();
+    await fireEvent.press(closeAppearance!);
+    expect(screen.queryByRole("radio", { name: "System" })).toBeNull();
     fireEvent.press(screen.getByRole("button", { name: "Go back" }));
     expect(props.onBack).toHaveBeenCalledTimes(1);
   });

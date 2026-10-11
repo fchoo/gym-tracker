@@ -69,10 +69,23 @@ export type ImportedActivityDetailProjection =
   | Readonly<{ kind: "removed" }>
   | Readonly<{ kind: "projection_error"; code: "accepted_payload_unavailable" }>;
 
+export type ImportedActivityDetailReadResult =
+  | ImportedActivityDetailProjection
+  | Readonly<{ kind: "missing" }>
+  | Readonly<{ kind: "revision_review" }>;
+
+const LOCAL_ACTIVITY_ID = /^(?:activity|local-activity)-[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/u;
+
+export function parseImportedActivityLocalId(value: unknown): string | null {
+  return typeof value === "string" && LOCAL_ACTIVITY_ID.test(value)
+    ? value
+    : null;
+}
+
 type DurationSource = Readonly<{
-  elapsed_ms?: number;
-  timer_ms?: number;
-  moving_ms?: number;
+  elapsed_ms?: number | undefined;
+  timer_ms?: number | undefined;
+  moving_ms?: number | undefined;
 }>;
 
 type TimeBasis = Readonly<{

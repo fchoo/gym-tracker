@@ -14,11 +14,13 @@ import Svg, { Polyline } from "react-native-svg";
 
 import type {
   ImportedActivityDetail,
+  ImportedActivityDetailReadResult,
   ImportedActivityLap,
   ImportedActivityRoutePoint,
 } from "../../domains/activities/activityDetails";
 import {
   AppearanceSheet,
+  EmptyState,
   IconAction,
   InlineNotice,
   PrimaryAction,
@@ -35,7 +37,8 @@ import {
 } from "../theme";
 
 export type ImportedActivityDetailScreenState =
-  | Readonly<{ kind: "ready"; detail: ImportedActivityDetail }>;
+  | ImportedActivityDetailReadResult
+  | Readonly<{ kind: "loading" }>;
 
 export type ImportedActivityDetailScreenProps = Readonly<{
   state: ImportedActivityDetailScreenState;
@@ -281,10 +284,65 @@ function ReadyDetail({ detail, onMatch, stackedLaps }: Readonly<{
   );
 }
 
+function NonReadyDetail({
+  state,
+  onRetry,
+}: Readonly<{
+  state: Exclude<ImportedActivityDetailScreenState, Readonly<{ kind: "ready" }>>;
+  onRetry(): void;
+}>) {
+  const { colors } = useAppTheme();
+  switch (state.kind) {
+    case "loading":
+      return (
+        <Text
+          accessibilityLiveRegion="polite"
+          accessibilityRole="progressbar"
+          style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}
+        >
+          Loading activity details
+        </Text>
+      );
+    case "missing":
+      return (
+        <EmptyState
+          body="No accepted local activity exists for this route."
+          heading="Activity not found"
+          primaryAction={null}
+        />
+      );
+    case "removed":
+      return (
+        <EmptyState
+          body="This imported activity is no longer in active history. No prior facts are shown here."
+          heading="Activity removed"
+          primaryAction={null}
+        />
+      );
+    case "projection_error":
+      return (
+        <EmptyState
+          body="Accepted activity facts could not be projected. Raw source data is not used as a fallback."
+          heading="Activity details unavailable"
+          primaryAction={<PrimaryAction label="Retry activity details" onPress={onRetry} />}
+        />
+      );
+    case "revision_review":
+      return (
+        <EmptyState
+          body="Accepted facts remain unchanged while the newer source revision is reviewed."
+          heading="Source revision needs review"
+          primaryAction={<PrimaryAction label="Retry activity details" onPress={onRetry} />}
+        />
+      );
+  }
+}
+
 export function ImportedActivityDetailScreen({
   state,
   onBack,
   onMatch,
+  onRetry,
   width,
 }: ImportedActivityDetailScreenProps) {
   const dimensions = useWindowDimensions();
@@ -298,9 +356,13 @@ export function ImportedActivityDetailScreen({
         onAppearance={() => setAppearanceOpen(true)}
         onBack={onBack}
       />
-      <ReadyDetail detail={state.detail} onMatch={onMatch} stackedLaps={stackedLaps} />
+      {state.kind === "ready" ? (
+        <ReadyDetail detail={state.detail} onMatch={onMatch} stackedLaps={stackedLaps} />
+      ) : (
+        <NonReadyDetail onRetry={onRetry} state={state} />
+      )}
     </>
-  ), [onBack, onMatch, stackedLaps, state]);
+  ), [onBack, onMatch, onRetry, stackedLaps, state]);
   return (
     <>
       <AdaptiveScreen

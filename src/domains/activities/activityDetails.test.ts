@@ -198,18 +198,20 @@ describe("projectImportedActivityDetail truthfulness matrix", () => {
     expect(projected.detail.laps[239]?.lap).toBe("240");
   });
 
-  it.each([
+  for (const [kind, heading, body] of [
     ["source_summary", "Source summary", "Summary facts come from accepted source fields."],
     ["source_laps", "Source laps", "Lap and summary facts come from accepted source fields."],
     ["sampled", "Sampled data", "Sampled positions and charts cannot prove exact arbitrary-distance best efforts."],
-  ] as const)("discloses %s fidelity without promoting sampled evidence", (kind, heading, body) => {
-    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
-      aggregate.sample_fidelity = kind;
-    }));
+  ] as const) {
+    it(`discloses ${kind} fidelity without promoting sampled evidence`, () => {
+      const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+        aggregate.sample_fidelity = kind;
+      }));
 
-    expect(projected).toMatchObject({
-      kind: "ready",
-      detail: { fidelity: { kind, heading, body } },
+      expect(projected).toMatchObject({
+        kind: "ready",
+        detail: { fidelity: { kind, heading, body } },
+      });
     });
-  });
+  }
 });

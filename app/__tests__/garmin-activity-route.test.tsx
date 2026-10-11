@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -29,6 +30,10 @@ let mockParams: Readonly<{
   origin?: string | readonly string[];
   returnToken?: string | readonly string[];
 }> = {};
+let pendingLoads: Array<Readonly<{
+  resolve(result: ImportedActivityDetailReadResult): void;
+  reject(error: Error): void;
+}>> = [];
 
 jest.mock("expo-router", () => ({
   router: {
@@ -70,17 +75,32 @@ async function renderRoute() {
   );
 }
 
+async function settleNextLoad(result: ImportedActivityDetailReadResult) {
+  const pending = pendingLoads.shift();
+  if (pending === undefined) throw new Error("missing_pending_activity_load");
+  await act(async () => pending.resolve(result));
+}
+
+async function failNextLoad(error: Error) {
+  const pending = pendingLoads.shift();
+  if (pending === undefined) throw new Error("missing_pending_activity_load");
+  await act(async () => pending.reject(error));
+}
+
 describe("ImportedActivityDetailRoute local identity boundary", () => {
   beforeEach(() => {
     mockBack.mockReset();
     mockPush.mockReset();
     mockLoadImportedActivityDetail.mockReset();
+    pendingLoads = [];
     mockParams = {
       activityId: "activity-local-01",
       origin: "calendar",
       returnToken: "calendar:day:2026-10-04:agenda-1",
     };
-    mockLoadImportedActivityDetail.mockResolvedValue({ kind: "ready", detail });
+    mockLoadImportedActivityDetail.mockImplementation(() => new Promise((resolve, reject) => {
+      pendingLoads.push({ resolve, reject });
+    }));
   });
 
   it("loads exactly one validated local activity and uses stack Back", async () => {
@@ -90,6 +110,7 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
       expect(mockLoadImportedActivityDetail).toHaveBeenCalledTimes(1);
       expect(mockLoadImportedActivityDetail).toHaveBeenCalledWith("activity-local-01");
     });
+    await settleNextLoad({ kind: "ready", detail });
     expect(screen.getByText("Outdoor run")).toBeTruthy();
     fireEvent.press(screen.getByRole("button", { name: "Go back" }));
     expect(mockBack).toHaveBeenCalledTimes(1);
@@ -110,13 +131,13 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
   });
 
   it("retries the same validated local ID after a bounded projection failure", async () => {
-    mockLoadImportedActivityDetail
-      .mockRejectedValueOnce(new Error("bounded-read-failed"))
-      .mockResolvedValueOnce({ kind: "ready", detail });
     await renderRoute();
 
+    await failNextLoad(new Error("bounded-read-failed"));
     expect(await screen.findByText("Activity details unavailable")).toBeTruthy();
     fireEvent.press(screen.getByRole("button", { name: "Retry activity details" }));
+    await waitFor(() => expect(mockLoadImportedActivityDetail).toHaveBeenCalledTimes(2));
+    await settleNextLoad({ kind: "ready", detail });
     expect(await screen.findByText("Outdoor run")).toBeTruthy();
     expect(mockLoadImportedActivityDetail).toHaveBeenNthCalledWith(1, "activity-local-01");
     expect(mockLoadImportedActivityDetail).toHaveBeenNthCalledWith(2, "activity-local-01");
@@ -124,6 +145,7 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
 
   it("routes matching with only the same opaque local ID", async () => {
     await renderRoute();
+    await settleNextLoad({ kind: "ready", detail });
     expect(await screen.findByText("Outdoor run")).toBeTruthy();
 
     fireEvent.press(screen.getByRole("button", { name: "Match to scheduled workout" }));
