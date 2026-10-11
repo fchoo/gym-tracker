@@ -40,7 +40,24 @@ import { cleanupPhase17FamilyAManifest, createPhase17FamilyACleanupManifest, mat
 import { createPhase17FixtureProtocol } from "../../src/bootstrap/phase17NativeFixture";
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
 import { createCustomExercise, setExerciseFavorite } from "../../src/domains/library/customExerciseCommands";
-import { PHASE17_CASE_ACTION_CONTRACTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
+import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
+
+/**
+ * Keep the durable Family A journeys explicit: each row names the production
+ * action envelope, the SQLite receipt that proves it, and the root graph the
+ * cleanup manifest must restore. The focused runtime cases below intentionally
+ * exclude the custom-exercise and metric-migration families.
+ */
+const FAMILY_A_PLAN_MUTATION_ROWS = Object.freeze([
+  { caseId: "library.true-no-plans", label: "owned-plan-create", receipt: "owned_plan_mutation_requests" },
+  { caseId: "library.owned-lifecycle", label: "owned-plan-lifecycle", receipt: "owned_plan_mutation_requests" },
+  { caseId: "library.starter-activation", label: "starter-plan-activation", receipt: "starter_plan_activation_requests" },
+  { caseId: "library.create-strength", label: "owned-plan-save", receipt: "owned_plan_mutation_requests" },
+  { caseId: "library.plan-editor", label: "owned-plan-save", receipt: "owned_plan_mutation_requests" },
+  { caseId: "library.schedule-editor", label: "schedule-save", receipt: "owned_plan_schedule_events" },
+  { caseId: "library.replacement-impact", label: "plan-impact-replace", receipt: "owned_plan_schedule_events" },
+  { caseId: "library.day-removal-impact", label: "plan-impact-remove", receipt: "owned_plan_schedule_events" },
+] as const);
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {}
@@ -106,6 +123,20 @@ async function logicalDigest(kernel: SqliteKernel): Promise<Readonly<{ digest: s
 }
 
 describe("Phase 17 Family A cleanup matrix", () => {
+  it.each(FAMILY_A_PLAN_MUTATION_ROWS)("keeps $caseId bound to its labelled production command and durable receipt", ({ caseId, label, receipt }) => {
+    const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+    expect(contract).toMatchObject({ id: caseId, actionReceiptRequired: true });
+    expect(phase17ActionEnvelopePlan(caseId, "phase17:matrix-token-0000000000000001")[0])
+      .toMatchObject({ label });
+    expect(createPhase17FamilyACleanupManifest(caseId, "phase17:matrix-token-0000000000000001", {
+      ownedPlanId: "phase17:owned-plan:matrix-token-0000000000000001",
+      customExerciseId: "phase17:custom:matrix-token-0000000000000001",
+    }).requestIds).toHaveLength(1);
+    // The receipt table is asserted here rather than inferred from UI labels.
+    expect(PHASE17_FAMILY_A_MUTATION_RECEIPTS)
+      .toContainEqual([caseId, receipt, expect.any(String)]);
+  });
+
   it("runs a migrated schema-42 runtime-host Family A mutation through setup, labelled action, authoritative probe, cleanup, and v8 logical-backup restoration", async () => {
     const kernel = await migratedKernel();
     let sequence = 0;
