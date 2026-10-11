@@ -118,4 +118,58 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
     expect(layout).toContain('nativeContractSuite === "phase18-garmin-adversarial"');
     expect(layout).toContain('pathname === "/__phase18-garmin-adversarial"');
   });
+
+  it("reduces every injected provider and session failure exactly once without losing prior facts", async () => {
+    const report = await runPhase18GarminAdversarialHostSuite({ sha256 });
+    const injected = report.cases.slice(6);
+    expect(injected.map(({ id }) => id)).toEqual([
+      "PH18-ADV-403",
+      "PH18-ADV-429",
+      "PH18-ADV-OFFLINE",
+      "PH18-ADV-TIMEOUT",
+      "PH18-ADV-5XX",
+      "PH18-ADV-MALFORMED",
+      "PH18-ADV-OVERSIZED",
+      "PH18-ADV-MISSING-COMPONENT",
+      "PH18-ADV-PARTIAL-PAGE",
+      "PH18-ADV-ROTATION",
+    ]);
+    expect(injected.map(({ code }) => code)).toEqual([
+      "data_access_denied",
+      "rate_limited",
+      "offline",
+      "timeout",
+      "temporary_failure",
+      "malformed_response",
+      "malformed_response",
+      "malformed_response",
+      "temporary_failure",
+      "stale_generation",
+    ]);
+    expect(injected.map(({ call_count }) => call_count)).toEqual([
+      1, 1, 1, 1, 1, 1, 1, 3, 5, 3,
+    ]);
+    expect(injected.every(({ status }) => status === "passed")).toBe(true);
+    expect(injected.every(({ provenance }) => provenance === "expected-injected")).toBe(true);
+    expect(injected.every(({ automatic_retry_count }) => automatic_retry_count === 0)).toBe(true);
+    expect(injected.every(({ source_write_count }) => source_write_count === 0)).toBe(true);
+    expect(injected.every(({ connection_state }) => connection_state === "connected")).toBe(true);
+    expect(injected[1]).toMatchObject({
+      retry_after_ms: 900_000,
+      sync_state: "failure-rate-limited",
+    });
+    expect(injected[8]).toMatchObject({
+      retry_after_ms: 0,
+      sync_state: "partial-temporary-failure",
+    });
+
+    const baseline = injected[0]!;
+    for (const entry of injected) {
+      expect(entry.session_digest).toBe(baseline.session_digest);
+      expect(entry.history_digest).toBe(baseline.history_digest);
+      expect(entry.source_digest).toBe(baseline.source_digest);
+      expect(entry.match_digest).toBe(baseline.match_digest);
+      expect(entry.generation_after).toBe(entry.generation_before);
+    }
+  });
 });
