@@ -321,6 +321,7 @@ describe("useGarminConnectionController committed sync semantics", () => {
     ["timeout", true],
     ["malformed_response", false],
     ["stale_generation", false],
+    ["date_confirmation_required", false],
   ];
 
   it.each(failureCases)("retains prior rows for %s without inventing committed counts", async (code, retryable) => {

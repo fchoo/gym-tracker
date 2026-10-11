@@ -258,7 +258,7 @@ describe("GarminSyncScreen committed sync presentation", () => {
   });
 
   const recoveryCases: ReadonlyArray<readonly [
-    "offline" | "temporary_failure" | "sign_in_required" | "data_access_denied" | "rate_limited" | "timeout" | "malformed_response",
+    "offline" | "temporary_failure" | "sign_in_required" | "data_access_denied" | "rate_limited" | "timeout" | "malformed_response" | "date_confirmation_required",
     string,
     "Retry Garmin sync" | "Sign in again" | null,
   ]> = [
@@ -269,6 +269,7 @@ describe("GarminSyncScreen committed sync presentation", () => {
     ["rate_limited", "Garmin asked us to wait", "Retry Garmin sync"],
     ["timeout", "Garmin took too long to respond", "Retry Garmin sync"],
     ["malformed_response", "Garmin returned data this app could not use", null],
+    ["date_confirmation_required", "Confirm the activity date", null],
   ];
 
   it.each(recoveryCases)("renders distinct %s recovery while retaining history", async (code, heading, action) => {

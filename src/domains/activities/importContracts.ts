@@ -14,6 +14,9 @@ const routePoint = z.strictObject({ latitude_e6: coordinate, longitude_e6: coord
 export const CanonicalGarminPayloadSchema = z.strictObject({
   version: z.literal(1),
   started_at_ms: z.number().int().safe().nonnegative(),
+  source_local_date_time: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/u).optional(),
+  source_time_zone: z.string().min(1).max(120).regex(/^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)*$/u).optional(),
+  source_utc_offset_minutes: z.number().int().min(-840).max(840).optional(),
   sport: z.literal("running"),
   subtype: boundedText,
   distance_meters: nonnegative,

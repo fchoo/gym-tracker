@@ -194,6 +194,7 @@ export function createGarminRootRuntime(input: Readonly<{
   sha256: GarminSha256;
   requestFor: GarminSharedImportRequestFactory;
   loadActivities(): Promise<readonly GarminImportedActivityListItem[]>;
+  enforceSourceDatePolicy?: boolean;
 }>): GarminRootRuntime {
   const revisionReviews = new Set<string>();
   const coordinator = createGarminSyncCoordinator({
@@ -208,10 +209,46 @@ export function createGarminRootRuntime(input: Readonly<{
         assertCurrentGeneration,
         invalidateReads: async () => undefined,
       });
-      const result = await importer.commitEnvelope({
-        envelope,
-        confirmation,
-      });
+      let result: GarminImportResult | Readonly<{ kind: "date_confirmation_required" }>;
+      if (input.enforceSourceDatePolicy === true) {
+        const sourceLocalDateTime = envelope.normalized.source_local_date_time;
+        const sourceUtcOffsetMinutes = envelope.normalized.source_utc_offset_minutes;
+        if (sourceLocalDateTime === undefined || sourceUtcOffsetMinutes === undefined) {
+          return Object.freeze({ kind: "date_confirmation_required" as const });
+        }
+        const proposal = await importer.prepareEnvelope({
+          envelope,
+          sourceDate: {
+            sourceLocalDateTime,
+            ...(envelope.normalized.source_time_zone === undefined
+              ? {}
+              : { sourceTimeZone: envelope.normalized.source_time_zone }),
+            sourceUtcOffsetMinutes,
+          },
+        });
+        const { confirmedLocalDate: _ignoredDate, ...request } = confirmation;
+        const confirmed = await importer.confirmPreparedDate({
+          proposal,
+          request,
+          decision: {
+            kind: "confirmed",
+            localDate: sourceLocalDateTime.slice(0, 10),
+            localTime: sourceLocalDateTime.slice(11),
+            timeZone: envelope.normalized.source_time_zone
+              ?? sourceOffsetZone(sourceUtcOffsetMinutes),
+            utcOffsetMinutes: sourceUtcOffsetMinutes,
+          },
+        });
+        if (confirmed.kind === "not_committed") {
+          throw new Error("garmin_date_confirmation_failed");
+        }
+        result = confirmed;
+      } else {
+        result = await importer.commitEnvelope({
+          envelope,
+          confirmation,
+        });
+      }
       if (result.kind === "revision_review") {
         revisionReviews.add(result.activityId);
       } else if (result.kind === "imported") {
@@ -281,12 +318,12 @@ function createProductionGarminSource(sha256: GarminSha256): GarminActivitySourc
   });
 }
 
-function confirmedLocalDate(startedAtMs: number): string {
-  const date = new Date(startedAtMs);
-  const year = String(date.getFullYear()).padStart(4, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function sourceOffsetZone(offsetMinutes: number): string {
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `UTC${sign}${hours}:${minutes}`;
 }
 
 function createProductionRequestFactory(sha256: GarminSha256): GarminSharedImportRequestFactory {
@@ -296,7 +333,8 @@ function createProductionRequestFactory(sha256: GarminSha256): GarminSharedImpor
       account_namespace: prepared.envelope.account_namespace,
       external_activity_id: prepared.envelope.external_activity_id,
     }));
-    const localDate = confirmedLocalDate(prepared.envelope.normalized.started_at_ms);
+    const localDate = prepared.envelope.normalized.source_local_date_time?.slice(0, 10)
+      ?? "date-confirmation-required";
     const requestSha256 = await sha256(canonicalJson({
       identity_sha256: identitySha256,
       normalized_json_sha256: prepared.envelope.normalized_json_sha256,
@@ -336,6 +374,7 @@ export function useGarminImportRuntime(input: Readonly<{
     [input.requestFor, sha256],
   );
   return useMemo(() => createGarminRootRuntime({
+    enforceSourceDatePolicy: true,
     source,
     services,
     sha256,

@@ -30,6 +30,7 @@ export type GarminSyncFailureCode =
   | "temporary_failure"
   | "malformed_response"
   | "stale_generation"
+  | "date_confirmation_required"
   | "import_conflict";
 
 export type GarminSyncFailure = Readonly<{

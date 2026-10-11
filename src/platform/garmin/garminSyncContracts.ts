@@ -44,6 +44,7 @@ export type GarminSyncFailureCode =
   | "temporary_failure"
   | "malformed_response"
   | "stale_generation"
+  | "date_confirmation_required"
   | "import_conflict";
 
 export type GarminSyncFailure = Readonly<{
@@ -68,10 +69,14 @@ export type GarminSyncOptions = Readonly<{
   onProgress?: (progress: GarminSyncProgress) => void;
 }>;
 
+export type GarminSyncImportResult = GarminImportResult | Readonly<{
+  kind: "date_confirmation_required";
+}>;
+
 export type GarminSyncImportActivity = (
   envelope: GarminSourceEnvelope,
   assertCurrentGeneration: () => Promise<void>,
-) => Promise<GarminImportResult>;
+) => Promise<GarminSyncImportResult>;
 
 export type GarminSharedImportRequest = Readonly<{
   requestId: string;

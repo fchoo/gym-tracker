@@ -124,10 +124,49 @@ function normalizeSubtype(typeKey: unknown): "outdoor" | "treadmill" {
 
 function projectSummary(summary: PlainRecord): PlainRecord {
   const projected: PlainRecord = { startTimeGMT: summary.startTimeGMT };
-  for (const key of ["distance", "duration", "elapsedDuration", "movingDuration", "averageHR"] as const) {
+  for (const key of ["startTimeLocal", "timeZoneId", "distance", "duration", "elapsedDuration", "movingDuration", "averageHR"] as const) {
     if (summary[key] !== undefined && summary[key] !== null) projected[key] = summary[key];
   }
   return projected;
+}
+
+function sourceDateEvidence(summary: PlainRecord, startedAtMs: number): Readonly<{
+  sourceLocalDateTime?: string;
+  sourceTimeZone?: string;
+  sourceUtcOffsetMinutes?: number;
+}> {
+  const localValue = summary.startTimeLocal;
+  const zoneValue = summary.timeZoneId;
+  if (zoneValue !== undefined && zoneValue !== null
+    && (typeof zoneValue !== "string"
+      || !/^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)*$/u.test(zoneValue)
+      || zoneValue.length > 120)) invalid();
+  if (localValue === undefined || localValue === null) {
+    return zoneValue === undefined || zoneValue === null
+      ? Object.freeze({})
+      : Object.freeze({ sourceTimeZone: zoneValue as string });
+  }
+  if (typeof localValue !== "string") invalid();
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/u.exec(localValue);
+  if (match === null) invalid();
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, millisecondsText] = match;
+  const milliseconds = millisecondsText === undefined
+    ? 0
+    : Number(millisecondsText.padEnd(3, "0"));
+  const parts = [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number);
+  const [year, month, day, hour, minute, second] = parts;
+  const localAsUtcMs = Date.UTC(year!, month! - 1, day!, hour!, minute!, second!, milliseconds);
+  const date = new Date(localAsUtcMs);
+  if ([date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()]
+    .some((part, index) => part !== [year, month! - 1, day, hour, minute, second][index])) invalid();
+  const offsetMinutes = (localAsUtcMs - startedAtMs) / 60_000;
+  if (!Number.isSafeInteger(offsetMinutes) || offsetMinutes < -840 || offsetMinutes > 840) invalid();
+  const canonicalLocal = `${yearText}-${monthText}-${dayText}T${hourText}:${minuteText}:${secondText}${milliseconds === 0 ? "" : `.${String(milliseconds).padStart(3, "0")}`}`;
+  return Object.freeze({
+    sourceLocalDateTime: canonicalLocal,
+    ...(zoneValue === undefined || zoneValue === null ? {} : { sourceTimeZone: zoneValue as string }),
+    sourceUtcOffsetMinutes: offsetMinutes,
+  });
 }
 
 function normalizeLaps(splits: PlainRecord): Readonly<{
@@ -286,14 +325,19 @@ export async function normalizeGarminActivity(
   const sampledDistance = lastSampleDistance(samples.normalized);
   const distanceMeters = summaryDistance ?? sampledDistance;
   if (distanceMeters === undefined) invalid();
+  const startedAtMs = parseUtcTimestamp(summary.startTimeGMT);
+  const dateEvidence = sourceDateEvidence(summary, startedAtMs);
 
   const normalizedCandidate: Record<string, unknown> = {
     version: 1,
-    started_at_ms: parseUtcTimestamp(summary.startTimeGMT),
+    started_at_ms: startedAtMs,
     sport: "running",
     subtype,
     distance_meters: distanceMeters,
   };
+  assignIfPresent(normalizedCandidate, "source_local_date_time", dateEvidence.sourceLocalDateTime);
+  assignIfPresent(normalizedCandidate, "source_time_zone", dateEvidence.sourceTimeZone);
+  assignIfPresent(normalizedCandidate, "source_utc_offset_minutes", dateEvidence.sourceUtcOffsetMinutes);
   assignIfPresent(normalizedCandidate, "elapsed_ms", secondsToMilliseconds(summary, "elapsedDuration"));
   assignIfPresent(normalizedCandidate, "timer_ms", secondsToMilliseconds(summary, "duration"));
   assignIfPresent(normalizedCandidate, "moving_ms", secondsToMilliseconds(summary, "movingDuration"));

@@ -314,6 +314,9 @@ export function createGarminSyncCoordinator(input: Readonly<{
                 case "revision_review":
                   counts.reviewActivities += 1;
                   break;
+                case "date_confirmation_required":
+                  counts.failedActivities += 1;
+                  return terminal(counts, failure("date_confirmation_required"));
                 case "conflict":
                   counts.failedActivities += 1;
                   return terminal(counts, failure("import_conflict"));

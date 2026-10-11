@@ -271,6 +271,8 @@ function syncFailureCopy(failure: GarminPresentationFailure): Readonly<{
       return { heading: "Garmin took too long to respond", body: "Try the foreground sync again." };
     case "malformed_response":
       return { heading: "Garmin returned data this app could not use", body: "Nothing from this attempt was presented as committed." };
+    case "date_confirmation_required":
+      return { heading: "Confirm the activity date", body: "Choose the historical local date before saving this activity." };
     case "stale_generation":
       return { heading: "Garmin connection changed", body: "The older sync result was ignored." };
     case "import_conflict":

@@ -204,6 +204,59 @@ describe("Garmin import runtime", () => {
     ]);
   });
 
+  it("requires explicit date confirmation instead of committing a phone-zone-derived date", async () => {
+    const sourceEnvelope = envelope();
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => ({
+        kind: "imported" as const,
+        activityId: "must-not-commit",
+        aggregateRevision: 1,
+      })),
+    };
+    const source = {
+      connectionState: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      restoreSession: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      login: jest.fn(async () => ({ kind: "disconnected" as const })),
+      resumeMfa: jest.fn(async () => ({ kind: "disconnected" as const })),
+      logout: jest.fn(async () => undefined),
+      listRunningSummaries: jest.fn(async () => ({
+        items: [{
+          account_namespace: sourceEnvelope.account_namespace,
+          external_activity_id: sourceEnvelope.external_activity_id,
+        }],
+      })),
+      readActivity: jest.fn(async () => sourceEnvelope),
+    };
+    const runtime = createGarminRootRuntime({
+      enforceSourceDatePolicy: true,
+      loadActivities: async () => [],
+      requestFor: async () => ({
+        requestId: "date-policy-request",
+        requestSha256: "d".repeat(64),
+        activityId: "date-policy-activity",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-06-20",
+      }),
+      services: { importedActivities: repository },
+      sha256,
+      source,
+    });
+
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      failure: { code: "date_confirmation_required" },
+    });
+    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+  });
+
   it("replays a lost acknowledgement after remount without duplicating durable history", async () => {
     const durableActivities: Array<Readonly<{
       activityId: string;
@@ -545,6 +598,8 @@ describe("Garmin import runtime", () => {
       activityTypeDTO: { typeKey: "running" },
       summaryDTO: {
         startTimeGMT: "2026-06-20T00:00:00.000Z",
+        startTimeLocal: "2026-06-20T08:00:00",
+        timeZoneId: "Asia/Singapore",
         distance: 5_000,
         duration: 1_500,
         elapsedDuration: 1_560,
@@ -642,6 +697,19 @@ describe("Garmin import runtime", () => {
     });
     expect(mockGarminNativeModule.restoreSession).toHaveBeenCalledTimes(1);
     expect(application.confirmGarminImport).toHaveBeenCalledTimes(2);
+    expect(application.confirmGarminImport).toHaveBeenCalledWith(expect.objectContaining({
+      confirmedLocalDate: "2026-06-20",
+      dateProvenance: {
+        absoluteStartedAtMs: Date.UTC(2026, 5, 20),
+        sourceLocalDateTime: "2026-06-20T08:00:00",
+        sourceTimeZone: "Asia/Singapore",
+        sourceUtcOffsetMinutes: 480,
+        confirmedLocalDate: "2026-06-20",
+        confirmedLocalTime: "08:00:00",
+        confirmedTimeZone: "Asia/Singapore",
+        confirmedUtcOffsetMinutes: 480,
+      },
+    }));
     expect(mockGarminNativeModule.getActivityDetails).toHaveBeenCalledWith({
       externalActivityId: "18002",
       maxchart: 2_000,

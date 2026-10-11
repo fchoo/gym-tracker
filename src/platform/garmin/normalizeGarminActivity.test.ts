@@ -188,6 +188,22 @@ describe("normalize Garmin activity", () => {
     }
   });
 
+  it("retains source-local date, timezone, and derived UTC offset provenance", async () => {
+    const fixture = outdoorFixture();
+    Object.assign(fixture.activity.summaryDTO, {
+      startTimeLocal: "2026-10-06 07:30:00",
+      timeZoneId: "Asia/Singapore",
+    });
+
+    const envelope = await normalizeGarminActivity(fixture, sha256);
+
+    expect(envelope.normalized).toMatchObject({
+      source_local_date_time: "2026-10-06T07:30:00",
+      source_time_zone: "Asia/Singapore",
+      source_utc_offset_minutes: 480,
+    });
+  });
+
   it("keeps treadmill positions out of route while retaining descriptor-selected samples", async () => {
     const fixture = outdoorFixture();
     fixture.activity.activityTypeDTO.typeKey = "treadmill_running";
