@@ -8,6 +8,21 @@ import {
 } from "./withGarminConnectModule";
 
 describe("withGarminConnectModule", () => {
+  it("adds Chaquopy to Expo SDK 57's generated buildscript dependencies", () => {
+    const project = `buildscript {
+  repositories { google(); mavenCentral() }
+  dependencies {
+    classpath('com.android.tools.build:gradle')
+  }
+}
+`;
+
+    const configured = applyGarminProjectBuildGradle(project);
+
+    expect(configured).toContain("classpath('com.chaquo.python:gradle:17.0.0')");
+    expect(applyGarminProjectBuildGradle(configured)).toBe(configured);
+  });
+
   it("adds the pinned host-only Chaquopy configuration exactly once", () => {
     const project = "plugins {\n  id(\"com.android.application\") version \"8.9.1\" apply false\n}\n";
     const app = "apply plugin: \"com.android.application\"\n";
