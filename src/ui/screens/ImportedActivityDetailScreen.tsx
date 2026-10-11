@@ -6,6 +6,7 @@ import React, {
 import {
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type TextStyle,
 } from "react-native";
@@ -119,7 +120,23 @@ function routePolyline(segments: readonly (readonly ImportedActivityRoutePoint[]
 
 function ActivityRoute({ detail }: Readonly<{ detail: ImportedActivityDetail }>) {
   const { colors } = useAppTheme();
-  if (detail.route.kind !== "available") return null;
+  if (detail.route.kind !== "available") {
+    const unavailable = detail.route.kind === "none"
+      ? {
+        heading: "No route",
+        body: "Treadmill activity has no route. Source distance, time, pace, and laps remain separate facts.",
+      }
+      : {
+        heading: "Route unavailable",
+        body: "No usable source positions were available for this outdoor activity.",
+      };
+    return (
+      <View style={styles.section}>
+        <SectionHeader title="Route" />
+        <InlineNotice body={unavailable.body} heading={unavailable.heading} tone="neutral" />
+      </View>
+    );
+  }
   const pointCount = detail.route.segments.reduce((count, segment) => count + segment.length, 0);
   const label = `Route from ${pointCount} validated source positions in ${detail.route.segments.length} segment${detail.route.segments.length === 1 ? "" : "s"}.`;
   return (
@@ -150,34 +167,62 @@ function ActivityRoute({ detail }: Readonly<{ detail: ImportedActivityDetail }>)
   );
 }
 
-function LapCell({ children, label }: Readonly<{ children: string; label: string }>) {
+function LapCell({ children, label, stacked }: Readonly<{
+  children: string;
+  label: string;
+  stacked: boolean;
+}>) {
   const { colors } = useAppTheme();
   return (
     <View accessibilityLabel={`${label}. ${children}.`} accessible role="cell" style={styles.lapCell}>
-      <Text style={[typeScale.secondary as TextStyle, styles.lapCellLabel, { color: colors.textSecondary }]}>{label}</Text>
+      <Text
+        style={[
+          typeScale.secondary as TextStyle,
+          !stacked && styles.lapCellLabelHidden,
+          { color: colors.textSecondary },
+        ]}
+        {...(stacked ? { testID: "activity-detail-lap-cell-label" } : {})}
+      >
+        {label}
+      </Text>
       <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{children}</Text>
     </View>
   );
 }
 
-function LapRow({ lap }: Readonly<{ lap: ImportedActivityLap }>) {
+function LapRow({ lap, index, stacked }: Readonly<{
+  lap: ImportedActivityLap;
+  index: number;
+  stacked: boolean;
+}>) {
   return (
     <View
       accessibilityLabel={`Lap ${lap.lap}. Time ${lap.time?.value ?? "Unavailable"}. Pace ${lap.pace?.value ?? "Unavailable"}.`}
       accessible
       role="row"
-      style={styles.lapRow}
+      style={[styles.lapRow, stacked && styles.lapRowStacked]}
+      testID={`activity-detail-lap-row-${index}`}
     >
-      <LapCell label="Lap">{lap.lap}</LapCell>
-      <LapCell label="Time">{lap.time?.value ?? "Unavailable"}</LapCell>
-      <LapCell label="Pace">{lap.pace?.value ?? "Unavailable"}</LapCell>
+      <LapCell label="Lap" stacked={stacked}>{lap.lap}</LapCell>
+      <LapCell label="Time" stacked={stacked}>{lap.time?.value ?? "Unavailable"}</LapCell>
+      <LapCell label="Pace" stacked={stacked}>{lap.pace?.value ?? "Unavailable"}</LapCell>
     </View>
   );
 }
 
-function LapTable({ laps }: Readonly<{ laps: readonly ImportedActivityLap[] }>) {
+function LapTable({ laps, stacked }: Readonly<{
+  laps: readonly ImportedActivityLap[];
+  stacked: boolean;
+}>) {
   const { colors } = useAppTheme();
-  if (laps.length === 0) return null;
+  if (laps.length === 0) {
+    return (
+      <View style={styles.section}>
+        <SectionHeader title="Laps" />
+        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Laps unavailable</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.section}>
       <SectionHeader title="Laps" />
@@ -189,15 +234,18 @@ function LapTable({ laps }: Readonly<{ laps: readonly ImportedActivityLap[] }>) 
             </View>
           ))}
         </View>
-        {laps.map((lap, index) => <LapRow key={`${index}:${lap.lap}`} lap={lap} />)}
+        {laps.map((lap, index) => (
+          <LapRow index={index} key={`${index}:${lap.lap}`} lap={lap} stacked={stacked} />
+        ))}
       </View>
     </View>
   );
 }
 
-function ReadyDetail({ detail, onMatch }: Readonly<{
+function ReadyDetail({ detail, onMatch, stackedLaps }: Readonly<{
   detail: ImportedActivityDetail;
   onMatch(): void;
+  stackedLaps: boolean;
 }>) {
   const { colors } = useAppTheme();
   return (
@@ -226,7 +274,7 @@ function ReadyDetail({ detail, onMatch }: Readonly<{
           <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{detail.averageHeartRate}</Text>
         </View>
       )}
-      <LapTable laps={detail.laps} />
+      <LapTable laps={detail.laps} stacked={stackedLaps} />
       <InlineNotice body={detail.fidelity.body} heading={detail.fidelity.heading} tone="neutral" />
       <PrimaryAction label="Match to scheduled workout" onPress={onMatch} />
     </>
@@ -239,6 +287,8 @@ export function ImportedActivityDetailScreen({
   onMatch,
   width,
 }: ImportedActivityDetailScreenProps) {
+  const dimensions = useWindowDimensions();
+  const stackedLaps = (width ?? dimensions.width) < 600 || dimensions.fontScale >= 2;
   const appearanceRef = useRef<View>(null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const primary = useMemo(() => (
@@ -248,9 +298,9 @@ export function ImportedActivityDetailScreen({
         onAppearance={() => setAppearanceOpen(true)}
         onBack={onBack}
       />
-      <ReadyDetail detail={state.detail} onMatch={onMatch} />
+      <ReadyDetail detail={state.detail} onMatch={onMatch} stackedLaps={stackedLaps} />
     </>
-  ), [onBack, onMatch, state]);
+  ), [onBack, onMatch, stackedLaps, state]);
   return (
     <>
       <AdaptiveScreen
@@ -332,6 +382,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     minHeight: sizes.minimumTarget,
   },
+  lapRowStacked: {
+    flexDirection: "column",
+  },
   lapCell: {
     flex: 1,
     gap: space[1],
@@ -340,7 +393,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[1],
     paddingVertical: space[2],
   },
-  lapCellLabel: {
+  lapCellLabelHidden: {
     display: "none",
   },
 });
