@@ -2,6 +2,9 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 import {
   confirmRunningActivityMatch,
+  prepareRunningActivityMatchInput,
+  queryRunningActivityMatchCandidates,
+  type RunningActivityMatchCandidate,
   type RunningActivityMatchRepository,
 } from "./activityMatchCommands";
 
@@ -19,6 +22,34 @@ const input = Object.freeze({
   slotId: "slot-1",
   sessionRevisionId: "session-revision-1",
   occurredAtMs: 1_700_000_000_000,
+});
+
+const candidate: RunningActivityMatchCandidate = Object.freeze({
+  activityId: "activity-1",
+  expectedActivityRevision: 1,
+  expectedAcceptedPayloadSha256: "a".repeat(64),
+  opportunityId: "opportunity-1",
+  expectedOpportunityRevision: 1,
+  planId: "running-plan-1",
+  planName: "5K plan",
+  scheduleId: "schedule-1",
+  scheduleVersionId: "schedule-version-1",
+  expectedScheduleRevision: 2,
+  planDayId: "plan-day-1",
+  expectedPlanDayRevision: 3,
+  slotId: "slot-1",
+  slotRevisionId: "slot-1:revision:2",
+  expectedSlotRevision: 2,
+  slotOrdinal: 1,
+  sessionRevisionId: "session-revision-1",
+  expectedSessionRevision: 4,
+  sessionKind: "intervals",
+  localDate: "2026-10-12",
+  localTime: null,
+  timezone: "Asia/Singapore",
+  targetSummary: "6 × 400 m · recovery 2 min · 4:35 / km",
+  state: "planned",
+  expectedRelationRevision: 0,
 });
 
 describe("Running activity match commands", () => {
@@ -56,5 +87,87 @@ describe("Running activity match commands", () => {
     await expect(confirmRunningActivityMatch(repository, { ...input, action: "reassign", expectedCurrentOpportunityId: "bad id" })).rejects.toThrow("running_activity_match_invalid");
     await expect(confirmRunningActivityMatch(repository, { ...input, requestSha256: "A".repeat(64), expectedActivityRevision: 0 })).rejects.toThrow("running_activity_match_invalid");
     await expect(confirmRunningActivityMatch(repository, { ...input, action: "unmatch", expectedCurrentOpportunityId: "old-opportunity" })).resolves.toMatchObject({ kind: "conflict" });
+  });
+
+  it("rejects confirmation unless the accepted payload and every stable source revision are carried", async () => {
+    const repository: RunningActivityMatchRepository = {
+      confirm: jest.fn(async () => ({
+        kind: "matched" as const,
+        activityId: "activity-1",
+        opportunityId: "opportunity-1",
+        relationRevision: 1,
+      })),
+    };
+    const complete = {
+      ...input,
+      expectedAcceptedPayloadSha256: "a".repeat(64),
+      planId: "running-plan-1",
+      expectedScheduleRevision: 2,
+      planDayId: "plan-day-1",
+      expectedPlanDayRevision: 3,
+      slotRevisionId: "slot-1:revision:2",
+      expectedSlotRevision: 2,
+      expectedSessionRevision: 4,
+    };
+
+    for (const key of [
+      "expectedAcceptedPayloadSha256",
+      "planId",
+      "expectedScheduleRevision",
+      "planDayId",
+      "expectedPlanDayRevision",
+      "slotRevisionId",
+      "expectedSlotRevision",
+      "expectedSessionRevision",
+    ] as const) {
+      const malformed = { ...complete } as Record<string, unknown>;
+      delete malformed[key];
+      await expect(confirmRunningActivityMatch(repository, malformed as never))
+        .rejects.toThrow("running_activity_match_invalid");
+    }
+    expect(repository.confirm).not.toHaveBeenCalled();
+  });
+
+  it("queries by one opaque local activity ID and prepares the exact selected confirmation envelope", async () => {
+    const readCandidates = jest.fn(async () => Object.freeze({
+      kind: "ready" as const,
+      activityId: "activity-1",
+      candidates: Object.freeze([candidate]),
+    }));
+
+    await expect(queryRunningActivityMatchCandidates({ readCandidates }, "activity-1"))
+      .resolves.toEqual({ kind: "ready", activityId: "activity-1", candidates: [candidate] });
+    expect(readCandidates).toHaveBeenCalledWith("activity-1");
+
+    const prepared = await prepareRunningActivityMatchInput({
+      action: "match",
+      candidate,
+      requestId: "match-request-2",
+      occurredAtMs: 1_700_000_000_001,
+    }, async () => "d".repeat(64));
+
+    expect(prepared).toEqual({
+      requestId: "match-request-2",
+      requestSha256: "d".repeat(64),
+      action: "match",
+      activityId: "activity-1",
+      expectedActivityRevision: 1,
+      expectedAcceptedPayloadSha256: "a".repeat(64),
+      opportunityId: "opportunity-1",
+      expectedOpportunityRevision: 1,
+      expectedRelationRevision: 0,
+      planId: "running-plan-1",
+      scheduleId: "schedule-1",
+      scheduleVersionId: "schedule-version-1",
+      expectedScheduleRevision: 2,
+      planDayId: "plan-day-1",
+      expectedPlanDayRevision: 3,
+      slotId: "slot-1",
+      slotRevisionId: "slot-1:revision:2",
+      expectedSlotRevision: 2,
+      sessionRevisionId: "session-revision-1",
+      expectedSessionRevision: 4,
+      occurredAtMs: 1_700_000_000_001,
+    });
   });
 });

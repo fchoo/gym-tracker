@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { confirmRunningActivityMatch } from "../../src/domains/running/activityMatchCommands";
+import { confirmRunningActivityMatch, queryRunningActivityMatchCandidates } from "../../src/domains/running/activityMatchCommands";
 import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedStatement, configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
@@ -31,6 +31,64 @@ async function seed(kernel: SqliteKernel) {
 }
 
 describe("Running activity matching", () => {
+  it("reads stable same-day candidates in slot order without writing and confirms only the selected occurrence", async () => {
+    const { kernel } = await runtime();
+    await seed(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute("INSERT INTO running_session_slots(id, plan_id, weekday, ordinal, session_revision_id, revision) VALUES ('running-slot-2', 'running-plan', 'Monday', 1, 'running-session-v1', 1)");
+      await transaction.execute("INSERT INTO running_session_slot_roots(id, plan_id, weekday, created_at_ms) VALUES ('running-slot-2', 'running-plan', 'Monday', 1000)");
+      await transaction.execute("INSERT INTO running_session_slot_revisions(id, slot_root_id, revision, ordinal, session_root_id, session_revision_id, created_at_ms) VALUES ('running-slot-2:revision:1', 'running-slot-2', 1, 1, 'running-session-v1:root', 'running-session-v1', 1000)");
+      await transaction.execute("INSERT INTO running_opportunities(id, plan_id, schedule_id, schedule_version_id, slot_id, local_date, timezone, session_revision_id, state, created_at_ms) VALUES ('running-opportunity-2', 'running-plan', 'running-schedule', 'running-version', 'running-slot-2', '2026-10-05', 'Asia/Singapore', 'running-session-v1', 'planned', 3000)");
+    });
+    const repository = createRunningActivityMatchRepository(kernel);
+    const before = await kernel.queryAll<{ events: number; receipts: number; relations: number }>(`SELECT
+      (SELECT COUNT(*) FROM running_activity_match_events) AS events,
+      (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts,
+      (SELECT COUNT(*) FROM running_activity_current_matches) AS relations`);
+
+    const read = await queryRunningActivityMatchCandidates(repository, "activity-1");
+
+    expect(read.kind).toBe("ready");
+    if (read.kind !== "ready") throw new Error("expected_ready_candidates");
+    expect(read.candidates.map((candidate) => [candidate.opportunityId, candidate.slotOrdinal]))
+      .toEqual([["running-opportunity", 0], ["running-opportunity-2", 1]]);
+    await expect(kernel.queryAll(`SELECT
+      (SELECT COUNT(*) FROM running_activity_match_events) AS events,
+      (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts,
+      (SELECT COUNT(*) FROM running_activity_current_matches) AS relations`)).resolves.toEqual(before);
+
+    const selected = read.candidates[1]!;
+    await expect(confirmRunningActivityMatch(repository, {
+      requestId: "selected-match",
+      requestSha256: "8".repeat(64),
+      action: "match",
+      activityId: selected.activityId,
+      expectedActivityRevision: selected.expectedActivityRevision,
+      expectedAcceptedPayloadSha256: selected.expectedAcceptedPayloadSha256,
+      opportunityId: selected.opportunityId,
+      expectedOpportunityRevision: selected.expectedOpportunityRevision,
+      expectedRelationRevision: selected.expectedRelationRevision,
+      planId: selected.planId,
+      scheduleId: selected.scheduleId,
+      scheduleVersionId: selected.scheduleVersionId,
+      expectedScheduleRevision: selected.expectedScheduleRevision,
+      planDayId: selected.planDayId,
+      expectedPlanDayRevision: selected.expectedPlanDayRevision,
+      slotId: selected.slotId,
+      slotRevisionId: selected.slotRevisionId,
+      expectedSlotRevision: selected.expectedSlotRevision,
+      sessionRevisionId: selected.sessionRevisionId,
+      expectedSessionRevision: selected.expectedSessionRevision,
+      occurredAtMs: 4000,
+    })).resolves.toMatchObject({
+      kind: "matched",
+      opportunityId: "running-opportunity-2",
+      relationRevision: 1,
+    });
+    await expect(kernel.queryAll("SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches"))
+      .resolves.toEqual([{ activity_id: "activity-1", opportunity_id: "running-opportunity-2", relation_revision: 1 }]);
+  });
+
   it("does not allow an implicit candidate read to create a match", async () => {
     const repository = { confirm: async () => Object.freeze({ kind: "conflict" as const, activityId: "activity-1", opportunityId: "opportunity-1", relationRevision: 0 }) };
     await expect(confirmRunningActivityMatch(repository, {
