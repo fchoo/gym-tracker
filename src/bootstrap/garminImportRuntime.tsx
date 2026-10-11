@@ -196,22 +196,21 @@ export function createGarminRootRuntime(input: Readonly<{
   loadActivities(): Promise<readonly GarminImportedActivityListItem[]>;
 }>): GarminRootRuntime {
   const revisionReviews = new Set<string>();
-  const importer = createGarminImportRuntime({
-    services: input.services,
-    sha256: input.sha256,
-    assertCurrentGeneration: async () => undefined,
-    invalidateReads: async () => undefined,
-  });
   const coordinator = createGarminSyncCoordinator({
     source: input.source,
     importActivity: async (envelope, assertCurrentGeneration) => {
       const confirmation = await input.requestFor(
         await prepareGarminImport(envelope, input.sha256),
       );
+      const importer = createGarminImportRuntime({
+        services: input.services,
+        sha256: input.sha256,
+        assertCurrentGeneration,
+        invalidateReads: async () => undefined,
+      });
       const result = await importer.commitEnvelope({
         envelope,
         confirmation,
-        assertCurrentGeneration,
       });
       if (result.kind === "revision_review") {
         revisionReviews.add(result.activityId);
@@ -259,23 +258,24 @@ function activityIdFromSummary(summary: unknown): string {
   throw new Error("garmin_source_invalid");
 }
 
+export function requireGarminAccountNamespace(value: string | null): string {
+  if (value === null) throw new Error("sign_in_required");
+  return value;
+}
+
 function createProductionGarminSource(sha256: GarminSha256): GarminActivitySourcePort {
   const accountNamespace = { current: null as string | null };
-  const requireAccountNamespace = () => {
-    if (accountNamespace.current === null) throw new Error("sign_in_required");
-    return accountNamespace.current;
-  };
   const adapter = createGarminActivityAdapter({
     mapper: {
       fromSummary: (summary) => normalizeGarminActivity({
-        account_namespace: requireAccountNamespace(),
+        account_namespace: requireGarminAccountNamespace(accountNamespace.current),
         external_activity_id: activityIdFromSummary(summary),
         activity: summary,
         splits: { lapDTOs: [] },
         details: { metricDescriptors: [], activityDetailMetrics: [] },
       }, sha256),
       fromActivity: (activity) => normalizeGarminActivity({
-        account_namespace: requireAccountNamespace(),
+        account_namespace: requireGarminAccountNamespace(accountNamespace.current),
         ...activity,
       }, sha256),
     },
@@ -301,7 +301,6 @@ function createProductionGarminSource(sha256: GarminSha256): GarminActivitySourc
 
 function confirmedLocalDate(startedAtMs: number): string {
   const date = new Date(startedAtMs);
-  if (!Number.isFinite(date.getTime())) throw new Error("garmin_source_invalid");
   const year = String(date.getFullYear()).padStart(4, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");

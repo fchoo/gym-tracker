@@ -108,6 +108,8 @@
     ,"acceptance:phase18:garmin": "node scripts/run-phase18-garmin-acceptance.mjs --manifest artifacts/native/phase18-garmin-acceptance/build.json --record artifacts/native/phase18-garmin-acceptance/acceptance-record.json"
     ,"verify:phase18:garmin-acceptance": "node scripts/verify-phase18-garmin-acceptance.mjs --manifest artifacts/native/phase18-garmin-acceptance/build.json"
     ,"test:evidence:phase18:garmin-acceptance": "node --test scripts/phase18-garmin-acceptance.test.mjs"
+    ,"benchmark:phase18:garmin": "node scripts/benchmark-phase18-garmin.mjs --manifest artifacts/native/phase18-garmin-acceptance/build.json --evidence artifacts/native/phase18-garmin-acceptance/benchmark.json"
+    ,"test:coverage:phase18": "node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",

@@ -13,6 +13,22 @@ import process from "node:process";
 const projectRoot = process.cwd();
 const coverageDirectory = path.join(projectRoot, "coverage");
 const summaryPath = path.join(coverageDirectory, "coverage-summary.json");
+const phase18IntegrityCriticalFiles = [
+  "src/platform/garmin/garminActivityAdapter.ts",
+  "src/platform/garmin/canonicalGarminPayload.ts",
+  "src/platform/garmin/normalizeGarminActivity.ts",
+  "src/platform/garmin/garminSyncCoordinator.ts",
+  "src/bootstrap/garminImportRuntime.tsx",
+  "src/domains/running/activityMatchCommands.ts",
+];
+const phase18TargetedTests = [
+  "src/platform/garmin/garminActivityAdapter.test.ts",
+  "src/platform/garmin/canonicalGarminPayload.test.ts",
+  "src/platform/garmin/normalizeGarminActivity.test.ts",
+  "src/platform/garmin/garminSyncCoordinator.test.ts",
+  "src/bootstrap/garminImportRuntime.test.tsx",
+  "src/domains/running/activityMatchCommands.test.ts",
+];
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",
   "src/domains/portability/backupContracts.ts",
@@ -52,6 +68,9 @@ const integrityCriticalFiles = [
   "src/domains/activities/importCommands.ts",
   "src/platform/garmin/canonicalGarminPayload.ts",
   "src/platform/garmin/normalizeGarminActivity.ts",
+  "src/platform/garmin/garminActivityAdapter.ts",
+  "src/platform/garmin/garminSyncCoordinator.ts",
+  "src/bootstrap/garminImportRuntime.tsx",
   "src/domains/bodyweight/commands.ts",
   "src/domains/bodyweight/contracts.ts",
   "src/domains/running/activityMatchCommands.ts",
@@ -173,14 +192,22 @@ const forwarded = process.argv.slice(2);
 const focusedIntegrityFiles = [];
 const focusedProjects = [];
 const jestForwarded = [];
+let focusPhase18 = false;
 for (const argument of forwarded) {
-  if (argument.startsWith("--focus-integrity=")) {
+  if (argument === "--focus-phase18") {
+    focusPhase18 = true;
+  } else if (argument.startsWith("--focus-integrity=")) {
     focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
   } else if (argument.startsWith("--focus-project=")) {
     focusedProjects.push(...argument.slice("--focus-project=".length).split(",").filter(Boolean));
   } else {
     jestForwarded.push(argument);
   }
+}
+if (focusPhase18) {
+  focusedIntegrityFiles.push(...phase18IntegrityCriticalFiles);
+  focusedProjects.push("unit", "integration");
+  jestForwarded.push(...phase18TargetedTests);
 }
 if (focusedIntegrityFiles.length > 0) {
   const invalidFiles = focusedIntegrityFiles.filter((file) => !integrityCriticalFiles.includes(file));

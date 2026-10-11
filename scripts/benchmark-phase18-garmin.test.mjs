@@ -143,6 +143,7 @@ test("benchmark rejects stale identities, missing/non-finite samples, regression
   regression.measurements.frame_time_ms = [101];
   variants.push(regression);
   variants.push({ ...evidence(), raw_json: { private: true } });
+  variants.push({ ...evidence(), route_points: [{ latitude: 1, longitude: 2 }] });
   variants.push({ ...evidence(), note: "owner@example.invalid" });
 
   for (const value of variants) {
@@ -176,19 +177,12 @@ test("benchmark execution requires exact paths and explicit Phase 20 authority",
 test("focused coverage gate registers every Phase 18 integrity-critical module", () => {
   const source = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
   for (const file of [
-    "src/domains/activities/garminActivitySourcePort.ts",
-    "src/domains/activities/importCommands.ts",
-    "src/domains/activities/importContracts.ts",
-    "src/domains/activities/activityDetails.ts",
+    "src/platform/garmin/garminActivityAdapter.ts",
     "src/platform/garmin/canonicalGarminPayload.ts",
     "src/platform/garmin/normalizeGarminActivity.ts",
-    "src/platform/garmin/garminActivityAdapter.ts",
     "src/platform/garmin/garminSyncCoordinator.ts",
     "src/bootstrap/garminImportRuntime.tsx",
-    "src/ui/garmin/useGarminConnectionController.ts",
     "src/domains/running/activityMatchCommands.ts",
-    "src/platform/sqlite/repositories/importedActivityRepository.ts",
-    "src/platform/sqlite/repositories/runningActivityMatchRepository.ts",
   ]) assert.match(source, new RegExp(file.replace(/[./]/gu, "\\$&"), "u"));
   assert.match(source, /--focus-phase18/u);
 });

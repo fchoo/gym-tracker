@@ -6,16 +6,21 @@ import type {
   GarminSourceEnvelope,
 } from "../../domains/activities/garminActivitySourcePort";
 import type { GarminImportResult, ImportedActivityCommandRepository } from "../../domains/activities/importCommands";
+import { GarminImportBoundaryError } from "../../domains/activities/importContracts";
 import {
   canonicalizeGarminPayload,
   GARMIN_CANONICAL_LIMITS,
+  GarminCanonicalPayloadError,
 } from "./canonicalGarminPayload";
 import {
   createGarminActivityAdapter,
   type GarminActivityMapper,
   type GarminNativeDriver,
 } from "./garminActivityAdapter";
-import { normalizeGarminActivity } from "./normalizeGarminActivity";
+import {
+  GarminActivityNormalizationError,
+  normalizeGarminActivity,
+} from "./normalizeGarminActivity";
 import {
   createGarminSharedImportCommitter,
   createGarminSyncCoordinator,
@@ -129,12 +134,19 @@ const syncLimitCases: Array<[string, keyof GarminSyncLimits, number]> = [
 ];
 
 const syncFailureCases: Array<[string, GarminSyncFailureCode, number | undefined]> = [
+  ["invalid_credentials", "sign_in_required", undefined],
+  ["mfa_expired", "sign_in_required", undefined],
+  ["sign_in_required", "sign_in_required", undefined],
   ["offline", "offline", undefined],
   ["timeout", "timeout", undefined],
   ["temporary_failure", "temporary_failure", undefined],
   ["data_access_denied", "data_access_denied", undefined],
   ["rate_limited", "rate_limited", 9_999_999],
   ["malformed_response", "malformed_response", undefined],
+  ["operation_rejected", "malformed_response", undefined],
+  ["arguments_rejected", "malformed_response", undefined],
+  ["garmin_page_invalid", "malformed_response", undefined],
+  ["garmin_activity_id_invalid", "malformed_response", undefined],
 ];
 
 function adapterError(code: string, retryAfterMs?: number): Error {
@@ -373,5 +385,182 @@ describe("Garmin sync coordinator", () => {
 
     releaseImport({ kind: "imported", activityId: "local", aggregateRevision: 1 });
     await expect(first).resolves.toMatchObject({ kind: "success", counts: { newActivities: 1 } });
+  });
+
+  it("reduces every committed import outcome without losing prior counts", async () => {
+    const summary = await envelope("1");
+    for (const [result, expected] of [
+      [{ kind: "replayed", activityId: "local", aggregateRevision: 1 }, { kind: "success", unchangedActivities: 1 }],
+      [{ kind: "removed", activityId: "local", aggregateRevision: 2 }, { kind: "success", unchangedActivities: 1 }],
+      [{ kind: "revision_review", activityId: "local", aggregateRevision: 1 }, { kind: "success", reviewActivities: 1 }],
+      [{ kind: "conflict", activityId: "local", aggregateRevision: 1 }, { kind: "failure", failedActivities: 1 }],
+    ] as const) {
+      const source = pagedSource(new Map([["start", { items: [summary] }]]), async () => summary);
+      const coordinator = createGarminSyncCoordinator({
+        source,
+        importActivity: async () => result,
+      });
+      await expect(coordinator.syncNow()).resolves.toMatchObject({
+        kind: expected.kind,
+        counts: {
+          unchangedActivities: expected.unchangedActivities ?? 0,
+          reviewActivities: expected.reviewActivities ?? 0,
+          failedActivities: expected.failedActivities ?? 0,
+        },
+      });
+    }
+  });
+
+  it("rejects cancellation at every boundary without starting later work", async () => {
+    const summary = await envelope("1");
+    const immediateSource = pagedSource(new Map([["start", { items: [summary] }]]), async () => summary);
+    await expect(createGarminSyncCoordinator({
+      source: immediateSource,
+      importActivity: jest.fn(async () => ({ kind: "imported" as const, activityId: "unused", aggregateRevision: 1 })),
+    }).syncNow({ isCancelled: () => true })).resolves.toMatchObject({
+      kind: "cancelled",
+      counts: { pages: 0, attemptedActivities: 0 },
+    });
+    expect(immediateSource.listRunningSummaries).not.toHaveBeenCalled();
+
+    let checks = 0;
+    const afterReadSource = pagedSource(new Map([["start", { items: [summary] }]]), async () => summary);
+    const importActivity = jest.fn(async () => ({ kind: "imported" as const, activityId: "unused", aggregateRevision: 1 }));
+    await expect(createGarminSyncCoordinator({
+      source: afterReadSource,
+      importActivity,
+    }).syncNow({ isCancelled: () => {
+      checks += 1;
+      return checks === 3;
+    } })).resolves.toMatchObject({ kind: "cancelled", counts: { attemptedActivities: 1 } });
+    expect(afterReadSource.readActivity).toHaveBeenCalledTimes(1);
+    expect(importActivity).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed pages, summary identity drift, and envelope identity drift", async () => {
+    const good = await envelope("1");
+    const wrongAccount = { ...good, account_namespace: "other-account" };
+    const duplicate = [good, good];
+    const cases: Array<Readonly<{
+      page: unknown;
+      read: GarminSourceEnvelope;
+    }>> = [
+      { page: { items: "not-an-array" }, read: good },
+      { page: { items: [good, good] }, read: good },
+      { page: { items: [wrongAccount] }, read: good },
+      { page: { items: duplicate }, read: good },
+      { page: { items: [good] }, read: { ...good, external_activity_id: "2" } },
+      { page: { items: [good] }, read: wrongAccount },
+    ];
+    for (const fixture of cases) {
+      const source = pagedSource(
+        new Map([["start", fixture.page as never]]),
+        async () => fixture.read,
+      );
+      await expect(createGarminSyncCoordinator({
+        source,
+        importActivity: jest.fn(async () => ({
+          kind: "imported" as const,
+          activityId: "local",
+          aggregateRevision: 1,
+        })),
+        limits: { pageSize: fixture.page === cases[1]?.page ? 1 : 50 },
+      }).syncNow()).resolves.toMatchObject({
+        failure: { code: "malformed_response" },
+      });
+    }
+  });
+
+  it("rejects stale connection fences and invalid or non-progressing cursors", async () => {
+    const summary = await envelope("1");
+    const connectionStates = [
+      { kind: "connected" as const, account_namespace: "account-fixture", generation: 1 },
+      { kind: "disconnected" as const },
+    ];
+    const stale = pagedSource(new Map([["start", { items: [summary] }]]), async () => summary);
+    (stale.connectionState as jest.Mock).mockImplementation(async () => connectionStates.shift() ?? { kind: "disconnected" });
+    await expect(createGarminSyncCoordinator({
+      source: stale,
+      importActivity: jest.fn(async () => ({ kind: "imported" as const, activityId: "unused", aggregateRevision: 1 })),
+    }).syncNow()).resolves.toMatchObject({ failure: { code: "stale_generation" } });
+
+    for (const pages of [
+      new Map([["start", { items: [], next_cursor: "bad" }]]),
+      new Map([["start", { items: [], next_cursor: "10001" }]]),
+      new Map([
+        ["start", { items: [], next_cursor: "1" }],
+        ["1", { items: [], next_cursor: "1" }],
+      ]),
+    ]) {
+      const source = pagedSource(pages, async () => summary);
+      await expect(createGarminSyncCoordinator({
+        source,
+        importActivity: jest.fn(async () => ({ kind: "imported" as const, activityId: "unused", aggregateRevision: 1 })),
+      }).syncNow()).resolves.toMatchObject({ failure: { code: "malformed_response" } });
+    }
+  });
+
+  it("finishes successfully when the configured page bound is exhausted", async () => {
+    const summary = await envelope("1");
+    const source = pagedSource(new Map([["start", { items: [], next_cursor: "1" }]]), async () => summary);
+    await expect(createGarminSyncCoordinator({
+      source,
+      importActivity: jest.fn(async () => ({ kind: "imported" as const, activityId: "unused", aggregateRevision: 1 })),
+      limits: { maxPages: 1 },
+    }).syncNow()).resolves.toMatchObject({ kind: "success", counts: { pages: 1 } });
+  });
+
+  it("returns a partial conflict after a prior activity committed", async () => {
+    const first = await envelope("1");
+    const second = await envelope("2");
+    let calls = 0;
+    const source = pagedSource(new Map([["start", { items: [first, second] }]]), async (id) => id === "1" ? first : second);
+    await expect(createGarminSyncCoordinator({
+      source,
+      importActivity: async () => {
+        calls += 1;
+        return calls === 1
+          ? { kind: "imported", activityId: "local-1", aggregateRevision: 1 }
+          : { kind: "conflict", activityId: "local-2", aggregateRevision: 1 };
+      },
+    }).syncNow()).resolves.toMatchObject({
+      kind: "partial",
+      counts: { newActivities: 1, failedActivities: 1 },
+      failure: { code: "import_conflict" },
+    });
+  });
+
+  it("classifies each bounded validation error and malformed retry metadata", async () => {
+    const summary = await envelope("1");
+    const errors = [
+      new GarminActivityNormalizationError("garmin_source_invalid"),
+      new GarminCanonicalPayloadError("garmin_json_invalid"),
+      new GarminImportBoundaryError("garmin_envelope_invalid"),
+      Object.assign(new Error("rate_limited"), {
+        name: "GarminActivityAdapterError",
+        code: "rate_limited",
+        retryAfterMs: "invalid",
+      }),
+      Object.assign(new Error("unknown"), {
+        name: "GarminActivityAdapterError",
+        code: "unknown",
+      }),
+    ];
+    for (const error of errors) {
+      const source = pagedSource(new Map([["start", { items: [summary] }]]), async () => {
+        throw error;
+      });
+      await expect(createGarminSyncCoordinator({
+        source,
+        importActivity: jest.fn(async () => ({ kind: "imported" as const, activityId: "unused", aggregateRevision: 1 })),
+      }).syncNow()).resolves.toMatchObject({
+        kind: "failure",
+        failure: {
+          code: error instanceof Error && error.name === "GarminActivityAdapterError"
+            ? ("code" in error && error.code === "rate_limited" ? "rate_limited" : "temporary_failure")
+            : "malformed_response",
+        },
+      });
+    }
   });
 });

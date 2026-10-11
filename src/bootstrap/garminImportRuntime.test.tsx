@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, jest } from "@jest/globals";
+import { act, renderHook } from "@testing-library/react-native";
+
+import type { GarminConnectNativeModule } from "../../modules/garmin-connect/src";
 
 import { canonicalJson } from "../domains/activities/importContracts";
 import type {
@@ -11,7 +14,19 @@ import type { GarminSourceEnvelope } from "../domains/activities/garminActivityS
 import {
   createGarminImportRuntime,
   createGarminRootRuntime,
+  parseGarminRootOrigin,
+  requireGarminAccountNamespace,
+  useGarminImportRuntime,
 } from "./garminImportRuntime";
+
+let mockGarminNativeModule: GarminConnectNativeModule;
+jest.mock("../../modules/garmin-connect/src", () => ({
+  getGarminConnectNativeModule: () => mockGarminNativeModule,
+}));
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async () => "a".repeat(64),
+}));
 
 const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -332,6 +347,8 @@ describe("Garmin import runtime", () => {
       envelope: source,
       sourceDate: Object.freeze({
         sourceLocalDateTime: "2026-06-20T00:30:00",
+        sourceTimeZone: "Asia/Singapore",
+        sourceUtcOffsetMinutes: 480,
       }),
     });
 
@@ -340,6 +357,8 @@ describe("Garmin import runtime", () => {
       date: {
         absoluteStartedAtMs: source.normalized.started_at_ms,
         sourceLocalDateTime: "2026-06-20T00:30:00",
+        sourceTimeZone: "Asia/Singapore",
+        sourceUtcOffsetMinutes: 480,
       },
     });
     expect(repository.confirmGarminImport).not.toHaveBeenCalled();
@@ -372,6 +391,8 @@ describe("Garmin import runtime", () => {
       dateProvenance: {
         absoluteStartedAtMs: source.normalized.started_at_ms,
         sourceLocalDateTime: "2026-06-20T00:30:00",
+        sourceTimeZone: "Asia/Singapore",
+        sourceUtcOffsetMinutes: 480,
         confirmedLocalDate: "2026-06-20",
         confirmedLocalTime: "00:30:00",
         confirmedTimeZone: "Asia/Singapore",
@@ -379,6 +400,27 @@ describe("Garmin import runtime", () => {
       },
     });
     expect(invalidateReads).toHaveBeenCalledTimes(1);
+
+    const noSourceProposal = await runtime.prepareEnvelope({
+      envelope: source,
+      sourceDate: Object.freeze({}),
+    });
+    await expect(runtime.confirmPreparedDate({
+      proposal: noSourceProposal,
+      request: {
+        requestId: "request-date-no-source",
+        requestSha256: "e".repeat(64),
+        activityId: "activity-date-no-source",
+        expectedAggregateRevision: 0,
+      },
+      decision: Object.freeze({
+        kind: "confirmed",
+        localDate: "2026-06-20",
+        localTime: "00:30:00",
+        timeZone: "Asia/Singapore",
+        utcOffsetMinutes: 480,
+      }),
+    })).resolves.toMatchObject({ kind: "imported" });
   });
 
   it.each(["cancelled", "stale", "invalid", "dst_gap"] as const)(
@@ -452,5 +494,194 @@ describe("Garmin import runtime", () => {
     expect(assertCurrentGeneration).toHaveBeenCalledTimes(1);
     expect(repository.confirmGarminImport).not.toHaveBeenCalled();
     expect(invalidateReads).not.toHaveBeenCalled();
+  });
+
+  it("parses every supported contextual origin and defaults unknown input to Workout", () => {
+    expect(parseGarminRootOrigin("calendar")).toBe("calendar");
+    expect(parseGarminRootOrigin("library")).toBe("library");
+    expect(parseGarminRootOrigin("progress")).toBe("progress");
+    expect(parseGarminRootOrigin("workout")).toBe("workout");
+    expect(parseGarminRootOrigin(undefined)).toBe("workout");
+    expect(requireGarminAccountNamespace("synthetic-runtime")).toBe("synthetic-runtime");
+    expect(() => requireGarminAccountNamespace(null)).toThrow("sign_in_required");
+  });
+
+  it("composes the production hook through the packaged module and default digest/request factories", async () => {
+    let nativeGeneration = 1;
+    let nativeConnected = true;
+    const summary = (activityId: number | string) => ({
+      activityId,
+      activityTypeDTO: { typeKey: "running" },
+      summaryDTO: {
+        startTimeGMT: "2026-06-20T00:00:00.000Z",
+        distance: 5_000,
+        duration: 1_500,
+        elapsedDuration: 1_560,
+        movingDuration: 1_475,
+      },
+    });
+    mockGarminNativeModule = {
+      runtimeInfo: jest.fn(async () => undefined),
+      restoreSession: jest.fn(async () => undefined),
+      connectionState: jest.fn(async () => ({
+        status: "ok",
+        generation: nativeGeneration,
+        data: nativeConnected
+          ? { kind: "connected", account_namespace: "synthetic-runtime" }
+          : { kind: "disconnected" },
+      })),
+      login: jest.fn(async () => {
+        nativeGeneration = 2;
+        return {
+          status: "ok",
+          generation: nativeGeneration,
+          data: { kind: "mfa_required", challenge_handle: "synthetic-challenge" },
+        };
+      }),
+      resumeMfa: jest.fn(async () => ({
+        status: "ok",
+        generation: nativeGeneration,
+        data: { kind: "connected", account_namespace: "synthetic-runtime" },
+      })),
+      logout: jest.fn(async () => {
+        nativeGeneration = 3;
+        nativeConnected = false;
+        return {
+          status: "ok",
+          generation: nativeGeneration,
+          data: { kind: "disconnected" },
+        };
+      }),
+      getActivities: jest.fn(async () => ({
+        status: "ok",
+        generation: nativeGeneration,
+        data: { items: [summary(18_001), summary("18002")] },
+      })),
+      getActivity: jest.fn(async ({ externalActivityId }) => ({
+        status: "ok",
+        generation: nativeGeneration,
+        data: summary(externalActivityId),
+      })),
+      getActivitySplits: jest.fn(async () => ({
+        status: "ok",
+        generation: nativeGeneration,
+        data: { lapDTOs: [] },
+      })),
+      getActivityDetails: jest.fn(async () => ({
+        status: "ok",
+        generation: nativeGeneration,
+        data: { metricDescriptors: [], activityDetailMetrics: [] },
+      })),
+    };
+    const application = {
+      confirmGarminImport: jest.fn(async (input: ConfirmGarminImportInput) => ({
+        kind: "imported" as const,
+        activityId: input.activityId,
+        aggregateRevision: 1,
+      })),
+      loadGarminActivities: jest.fn(async () => []),
+    };
+    const rendered = await renderHook(() => useGarminImportRuntime({ application }));
+
+    await act(async () => {
+      await expect(rendered.result.current.source.connectionState()).resolves.toMatchObject({ kind: "connected" });
+      await expect(rendered.result.current.source.login({ email: "synthetic", password: "synthetic" }))
+        .resolves.toMatchObject({ kind: "mfa_required" });
+      await expect(rendered.result.current.source.resumeMfa({
+        challenge_handle: "synthetic-challenge",
+        code: "000000",
+      })).resolves.toMatchObject({ kind: "connected" });
+      await expect(rendered.result.current.coordinator.syncNow()).resolves.toMatchObject({
+        kind: "success",
+        counts: { newActivities: 2 },
+      });
+      await expect(rendered.result.current.loadActivities()).resolves.toEqual([]);
+      await rendered.result.current.source.logout();
+      await expect(rendered.result.current.source.connectionState())
+        .resolves.toEqual({ kind: "disconnected" });
+    });
+    expect(application.confirmGarminImport).toHaveBeenCalledTimes(2);
+    expect(mockGarminNativeModule.getActivityDetails).toHaveBeenCalledWith({
+      externalActivityId: "18002",
+      maxchart: 2_000,
+      maxpoly: 4_000,
+    });
+    await rendered.unmount();
+  });
+
+  it("rejects malformed packaged summary identities before normalization", async () => {
+    for (const value of [null, { activityId: 0 }, { activityId: "bad" }]) {
+      mockGarminNativeModule = {
+        runtimeInfo: jest.fn(async () => undefined),
+        restoreSession: jest.fn(async () => undefined),
+        connectionState: jest.fn(async () => ({
+          status: "ok",
+          generation: 1,
+          data: { kind: "connected", account_namespace: "synthetic-runtime" },
+        })),
+        login: jest.fn(async () => undefined),
+        resumeMfa: jest.fn(async () => undefined),
+        logout: jest.fn(async () => undefined),
+        getActivities: jest.fn(async () => ({
+          status: "ok",
+          generation: 1,
+          data: { items: [value] },
+        })),
+        getActivity: jest.fn(async () => undefined),
+        getActivitySplits: jest.fn(async () => undefined),
+        getActivityDetails: jest.fn(async () => undefined),
+      };
+      const rendered = await renderHook(() => useGarminImportRuntime({
+        application: {
+          confirmGarminImport: jest.fn(async () => ({
+            kind: "conflict" as const,
+            activityId: "unused",
+            aggregateRevision: 0,
+          })),
+          loadGarminActivities: jest.fn(async () => []),
+        },
+      }));
+      await rendered.result.current.source.connectionState();
+      await expect(rendered.result.current.source.listRunningSummaries({ limit: 1 }))
+        .rejects.toThrow("garmin_source_invalid");
+      await rendered.unmount();
+    }
+  });
+
+  it("honors explicitly injected hook source, digest, and request factory", async () => {
+    const source = {
+      connectionState: jest.fn(async () => ({ kind: "disconnected" as const })),
+      login: jest.fn(async () => ({ kind: "disconnected" as const })),
+      resumeMfa: jest.fn(async () => ({ kind: "disconnected" as const })),
+      logout: jest.fn(async () => undefined),
+      listRunningSummaries: jest.fn(async () => ({ items: [] })),
+      readActivity: jest.fn(async () => envelope()),
+    };
+    const requestFor = jest.fn(async () => ({
+      requestId: "unused-request",
+      requestSha256: "f".repeat(64),
+      activityId: "unused-activity",
+      expectedAggregateRevision: 0,
+      confirmedLocalDate: "2026-06-20",
+    }));
+    const rendered = await renderHook(() => useGarminImportRuntime({
+      application: {
+        confirmGarminImport: jest.fn(async () => ({
+          kind: "conflict" as const,
+          activityId: "unused",
+          aggregateRevision: 0,
+        })),
+        loadGarminActivities: jest.fn(async () => []),
+      },
+      source,
+      sha256,
+      requestFor,
+    }));
+    expect(rendered.result.current.source).toBe(source);
+    await expect(rendered.result.current.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      failure: { code: "sign_in_required" },
+    });
+    await rendered.unmount();
   });
 });

@@ -201,4 +201,82 @@ describe("Running activity match commands", () => {
     })).rejects.toThrow("running_activity_match_invalid");
     expect(repository.confirm).not.toHaveBeenCalled();
   });
+
+  it("fails closed for invalid local IDs, malformed candidates, and invalid preparation fences", async () => {
+    const readCandidates = jest.fn(async () => Object.freeze({
+      kind: "ready" as const,
+      activityId: candidate.activityId,
+      candidates: Object.freeze([candidate]),
+    }));
+    await expect(queryRunningActivityMatchCandidates({ readCandidates }, "bad id"))
+      .resolves.toEqual({ kind: "missing", activityId: "invalid-local-activity" });
+    expect(readCandidates).not.toHaveBeenCalled();
+
+    const invalidCandidates: RunningActivityMatchCandidate[] = [
+      { ...candidate, activityId: "bad" },
+      { ...candidate, opportunityId: "bad id" },
+      { ...candidate, planId: "bad id" },
+      { ...candidate, scheduleId: "bad id" },
+      { ...candidate, scheduleVersionId: "bad id" },
+      { ...candidate, planDayId: "bad id" },
+      { ...candidate, slotId: "bad id" },
+      { ...candidate, slotRevisionId: "bad id" },
+      { ...candidate, sessionRevisionId: "bad id" },
+      { ...candidate, planName: "" },
+      { ...candidate, planName: "x".repeat(161) },
+      { ...candidate, expectedAcceptedPayloadSha256: "wrong" },
+      { ...candidate, expectedActivityRevision: 0 },
+      { ...candidate, expectedOpportunityRevision: 2 },
+      { ...candidate, expectedScheduleRevision: 0 },
+      { ...candidate, expectedPlanDayRevision: -1 },
+      { ...candidate, expectedSlotRevision: 0 },
+      { ...candidate, slotOrdinal: -1 },
+      { ...candidate, expectedSessionRevision: 0 },
+      { ...candidate, expectedRelationRevision: -1 },
+      { ...candidate, sessionKind: "invalid" as never },
+      { ...candidate, localDate: "2026/10/12" },
+      { ...candidate, localTime: "6:30" },
+      { ...candidate, timezone: "" },
+      { ...candidate, timezone: "x".repeat(121) },
+      { ...candidate, targetSummary: "" },
+      { ...candidate, targetSummary: "x".repeat(241) },
+      { ...candidate, state: "fulfilled" as never },
+    ];
+    for (const malformed of invalidCandidates) {
+      await expect(prepareRunningActivityMatchInput({
+        action: "match",
+        candidate: malformed,
+        requestId: "match-request-invalid",
+        occurredAtMs: 1,
+      }, async () => "f".repeat(64))).rejects.toThrow("running_activity_match_invalid");
+    }
+    await expect(queryRunningActivityMatchCandidates({
+      readCandidates: async () => ({
+        kind: "ready",
+        activityId: candidate.activityId,
+        candidates: [invalidCandidates[0]!],
+      }),
+    }, candidate.activityId)).rejects.toThrow("running_activity_match_invalid");
+    await expect(prepareRunningActivityMatchInput({
+      action: "match",
+      candidate,
+      requestId: "bad id",
+      occurredAtMs: -1,
+    }, async () => "f".repeat(64))).rejects.toThrow("running_activity_match_invalid");
+  });
+
+  it("prepares a valid timed unmatch with the explicit current relation", async () => {
+    const prepared = await prepareRunningActivityMatchInput({
+      action: "unmatch",
+      candidate: { ...candidate, localTime: "06:30" },
+      requestId: "match-request-unmatch",
+      occurredAtMs: 2,
+      expectedCurrentOpportunityId: candidate.opportunityId,
+    }, async () => "e".repeat(64));
+
+    expect(prepared).toMatchObject({
+      action: "unmatch",
+      expectedCurrentOpportunityId: candidate.opportunityId,
+    });
+  });
 });
