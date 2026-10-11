@@ -1,8 +1,4 @@
 import Constants from "expo-constants";
-import {
-  CryptoDigestAlgorithm,
-  digestStringAsync,
-} from "expo-crypto";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import React from "react";
 import {
@@ -13,11 +9,11 @@ import {
   View,
 } from "react-native";
 
-import { getGarminConnectNativeModule } from "../modules/garmin-connect/src";
-import { createGarminActivityAdapter } from "../src/platform/garmin/garminActivityAdapter";
+import {
+  createProductionPhase18GarminProofHarness,
+} from "../src/bootstrap/phase18GarminProof";
 import {
   PHASE18_GARMIN_PROOF_RESULT_MARKER,
-  createPhase18GarminProofHarness,
   phase18GarminProofEnabled,
   type Phase18GarminProofCase,
 } from "../src/testing/phase18GarminProof";
@@ -38,25 +34,10 @@ function emitCases(cases: readonly Phase18GarminProofCase[]): void {
 function Phase18GarminProofContent({ operation }: Readonly<{
   operation: "login" | "restore";
 }>) {
-  const nativePort = React.useMemo(() => getGarminConnectNativeModule(), []);
-  const authPort = React.useMemo(() => createGarminActivityAdapter({
-    driver: nativePort,
-    // Plan 18-04 owns canonical normalization. The proof route uses the adapter
-    // only for foreground auth and the fixed native bridge for bounded reads.
-    mapper: {
-      fromSummary: () => {
-        throw new Error("phase18_proof_normalization_not_available");
-      },
-      fromActivity: () => {
-        throw new Error("phase18_proof_normalization_not_available");
-      },
-    },
-  }), [nativePort]);
-  const harness = React.useMemo(() => createPhase18GarminProofHarness({
-    authPort,
-    nativePort,
-    sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
-  }), [authPort, nativePort]);
+  const harness = React.useMemo(
+    () => createProductionPhase18GarminProofHarness(),
+    [],
+  );
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [mfaCode, setMfaCode] = React.useState("");

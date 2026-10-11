@@ -167,10 +167,12 @@ test("Phase 18 host plan mode never resolves adb, installs, launches, or writes 
 
 test("Phase 18 route is guarded, uses the real adapter/module, and keeps secrets in secure fields", () => {
   const route = readFileSync("app/__phase18-garmin-proof.tsx", "utf8");
+  const bootstrap = readFileSync("src/bootstrap/phase18GarminProof.ts", "utf8");
   const layout = readFileSync("app/_layout.tsx", "utf8");
   assert.match(route, /phase18GarminProofEnabled/u);
-  assert.match(route, /createGarminActivityAdapter/u);
-  assert.match(route, /getGarminConnectNativeModule/u);
+  assert.match(route, /createProductionPhase18GarminProofHarness/u);
+  assert.match(bootstrap, /createGarminActivityAdapter/u);
+  assert.match(bootstrap, /getGarminConnectNativeModule/u);
   assert.match(route, /secureTextEntry/u);
   assert.doesNotMatch(route, /fetch\(|axios|child_process|python-shell|localhost|http:\/\//u);
   assert.doesNotMatch(route, /final-evidence\.json/u);

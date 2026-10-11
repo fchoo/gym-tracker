@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -200,17 +201,12 @@ function resolveAndroidTool(name) {
     return executable;
   }
   const buildTools = path.join(sdk, "build-tools");
-  const versions = existsSync(buildTools)
-    ? [...new Set(readFileSync(path.join(ROOT, "package.json"), "utf8") ? [] : [])]
+  const candidates = existsSync(buildTools)
+    ? readdirSync(buildTools)
+      .map((version) => path.join(buildTools, version, name))
+      .filter((candidate) => existsSync(candidate))
+      .sort()
     : [];
-  void versions;
-  const candidates = commandText(defaultNative, "find", [
-    buildTools,
-    "-type",
-    "f",
-    "-name",
-    name,
-  ]).split("\n").filter(Boolean).sort();
   const executable = candidates.at(-1);
   if (executable === undefined) fail(`${name}_missing`);
   return executable;
@@ -311,6 +307,13 @@ function orderedReportCases(cases) {
   const positions = new Map(PHASE18_GARMIN_PROOF_CASE_IDS.map((id, index) => [id, index]));
   const sorted = [...cases].sort((left, right) => positions.get(left.id) - positions.get(right.id));
   if (new Set(sorted.map(({ id }) => id)).size !== sorted.length) fail("case_duplicate");
+  sorted.forEach((entry, index) => {
+    if (entry.id !== PHASE18_GARMIN_PROOF_CASE_IDS[index]) fail("case_order_invalid");
+    if (
+      entry.status === "TECHNICAL_REVIEW_REQUIRED"
+      && index !== sorted.length - 1
+    ) fail("case_order_invalid");
+  });
   return Object.freeze(sorted);
 }
 
@@ -408,33 +411,39 @@ export function executePhase18GarminProofRunner(
     "f",
   );
   if (/(?:garmin|session|token)/iu.test(backupFiles)) fail("backup_path_invalid");
-  adbText(
-    native,
-    adb,
-    device.serial,
-    "shell",
-    "run-as",
-    PACKAGE,
-    "test",
-    "-f",
-    "no_backup/garmin-session/garmin-di-session.bin",
-  );
-  const privacyCase = Object.freeze({
-    id: "PH18-PRIVACY",
-    status: "passed",
-    duration_ms: 0,
-    count: 1,
-    result_sha256: sha256(combinedLog),
-  });
-  const cases = orderedReportCases([
+  const proofCases = orderedReportCases([
     packageCase,
     ...login.cases,
     ...restore.cases,
-    privacyCase,
   ]);
-  const failure = cases.find(
+  const failure = proofCases.find(
     ({ status }) => status === "TECHNICAL_REVIEW_REQUIRED",
   );
+  if (failure === undefined) {
+    adbText(
+      native,
+      adb,
+      device.serial,
+      "shell",
+      "run-as",
+      PACKAGE,
+      "test",
+      "-f",
+      "no_backup/garmin-session/garmin-di-session.bin",
+    );
+  }
+  const cases = failure === undefined
+    ? orderedReportCases([
+      ...proofCases,
+      Object.freeze({
+        id: "PH18-PRIVACY",
+        status: "passed",
+        duration_ms: 0,
+        count: 1,
+        result_sha256: sha256(combinedLog),
+      }),
+    ])
+    : proofCases;
   const report = Object.freeze({
     schema_version: 1,
     suite: "phase18-garmin-proof",

@@ -11,6 +11,7 @@ import {
   createPhase18GarminProofHarness,
   phase18GarminProofEnabled,
 } from "./phase18GarminProof";
+import type { GarminConnectionState } from "../domains/activities/garminActivitySourcePort";
 
 const HASH = "a".repeat(64);
 
@@ -20,12 +21,12 @@ function ok(generation: number, data: unknown) {
 
 function fixture() {
   const authPort = {
-    login: jest.fn(async () => ({
+    login: jest.fn(async (): Promise<GarminConnectionState> => ({
       kind: "connected" as const,
       account_namespace: "private-account-namespace",
       generation: 1,
     })),
-    resumeMfa: jest.fn(async () => ({
+    resumeMfa: jest.fn(async (): Promise<GarminConnectionState> => ({
       kind: "connected" as const,
       account_namespace: "private-account-namespace",
       generation: 1,
