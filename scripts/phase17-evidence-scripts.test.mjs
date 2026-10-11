@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
 import { createPhase17FixtureProtocol, phase17ActionReceiptId } from "../src/bootstrap/phase17NativeFixture.ts";
-import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter } from "../src/bootstrap/phase17FamilyAFixture.ts";
-import { PHASE17_FAMILY_B_CASE_IDS, assertPhase17FamilyBRegistry, createPhase17FamilyFixtureAdapter } from "../src/bootstrap/phase17FamilyBFixture.ts";
+import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter, phase17FamilyASelectorSchema } from "../src/bootstrap/phase17FamilyAFixture.ts";
+import { PHASE17_FAMILY_B_CASE_IDS, assertPhase17FamilyBRegistry, createPhase17FamilyFixtureAdapter, phase17FamilyBSelectorSchema } from "../src/bootstrap/phase17FamilyBFixture.ts";
 import { phase17ActionEnvelopePlan, phase17ActionLabel } from "../src/bootstrap/phase17ActionEnvelope.ts";
 import { validatePhase17Evidence, validatePhase17IntegrityCoverageRegistry } from "./verify-phase17-evidence.mjs";
 import { PHASE17_FLOW_CASES, commandTreeForPhase17Case, createPhase17RunnerPlan, parsePhase17RunnerArgs, validatePhase17FlowSources } from "./run-phase17-maestro.mjs";
@@ -16,7 +16,7 @@ function syntheticSeed(caseId, fixtureToken, selectors = {}) {
   const expectedPreState = { caseId, state: "before" };
   const actionReceiptId = contract.proofMode === "mutating" ? phase17ActionReceiptId(caseId, fixtureToken) : null;
   return {
-    selectors: { fixtureId: fixtureToken, ...selectors }, expectedPreState,
+    selectors, expectedPreState,
     expectedPostState: actionReceiptId === null ? expectedPreState : { caseId, state: "after", actionReceiptId },
     actionReceiptId,
   };
@@ -140,7 +140,7 @@ test("Phase 17 fixture protocol fails closed for missing or mismatched lifecycle
   });
   const cleanupFixture = await cleanupFailure.setup("library.owned-summary");
   await assert.rejects(cleanupFailure.cleanup({ caseId: cleanupFixture.caseId, fixtureToken: cleanupFixture.fixtureToken }), /cleanup failed/u);
-  assert.deepEqual(Object.keys(fixture).sort(), ["actionReceiptId", "baselineDigest", "caseId", "expectedPostState", "expectedPostStateHash", "expectedPreState", "expectedPreStateHash", "fixtureToken", "proofMode", "selectors", "sourceTable"]);
+  assert.deepEqual(Object.keys(fixture).sort(), ["actionInputs", "actionReceiptId", "baselineDigest", "caseId", "expectedPostState", "expectedPostStateHash", "expectedPreState", "expectedPreStateHash", "fixtureToken", "proofMode", "selectors", "sourceTable"]);
   assert.equal(JSON.stringify(fixture).includes("raw-row"), false);
 });
 
@@ -223,15 +223,22 @@ test("Phase 17 Family A is an explicit typed registry with table-specific seed, 
     baselineDigest: async () => "a".repeat(64),
     canonicalHash: async (value) => syntheticHash(value),
     driver: {
+      selectorSchema: (caseId, proofMode) => phase17FamilyASelectorSchema(caseId, proofMode),
       seed: async (caseId, token, sourceTable) => {
         touched.push(`seed:${caseId}:${sourceTable}`);
-        return syntheticSeed(caseId, token, { fixtureId: `${caseId}:${token}`, sourceTable });
+        const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+        const schema = phase17FamilyASelectorSchema(caseId, contract.proofMode);
+        const selectors = Object.fromEntries(schema.selectors.map((key) => [key, `${key}:${token}`]));
+        const actionInputs = Object.fromEntries(schema.actionInputs.map((key) => [key, `${key}:${token}`]));
+        return { ...syntheticSeed(caseId, token, selectors), ...(Object.keys(actionInputs).length === 0 ? {} : { actionInputs }) };
       },
       probe: async (caseId, token, sourceTable, selectors) => {
         touched.push(`probe:${caseId}:${sourceTable}`);
-        return { rowCount: 1, identityHash: "c".repeat(64), facts: syntheticSeed(caseId, token, { fixtureId: selectors.fixtureId, sourceTable }).expectedPostState };
+        const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+        const seeded = Object.fromEntries(phase17FamilyASelectorSchema(caseId, contract.proofMode).selectors.map((key) => [key, selectors[key]]));
+        return { rowCount: 1, identityHash: "c".repeat(64), facts: syntheticSeed(caseId, token, seeded).expectedPostState };
       },
-      cleanup: async (caseId, token, selectors) => { touched.push(`cleanup:${caseId}:${selectors.fixtureId}`); },
+      cleanup: async (caseId, token, selectors) => { touched.push(`cleanup:${caseId}:${selectors.ownedPlanId}`); },
     },
   });
   const protocol = createPhase17FixtureProtocol({ contracts: PHASE17_CASE_ACTION_CONTRACTS, adapter, createToken: () => "phase17:fixture-token-0005" });
@@ -251,14 +258,19 @@ test("Phase 17 Family B maps every non-collision Running ledger ID to an explici
   assert.equal(PHASE17_FAMILY_B_CASE_IDS.includes("library.running-conflict"), false);
   const calls = [];
   const familyA = {
+    selectorSchema: (caseId, proofMode) => phase17FamilyASelectorSchema(caseId, proofMode),
     seed: async () => { throw new Error("phase17_fixture_family_unimplemented"); },
     probe: async () => { throw new Error("phase17_fixture_family_unimplemented"); },
     cleanup: async () => { throw new Error("phase17_fixture_family_unimplemented"); },
   };
   const familyB = {
+    selectorSchema: (caseId) => phase17FamilyBSelectorSchema(caseId),
     seed: async (caseId, token, sourceTable) => {
       calls.push(`seed:${caseId}:${sourceTable}`);
-      return syntheticSeed(caseId, token, { runningPlanId: `readback:${token}`, runningPlanRevision: "1", runningRequestId: `request:${caseId}` });
+      const schema = phase17FamilyBSelectorSchema(caseId);
+      const selectors = Object.fromEntries(schema.selectors.map((key) => [key, key === "runningPlanRevision" ? "1" : `readback:${key}:${token}`]));
+      const actionInputs = Object.fromEntries(schema.actionInputs.map((key) => [key, `input:${key}:${token}`]));
+      return { ...syntheticSeed(caseId, token, selectors), ...(Object.keys(actionInputs).length === 0 ? {} : { actionInputs }) };
     },
     probe: async (caseId, token, sourceTable, selectors) => {
       calls.push(`probe:${caseId}:${sourceTable}`);
@@ -270,8 +282,9 @@ test("Phase 17 Family B maps every non-collision Running ledger ID to an explici
   const protocol = createPhase17FixtureProtocol({ contracts: PHASE17_CASE_ACTION_CONTRACTS, adapter, createToken: () => "phase17:fixture-token-family-b" });
   for (const caseId of PHASE17_FAMILY_B_CASE_IDS) {
     const fixture = await protocol.setup(caseId);
-    assert.ok(fixture.selectors.runningPlanId.startsWith("readback:"), caseId);
-    assert.ok(fixture.selectors.runningRequestId.startsWith("request:"), caseId);
+    const schema = phase17FamilyBSelectorSchema(caseId);
+    assert.deepEqual(Object.keys(fixture.selectors).sort(), [...schema.selectors].sort(), caseId);
+    assert.deepEqual(Object.keys(fixture.actionInputs).sort(), [...schema.actionInputs].sort(), caseId);
     await protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable });
     await protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken });
   }
@@ -279,6 +292,34 @@ test("Phase 17 Family B maps every non-collision Running ledger ID to an explici
   assert.equal(calls.filter((call) => call.startsWith("probe:")).length, PHASE17_FAMILY_B_CASE_IDS.length);
   assert.equal(calls.filter((call) => call.startsWith("cleanup:")).length, PHASE17_FAMILY_B_CASE_IDS.length);
   await assert.rejects(adapter.seed({ caseId: "library.running-conflict", fixtureToken: "phase17:fixture-token-family-b", sourceTable: "schedule_collision_projections" }), /phase17_fixture_family_unimplemented/u);
+});
+
+test("Phase 17 fixture selector schemas are exhaustive, typed, and keep action-only values out of authoritative readback", () => {
+  for (const caseId of PHASE17_FAMILY_A_CASE_IDS) {
+    const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+    assert.ok(contract, caseId);
+    const schema = phase17FamilyASelectorSchema(caseId, contract.proofMode);
+    assert.deepEqual(schema.actionInputs, contract.proofMode === "mutating" ? ["phase17ActionReceiptId"] : []);
+    assert.deepEqual([...new Set(schema.selectors)], schema.selectors);
+    assert.ok(schema.selectors.every((key) => typeof key === "string" && key.length > 0));
+  }
+  for (const caseId of PHASE17_FAMILY_B_CASE_IDS) {
+    const schema = phase17FamilyBSelectorSchema(caseId);
+    assert.deepEqual([...new Set([...schema.selectors, ...schema.actionInputs])], [...schema.selectors, ...schema.actionInputs]);
+    if (caseId === "library.running-create-zero-sessions") {
+      assert.deepEqual(schema.selectors, []);
+      assert.deepEqual(schema.actionInputs, ["runningPlanId"]);
+    } else {
+      assert.ok(schema.selectors.includes("runningPlanId"));
+      assert.ok(schema.selectors.includes("runningPlanRevision"));
+    }
+  }
+  const familyC = readFileSync("src/bootstrap/phase17FamilyCFixture.ts", "utf8");
+  assert.match(familyC, /export function phase17FamilyCSelectorSchema/u);
+  for (const selector of ["runningPlanId", "strengthPlanId", "runningOpportunityId", "strengthOpportunityId", "collisionToken"]) {
+    assert.match(familyC, new RegExp(`${selector}\\$\\{named\\}`, "u"));
+  }
+  assert.match(familyC, /actionInputs: Object\.freeze\(choices\.map/u);
 });
 
 test("Phase 17 Running YAML consumes only fixture-owned Running IDs and names the complete non-collision lifecycle", () => {
@@ -329,7 +370,9 @@ test("Phase 17 routes claim only the hydrated fixture envelope before real Runni
   const runner = readFileSync("scripts/run-phase17-maestro.mjs", "utf8");
   const port = readFileSync("app/__phase17-maestro.tsx", "utf8");
   assert.match(runner, /phase17_action_envelope_missing/u);
+  assert.match(runner, /Object\.entries\(\{ \.\.\.fixture\.selectors, \.\.\.fixture\.actionInputs \}\)/u);
   assert.match(port, /hydratePhase17ActionEnvelopes\(\{ caseId, fixtureToken \}\)/u);
+  assert.match(port, /action_inputs=\$\{Object\.entries\(fixture\.actionInputs\)/u);
 });
 
 test("Phase 17 has a reachable labelled product-command path and expected receipt for every mutating ledger case", () => {

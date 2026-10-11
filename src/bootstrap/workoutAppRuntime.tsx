@@ -354,6 +354,7 @@ import {
 } from "./phase17ActionEnvelope";
 import {
   assertPhase17FamilyARegistry,
+  phase17FamilyASelectorSchema,
 } from "./phase17FamilyAFixture";
 import {
   assertPhase17FamilyBRegistry,
@@ -4207,6 +4208,7 @@ export function WorkoutAppRuntimeProvider({
           },
         }),
         familyA: {
+          selectorSchema: (caseId, proofMode) => phase17FamilyASelectorSchema(caseId, proofMode),
         seed: async (caseId, fixtureToken, sourceTable) => {
           const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
           if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
@@ -4244,10 +4246,11 @@ export function WorkoutAppRuntimeProvider({
           const plan = row[0]; const bundledExerciseId = bundled[0]?.exercise_id; const starterTemplateId = starter[0]?.template_id;
           if (plan === undefined || bundledExerciseId === undefined || starterTemplateId === undefined || custom.exercise.exerciseId !== customId) throw new Error("phase17_fixture_seed_failed");
           const actionReceiptId = contract.proofMode === "mutating" ? phase17FixtureActionReceiptId(caseId, fixtureToken) : null;
-          const selectors = Object.freeze({ ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, ...(actionReceiptId === null ? {} : { phase17ActionReceiptId: actionReceiptId }) });
+          const selectors = Object.freeze({ ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId });
+          const actionInputs = Object.freeze(actionReceiptId === null ? {} : { phase17ActionReceiptId: actionReceiptId });
           const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable) });
           const expectedPostState = actionReceiptId === null ? facts : Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable), actionReceiptId, action: contract.action });
-          return Object.freeze({ selectors, expectedPreState: facts, expectedPostState, actionReceiptId });
+          return Object.freeze({ selectors, actionInputs, expectedPreState: facts, expectedPostState, actionReceiptId });
           } finally {
             fixtureSetupIds.end(fixtureToken);
           }
@@ -4261,7 +4264,7 @@ export function WorkoutAppRuntimeProvider({
           const ownedPlanId = selectors.ownedPlanId;
           const starterTemplateId = selectors.starterTemplateId;
           if (customExerciseId === undefined || bundledExerciseId === undefined || ownedPlanId === undefined || starterTemplateId === undefined) throw new Error("phase17_fixture_selector_invalid");
-          const actionReceiptId = selectors.phase17ActionReceiptId;
+          const actionReceiptId = contract.proofMode === "mutating" ? phase17FixtureActionReceiptId(caseId, fixtureToken) : undefined;
           const requireCommittedJson = (value: string) => {
             try {
               const parsed = JSON.parse(value) as { outcome?: unknown };

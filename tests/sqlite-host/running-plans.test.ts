@@ -14,7 +14,7 @@ import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite
 import { canonicalRunningRequestHash, saveRunningSourceGraph, type CreateInactiveRunningPlanInput, type SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
 import type { RunningPlanSession } from "../../src/domains/running/contracts";
 import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
-import { PHASE17_FAMILY_B_CASE_IDS, createPhase17FamilyBFixtureDriver } from "../../src/bootstrap/phase17FamilyBFixture";
+import { PHASE17_FAMILY_B_CASE_IDS, createPhase17FamilyBFixtureDriver, phase17FamilyBSelectorSchema } from "../../src/bootstrap/phase17FamilyBFixture";
 import { createHash } from "node:crypto";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
@@ -137,17 +137,38 @@ describe("Running plan lifecycle persistence", () => {
       let seed;
       try { seed = await driver.seed(caseId, token, sourceTable); }
       catch (error) { throw new Error(`${caseId}: ${(error as Error).message}`); }
-      const planId = seed.selectors.runningPlanId;
+      const schema = phase17FamilyBSelectorSchema(caseId);
+      expect(Object.keys(seed.selectors).sort()).toEqual([...schema.selectors].sort());
+      expect(Object.keys(seed.actionInputs ?? {}).sort()).toEqual([...schema.actionInputs].sort());
+      const planId = seed.selectors.runningPlanId ?? seed.actionInputs?.runningPlanId;
       if (planId === undefined) throw new Error(`${caseId}: fixture returned no running plan ID`);
       expect(planId).toContain("phase17:running-plan:");
-      expect(seed.selectors.runningPlanRevision).toBeDefined();
+      if (caseId === "library.running-create-zero-sessions") {
+        await expect(kernel.queryAll<{ plan_id: string }>("SELECT plan_id FROM running_plans WHERE plan_id = ?", [planId])).resolves.toEqual([]);
+      } else {
+        const [row] = await kernel.queryAll<{ revision: number }>("SELECT revision FROM running_plans WHERE plan_id = ?", [planId]);
+        expect(row).toBeDefined();
+        expect(seed.selectors.runningPlanRevision).toBe(String(row!.revision));
+        const aggregate = await running.loadPlan(planId);
+        if (aggregate === null) throw new Error(`${caseId}: fixture aggregate missing`);
+        expect(seed.selectors.runningPlanId).toBe(aggregate.id);
+        const requestId = seed.selectors.runningRequestId;
+        expect(requestId).toBeDefined();
+        await expect(kernel.queryAll<{ request_id: string }>("SELECT request_id FROM running_plan_receipts WHERE plan_id = ? AND request_id = ?", [planId, requestId!])).resolves.toEqual([{ request_id: requestId! }]);
+        for (const selector of ["runningSessionRootId", "runningSessionRevisionId", "runningSlotRootId", "runningSlotRevisionId"] as const) {
+          const value = seed.selectors[selector];
+          if (value !== undefined) expect(JSON.stringify(aggregate.sessions)).toContain(value);
+        }
+      }
       if (caseId === "library.running-detail") {
         expect(seed.actionReceiptId).toBeNull();
         await expect(driver.probe(caseId, token, sourceTable, seed.selectors)).resolves.toEqual(expect.objectContaining({ rowCount: 1, facts: seed.expectedPostState }));
       } else {
         expect(seed.actionReceiptId).toMatch(/^phase17:library\.running-/u);
         expect(seed.expectedPreState).not.toEqual(seed.expectedPostState);
-        await expect(driver.probe(caseId, token, sourceTable, seed.selectors)).rejects.toThrow(/action_receipt_missing/u);
+        await expect(driver.probe(caseId, token, sourceTable, seed.selectors)).rejects.toThrow(
+          caseId === "library.running-create-zero-sessions" ? /probe_missing/u : /action_receipt_missing/u,
+        );
       }
       await driver.cleanup(caseId, token, seed.selectors);
       await expect(kernel.queryAll<{ id: string }>("SELECT id FROM plans WHERE id = ?", [planId])).resolves.toEqual([]);

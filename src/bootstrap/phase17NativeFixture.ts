@@ -5,6 +5,15 @@ const HASH = /^[a-f0-9]{64}$/u;
 
 export type Phase17Fact = null | boolean | number | string | readonly Phase17Fact[] | Readonly<{ readonly [key: string]: Phase17Fact }>;
 export type Phase17Facts = Readonly<Record<string, Phase17Fact>>;
+export type Phase17FixtureSelectors = Readonly<Record<string, string>>;
+/** Deterministic product-command arguments that deliberately have no
+ * pre-action source row. They are distinct from selectors so a fixture never
+ * represents an invented value as authoritative SQLite readback. */
+export type Phase17FixtureActionInputs = Readonly<Record<string, string>>;
+export type Phase17FixtureSelectorSchema = Readonly<{
+  selectors: readonly string[];
+  actionInputs: readonly string[];
+}>;
 
 export type Phase17Fixture = Readonly<{
   caseId: string;
@@ -20,7 +29,8 @@ export type Phase17Fixture = Readonly<{
   expectedPostStateHash: string;
   /** A deterministic product request/receipt identity; absent only for read-only journeys. */
   actionReceiptId: string | null;
-  selectors: Readonly<Record<string, string>>;
+  selectors: Phase17FixtureSelectors;
+  actionInputs: Phase17FixtureActionInputs;
 }>;
 
 export type Phase17SourceProbe = Readonly<{
@@ -34,7 +44,8 @@ export type Phase17SourceProbe = Readonly<{
 }>;
 
 export type Phase17FixtureSeed = Readonly<{
-  selectors: Readonly<Record<string, string>>;
+  selectors: Phase17FixtureSelectors;
+  actionInputs?: Phase17FixtureActionInputs;
   expectedPreState: Phase17Facts;
   expectedPostState: Phase17Facts;
   actionReceiptId: string | null;
@@ -43,9 +54,12 @@ export type Phase17FixtureSeed = Readonly<{
 export type Phase17FixtureAdapter = Readonly<{
   baselineDigest(): Promise<string>;
   canonicalHash(value: Phase17Facts): Promise<string>;
+  /** Required for production family adapters. Opaque test adapters may omit it,
+   * in which case their seed is self-describing only inside the test harness. */
+  selectorSchema?(input: Readonly<{ caseId: string; proofMode: Phase17ProofMode }>): Phase17FixtureSelectorSchema;
   seed(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17FixtureSeed>;
-  probe(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string; selectors: Readonly<Record<string, string>> }>): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
-  cleanup(input: Readonly<{ caseId: string; fixtureToken: string; selectors: Readonly<Record<string, string>> }>): Promise<void>;
+  probe(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string; selectors: Phase17FixtureSelectors }>): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
+  cleanup(input: Readonly<{ caseId: string; fixtureToken: string; selectors: Phase17FixtureSelectors }>): Promise<void>;
 }>;
 
 function canonical(value: Phase17Fact): string {
@@ -67,6 +81,22 @@ function validFacts(value: Phase17Fact): boolean {
 
 function sameFacts(left: Phase17Facts, right: Phase17Facts): boolean {
   return canonical(left) === canonical(right);
+}
+
+function validFixtureValues(value: Readonly<Record<string, string>>): boolean {
+  return Object.entries(value).every(([key, entry]) => key.trim().length > 0 && typeof entry === "string" && entry.length > 0);
+}
+
+function matchesSelectorSchema(
+  schema: Phase17FixtureSelectorSchema,
+  selectors: Phase17FixtureSelectors,
+  actionInputs: Phase17FixtureActionInputs,
+): boolean {
+  const exactKeys = (actual: Readonly<Record<string, string>>, expected: readonly string[]) =>
+    Object.keys(actual).sort().join(",") === [...expected].sort().join(",");
+  return exactKeys(selectors, schema.selectors)
+    && exactKeys(actionInputs, schema.actionInputs)
+    && schema.selectors.every((key) => actionInputs[key] === undefined);
 }
 
 function requireContract(contracts: readonly Phase17CaseActionContract[], caseId: string): Phase17CaseActionContract {
@@ -106,7 +136,12 @@ export function createPhase17FixtureProtocol(input: Readonly<{
       const baselineDigest = await input.adapter.baselineDigest();
       if (!HASH.test(baselineDigest)) throw new Error("phase17_fixture_baseline_invalid");
       const seed = await input.adapter.seed({ caseId, fixtureToken, sourceTable: contract.sourceProbe });
-      if (Object.values(seed.selectors).some((value) => typeof value !== "string" || value.length === 0) || !validFacts(seed.expectedPreState) || !validFacts(seed.expectedPostState)) {
+      const actionInputs = seed.actionInputs ?? Object.freeze({});
+      const schema = input.adapter.selectorSchema?.({ caseId, proofMode: contract.proofMode }) ?? Object.freeze({
+        selectors: Object.freeze(Object.keys(seed.selectors)),
+        actionInputs: Object.freeze(Object.keys(actionInputs)),
+      });
+      if (!validFixtureValues(seed.selectors) || !validFixtureValues(actionInputs) || !matchesSelectorSchema(schema, seed.selectors, actionInputs) || !validFacts(seed.expectedPreState) || !validFacts(seed.expectedPostState)) {
         throw new Error("phase17_fixture_manifest_invalid");
       }
       const expectedPreStateHash = await input.adapter.canonicalHash(seed.expectedPreState);
@@ -119,7 +154,7 @@ export function createPhase17FixtureProtocol(input: Readonly<{
       } else if (seed.actionReceiptId !== null) {
         throw new Error("phase17_fixture_read_only_receipt_invalid");
       }
-      active = Object.freeze({ caseId, proofMode: contract.proofMode, fixtureToken, baselineDigest, sourceTable: contract.sourceProbe, expectedPreState: Object.freeze({ ...seed.expectedPreState }), expectedPostState: Object.freeze({ ...seed.expectedPostState }), expectedPreStateHash, expectedPostStateHash, actionReceiptId: seed.actionReceiptId, selectors: Object.freeze({ ...seed.selectors }) });
+      active = Object.freeze({ caseId, proofMode: contract.proofMode, fixtureToken, baselineDigest, sourceTable: contract.sourceProbe, expectedPreState: Object.freeze({ ...seed.expectedPreState }), expectedPostState: Object.freeze({ ...seed.expectedPostState }), expectedPreStateHash, expectedPostStateHash, actionReceiptId: seed.actionReceiptId, selectors: Object.freeze({ ...seed.selectors }), actionInputs: Object.freeze({ ...actionInputs }) });
       return active;
     },
     async probe(inputValue: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe> {

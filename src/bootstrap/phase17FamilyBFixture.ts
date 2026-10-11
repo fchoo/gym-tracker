@@ -2,7 +2,7 @@ import type { Phase17CaseActionContract } from "../testing/contracts/phase17Libr
 import type { RunningPlanRuntimePort } from "./runningPlanRuntime";
 import type { SqliteKernel } from "../platform/sqlite";
 import type { RunningPlanAggregate, RunningSessionKind } from "../domains/running/contracts";
-import type { Phase17Facts, Phase17FixtureAdapter, Phase17FixtureSeed } from "./phase17NativeFixture";
+import type { Phase17Facts, Phase17FixtureAdapter, Phase17FixtureSeed, Phase17FixtureSelectorSchema, Phase17FixtureSelectors } from "./phase17NativeFixture";
 import type { Phase17FamilyAFixtureDriver } from "./phase17FamilyAFixture";
 import type { Phase17FamilyCFixtureDriver } from "./phase17FamilyCFixture";
 
@@ -32,10 +32,24 @@ export const PHASE17_FAMILY_B_CASE_IDS = Object.freeze([
 export type Phase17FamilyBCaseId = (typeof PHASE17_FAMILY_B_CASE_IDS)[number];
 
 export type Phase17FamilyBFixtureDriver = Readonly<{
+  selectorSchema(caseId: Phase17FamilyBCaseId): Phase17FixtureSelectorSchema;
   seed(caseId: Phase17FamilyBCaseId, fixtureToken: string, sourceTable: string): Promise<Phase17FixtureSeed>;
-  probe(caseId: Phase17FamilyBCaseId, fixtureToken: string, sourceTable: string, selectors: Readonly<Record<string, string>>): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
-  cleanup(caseId: Phase17FamilyBCaseId, fixtureToken: string, selectors: Readonly<Record<string, string>>): Promise<void>;
+  probe(caseId: Phase17FamilyBCaseId, fixtureToken: string, sourceTable: string, selectors: Phase17FixtureSelectors): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
+  cleanup(caseId: Phase17FamilyBCaseId, fixtureToken: string, selectors: Phase17FixtureSelectors): Promise<void>;
 }>;
+
+export function phase17FamilyBSelectorSchema(caseId: Phase17FamilyBCaseId): Phase17FixtureSelectorSchema {
+  if (caseId === "library.running-create-zero-sessions") {
+    return Object.freeze({ selectors: Object.freeze([]), actionInputs: Object.freeze(["runningPlanId"]) });
+  }
+  const sessionSelectors = caseId === "library.running-session-lifecycle" || caseId === "library.running-two-same-day-slots"
+    ? ["runningSessionRootId", "runningSessionRevisionId", "runningSlotRootId", "runningSlotRevisionId"]
+    : [];
+  return Object.freeze({
+    selectors: Object.freeze(["runningPlanId", "runningPlanRevision", ...sessionSelectors, "runningRequestId"]),
+    actionInputs: Object.freeze([]),
+  });
+}
 
 export function isPhase17FamilyBCaseId(value: string): value is Phase17FamilyBCaseId {
   return (PHASE17_FAMILY_B_CASE_IDS as readonly string[]).includes(value);
@@ -62,6 +76,15 @@ export function createPhase17FamilyFixtureAdapter(input: Readonly<{
   return Object.freeze({
     baselineDigest: input.baselineDigest,
     canonicalHash: input.canonicalHash,
+    selectorSchema: ({ caseId, proofMode }) => {
+      if (isPhase17FamilyBCaseId(caseId)) return input.familyB.selectorSchema(caseId);
+      if (isPhase17FamilyCCaseId(caseId)) {
+        if (input.familyC === undefined) throw new Error("phase17_fixture_family_unimplemented");
+        return input.familyC.selectorSchema(caseId);
+      }
+      if (isPhase17FamilyACaseId(caseId)) return input.familyA.selectorSchema(caseId, proofMode);
+      throw new Error("phase17_fixture_family_unimplemented");
+    },
     seed: async ({ caseId, fixtureToken, sourceTable }) => {
       if (isPhase17FamilyBCaseId(caseId)) return input.familyB.seed(caseId, fixtureToken, sourceTable);
       if (isPhase17FamilyCCaseId(caseId)) {
@@ -202,7 +225,8 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
       const receipts = plannedActionReceiptIds(caseId, token);
       const actionReceiptId = receipts[0]!;
       return Object.freeze({
-        selectors: Object.freeze({ runningPlanId: planId, phase17ActionReceiptId: actionReceiptId, phase17ActionReceiptIds: receipts.join(",") }),
+        selectors: Object.freeze({}),
+        actionInputs: Object.freeze({ runningPlanId: planId }),
         expectedPreState: Object.freeze({ planId, planExists: false }),
         expectedPostState: Object.freeze({ planId, planExists: true, actionReceiptId, actionReceiptIds: receipts, action: caseId, sessionCount: 0 }),
         actionReceiptId,
@@ -233,14 +257,18 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
       ...(caseId === "library.running-create-typed-sessions" ? { savedSessionKinds: KINDS } : {}),
       ...(caseId === "library.running-two-same-day-slots" ? { sessionCount: 1 } : {}),
     });
-    return Object.freeze({ selectors: Object.freeze({ ...selectorsFor(plan, requestIds), phase17ActionReceiptId: actionReceiptId, phase17ActionReceiptIds: actionReceiptIds.join(",") }), expectedPreState: facts, expectedPostState, actionReceiptId });
+    return Object.freeze({ selectors: selectorsFor(plan, requestIds), expectedPreState: facts, expectedPostState, actionReceiptId });
   };
 
   const probe = async (caseId: Phase17FamilyBCaseId, token: string, sourceTable: string, selectors: Readonly<Record<string, string>>) => {
-    const planId = selectors.runningPlanId;
-    if (planId === undefined || planId !== fixtureId(token, "running-plan")) throw new Error("phase17_running_fixture_selector_invalid");
+    const planId = fixtureId(token, "running-plan");
+    if (caseId === "library.running-create-zero-sessions") {
+      if (Object.keys(selectors).length !== 0) throw new Error("phase17_running_fixture_selector_invalid");
+    } else if (selectors.runningPlanId !== planId || selectors.runningPlanRevision === undefined) {
+      throw new Error("phase17_running_fixture_selector_invalid");
+    }
     const plan = await input.running.loadPlan(planId);
-    const actionReceiptId = selectors.phase17ActionReceiptId;
+    const actionReceiptId = caseId === "library.running-detail" ? undefined : plannedActionReceiptIds(caseId, token)[0];
     const expectedActionReceiptIds = plannedActionReceiptIds(caseId, token);
     if (caseId === "library.running-create-zero-sessions") {
       if (plan === null) throw new Error("phase17_running_fixture_probe_missing");
@@ -279,9 +307,13 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
     return Object.freeze({ rowCount: 1, identityHash, facts });
   };
 
-  const cleanup = async (_caseId: Phase17FamilyBCaseId, token: string, selectors: Readonly<Record<string, string>>) => {
-    const planId = selectors.runningPlanId;
-    if (planId === undefined || planId !== fixtureId(token, "running-plan")) throw new Error("phase17_running_fixture_selector_invalid");
+  const cleanup = async (caseId: Phase17FamilyBCaseId, token: string, selectors: Phase17FixtureSelectors) => {
+    const planId = fixtureId(token, "running-plan");
+    if (caseId === "library.running-create-zero-sessions") {
+      if (Object.keys(selectors).length !== 0) throw new Error("phase17_running_fixture_selector_invalid");
+    } else if (selectors.runningPlanId !== planId || selectors.runningPlanRevision === undefined) {
+      throw new Error("phase17_running_fixture_selector_invalid");
+    }
     await input.kernel.write(async (transaction) => {
       // Child facts first. Every predicate is anchored on the returned plan ID,
       // so a fixture can never remove an unrelated user's Running graph.
@@ -302,5 +334,5 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
       await transaction.execute("DELETE FROM plans WHERE id = ? AND plan_kind = 'running'", [planId]);
     });
   };
-  return Object.freeze({ seed, probe, cleanup });
+  return Object.freeze({ selectorSchema: phase17FamilyBSelectorSchema, seed, probe, cleanup });
 }

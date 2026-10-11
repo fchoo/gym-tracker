@@ -22,7 +22,7 @@ function Phase17Port() {
     if (runtime.launchState !== "trusted" || typeof caseId !== "string") return;
     if (operation === "setup") {
       void runtime.setupPhase17Fixture(caseId).then((fixture) => setOutput(
-        `PHASE17_SETUP_READY case=${fixture.caseId} proof_mode=${fixture.proofMode} fixture_token=${fixture.fixtureToken} baseline_sha256=${fixture.baselineDigest} source_table=${fixture.sourceTable} expected_pre_state_hash=${fixture.expectedPreStateHash} expected_post_state_hash=${fixture.expectedPostStateHash} action_receipt_id=${fixture.actionReceiptId ?? "none"} selectors=${Object.entries(fixture.selectors).map(([key, value]) => `${key}:${value}`).join(",")}`,
+        `PHASE17_SETUP_READY case=${fixture.caseId} proof_mode=${fixture.proofMode} fixture_token=${fixture.fixtureToken} baseline_sha256=${fixture.baselineDigest} source_table=${fixture.sourceTable} expected_pre_state_hash=${fixture.expectedPreStateHash} expected_post_state_hash=${fixture.expectedPostStateHash} action_receipt_id=${fixture.actionReceiptId ?? "none"} selectors=${Object.entries(fixture.selectors).map(([key, value]) => `${key}:${value}`).join(",") || "none"} action_inputs=${Object.entries(fixture.actionInputs).map(([key, value]) => `${key}:${value}`).join(",") || "none"}`,
       )).catch(() => setOutput("PHASE17_PORT_ERROR"));
       return;
     }

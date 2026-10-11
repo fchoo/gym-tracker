@@ -3,7 +3,7 @@ import type { SqliteKernel } from "../platform/sqlite";
 import { createScheduleCollisionRepository } from "../platform/sqlite/repositories/scheduleCollisionRepository";
 import { createTrainingCalendarRepository } from "../platform/sqlite/repositories/trainingCalendarRepository";
 import type { Phase17CaseActionContract } from "../testing/contracts/phase17LibraryRunning.contract";
-import type { Phase17Facts, Phase17FixtureSeed } from "./phase17NativeFixture";
+import type { Phase17Facts, Phase17FixtureSeed, Phase17FixtureSelectorSchema, Phase17FixtureSelectors } from "./phase17NativeFixture";
 
 export const PHASE17_FAMILY_C_CASE_IDS = Object.freeze(["library.running-conflict"] as const);
 export type Phase17FamilyCCaseId = (typeof PHASE17_FAMILY_C_CASE_IDS)[number];
@@ -34,11 +34,22 @@ function facts(preview: ScheduleCollisionPreview, choice: ScheduleCollisionChoic
 }
 
 export type Phase17FamilyCFixtureDriver = Readonly<{
+  selectorSchema(caseId: Phase17FamilyCCaseId): Phase17FixtureSelectorSchema;
   seed(caseId: Phase17FamilyCCaseId, fixtureToken: string, sourceTable: string): Promise<Phase17FixtureSeed>;
-  probe(caseId: Phase17FamilyCCaseId, fixtureToken: string, sourceTable: string, selectors: Readonly<Record<string, string>>): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
-  cleanup(caseId: Phase17FamilyCCaseId, fixtureToken: string, selectors: Readonly<Record<string, string>>): Promise<void>;
+  probe(caseId: Phase17FamilyCCaseId, fixtureToken: string, sourceTable: string, selectors: Phase17FixtureSelectors): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
+  cleanup(caseId: Phase17FamilyCCaseId, fixtureToken: string, selectors: Phase17FixtureSelectors): Promise<void>;
   confirm(fixtureToken: string, choice: ScheduleCollisionChoice, requestId: string): Promise<unknown>;
 }>;
+
+export function phase17FamilyCSelectorSchema(_caseId: Phase17FamilyCCaseId): Phase17FixtureSelectorSchema {
+  return Object.freeze({
+    selectors: Object.freeze(choices.flatMap((choice) => {
+      const named = suffix(choice);
+      return [`runningPlanId${named}`, `strengthPlanId${named}`, `runningOpportunityId${named}`, `strengthOpportunityId${named}`, `collisionToken${named}`];
+    })),
+    actionInputs: Object.freeze(choices.map((choice) => `phase17ActionReceiptId${suffix(choice)}`)),
+  });
+}
 
 export function createPhase17FamilyCFixtureDriver(input: Readonly<{ kernel: SqliteKernel; graph: Phase17FamilyCGraphDriver }>): Phase17FamilyCFixtureDriver {
   const collisions = createScheduleCollisionRepository(input.kernel, input.graph.sha256);
@@ -53,18 +64,19 @@ export function createPhase17FamilyCFixtureDriver(input: Readonly<{ kernel: Sqli
       return [choice, Object.freeze({ graph, preview })] as const;
     }));
     const byChoice = new Map(entries); fixtures.set(token, byChoice);
-    const selectors = Object.fromEntries(choices.flatMap((choice, index) => {
-      const entry = byChoice.get(choice)!; const named = suffix(choice); const actionReceiptId = receiptId(caseId, token, index);
-      return [[`runningPlanId${named}`, entry.graph.runningPlanId], [`strengthPlanId${named}`, entry.graph.strengthPlanId], [`runningOpportunityId${named}`, entry.graph.runningOpportunityId], [`strengthOpportunityId${named}`, entry.graph.strengthOpportunityId], [`collisionToken${named}`, entry.preview.confirmationToken], [`phase17ActionReceiptId${named}`, actionReceiptId]];
+    const selectors = Object.fromEntries(choices.flatMap((choice) => {
+      const entry = byChoice.get(choice)!; const named = suffix(choice);
+      return [[`runningPlanId${named}`, entry.graph.runningPlanId], [`strengthPlanId${named}`, entry.graph.strengthPlanId], [`runningOpportunityId${named}`, entry.graph.runningOpportunityId], [`strengthOpportunityId${named}`, entry.graph.strengthOpportunityId], [`collisionToken${named}`, entry.preview.confirmationToken]];
     }));
-    return Object.freeze({ selectors: Object.freeze(selectors), expectedPreState: Object.freeze({ collisionOutcomes: choices.map((choice) => facts(byChoice.get(choice)!.preview, null, null)) }), expectedPostState: Object.freeze({ collisionOutcomes: choices.map((choice, index) => Object.freeze({ ...facts(byChoice.get(choice)!.preview, choice, receiptId(caseId, token, index)), actionReceiptId: receiptId(caseId, token, index) })) }), actionReceiptId: receiptId(caseId, token, 0) });
+    const actionInputs = Object.fromEntries(choices.map((choice, index) => [`phase17ActionReceiptId${suffix(choice)}`, receiptId(caseId, token, index)]));
+    return Object.freeze({ selectors: Object.freeze(selectors), actionInputs: Object.freeze(actionInputs), expectedPreState: Object.freeze({ collisionOutcomes: choices.map((choice) => facts(byChoice.get(choice)!.preview, null, null)) }), expectedPostState: Object.freeze({ collisionOutcomes: choices.map((choice, index) => Object.freeze({ ...facts(byChoice.get(choice)!.preview, choice, receiptId(caseId, token, index)), actionReceiptId: receiptId(caseId, token, index) })) }), actionReceiptId: receiptId(caseId, token, 0) });
   };
   const probe = async (caseId: Phase17FamilyCCaseId, token: string, sourceTable: string, selectors: Readonly<Record<string, string>>) => {
     const fixture = fixtures.get(token);
     if (fixture === undefined || sourceTable !== "schedule_collision_projections") throw new Error("phase17_collision_fixture_selector_invalid");
     const outcomes = await Promise.all(choices.map(async (choice, index) => {
       const entry = fixture.get(choice)!; const named = suffix(choice); const actionReceiptId = receiptId(caseId, token, index);
-      if (selectors[`runningOpportunityId${named}`] !== entry.preview.running.occurrenceId || selectors[`strengthOpportunityId${named}`] !== entry.preview.strength.occurrenceId || selectors[`phase17ActionReceiptId${named}`] !== actionReceiptId) throw new Error("phase17_collision_fixture_selector_invalid");
+      if (selectors[`runningOpportunityId${named}`] !== entry.preview.running.occurrenceId || selectors[`strengthOpportunityId${named}`] !== entry.preview.strength.occurrenceId) throw new Error("phase17_collision_fixture_selector_invalid");
       const [outcome] = await input.kernel.queryAll<Readonly<{ id: string; choice: ScheduleCollisionChoice }>>("SELECT id, choice FROM schedule_collision_outcomes WHERE request_id = ? AND running_opportunity_id = ? AND strength_opportunity_id = ?", [actionReceiptId, entry.preview.running.occurrenceId, entry.preview.strength.occurrenceId]);
       if (outcome === undefined || outcome.choice !== choice) throw new Error("phase17_collision_fixture_probe_missing");
       const [projection] = await input.kernel.queryAll<Readonly<{ selected_kind: string; selected_opportunity_id: string | null; effective_local_date: string; moved_local_date: string | null; acknowledged: number }>>("SELECT selected_kind, selected_opportunity_id, effective_local_date, moved_local_date, acknowledged FROM schedule_collision_projections WHERE outcome_id = ?", [outcome.id]);
@@ -85,5 +97,5 @@ export function createPhase17FamilyCFixtureDriver(input: Readonly<{ kernel: Sqli
     await collisions.rebuildProjection(); for (const { graph } of fixture.values()) await input.graph.cleanupGraph(graph); fixtures.delete(token);
   };
   async function confirm(token: string, choice: ScheduleCollisionChoice, requestId: string) { const preview = fixtures.get(token)?.get(choice)?.preview; if (preview === undefined) throw new Error("phase17_collision_fixture_missing"); return collisions.confirm({ requestId, choice, preview, committedAtMs: input.graph.nowMs() }); }
-  return Object.freeze({ seed, probe, cleanup, confirm });
+  return Object.freeze({ selectorSchema: phase17FamilyCSelectorSchema, seed, probe, cleanup, confirm });
 }

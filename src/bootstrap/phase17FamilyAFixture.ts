@@ -1,5 +1,5 @@
 import type { Phase17CaseActionContract } from "../testing/contracts/phase17LibraryRunning.contract";
-import type { Phase17Facts, Phase17FixtureAdapter, Phase17FixtureSeed } from "./phase17NativeFixture";
+import type { Phase17Facts, Phase17FixtureAdapter, Phase17FixtureSeed, Phase17FixtureSelectorSchema, Phase17FixtureSelectors } from "./phase17NativeFixture";
 
 /**
  * Family A is intentionally explicit.  A missing ID is not allowed to fall
@@ -21,10 +21,20 @@ export const PHASE17_FAMILY_A_CASE_IDS = Object.freeze([
 export type Phase17FamilyACaseId = (typeof PHASE17_FAMILY_A_CASE_IDS)[number];
 
 export type Phase17FamilyAFixtureDriver = Readonly<{
+  selectorSchema(caseId: Phase17FamilyACaseId, proofMode: Phase17CaseActionContract["proofMode"]): Phase17FixtureSelectorSchema;
   seed(caseId: Phase17FamilyACaseId, fixtureToken: string, sourceTable: string): Promise<Phase17FixtureSeed>;
-  probe(caseId: Phase17FamilyACaseId, fixtureToken: string, sourceTable: string, selectors: Readonly<Record<string, string>>): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
-  cleanup(caseId: Phase17FamilyACaseId, fixtureToken: string, selectors: Readonly<Record<string, string>>): Promise<void>;
+  probe(caseId: Phase17FamilyACaseId, fixtureToken: string, sourceTable: string, selectors: Phase17FixtureSelectors): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
+  cleanup(caseId: Phase17FamilyACaseId, fixtureToken: string, selectors: Phase17FixtureSelectors): Promise<void>;
 }>;
+
+export function phase17FamilyASelectorSchema(_caseId: Phase17FamilyACaseId, proofMode: Phase17CaseActionContract["proofMode"]): Phase17FixtureSelectorSchema {
+  return Object.freeze({
+    selectors: Object.freeze([
+      "ownedPlanId", "customExerciseId", "bundledExerciseId", "starterTemplateId",
+    ]),
+    actionInputs: Object.freeze(proofMode === "mutating" ? ["phase17ActionReceiptId"] : []),
+  });
+}
 
 export function isPhase17FamilyACaseId(value: string): value is Phase17FamilyACaseId {
   return (PHASE17_FAMILY_A_CASE_IDS as readonly string[]).includes(value);
@@ -46,6 +56,10 @@ export function createPhase17FamilyAFixtureAdapter(input: Readonly<{
   return Object.freeze({
     baselineDigest: input.baselineDigest,
     canonicalHash: input.canonicalHash,
+    selectorSchema: ({ caseId, proofMode }) => {
+      if (!isPhase17FamilyACaseId(caseId)) throw new Error("phase17_fixture_family_unimplemented");
+      return input.driver.selectorSchema(caseId, proofMode);
+    },
     seed: async ({ caseId, fixtureToken, sourceTable }) => {
       if (!isPhase17FamilyACaseId(caseId)) throw new Error("phase17_fixture_family_unimplemented");
       return input.driver.seed(caseId, fixtureToken, sourceTable);
