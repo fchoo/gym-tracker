@@ -8,6 +8,7 @@ import {
   GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
   GARMIN_JSON_FIXTURE_PAYLOADS,
 } from "../tests/fixtures/garmin-json/fixture-manifest.ts";
+import { canonicalizeGarminPayload } from "../src/platform/garmin/canonicalGarminPayload.ts";
 import {
   PHASE18_GARMIN_BENCHMARK_METRICS,
   executePhase18GarminBenchmark,
@@ -95,7 +96,7 @@ function evidence(overrides = {}) {
   };
 }
 
-test("canonical manifest names bounded synthetic summary, splits, and detail fixtures", () => {
+test("canonical manifest uses production component hashing and fidelity values", () => {
   assert.match(GARMIN_JSON_FIXTURE_MANIFEST_SHA256, /^[a-f0-9]{64}$/u);
   assert.deepEqual(GARMIN_JSON_FIXTURE_MANIFEST.map(({ id }) => id), [
     "synthetic-outdoor-bounded-v1",
@@ -104,12 +105,16 @@ test("canonical manifest names bounded synthetic summary, splits, and detail fix
   ]);
   assert.equal(new Set(GARMIN_JSON_FIXTURE_MANIFEST.map(({ id }) => id)).size, 3);
   for (const entry of GARMIN_JSON_FIXTURE_MANIFEST) {
-    assert.ok(GARMIN_JSON_FIXTURE_PAYLOADS[entry.id]);
-    assert.match(entry.component_sha256.activity, /^[a-f0-9]{64}$/u);
-    assert.match(entry.component_sha256.splits, /^[a-f0-9]{64}$/u);
-    assert.match(entry.component_sha256.details, /^[a-f0-9]{64}$/u);
-    assert.ok(["source_summary", "source_sampled"].includes(entry.fidelity));
-    assert.equal(entry.expected_normalized_summary.sport, "running");
+    const payload = GARMIN_JSON_FIXTURE_PAYLOADS[entry.id];
+    assert.ok(["source_summary", "source_laps", "sampled"].includes(entry.expected_sample_fidelity));
+    assert.equal(entry.expected_normalized.sport, "running");
+    assert.equal(entry.component_sha256.activity, createHash("sha256").update(canonicalizeGarminPayload(payload.activity)).digest("hex"));
+    assert.equal(entry.component_sha256.splits, createHash("sha256").update(canonicalizeGarminPayload(payload.splits)).digest("hex"));
+    assert.equal(entry.component_sha256.details, createHash("sha256").update(canonicalizeGarminPayload(payload.details)).digest("hex"));
+    assert.equal(entry.normalized_sha256, createHash("sha256").update(canonicalizeGarminPayload({
+      normalization_version: 1,
+      normalized: entry.expected_normalized,
+    })).digest("hex"));
     assert.doesNotMatch(JSON.stringify(entry), /email|password|token|account_namespace|owner@/iu);
   }
 });

@@ -14,10 +14,12 @@ export const GARMIN_CANONICAL_LIMITS = Object.freeze({
 export class GarminCanonicalPayloadError extends Error {
   readonly kind = "validation" as const;
   readonly retryable = false;
+  readonly code: "garmin_json_invalid" | "garmin_json_limit" | "garmin_digest_invalid";
 
-  constructor(readonly code: "garmin_json_invalid" | "garmin_json_limit" | "garmin_digest_invalid") {
+  constructor(code: "garmin_json_invalid" | "garmin_json_limit" | "garmin_digest_invalid") {
     super(code);
     this.name = "GarminCanonicalPayloadError";
+    this.code = code;
   }
 }
 

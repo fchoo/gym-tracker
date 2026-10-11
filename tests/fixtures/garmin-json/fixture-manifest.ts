@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
+import { canonicalizeGarminPayload } from "../../../src/platform/garmin/canonicalGarminPayload.ts";
 
 const sha256 = (value: unknown): string => createHash("sha256")
-  .update(JSON.stringify(value))
+  .update(canonicalizeGarminPayload(value))
   .digest("hex");
 
 export const GARMIN_JSON_FIXTURE_PAYLOADS = Object.freeze({
@@ -80,44 +81,72 @@ export const GARMIN_JSON_FIXTURE_PAYLOADS = Object.freeze({
 const definitions = [
   Object.freeze({
     id: "synthetic-outdoor-bounded-v1" as const,
-    fidelity: "source_sampled" as const,
-    expected_normalized_summary: Object.freeze({
+    expected_sample_fidelity: "sampled" as const,
+    expected_fidelity_by_channel: Object.freeze({
+      summary: "source_summary" as const,
+      laps: "source_laps" as const,
+      route: "sampled" as const,
+      exact_effort_basis: "source_laps" as const,
+    }),
+    expected_normalized: Object.freeze({
+      version: 1 as const,
+      started_at_ms: 1_767_225_600_000,
       sport: "running" as const,
-      subtype: "outdoor",
+      subtype: "outdoor" as const,
       distance_meters: 5_000,
       elapsed_ms: 1_560_000,
       timer_ms: 1_500_000,
       moving_ms: 1_475_000,
-      lap_count: 2,
-      route: "sampled" as const,
+      laps: Object.freeze([
+        Object.freeze({ ordinal: 0, timer_ms: 300_000, distance_meters: 1_000 }),
+        Object.freeze({ ordinal: 1, timer_ms: 298_000, distance_meters: 1_000 }),
+      ]),
+      route: Object.freeze([
+        Object.freeze({ latitude_e6: 1_300_000, longitude_e6: 103_800_000 }),
+        Object.freeze({ latitude_e6: 1_300_100, longitude_e6: 103_800_100 }),
+      ]),
     }),
   }),
   Object.freeze({
     id: "synthetic-treadmill-bounded-v1" as const,
-    fidelity: "source_summary" as const,
-    expected_normalized_summary: Object.freeze({
+    expected_sample_fidelity: "source_laps" as const,
+    expected_fidelity_by_channel: Object.freeze({
+      summary: "source_summary" as const,
+      laps: "source_laps" as const,
+      exact_effort_basis: "source_laps" as const,
+    }),
+    expected_normalized: Object.freeze({
+      version: 1 as const,
+      started_at_ms: 1_767_312_000_000,
       sport: "running" as const,
-      subtype: "treadmill",
+      subtype: "treadmill" as const,
       distance_meters: 3_200,
       elapsed_ms: 1_220_000,
       timer_ms: 1_200_000,
       moving_ms: 1_195_000,
-      lap_count: 2,
-      route: "none" as const,
+      laps: Object.freeze([
+        Object.freeze({ ordinal: 0, timer_ms: 600_000, distance_meters: 1_600 }),
+        Object.freeze({ ordinal: 1, timer_ms: 600_000, distance_meters: 1_600 }),
+      ]),
     }),
   }),
   Object.freeze({
     id: "synthetic-revision-bounded-v1" as const,
-    fidelity: "source_summary" as const,
-    expected_normalized_summary: Object.freeze({
+    expected_sample_fidelity: "source_summary" as const,
+    expected_fidelity_by_channel: Object.freeze({
+      summary: "source_summary" as const,
+      exact_effort_basis: "source_summary" as const,
+    }),
+    expected_normalized: Object.freeze({
+      version: 1 as const,
+      started_at_ms: 1_767_398_400_000,
       sport: "running" as const,
-      subtype: "outdoor",
+      subtype: "outdoor" as const,
       distance_meters: 10_000,
       elapsed_ms: 3_060_000,
       timer_ms: 3_000_000,
       moving_ms: 2_980_000,
-      lap_count: 0,
-      route: "none" as const,
+      laps: Object.freeze([]),
     }),
   }),
 ] as const;
@@ -131,6 +160,10 @@ export const GARMIN_JSON_FIXTURE_MANIFEST = Object.freeze(
         activity: sha256(payload.activity),
         splits: sha256(payload.splits),
         details: sha256(payload.details),
+      }),
+      normalized_sha256: sha256({
+        normalization_version: 1,
+        normalized: definition.expected_normalized,
       }),
     });
   }),
