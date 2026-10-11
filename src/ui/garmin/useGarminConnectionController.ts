@@ -103,6 +103,7 @@ export type GarminConnectionControllerState = Readonly<{
   error: GarminConnectionControllerError | null;
   sync: GarminSyncPresentation;
   lastSuccessfulSync: GarminDurableSyncSummary | null;
+  lastSuccessfulSyncLoadFailed: boolean;
 }>;
 
 export type GarminConnectionControllerInput = Readonly<{
@@ -125,6 +126,7 @@ const INITIAL_STATE: GarminConnectionControllerState = Object.freeze({
   error: null,
   sync: Object.freeze({ kind: "idle" }),
   lastSuccessfulSync: null,
+  lastSuccessfulSyncLoadFailed: false,
 });
 
 const CONNECTION_ERROR_CODES = new Set<GarminConnectionControllerError["code"]>([
@@ -250,6 +252,29 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
     }
   }, []);
 
+  const loadLastSuccessfulSync = useCallback(async (generation: number): Promise<void> => {
+    if (inputRef.current.loadLastSuccessfulSync === undefined) {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({ ...current, lastSuccessfulSyncLoadFailed: false }));
+      return;
+    }
+    try {
+      const summary = await inputRef.current.loadLastSuccessfulSync();
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        lastSuccessfulSync: summary,
+        lastSuccessfulSyncLoadFailed: false,
+      }));
+    } catch {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        lastSuccessfulSyncLoadFailed: true,
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
     const generation = ++connectionGenerationRef.current;
@@ -269,10 +294,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       }));
     });
     void loadHistory();
-    void inputRef.current.loadLastSuccessfulSync?.().then((summary) => {
-      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
-      setState((current) => ({ ...current, lastSuccessfulSync: summary }));
-    }).catch(() => undefined);
+    void loadLastSuccessfulSync(generation);
     return () => {
       mountedRef.current = false;
       connectionGenerationRef.current += 1;
@@ -284,7 +306,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       passwordRef.current = "";
       mfaCodeRef.current = "";
     };
-  }, [loadHistory]);
+  }, [loadHistory, loadLastSuccessfulSync]);
 
   const openCredentials = useCallback(() => {
     if (connectionLatchRef.current) return;
@@ -493,6 +515,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
             ...current,
             operation: "idle",
             lastSuccessfulSync: durableSummary,
+            lastSuccessfulSyncLoadFailed: false,
             sync: Object.freeze({
               kind: "success",
               counts: result!.counts,
@@ -597,6 +620,11 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
     setState((current) => ({ ...current, error: null }));
   }, []);
 
+  const retryLastSuccessfulSync = useCallback(async () => {
+    const generation = connectionGenerationRef.current;
+    await loadLastSuccessfulSync(generation);
+  }, [loadLastSuccessfulSync]);
+
   return Object.freeze({
     state,
     openCredentials,
@@ -609,5 +637,6 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
     syncNow,
     disconnect,
     clearError,
+    retryLastSuccessfulSync,
   });
 }

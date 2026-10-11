@@ -291,27 +291,47 @@ function countLabel(count: number, singular: string, plural = `${singular}s`): s
 
 function SyncResult({
   lastSuccessfulSync,
+  lastSuccessfulSyncLoadFailed,
   sync,
   onRetry,
+  onRetrySummary,
   onSignIn,
 }: Readonly<{
   lastSuccessfulSync: GarminDurableSyncSummary | null;
+  lastSuccessfulSyncLoadFailed: boolean;
   sync: GarminSyncPresentation;
   onRetry(): void;
+  onRetrySummary(): void;
   onSignIn(): void;
 }>) {
   const { colors } = useAppTheme();
-  const durableSummary = lastSuccessfulSync === null || sync.kind === "success" ? null : (
-    <View style={styles.resultGroup}>
-      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
-        {`${lastSuccessfulSync.counts.newActivities} new · ${lastSuccessfulSync.counts.unchangedActivities} unchanged · ${lastSuccessfulSync.counts.reviewActivities} need review`}
-      </Text>
-      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
-        {`Last successful sync: ${new Date(lastSuccessfulSync.completedAtMs).toISOString()}`}
-      </Text>
-    </View>
-  );
-  if (sync.kind === "idle") return durableSummary;
+  const durableSummary = lastSuccessfulSync === null || sync.kind === "success"
+    ? null
+    : (
+      <View style={styles.resultGroup}>
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+          {`${lastSuccessfulSync.counts.newActivities} new · ${lastSuccessfulSync.counts.unchangedActivities} unchanged · ${lastSuccessfulSync.counts.reviewActivities} need review`}
+        </Text>
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+          {`Last successful sync: ${new Date(lastSuccessfulSync.completedAtMs).toISOString()}`}
+        </Text>
+      </View>
+    );
+  const durableSummaryFailure = !lastSuccessfulSyncLoadFailed
+    ? null
+    : (
+      <View style={styles.resultGroup}>
+        <InlineNotice
+          body="The retained sync receipt could not be read. Retry to reload the last successful sync."
+          heading="Last successful sync unavailable"
+          tone="error"
+        />
+        <SecondaryAction label="Retry sync summary" onPress={onRetrySummary} />
+        {durableSummary}
+      </View>
+    );
+  const durableSummaryBlock = durableSummaryFailure ?? durableSummary;
+  if (sync.kind === "idle") return durableSummaryBlock;
   if (sync.kind === "syncing") {
     const counts = sync.progress?.counts;
     const detail = counts === undefined
@@ -320,7 +340,7 @@ function SyncResult({
     return (
       <View style={styles.resultGroup}>
         <InlineNotice body={detail} heading="Syncing Garmin activities" tone="neutral" />
-        {durableSummary}
+        {durableSummaryBlock}
       </View>
     );
   }
@@ -535,7 +555,9 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
           </View>
           <SyncResult
             lastSuccessfulSync={state.lastSuccessfulSync}
+            lastSuccessfulSyncLoadFailed={state.lastSuccessfulSyncLoadFailed}
             onRetry={() => { void controller.syncNow(); }}
+            onRetrySummary={() => { void controller.retryLastSuccessfulSync(); }}
             onSignIn={controller.openCredentials}
             sync={state.sync}
           />

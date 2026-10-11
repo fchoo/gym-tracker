@@ -2040,11 +2040,100 @@ describe("portable merge plan", () => {
     expect(plan.operations).toEqual(expect.arrayContaining([
       expect.objectContaining({ aggregateClass: "source_graph", kind: "duplicate", archiveId: "activity-a" }),
       expect.objectContaining({ aggregateClass: "source_graph", kind: "insert", archiveId: "activity-b" }),
-      expect.objectContaining({ aggregateClass: "source_graph", kind: "insert", archiveId: "phase13-source-residual" }),
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "insert", archiveId: "weight-archive" }),
     ]));
     expect(plan.operations).not.toContainEqual(expect.objectContaining({
       aggregateClass: "source_graph",
       kind: "conflict",
+    }));
+  });
+
+  it("deduplicates an exact overlapping bodyweight source aggregate while importing a new one", async () => {
+    const shared = {
+      bodyweight_entries: [{ id: "weight-shared", owner_id: "owner-a", current_revision: 1, lifecycle: "active", created_at_ms: 1 }],
+      bodyweight_entry_events: [{ id: "weight-event-shared", entry_id: "weight-shared", owner_id: "owner-a", revision: 1, event_id: "weight-event-shared", operation: "create", local_date: "2026-10-07", timezone: "Asia/Singapore", grams: 70000, occurred_at_ms: 1 }],
+      bodyweight_command_receipts: [{ request_id: "weight-request-shared", request_sha256: "a".repeat(64), entry_id: "weight-shared", owner_id: "owner-a", result_json: "{\"kind\":\"created\"}", committed_at_ms: 1 }],
+    };
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      ...shared,
+      bodyweight_entries: [...shared.bodyweight_entries, { id: "weight-new", owner_id: "owner-a", current_revision: 1, lifecycle: "active", created_at_ms: 2 }],
+      bodyweight_entry_events: [...shared.bodyweight_entry_events, { id: "weight-event-new", entry_id: "weight-new", owner_id: "owner-a", revision: 1, event_id: "weight-event-new", operation: "create", local_date: "2026-10-08", timezone: "Asia/Singapore", grams: 71000, occurred_at_ms: 2 }],
+      bodyweight_command_receipts: [...shared.bodyweight_command_receipts, { request_id: "weight-request-new", request_sha256: "b".repeat(64), entry_id: "weight-new", owner_id: "owner-a", result_json: "{\"kind\":\"created\"}", committed_at_ms: 2 }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, shared);
+
+    const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "duplicate", archiveId: "weight-shared" }),
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "insert", archiveId: "weight-new" }),
+    ]));
+    expect(plan.operations).not.toContainEqual(expect.objectContaining({
+      aggregateClass: "source_graph",
+      archiveId: "weight-shared",
+      kind: "insert",
+    }));
+  });
+
+  it("deduplicates an exact overlapping collision outcome while importing a new one", async () => {
+    const shared = {
+      schedule_collision_outcomes: [{
+        id: "outcome-shared",
+        request_id: "collision-request-shared",
+        strength_opportunity_id: "strength-opportunity",
+        strength_schedule_id: "strength-schedule",
+        running_opportunity_id: "running-opportunity",
+        running_schedule_id: "running-schedule",
+      }],
+      schedule_collision_receipts: [{ request_id: "collision-request-shared", outcome_id: "outcome-shared" }],
+      schedule_collision_projections: [{ outcome_id: "outcome-shared" }],
+    };
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      ...shared,
+      schedule_collision_outcomes: [
+        ...shared.schedule_collision_outcomes,
+        {
+          id: "outcome-new",
+          request_id: "collision-request-new",
+          strength_opportunity_id: "strength-opportunity",
+          strength_schedule_id: "strength-schedule",
+          running_opportunity_id: "running-opportunity",
+          running_schedule_id: "running-schedule",
+        },
+      ],
+      schedule_collision_receipts: [
+        ...shared.schedule_collision_receipts,
+        { request_id: "collision-request-new", outcome_id: "outcome-new" },
+      ],
+      schedule_collision_projections: [
+        ...shared.schedule_collision_projections,
+        { outcome_id: "outcome-new" },
+      ],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, shared);
+
+    const plan = await __mergePlanTestOnly.sourceGraphPlan(
+      archive,
+      local,
+      payloadDigest,
+      new Map([
+        ["owned_plan_schedule_opportunities", new Map([["strength-opportunity", "strength-opportunity"]])],
+        ["owned_plan_schedules", new Map([
+          ["strength-schedule", "strength-schedule"],
+          ["running-schedule", "running-schedule"],
+        ])],
+        ["running_opportunities", new Map([["running-opportunity", "running-opportunity"]])],
+      ]),
+    );
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "duplicate", archiveId: "outcome-shared" }),
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "insert", archiveId: "outcome-new" }),
+    ]));
+    expect(plan.operations).not.toContainEqual(expect.objectContaining({
+      aggregateClass: "source_graph",
+      archiveId: "outcome-shared",
+      kind: "insert",
     }));
   });
 

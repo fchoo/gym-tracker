@@ -1651,6 +1651,27 @@ const ACTIVITY_SOURCE_TABLES = new Set<string>([
   "running_activity_match_receipts",
 ]);
 
+const BODYWEIGHT_RESIDUAL_TABLES = new Set<string>([
+  "bodyweight_entries",
+  "bodyweight_entry_events",
+  "bodyweight_command_receipts",
+]);
+
+const SCHEDULE_COLLISION_RESIDUAL_TABLES = new Set<string>([
+  "schedule_collision_outcomes",
+  "schedule_collision_receipts",
+  "schedule_collision_projections",
+]);
+
+const SPLIT_RESIDUAL_SOURCE_TABLES = new Set<string>([
+  ...BODYWEIGHT_RESIDUAL_TABLES,
+  ...SCHEDULE_COLLISION_RESIDUAL_TABLES,
+]);
+
+const EMPTY_SOURCE_ROWS = Object.freeze(
+  Object.fromEntries(PHASE13_SOURCE_GRAPH_TABLES.map((table) => [table, []])) as Record<string, readonly LogicalBackupRow[]>,
+);
+
 function sourceActivityRows(
   snapshot: PortableMergePlanSnapshot,
   activityId: string,
@@ -1669,7 +1690,9 @@ function residualSourceRows(
 ): Readonly<Record<string, readonly LogicalBackupRow[]>> {
   return Object.freeze(Object.fromEntries(PHASE13_SOURCE_GRAPH_TABLES.map((table) => [
     table,
-    ACTIVITY_SOURCE_TABLES.has(table) ? [] : rowsFor(snapshot, table),
+    ACTIVITY_SOURCE_TABLES.has(table) || SPLIT_RESIDUAL_SOURCE_TABLES.has(table)
+      ? []
+      : rowsFor(snapshot, table),
   ])));
 }
 
@@ -1773,6 +1796,153 @@ function mappedGraphRows(
   return Object.freeze(result);
 }
 
+type ResidualSourceAggregate = Readonly<{
+  portableId: string;
+  archiveId: string;
+  localId: string;
+  rows: Readonly<Record<string, readonly LogicalBackupRow[]>>;
+}>;
+
+function groupRowsByKey(
+  rows: readonly LogicalBackupRow[],
+  keyFor: (row: LogicalBackupRow) => string | undefined,
+): ReadonlyMap<string, readonly LogicalBackupRow[]> {
+  const groups = new Map<string, LogicalBackupRow[]>();
+  for (const row of rows) {
+    const key = keyFor(row);
+    if (key === undefined) continue;
+    const existing = groups.get(key);
+    if (existing === undefined) groups.set(key, [row]);
+    else existing.push(row);
+  }
+  return new Map([...groups].map(([key, group]) => [key, Object.freeze(group)]));
+}
+
+function bodyweightEntryPortableId(
+  entry: LogicalBackupRow,
+  events: readonly LogicalBackupRow[],
+): string {
+  const createEvent = events.find((event) => event.operation === "create" && typeof event.event_id === "string");
+  return typeof entry.owner_id === "string" && typeof createEvent?.event_id === "string"
+    ? `bodyweight:${entry.owner_id}:${createEvent.event_id}`
+    : `bodyweight-entry:${textId(entry.id)}`;
+}
+
+function bodyweightResidualAggregates(snapshot: PortableMergePlanSnapshot): readonly ResidualSourceAggregate[] {
+  const eventsByEntry = groupRowsByKey(rowsFor(snapshot, "bodyweight_entry_events"), (row) =>
+    typeof row.entry_id === "string" ? textId(row.entry_id) : undefined);
+  const receiptsByEntry = groupRowsByKey(rowsFor(snapshot, "bodyweight_command_receipts"), (row) =>
+    typeof row.entry_id === "string" ? textId(row.entry_id) : undefined);
+  return Object.freeze(rowsFor(snapshot, "bodyweight_entries").map((entry) => {
+    const entryId = textId(entry.id);
+    const events = eventsByEntry.get(entryId) ?? Object.freeze([]);
+    const receipts = receiptsByEntry.get(entryId) ?? Object.freeze([]);
+    return Object.freeze({
+      portableId: bodyweightEntryPortableId(entry, events),
+      archiveId: entryId,
+      localId: entryId,
+      rows: Object.freeze({
+        ...EMPTY_SOURCE_ROWS,
+        bodyweight_entries: Object.freeze([entry]),
+        bodyweight_entry_events: events,
+        bodyweight_command_receipts: receipts,
+      }),
+    });
+  }));
+}
+
+function scheduleCollisionPortableId(outcome: LogicalBackupRow): string {
+  return typeof outcome.request_id === "string"
+    ? `schedule-collision:${outcome.request_id}`
+    : `schedule-collision-outcome:${textId(outcome.id)}`;
+}
+
+function scheduleCollisionResidualAggregates(snapshot: PortableMergePlanSnapshot): readonly ResidualSourceAggregate[] {
+  const receiptsByOutcome = groupRowsByKey(rowsFor(snapshot, "schedule_collision_receipts"), (row) =>
+    typeof row.outcome_id === "string" ? textId(row.outcome_id) : undefined);
+  const projectionsByOutcome = groupRowsByKey(rowsFor(snapshot, "schedule_collision_projections"), (row) =>
+    typeof row.outcome_id === "string" ? textId(row.outcome_id) : undefined);
+  return Object.freeze(rowsFor(snapshot, "schedule_collision_outcomes").map((outcome) => {
+    const outcomeId = textId(outcome.id);
+    return Object.freeze({
+      portableId: scheduleCollisionPortableId(outcome),
+      archiveId: outcomeId,
+      localId: outcomeId,
+      rows: Object.freeze({
+        ...EMPTY_SOURCE_ROWS,
+        schedule_collision_outcomes: Object.freeze([outcome]),
+        schedule_collision_receipts: receiptsByOutcome.get(outcomeId) ?? Object.freeze([]),
+        schedule_collision_projections: projectionsByOutcome.get(outcomeId) ?? Object.freeze([]),
+      }),
+    });
+  }));
+}
+
+function residualSourceAggregates(snapshot: PortableMergePlanSnapshot): readonly ResidualSourceAggregate[] {
+  return Object.freeze([
+    ...bodyweightResidualAggregates(snapshot),
+    ...scheduleCollisionResidualAggregates(snapshot),
+  ]);
+}
+
+function residualReferenceMaps(
+  archive: ResidualSourceAggregate,
+  local: ResidualSourceAggregate,
+): ReadonlyMap<string, ReadonlyMap<string, string>> {
+  const maps = new Map<string, ReadonlyMap<string, string>>();
+  const archiveEntry = archive.rows.bodyweight_entries?.[0];
+  const localEntry = local.rows.bodyweight_entries?.[0];
+  if (archiveEntry !== undefined && localEntry !== undefined) {
+    maps.set("bodyweight_entries", new Map([[textId(archiveEntry.id), textId(localEntry.id)]]));
+    const localEvents = new Map(
+      (local.rows.bodyweight_entry_events ?? [])
+        .filter((row) => typeof row.event_id === "string")
+        .map((row) => [textId(row.event_id), textId(row.id)]),
+    );
+    const eventMappings = (archive.rows.bodyweight_entry_events ?? [])
+      .filter((row) => typeof row.event_id === "string")
+      .flatMap((row) => {
+        const localId = localEvents.get(textId(row.event_id));
+        return localId === undefined ? [] : [[textId(row.id), localId] as const];
+      });
+    if (eventMappings.length > 0) maps.set("bodyweight_entry_events", new Map(eventMappings));
+    const localReceipts = new Map(
+      (local.rows.bodyweight_command_receipts ?? [])
+        .filter((row) => typeof row.request_id === "string")
+        .map((row) => [textId(row.request_id), textId(row.request_id)]),
+    );
+    const receiptMappings = (archive.rows.bodyweight_command_receipts ?? [])
+      .filter((row) => typeof row.request_id === "string")
+      .flatMap((row) => {
+        const localId = localReceipts.get(textId(row.request_id));
+        return localId === undefined ? [] : [[textId(row.request_id), localId] as const];
+      });
+    if (receiptMappings.length > 0) maps.set("bodyweight_command_receipts", new Map(receiptMappings));
+  }
+  const archiveOutcome = archive.rows.schedule_collision_outcomes?.[0];
+  const localOutcome = local.rows.schedule_collision_outcomes?.[0];
+  if (archiveOutcome !== undefined && localOutcome !== undefined) {
+    maps.set("schedule_collision_outcomes", new Map([[textId(archiveOutcome.id), textId(localOutcome.id)]]));
+    maps.set("schedule_collision_projections", new Map([[textId(archiveOutcome.id), textId(localOutcome.id)]]));
+    if (typeof archiveOutcome.request_id === "string" && typeof localOutcome.request_id === "string") {
+      maps.set("schedule_collision_receipts", new Map([[textId(archiveOutcome.request_id), textId(localOutcome.request_id)]]));
+    }
+  }
+  return maps;
+}
+
+function mergeReferenceMaps(
+  primary: ReadonlyMap<string, ReadonlyMap<string, string>>,
+  secondary: ReadonlyMap<string, ReadonlyMap<string, string>>,
+): ReadonlyMap<string, ReadonlyMap<string, string>> {
+  if (secondary.size === 0) return primary;
+  const merged = new Map<string, ReadonlyMap<string, string>>(primary);
+  for (const [table, mappings] of secondary) {
+    merged.set(table, new Map([...(primary.get(table)?.entries() ?? []), ...mappings.entries()]));
+  }
+  return merged;
+}
+
 async function sourceGraphPlan(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
@@ -1828,6 +1998,54 @@ async function sourceGraphPlan(
     }));
     if (kind === "insert") {
       aggregates.push(Object.freeze({ aggregateClass: "source_graph", portableId, tables: mapped }));
+    }
+  }
+  const localResiduals = new Map(residualSourceAggregates(local).map((aggregate) => [aggregate.portableId, aggregate] as const));
+  for (const archiveResidual of residualSourceAggregates(archive)) {
+    const localResidual = localResiduals.get(archiveResidual.portableId);
+    const localRows = localResidual?.rows ?? EMPTY_SOURCE_ROWS;
+    const localId = localResidual?.localId ?? archiveResidual.localId;
+    const referenceMaps = mergeReferenceMaps(
+      externalReferenceMaps,
+      localResidual === undefined ? new Map() : residualReferenceMaps(archiveResidual, localResidual),
+    );
+    const archiveSlice = sourceRowsSnapshot(archive, archiveResidual.rows);
+    const localSlice = sourceRowsSnapshot(local, localRows);
+    let mapped: Readonly<Record<string, readonly LogicalBackupRow[]>>;
+    try {
+      mapped = mappedGraphRows(archiveSlice, local, referenceMaps);
+    } catch {
+      operations.push(Object.freeze({
+        aggregateClass: "source_graph",
+        kind: "conflict",
+        portableId: archiveResidual.portableId,
+        archiveId: archiveResidual.archiveId,
+        localId,
+      }));
+      continue;
+    }
+    const archiveCanonical = canonicalValue(mapped);
+    const localCanonical = canonicalValue(sourceGraphRows(localSlice));
+    const [archiveDigest, localDigest] = await Promise.all([
+      payloadDigest(archiveCanonical), payloadDigest(localCanonical),
+    ]);
+    if (!/^[a-f0-9]{64}$/u.test(archiveDigest) || !/^[a-f0-9]{64}$/u.test(localDigest)) invalid();
+    const kind = localResidual === undefined
+      ? "insert" as const
+      : archiveCanonical === localCanonical ? "duplicate" as const : "conflict" as const;
+    operations.push(Object.freeze({
+      aggregateClass: "source_graph",
+      kind,
+      portableId: archiveResidual.portableId,
+      archiveId: archiveResidual.archiveId,
+      localId,
+    }));
+    if (kind === "insert") {
+      aggregates.push(Object.freeze({
+        aggregateClass: "source_graph",
+        portableId: archiveResidual.portableId,
+        tables: mapped,
+      }));
     }
   }
   const archiveResidual = residualSourceRows(archive);
@@ -1924,6 +2142,7 @@ export async function buildPortableMergePlan(input: Readonly<{
   );
   const emptySessionMappings = new Map<string, string>();
   for (const operation of plans.operations) {
+    if (operation.aggregateClass !== "owned_plan") continue;
     planAggregate(
       input.archive,
       input.local,

@@ -813,7 +813,7 @@ describe("useGarminConnectionController committed sync semantics", () => {
     const save = deferred<void>();
     await render(<Harness
       coordinator={{ syncNow: async (options) => {
-        expect(options?.isCancelled()).toBe(false);
+        expect(options?.isCancelled?.()).toBe(false);
         return { kind: "success", counts: emptyCounts };
       } }}
       loadActivities={async () => [activity]}
@@ -840,7 +840,7 @@ describe("useGarminConnectionController committed sync semantics", () => {
       .mockImplementationOnce(() => history.promise);
     await render(<Harness
       coordinator={{ syncNow: async (options) => {
-        expect(options?.isCancelled()).toBe(false);
+        expect(options?.isCancelled?.()).toBe(false);
         return { kind: "success", counts: { ...emptyCounts, newActivities: 1 } };
       } }}
       loadActivities={loadActivities}
@@ -876,7 +876,7 @@ describe("useGarminConnectionController committed sync semantics", () => {
       await Promise.resolve();
       await current?.disconnect();
     });
-    expect(options!.isCancelled()).toBe(true);
+    expect(options?.isCancelled?.()).toBe(true);
     attempt.reject(new Error("private stale sync"));
     await act(async () => pending);
     expect(current?.state.connection).toBe("disconnected");
