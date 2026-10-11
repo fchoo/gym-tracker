@@ -161,3 +161,47 @@ describe("ImportedActivityDetailScreen missing-channel and reflow matrix", () =>
     expect(screen.getAllByTestId("activity-detail-lap-cell-label")).toHaveLength(3);
   });
 });
+
+describe("ImportedActivityDetailScreen route states and shared shell", () => {
+  it.each([
+    [{ kind: "loading" }, "Loading activity details", false],
+    [{ kind: "missing" }, "Activity not found", false],
+    [{ kind: "removed" }, "Activity removed", false],
+    [{ kind: "projection_error" }, "Activity details unavailable", true],
+    [{ kind: "revision_review" }, "Source revision needs review", true],
+  ] as const)("renders %j without fabricated detail", async (state, heading, retryable) => {
+    const onRetry = jest.fn();
+    await renderScreen({
+      state: state as React.ComponentProps<typeof ImportedActivityDetailScreen>["state"],
+      onRetry,
+    });
+
+    expect(screen.getByText(heading)).toBeTruthy();
+    expect(screen.queryByText("5.00 km")).toBeNull();
+    expect(screen.queryByText("152 bpm")).toBeNull();
+    expect(screen.queryByTestId("activity-detail-route")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Match to scheduled workout" })).toBeNull();
+    const retry = screen.queryByRole("button", { name: "Retry activity details" });
+    expect(retry === null).toBe(!retryable);
+    if (retry !== null) {
+      fireEvent.press(retry);
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("uses shared Appearance, closes it before Back, and retains 48dp actions", async () => {
+    const { props } = await renderScreen({ width: 390 });
+
+    expect(screen.getByLabelText("compact layout")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Go back" })).toHaveStyle({
+      minHeight: 48,
+      minWidth: 48,
+    });
+    fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
+    expect(screen.getByRole("radiogroup")).toBeTruthy();
+    fireEvent.press(screen.getByRole("button", { name: "Close appearance" }));
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    expect(props.onBack).toHaveBeenCalledTimes(1);
+  });
+});
