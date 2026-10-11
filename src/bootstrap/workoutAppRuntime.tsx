@@ -2858,7 +2858,10 @@ export function WorkoutAppRuntimeProvider({
       acceptanceBytes: `${JSON.stringify(starterPlansAcceptanceAsset, null, 2)}\n`,
       sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       repository: createStarterPlanRepository(services.kernel),
-      requestId: `starter-editable-copy:${template.id}:${createdAtMs}`,
+      requestId: await phase17RequestId(
+        "starter-editable-copy",
+        `starter-editable-copy:${template.id}:${createdAtMs}`,
+      ),
       createdAtMs,
       sourceOwnedPlanId: `starter:${template.id}:r${template.revision}`,
       expectedSourcePlanRevision: template.revision,
@@ -2913,8 +2916,10 @@ export function WorkoutAppRuntimeProvider({
       sha256: (value) =>
         digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       repository: createStarterPlanRepository(services.kernel),
-      requestId:
+      requestId: await phase17RequestId(
+        "starter-template-update-copy",
         `starter-update-copy:${preview.ownedPlanId}:${preview.template.id}:${createdAtMs}`,
+      ),
       createdAtMs,
       sourceOwnedPlanId: preview.ownedPlanId,
       expectedSourcePlanRevision: preview.ownedPlanRevision,
