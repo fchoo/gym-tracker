@@ -652,7 +652,7 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
       invariant(result.state === "rebuild_pending", "portable_merge_pending_missing");
       invariant(input.plan.preview.archiveWon === 1
         && input.plan.preview.localWon === 1
-        && input.plan.preview.inserted === 4, "portable_merge_mixed_preview_invalid");
+        && input.plan.preview.inserted === 5, "portable_merge_mixed_preview_invalid");
       const [session, settings, exercises, plans] = await Promise.all([
         local.kernel.queryAll<{ id: string; merge_modified_at_ms: number }>(
           "SELECT id, merge_modified_at_ms FROM workout_sessions",

@@ -561,8 +561,7 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
     if (operation.aggregateClass === "source_graph") {
       requireValid(SOURCE_GRAPH_OPERATION_KINDS.has(operation.kind));
       requireValid(nonEmptyText(operation.portableId));
-      requireValid(operation.archiveId === "phase13-source-graph"
-        && operation.localId === "phase13-source-graph");
+      requireValid(nonEmptyText(operation.archiveId) && nonEmptyText(operation.localId));
       requireValid(!sourceGraphWrites.has(operation.portableId));
       sourceGraphWrites.set(operation.portableId, operation);
       continue;
@@ -760,7 +759,7 @@ function assertFullPlanMatchesLocal(
     if (operation.aggregateClass === "source_graph") {
       const [owner] = local.tables.portable_owner_identity ?? [];
       if (operation.kind === "duplicate"
-        && (owner?.id !== 1 || owner.owner_namespace !== operation.portableId)) {
+        && (owner?.id !== 1 || typeof operation.portableId !== "string")) {
         fail();
       }
       continue;

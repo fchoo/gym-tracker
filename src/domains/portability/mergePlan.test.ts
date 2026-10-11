@@ -1997,14 +1997,55 @@ describe("portable merge plan", () => {
     const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
 
     const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
-    const graph = plan.aggregates.find((aggregate) => aggregate.aggregateClass === "source_graph");
+    const graphs = plan.aggregates.filter((aggregate) => aggregate.aggregateClass === "source_graph");
 
-    expect(plan.operations).toContainEqual(expect.objectContaining({
-      aggregateClass: "source_graph", kind: "insert", portableId: ownerNamespace,
+    expect(plan.operations.filter(({ aggregateClass }) => aggregateClass === "source_graph"))
+      .toHaveLength(2);
+    expect(graphs.some((graph) => graph.tables.imported_activity_events?.length === 1)).toBe(true);
+    expect(graphs.some((graph) => graph.tables.bodyweight_entry_events?.length === 1)).toBe(true);
+    expect(graphs.every((graph) => graph.tables.running_current_matches === undefined)).toBe(true);
+  });
+
+  it("merges an exact activity overlap beside a new activity and unrelated source facts", async () => {
+    const sharedActivity = {
+      imported_activities: [{ id: "activity-a", source: "garmin", source_activity_id: "external-a" }],
+      imported_activity_identities: [{ activity_id: "activity-a", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-a" }],
+      imported_activity_events: [{ id: "event-a", activity_id: "activity-a", aggregate_revision: 1 }],
+    };
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      ...sharedActivity,
+      imported_activities: [
+        ...sharedActivity.imported_activities,
+        { id: "activity-b", source: "garmin", source_activity_id: "external-b" },
+      ],
+      imported_activity_identities: [
+        ...sharedActivity.imported_activity_identities,
+        { activity_id: "activity-b", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-b" },
+      ],
+      imported_activity_events: [
+        ...sharedActivity.imported_activity_events,
+        { id: "event-b", activity_id: "activity-b", aggregate_revision: 1 },
+      ],
+      bodyweight_entries: [{ id: "weight-archive", owner_id: "owner-a", current_revision: 1, lifecycle: "active", created_at_ms: 2 }],
+      bodyweight_entry_events: [{ id: "weight-event-archive", entry_id: "weight-archive", owner_id: "owner-a", revision: 1, event_id: "weight-event-a", operation: "create", local_date: "2026-10-08", timezone: "Asia/Singapore", grams: 71000, occurred_at_ms: 2 }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
+      ...sharedActivity,
+      bodyweight_entries: [{ id: "weight-local", owner_id: "owner-a", current_revision: 1, lifecycle: "active", created_at_ms: 1 }],
+      bodyweight_entry_events: [{ id: "weight-event-local", entry_id: "weight-local", owner_id: "owner-a", revision: 1, event_id: "weight-event-l", operation: "create", local_date: "2026-10-07", timezone: "Asia/Singapore", grams: 70000, occurred_at_ms: 1 }],
+    });
+
+    const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "duplicate", archiveId: "activity-a" }),
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "insert", archiveId: "activity-b" }),
+      expect.objectContaining({ aggregateClass: "source_graph", kind: "insert", archiveId: "phase13-source-residual" }),
+    ]));
+    expect(plan.operations).not.toContainEqual(expect.objectContaining({
+      aggregateClass: "source_graph",
+      kind: "conflict",
     }));
-    expect(graph?.tables.imported_activity_events).toHaveLength(1);
-    expect(graph?.tables.bodyweight_entry_events).toHaveLength(1);
-    expect(graph?.tables.running_current_matches).toBeUndefined();
   });
 
   it("plans duplicate and conflict outcomes for shared source identities", async () => {
@@ -2022,7 +2063,7 @@ describe("portable merge plan", () => {
     const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, shared);
     const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
       ...shared,
-      imported_activities: [{ id: "different-activity", source: "garmin", source_activity_id: "external-1" }],
+      imported_activities: [{ id: "different-activity", source: "garmin", source_activity_id: "external-1", aggregate_json: "{\"changed\":true}" }],
       imported_activity_identities: [{ activity_id: "different-activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-1" }],
     });
     const conflict = await buildPortableMergePlan({ archive, local, payloadDigest });
