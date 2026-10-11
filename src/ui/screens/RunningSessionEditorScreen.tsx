@@ -94,7 +94,7 @@ function draftFromSession(session: RunningPlanSession): RunningSessionFormDraft 
 export function RunningSessionEditorScreen(props: Readonly<{
   loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
   saveSession(input: RunningSessionSaveRequest): Promise<RunningSessionSaveResult>;
-  createRequestId(): string;
+  createRequestId(): string | Promise<string>;
   mode: "create" | "edit";
   planId: string;
   sessionId?: string;
@@ -170,7 +170,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
         expectedSessionRevision: existing?.session.revision,
         slotRootId: existing?.slot.rootId,
         expectedSlotRevision: existing?.slot.revision,
-        requestId: requestId.current ?? (requestId.current = props.createRequestId()),
+        requestId: requestId.current ?? (requestId.current = await Promise.resolve(props.createRequestId())),
         draft,
       });
       AccessibilityInfo.announceForAccessibility("Running session saved. Activation stays separate.");

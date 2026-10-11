@@ -8,11 +8,21 @@ export type Phase17ActionEnvelope = Readonly<{
   requestId: string;
 }>;
 
+export type Phase17ActionEnvelopeClaim = Readonly<{
+  claimToken: string;
+  caseId: string;
+  fixtureToken: string;
+  index: number;
+  label: string;
+  requestId: string;
+}>;
+
 export type Phase17ActionEnvelopeContext = Readonly<{
-  version: 1;
+  version: 2;
   caseId: string;
   fixtureToken: string;
   envelopes: readonly Phase17ActionEnvelope[];
+  claims: readonly Phase17ActionEnvelopeClaim[];
   nextEnvelope: number;
 }>;
 
@@ -108,15 +118,26 @@ function validContext(
   contracts: readonly Phase17CaseActionContract[],
   context: Phase17ActionEnvelopeContext,
 ): boolean {
-  if (context.version !== 1 || !TOKEN.test(context.fixtureToken)
+  if (context.version !== 2 || !TOKEN.test(context.fixtureToken)
     || !contracts.some(({ id, proofMode }) => id === context.caseId && proofMode === "mutating")
     || !Number.isSafeInteger(context.nextEnvelope)
     || context.nextEnvelope < 0 || context.nextEnvelope > context.envelopes.length
-    || context.envelopes.length === 0) return false;
+    || context.envelopes.length === 0
+    || context.claims.length !== context.nextEnvelope) return false;
   const requestIds = new Set<string>();
-  return context.envelopes.every(({ label, requestId }) => label === phase17ActionLabel(context.caseId)
+  const envelopesAreValid = context.envelopes.every(({ label, requestId }) => label === phase17ActionLabel(context.caseId)
     && label.length > 0 && !requestIds.has(requestId)
     && (requestIds.add(requestId), REQUEST_ID.test(requestId)));
+  return envelopesAreValid && context.claims.every((claim, index) => {
+    const envelope = context.envelopes[index];
+    return envelope !== undefined
+      && claim.claimToken === `${context.fixtureToken}:claim:${index}`
+      && claim.caseId === context.caseId
+      && claim.fixtureToken === context.fixtureToken
+      && claim.index === index
+      && claim.label === envelope.label
+      && claim.requestId === envelope.requestId;
+  });
 }
 
 /**
@@ -131,14 +152,48 @@ export function createPhase17ActionEnvelopeSource(input: Readonly<{
   store: Phase17ActionEnvelopeStore;
 }>) {
   let cached: Phase17ActionEnvelopeContext | null = null;
+  let reservationQueue: Promise<void> = Promise.resolve();
   const enabled = () => phase17ActionEnvelopeSourceEnabled(input.identity());
   const requireEnabled = () => {
     if (!enabled()) throw new Error("phase17_action_envelope_unavailable");
   };
+  const reserve = async (inputValue: Readonly<{ caseId: string; fixtureToken: string; label: string }>): Promise<string | null> => {
+    if (!enabled()) return null;
+    const active = await input.store.read();
+    if (active === null) return null;
+    if (!validContext(input.contracts, active)) throw new Error("phase17_action_envelope_invalid");
+    if (active.caseId !== inputValue.caseId || active.fixtureToken !== inputValue.fixtureToken) throw new Error("phase17_action_envelope_token_mismatch");
+    const expected = active.envelopes[active.nextEnvelope];
+    if (expected === undefined || expected.label !== inputValue.label) throw new Error("phase17_action_envelope_label_mismatch");
+    const index = active.nextEnvelope;
+    const claim = Object.freeze({
+      claimToken: `${active.fixtureToken}:claim:${index}`,
+      caseId: active.caseId,
+      fixtureToken: active.fixtureToken,
+      index,
+      label: expected.label,
+      requestId: expected.requestId,
+    });
+    const next = Object.freeze({
+      ...active,
+      claims: Object.freeze([...active.claims, claim]),
+      nextEnvelope: index + 1,
+    });
+    // Do not expose the request ID until the durable reservation commits. A
+    // failed write leaves both the cached and persisted envelope retryable.
+    await input.store.write(next);
+    cached = next;
+    return expected.requestId;
+  };
+  const enqueueReservation = (inputValue: Readonly<{ caseId: string; fixtureToken: string; label: string }>) => {
+    const reservation = reservationQueue.then(() => reserve(inputValue));
+    reservationQueue = reservation.then(() => undefined, () => undefined);
+    return reservation;
+  };
   return Object.freeze({
-    async activate(context: Omit<Phase17ActionEnvelopeContext, "version" | "nextEnvelope">): Promise<Phase17ActionEnvelopeContext> {
+    async activate(context: Omit<Phase17ActionEnvelopeContext, "version" | "nextEnvelope" | "claims">): Promise<Phase17ActionEnvelopeContext> {
       requireEnabled();
-      const active: Phase17ActionEnvelopeContext = Object.freeze({ ...context, version: 1, nextEnvelope: 0, envelopes: Object.freeze(context.envelopes.map((envelope) => Object.freeze({ ...envelope }))) });
+      const active: Phase17ActionEnvelopeContext = Object.freeze({ ...context, version: 2, nextEnvelope: 0, claims: Object.freeze([]), envelopes: Object.freeze(context.envelopes.map((envelope) => Object.freeze({ ...envelope }))) });
       if (!validContext(input.contracts, active)) throw new Error("phase17_action_envelope_invalid");
       if (await input.store.read() !== null) throw new Error("phase17_action_envelope_active");
       await input.store.write(active);
@@ -153,28 +208,12 @@ export function createPhase17ActionEnvelopeSource(input: Readonly<{
       return active;
     },
     async claim(inputValue: Readonly<{ caseId: string; fixtureToken: string; label: string }>): Promise<string | null> {
-      if (!enabled()) return null;
-      const active = await input.store.read();
-      if (active === null) return null;
-      if (!validContext(input.contracts, active)) throw new Error("phase17_action_envelope_invalid");
-      if (active.caseId !== inputValue.caseId || active.fixtureToken !== inputValue.fixtureToken) throw new Error("phase17_action_envelope_token_mismatch");
-      const expected = active.envelopes[active.nextEnvelope];
-      if (expected === undefined || expected.label !== inputValue.label) throw new Error("phase17_action_envelope_label_mismatch");
-      await input.store.write(Object.freeze({ ...active, nextEnvelope: active.nextEnvelope + 1 }));
-      cached = Object.freeze({ ...active, nextEnvelope: active.nextEnvelope + 1 });
-      return expected.requestId;
+      return enqueueReservation(inputValue);
     },
-    claimCached(label: string): string | null {
+    async reserveCached(label: string): Promise<string | null> {
       if (!enabled() || cached === null) return null;
       if (!validContext(input.contracts, cached)) throw new Error("phase17_action_envelope_invalid");
-      const expected = cached.envelopes[cached.nextEnvelope];
-      if (expected === undefined || expected.label !== label) throw new Error("phase17_action_envelope_label_mismatch");
-      // The actual command receives the ID synchronously. Persisting the
-      // consumed index is deliberately asynchronous but cannot alter the ID.
-      const next = Object.freeze({ ...cached, nextEnvelope: cached.nextEnvelope + 1 });
-      cached = next;
-      void input.store.write(next);
-      return expected.requestId;
+      return enqueueReservation({ caseId: cached.caseId, fixtureToken: cached.fixtureToken, label });
     },
     async assertConsumed(inputValue: Readonly<{ caseId: string; fixtureToken: string }>): Promise<void> {
       requireEnabled();

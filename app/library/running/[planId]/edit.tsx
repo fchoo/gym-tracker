@@ -17,7 +17,10 @@ export default function EditRunningPlanRoute() {
   useEffect(() => { if (planId !== null) void runtime.loadPlan(planId).then(setSnapshot); }, [planId]);
   if (planId === null || snapshot === null) return null;
   return <><Stack.Screen options={{ gestureEnabled: false }} /><RunningPlanEditorScreen
-    createId={runtime.createId} initialDraft={draftFromRunningPlan(snapshot)} savePlan={(plan) => runtime.savePlan({ ...plan, requestId: appRuntime.createPhase17ActionRequestId("running-plan-save", runtime.createId("running-plan-save")) })}
+    createId={runtime.createId} initialDraft={draftFromRunningPlan(snapshot)} savePlan={async (plan) => {
+      const requestId = await appRuntime.createPhase17ActionRequestId("running-plan-save", runtime.createId("running-plan-save"));
+      return runtime.savePlan({ ...plan, requestId });
+    }}
     onBack={() => router.back()} onSaved={(id) => router.replace(`/library/running/${id}` as Href)} title="Edit Running plan"
     onOpenSession={(sessionId) => router.push((sessionId === undefined ? `/library/running/${planId}/session/new` : `/library/running/${planId}/session/${sessionId}`) as Href)}
   /></>;

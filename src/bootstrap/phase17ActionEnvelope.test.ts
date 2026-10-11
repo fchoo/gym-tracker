@@ -64,7 +64,51 @@ describe("Phase 17 action envelope source", () => {
     await first.activate({ caseId: "library.running-recovery", fixtureToken: token, envelopes: [{ label: "running-session-save", requestId }] });
     const restarted = createPhase17ActionEnvelopeSource({ contracts, identity, store });
     await expect(restarted.hydrate()).resolves.toMatchObject({ fixtureToken: token, nextEnvelope: 0 });
-    expect(restarted.claimCached("running-session-save")).toBe(requestId);
+    await expect(restarted.reserveCached("running-session-save")).resolves.toBe(requestId);
+  });
+
+  it("durably records a claim before returning it and cannot reclaim it after source recreation", async () => {
+    let saved: any = null;
+    let releaseWrite: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    let blockClaimWrite = true;
+    const identity = () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" });
+    const store = {
+      read: async () => saved,
+      write: async (value: any) => {
+        if (blockClaimWrite && value.nextEnvelope === 1) await writeStarted;
+        saved = value;
+      },
+      clear: async () => { saved = null; },
+    };
+    const first = createPhase17ActionEnvelopeSource({ contracts, identity, store });
+    await first.activate({ caseId: "library.running-recovery", fixtureToken: token, envelopes: [{ label: "running-session-save", requestId }] });
+    const pending = first.reserveCached("running-session-save");
+    await Promise.resolve();
+    expect(saved).toMatchObject({ nextEnvelope: 0, claims: [] });
+    blockClaimWrite = false;
+    releaseWrite?.();
+    await expect(pending).resolves.toBe(requestId);
+    const restarted = createPhase17ActionEnvelopeSource({ contracts, identity, store });
+    await expect(restarted.hydrate()).resolves.toMatchObject({ nextEnvelope: 1, claims: [{ claimToken: `${token}:claim:0`, caseId: "library.running-recovery", fixtureToken: token, index: 0, label: "running-session-save", requestId }] });
+    await expect(restarted.reserveCached("running-session-save")).rejects.toThrow("phase17_action_envelope_label_mismatch");
+  });
+
+  it("fails closed on a reservation write failure and serializes concurrent claims", async () => {
+    const { source, saved } = fixture();
+    await source.activate({ caseId: "library.running-recovery", fixtureToken: token, envelopes: [{ label: "running-session-save", requestId }] });
+    const failed = createPhase17ActionEnvelopeSource({
+      contracts,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: { read: async () => saved(), write: async () => { throw new Error("write failed"); }, clear: async () => undefined },
+    });
+    await failed.hydrate();
+    await expect(failed.reserveCached("running-session-save")).rejects.toThrow("write failed");
+    expect(saved()).toMatchObject({ nextEnvelope: 0, claims: [] });
+    await Promise.all([
+      expect(source.reserveCached("running-session-save")).resolves.toBe(requestId),
+      expect(source.reserveCached("running-session-save")).rejects.toThrow("phase17_action_envelope_label_mismatch"),
+    ]);
   });
 
   it("fails cleanup when an expected envelope was not used, then clears the stale context", async () => {

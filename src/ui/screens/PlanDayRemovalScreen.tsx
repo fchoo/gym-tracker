@@ -66,7 +66,7 @@ export type PlanDayRemovalScreenProps = Readonly<{
   ): Promise<PlanImpactCommandResult>;
   onBack(): void;
   onSaved(planId: string): void;
-  createRequestId?(): string;
+  createRequestId?(): string | Promise<string>;
   width?: number;
 }>;
 
@@ -225,7 +225,7 @@ export function PlanDayRemovalScreen({
     });
     const requestId = requestRef.current?.fingerprint === fingerprint
       ? requestRef.current.requestId
-      : createRequestId?.()
+      : await Promise.resolve(createRequestId?.())
         ?? `plan-impact-remove:${planId}:${dayId}:${preview.previewToken.slice(-12)}`;
     requestRef.current = { fingerprint, requestId };
     try {

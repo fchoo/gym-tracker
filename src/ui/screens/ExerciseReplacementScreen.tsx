@@ -69,7 +69,7 @@ export type ExerciseReplacementScreenProps = Readonly<{
   ): Promise<ExerciseReplacementCommandResult>;
   onBack(): void;
   onSaved(planId: string): void;
-  createRequestId?(): string;
+  createRequestId?(): string | Promise<string>;
   width?: number;
 }>;
 
@@ -309,7 +309,7 @@ export function ExerciseReplacementScreen({
     const fingerprint = JSON.stringify(inputBase);
     const requestId = requestRef.current?.fingerprint === fingerprint
       ? requestRef.current.requestId
-      : createRequestId?.()
+      : await Promise.resolve(createRequestId?.())
         ?? `plan-impact-replace:${planId}:${occurrenceId}:${preview.previewToken.slice(-12)}`;
     requestRef.current = { fingerprint, requestId };
     try {

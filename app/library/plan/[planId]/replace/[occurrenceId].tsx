@@ -28,7 +28,7 @@ export default function ReplaceOwnedPlanExerciseRoute() {
     <>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <ExerciseReplacementScreen
-        createRequestId={() =>
+        createRequestId={async () =>
           runtime.createPhase17ActionRequestId(
             "plan-impact-replace",
             runtime.createOwnedPlanId("plan-impact-replace"),
