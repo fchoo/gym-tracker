@@ -227,6 +227,9 @@ import {
   createImportedActivityRepository,
 } from "../platform/sqlite/repositories/importedActivityRepository";
 import {
+  createGarminSyncSummaryRepository,
+} from "../platform/sqlite/repositories/garminSyncSummaryRepository";
+import {
   createBackupCommands,
   type SecureBackupArchiveHandle,
   type SecureBackupCommands,
@@ -1028,6 +1031,7 @@ type RuntimeServices = Readonly<{
   historyCommandRepository: ReturnType<typeof createHistoryCommandRepository>;
   historyRepository: ReturnType<typeof createHistoryRepository>;
   importedActivities: ReturnType<typeof createImportedActivityRepository>;
+  garminSyncSummaries: ReturnType<typeof createGarminSyncSummaryRepository>;
   progressRepository: ReturnType<typeof createProgressRepository>;
   kernel: SqliteKernel;
   librarySearchRepository: ReturnType<typeof createLibrarySearchRepository>;
@@ -2361,6 +2365,7 @@ export function WorkoutAppRuntimeProvider({
       historyCommandRepository: createHistoryCommandRepository(kernel),
       historyRepository: createHistoryRepository(kernel),
       importedActivities: createImportedActivityRepository(kernel),
+      garminSyncSummaries: createGarminSyncSummaryRepository(kernel),
       progressRepository: createProgressRepository(kernel),
       kernel,
       librarySearchRepository,
@@ -2743,10 +2748,20 @@ export function WorkoutAppRuntimeProvider({
     }));
   }, [requireServices]);
 
+  const loadLastGarminSync = useCallback(async () => (
+    requireServices().garminSyncSummaries.load()
+  ), [requireServices]);
+
+  const saveLastGarminSync = useCallback((summary: Parameters<GarminImportApplicationPort["saveLastGarminSync"]>[0]) => (
+    requireServices().garminSyncSummaries.save(summary)
+  ), [requireServices]);
+
   const garminImport = useMemo<GarminImportApplicationPort>(() => Object.freeze({
     confirmGarminImport,
     loadGarminActivities,
-  }), [confirmGarminImport, loadGarminActivities]);
+    loadLastGarminSync,
+    saveLastGarminSync,
+  }), [confirmGarminImport, loadGarminActivities, loadLastGarminSync, saveLastGarminSync]);
 
   const loadImportedActivityDetail = useCallback(async (
     activityId: string,

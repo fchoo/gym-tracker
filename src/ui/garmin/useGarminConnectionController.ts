@@ -8,6 +8,7 @@ import {
 import type {
   GarminActivitySourcePort,
   GarminConnectionState,
+  GarminDurableSyncSummary,
 } from "../../domains/activities/garminActivitySourcePort";
 
 export type GarminSyncCounts = Readonly<{
@@ -101,12 +102,15 @@ export type GarminConnectionControllerState = Readonly<{
   historyStatus: "loading" | "ready" | "failed";
   error: GarminConnectionControllerError | null;
   sync: GarminSyncPresentation;
+  lastSuccessfulSync: GarminDurableSyncSummary | null;
 }>;
 
 export type GarminConnectionControllerInput = Readonly<{
   source: GarminActivitySourcePort;
   coordinator: GarminSyncControllerPort;
   loadActivities(): Promise<readonly GarminActivityListItem[]>;
+  loadLastSuccessfulSync?(): Promise<GarminDurableSyncSummary | null>;
+  saveLastSuccessfulSync?(summary: GarminDurableSyncSummary): Promise<void>;
   clearPasswordInput?(): void;
   clearMfaCodeInput?(): void;
   now?(): number;
@@ -120,6 +124,7 @@ const INITIAL_STATE: GarminConnectionControllerState = Object.freeze({
   historyStatus: "loading",
   error: null,
   sync: Object.freeze({ kind: "idle" }),
+  lastSuccessfulSync: null,
 });
 
 const CONNECTION_ERROR_CODES = new Set<GarminConnectionControllerError["code"]>([
@@ -264,6 +269,10 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       }));
     });
     void loadHistory();
+    void inputRef.current.loadLastSuccessfulSync?.().then((summary) => {
+      if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
+      setState((current) => ({ ...current, lastSuccessfulSync: summary }));
+    }).catch(() => undefined);
     return () => {
       mountedRef.current = false;
       connectionGenerationRef.current += 1;
@@ -462,16 +471,41 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       if (!mountedRef.current || generation !== syncGenerationRef.current) return;
       switch (result.kind) {
         case "success":
+        {
+          const completedAtMs = inputRef.current.now?.() ?? Date.now();
+          const durableSummary = Object.freeze({
+            attemptId: `garmin-sync:${completedAtMs}:${result.counts.pages}:${result.counts.attemptedActivities}`,
+            completedAtMs,
+            counts: result.counts,
+          });
+          try {
+            await inputRef.current.saveLastSuccessfulSync?.(durableSummary);
+          } catch {
+            if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+            setState((current) => ({
+              ...current,
+              operation: "idle",
+              sync: Object.freeze({
+                kind: "failure" as const,
+                counts: result!.counts,
+                failure: Object.freeze({ code: "temporary_failure" as const, retryable: true }),
+              }),
+            }));
+            return;
+          }
+          if (!mountedRef.current || generation !== syncGenerationRef.current) return;
           setState((current) => ({
             ...current,
             operation: "idle",
+            lastSuccessfulSync: durableSummary,
             sync: Object.freeze({
               kind: "success",
               counts: result!.counts,
-              completedAtMs: inputRef.current.now?.() ?? Date.now(),
+              completedAtMs,
             }),
           }));
           break;
+        }
         case "partial": {
           const partial = result;
           setState((current) => ({

@@ -677,6 +677,8 @@ describe("Garmin import runtime", () => {
         aggregateRevision: 1,
       })),
       loadGarminActivities: jest.fn(async () => []),
+      loadLastGarminSync: jest.fn(async () => null),
+      saveLastGarminSync: jest.fn(async () => undefined),
     };
     const rendered = await renderHook(() => useGarminImportRuntime({ application }));
 
@@ -694,12 +696,28 @@ describe("Garmin import runtime", () => {
         counts: { newActivities: 2 },
       });
       await expect(rendered.result.current.loadActivities()).resolves.toEqual([]);
+      await expect(rendered.result.current.loadLastSuccessfulSync()).resolves.toBeNull();
+      await rendered.result.current.saveLastSuccessfulSync({
+        attemptId: "garmin-sync:1:1:0",
+        completedAtMs: 1,
+        counts: {
+          pages: 1,
+          discoveredActivities: 0,
+          attemptedActivities: 0,
+          newActivities: 0,
+          unchangedActivities: 0,
+          reviewActivities: 0,
+          failedActivities: 0,
+        },
+      });
       await rendered.result.current.source.logout();
       await expect(rendered.result.current.source.connectionState())
         .resolves.toEqual({ kind: "disconnected" });
     });
     expect(mockGarminNativeModule.restoreSession).toHaveBeenCalledTimes(1);
     expect(application.confirmGarminImport).toHaveBeenCalledTimes(2);
+    expect(application.loadLastGarminSync).toHaveBeenCalledTimes(1);
+    expect(application.saveLastGarminSync).toHaveBeenCalledTimes(1);
     expect(application.confirmGarminImport).toHaveBeenCalledWith(expect.objectContaining({
       confirmedLocalDate: "2026-06-20",
       dateProvenance: {
@@ -757,6 +775,8 @@ describe("Garmin import runtime", () => {
             aggregateRevision: 0,
           })),
           loadGarminActivities: jest.fn(async () => []),
+          loadLastGarminSync: jest.fn(async () => null),
+          saveLastGarminSync: jest.fn(async () => undefined),
         },
       }));
       await rendered.result.current.source.connectionState();
@@ -791,6 +811,8 @@ describe("Garmin import runtime", () => {
           aggregateRevision: 0,
         })),
         loadGarminActivities: jest.fn(async () => []),
+        loadLastGarminSync: jest.fn(async () => null),
+        saveLastGarminSync: jest.fn(async () => undefined),
       },
       source,
       sha256,

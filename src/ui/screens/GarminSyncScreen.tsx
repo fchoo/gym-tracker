@@ -28,6 +28,9 @@ import {
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { BottomSheet } from "../components/BottomSheet";
 import {
+  type GarminDurableSyncSummary,
+} from "../../domains/activities/garminActivitySourcePort";
+import {
   type GarminActivityListItem,
   type GarminConnectionControllerError,
   type GarminConnectionControllerInput,
@@ -287,22 +290,39 @@ function countLabel(count: number, singular: string, plural = `${singular}s`): s
 }
 
 function SyncResult({
+  lastSuccessfulSync,
   sync,
   onRetry,
   onSignIn,
 }: Readonly<{
+  lastSuccessfulSync: GarminDurableSyncSummary | null;
   sync: GarminSyncPresentation;
   onRetry(): void;
   onSignIn(): void;
 }>) {
   const { colors } = useAppTheme();
-  if (sync.kind === "idle") return null;
+  const durableSummary = lastSuccessfulSync === null || sync.kind === "success" ? null : (
+    <View style={styles.resultGroup}>
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+        {`${lastSuccessfulSync.counts.newActivities} new · ${lastSuccessfulSync.counts.unchangedActivities} unchanged · ${lastSuccessfulSync.counts.reviewActivities} need review`}
+      </Text>
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+        {`Last successful sync: ${new Date(lastSuccessfulSync.completedAtMs).toISOString()}`}
+      </Text>
+    </View>
+  );
+  if (sync.kind === "idle") return durableSummary;
   if (sync.kind === "syncing") {
     const counts = sync.progress?.counts;
     const detail = counts === undefined
       ? "Starting foreground sync"
       : `${counts.pages} page${counts.pages === 1 ? "" : "s"} · ${counts.attemptedActivities} activit${counts.attemptedActivities === 1 ? "y" : "ies"}`;
-    return <InlineNotice body={detail} heading="Syncing Garmin activities" tone="neutral" />;
+    return (
+      <View style={styles.resultGroup}>
+        <InlineNotice body={detail} heading="Syncing Garmin activities" tone="neutral" />
+        {durableSummary}
+      </View>
+    );
   }
   if (sync.kind === "success") {
     const reviewCopy = sync.counts.reviewActivities === 0
@@ -360,6 +380,7 @@ function SyncResult({
           )}
         </>
       ) : null}
+      {durableSummary}
     </View>
   );
 }
@@ -513,6 +534,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
             />
           </View>
           <SyncResult
+            lastSuccessfulSync={state.lastSuccessfulSync}
             onRetry={() => { void controller.syncNow(); }}
             onSignIn={controller.openCredentials}
             sync={state.sync}

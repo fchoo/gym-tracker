@@ -40,6 +40,7 @@ import { scheduleCollisionOutcomesMigration } from "./0040_schedule_collision_ou
 import { phase17FixtureCleanupMigration } from "./0041_phase17_fixture_cleanup";
 import { customExerciseMutationReceiptsMigration } from "./0042_custom_exercise_mutation_receipts";
 import { importedActivityRevisionReviewsMigration } from "./0043_imported_activity_revision_reviews";
+import { garminSyncSummaryMigration } from "./0044_garmin_sync_summary";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -84,6 +85,7 @@ export const migrations = Object.freeze([
   phase17FixtureCleanupMigration,
   customExerciseMutationReceiptsMigration,
   importedActivityRevisionReviewsMigration,
+  garminSyncSummaryMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -132,6 +134,7 @@ export {
   phase17FixtureCleanupMigration,
   customExerciseMutationReceiptsMigration,
   importedActivityRevisionReviewsMigration,
+  garminSyncSummaryMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

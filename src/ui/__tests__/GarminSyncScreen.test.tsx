@@ -13,7 +13,10 @@ import {
   StyleSheet,
 } from "react-native";
 
-import type { GarminActivitySourcePort } from "../../domains/activities/garminActivitySourcePort";
+import type {
+  GarminActivitySourcePort,
+  GarminDurableSyncSummary,
+} from "../../domains/activities/garminActivitySourcePort";
 import type {
   GarminActivityListItem,
   GarminSyncControllerPort,
@@ -49,6 +52,7 @@ async function renderScreen(input: Readonly<{
   source: GarminActivitySourcePort;
   coordinator?: GarminSyncControllerPort;
   loadActivities?: () => Promise<readonly GarminActivityListItem[]>;
+  loadLastSuccessfulSync?: () => Promise<GarminDurableSyncSummary | null>;
   appearanceStore?: AppearanceStore;
   reduceMotion?: boolean;
   width?: number;
@@ -60,6 +64,9 @@ async function renderScreen(input: Readonly<{
   const screenProps = {
     coordinator: input.coordinator ?? { syncNow: async () => ({ kind: "success" as const, counts }) },
     loadActivities: input.loadActivities ?? (async () => [activity]),
+    ...(input.loadLastSuccessfulSync === undefined
+      ? {}
+      : { loadLastSuccessfulSync: input.loadLastSuccessfulSync }),
     onBack,
     onOpenActivity,
     returnFocusActivityId: input.returnFocusActivityId,
@@ -209,6 +216,29 @@ describe("GarminSyncScreen committed sync presentation", () => {
     [2, "2 new activities committed."],
     [0, "Your imported history is up to date."],
   ];
+
+  it("renders the durable last successful sync before a new attempt starts", async () => {
+    await renderScreen({
+      source: connectedSource(),
+      loadLastSuccessfulSync: async () => ({
+        attemptId: "garmin-sync:123000:2:4",
+        completedAtMs: 123_000,
+        counts: {
+          ...counts,
+          pages: 2,
+          discoveredActivities: 4,
+          attemptedActivities: 4,
+          newActivities: 1,
+          unchangedActivities: 2,
+          reviewActivities: 1,
+        },
+      }),
+    });
+
+    expect(await screen.findByText("1 new · 2 unchanged · 1 need review")).toBeOnTheScreen();
+    expect(screen.getByText("Last successful sync: 1970-01-01T00:02:03.000Z")).toBeOnTheScreen();
+    expect(screen.queryByText("New activities")).not.toBeOnTheScreen();
+  });
 
   it.each(committedCountCases)("renders committed new count %s with correct grammar", async (newActivities, expected) => {
     await renderScreen({

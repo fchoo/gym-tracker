@@ -269,6 +269,30 @@ describe("useGarminConnectionController connection tracer", () => {
 });
 
 describe("useGarminConnectionController committed sync semantics", () => {
+  it("loads the durable last successful sync independently from transient state", async () => {
+    const lastSuccessfulSync = {
+      attemptId: "garmin-sync:durable",
+      completedAtMs: 123_000,
+      counts: { ...emptyCounts, pages: 2, newActivities: 1, unchangedActivities: 3 },
+    };
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      loadLastSuccessfulSync={async () => lastSuccessfulSync}
+      source={source({
+        restoreSession: async () => ({
+          kind: "connected",
+          account_namespace: "private-account-namespace",
+          generation: 1,
+        }),
+      })}
+    />);
+
+    await waitFor(() => expect(current?.state.historyStatus).toBe("ready"));
+    expect(current?.state.lastSuccessfulSync).toEqual(lastSuccessfulSync);
+    expect(current?.state.sync).toEqual({ kind: "idle" });
+  });
+
   it("publishes bounded progress and reloads history only from a committed result", async () => {
     const refreshedActivity = Object.freeze({ ...activity, activityId: "local-activity-2", title: "Evening run" });
     const loadActivities = jest.fn<() => Promise<readonly GarminActivityListItem[]>>()
@@ -279,10 +303,12 @@ describe("useGarminConnectionController committed sync semantics", () => {
       options?.onProgress?.({ kind: "page", counts: { ...emptyCounts, pages: 1, discoveredActivities: 2 } });
       return new Promise<Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>>((resolve) => { release = resolve; });
     });
+    const saveLastSuccessfulSync = jest.fn(async () => undefined);
     await render(<Harness
       coordinator={{ syncNow }}
       loadActivities={loadActivities}
       now={() => 123_456}
+      saveLastSuccessfulSync={saveLastSuccessfulSync}
       source={source({ connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
     />);
     await waitFor(() => expect(current?.state.connection).toBe("connected"));
@@ -308,8 +334,58 @@ describe("useGarminConnectionController committed sync semantics", () => {
     expect(loadActivities).toHaveBeenCalledTimes(2);
     expect(current?.state).toMatchObject({
       activities: [activity, refreshedActivity],
+      lastSuccessfulSync: {
+        attemptId: "garmin-sync:123456:1:2",
+        completedAtMs: 123_456,
+        counts: { newActivities: 2 },
+      },
       sync: { kind: "success", counts: { newActivities: 2 }, completedAtMs: 123_456 },
     });
+    expect(saveLastSuccessfulSync).toHaveBeenCalledWith(current?.state.lastSuccessfulSync);
+  });
+
+  it("keeps the prior durable receipt and fails closed when saving a newer success fails", async () => {
+    const prior = Object.freeze({
+      attemptId: "garmin-sync:1000:1:1",
+      completedAtMs: 1_000,
+      counts: { ...emptyCounts, pages: 1, discoveredActivities: 1, attemptedActivities: 1, unchangedActivities: 1 },
+    });
+    await render(<Harness
+      coordinator={{
+        syncNow: async () => ({
+          kind: "success",
+          counts: { ...emptyCounts, pages: 1, discoveredActivities: 1, attemptedActivities: 1, newActivities: 1 },
+        }),
+      }}
+      loadActivities={async () => [activity]}
+      loadLastSuccessfulSync={async () => prior}
+      now={() => 2_000}
+      saveLastSuccessfulSync={async () => { throw new Error("private storage detail"); }}
+      source={source({
+        restoreSession: async () => ({
+          kind: "connected",
+          account_namespace: "private-account-namespace",
+          generation: 1,
+        }),
+      })}
+    />);
+    await waitFor(() => expect(current?.state).toMatchObject({
+      connection: "connected",
+      lastSuccessfulSync: prior,
+    }));
+
+    await act(async () => {
+      await current?.syncNow();
+    });
+    await waitFor(() => expect(current?.state).toMatchObject({
+      operation: "idle",
+      lastSuccessfulSync: prior,
+      sync: {
+        kind: "failure",
+        failure: { code: "temporary_failure", retryable: true },
+      },
+    }));
+    expect(JSON.stringify(current?.state)).not.toContain("private storage detail");
   });
 
   const failureCases: ReadonlyArray<readonly [GarminSyncFailureCode, boolean]> = [

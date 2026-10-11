@@ -19,6 +19,7 @@ import {
 import type {
   GarminActivitySourcePort,
   GarminConnectionState,
+  GarminDurableSyncSummary,
   GarminSourceEnvelope,
 } from "../domains/activities/garminActivitySourcePort";
 import {
@@ -56,6 +57,8 @@ export function parseGarminRootOrigin(value: unknown): GarminRootOrigin {
 export type GarminImportApplicationPort = Readonly<{
   confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult>;
   loadGarminActivities(): Promise<readonly GarminImportedActivityListItem[]>;
+  loadLastGarminSync(): Promise<GarminDurableSyncSummary | null>;
+  saveLastGarminSync(summary: GarminDurableSyncSummary): Promise<void>;
 }>;
 
 export type GarminImportConfirmation = Omit<
@@ -186,6 +189,8 @@ export type GarminRootRuntime = Readonly<{
   source: GarminActivitySourcePort;
   coordinator: GarminSyncCoordinator;
   loadActivities(): Promise<readonly GarminImportedActivityListItem[]>;
+  loadLastSuccessfulSync(): Promise<GarminDurableSyncSummary | null>;
+  saveLastSuccessfulSync(summary: GarminDurableSyncSummary): Promise<void>;
 }>;
 
 export function createGarminRootRuntime(input: Readonly<{
@@ -194,6 +199,8 @@ export function createGarminRootRuntime(input: Readonly<{
   sha256: GarminSha256;
   requestFor: GarminSharedImportRequestFactory;
   loadActivities(): Promise<readonly GarminImportedActivityListItem[]>;
+  loadLastSuccessfulSync?(): Promise<GarminDurableSyncSummary | null>;
+  saveLastSuccessfulSync?(summary: GarminDurableSyncSummary): Promise<void>;
   enforceSourceDatePolicy?: boolean;
 }>): GarminRootRuntime {
   const revisionReviews = new Set<string>();
@@ -266,6 +273,8 @@ export function createGarminRootRuntime(input: Readonly<{
         ? Object.freeze({ ...activity, revisionState: "needs_review" as const })
         : activity));
     },
+    loadLastSuccessfulSync: input.loadLastSuccessfulSync ?? (async () => null),
+    saveLastSuccessfulSync: input.saveLastSuccessfulSync ?? (async () => undefined),
   });
 }
 
@@ -380,5 +389,15 @@ export function useGarminImportRuntime(input: Readonly<{
     sha256,
     requestFor,
     loadActivities: input.application.loadGarminActivities,
-  }), [input.application.loadGarminActivities, requestFor, services, sha256, source]);
+    loadLastSuccessfulSync: input.application.loadLastGarminSync,
+    saveLastSuccessfulSync: input.application.saveLastGarminSync,
+  }), [
+    input.application.loadGarminActivities,
+    input.application.loadLastGarminSync,
+    input.application.saveLastGarminSync,
+    requestFor,
+    services,
+    sha256,
+    source,
+  ]);
 }

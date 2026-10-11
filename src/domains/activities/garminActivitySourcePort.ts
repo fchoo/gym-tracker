@@ -10,6 +10,20 @@ export type GarminActivityDiscovery = Readonly<{
   external_activity_id: string;
 }>;
 
+export type GarminDurableSyncSummary = Readonly<{
+  attemptId: string;
+  completedAtMs: number;
+  counts: Readonly<{
+    pages: number;
+    discoveredActivities: number;
+    attemptedActivities: number;
+    newActivities: number;
+    unchangedActivities: number;
+    reviewActivities: number;
+    failedActivities: number;
+  }>;
+}>;
+
 /** The sole Phase 18-to-Phase 13 activity boundary.  It deliberately has no credential or URL fields. */
 export type GarminActivitySourcePort = Readonly<{
   connectionState(): Promise<GarminConnectionState>;
