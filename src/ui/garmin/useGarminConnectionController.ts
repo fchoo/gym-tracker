@@ -9,13 +9,52 @@ import type {
   GarminActivitySourcePort,
   GarminConnectionState,
 } from "../../domains/activities/garminActivitySourcePort";
-import type {
-  GarminSyncCoordinator,
-  GarminSyncCounts,
-  GarminSyncFailure,
-  GarminSyncProgress,
-  GarminSyncResult,
-} from "../../platform/garmin/garminSyncContracts";
+
+export type GarminSyncCounts = Readonly<{
+  pages: number;
+  discoveredActivities: number;
+  attemptedActivities: number;
+  newActivities: number;
+  unchangedActivities: number;
+  reviewActivities: number;
+  failedActivities: number;
+}>;
+
+export type GarminSyncFailureCode =
+  | "sync_in_progress"
+  | "sign_in_required"
+  | "data_access_denied"
+  | "rate_limited"
+  | "offline"
+  | "timeout"
+  | "temporary_failure"
+  | "malformed_response"
+  | "stale_generation"
+  | "import_conflict";
+
+export type GarminSyncFailure = Readonly<{
+  code: GarminSyncFailureCode;
+  retryable: boolean;
+  retryAfterMs?: number;
+}>;
+
+export type GarminSyncProgress = Readonly<{
+  kind: "page" | "activity" | "committed";
+  counts: GarminSyncCounts;
+}>;
+
+export type GarminSyncResult =
+  | Readonly<{ kind: "success"; counts: GarminSyncCounts }>
+  | Readonly<{ kind: "partial"; counts: GarminSyncCounts; failure: GarminSyncFailure }>
+  | Readonly<{ kind: "failure"; counts: GarminSyncCounts; failure: GarminSyncFailure }>
+  | Readonly<{ kind: "cancelled"; counts: GarminSyncCounts }>;
+
+export type GarminSyncControllerPort = Readonly<{
+  syncNow(options?: Readonly<{
+    isCancelled?: () => boolean;
+    onProgress?: (progress: GarminSyncProgress) => void;
+  }>): Promise<GarminSyncResult>;
+}>;
 
 export type GarminActivityListItem = Readonly<{
   activityId: string;
@@ -65,7 +104,7 @@ export type GarminConnectionControllerState = Readonly<{
 
 export type GarminConnectionControllerInput = Readonly<{
   source: GarminActivitySourcePort;
-  coordinator: GarminSyncCoordinator;
+  coordinator: GarminSyncControllerPort;
   loadActivities(): Promise<readonly GarminActivityListItem[]>;
   clearPasswordInput?(): void;
   clearMfaCodeInput?(): void;
@@ -432,28 +471,32 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
             }),
           }));
           break;
-        case "partial":
+        case "partial": {
+          const partial = result;
           setState((current) => ({
             ...current,
             operation: "idle",
             sync: Object.freeze({
               kind: "partial",
-              counts: result!.counts,
-              failure: normalizeSyncFailure(result!.failure),
+              counts: partial.counts,
+              failure: normalizeSyncFailure(partial.failure),
             }),
           }));
           break;
-        case "failure":
+        }
+        case "failure": {
+          const failed = result;
           setState((current) => ({
             ...current,
             operation: "idle",
             sync: Object.freeze({
               kind: "failure",
-              counts: result!.counts,
-              failure: normalizeSyncFailure(result!.failure),
+              counts: failed.counts,
+              failure: normalizeSyncFailure(failed.failure),
             }),
           }));
           break;
+        }
         case "cancelled":
           setState((current) => ({
             ...current,

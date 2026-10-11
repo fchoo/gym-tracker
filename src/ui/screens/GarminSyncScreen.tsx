@@ -44,6 +44,8 @@ import {
 
 export type GarminSyncScreenProps = GarminConnectionControllerInput & Readonly<{
   onOpenActivity(activityId: string): void;
+  onBack?(): void;
+  width?: number;
 }>;
 
 type FocusTarget = View & Readonly<{ focus?: () => void }>;
@@ -134,12 +136,14 @@ function GarminHeader({
   const { colors } = useAppTheme();
   return (
     <View style={styles.header} testID="garmin-three-column-header">
-      <View
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={styles.headerPlaceholder}
-        testID="garmin-inert-back-placeholder"
-      />
+      <View style={styles.headerSide}>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.headerPlaceholder}
+          testID="garmin-inert-back-placeholder"
+        />
+      </View>
       <View
         accessibilityLabel="Garmin Sync"
         accessibilityRole="header"
@@ -199,7 +203,7 @@ function ImportedActivities({
           onPress={() => onOpenActivity(activity.activityId)}
           style={styles.activityTarget}
         >
-          <ContentCard status={activity.revisionState === "needs_review" ? "attention" : undefined}>
+          <ContentCard {...(activity.revisionState === "needs_review" ? { status: "attention" as const } : {})}>
             <View style={styles.activityCopy}>
               <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{activity.title}</Text>
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
@@ -384,8 +388,10 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
     }
     if (state.connection === "mfa" || state.connection === "credentials") {
       cancelConnection();
+      return;
     }
-  }, [appearanceOpen, cancelConnection, disconnectOpen, state.connection]);
+    props.onBack?.();
+  }, [appearanceOpen, cancelConnection, disconnectOpen, props.onBack, state.connection]);
 
   const error = state.error === null ? null : errorCopy(state.error);
   const primary = (
@@ -502,9 +508,16 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
   return (
     <>
       <AdaptiveScreen
-        onRequestBack={state.connection === "credentials" || state.connection === "mfa" || appearanceOpen || disconnectOpen ? requestBack : undefined}
+        {...(state.connection === "credentials"
+          || state.connection === "mfa"
+          || appearanceOpen
+          || disconnectOpen
+          || props.onBack !== undefined
+            ? { onRequestBack: requestBack }
+            : {})}
         primary={primary}
         testID="garmin-sync-screen"
+        {...(props.width === undefined ? {} : { width: props.width })}
       />
       <BottomSheet
         cancelDisabled={state.operation === "verifying_mfa"}
@@ -576,6 +589,10 @@ const styles = StyleSheet.create({
     height: sizes.minimumTarget,
     width: sizes.minimumTarget,
   },
+  headerSide: {
+    alignItems: "flex-start",
+    width: 104,
+  },
   headerTitleColumn: {
     alignItems: "center",
     flex: 1,
@@ -587,6 +604,7 @@ const styles = StyleSheet.create({
   },
   headerAction: {
     minWidth: 104,
+    width: 104,
   },
   section: {
     gap: space[4],

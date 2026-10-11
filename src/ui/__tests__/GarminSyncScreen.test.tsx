@@ -14,8 +14,10 @@ import {
 } from "react-native";
 
 import type { GarminActivitySourcePort } from "../../domains/activities/garminActivitySourcePort";
-import type { GarminSyncCoordinator } from "../../platform/garmin/garminSyncContracts";
-import type { GarminActivityListItem } from "../garmin/useGarminConnectionController";
+import type {
+  GarminActivityListItem,
+  GarminSyncControllerPort,
+} from "../garmin/useGarminConnectionController";
 import { GarminSyncScreen } from "../screens/GarminSyncScreen";
 import {
   AppearanceProvider,
@@ -45,7 +47,7 @@ const counts = Object.freeze({
 
 async function renderScreen(input: Readonly<{
   source: GarminActivitySourcePort;
-  coordinator?: GarminSyncCoordinator;
+  coordinator?: GarminSyncControllerPort;
   loadActivities?: () => Promise<readonly GarminActivityListItem[]>;
   appearanceStore?: AppearanceStore;
   reduceMotion?: boolean;
@@ -66,7 +68,10 @@ async function renderScreen(input: Readonly<{
     width?: number;
   }>;
   await render(
-    <AppearanceProvider reduceMotion={input.reduceMotion} store={input.appearanceStore}>
+    <AppearanceProvider
+      {...(input.reduceMotion === undefined ? {} : { reduceMotion: input.reduceMotion })}
+      {...(input.appearanceStore === undefined ? {} : { store: input.appearanceStore })}
+    >
       <GarminSyncScreen {...screenProps} />
     </AppearanceProvider>,
   );
@@ -157,11 +162,13 @@ function connectedSource(): GarminActivitySourcePort {
 }
 
 describe("GarminSyncScreen committed sync presentation", () => {
-  it.each([
+  const committedCountCases: ReadonlyArray<readonly [number, string]> = [
     [1, "1 new activity committed."],
     [2, "2 new activities committed."],
     [0, "Your imported history is up to date."],
-  ] as const)("renders committed new count %s with correct grammar", async (newActivities, expected) => {
+  ];
+
+  it.each(committedCountCases)("renders committed new count %s with correct grammar", async (newActivities, expected) => {
     await renderScreen({
       source: connectedSource(),
       coordinator: { syncNow: async () => ({ kind: "success", counts: { ...counts, newActivities } }) },
@@ -208,7 +215,11 @@ describe("GarminSyncScreen committed sync presentation", () => {
     expect(screen.getByText("Morning run")).toBeOnTheScreen();
   });
 
-  it.each([
+  const recoveryCases: ReadonlyArray<readonly [
+    "offline" | "temporary_failure" | "sign_in_required" | "data_access_denied" | "rate_limited" | "timeout" | "malformed_response",
+    string,
+    "Retry Garmin sync" | "Sign in again" | null,
+  ]> = [
     ["offline", "You are offline", "Retry Garmin sync"],
     ["temporary_failure", "Garmin is temporarily unavailable", "Retry Garmin sync"],
     ["sign_in_required", "Sign in to Garmin again", "Sign in again"],
@@ -216,7 +227,9 @@ describe("GarminSyncScreen committed sync presentation", () => {
     ["rate_limited", "Garmin asked us to wait", "Retry Garmin sync"],
     ["timeout", "Garmin took too long to respond", "Retry Garmin sync"],
     ["malformed_response", "Garmin returned data this app could not use", null],
-  ] as const)("renders distinct %s recovery while retaining history", async (code, heading, action) => {
+  ];
+
+  it.each(recoveryCases)("renders distinct %s recovery while retaining history", async (code, heading, action) => {
     await renderScreen({
       source: connectedSource(),
       coordinator: {
@@ -315,6 +328,41 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
     addEventListener.mockRestore();
   });
 
+  it("uses Back to cancel MFA before leaving the contextual Garmin route", async () => {
+    const remove = jest.fn();
+    const addEventListener = jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove });
+    const onBack = jest.fn();
+    const logout = jest.fn(async () => undefined);
+    await renderScreen({
+      onBack,
+      source: {
+        ...connectedSource(),
+        connectionState: async () => ({
+          kind: "mfa_required",
+          challenge_handle: "opaque-continuation-handle-9876",
+          generation: 2,
+        }),
+        logout,
+      },
+    });
+    expect(await screen.findByText("One-time code")).toBeOnTheScreen();
+
+    let listener = addEventListener.mock.calls.at(-1)?.[1];
+    await act(async () => {
+      expect(listener?.(undefined as never)).toBe(true);
+    });
+    expect(await screen.findByText("Garmin not connected")).toBeOnTheScreen();
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(onBack).not.toHaveBeenCalled();
+
+    listener = addEventListener.mock.calls.at(-1)?.[1];
+    await act(async () => {
+      expect(listener?.(undefined as never)).toBe(true);
+    });
+    expect(onBack).toHaveBeenCalledTimes(1);
+    addEventListener.mockRestore();
+  });
+
   it("keyboard-activates each full-row target once and ignores D-pad movement", async () => {
     const { onOpenActivity } = await renderScreen({ source: connectedSource() });
     const row = await screen.findByRole("button", { name: "Open Morning run" });
@@ -328,13 +376,15 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
     expect(onOpenActivity).toHaveBeenNthCalledWith(2, "local-activity-1");
   });
 
-  it.each([
+  const layoutCases: ReadonlyArray<readonly [number, number, number, "compact" | "medium" | "expanded"]> = [
     [360, 800, 1, "compact"],
     [390, 844, 2, "compact"],
     [600, 960, 1, "medium"],
     [840, 1_080, 1, "expanded"],
     [840, 360, 2, "expanded"],
-  ] as const)("keeps required actions and history reachable at %sx%s font %s", async (width, height, fontScale, widthClass) => {
+  ];
+
+  it.each(layoutCases)("keeps required actions and history reachable at %sx%s font %s", async (width, height, fontScale, widthClass) => {
     Dimensions.set({
       screen: { fontScale, height, scale: 1, width },
       window: { fontScale, height, scale: 1, width },

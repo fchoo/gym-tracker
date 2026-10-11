@@ -4,9 +4,10 @@ import React from "react";
 import { Text } from "react-native";
 
 import type { GarminActivitySourcePort } from "../../domains/activities/garminActivitySourcePort";
-import type { GarminSyncCoordinator } from "../../platform/garmin/garminSyncContracts";
 import {
   type GarminActivityListItem,
+  type GarminSyncControllerPort,
+  type GarminSyncFailureCode,
   useGarminConnectionController,
 } from "./useGarminConnectionController";
 
@@ -42,7 +43,7 @@ function source(overrides: Partial<GarminActivitySourcePort> = {}): GarminActivi
   };
 }
 
-function coordinator(): GarminSyncCoordinator {
+function coordinator(): GarminSyncControllerPort {
   return {
     syncNow: async () => ({ kind: "success", counts: emptyCounts }),
   };
@@ -153,13 +154,13 @@ describe("useGarminConnectionController connection tracer", () => {
 describe("useGarminConnectionController committed sync semantics", () => {
   it("publishes bounded progress and reloads history only from a committed result", async () => {
     const refreshedActivity = Object.freeze({ ...activity, activityId: "local-activity-2", title: "Evening run" });
-    const loadActivities = jest.fn()
+    const loadActivities = jest.fn<() => Promise<readonly GarminActivityListItem[]>>()
       .mockResolvedValueOnce([activity])
       .mockResolvedValueOnce([activity, refreshedActivity]);
-    let release: ((value: Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>) => void) | undefined;
-    const syncNow = jest.fn(async (options?: Parameters<GarminSyncCoordinator["syncNow"]>[0]) => {
+    let release: ((value: Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>) => void) | undefined;
+    const syncNow = jest.fn(async (options?: Parameters<GarminSyncControllerPort["syncNow"]>[0]) => {
       options?.onProgress?.({ kind: "page", counts: { ...emptyCounts, pages: 1, discoveredActivities: 2 } });
-      return new Promise<Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>>((resolve) => { release = resolve; });
+      return new Promise<Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>>((resolve) => { release = resolve; });
     });
     await render(<Harness
       coordinator={{ syncNow }}
@@ -194,7 +195,7 @@ describe("useGarminConnectionController committed sync semantics", () => {
     });
   });
 
-  it.each([
+  const failureCases: ReadonlyArray<readonly [GarminSyncFailureCode, boolean]> = [
     ["offline", true],
     ["temporary_failure", true],
     ["sign_in_required", false],
@@ -203,7 +204,9 @@ describe("useGarminConnectionController committed sync semantics", () => {
     ["timeout", true],
     ["malformed_response", false],
     ["stale_generation", false],
-  ] as const)("retains prior rows for %s without inventing committed counts", async (code, retryable) => {
+  ];
+
+  it.each(failureCases)("retains prior rows for %s without inventing committed counts", async (code, retryable) => {
     const failure = Object.freeze({
       code,
       retryable,
@@ -229,14 +232,14 @@ describe("useGarminConnectionController committed sync semantics", () => {
   });
 
   it("ignores a prior attempt's late progress after retry starts a new generation", async () => {
-    const options: Array<Parameters<GarminSyncCoordinator["syncNow"]>[0]> = [];
-    let releaseSecond: ((value: Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>) => void) | undefined;
-    const syncNow = jest.fn(async (attemptOptions?: Parameters<GarminSyncCoordinator["syncNow"]>[0]) => {
+    const options: Array<Parameters<GarminSyncControllerPort["syncNow"]>[0]> = [];
+    let releaseSecond: ((value: Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>) => void) | undefined;
+    const syncNow = jest.fn(async (attemptOptions?: Parameters<GarminSyncControllerPort["syncNow"]>[0]) => {
       options.push(attemptOptions);
       if (options.length === 1) {
         return { kind: "failure" as const, counts: emptyCounts, failure: { code: "offline" as const, retryable: true } };
       }
-      return new Promise<Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>>((resolve) => { releaseSecond = resolve; });
+      return new Promise<Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>>((resolve) => { releaseSecond = resolve; });
     });
     await render(<Harness
       coordinator={{ syncNow }}
@@ -267,9 +270,9 @@ describe("useGarminConnectionController committed sync semantics", () => {
 
 describe("useGarminConnectionController disconnect semantics", () => {
   it("invalidates in-flight sync, latches duplicate disconnect, and retains imported history", async () => {
-    let releaseSync: ((value: Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>) => void) | undefined;
+    let releaseSync: ((value: Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>) => void) | undefined;
     let releaseLogout: (() => void) | undefined;
-    const syncNow = jest.fn(async () => new Promise<Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>>((resolve) => { releaseSync = resolve; }));
+    const syncNow = jest.fn(async () => new Promise<Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>>((resolve) => { releaseSync = resolve; }));
     const logout = jest.fn(async () => new Promise<void>((resolve) => { releaseLogout = resolve; }));
     const loadActivities = jest.fn(async () => [activity]);
     await render(<Harness
