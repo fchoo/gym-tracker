@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "chaquopyVersion": "17.0.0",
+    "pythonVersion": "3.13",
+    "minSdk": 24,
+    "abi": "arm64-v8a"
+  },
+  "packages": [
+    { "name": "python-garminconnect", "version": "0.3.17", "source": { "kind": "git", "url": "https://github.com/cyberjunky/python-garminconnect", "commit": "218e72ca5459e014435fc2d94fd18bd601fa0c14" }, "artifact": { "filename": "python-garminconnect-218e72ca5459e014435fc2d94fd18bd601fa0c14.tar.gz", "sha256": "afb02ea1151d8d4c65349255d6556d5fe50b45e34fd92f62dafc57a6206c8dbe" }, "license": "MIT" },
+    { "name": "curl-cffi", "version": "0.15.0", "source": { "kind": "pypi", "url": "https://pypi.org/project/curl-cffi/0.15.0/" }, "artifact": { "filename": "curl_cffi-0.15.0-cp313-abi3-android_24_arm64_v8a.whl", "sha256": "4682dc38d4336e0eb0b185374db90a760efde63cbea994b4e63f3521d44c4c92" }, "license": "MIT" },
+    { "name": "requests", "version": "2.34.2", "source": { "kind": "pypi", "url": "https://pypi.org/project/requests/2.34.2/" }, "artifact": { "filename": "requests-2.34.2-py3-none-any.whl", "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0" }, "license": "Apache-2.0" },
+    { "name": "ua-generator", "version": "2.1.6", "source": { "kind": "pypi", "url": "https://pypi.org/project/ua-generator/2.1.6/" }, "artifact": { "filename": "ua_generator-2.1.6-py3-none-any.whl", "sha256": "877285e6adab3d6b0f9b295d954d121fc21a0305be8526038218e8f08be76df6" }, "license": "MIT" },
+    { "name": "certifi", "version": "2026.7.22", "source": { "kind": "pypi", "url": "https://pypi.org/project/certifi/2026.7.22/" }, "artifact": { "filename": "certifi-2026.7.22-py3-none-any.whl", "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775" }, "license": "MPL-2.0" },
+    { "name": "cffi", "version": "2.1.1", "source": { "kind": "pypi", "url": "https://pypi.org/project/cffi/2.1.1/" }, "artifact": { "filename": "cffi-2.1.1.tar.gz", "sha256": "dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be" }, "license": "MIT" },
+    { "name": "pycparser", "version": "3.11", "source": { "kind": "pypi", "url": "https://pypi.org/project/pycparser/3.11/" }, "artifact": { "filename": "pycparser-3.11-py3-none-any.whl", "sha256": "51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80" }, "license": "BSD-3-Clause" },
+    { "name": "rich", "version": "15.0.0", "source": { "kind": "pypi", "url": "https://pypi.org/project/rich/15.0.0/" }, "artifact": { "filename": "rich-15.0.0-py3-none-any.whl", "sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb" }, "license": "MIT" },
+    { "name": "markdown-it-py", "version": "4.2.0", "source": { "kind": "pypi", "url": "https://pypi.org/project/markdown-it-py/4.2.0/" }, "artifact": { "filename": "markdown_it_py-4.2.0-py3-none-any.whl", "sha256": "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a" }, "license": "MIT" },
+    { "name": "mdurl", "version": "0.1.2", "source": { "kind": "pypi", "url": "https://pypi.org/project/mdurl/0.1.2/" }, "artifact": { "filename": "mdurl-0.1.2-py3-none-any.whl", "sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8" }, "license": "MIT" },
+    { "name": "pygments", "version": "2.21.0", "source": { "kind": "pypi", "url": "https://pypi.org/project/Pygments/2.21.0/" }, "artifact": { "filename": "pygments-2.21.0-py3-none-any.whl", "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9" }, "license": "BSD-2-Clause" },
+    { "name": "charset-normalizer", "version": "3.5.2", "source": { "kind": "pypi", "url": "https://pypi.org/project/charset-normalizer/3.5.2/" }, "artifact": { "filename": "charset_normalizer-3.5.2-py3-none-any.whl", "sha256": "b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685" }, "license": "MIT" },
+    { "name": "idna", "version": "3.20", "source": { "kind": "pypi", "url": "https://pypi.org/project/idna/3.20/" }, "artifact": { "filename": "idna-3.20-py3-none-any.whl", "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c" }, "license": "BSD-3-Clause" },
+    { "name": "urllib3", "version": "2.8.0", "source": { "kind": "pypi", "url": "https://pypi.org/project/urllib3/2.8.0/" }, "artifact": { "filename": "urllib3-2.8.0-py3-none-any.whl", "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3" }, "license": "MIT" }
+  ]
+}

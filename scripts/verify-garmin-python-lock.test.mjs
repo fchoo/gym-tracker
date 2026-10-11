@@ -17,7 +17,7 @@ function currentLock() {
 test("accepts only the reviewed Python 3.13 ARM64 Garmin dependency graph", () => {
   assert.deepEqual(validateGarminPythonLock(currentLock()), {
     valid: true,
-    packageCount: 13,
+    packageCount: 14,
   });
 });
 
