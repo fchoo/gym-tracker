@@ -3,6 +3,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   createPhase17ActionEnvelopeSource,
   createPhase17FixtureSetupIdentityFactory,
+  phase17ActionEnvelopePlan,
   phase17ActionEnvelopeSourceEnabled,
 } from "./phase17ActionEnvelope";
 
@@ -54,6 +55,36 @@ describe("Phase 17 action envelope source", () => {
     await expect(source.claim({ caseId: "library.running-recovery", fixtureToken: token, label: "running-session-save" })).resolves.toBe(requestId);
     await expect(source.claim({ caseId: "library.running-recovery", fixtureToken: token, label: "running-session-save" })).rejects.toThrow("phase17_action_envelope_label_mismatch");
     await expect(source.assertConsumed({ caseId: "library.running-recovery", fixtureToken: token })).resolves.toBeUndefined();
+  });
+
+  it("requires every ordered typed-session save exactly once", async () => {
+    const typedContracts = [{ id: "library.running-create-typed-sessions", proofMode: "mutating" as const }] as any;
+    let saved: any = null;
+    const source = createPhase17ActionEnvelopeSource({
+      contracts: typedContracts,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: { read: async () => saved, write: async (value) => { saved = value; }, clear: async () => { saved = null; } },
+    });
+    const plan = phase17ActionEnvelopePlan("library.running-create-typed-sessions", token);
+    expect(plan).toHaveLength(7);
+    expect(plan.every(({ label }) => label === "running-session-save")).toBe(true);
+    await source.activate({ caseId: "library.running-create-typed-sessions", fixtureToken: token, envelopes: plan });
+    for (const expected of plan) await expect(source.claim({ caseId: "library.running-create-typed-sessions", fixtureToken: token, label: expected.label })).resolves.toBe(expected.requestId);
+    await expect(source.assertConsumed({ caseId: "library.running-create-typed-sessions", fixtureToken: token })).resolves.toBeUndefined();
+    await expect(source.claim({ caseId: "library.running-create-typed-sessions", fixtureToken: token, label: "running-session-save" })).rejects.toThrow("phase17_action_envelope_label_mismatch");
+  });
+
+  it("rejects an activation with a missing, extra, or wrong ordered envelope", async () => {
+    const lifecycleContracts = [{ id: "library.running-session-lifecycle", proofMode: "mutating" as const }] as any;
+    const plan = phase17ActionEnvelopePlan("library.running-session-lifecycle", token);
+    for (const envelopes of [plan.slice(0, -1), [...plan, plan[0]!], [{ ...plan[0]!, label: "running-session-save" }, ...plan.slice(1)]]) {
+      const source = createPhase17ActionEnvelopeSource({
+        contracts: lifecycleContracts,
+        identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+        store: { read: async () => null, write: async () => undefined, clear: async () => undefined },
+      });
+      await expect(source.activate({ caseId: "library.running-session-lifecycle", fixtureToken: token, envelopes })).rejects.toThrow("phase17_action_envelope_invalid");
+    }
   });
 
   it("hydrates the persisted context after a process restart before a real UI callback claims it", async () => {

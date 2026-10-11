@@ -350,7 +350,7 @@ import {
 import {
   createPhase17ActionEnvelopeSource,
   createPhase17FixtureSetupIdentityFactory,
-  phase17ActionLabel,
+  phase17ActionEnvelopePlan,
 } from "./phase17ActionEnvelope";
 import {
   assertPhase17FamilyARegistry,
@@ -4387,7 +4387,7 @@ export function WorkoutAppRuntimeProvider({
         await phase17ActionEnvelopeSource().activate({
           caseId: fixture.caseId,
           fixtureToken: fixture.fixtureToken,
-          envelopes: [{ label: phase17ActionLabel(fixture.caseId), requestId: fixture.actionReceiptId }],
+          envelopes: phase17ActionEnvelopePlan(fixture.caseId, fixture.fixtureToken),
         });
       }
       return fixture;

@@ -108,6 +108,14 @@ function fixtureActionReceiptId(caseId: string, token: string): string {
   return `phase17:${caseId}:${token.slice("phase17:".length)}:action`;
 }
 
+function plannedActionReceiptIds(caseId: string, token: string): readonly string[] {
+  const base = fixtureActionReceiptId(caseId, token);
+  const count = caseId === "library.running-create-typed-sessions" ? 7
+    : caseId === "library.running-session-lifecycle" ? 4
+      : 1;
+  return Object.freeze(Array.from({ length: count }, (_, index) => index === 0 ? base : `${base}:${index + 1}`));
+}
+
 function sessionSpec(kind: RunningSessionKind, weekday: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday") {
   const duration = { ordinal: 0, kind: "duration" as const, durationMs: 1_800_000 };
   const phase = [{ ordinal: 0, kind: "work" as const, steps: [duration] }];
@@ -160,8 +168,11 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
   running: RunningPlanRuntimePort;
   sha256(value: string): Promise<string>;
 }>): Phase17FamilyBFixtureDriver {
-  const create = async (caseId: Phase17FamilyBCaseId, token: string): Promise<RunningPlanAggregate> => {
+  const create = async (caseId: Phase17FamilyBCaseId, token: string): Promise<RunningPlanAggregate | null> => {
     const planId = fixtureId(token, "running-plan");
+    // The zero-session journey must prove the create command itself.  It is
+    // intentionally the one Family B setup that begins with no plan row.
+    if (caseId === "library.running-create-zero-sessions") return null;
     const now = Date.now();
     const initialKinds = caseId === "library.running-session-lifecycle" || caseId === "library.running-two-same-day-slots"
       ? ["recovery", "long_run"] as const
@@ -186,6 +197,18 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
 
   const seed = async (caseId: Phase17FamilyBCaseId, token: string, sourceTable: string): Promise<Phase17FixtureSeed> => {
     const created = await create(caseId, token);
+    if (caseId === "library.running-create-zero-sessions") {
+      const planId = fixtureId(token, "running-plan");
+      const receipts = plannedActionReceiptIds(caseId, token);
+      const actionReceiptId = receipts[0]!;
+      return Object.freeze({
+        selectors: Object.freeze({ runningPlanId: planId, phase17ActionReceiptId: actionReceiptId, phase17ActionReceiptIds: receipts.join(",") }),
+        expectedPreState: Object.freeze({ planId, planExists: false }),
+        expectedPostState: Object.freeze({ planId, planExists: true, actionReceiptId, actionReceiptIds: receipts, action: caseId, sessionCount: 0 }),
+        actionReceiptId,
+      });
+    }
+    if (created === null) throw new Error("phase17_running_fixture_create_missing");
     let plan = await input.running.loadPlan(created.id);
     if (plan === null) throw new Error("phase17_running_fixture_readback_missing");
     // Setup creates only the condition the screen needs to begin.  In
@@ -196,37 +219,46 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
     if (caseId === "library.running-detail") {
       return Object.freeze({ selectors: selectorsFor(plan, requestIds), expectedPreState: facts, expectedPostState: facts, actionReceiptId: null });
     }
-    const actionReceiptId = fixtureActionReceiptId(caseId, token);
+    const actionReceiptIds = plannedActionReceiptIds(caseId, token);
+    const actionReceiptId = actionReceiptIds[0] ?? fixtureActionReceiptId(caseId, token);
     const selectedKind = kindFor(caseId);
     const expectedPostState = Object.freeze({
       planId: plan.id,
       actionReceiptId,
+      actionReceiptIds,
       action: caseId,
       ...(selectedKind === null ? {} : { savedSessionKind: selectedKind }),
-      ...(caseId === "library.running-create-zero-sessions" ? { sessionCount: 0 } : {}),
       ...(caseId === "library.running-goal-edit" ? { goalDistanceMeters: 5_000 } : {}),
       ...(caseId === "library.running-session-lifecycle" ? { lifecycle: "inactive", sessionsRemoved: true } : {}),
       ...(caseId === "library.running-create-typed-sessions" ? { savedSessionKinds: KINDS } : {}),
       ...(caseId === "library.running-two-same-day-slots" ? { sessionCount: 1 } : {}),
     });
-    return Object.freeze({ selectors: Object.freeze({ ...selectorsFor(plan, requestIds), phase17ActionReceiptId: actionReceiptId }), expectedPreState: facts, expectedPostState, actionReceiptId });
+    return Object.freeze({ selectors: Object.freeze({ ...selectorsFor(plan, requestIds), phase17ActionReceiptId: actionReceiptId, phase17ActionReceiptIds: actionReceiptIds.join(",") }), expectedPreState: facts, expectedPostState, actionReceiptId });
   };
 
   const probe = async (caseId: Phase17FamilyBCaseId, token: string, sourceTable: string, selectors: Readonly<Record<string, string>>) => {
     const planId = selectors.runningPlanId;
     if (planId === undefined || planId !== fixtureId(token, "running-plan")) throw new Error("phase17_running_fixture_selector_invalid");
     const plan = await input.running.loadPlan(planId);
-    if (plan === null) throw new Error("phase17_running_fixture_probe_missing");
     const actionReceiptId = selectors.phase17ActionReceiptId;
+    const expectedActionReceiptIds = plannedActionReceiptIds(caseId, token);
+    if (caseId === "library.running-create-zero-sessions") {
+      if (plan === null) throw new Error("phase17_running_fixture_probe_missing");
+      if (actionReceiptId === undefined) throw new Error("phase17_running_fixture_action_receipt_missing");
+      const requestIds = await receiptIds(input.kernel, planId);
+      if (!expectedActionReceiptIds.every((id) => requestIds.includes(id)) || plan.sessions.length !== 0) throw new Error("phase17_running_fixture_zero_sessions_invalid");
+      const facts = Object.freeze({ planId, planExists: true, actionReceiptId, actionReceiptIds: expectedActionReceiptIds, action: caseId, sessionCount: 0 });
+      return Object.freeze({ rowCount: 1, identityHash: await input.sha256(JSON.stringify({ caseId, sourceTable, planId, requestIds })), facts });
+    }
+    if (plan === null) throw new Error("phase17_running_fixture_probe_missing");
     const requestIds = await receiptIds(input.kernel, planId);
     const facts = actionReceiptId === undefined
       ? aggregateFacts(plan, requestIds)
       : (() => {
-        if (!requestIds.includes(actionReceiptId)) throw new Error("phase17_running_fixture_action_receipt_missing");
+        if (!expectedActionReceiptIds.every((id) => requestIds.includes(id))) throw new Error("phase17_running_fixture_action_receipt_missing");
         const selectedKind = kindFor(caseId);
         const sessionCount = plan.sessions.length;
         if (selectedKind !== null && !plan.sessions.some(({ session }) => session.sessionKind === selectedKind)) throw new Error("phase17_running_fixture_saved_session_missing");
-        if (caseId === "library.running-create-zero-sessions" && sessionCount !== 0) throw new Error("phase17_running_fixture_zero_sessions_invalid");
         if (caseId === "library.running-goal-edit" && plan.goal.goalDistanceMeters !== 5_000) throw new Error("phase17_running_fixture_goal_edit_missing");
         if (caseId === "library.running-session-lifecycle" && (plan.lifecycle !== "inactive" || sessionCount !== 0)) throw new Error("phase17_running_fixture_lifecycle_postcondition_missing");
         if (caseId === "library.running-create-typed-sessions" && !KINDS.every((kind) => plan.sessions.some(({ session }) => session.sessionKind === kind))) throw new Error("phase17_running_fixture_typed_sessions_missing");
@@ -234,9 +266,9 @@ export function createPhase17FamilyBFixtureDriver(input: Readonly<{
         return Object.freeze({
           planId,
           actionReceiptId,
+          actionReceiptIds: expectedActionReceiptIds,
           action: caseId,
           ...(selectedKind === null ? {} : { savedSessionKind: selectedKind }),
-          ...(caseId === "library.running-create-zero-sessions" ? { sessionCount } : {}),
           ...(caseId === "library.running-goal-edit" ? { goalDistanceMeters: plan.goal.goalDistanceMeters } : {}),
           ...(caseId === "library.running-session-lifecycle" ? { lifecycle: "inactive", sessionsRemoved: true } : {}),
           ...(caseId === "library.running-create-typed-sessions" ? { savedSessionKinds: KINDS } : {}),

@@ -6,7 +6,7 @@ import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } f
 import { createPhase17FixtureProtocol, phase17ActionReceiptId } from "../src/bootstrap/phase17NativeFixture.ts";
 import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter } from "../src/bootstrap/phase17FamilyAFixture.ts";
 import { PHASE17_FAMILY_B_CASE_IDS, assertPhase17FamilyBRegistry, createPhase17FamilyFixtureAdapter } from "../src/bootstrap/phase17FamilyBFixture.ts";
-import { phase17ActionLabel } from "../src/bootstrap/phase17ActionEnvelope.ts";
+import { phase17ActionEnvelopePlan, phase17ActionLabel } from "../src/bootstrap/phase17ActionEnvelope.ts";
 import { validatePhase17Evidence, validatePhase17IntegrityCoverageRegistry } from "./verify-phase17-evidence.mjs";
 import { PHASE17_FLOW_CASES, commandTreeForPhase17Case, createPhase17RunnerPlan, parsePhase17RunnerArgs, validatePhase17FlowSources } from "./run-phase17-maestro.mjs";
 
@@ -283,12 +283,27 @@ test("Phase 17 Family B maps every non-collision Running ledger ID to an explici
 
 test("Phase 17 Running YAML consumes only fixture-owned Running IDs and names the complete non-collision lifecycle", () => {
   const running = readFileSync("maestro/phase17/running-authoring.yaml", "utf8");
-  for (const selector of ["PHASE17_RUNNING_PLAN_ID", "PHASE17_RUNNING_PLAN_REVISION", "PHASE17_RUNNING_SESSION_ROOT_ID", "PHASE17_RUNNING_SLOT_ROOT_ID", "PHASE17_RUNNING_REQUEST_ID"]) {
+  for (const selector of ["PHASE17_RUNNING_PLAN_ID", "PHASE17_RUNNING_SESSION_ROOT_ID", "PHASE17_RUNNING_SLOT_ROOT_ID"]) {
     assert.match(running, new RegExp(selector, "u"));
   }
   for (const action of ["Move earlier", "Delete session", "Activate plan", "Archive plan", "Reactivate plan", "Retry loading Running plan", "Retry saving Running plan"]) {
     assert.match(running, new RegExp(action, "u"));
   }
+});
+
+test("Phase 17 Running evidence plans zero-create, seven saves, and lifecycle writes in product-command order", () => {
+  const token = "phase17:fixture-envelope-plan-0001";
+  const zero = phase17ActionEnvelopePlan("library.running-create-zero-sessions", token);
+  assert.deepEqual(zero.map(({ label }) => label), ["running-plan-create"]);
+  const typed = phase17ActionEnvelopePlan("library.running-create-typed-sessions", token);
+  assert.equal(typed.length, 7);
+  assert.deepEqual(typed.map(({ label }) => label), Array(7).fill("running-session-save"));
+  const lifecycle = phase17ActionEnvelopePlan("library.running-session-lifecycle", token);
+  assert.deepEqual(lifecycle.map(({ label }) => label), ["running-lifecycle", "running-lifecycle", "running-lifecycle", "running-plan-save"]);
+  assert.equal(new Set([...zero, ...typed, ...lifecycle].map(({ requestId }) => requestId)).size, 12);
+  const running = readFileSync("maestro/phase17/running-authoring.yaml", "utf8");
+  assert.match(running, /running\/create\?fixturePlanId=\$\{PHASE17_RUNNING_PLAN_ID\}/u);
+  assert.equal((commandTreeForPhase17Case({ "maestro/phase17/running-authoring.yaml": running }, "library.running-create-typed-sessions").filter(({ value }) => value === "Save session")).length, 7);
 });
 
 test("Phase 17 routes claim only the hydrated fixture envelope before real Running commands", () => {

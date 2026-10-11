@@ -8,6 +8,24 @@ export type Phase17ActionEnvelope = Readonly<{
   requestId: string;
 }>;
 
+/** Product commands in the exact order a bounded journey performs them. The
+ * ledger receipt remains the first entry; follow-on writes are deterministic
+ * and cannot be mistaken for a retry of the first command. */
+export function phase17ActionEnvelopePlan(caseId: string, fixtureToken: string): readonly Phase17ActionEnvelope[] {
+  const base = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+  const labels = caseId === "library.running-create-typed-sessions"
+    ? ["running-session-save", "running-session-save", "running-session-save", "running-session-save", "running-session-save", "running-session-save", "running-session-save"]
+    : caseId === "library.running-session-lifecycle"
+      ? ["running-lifecycle", "running-lifecycle", "running-lifecycle", "running-plan-save"]
+      : caseId === "library.running-conflict"
+        ? ["schedule-collision", "schedule-collision", "schedule-collision"]
+        : [phase17ActionLabel(caseId)];
+  return Object.freeze(labels.map((label, index) => Object.freeze({
+    label,
+    requestId: index === 0 ? base : `${base}:${index + 1}`,
+  })));
+}
+
 export type Phase17ActionEnvelopeClaim = Readonly<{
   claimToken: string;
   caseId: string;
@@ -125,8 +143,9 @@ function validContext(
     || context.envelopes.length === 0
     || context.claims.length !== context.nextEnvelope) return false;
   const requestIds = new Set<string>();
-  const envelopesAreValid = context.envelopes.every(({ label, requestId }) => label === phase17ActionLabel(context.caseId)
-    && label.length > 0 && !requestIds.has(requestId)
+  const planned = phase17ActionEnvelopePlan(context.caseId, context.fixtureToken);
+  const envelopesAreValid = context.envelopes.length === planned.length && context.envelopes.every(({ label, requestId }, index) => label === planned[index]?.label
+    && requestId === planned[index]?.requestId && label.length > 0 && !requestIds.has(requestId)
     && (requestIds.add(requestId), REQUEST_ID.test(requestId)));
   return envelopesAreValid && context.claims.every((claim, index) => {
     const envelope = context.envelopes[index];
