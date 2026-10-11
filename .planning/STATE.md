@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Completed 18-10-PLAN.md
-last_updated: "2026-10-11T10:48:14.115Z"
+stopped_at: Completed 18-11-PLAN.md
+last_updated: "2026-10-11T11:26:34.892Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: 4bb37c517cea1638ccd034edeffae3d81c13b79f
+state_head: fea4c9bc8c78f9a6cb98f1727a9ecf3fbe5d070d
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 65
+  completed_plans: 66
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 11 of 14
+Plan: 12 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -105,6 +105,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P08 | 19m 47s | 3 tasks | 7 files |
 | Phase 18 P09 | 21m 17s | 3 tasks | 13 files |
 | Phase 18 P10 | 24m | 3 tasks | 7 files |
+| Phase 18 P11 | 17m 44s | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -234,6 +235,10 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Phase 18 Plan 10: Garmin root composition uses a narrow port backed by the existing WorkoutAppRuntime kernel; routes and screens receive no SQL, repository, or native-driver authority.
 - [Phase 18]: Phase 18 Plan 10: Deterministic opaque local and receipt identities make account sync replay-safe without exposing provider IDs in navigation.
 - [Phase 18]: Phase 18 Plan 10: Source revision review preserves accepted activity detail and match facts while marking the retained row for review.
+- [Phase 18]: A source graph is a duplicate only when its canonical accepted graph matches exactly; overlapping accepted account identities with different durable facts are preview conflicts.
+- [Phase 18]: Portable owner namespaces reject foreign archives while Garmin account namespace remains part of source identity.
+- [Phase 18]: Match/lifecycle projections rebuild only after source publication and do not advance backup generation.
+- [Phase 18]: Android backup stays exclusion-only for garmin-session and garmin-response-staging across legacy, cloud, and device-transfer rules.
 
 ### Pending Owner Review
 
@@ -258,7 +263,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T10:48:13.837Z
-Stopped at: Completed 18-10-PLAN.md
+Last session: 2026-10-11T11:26:34.596Z
+Stopped at: Completed 18-11-PLAN.md
 Resume file: None
-Next action: Execute 18-11-PLAN.md; comprehensive native/account/device acceptance remains deferred to Phase 20.
+Next action: Execute 18-12-PLAN.md; comprehensive native/account/device acceptance remains deferred to Phase 20.

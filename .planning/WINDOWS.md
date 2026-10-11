@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 10
 waived_count: 0
-fixed_count: 85
-total_count: 95
-last_updated: 2026-10-11T10:48:11.319Z
+fixed_count: 88
+total_count: 98
+last_updated: 2026-10-11T11:27:05.001Z
 ---
 
 # Broken Windows Ledger
@@ -110,6 +110,9 @@ last_updated: 2026-10-11T10:48:11.319Z
 | 93 | 18 | deviation | src/bootstrap/workoutAppRuntime.tsx |  | Added the missing application-owned accepted activity detail read capability required by Plan 18-08. | open |  | 2026-10-11T09:54:59.237Z |  |
 | 94 | 18 | deviation | src/bootstrap/workoutAppRuntime.tsx |  | Added the narrow existing-kernel Garmin import/read port omitted from the plan file list. | open |  | 2026-10-11T10:48:11.232Z |  |
 | 95 | 18 | deviation | src/ui/screens/GarminSyncScreen.tsx |  | Corrected failed history reads so they are not presented as an empty imported history. | open |  | 2026-10-11T10:48:11.319Z |  |
+| 96 | 18 | deviation | src/domains/portability/mergePlan.ts |  | Auto-fixed changed accepted source identities so they preview as conflicts instead of inserts | fixed |  | 2026-10-11T11:26:35.170Z | 2026-10-11T11:27:04.827Z |
+| 97 | 18 | deviation | src/platform/sqlite/repositories/logicalMergeRepository.ts |  | Auto-fixed duplicate source graph validation so exact replay remains a zero-write no-op | fixed |  | 2026-10-11T11:26:35.256Z | 2026-10-11T11:27:04.913Z |
+| 98 | 18 | deviation | .planning/REQUIREMENTS.md |  | Kept GAR-08, GAR-09, and GAR-14 pending until their broader terminal Phase 18 evidence is complete | fixed |  | 2026-10-11T11:26:35.342Z | 2026-10-11T11:27:05.001Z |
 
 ````json
 [
@@ -1252,6 +1255,42 @@ last_updated: 2026-10-11T10:48:11.319Z
     "reason": "",
     "recorded_at": "2026-10-11T10:48:11.319Z",
     "resolved_at": null
+  },
+  {
+    "id": 96,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/domains/portability/mergePlan.ts",
+    "line": null,
+    "description": "Auto-fixed changed accepted source identities so they preview as conflicts instead of inserts",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:26:35.170Z",
+    "resolved_at": "2026-10-11T11:27:04.827Z"
+  },
+  {
+    "id": 97,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+    "line": null,
+    "description": "Auto-fixed duplicate source graph validation so exact replay remains a zero-write no-op",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:26:35.256Z",
+    "resolved_at": "2026-10-11T11:27:04.913Z"
+  },
+  {
+    "id": 98,
+    "kind": "deviation",
+    "phase": "18",
+    "file": ".planning/REQUIREMENTS.md",
+    "line": null,
+    "description": "Kept GAR-08, GAR-09, and GAR-14 pending until their broader terminal Phase 18 evidence is complete",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:26:35.342Z",
+    "resolved_at": "2026-10-11T11:27:05.001Z"
   }
 ]
 ````
