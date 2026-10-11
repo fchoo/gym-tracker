@@ -24,6 +24,7 @@ export type GarminConnectNativeModule = Readonly<{
     maxchart: 2000;
     maxpoly: 4000;
   }>): Promise<unknown>;
+  runAdversarialSuite(input: Readonly<{ confirmation: string }>): Promise<unknown>;
 }>;
 
 export function getGarminConnectNativeModule(): GarminConnectNativeModule {

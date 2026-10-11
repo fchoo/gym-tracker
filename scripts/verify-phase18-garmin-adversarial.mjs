@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -14,6 +15,7 @@ import {
 const MANIFEST = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/build.json`;
 const FINAL_EVIDENCE = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/final-evidence.json`;
 const NATIVE_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`;
+const PRIVACY_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/privacy-report.json`;
 const HASH = /^[a-f0-9]{64}$/u;
 const SAFE_TEXT = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
 const FORBIDDEN_KEY = /(?:^|_)(?:account_namespace|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
@@ -126,7 +128,7 @@ function validateCase(entry, id, index) {
     !exactKeys(entry, CASE_KEYS)
     || entry.id !== id
     || !["passed", "TECHNICAL_REVIEW_REQUIRED"].includes(entry.status)
-    || !["host-deterministic", "expected-injected", "unexpected"].includes(entry.provenance)
+    || !["native-exact-artifact", "unexpected"].includes(entry.provenance)
     || !SAFE_TEXT.test(entry.stage ?? "")
     || !SAFE_TEXT.test(entry.code ?? "")
     || !SAFE_TEXT.test(entry.connection_state ?? "")
@@ -151,9 +153,8 @@ function validateCase(entry, id, index) {
   ) fail("case_invalid");
 
   if (entry.status === "passed") {
-    const expectedProvenance = index < 6 ? "host-deterministic" : "expected-injected";
     if (
-      entry.provenance !== expectedProvenance
+      entry.provenance !== "native-exact-artifact"
       || entry.stage !== expectedStage(id)
       || entry.code !== EXPECTED_CODES[index]
     ) fail("case_invalid");
@@ -288,10 +289,17 @@ export function executePhase18GarminAdversarialVerifier(
 ) {
   const options = parseVerifierArgs(args);
   const jsonReader = dependencies.readJson ?? readJson;
+  const bytesReader = dependencies.readBytes ?? readFileSync;
   const finalWriter = dependencies.writeFinalEvidence ?? writeFinalEvidence;
   const manifest = jsonReader(MANIFEST);
   const evidence = jsonReader(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT);
   if (!isDeepStrictEqual(evidence?.manifest, manifest)) fail("report_identity_invalid");
+  const nativeReportSha256 = createHash("sha256").update(bytesReader(NATIVE_REPORT)).digest("hex");
+  const privacyReportSha256 = createHash("sha256").update(bytesReader(PRIVACY_REPORT)).digest("hex");
+  if (evidence?.native_report?.sha256 !== nativeReportSha256
+    || evidence?.privacy_scan?.report_sha256 !== privacyReportSha256) {
+    fail("report_identity_invalid");
+  }
   const result = validatePhase18GarminAdversarialEvidence(evidence);
   if (options.seal) finalWriter(evidence, FINAL_EVIDENCE);
   return Object.freeze({ ...result, final_evidence_written: options.seal });

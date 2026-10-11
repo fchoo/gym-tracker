@@ -185,6 +185,16 @@ internal class GarminClientWorker(
     )
   }
 
+  fun runAdversarialSuite(confirmation: String): Map<String, Any?> = lock.withLock {
+    require(confirmation == "VERIFY-PHASE18-GARMIN-ADVERSARIAL") {
+      "garmin_arguments_rejected"
+    }
+    safeDispatch(
+      "runAdversarialSuite",
+      mutableMapOf("confirmation" to confirmation),
+    )
+  }
+
   private fun activityCall(operation: String, externalActivityId: String): Map<String, Any?> {
     validateActivityId(externalActivityId)
     return readCall(operation, mutableMapOf("externalActivityId" to externalActivityId))

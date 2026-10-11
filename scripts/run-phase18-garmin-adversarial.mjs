@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
 
@@ -11,6 +13,8 @@ export const PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT =
 
 const MANIFEST = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/build.json`;
 const RECORD = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-record.json`;
+const NATIVE_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`;
+const PRIVACY_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/privacy-report.json`;
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
@@ -162,6 +166,35 @@ function writeRawReport(report) {
   );
 }
 
+function writeJson(path, value) {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx" });
+}
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function collectInstalledNativeReport() {
+  const marker = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
+  execFileSync("adb", ["logcat", "-c"], { stdio: "ignore" });
+  execFileSync("adb", ["shell", "am", "force-stop", PACKAGE], { stdio: "ignore" });
+  execFileSync("adb", [
+    "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
+    "gymtracker-devtest://__phase18-garmin-adversarial?confirmation=VERIFY-PHASE18-GARMIN-ADVERSARIAL",
+    PACKAGE,
+  ], { stdio: "ignore" });
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const logcat = execFileSync("adb", ["logcat", "-d"], { encoding: "utf8" });
+    const line = logcat.split(/\r?\n/u).find((entry) => entry.includes(marker));
+    if (line !== undefined) {
+      return { report: JSON.parse(line.slice(line.indexOf(marker) + marker.length)), logcat };
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+  }
+  fail("native_report_timeout");
+}
+
 function validateRecord(record, manifest) {
   privacySafe(record);
   if (
@@ -210,15 +243,40 @@ export function executePhase18GarminAdversarialRunner(
   }
   const jsonReader = dependencies.readJson ?? readJson;
   const reportWriter = dependencies.writeRawReport ?? writeRawReport;
+  const nativeWriter = dependencies.writeNativeReport ?? writeJson;
+  const privacyWriter = dependencies.writePrivacyReport ?? writeJson;
+  const collectNativeReport = dependencies.collectNativeReport ?? collectInstalledNativeReport;
   const manifest = jsonReader(options.manifest);
-  const record = jsonReader(options.record);
-  validateRecord(record, manifest);
+  const collected = collectNativeReport();
+  const record = collected.report;
+  privacySafe(record);
+  privacySafe(collected.logcat);
+  nativeWriter(NATIVE_REPORT, record);
+  const nativeReportSha256 = sha256Bytes(Buffer.from(`${JSON.stringify(record, null, 2)}\n`));
+  const privacyReport = Object.freeze({
+    status: "passed",
+    scanned_artifact_count: 2,
+  });
+  privacyWriter(PRIVACY_REPORT, privacyReport);
+  const privacyReportSha256 = sha256Bytes(Buffer.from(`${JSON.stringify(privacyReport, null, 2)}\n`));
+  const boundRecord = {
+    status: record.status,
+    cases: record.cases,
+    current_identity: record.current_identity,
+    native_report: { path: NATIVE_REPORT, sha256: nativeReportSha256 },
+    privacy_scan: {
+      status: "passed",
+      scanned_artifact_count: 2,
+      report_sha256: privacyReportSha256,
+    },
+  };
+  validateRecord(boundRecord, manifest);
   const report = createPhase18GarminAdversarialRawReport({
     manifest,
-    cases: record.cases,
-    status: record.status,
-    native_report: record.native_report,
-    privacy_scan: record.privacy_scan,
+    cases: boundRecord.cases,
+    status: boundRecord.status,
+    native_report: boundRecord.native_report,
+    privacy_scan: boundRecord.privacy_scan,
   });
   reportWriter(report);
   return Object.freeze({ status: report.status, final_evidence_written: false });

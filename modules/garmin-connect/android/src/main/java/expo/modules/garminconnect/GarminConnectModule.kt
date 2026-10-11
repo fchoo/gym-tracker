@@ -36,6 +36,10 @@ private data class GarminActivityDetailsInput(
   @Field val maxpoly: Int = 0
 ) : Record
 
+private data class GarminAdversarialSuiteInput(
+  @Field val confirmation: String = ""
+) : Record
+
 private data class GarminRuntimeInfo(
   val schemaVersion: Int,
   val pythonVersion: String,
@@ -134,6 +138,13 @@ class GarminConnectModule : Module() {
     (AsyncFunction("getActivityDetails") Coroutine { input: GarminActivityDetailsInput ->
       require(input.maxchart == 2_000 && input.maxpoly == 4_000) { "garmin_arguments_rejected" }
       worker().getActivityDetails(input.externalActivityId)
+    }).runOnQueue(appContext.backgroundCoroutineScope)
+
+    (AsyncFunction("runAdversarialSuite") Coroutine { input: GarminAdversarialSuiteInput ->
+      require(appContext.reactContext?.packageName == "com.fchoo.gymtracker.devtest") {
+        "garmin_operation_rejected"
+      }
+      worker().runAdversarialSuite(input.confirmation)
     }).runOnQueue(appContext.backgroundCoroutineScope)
   }
 

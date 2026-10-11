@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import math
 import re
@@ -29,6 +30,7 @@ _OPERATIONS = frozenset(
         "getActivity",
         "getActivitySplits",
         "getActivityDetails",
+        "runAdversarialSuite",
     }
 )
 _ACTIVITY_ID = re.compile(r"^[1-9][0-9]{0,18}$")
@@ -163,6 +165,8 @@ class GarminBridge:
                 return self._activity_splits(arguments)
             if operation == "getActivityDetails":
                 return self._details(arguments)
+            if operation == "runAdversarialSuite":
+                return self._adversarial_suite(arguments)
         except _BridgeInputError as error:
             return self._error(str(error))
         except Exception as error:  # Boundary intentionally discards exception text and traceback.
@@ -374,6 +378,47 @@ class GarminBridge:
         value = self._require_client().get_activity_details(identifier, maxchart=2000, maxpoly=4000)
         self._capture_tokens()
         return self._success(value)
+
+    def _adversarial_suite(self, arguments: Any) -> dict[str, Any]:
+        values = _exact_arguments(arguments, {"confirmation"})
+        if values.get("confirmation") != "VERIFY-PHASE18-GARMIN-ADVERSARIAL":
+            raise _BridgeInputError("arguments_rejected")
+        case_ids = (
+            "PH18-ADV-RESTORE", "PH18-ADV-REFRESH", "PH18-ADV-READ",
+            "PH18-ADV-LOGOUT", "PH18-ADV-RESTART", "PH18-ADV-LATE-GENERATION",
+            "PH18-ADV-403", "PH18-ADV-429", "PH18-ADV-OFFLINE",
+            "PH18-ADV-TIMEOUT", "PH18-ADV-5XX", "PH18-ADV-MALFORMED",
+            "PH18-ADV-OVERSIZED", "PH18-ADV-MISSING-COMPONENT",
+            "PH18-ADV-PARTIAL-PAGE", "PH18-ADV-ROTATION",
+        )
+        digest = hashlib.sha256(b"native-observation-unavailable").hexdigest()
+        cases = [{
+            "id": case_id,
+            "status": "TECHNICAL_REVIEW_REQUIRED",
+            "provenance": "unexpected",
+            "stage": case_id.lower().replace("ph18-adv-", "").replace("-", "_"),
+            "code": "native_probe_unavailable",
+            "duration_ms": 0,
+            "call_count": 0,
+            "automatic_retry_count": 0,
+            "retry_after_ms": 0,
+            "source_write_count": 0,
+            "connection_state": self._connection_state()["kind"],
+            "sync_state": "not_run",
+            "session_digest": digest,
+            "history_digest": digest,
+            "source_digest": digest,
+            "match_digest": digest,
+            "generation_before": self._generation,
+            "generation_after": self._generation,
+        } for case_id in case_ids]
+        return {
+            "schema_version": 1,
+            "suite": "phase18-garmin-adversarial",
+            "status": "TECHNICAL_REVIEW_REQUIRED",
+            "current_identity": {},
+            "cases": cases,
+        }
 
     def _clear_client(self) -> None:
         self._client = None

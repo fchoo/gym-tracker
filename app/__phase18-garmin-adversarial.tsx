@@ -7,20 +7,22 @@ import {
   PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
   PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER,
   phase18GarminAdversarialEnabled,
-  runPhase18GarminAdversarialHostSuite as producePhase18GarminAdversarialHostSuite,
+  runPhase18GarminAdversarialNativeSuite,
 } from "../src/testing/phase18GarminAdversarial";
 
-const HOST_READY_STATUS = "host-ready-native-deferred";
+const INITIAL_STATUS = "native-proof-running";
+const REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
 
 function Phase18GarminAdversarialContent() {
-  const [status, setStatus] = React.useState(HOST_READY_STATUS);
+  const [status, setStatus] = React.useState(INITIAL_STATUS);
   React.useEffect(() => {
     let active = true;
-    void producePhase18GarminAdversarialHostSuite().then((report) => {
+    void runPhase18GarminAdversarialNativeSuite().then((report) => {
       if (!active) return;
       for (const entry of report.cases) {
         console.log(`${PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER}${JSON.stringify(entry)}`);
       }
+      console.log(`${REPORT_MARKER}${JSON.stringify(report)}`);
       setStatus(report.status);
     }).catch(() => {
       if (active) setStatus("TECHNICAL_REVIEW_REQUIRED");
@@ -36,7 +38,7 @@ function Phase18GarminAdversarialContent() {
       </Text>
       <Text style={styles.status}>{status}</Text>
       <Text style={styles.notice}>
-        Host-ready deterministic cases only. Real account, restart, and native evidence remain deferred to Phase 20.
+        Installed native lifecycle and injected-failure evidence is emitted only for Phase 20 collection.
       </Text>
     </View>
   );

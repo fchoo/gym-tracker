@@ -108,13 +108,13 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
     }
   });
 
-  it("keeps the guarded route deterministic and isolated from the real native adapter", () => {
+  it("keeps the guarded route on the installed native producer", () => {
     const route = readFileSync("app/__phase18-garmin-adversarial.tsx", "utf8");
     const layout = readFileSync("app/_layout.tsx", "utf8");
     expect(route).toContain("phase18GarminAdversarialEnabled");
-    expect(route).toContain("runPhase18GarminAdversarialHostSuite");
-    expect(route).toContain("host-ready-native-deferred");
-    expect(route).not.toMatch(/getGarminConnectNativeModule|GARMIN_EMAIL|GARMIN_PASSWORD|GARMIN_MFA/iu);
+    expect(route).toContain("runPhase18GarminAdversarialNativeSuite");
+    expect(route).not.toContain("runPhase18GarminAdversarialHostSuite");
+    expect(route).not.toMatch(/GARMIN_EMAIL|GARMIN_PASSWORD|GARMIN_MFA/iu);
     expect(layout).toContain('nativeContractSuite === "phase18-garmin-adversarial"');
     expect(layout).toContain('pathname === "/__phase18-garmin-adversarial"');
   });

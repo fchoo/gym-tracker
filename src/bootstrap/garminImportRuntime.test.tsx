@@ -612,6 +612,7 @@ describe("Garmin import runtime", () => {
     });
     mockGarminNativeModule = {
       runtimeInfo: jest.fn(async () => undefined),
+      runAdversarialSuite: jest.fn(async () => undefined),
       restoreSession: jest.fn(async () => ({
         status: "ok",
         generation: nativeGeneration,
@@ -722,6 +723,7 @@ describe("Garmin import runtime", () => {
     for (const value of [null, { activityId: 0 }, { activityId: "bad" }]) {
       mockGarminNativeModule = {
         runtimeInfo: jest.fn(async () => undefined),
+        runAdversarialSuite: jest.fn(async () => undefined),
         restoreSession: jest.fn(async () => undefined),
         connectionState: jest.fn(async () => ({
           status: "ok",

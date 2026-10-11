@@ -2,6 +2,7 @@ import {
   CryptoDigestAlgorithm,
   digestStringAsync,
 } from "expo-crypto";
+import { getGarminConnectNativeModule } from "../../modules/garmin-connect/src";
 
 import type { GarminSourceEnvelope } from "../domains/activities/garminActivitySourcePort";
 import {
@@ -43,7 +44,7 @@ export type Phase18GarminAdversarialCaseId =
 export type Phase18GarminAdversarialCase = Readonly<{
   id: Phase18GarminAdversarialCaseId;
   status: "passed" | "TECHNICAL_REVIEW_REQUIRED";
-  provenance: "host-deterministic" | "expected-injected" | "unexpected";
+  provenance: "host-deterministic" | "expected-injected" | "native-exact-artifact" | "unexpected";
   stage: string;
   code: string;
   duration_ms: number;
@@ -654,5 +655,43 @@ export async function runPhase18GarminAdversarialHostSuite(input: Readonly<{
       : "TECHNICAL_REVIEW_REQUIRED" as const,
     case_ids: PHASE18_GARMIN_ADVERSARIAL_CASE_IDS,
     cases,
+  });
+}
+
+export async function runPhase18GarminAdversarialNativeSuite(
+  nativeModule = getGarminConnectNativeModule(),
+): Promise<Readonly<{
+  status: "passed" | "TECHNICAL_REVIEW_REQUIRED";
+  cases: readonly Phase18GarminAdversarialCase[];
+  current_identity: Readonly<Record<string, string>>;
+}>> {
+  const raw = await nativeModule.runAdversarialSuite({
+    confirmation: PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
+  });
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("phase18_garmin_native_report_invalid");
+  }
+  const report = raw as Readonly<Record<string, unknown>>;
+  if (report.schema_version !== 1
+    || report.suite !== "phase18-garmin-adversarial"
+    || (report.status !== "passed" && report.status !== "TECHNICAL_REVIEW_REQUIRED")
+    || report.current_identity === null
+    || typeof report.current_identity !== "object"
+    || Array.isArray(report.current_identity)
+    || !Array.isArray(report.cases)
+    || report.cases.length !== PHASE18_GARMIN_ADVERSARIAL_CASE_IDS.length
+    || report.cases.some((entry, index) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return true;
+      const candidate = entry as Readonly<Record<string, unknown>>;
+      return candidate.id !== PHASE18_GARMIN_ADVERSARIAL_CASE_IDS[index]
+        || (candidate.status === "passed" && candidate.provenance !== "native-exact-artifact")
+        || (candidate.status !== "passed" && candidate.status !== "TECHNICAL_REVIEW_REQUIRED");
+    })) {
+    throw new Error("phase18_garmin_native_report_invalid");
+  }
+  return Object.freeze({
+    status: report.status,
+    cases: Object.freeze(report.cases as Phase18GarminAdversarialCase[]),
+    current_identity: Object.freeze(report.current_identity as Record<string, string>),
   });
 }
