@@ -27,11 +27,15 @@ describe("withGarminConnectModule", () => {
     classpath('com.android.tools.build:gradle')
   }
 }
+allprojects {
+  repositories { google(); mavenCentral() }
+}
 `;
 
     const configured = applyGarminProjectBuildGradle(project);
 
     expect(configured).toContain("classpath('com.chaquo.python:gradle:17.0.0')");
+    expect(configured).toContain('maven { url "https://chaquo.com/maven" }');
     expect(applyGarminProjectBuildGradle(configured)).toBe(configured);
   });
 
