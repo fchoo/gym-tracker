@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Completed 18-11-PLAN.md
-last_updated: "2026-10-11T11:26:34.892Z"
+stopped_at: Completed 18-12-PLAN.md
+last_updated: "2026-10-11T11:59:56.231Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: fea4c9bc8c78f9a6cb98f1727a9ecf3fbe5d070d
+state_head: 0419107f17ea6e34acc3cb6b094be48209f8447d
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 66
+  completed_plans: 67
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 12 of 14
+Plan: 13 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -106,6 +106,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P09 | 21m 17s | 3 tasks | 13 files |
 | Phase 18 P10 | 24m | 3 tasks | 7 files |
 | Phase 18 P11 | 17m 44s | 3 tasks | 8 files |
+| Phase 18 P12 | 28m 14s | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -239,6 +240,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Portable owner namespaces reject foreign archives while Garmin account namespace remains part of source identity.
 - [Phase 18]: Match/lifecycle projections rebuild only after source publication and do not advance backup generation.
 - [Phase 18]: Android backup stays exclusion-only for garmin-session and garmin-response-staging across legacy, cloud, and device-transfer rules.
+- [Phase 18]: Plan 18-12 host completion uses host-passed-native-deferred; only separate 18-03 and 18-13 exact native artifact hashes may produce final native PASS.
+- [Phase 18]: Phase 18 exact integrity coverage is focused on six modules: adapter, canonicalizer, normalizer, sync coordinator, production import runtime, and match commands.
+- [Phase 18]: Phase 18 performance evidence retains raw samples and accepts budgets only from a hashed Phase 20 exact-artifact baseline; Plan 18-12 records no measurements.
 
 ### Pending Owner Review
 
@@ -263,7 +267,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T11:26:34.596Z
-Stopped at: Completed 18-11-PLAN.md
+Last session: 2026-10-11T11:59:55.900Z
+Stopped at: Completed 18-12-PLAN.md
 Resume file: None
 Next action: Execute 18-12-PLAN.md; comprehensive native/account/device acceptance remains deferred to Phase 20.

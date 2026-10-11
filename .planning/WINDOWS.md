@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 10
+open_count: 12
 waived_count: 0
 fixed_count: 88
-total_count: 98
-last_updated: 2026-10-11T11:27:05.001Z
+total_count: 100
+last_updated: 2026-10-11T11:59:20.622Z
 ---
 
 # Broken Windows Ledger
@@ -113,6 +113,8 @@ last_updated: 2026-10-11T11:27:05.001Z
 | 96 | 18 | deviation | src/domains/portability/mergePlan.ts |  | Auto-fixed changed accepted source identities so they preview as conflicts instead of inserts | fixed |  | 2026-10-11T11:26:35.170Z | 2026-10-11T11:27:04.827Z |
 | 97 | 18 | deviation | src/platform/sqlite/repositories/logicalMergeRepository.ts |  | Auto-fixed duplicate source graph validation so exact replay remains a zero-write no-op | fixed |  | 2026-10-11T11:26:35.256Z | 2026-10-11T11:27:04.913Z |
 | 98 | 18 | deviation | .planning/REQUIREMENTS.md |  | Kept GAR-08, GAR-09, and GAR-14 pending until their broader terminal Phase 18 evidence is complete | fixed |  | 2026-10-11T11:26:35.342Z | 2026-10-11T11:27:05.001Z |
+| 99 | 18 | unrun-verify | scripts/benchmark-phase18-garmin.mjs |  | Exact APK module Python memory frame and offline-workout benchmark samples remain deferred to Phase 20 | open |  | 2026-10-11T11:58:58.881Z |  |
+| 100 | 18 | unrun-verify | maestro/phase18/garmin-sync.yaml |  | Fresh native Garmin acceptance and accessibility flow execution remains deferred to the Phase 20 comprehensive checkpoint | open |  | 2026-10-11T11:59:20.622Z |  |
 
 ````json
 [
@@ -1291,6 +1293,30 @@ last_updated: 2026-10-11T11:27:05.001Z
     "reason": "",
     "recorded_at": "2026-10-11T11:26:35.342Z",
     "resolved_at": "2026-10-11T11:27:05.001Z"
+  },
+  {
+    "id": 99,
+    "kind": "unrun-verify",
+    "phase": "18",
+    "file": "scripts/benchmark-phase18-garmin.mjs",
+    "line": null,
+    "description": "Exact APK module Python memory frame and offline-workout benchmark samples remain deferred to Phase 20",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:58:58.881Z",
+    "resolved_at": null
+  },
+  {
+    "id": 100,
+    "kind": "unrun-verify",
+    "phase": "18",
+    "file": "maestro/phase18/garmin-sync.yaml",
+    "line": null,
+    "description": "Fresh native Garmin acceptance and accessibility flow execution remains deferred to the Phase 20 comprehensive checkpoint",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T11:59:20.622Z",
+    "resolved_at": null
   }
 ]
 ````
