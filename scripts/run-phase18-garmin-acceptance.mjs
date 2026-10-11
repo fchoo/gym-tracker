@@ -8,6 +8,7 @@ import {
   GARMIN_ACCEPTANCE_CASES,
   PHASE18_GARMIN_ACCEPTANCE_CASE_IDS,
 } from "../src/testing/contracts/garminImport.contract.ts";
+import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 
 export const PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT =
   "artifacts/native/phase18-garmin-acceptance";
@@ -163,10 +164,15 @@ export function executePhase18GarminAcceptanceRunner(
   }
   const jsonReader = dependencies.readJson ?? readJson;
   const reportWriter = dependencies.writeReport ?? writeReport;
-  const manifest = jsonReader(options.manifest);
+  const retainedManifest = jsonReader(options.manifest);
   const record = jsonReader(options.record);
   const plan = createPhase18GarminAcceptanceRunnerPlan();
   validateRecord(record, plan);
+  const manifest = sanitizePhase18BuildManifest(retainedManifest, {
+    suite: "phase18-garmin-acceptance",
+    pythonLockSha256: record.current_identity.currentPythonLockSha256,
+    signatureSha256: record.current_identity.retainedSignatureSha256,
+  });
   validatePhase18GarminAcceptanceManifest(manifest, record.current_identity);
   const report = createPhase18GarminAcceptanceRawReport({
     manifest,

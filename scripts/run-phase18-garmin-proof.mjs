@@ -18,6 +18,7 @@ import {
   PHASE18_GARMIN_PROOF_RESULT_MARKER,
 } from "../src/testing/phase18GarminProof.ts";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 
 const ROOT = process.cwd();
 export const PHASE18_GARMIN_PROOF_ARTIFACT_ROOT =
@@ -157,43 +158,19 @@ export function validatePhase18GarminProofBuildManifest(manifest, current) {
 }
 
 export function sanitizePhase18GarminProofBuildManifest(retained, current) {
-  if (
-    retained?.schema_version !== 1
-    || retained.suite !== "phase18-garmin-proof"
-    || retained.profile !== "development-test"
-    || retained.build_variant !== "release"
-    || retained.js_bundle?.embedded !== true
-    || retained.package !== PACKAGE
-    || retained.apk?.path !== PHASE18_GARMIN_PROOF_APK
-    || !HASH.test(retained.apk?.sha256 ?? "")
-    || retained.apk?.page_alignment_verified !== true
-    || retained.installed_apk?.matches_retained_apk !== true
-    || retained.installed_apk?.sha256 !== retained.apk.sha256
-    || retained.device?.abi !== "arm64-v8a"
-    || !HASH.test(retained.device?.identity_sha256 ?? "")
-    || retained.device?.serial !== undefined
-    || retained.installed_apk?.device_path !== undefined
-  ) {
-    if (
-      retained?.device?.serial !== undefined
-      || retained?.installed_apk?.device_path !== undefined
-    ) fail("build_manifest_privacy_invalid");
+  let sanitized;
+  try {
+    sanitized = sanitizePhase18BuildManifest(retained, {
+      suite: "phase18-garmin-proof",
+      pythonLockSha256: current.currentPythonLockSha256,
+      signatureSha256: current.retainedSignatureSha256,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.endsWith("privacy_invalid")) {
+      fail("build_manifest_privacy_invalid");
+    }
     fail("build_manifest_invalid");
   }
-  const sanitized = Object.freeze({
-    schema_version: 1,
-    suite: "phase18-garmin-proof",
-    profile: "development-test",
-    package: PACKAGE,
-    abi: "arm64-v8a",
-    js_bundle_embedded: true,
-    base_head: retained.base_head,
-    source_tree_sha256: retained.source_tree_sha256,
-    python_lock_sha256: current.currentPythonLockSha256,
-    apk_sha256: retained.apk.sha256,
-    signature_sha256: current.retainedSignatureSha256,
-    device_identity_sha256: retained.device.identity_sha256,
-  });
   validatePhase18GarminProofBuildManifest(sanitized, {
     currentHead: retained.base_head,
     currentSourceTreeSha256: retained.source_tree_sha256,

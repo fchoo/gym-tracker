@@ -243,7 +243,7 @@ BUILD_MANIFEST="$build_manifest" \
   node <<'NODE'
 import { renameSync, writeFileSync } from 'node:fs';
 
-const privacyBoundedManifest = /^(?:phase14(?:-|$)|phase18-garmin-proof$)/u.test(process.env.SUITE ?? '');
+const privacyBoundedManifest = /^(?:phase14(?:-|$)|phase18-garmin-(?:proof|acceptance|adversarial)$)/u.test(process.env.SUITE ?? '');
 const manifest = {
   schema_version: 1,
   suite: process.env.SUITE,

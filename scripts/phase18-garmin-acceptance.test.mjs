@@ -38,6 +38,22 @@ function manifest(overrides = {}) {
   };
 }
 
+function retainedManifest() {
+  return {
+    schema_version: 1,
+    suite: "phase18-garmin-acceptance",
+    profile: "development-test",
+    build_variant: "release",
+    js_bundle: { embedded: true },
+    base_head: HEAD,
+    source_tree_sha256: HASH,
+    package: "com.fchoo.gymtracker.devtest",
+    apk: { path: `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-acceptance-devtest.apk`, sha256: HASH, page_alignment_verified: true },
+    installed_apk: { sha256: HASH, matches_retained_apk: true },
+    device: { abi: "arm64-v8a", identity_sha256: HASH },
+  };
+}
+
 const observations = {
   appearance: ["Light", "Dark", "System"],
   viewports: [
@@ -191,6 +207,38 @@ test("verifier accepts deterministic host PASS with exact native work still defe
     host_cases: 17,
     native_prerequisites: 2,
   });
+});
+
+test("acceptance runner consumes the shared nested builder manifest", () => {
+  const exact = evidence();
+  const writes = [];
+  const result = executePhase18GarminAcceptanceRunner([
+    "--manifest", MANIFEST_PATH,
+    "--record", RECORD_PATH,
+    "--execute",
+    "--phase20-native-checkpoint",
+  ], {
+    readJson: (path) => path === MANIFEST_PATH
+      ? retainedManifest()
+      : {
+        cases: exact.cases,
+        observations: exact.observations,
+        native_flow: exact.native_flow,
+        privacy_scan: exact.privacy_scan,
+        current_identity: {
+          currentHead: HEAD,
+          currentSourceTreeSha256: HASH,
+          currentPythonLockSha256: HASH,
+          retainedApkSha256: HASH,
+          retainedSignatureSha256: HASH,
+          deviceIdentitySha256: HASH,
+        },
+      },
+    writeReport: (report) => writes.push(report),
+  });
+  assert.equal(result.status, "host-passed-native-deferred");
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].manifest, manifest());
 });
 
 test("verifier accepts native completion only from the two exact artifact identities", () => {

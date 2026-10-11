@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
+import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 
 export const PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT =
   "artifacts/native/phase18-garmin-adversarial";
@@ -246,7 +247,6 @@ export function executePhase18GarminAdversarialRunner(
   const nativeWriter = dependencies.writeNativeReport ?? writeJson;
   const privacyWriter = dependencies.writePrivacyReport ?? writeJson;
   const collectNativeReport = dependencies.collectNativeReport ?? collectInstalledNativeReport;
-  const manifest = jsonReader(options.manifest);
   const collected = collectNativeReport();
   const record = collected.report;
   privacySafe(record);
@@ -270,6 +270,11 @@ export function executePhase18GarminAdversarialRunner(
       report_sha256: privacyReportSha256,
     },
   };
+  const manifest = sanitizePhase18BuildManifest(jsonReader(options.manifest), {
+    suite: "phase18-garmin-adversarial",
+    pythonLockSha256: boundRecord.current_identity.currentPythonLockSha256,
+    signatureSha256: boundRecord.current_identity.retainedSignatureSha256,
+  });
   validateRecord(boundRecord, manifest);
   const report = createPhase18GarminAdversarialRawReport({
     manifest,

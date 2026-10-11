@@ -51,6 +51,22 @@ function manifest(overrides = {}) {
   };
 }
 
+function retainedManifest() {
+  return {
+    schema_version: 1,
+    suite: "phase18-garmin-adversarial",
+    profile: "development-test",
+    build_variant: "release",
+    js_bundle: { embedded: true },
+    base_head: HEAD,
+    source_tree_sha256: HASH,
+    package: "com.fchoo.gymtracker.devtest",
+    apk: { path: `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-adversarial-devtest.apk`, sha256: HASH, page_alignment_verified: true },
+    installed_apk: { sha256: HASH, matches_retained_apk: true },
+    device: { abi: "arm64-v8a", identity_sha256: HASH },
+  };
+}
+
 const expectedCodes = [
   "completed",
   "completed",
@@ -321,7 +337,7 @@ test("Phase 20 runner validates before writing and never writes final evidence",
     "--execute",
     "--phase20-native-checkpoint",
   ], {
-    readJson: () => manifest(),
+    readJson: () => retainedManifest(),
     collectNativeReport: () => ({
       report: {
         schema_version: 1,
@@ -363,7 +379,7 @@ test("runner rejects private native records before any raw report write", () => 
       "--execute",
       "--phase20-native-checkpoint",
     ], {
-      readJson: () => manifest(),
+      readJson: () => retainedManifest(),
       collectNativeReport: () => ({
         report: {
           schema_version: 1,
