@@ -132,13 +132,14 @@ test("Phase 17 fixture protocol fails closed for missing or mismatched lifecycle
   await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: "phase17:wrong-token-000000", sourceTable: fixture.sourceTable }), /phase17_fixture_token_invalid/u);
   await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: "wrong_table" }), /phase17_fixture_table_mismatch/u);
   digest = "e".repeat(64);
-  await assert.rejects(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }), /phase17_fixture_cleanup_digest_mismatch/u);
+  await assert.rejects(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }), /phase17_fixture_probe_incomplete/u);
   const cleanupFailure = createPhase17FixtureProtocol({
     contracts: PHASE17_CASE_ACTION_CONTRACTS,
     createToken: () => "phase17:fixture-token-0003",
     adapter: { baselineDigest: async () => "f".repeat(64), canonicalHash: async (value) => syntheticHash(value), seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken, { ownedPlanId: "opaque" }), probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "f".repeat(64), facts: syntheticSeed(caseId, fixtureToken).expectedPostState }), cleanup: async () => { throw new Error("cleanup failed"); } },
   });
   const cleanupFixture = await cleanupFailure.setup("library.owned-summary");
+  await cleanupFailure.probe({ caseId: cleanupFixture.caseId, fixtureToken: cleanupFixture.fixtureToken, sourceTable: cleanupFixture.sourceTable });
   await assert.rejects(cleanupFailure.cleanup({ caseId: cleanupFixture.caseId, fixtureToken: cleanupFixture.fixtureToken }), /cleanup failed/u);
   assert.deepEqual(Object.keys(fixture).sort(), ["actionInputs", "actionReceiptId", "baselineDigest", "caseId", "expectedPostState", "expectedPostStateHash", "expectedPreState", "expectedPreStateHash", "fixtureToken", "proofMode", "selectors", "sourceTable"]);
   assert.equal(JSON.stringify(fixture).includes("raw-row"), false);
@@ -171,6 +172,7 @@ test("Phase 17 requires explicit per-case proof modes, rejects skipped or wrong 
   for (const contract of PHASE17_CASE_ACTION_CONTRACTS) {
     const fixture = await everyCase.setup(contract.id);
     if (contract.proofMode === "mutating") assert.notEqual(fixture.expectedPreStateHash, fixture.expectedPostStateHash, contract.id);
+    await everyCase.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable });
     await everyCase.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken });
   }
   const skipped = createPhase17FixtureProtocol({
@@ -213,8 +215,46 @@ test("Phase 17 rejects unrelated rows, fabricated identities, wrong facts or cou
   });
   const fixture = await protocol.setup("library.running-detail");
   await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable }), /phase17_fixture_probe_failed/u);
-  await assert.rejects(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }), /phase17_fixture_cleanup_digest_mismatch/u);
+  await assert.rejects(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }), /phase17_fixture_probe_incomplete/u);
   assert.equal(JSON.stringify(fixture).includes("unrelated-row"), false);
+});
+
+test("Phase 17 mutating cleanup removes token-bound test context after family cleanup and before digest", async () => {
+  const baseline = "a".repeat(64);
+  const mismatch = "b".repeat(64);
+  const calls = [];
+  let fixtureRowsPresent = false;
+  let persistedContext = null;
+  const protocol = createPhase17FixtureProtocol({
+    contracts: PHASE17_CASE_ACTION_CONTRACTS,
+    createToken: () => "phase17:cleanup-order-0001",
+    adapter: {
+      baselineDigest: async () => {
+        calls.push("digest");
+        return fixtureRowsPresent || persistedContext !== null ? mismatch : baseline;
+      },
+      canonicalHash: async (value) => syntheticHash(value),
+      seed: async ({ caseId, fixtureToken }) => {
+        fixtureRowsPresent = true;
+        return syntheticSeed(caseId, fixtureToken, { runningPlanId: "cleanup-order-running" });
+      },
+      probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "d".repeat(64), facts: syntheticSeed(caseId, fixtureToken).expectedPostState }),
+      cleanup: async () => { calls.push("family-cleanup"); fixtureRowsPresent = false; },
+      finalizeCleanup: async ({ caseId, fixtureToken }) => {
+        calls.push("context-clear");
+        assert.deepEqual(persistedContext, { caseId, fixtureToken });
+        persistedContext = null;
+        calls.push("kernel-flush");
+      },
+    },
+  });
+  const fixture = await protocol.setup("library.running-recovery");
+  persistedContext = { caseId: fixture.caseId, fixtureToken: fixture.fixtureToken };
+  await protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable });
+  const receipt = await protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken });
+  assert.equal(receipt.verdict, "restored");
+  assert.deepEqual(calls, ["digest", "family-cleanup", "context-clear", "kernel-flush", "digest"]);
+  assert.equal(persistedContext, null);
 });
 
 test("Phase 17 Family A is an explicit typed registry with table-specific seed, probe and token cleanup", async () => {

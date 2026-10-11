@@ -66,6 +66,7 @@ export function assertPhase17FamilyBRegistry(contracts: readonly Phase17CaseActi
 export function createPhase17FamilyFixtureAdapter(input: Readonly<{
   baselineDigest: Phase17FixtureAdapter["baselineDigest"];
   canonicalHash: Phase17FixtureAdapter["canonicalHash"];
+  finalizeCleanup?: Phase17FixtureAdapter["finalizeCleanup"];
   familyA: Phase17FamilyAFixtureDriver;
   familyB: Phase17FamilyBFixtureDriver;
   familyC?: Phase17FamilyCFixtureDriver;
@@ -76,6 +77,7 @@ export function createPhase17FamilyFixtureAdapter(input: Readonly<{
   return Object.freeze({
     baselineDigest: input.baselineDigest,
     canonicalHash: input.canonicalHash,
+    ...(input.finalizeCleanup === undefined ? {} : { finalizeCleanup: input.finalizeCleanup }),
     selectorSchema: ({ caseId, proofMode }) => {
       if (isPhase17FamilyBCaseId(caseId)) return input.familyB.selectorSchema(caseId);
       if (isPhase17FamilyCCaseId(caseId)) {

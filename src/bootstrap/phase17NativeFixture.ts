@@ -60,6 +60,10 @@ export type Phase17FixtureAdapter = Readonly<{
   seed(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17FixtureSeed>;
   probe(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string; selectors: Phase17FixtureSelectors }>): Promise<Readonly<{ rowCount: number; identityHash: string; facts: Phase17Facts }>>;
   cleanup(input: Readonly<{ caseId: string; fixtureToken: string; selectors: Phase17FixtureSelectors }>): Promise<void>;
+  /** Runs after the family has removed fixture-owned rows/projections, but before
+   * the baseline digest is read. This keeps dev-test control state out of the
+   * same snapshot it is required to restore. */
+  finalizeCleanup?(input: Readonly<{ caseId: string; fixtureToken: string }>): Promise<void>;
 }>;
 
 function canonical(value: Phase17Fact): string {
@@ -127,6 +131,7 @@ export function createPhase17FixtureProtocol(input: Readonly<{
   createToken(): string;
 }>) {
   let active: Phase17Fixture | null = null;
+  let probeComplete = false;
   return Object.freeze({
     async setup(caseId: string): Promise<Phase17Fixture> {
       if (active !== null) throw new Error("phase17_fixture_active");
@@ -155,6 +160,7 @@ export function createPhase17FixtureProtocol(input: Readonly<{
         throw new Error("phase17_fixture_read_only_receipt_invalid");
       }
       active = Object.freeze({ caseId, proofMode: contract.proofMode, fixtureToken, baselineDigest, sourceTable: contract.sourceProbe, expectedPreState: Object.freeze({ ...seed.expectedPreState }), expectedPostState: Object.freeze({ ...seed.expectedPostState }), expectedPreStateHash, expectedPostStateHash, actionReceiptId: seed.actionReceiptId, selectors: Object.freeze({ ...seed.selectors }), actionInputs: Object.freeze({ ...actionInputs }) });
+      probeComplete = false;
       return active;
     },
     async probe(inputValue: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe> {
@@ -165,16 +171,20 @@ export function createPhase17FixtureProtocol(input: Readonly<{
       if (!Number.isSafeInteger(proof.rowCount) || proof.rowCount < 1 || !HASH.test(proof.identityHash) || !validFacts(proof.facts) || !sameFacts(proof.facts, active.expectedPostState)) {
         throw new Error("phase17_fixture_probe_failed");
       }
+      probeComplete = true;
       return Object.freeze({ ...inputValue, rowCount: proof.rowCount, identityHash: proof.identityHash, expectedPostStateHash: active.expectedPostStateHash, verdict: "matched" });
     },
     async cleanup(inputValue: Readonly<{ caseId: string; fixtureToken: string }>) {
       if (active === null) throw new Error("phase17_fixture_missing");
       requireFixture(active, inputValue.caseId, inputValue.fixtureToken);
+      if (!probeComplete) throw new Error("phase17_fixture_probe_incomplete");
       const fixture = active;
       await input.adapter.cleanup({ ...inputValue, selectors: fixture.selectors });
+      await input.adapter.finalizeCleanup?.(inputValue);
       const digest = await input.adapter.baselineDigest();
       if (digest !== fixture.baselineDigest) throw new Error("phase17_fixture_cleanup_digest_mismatch");
       active = null;
+      probeComplete = false;
       return Object.freeze({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, baselineDigest: digest, verdict: "restored" as const });
     },
   });

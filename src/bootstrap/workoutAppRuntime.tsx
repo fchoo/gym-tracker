@@ -4087,8 +4087,12 @@ export function WorkoutAppRuntimeProvider({
             [PHASE17_ACTION_ENVELOPE_SETTING_KEY, JSON.stringify(context), dependencies.nowMs()],
           ));
         },
-        clear: async () => {
-          await services.kernel.write((transaction) => transaction.execute("DELETE FROM app_settings WHERE key = ?", [PHASE17_ACTION_ENVELOPE_SETTING_KEY]));
+        clear: async (context) => {
+          const result = await services.kernel.write((transaction) => transaction.execute(
+            "DELETE FROM app_settings WHERE key = ? AND value_json = ?",
+            [PHASE17_ACTION_ENVELOPE_SETTING_KEY, JSON.stringify(context)],
+          ));
+          if (result.changes !== 1) throw new Error("phase17_action_envelope_clear_token_mismatch");
         },
       },
     });
@@ -4133,6 +4137,16 @@ export function WorkoutAppRuntimeProvider({
       adapter: createPhase17FamilyFixtureAdapter({
         baselineDigest: async () => (await collectPhase14SourceStateProofFromKernel({ kernel: services.kernel, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) })).digest_sha256,
         canonicalHash: async (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, JSON.stringify(value, Object.keys(value).sort())),
+        finalizeCleanup: async (input) => {
+          const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === input.caseId);
+          if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
+          if (contract.proofMode === "mutating") {
+            await phase17ActionEnvelopeSource().clear(input);
+          }
+          // This awaited no-op write drains the kernel's serialized write queue
+          // after family cleanup and test-control deletion before digesting.
+          await services.kernel.write(async () => undefined);
+        },
         familyB: createPhase17FamilyBFixtureDriver({
           kernel: services.kernel,
           running: createRunningPlanRuntimePort(services.kernel, {
@@ -4464,17 +4478,10 @@ export function WorkoutAppRuntimeProvider({
     },
     probePhase17Fixture: (input) => phase17FixtureProtocol().probe(input),
     cleanupPhase17Fixture: async (input) => {
-      let envelopeFailure: unknown;
       if (PHASE17_CASE_ACTION_CONTRACTS.some(({ id, proofMode }) => id === input.caseId && proofMode === "mutating")) {
-        try { await phase17ActionEnvelopeSource().assertConsumed(input); } catch (error) { envelopeFailure = error; }
+        await phase17ActionEnvelopeSource().assertConsumed(input);
       }
-      try {
-        const receipt = await phase17FixtureProtocol().cleanup(input);
-        if (envelopeFailure !== undefined) throw envelopeFailure;
-        return receipt;
-      } finally {
-        if (phase17NativeContractEnabled()) await phase17ActionEnvelopeSource().clear();
-      }
+      return phase17FixtureProtocol().cleanup(input);
     },
     hydratePhase17ActionEnvelopes: async (input) => {
       const active = await phase17ActionEnvelopeSource().hydrate();

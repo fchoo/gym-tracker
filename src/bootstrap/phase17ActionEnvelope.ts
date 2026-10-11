@@ -54,7 +54,8 @@ export type Phase17NativeContractIdentity = Readonly<{
 export type Phase17ActionEnvelopeStore = Readonly<{
   read(): Promise<Phase17ActionEnvelopeContext | null>;
   write(context: Phase17ActionEnvelopeContext): Promise<void>;
-  clear(): Promise<void>;
+  /** Deletes only the exact persisted context that was just verified. */
+  clear(context: Phase17ActionEnvelopeContext): Promise<void>;
 }>;
 
 /** Fixture setup is deliberately distinct from product-action envelopes. */
@@ -175,6 +176,15 @@ export function createPhase17ActionEnvelopeSource(input: Readonly<{
   const requireEnabled = () => {
     if (!enabled()) throw new Error("phase17_action_envelope_unavailable");
   };
+  const assertConsumed = async (inputValue: Readonly<{ caseId: string; fixtureToken: string }>): Promise<void> => {
+    requireEnabled();
+    const active = await input.store.read();
+    if (active === null || !validContext(input.contracts, active)
+      || active.caseId !== inputValue.caseId || active.fixtureToken !== inputValue.fixtureToken) {
+      throw new Error("phase17_action_envelope_token_mismatch");
+    }
+    if (active.nextEnvelope !== active.envelopes.length) throw new Error("phase17_action_envelope_unconsumed");
+  };
   const reserve = async (inputValue: Readonly<{ caseId: string; fixtureToken: string; label: string }>): Promise<string | null> => {
     if (!enabled()) return null;
     const active = await input.store.read();
@@ -234,17 +244,19 @@ export function createPhase17ActionEnvelopeSource(input: Readonly<{
       return enqueueReservation({ caseId: cached.caseId, fixtureToken: cached.fixtureToken, label });
     },
     async assertConsumed(inputValue: Readonly<{ caseId: string; fixtureToken: string }>): Promise<void> {
+      await assertConsumed(inputValue);
+    },
+    async clear(inputValue: Readonly<{ caseId: string; fixtureToken: string }>): Promise<void> {
       requireEnabled();
+      await assertConsumed(inputValue);
       const active = await input.store.read();
       if (active === null || !validContext(input.contracts, active)
         || active.caseId !== inputValue.caseId || active.fixtureToken !== inputValue.fixtureToken) {
         throw new Error("phase17_action_envelope_token_mismatch");
       }
-      if (active.nextEnvelope !== active.envelopes.length) throw new Error("phase17_action_envelope_unconsumed");
-    },
-    async clear(): Promise<void> {
+      await input.store.clear(active);
+      if (await input.store.read() !== null) throw new Error("phase17_action_envelope_clear_failed");
       cached = null;
-      if (enabled()) await input.store.clear();
     },
   });
 }

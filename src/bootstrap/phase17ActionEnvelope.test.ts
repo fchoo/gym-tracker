@@ -142,12 +142,36 @@ describe("Phase 17 action envelope source", () => {
     ]);
   });
 
-  it("fails cleanup when an expected envelope was not used, then clears the stale context", async () => {
+  it("clears only a fully consumed exact-token context and leaves no context after restart", async () => {
     const { source, saved } = fixture();
     await source.activate({ caseId: "library.running-recovery", fixtureToken: token, envelopes: [{ label: "running-session-save", requestId }] });
+    await expect(source.clear({ caseId: "library.running-recovery", fixtureToken: "phase17:fedcba0987654321" })).rejects.toThrow("phase17_action_envelope_token_mismatch");
+    expect(saved()).toMatchObject({ fixtureToken: token, nextEnvelope: 0 });
     await expect(source.assertConsumed({ caseId: "library.running-recovery", fixtureToken: token })).rejects.toThrow("phase17_action_envelope_unconsumed");
-    await source.clear();
+    await expect(source.clear({ caseId: "library.running-recovery", fixtureToken: token })).rejects.toThrow("phase17_action_envelope_unconsumed");
+    expect(saved()).toMatchObject({ fixtureToken: token, nextEnvelope: 0 });
+    await source.claim({ caseId: "library.running-recovery", fixtureToken: token, label: "running-session-save" });
+    await source.clear({ caseId: "library.running-recovery", fixtureToken: token });
     expect(saved()).toBeNull();
+    const restarted = createPhase17ActionEnvelopeSource({
+      contracts,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: { read: async () => saved(), write: async () => undefined, clear: async () => undefined },
+    });
+    await expect(restarted.hydrate()).resolves.toBeNull();
+  });
+
+  it("fails closed when the durable exact-context delete fails", async () => {
+    let saved: any = null;
+    const source = createPhase17ActionEnvelopeSource({
+      contracts,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: { read: async () => saved, write: async (value) => { saved = value; }, clear: async () => { throw new Error("phase17_action_envelope_clear_write_failed"); } },
+    });
+    await source.activate({ caseId: "library.running-recovery", fixtureToken: token, envelopes: [{ label: "running-session-save", requestId }] });
+    await source.claim({ caseId: "library.running-recovery", fixtureToken: token, label: "running-session-save" });
+    await expect(source.clear({ caseId: "library.running-recovery", fixtureToken: token })).rejects.toThrow("phase17_action_envelope_clear_write_failed");
+    expect(saved).toMatchObject({ fixtureToken: token, nextEnvelope: 1 });
   });
 
   it("uses the unchanged production path when no exact dev-test contract is active", async () => {
