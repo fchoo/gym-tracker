@@ -157,9 +157,9 @@ class GarminBridge:
             if operation == "getActivities":
                 return self._activities(arguments)
             if operation == "getActivity":
-                return self._activity(arguments, "get_activity")
+                return self._activity(arguments)
             if operation == "getActivitySplits":
-                return self._activity(arguments, "get_activity_splits")
+                return self._activity_splits(arguments)
             if operation == "getActivityDetails":
                 return self._details(arguments)
         except _BridgeInputError as error:
@@ -353,9 +353,15 @@ class GarminBridge:
             data["nextStart"] = start + len(items)
         return self._success(data)
 
-    def _activity(self, arguments: Any, method_name: str) -> dict[str, Any]:
+    def _activity(self, arguments: Any) -> dict[str, Any]:
         identifier = _activity_id(arguments)
-        value = getattr(self._require_client(), method_name)(identifier)
+        value = self._require_client().get_activity(identifier)
+        self._capture_tokens()
+        return self._success(value)
+
+    def _activity_splits(self, arguments: Any) -> dict[str, Any]:
+        identifier = _activity_id(arguments)
+        value = self._require_client().get_activity_splits(identifier)
         self._capture_tokens()
         return self._success(value)
 
