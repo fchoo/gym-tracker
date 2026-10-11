@@ -51,7 +51,12 @@ allprojects {
     expect(configuredApp).toContain('version = "3.13"');
     expect(configuredApp).toContain('abiFilters "arm64-v8a"');
     expect(configuredApp).toContain("verifyGarminPythonLock");
-    expect(configuredApp).toContain("218e72ca5459e014435fc2d94fd18bd601fa0c14");
+    expect(configuredApp).toContain("garmin-python-lock.json");
+    expect(configuredApp).toContain("garmin-python-artifacts");
+    expect(configuredApp).toContain('install "--no-deps"');
+    expect(configuredApp).toContain("materializeGarminPythonLock");
+    expect(configuredApp).not.toContain("git+https://");
+    expect(configuredApp).not.toContain("files.pythonhosted.org");
     expect(configuredApp).not.toMatch(/hermes|x86|x86_64|token|localhost|http:\/\//iu);
 
     expect(applyGarminProjectBuildGradle(configuredProject)).toBe(configuredProject);

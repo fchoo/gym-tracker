@@ -60,6 +60,11 @@ export function applyGarminAppBuildGradle(contents: string): string {
 ${HOST_MARKER}
 apply plugin: "com.chaquo.python"
 
+def garminPythonRoot = new File(rootProject.projectDir.parentFile, "modules/garmin-connect/python")
+def garminPythonLockFile = new File(garminPythonRoot, "garmin-python-lock.json")
+def garminPythonArtifactDir = new File(garminPythonRoot, "garmin-python-artifacts")
+def garminPythonLock = new groovy.json.JsonSlurper().parse(garminPythonLockFile)
+
 android {
     defaultConfig {
         minSdk 24
@@ -73,10 +78,9 @@ chaquopy {
     defaultConfig {
         version = "3.13"
         pip {
-            install "git+https://github.com/cyberjunky/python-garminconnect.git@218e72ca5459e014435fc2d94fd18bd601fa0c14"
-            install "https://files.pythonhosted.org/packages/19/6a/c24df8a4fc22fa84070dcd94abeba43c15e08cc09e35869565c0bad196fd/curl_cffi-0.15.0-cp313-abi3-android_24_arm64_v8a.whl#sha256=4682dc38d4336e0eb0b185374db90a760efde63cbea994b4e63f3521d44c4c92"
-            install "requests==2.34.2"
-            install "ua-generator==2.1.6"
+            garminPythonLock.packages.each { lockedPackage ->
+                install "--no-deps", new File(garminPythonArtifactDir, lockedPackage.artifact.filename).absolutePath
+            }
         }
     }
     sourceSets {
@@ -86,11 +90,19 @@ chaquopy {
     }
 }
 
-tasks.register("verifyGarminPythonLock", Exec) {
+tasks.register("materializeGarminPythonLock", Exec) {
     workingDir rootProject.projectDir.parentFile
-    commandLine "node", "scripts/verify-garmin-python-lock.mjs"
+    commandLine "node", "scripts/verify-garmin-python-lock.mjs", "--materialize", "--artifacts-dir", garminPythonArtifactDir.absolutePath
+}
+tasks.register("verifyGarminPythonLock", Exec) {
+    dependsOn("materializeGarminPythonLock")
+    workingDir rootProject.projectDir.parentFile
+    commandLine "node", "scripts/verify-garmin-python-lock.mjs", "--artifacts-dir", garminPythonArtifactDir.absolutePath
 }
 tasks.named("preBuild").configure {
+    dependsOn("verifyGarminPythonLock")
+}
+tasks.matching { task -> task.name.startsWith("generate") && task.name.endsWith("PythonRequirements") }.configureEach {
     dependsOn("verifyGarminPythonLock")
 }
 `;

@@ -1,4 +1,12 @@
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -40,8 +48,86 @@ export function validateGarminPythonLock(lock) {
   return { valid: true, packageCount: REVIEWED_PACKAGES.size };
 }
 
+function artifactUrl(entry, pypiMetadata) {
+  if (entry.source.kind === "git") {
+    if (typeof entry.source.commit !== "string" || !/^[a-f0-9]{40}$/u.test(entry.source.commit)) fail("client_commit");
+    return `${entry.source.url.replace(/\/$/u, "")}/archive/${entry.source.commit}.tar.gz`;
+  }
+  const release = pypiMetadata?.urls?.find((candidate) =>
+    candidate.filename === entry.artifact.filename
+      && candidate.digests?.sha256 === entry.artifact.sha256);
+  if (typeof release?.url !== "string" || !release.url.startsWith("https://files.pythonhosted.org/")) {
+    fail("artifact_resolution");
+  }
+  return release.url;
+}
+
+export function verifyGarminPythonArtifacts(
+  lock,
+  artifactsDirectory,
+  digestArtifact = (artifactPath) => createHash("sha256").update(readFileSync(artifactPath)).digest("hex"),
+) {
+  validateGarminPythonLock(lock);
+  const expected = lock.packages.map((entry) => entry.artifact.filename).sort();
+  let actual;
+  try {
+    actual = readdirSync(artifactsDirectory).filter((name) => !name.startsWith(".")).sort();
+  } catch {
+    fail("artifacts_missing");
+  }
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) fail("artifact_set");
+  for (const entry of lock.packages) {
+    const digest = digestArtifact(path.join(artifactsDirectory, entry.artifact.filename));
+    if (digest !== entry.artifact.sha256) fail("artifact_hash");
+  }
+  return { valid: true, packageCount: expected.length };
+}
+
+export async function materializeGarminPythonArtifacts(lock, artifactsDirectory, fetchImpl = fetch) {
+  validateGarminPythonLock(lock);
+  mkdirSync(artifactsDirectory, { recursive: true });
+  for (const entry of lock.packages) {
+    const destination = path.join(artifactsDirectory, entry.artifact.filename);
+    let currentValid = false;
+    try {
+      currentValid = createHash("sha256").update(readFileSync(destination)).digest("hex") === entry.artifact.sha256;
+    } catch {
+      currentValid = false;
+    }
+    if (currentValid) continue;
+    const metadata = entry.source.kind === "pypi"
+      ? await fetchImpl(`https://pypi.org/pypi/${encodeURIComponent(entry.name)}/${encodeURIComponent(entry.version)}/json`).then((response) => {
+        if (!response.ok) fail("artifact_resolution");
+        return response.json();
+      })
+      : undefined;
+    const response = await fetchImpl(artifactUrl(entry, metadata));
+    if (!response.ok) fail("artifact_download");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (createHash("sha256").update(bytes).digest("hex") !== entry.artifact.sha256) fail("artifact_hash");
+    const temporary = `${destination}.tmp`;
+    try {
+      writeFileSync(temporary, bytes, { flag: "wx", mode: 0o600 });
+      renameSync(temporary, destination);
+    } finally {
+      rmSync(temporary, { force: true });
+    }
+  }
+  return verifyGarminPythonArtifacts(lock, artifactsDirectory);
+}
+
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  const lockPath = process.argv[2] ?? path.join(process.cwd(), "modules/garmin-connect/python/garmin-python-lock.json");
-  const result = validateGarminPythonLock(JSON.parse(readFileSync(lockPath, "utf8")));
+  const args = process.argv.slice(2);
+  const materialize = args.includes("--materialize");
+  const artifactsIndex = args.indexOf("--artifacts-dir");
+  const artifactsDirectory = artifactsIndex < 0 ? null : args[artifactsIndex + 1];
+  const positionalLock = args.find((value, index) => !value.startsWith("--") && args[index - 1] !== "--artifacts-dir");
+  const resolvedLockPath = positionalLock ?? path.join(process.cwd(), "modules/garmin-connect/python/garmin-python-lock.json");
+  const lock = JSON.parse(readFileSync(resolvedLockPath, "utf8"));
+  const result = materialize
+    ? await materializeGarminPythonArtifacts(lock, artifactsDirectory ?? fail("artifacts_missing"))
+    : artifactsDirectory === null
+      ? validateGarminPythonLock(lock)
+      : verifyGarminPythonArtifacts(lock, artifactsDirectory);
   console.log(`Garmin Python lock valid (${result.packageCount} packages).`);
 }
