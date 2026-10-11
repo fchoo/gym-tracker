@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Completed 18-06-PLAN.md
-last_updated: "2026-10-11T09:14:20.358Z"
+stopped_at: Completed 18-07-PLAN.md
+last_updated: "2026-10-11T09:31:56.358Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: 2d121de28ba97108b8d1e76728c9784cf91ded92
+state_head: 20dc570ea35a92e47819bbe233df0572f5a69b36
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 61
+  completed_plans: 62
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 7 of 14
+Plan: 8 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -101,6 +101,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P04 | 18m | 2 tasks | 6 files |
 | Phase 18 P05 | 21m 12s | 3 tasks | 5 files |
 | Phase 18 P06 | 27m 7s | 3 tasks | 5 files |
+| Phase 18 P07 | 12m 30s | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -219,6 +220,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Phase 18 Plan 06 keeps passwords, MFA codes, continuation handles, and account namespaces outside controller presentation state.
 - [Phase 18]: Phase 18 Plan 06 exposes a structural UI syncNow port so runtime composition can inject the platform coordinator without a UI-to-platform dependency.
 - [Phase 18]: Phase 18 Plan 06 keeps Disconnect available during sync so confirmed logout invalidates late work while retaining imported history.
+- [Phase 18]: The Garmin import runtime reuses the application-owned imported-activity service and never opens a kernel or creates a repository.
+- [Phase 18]: Garmin date policy stays upstream; only confirmed absolute/source/local/offset/zone provenance crosses the shared import command, while every non-confirm result is zero-write.
+- [Phase 18]: Garmin commits recheck the captured account generation after preparation and invalidate rebuildable reads only after a newly imported result.
 
 ### Pending Owner Review
 
@@ -243,7 +247,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T09:14:19.985Z
-Stopped at: Completed 18-06-PLAN.md
+Last session: 2026-10-11T09:31:56.074Z
+Stopped at: Completed 18-07-PLAN.md
 Resume file: None
 Next action: Execute 18-03 only when the owner initiates its attended installed-app proof.
