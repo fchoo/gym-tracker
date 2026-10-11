@@ -11,15 +11,15 @@ import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedSt
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createImportedActivityRepository } from "../../src/platform/sqlite/repositories/importedActivityRepository";
-import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
+import { createSqliteKernel, type SqliteKernel, type SqliteKernelTestObserver } from "../../src/platform/sqlite/sqliteKernel";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> { constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {} async getAllAsync() { return this.rows; } }
-class Statement implements SqlitePreparedStatement { constructor(private readonly statement: ReturnType<DatabaseSync["prepare"]>) {} async executeAsync<Row extends Record<string, unknown>>(parameters: readonly SQLInputValue[] = []): Promise<SqlitePreparedResult<Row>> { if (this.statement.columns().length > 0) return new Result(0, 0, this.statement.all(...parameters) as Row[]); const result = this.statement.run(...parameters); return new Result(Number(result.changes), Number(result.lastInsertRowid), []); } async finalizeAsync() {} }
-class Connection implements SqliteConnection { constructor(readonly db: DatabaseSync) {} async execAsync(sql: string) { this.db.exec(sql); } async prepareAsync(sql: string) { return new Statement(this.db.prepare(sql)); } async isInTransactionAsync() { return this.db.isTransaction; } async closeAsync() { this.db.close(); } }
+class Statement implements SqlitePreparedStatement { constructor(private readonly statement: ReturnType<DatabaseSync["prepare"]>, private readonly connection: Connection) {} async executeAsync<Row extends Record<string, unknown>>(parameters: readonly SQLInputValue[] = []): Promise<SqlitePreparedResult<Row>> { if (this.statement.columns().length > 0) return new Result(0, 0, this.statement.all(...parameters) as Row[]); this.connection.beforeMutation(); const result = this.statement.run(...parameters); return new Result(Number(result.changes), Number(result.lastInsertRowid), []); } async finalizeAsync() {} }
+class Connection implements SqliteConnection { private mutationCount = 0; private failAtMutation: number | null = null; constructor(readonly db: DatabaseSync) {} armMutationFailure(failAt: number) { this.mutationCount = 0; this.failAtMutation = failAt; } beforeMutation() { this.mutationCount += 1; if (this.mutationCount === this.failAtMutation) throw new Error("injected_repository_cut"); } async execAsync(sql: string) { this.db.exec(sql); } async prepareAsync(sql: string) { return new Statement(this.db.prepare(sql), this); } async isInTransactionAsync() { return this.db.isTransaction; } async closeAsync() { this.db.close(); } }
 
 const directories = new Set<string>(); const kernels: SqliteKernel[] = [];
 afterEach(async () => { await Promise.all(kernels.splice(0).map((kernel) => kernel.close())); for (const directory of directories) rmSync(directory, { recursive: true, force: true }); directories.clear(); });
-async function runtime() { const directory = mkdtempSync(join(tmpdir(), "gym-imported-activity-")); directories.add(directory); const path = join(directory, "gym.db"); const fixture = new DatabaseSync(path); fixture.exec(readFileSync(join(__dirname, "../migrations/fixtures/v6-metric-profiles.sql"), "utf8")); fixture.close(); const writer = new Connection(new DatabaseSync(path)); const reader = new Connection(new DatabaseSync(path)); await configureSqliteConnection(writer, { enableWal: true }); await configureSqliteConnection(reader, { enableWal: false }); const kernel = createSqliteKernel({ writer, reader }); kernels.push(kernel); await createMigrationRunner({ databaseName: path, kernel, migrations, recoveryBackup: { async createAndValidate(request) { return { backupId: "test", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const }; } } }).run(); return { kernel, writer, repository: createImportedActivityRepository(kernel) }; }
+async function runtime(observer: SqliteKernelTestObserver = {}) { const directory = mkdtempSync(join(tmpdir(), "gym-imported-activity-")); directories.add(directory); const path = join(directory, "gym.db"); const fixture = new DatabaseSync(path); fixture.exec(readFileSync(join(__dirname, "../migrations/fixtures/v6-metric-profiles.sql"), "utf8")); fixture.close(); const writer = new Connection(new DatabaseSync(path)); const reader = new Connection(new DatabaseSync(path)); await configureSqliteConnection(writer, { enableWal: true }); await configureSqliteConnection(reader, { enableWal: false }); const kernel = createSqliteKernel({ writer, reader }, observer); kernels.push(kernel); await createMigrationRunner({ databaseName: path, kernel, migrations, recoveryBackup: { async createAndValidate(request) { return { backupId: "test", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const }; } } }).run(); return { kernel, writer, repository: createImportedActivityRepository(kernel) }; }
 async function staged(options: Readonly<{ externalActivityId?: string; laps?: { ordinal: number; elapsed_ms: number }[]; samples?: { elapsed_ms: number; distance_meters: number }[] }> = {}) { const normalized = { version: 1 as const, started_at_ms: 1_700_000_000_000, sport: "running" as const, subtype: "outdoor", distance_meters: 5000, elapsed_ms: 1_500_000, laps: options.laps ?? [], ...(options.samples === undefined ? {} : { samples: options.samples }) }; return prepareGarminImport({ version: 1 as const, source_kind: "garmin_connect_account" as const, account_namespace: "owner-a", external_activity_id: options.externalActivityId ?? "42", normalization_version: 1, normalized_json_sha256: createHash("sha256").update(canonicalJson({ normalization_version: 1, normalized })).digest("hex"), raw_component_sha256: { activity: "a".repeat(64), splits: "b".repeat(64), details: "c".repeat(64) }, sample_fidelity: "source_summary" as const, normalized }, async (value) => createHash("sha256").update(value).digest("hex")); }
 
 describe("imported activity facts", () => {
@@ -66,5 +66,50 @@ describe("imported activity facts", () => {
     writer.db.prepare("DELETE FROM imported_activity_identities WHERE activity_id = ?").run(input.activityId);
     await expect(confirmGarminImportDate(repository, input)).rejects.toThrow("sqlite_transaction_failed");
     await expect(confirmGarminImportDate(repository, { ...input, requestId: "stale-new-identity", activityId: "stale-new-identity", expectedAggregateRevision: 1, staged: await staged({ externalActivityId: "stale-identity" }) })).resolves.toMatchObject({ kind: "conflict", aggregateRevision: 0 });
+  });
+
+  it("rolls back every repository statement cut and a precommit interruption without changing existing digests", async () => {
+    for (let failAt = 1; failAt <= 9; failAt += 1) {
+      const { kernel, writer, repository } = await runtime();
+      const before = await kernel.queryAll<Record<string, number>>(`SELECT
+        (SELECT count(*) FROM plans) AS plans,
+        (SELECT count(*) FROM workout_sessions) AS sessions,
+        (SELECT count(*) FROM running_activity_current_matches) AS matches`);
+      writer.armMutationFailure(failAt);
+      await expect(confirmGarminImportDate(repository, {
+        requestId: `fault-${failAt}`,
+        requestSha256: "b".repeat(64),
+        activityId: `fault-activity-${failAt}`,
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-10-09",
+        staged: await staged({ externalActivityId: `fault-external-${failAt}` }),
+      })).rejects.toThrow("sqlite_transaction_failed");
+      await expect(kernel.queryAll<{ activities: number; receipts: number }>(`SELECT
+        (SELECT count(*) FROM imported_activities) AS activities,
+        (SELECT count(*) FROM imported_activity_receipts) AS receipts`)).resolves.toEqual([{ activities: 0, receipts: 0 }]);
+      await expect(kernel.queryAll<Record<string, number>>(`SELECT
+        (SELECT count(*) FROM plans) AS plans,
+        (SELECT count(*) FROM workout_sessions) AS sessions,
+        (SELECT count(*) FROM running_activity_current_matches) AS matches`)).resolves.toEqual(before);
+    }
+
+    let interruptBeforeCommit = false;
+    const { kernel, repository } = await runtime({
+      beforeCommit: async () => {
+        if (interruptBeforeCommit) throw new Error("precommit_interrupted");
+      },
+    });
+    interruptBeforeCommit = true;
+    await expect(confirmGarminImportDate(repository, {
+      requestId: "precommit-interruption",
+      requestSha256: "c".repeat(64),
+      activityId: "precommit-activity",
+      expectedAggregateRevision: 0,
+      confirmedLocalDate: "2026-10-09",
+      staged: await staged({ externalActivityId: "precommit-external" }),
+    })).rejects.toThrow("sqlite_commit_failed");
+    await expect(kernel.queryAll<{ activities: number; receipts: number }>(`SELECT
+      (SELECT count(*) FROM imported_activities) AS activities,
+      (SELECT count(*) FROM imported_activity_receipts) AS receipts`)).resolves.toEqual([{ activities: 0, receipts: 0 }]);
   });
 });

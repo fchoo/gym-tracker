@@ -223,4 +223,39 @@ describe("Garmin import runtime", () => {
       expect(invalidateReads).not.toHaveBeenCalled();
     },
   );
+
+  it("rechecks the captured connection generation after preparation and before persistence", async () => {
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => ({
+        kind: "imported" as const,
+        activityId: "activity-stale-generation",
+        aggregateRevision: 1,
+      })),
+    };
+    const invalidateReads = jest.fn(async () => undefined);
+    const assertCurrentGeneration = jest.fn(async () => {
+      throw new Error("stale_generation");
+    });
+    const runtime = createGarminImportRuntime({
+      services: Object.freeze({ importedActivities: repository }),
+      sha256,
+      invalidateReads,
+    });
+
+    await expect(runtime.commitEnvelope({
+      envelope: envelope(),
+      confirmation: {
+        requestId: "request-stale-generation",
+        requestSha256: "4".repeat(64),
+        activityId: "activity-stale-generation",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-06-20",
+      },
+      assertCurrentGeneration,
+    })).rejects.toThrow("stale_generation");
+
+    expect(assertCurrentGeneration).toHaveBeenCalledTimes(1);
+    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+    expect(invalidateReads).not.toHaveBeenCalled();
+  });
 });
