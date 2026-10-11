@@ -45,7 +45,7 @@ module.exports = {
       ],
       testPathIgnorePatterns: [
         ...shared.testPathIgnorePatterns,
-        "/src/ui/",
+        "/src/ui/(?!garmin/useGarminConnectionController\\.test\\.tsx$)",
       ],
     },
     {
@@ -58,6 +58,10 @@ module.exports = {
         "<rootDir>/app/**/*.test.tsx",
         "<rootDir>/src/ui/**/*.test.ts",
         "<rootDir>/src/ui/**/*.test.tsx",
+      ],
+      testPathIgnorePatterns: [
+        ...shared.testPathIgnorePatterns,
+        "/src/ui/garmin/useGarminConnectionController\\.test\\.tsx$",
       ],
     },
     {
