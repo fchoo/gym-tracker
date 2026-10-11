@@ -68,6 +68,7 @@ describe("Garmin import runtime", () => {
     const runtime = createGarminImportRuntime({
       services: Object.freeze({ importedActivities: repository }),
       sha256,
+      assertCurrentGeneration: async () => undefined,
       invalidateReads: async () => {
         events.push("invalidated");
       },
@@ -100,6 +101,7 @@ describe("Garmin import runtime", () => {
     const runtime = createGarminImportRuntime({
       services: Object.freeze({ importedActivities: repository }),
       sha256,
+      assertCurrentGeneration: async () => undefined,
       invalidateReads,
     });
 
@@ -131,6 +133,7 @@ describe("Garmin import runtime", () => {
     const runtime = createGarminImportRuntime({
       services: Object.freeze({ importedActivities: repository }),
       sha256,
+      assertCurrentGeneration: async () => undefined,
       invalidateReads,
     });
 
@@ -201,6 +204,7 @@ describe("Garmin import runtime", () => {
       const runtime = createGarminImportRuntime({
         services: Object.freeze({ importedActivities: repository }),
         sha256,
+        assertCurrentGeneration: async () => undefined,
         invalidateReads,
       });
       const proposal = await runtime.prepareEnvelope({
@@ -239,6 +243,7 @@ describe("Garmin import runtime", () => {
     const runtime = createGarminImportRuntime({
       services: Object.freeze({ importedActivities: repository }),
       sha256,
+      assertCurrentGeneration,
       invalidateReads,
     });
 
@@ -251,7 +256,6 @@ describe("Garmin import runtime", () => {
         expectedAggregateRevision: 0,
         confirmedLocalDate: "2026-06-20",
       },
-      assertCurrentGeneration,
     })).rejects.toThrow("stale_generation");
 
     expect(assertCurrentGeneration).toHaveBeenCalledTimes(1);

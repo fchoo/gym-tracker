@@ -75,12 +75,14 @@ export type GarminImportRuntime = Readonly<{
 export function createGarminImportRuntime(input: Readonly<{
   services: GarminImportRuntimeServices;
   sha256: GarminSha256;
+  assertCurrentGeneration(): Promise<void>;
   invalidateReads(): Promise<void>;
 }>): GarminImportRuntime {
   const commitPrepared = async (
     staged: PreparedGarminImport,
     confirmation: GarminImportConfirmation,
   ): Promise<GarminImportResult> => {
+    await input.assertCurrentGeneration();
     const result = await confirmGarminImportDate(
       input.services.importedActivities,
       { ...confirmation, staged },

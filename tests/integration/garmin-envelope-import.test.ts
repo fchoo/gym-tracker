@@ -109,6 +109,7 @@ async function applicationRuntime(input: Readonly<{
     runtime: createGarminImportRuntime({
       services,
       sha256,
+      assertCurrentGeneration: async () => undefined,
       invalidateReads: input.invalidateReads ?? (async () => undefined),
     }),
   };
@@ -490,13 +491,13 @@ describe("Garmin envelope import boundary", () => {
   it("rejects capacity limit plus one and FIT/hash fallback shapes before any source write", async () => {
     const { kernel, runtime } = await applicationRuntime();
     const source = await envelope();
-    const overCapacity = withNormalized(source, Object.freeze({
+    const overCapacity = withNormalized(source, {
       ...source.normalized,
-      laps: Object.freeze(Array.from({ length: 1_001 }, (_, ordinal) => Object.freeze({
+      laps: Array.from({ length: 1_001 }, (_, ordinal) => ({
         ordinal,
         elapsed_ms: ordinal + 1,
-      }))),
-    }));
+      })),
+    });
     const fitFallback = Object.freeze({
       ...source,
       fit_sha256: "a".repeat(64),
