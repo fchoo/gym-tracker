@@ -254,6 +254,10 @@ export function createRunningActivityMatchRepository(kernel: SqliteKernel) {
         const [latest] = await transaction.queryAll<{ relation_revision: number }>("SELECT relation_revision FROM running_activity_match_events WHERE activity_id = ? ORDER BY relation_revision DESC, id DESC LIMIT 1", [input.activityId]);
         const actualRelationRevision = latest?.relation_revision ?? 0;
         if (actualRelationRevision !== input.expectedRelationRevision) return result("conflict", input.activityId, input.opportunityId, actualRelationRevision);
+        if (
+          (input.action === "unmatch" && input.expectedCurrentOpportunityId !== input.opportunityId)
+          || (input.action === "reassign" && input.expectedCurrentOpportunityId === input.opportunityId)
+        ) return result("conflict", input.activityId, input.opportunityId, actualRelationRevision);
         if (input.action === "match" && (currentByActivity !== undefined || currentByOpportunity !== undefined)) return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
         if (input.action !== "match" && (currentByActivity === undefined || currentByActivity.opportunity_id !== input.expectedCurrentOpportunityId)) return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
         if (input.action === "reassign" && currentByOpportunity !== undefined && currentByOpportunity.activity_id !== input.activityId) return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);

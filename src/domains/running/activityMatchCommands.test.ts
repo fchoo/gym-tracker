@@ -94,7 +94,7 @@ describe("Running activity match commands", () => {
     await expect(confirmRunningActivityMatch(repository, { ...input, action: "unmatch" })).rejects.toThrow("running_activity_match_invalid");
     await expect(confirmRunningActivityMatch(repository, { ...input, action: "reassign", expectedCurrentOpportunityId: "bad id" })).rejects.toThrow("running_activity_match_invalid");
     await expect(confirmRunningActivityMatch(repository, { ...input, requestSha256: "A".repeat(64), expectedActivityRevision: 0 })).rejects.toThrow("running_activity_match_invalid");
-    await expect(confirmRunningActivityMatch(repository, { ...input, action: "unmatch", expectedCurrentOpportunityId: "old-opportunity" })).resolves.toMatchObject({ kind: "conflict" });
+    await expect(confirmRunningActivityMatch(repository, { ...input, action: "unmatch", expectedCurrentOpportunityId: input.opportunityId })).resolves.toMatchObject({ kind: "conflict" });
   });
 
   it("rejects confirmation unless the accepted payload and every stable source revision are carried", async () => {

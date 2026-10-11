@@ -160,6 +160,12 @@ function assertInput(input: RunningActivityMatchInput): void {
   if (input.action !== "match" && (input.expectedCurrentOpportunityId === undefined || !ID.test(input.expectedCurrentOpportunityId))) {
     throw new RunningActivityMatchCommandError();
   }
+  if (
+    (input.action === "unmatch" && input.expectedCurrentOpportunityId !== input.opportunityId)
+    || (input.action === "reassign" && input.expectedCurrentOpportunityId === input.opportunityId)
+  ) {
+    throw new RunningActivityMatchCommandError();
+  }
 }
 
 export async function confirmRunningActivityMatch(
