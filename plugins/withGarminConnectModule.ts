@@ -1,12 +1,29 @@
 import {
   ConfigPlugin,
   withAppBuildGradle,
+  withGradleProperties,
   withProjectBuildGradle,
 } from "expo/config-plugins";
 
 const CHAQUOPY_PLUGIN = 'id("com.chaquo.python") version "17.0.0" apply false';
 const CHAQUOPY_CLASSPATH = "classpath('com.chaquo.python:gradle:17.0.0')";
 const HOST_MARKER = "// gym-tracker: Garmin Connect embedded Python";
+
+type GradleProperty =
+  | Readonly<{ type: "comment"; value: string }>
+  | Readonly<{ type: "empty" }>
+  | Readonly<{ type: "property"; key: string; value: string }>;
+
+export function applyGarminGradleProperties(
+  properties: readonly GradleProperty[],
+): GradleProperty[] {
+  return [
+    ...properties.filter(
+      (entry) => entry.type !== "property" || entry.key !== "reactNativeArchitectures",
+    ),
+    { type: "property", key: "reactNativeArchitectures", value: "arm64-v8a" },
+  ];
+}
 
 export function applyGarminProjectBuildGradle(contents: string): string {
   if (contents.includes(CHAQUOPY_PLUGIN) || contents.includes(CHAQUOPY_CLASSPATH)) return contents;
@@ -68,6 +85,12 @@ tasks.named("preBuild").configure {
 }
 
 const withGarminConnectModule: ConfigPlugin = (config) => {
+  config = withGradleProperties(config, (gradleConfig) => {
+    gradleConfig.modResults = applyGarminGradleProperties(
+      gradleConfig.modResults,
+    );
+    return gradleConfig;
+  });
   config = withProjectBuildGradle(config, (gradleConfig) => {
     gradleConfig.modResults.contents = applyGarminProjectBuildGradle(
       gradleConfig.modResults.contents,
