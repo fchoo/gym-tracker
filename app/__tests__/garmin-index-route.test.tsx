@@ -11,15 +11,16 @@ import {
   it,
   jest,
 } from "@jest/globals";
-import React from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import React from "react";
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
 const mockUseGarminImportRuntime = jest.fn();
 let mockParams: Readonly<{ origin?: string | readonly string[] }> = {};
 let mockScreenProps: Readonly<Record<string, unknown>> = {};
+let mockShellProps: Readonly<Record<string, unknown>> = {};
 
 jest.mock("expo-router", () => ({
   router: {
@@ -80,6 +81,19 @@ jest.mock("../../src/ui/screens/GarminSyncScreen", () => ({
   },
 }));
 
+jest.mock("../../src/ui/garmin/GarminRouteShell", () => ({
+  GarminRouteShell: (props: Readonly<Record<string, unknown>>) => {
+    const ReactModule = require("react") as typeof import("react");
+    const { View: MockView } = require("react-native") as typeof import("react-native");
+    mockShellProps = props;
+    return ReactModule.createElement(
+      MockView,
+      { testID: "garmin-route-shell" },
+      props.children as React.ReactNode,
+    );
+  },
+}));
+
 import GarminRootRoute, { createGarminRootHref } from "../garmin/index";
 
 describe("Garmin root route", () => {
@@ -94,6 +108,7 @@ describe("Garmin root route", () => {
     });
     mockParams = { origin: "calendar" };
     mockScreenProps = {};
+    mockShellProps = {};
   });
 
   it.each(["workout", "calendar", "library", "progress"] as const)(
@@ -106,22 +121,10 @@ describe("Garmin root route", () => {
     },
   );
 
-  it("registers one Garmin root, activity, and match stack outside the exact four tabs", () => {
-    const rootLayout = readFileSync(join(process.cwd(), "app/_layout.tsx"), "utf8");
+  it("keeps Garmin outside the tab list while preserving the existing four root destinations", () => {
     const tabsLayout = readFileSync(join(process.cwd(), "app/(tabs)/_layout.tsx"), "utf8");
-
-    for (const route of [
-      "garmin/index",
-      "garmin/activity/[activityId]",
-      "garmin/match/[activityId]",
-    ]) {
-      expect(rootLayout.match(new RegExp(`<Stack\\.Screen name="${route.replaceAll("[", "\\[").replaceAll("]", "\\]")}"`, "gu")))
-        .toHaveLength(1);
-    }
-    expect(Array.from(
-      tabsLayout.matchAll(/<Tabs\.Screen name="([^"]+)" options=\{\{ title: "([^"]+)" \}\} \/>/gu),
-      (match) => [match[1], match[2]],
-    ))
+    expect([...tabsLayout.matchAll(/<Tabs\.Screen name="([^"]+)" options=\{\{ title: "([^"]+)" \}\} \/>/gu)]
+      .map((match) => [match[1]!, match[2]!] as const))
       .toEqual([
         ["index", "Workout"],
         ["calendar", "Calendar"],
@@ -146,6 +149,8 @@ describe("Garmin root route", () => {
 
   it("opens detail with only the opaque local ID and restores selection/scroll on focus return", async () => {
     await render(<GarminRootRoute />);
+    expect(screen.getByTestId("garmin-route-shell")).toBeTruthy();
+    expect(mockShellProps.origin).toBe("calendar");
     expect(Object.keys(mockScreenProps)).toContain("contextOrigin");
     expect(mockScreenProps.contextOrigin).toBe("calendar");
     await fireEvent(screen.getByTestId("garmin-root-screen"), "scroll", {
@@ -155,7 +160,7 @@ describe("Garmin root route", () => {
 
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/garmin/activity/[activityId]",
-      params: { activityId: "activity-local-01" },
+      params: { activityId: "activity-local-01", origin: "calendar" },
     });
     await waitFor(() => {
       expect(mockScreenProps.returnFocusActivityId).toBe("activity-local-01");

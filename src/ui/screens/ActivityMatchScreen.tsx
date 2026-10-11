@@ -17,7 +17,7 @@ import {
   SecondaryAction,
 } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
-import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
+import { fontFamilies, radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 export type ActivityMatchScreenState = RunningActivityMatchReadResult
   | Readonly<{ kind: "loading" | "projection_error" }>;
@@ -61,7 +61,7 @@ function CandidateRow({ candidate, selected, onSelect }: Readonly<{
   const { colors } = useAppTheme();
   const kind = sessionLabel(candidate.sessionKind);
   const time = candidate.localTime ?? "Time not scheduled";
-  const label = `${kind}. ${candidate.planName}. ${candidate.localDate}. ${time}. ${candidate.targetSummary}. Slot ${candidate.slotOrdinal + 1}.`;
+  const label = `${kind}. ${candidate.state === "planned" ? "Planned." : ""} ${candidate.planName}. ${candidate.localDate}. ${time}. ${candidate.targetSummary}. Slot ${candidate.slotOrdinal + 1}.`;
   return (
     <FocusablePressable
       accessibilityLabel={label}
@@ -75,10 +75,11 @@ function CandidateRow({ candidate, selected, onSelect }: Readonly<{
       <ContentCard selected={selected} style={styles.candidateCard}>
         <View style={styles.candidateHeading}>
           <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{kind}</Text>
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Slot ${candidate.slotOrdinal + 1}`}</Text>
+          <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>{`Slot ${candidate.slotOrdinal + 1}`}</Text>
         </View>
         <Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{candidate.planName}</Text>
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${candidate.localDate} · ${time} · ${candidate.timezone}`}</Text>
+        <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>{`${candidate.localDate} · ${time} · ${candidate.timezone}`}</Text>
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{candidate.state === "planned" ? "Planned" : candidate.state}</Text>
         <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{candidate.targetSummary}</Text>
       </ContentCard>
     </FocusablePressable>
@@ -118,6 +119,9 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
   const requestBack = () => {
     if (appearanceOpen) {
       setAppearanceOpen(false);
+      return;
+    }
+    if (busyRef.current) {
       return;
     }
     props.onBack();
@@ -208,6 +212,11 @@ const styles = StyleSheet.create({
   candidates: { gap: space[4] },
   candidateTarget: { minHeight: sizes.minimumTarget, width: "100%" },
   candidateCard: { borderRadius: radius.standard, gap: space[1], minHeight: sizes.minimumTarget },
-  candidateHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  candidateHeading: { alignItems: "flex-start", flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   actions: { gap: space[2] },
+  numericSecondary: {
+    ...typeScale.secondary,
+    fontFamily: fontFamilies.numericRegular,
+    fontVariant: ["tabular-nums"],
+  } as TextStyle,
 });

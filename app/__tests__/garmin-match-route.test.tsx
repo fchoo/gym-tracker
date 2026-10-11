@@ -12,7 +12,8 @@ import { AppearanceProvider } from "../../src/ui/theme";
 const mockBack = jest.fn();
 const mockLoadRunningActivityMatch = jest.fn<(activityId: string) => Promise<RunningActivityMatchReadResult>>();
 const mockConfirmActivityMatch = jest.fn<(candidate: RunningActivityMatchCandidate) => Promise<RunningActivityMatchResult>>();
-let mockParams: Readonly<{ activityId?: string | readonly string[] }> = {};
+let mockParams: Readonly<{ activityId?: string | readonly string[]; origin?: string | readonly string[] }> = {};
+let mockShellProps: Readonly<Record<string, unknown>> = {};
 let pendingLoads: Array<Readonly<{
   resolve(result: RunningActivityMatchReadResult): void;
   reject(error: Error): void;
@@ -28,6 +29,19 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
     loadRunningActivityMatch: mockLoadRunningActivityMatch,
     confirmActivityMatch: mockConfirmActivityMatch,
   }),
+}));
+
+jest.mock("../../src/ui/garmin/GarminRouteShell", () => ({
+  GarminRouteShell: (props: Readonly<Record<string, unknown>>) => {
+    const ReactModule = require("react") as typeof import("react");
+    const { View: MockView } = require("react-native") as typeof import("react-native");
+    mockShellProps = props;
+    return ReactModule.createElement(
+      MockView,
+      { testID: "garmin-route-shell" },
+      props.children as React.ReactNode,
+    );
+  },
 }));
 
 import ActivityMatchRoute, { createActivityMatchHref } from "../garmin/match/[activityId]";
@@ -75,7 +89,8 @@ describe("ActivityMatchRoute local identity boundary", () => {
     mockBack.mockReset();
     mockLoadRunningActivityMatch.mockReset();
     mockConfirmActivityMatch.mockReset();
-    mockParams = { activityId: "activity-local-01" };
+    mockParams = { activityId: "activity-local-01", origin: "progress" };
+    mockShellProps = {};
     pendingLoads = [];
     mockLoadRunningActivityMatch.mockImplementation(() => new Promise((resolve, reject) => {
       pendingLoads.push({ resolve, reject });
@@ -90,6 +105,8 @@ describe("ActivityMatchRoute local identity boundary", () => {
 
   it("loads one local activity and confirms the exact alternate stable candidate", async () => {
     await renderRoute();
+    expect(screen.getByTestId("garmin-route-shell")).toBeTruthy();
+    expect(mockShellProps.origin).toBe("progress");
     await waitFor(() => expect(mockLoadRunningActivityMatch).toHaveBeenCalledWith("activity-local-01"));
     const candidates = [candidate(0), candidate(1)];
     await settleLoad({ kind: "ready", activityId: "activity-local-01", candidates });

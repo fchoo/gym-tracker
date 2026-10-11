@@ -15,6 +15,7 @@ import {
   useGarminImportRuntime,
 } from "../../src/bootstrap/garminImportRuntime";
 import { useWorkoutAppRuntime } from "../../src/bootstrap/workoutAppRuntime";
+import { GarminRouteShell } from "../../src/ui/garmin/GarminRouteShell";
 import { GarminSyncScreen } from "../../src/ui/screens/GarminSyncScreen";
 
 function scalar(value: string | readonly string[] | undefined): string | undefined {
@@ -44,23 +45,25 @@ export default function GarminRootRoute() {
     setReturnFocusVersion((current) => current + 1);
     router.push({
       pathname: "/garmin/activity/[activityId]",
-      params: { activityId },
+      params: { activityId, origin },
     } as Href);
-  }, []);
+  }, [origin]);
   const rememberScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setScrollOffset(Math.max(0, event.nativeEvent.contentOffset.y));
   }, []);
 
   return (
-    <GarminSyncScreen
-      {...runtime}
-      contextOrigin={routeContext.origin}
-      onBack={() => router.back()}
-      onOpenActivity={openActivity}
-      onScroll={rememberScroll}
-      returnFocusVersion={returnFocusVersion}
-      scrollOffset={scrollOffset}
-      {...(returnFocusActivityId === undefined ? {} : { returnFocusActivityId })}
-    />
+    <GarminRouteShell origin={origin}>
+      <GarminSyncScreen
+        {...runtime}
+        contextOrigin={routeContext.origin}
+        onBack={() => router.back()}
+        onOpenActivity={openActivity}
+        onScroll={rememberScroll}
+        returnFocusVersion={returnFocusVersion}
+        scrollOffset={scrollOffset}
+        {...(returnFocusActivityId === undefined ? {} : { returnFocusActivityId })}
+      />
+    </GarminRouteShell>
   );
 }

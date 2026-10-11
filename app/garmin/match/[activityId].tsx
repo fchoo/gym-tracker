@@ -1,12 +1,14 @@
 import { router, useLocalSearchParams, type Href } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 
+import { parseGarminRootOrigin } from "../../../src/bootstrap/garminImportRuntime";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
 import { parseImportedActivityLocalId } from "../../../src/domains/activities/activityDetails";
 import type {
   RunningActivityMatchCandidate,
   RunningActivityMatchReadResult,
 } from "../../../src/domains/running/activityMatchCommands";
+import { GarminRouteShell } from "../../../src/ui/garmin/GarminRouteShell";
 import {
   ActivityMatchScreen,
   type ActivityMatchScreenState,
@@ -28,9 +30,11 @@ export function createActivityMatchHref(activityId: string): Href {
 export default function ActivityMatchRoute() {
   const params = useLocalSearchParams() as Readonly<{
     activityId?: string | readonly string[];
+    origin?: string | readonly string[];
   }>;
   const runtime = useWorkoutAppRuntime();
   const rawActivityId = scalar(params.activityId);
+  const origin = parseGarminRootOrigin(scalar(params.origin));
   const activityId = useMemo(() => parseImportedActivityLocalId(rawActivityId), [rawActivityId]);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<ActivityMatchScreenState>(
@@ -56,15 +60,17 @@ export default function ActivityMatchRoute() {
   }, [activityId, attempt, runtime.loadRunningActivityMatch]);
 
   return (
-    <ActivityMatchScreen
-      onBack={() => router.back()}
-      onConfirm={(candidate: RunningActivityMatchCandidate) => runtime.confirmActivityMatch(candidate)}
-      onLeaveUnmatched={() => router.back()}
-      onRetry={() => {
-        setState({ kind: "loading" });
-        setAttempt((current) => current + 1);
-      }}
-      state={state}
-    />
+    <GarminRouteShell origin={origin}>
+      <ActivityMatchScreen
+        onBack={() => router.back()}
+        onConfirm={(candidate: RunningActivityMatchCandidate) => runtime.confirmActivityMatch(candidate)}
+        onLeaveUnmatched={() => router.back()}
+        onRetry={() => {
+          setState({ kind: "loading" });
+          setAttempt((current) => current + 1);
+        }}
+        state={state}
+      />
+    </GarminRouteShell>
   );
 }
