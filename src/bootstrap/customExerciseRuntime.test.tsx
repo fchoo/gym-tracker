@@ -411,7 +411,7 @@ describe("custom exercise runtime capability adapter", () => {
       equipment: ["barbell"],
       metricIdentity: { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 },
       defaultRestSeconds: 60,
-      progression: { kind: "manual_hold" as const, version: 1 },
+      progression: { kind: "manual_hold" as const, version: 1 as const },
     };
 
     await adapter.saveExercise(saveInput({
