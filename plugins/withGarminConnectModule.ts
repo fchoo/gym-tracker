@@ -5,14 +5,20 @@ import {
 } from "expo/config-plugins";
 
 const CHAQUOPY_PLUGIN = 'id("com.chaquo.python") version "17.0.0" apply false';
+const CHAQUOPY_CLASSPATH = "classpath('com.chaquo.python:gradle:17.0.0')";
 const HOST_MARKER = "// gym-tracker: Garmin Connect embedded Python";
 
 export function applyGarminProjectBuildGradle(contents: string): string {
-  if (contents.includes(CHAQUOPY_PLUGIN)) return contents;
+  if (contents.includes(CHAQUOPY_PLUGIN) || contents.includes(CHAQUOPY_CLASSPATH)) return contents;
   const pluginsBlock = /plugins\s*\{/u.exec(contents);
-  if (pluginsBlock === null) throw new Error("garmin_cng_missing_plugins_block");
-  const insertionPoint = (pluginsBlock.index ?? 0) + pluginsBlock[0].length;
-  return `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_PLUGIN}${contents.slice(insertionPoint)}`;
+  if (pluginsBlock !== null) {
+    const insertionPoint = (pluginsBlock.index ?? 0) + pluginsBlock[0].length;
+    return `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_PLUGIN}${contents.slice(insertionPoint)}`;
+  }
+  const buildscriptDependencies = /buildscript\s*\{[\s\S]*?\bdependencies\s*\{/u.exec(contents);
+  if (buildscriptDependencies === null) throw new Error("garmin_cng_missing_plugins_block");
+  const insertionPoint = (buildscriptDependencies.index ?? 0) + buildscriptDependencies[0].length;
+  return `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_CLASSPATH}${contents.slice(insertionPoint)}`;
 }
 
 export function applyGarminAppBuildGradle(contents: string): string {
