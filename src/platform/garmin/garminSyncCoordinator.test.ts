@@ -20,7 +20,7 @@ import {
   createGarminSharedImportCommitter,
   createGarminSyncCoordinator,
 } from "./garminSyncCoordinator";
-import type { GarminSyncProgress } from "./garminSyncContracts";
+import type { GarminSyncLimits, GarminSyncProgress } from "./garminSyncContracts";
 import { GARMIN_SYNC_HARD_LIMITS } from "./garminSyncContracts";
 
 const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
@@ -112,10 +112,17 @@ function pagedSource(
     login: jest.fn(async () => ({ kind: "connected" as const, account_namespace: "account-fixture", generation: 1 })),
     resumeMfa: jest.fn(async () => ({ kind: "connected" as const, account_namespace: "account-fixture", generation: 1 })),
     logout: jest.fn(async () => undefined),
-    listRunningSummaries: jest.fn(async ({ cursor }) => pages.get(cursor ?? "start") ?? { items: [] }),
+    listRunningSummaries: jest.fn(async (input: Readonly<{ cursor?: string; limit: number }>) =>
+      pages.get(input.cursor ?? "start") ?? { items: [] }),
     readActivity: jest.fn(readActivity),
   };
 }
+
+const syncLimitCases: Array<[string, keyof GarminSyncLimits, number]> = [
+  ["page size", "pageSize", GARMIN_SYNC_HARD_LIMITS.pageSize],
+  ["page count", "maxPages", GARMIN_SYNC_HARD_LIMITS.maxPages],
+  ["activity count", "maxActivities", GARMIN_SYNC_HARD_LIMITS.maxActivities],
+];
 
 describe("Garmin sync coordinator", () => {
   it("reads one complete Running activity and counts it only after the shared import commits", async () => {
@@ -174,11 +181,7 @@ describe("Garmin sync coordinator", () => {
     expect(progress.at(-1)).toMatchObject({ kind: "committed", counts: { newActivities: 1 } });
   });
 
-  it.each([
-    ["page size", "pageSize", GARMIN_SYNC_HARD_LIMITS.pageSize],
-    ["page count", "maxPages", GARMIN_SYNC_HARD_LIMITS.maxPages],
-    ["activity count", "maxActivities", GARMIN_SYNC_HARD_LIMITS.maxActivities],
-  ] as const)("accepts %s limit-1 and limit but rejects limit+1", async (_label, key, limit) => {
+  it.each(syncLimitCases)("accepts %s limit-1 and limit but rejects limit+1", async (_label, key, limit) => {
     const source = pagedSource(new Map(), async () => envelope("1"));
     const importActivity = jest.fn(async () => ({ kind: "imported" as const, activityId: "local", aggregateRevision: 1 }));
 

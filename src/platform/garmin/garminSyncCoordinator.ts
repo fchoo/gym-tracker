@@ -283,11 +283,11 @@ export function createGarminSyncCoordinator(input: Readonly<{
             if (options.isCancelled?.() === true) {
               return Object.freeze({ kind: "cancelled", counts: snapshot(counts) });
             }
-            const externalActivityId = validateSummary(summary, fence, seenActivityIds);
-            await assertCurrentConnection(input.source, fence);
             counts.attemptedActivities += 1;
             emit(options, "activity", counts);
             try {
+              const externalActivityId = validateSummary(summary, fence, seenActivityIds);
+              await assertCurrentConnection(input.source, fence);
               const envelope = validateEnvelope(
                 await input.source.readActivity(externalActivityId),
                 externalActivityId,
