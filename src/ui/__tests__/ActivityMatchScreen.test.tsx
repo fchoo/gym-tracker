@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { BackHandler, StyleSheet } from "react-native";
 
 import type { RunningActivityMatchCandidate } from "../../domains/running/activityMatchCommands";
 import { ActivityMatchScreen } from "../screens/ActivityMatchScreen";
-import { AppearanceProvider } from "../theme";
+import { AppearanceProvider, createMemoryAppearanceStore, sizes } from "../theme";
 
 const firstCandidate: RunningActivityMatchCandidate = Object.freeze({
   activityId: "activity-local-1",
@@ -111,7 +112,95 @@ describe("ActivityMatchScreen confirmation boundary", () => {
     await fireEvent.press(confirm);
     await fireEvent.press(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    finishConfirm?.({ kind: "matched", activityId: alternateCandidate.activityId, opportunityId: alternateCandidate.opportunityId, relationRevision: 1 });
+    await act(async () => finishConfirm?.({ kind: "matched", activityId: alternateCandidate.activityId, opportunityId: alternateCandidate.opportunityId, relationRevision: 1 }));
     await waitFor(() => expect(screen.getByText("Matched")).toBeOnTheScreen());
+  });
+
+  it("preserves alternate selection through shared Appearance and gives modal Back priority", async () => {
+    const remove = jest.fn();
+    const addEventListener = jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove });
+    const appearanceStore = createMemoryAppearanceStore();
+    const onBack = jest.fn();
+    await render(
+      <AppearanceProvider store={appearanceStore}>
+        <ActivityMatchScreen
+          onBack={onBack}
+          onConfirm={jest.fn(async () => ({ kind: "conflict", activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
+          onLeaveUnmatched={jest.fn()}
+          onRetry={jest.fn()}
+          state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate, alternateCandidate] }}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("radio", { name: /Intervals/ }));
+    await fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Dark" }));
+    expect(appearanceStore.read()).toBe("Dark");
+    const listener = addEventListener.mock.calls.at(-1)?.[1];
+    await act(async () => {
+      expect(listener?.()).toBe(true);
+    });
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.queryByRole("radio", { name: "System" })).toBeNull();
+    expect(screen.getByRole("radio", { name: /Intervals/ })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
+    addEventListener.mockRestore();
+  });
+
+  it("reflows compact and expanded layouts with 48dp actions and visible focus", async () => {
+    const rendered = await render(
+      <AppearanceProvider>
+        <ActivityMatchScreen
+          onBack={jest.fn()}
+          onConfirm={jest.fn(async () => ({ kind: "conflict", activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
+          onLeaveUnmatched={jest.fn()}
+          onRetry={jest.fn()}
+          state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
+          width={360}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByLabelText("compact layout")).toBeOnTheScreen();
+    for (const name of ["Go back", "Appearance", "Confirm match", "Leave unmatched"]) {
+      expect(StyleSheet.flatten(screen.getByRole("button", { name }).props.style).minHeight)
+        .toBeGreaterThanOrEqual(sizes.minimumTarget);
+    }
+    const row = screen.getByTestId("activity-match-candidate-0");
+    expect(row).toHaveStyle({ minHeight: sizes.minimumTarget, width: "100%" });
+    await fireEvent(row, "focus");
+    expect(row).toHaveStyle({ outlineWidth: sizes.focusRing });
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <ActivityMatchScreen
+          onBack={jest.fn()}
+          onConfirm={jest.fn(async () => ({ kind: "conflict", activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
+          onLeaveUnmatched={jest.fn()}
+          onRetry={jest.fn()}
+          state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
+          width={840}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByLabelText("expanded layout")).toBeOnTheScreen();
+    expect(screen.getByText(/Time not scheduled/)).toBeOnTheScreen();
+  });
+
+  it.each([
+    [{ kind: "loading" as const }, "Loading scheduled workouts"],
+    [{ kind: "missing" as const, activityId: "activity-local-1" }, "Activity not found"],
+    [{ kind: "projection_error" as const }, "Scheduled workouts unavailable"],
+    [{ kind: "no_candidates" as const, activityId: "activity-local-1" }, "No scheduled workouts"],
+    [{ kind: "already_matched" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 1 }, "Already matched"],
+  ])("renders the bounded %s state", async (state, expected) => {
+    await render(
+      <AppearanceProvider>
+        <ActivityMatchScreen onBack={jest.fn()} onConfirm={jest.fn()} onLeaveUnmatched={jest.fn()} onRetry={jest.fn()} state={state} />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByText(expected)).toBeOnTheScreen();
   });
 });
