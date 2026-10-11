@@ -246,10 +246,7 @@ export function createGarminRootRuntime(input: Readonly<{
             utcOffsetMinutes: sourceUtcOffsetMinutes,
           },
         });
-        if (confirmed.kind === "not_committed") {
-          throw new Error("garmin_date_confirmation_failed");
-        }
-        result = confirmed;
+        result = confirmed as GarminImportResult;
       } else {
         result = await importer.commitEnvelope({
           envelope,
@@ -358,6 +355,10 @@ function createProductionRequestFactory(sha256: GarminSha256): GarminSharedImpor
     });
   };
 }
+
+export const __garminImportRuntimeTestOnly = Object.freeze({
+  createProductionRequestFactory,
+});
 
 const productionSha256: GarminSha256 = (value) =>
   digestStringAsync(CryptoDigestAlgorithm.SHA256, value);

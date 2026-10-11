@@ -1,6 +1,7 @@
 plugins {
   id 'com.android.library'
   id 'expo-module-gradle-plugin'
+  id 'jacoco'
 }
 
 group = 'com.fchoo.gymtracker'
@@ -34,4 +35,29 @@ ext.garminConnectPython = [
 dependencies {
   compileOnly 'com.chaquo.python.runtime:chaquopy_java:17.0.0'
   testImplementation 'junit:junit:4.13.2'
+}
+
+jacoco {
+  toolVersion = '0.8.13'
+}
+
+tasks.withType(Test).configureEach {
+  jacoco.includeNoLocationClasses = true
+  jacoco.excludes = ['jdk.internal.*']
+}
+
+tasks.register('phase18GarminKotlinCoverageReport', JacocoReport) {
+  dependsOn tasks.named('testDebugUnitTest')
+  executionData.from(fileTree(layout.buildDirectory).include('jacoco/testDebugUnitTest.exec'))
+  sourceDirectories.from(files('src/main/java'))
+  classDirectories.from(files(fileTree(layout.buildDirectory.dir('tmp/kotlin-classes/debug')) {
+    include 'expo/modules/garminconnect/GarminClientWorker.class'
+    include 'expo/modules/garminconnect/GarminTokenStore.class'
+  }))
+  reports {
+    xml.required = true
+    xml.outputLocation = layout.buildDirectory.file('reports/jacoco/phase18-garmin-kotlin.xml')
+    html.required = false
+    csv.required = false
+  }
 }

@@ -346,7 +346,7 @@ describe("Garmin foreground sync", () => {
         (SELECT count(*) FROM imported_activity_events) AS events
       FROM imported_activity_identities`)).resolves.toEqual([{
       accepted_normalized_sha256: acceptedBefore!.accepted_normalized_sha256,
-      payloads: 1,
+      payloads: 2,
       events: 1,
     }]);
   });

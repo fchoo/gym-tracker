@@ -160,6 +160,13 @@ describe("Running activity matching", () => {
       await transaction.execute("INSERT INTO imported_activity_current_lifecycle(activity_id, aggregate_revision, removal_state, lifecycle_event_id) VALUES ('activity-2', 1, 'active', 'activity-2:import')");
     });
     const first = matchInput({ requestId: "transitions-match" });
+    await expect(repository.confirm({
+      ...first,
+      requestId: "unmatch-without-current",
+      requestSha256: "0".repeat(64),
+      action: "unmatch",
+      expectedCurrentOpportunityId: first.opportunityId,
+    })).resolves.toMatchObject({ kind: "conflict" });
     await expect(repository.confirm({ ...first, requestId: "nonzero-without-current", expectedRelationRevision: 1 })).resolves.toMatchObject({ kind: "conflict", relationRevision: 0 });
     await expect(repository.confirm({ ...first, requestId: "bad-activity", expectedActivityRevision: 2 })).resolves.toMatchObject({ kind: "conflict" });
     await expect(repository.confirm({ ...first, requestId: "bad-opportunity", slotId: "wrong-slot" })).resolves.toMatchObject({ kind: "conflict" });
@@ -168,6 +175,7 @@ describe("Running activity matching", () => {
     await expect(repository.confirm({ ...first, requestSha256: "c".repeat(64) })).resolves.toMatchObject({ kind: "conflict" });
     await expect(repository.confirm({ ...first, requestId: "duplicate-match", requestSha256: "d".repeat(64), expectedRelationRevision: 1 })).resolves.toMatchObject({ kind: "conflict" });
     await expect(repository.confirm({ ...first, requestId: "wrong-unmatch", requestSha256: "e".repeat(64), action: "unmatch", expectedRelationRevision: 1, expectedCurrentOpportunityId: "running-opportunity-2" })).resolves.toMatchObject({ kind: "conflict" });
+    await expect(repository.confirm({ ...first, requestId: "missing-unmatch", requestSha256: "7".repeat(64), action: "unmatch", expectedRelationRevision: 0, expectedCurrentOpportunityId: "running-opportunity" })).resolves.toMatchObject({ kind: "conflict" });
     await expect(repository.confirm({ ...first, requestId: "unmatch", requestSha256: "f".repeat(64), action: "unmatch", expectedRelationRevision: 1, expectedCurrentOpportunityId: "running-opportunity" })).resolves.toMatchObject({ kind: "unmatched", relationRevision: 2 });
     await expect(repository.confirm({ ...first, requestId: "match-again", requestSha256: "1".repeat(64), expectedRelationRevision: 2 })).resolves.toMatchObject({ kind: "matched", relationRevision: 3 });
     await expect(repository.confirm({ ...first, requestId: "reassign", requestSha256: "2".repeat(64), action: "reassign", opportunityId: "running-opportunity-2", slotId: "running-slot-2", slotRevisionId: "running-slot-2:revision:1", expectedRelationRevision: 3, expectedCurrentOpportunityId: "running-opportunity" })).resolves.toMatchObject({ kind: "reassigned", opportunityId: "running-opportunity-2", relationRevision: 4 });
@@ -217,11 +225,20 @@ describe("Running activity matching", () => {
       (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts,
       (SELECT COUNT(*) FROM running_activity_current_matches) AS relations`);
     const staleInputs: readonly Partial<RunningActivityMatchInput>[] = [
+      { activityId: "missing-activity" },
+      { opportunityId: "missing-opportunity" },
       { expectedAcceptedPayloadSha256: "b".repeat(64) },
       { expectedOpportunityRevision: 2 },
+      { planId: "wrong-plan" },
+      { scheduleId: "wrong-schedule" },
+      { scheduleVersionId: "wrong-schedule-version" },
       { expectedScheduleRevision: 1 },
+      { planDayId: "wrong-plan-day" },
       { expectedPlanDayRevision: 2 },
-      { slotRevisionId: "running-slot:revision:2", expectedSlotRevision: 2 },
+      { slotId: "wrong-slot" },
+      { slotRevisionId: "running-slot:revision:2" },
+      { expectedSlotRevision: 2 },
+      { sessionRevisionId: "wrong-session-revision" },
       { expectedSessionRevision: 2 },
     ];
     for (const [index, stale] of staleInputs.entries()) {

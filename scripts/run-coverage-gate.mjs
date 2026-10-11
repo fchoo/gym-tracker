@@ -10,24 +10,61 @@ import {
 import path from "node:path";
 import process from "node:process";
 
+import { loadPhase18LanguageCoverageReports } from "./phase18-language-coverage.mjs";
+
 const projectRoot = process.cwd();
 const coverageDirectory = path.join(projectRoot, "coverage");
 const summaryPath = path.join(coverageDirectory, "coverage-summary.json");
 const phase18IntegrityCriticalFiles = [
+  "src/domains/activities/activityDetails.ts",
+  "src/domains/activities/importCommands.ts",
+  "src/domains/portability/mergePlan.ts",
+  "src/domains/running/activityMatchCommands.ts",
   "src/platform/garmin/garminActivityAdapter.ts",
   "src/platform/garmin/canonicalGarminPayload.ts",
   "src/platform/garmin/normalizeGarminActivity.ts",
   "src/platform/garmin/garminSyncCoordinator.ts",
+  "src/platform/sqlite/repositories/garminSyncSummaryRepository.ts",
+  "src/platform/sqlite/repositories/importedActivityRepository.ts",
+  "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+  "src/platform/sqlite/repositories/runningActivityMatchRepository.ts",
   "src/bootstrap/garminImportRuntime.tsx",
-  "src/domains/running/activityMatchCommands.ts",
+  "src/ui/garmin/useGarminConnectionController.ts",
 ];
 const phase18TargetedTests = [
+  "src/domains/activities/activityDetails.test.ts",
+  "src/domains/activities/importCommands.test.ts",
+  "src/domains/portability/mergePlan.test.ts",
+  "src/domains/running/activityMatchCommands.test.ts",
   "src/platform/garmin/garminActivityAdapter.test.ts",
   "src/platform/garmin/canonicalGarminPayload.test.ts",
   "src/platform/garmin/normalizeGarminActivity.test.ts",
   "src/platform/garmin/garminSyncCoordinator.test.ts",
+  "src/platform/sqlite/repositories/importedActivityRepository.test.ts",
+  "src/platform/sqlite/repositories/runningActivityMatchRepository.test.ts",
   "src/bootstrap/garminImportRuntime.test.tsx",
-  "src/domains/running/activityMatchCommands.test.ts",
+  "src/ui/garmin/useGarminConnectionController.test.tsx",
+  "src/ui/__tests__/GarminSyncScreen.test.tsx",
+  "tests/integration/garmin-envelope-import.test.ts",
+  "tests/integration/garmin-import-portability.test.ts",
+  "tests/integration/garmin-sync.test.ts",
+  "tests/integration/imported-activity-facts.test.ts",
+  "tests/integration/running-activity-match.test.ts",
+  "tests/sqlite-host/garminSyncSummaryRepository.test.ts",
+  "tests/sqlite-host/logicalMergeRepository.test.ts",
+];
+const phase18EvidenceTests = [
+  "scripts/benchmark-phase18-garmin.test.mjs",
+  "scripts/phase18-build-manifest.test.mjs",
+  "scripts/phase18-garmin-acceptance.test.mjs",
+  "scripts/phase18-garmin-adversarial.test.mjs",
+  "scripts/phase18-garmin-proof.test.mjs",
+  "scripts/phase18-language-coverage.test.mjs",
+  "scripts/run-phase18-kotlin-coverage.test.mjs",
+];
+const phase18EvidenceFiles = [
+  "scripts/phase18-build-manifest.mjs",
+  "scripts/phase18-language-coverage.mjs",
 ];
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",
@@ -64,6 +101,7 @@ const integrityCriticalFiles = [
   "src/domains/advancedTiming/advancedTimingState.ts",
   "src/domains/advancedTiming/advancedTimingCommands.ts",
   "src/domains/activities/activityIdentity.ts",
+  "src/domains/activities/activityDetails.ts",
   "src/domains/activities/garminActivitySourcePort.ts",
   "src/domains/activities/importCommands.ts",
   "src/platform/garmin/canonicalGarminPayload.ts",
@@ -71,6 +109,7 @@ const integrityCriticalFiles = [
   "src/platform/garmin/garminActivityAdapter.ts",
   "src/platform/garmin/garminSyncCoordinator.ts",
   "src/bootstrap/garminImportRuntime.tsx",
+  "src/ui/garmin/useGarminConnectionController.ts",
   "src/domains/bodyweight/commands.ts",
   "src/domains/bodyweight/contracts.ts",
   "src/domains/running/activityMatchCommands.ts",
@@ -158,6 +197,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/repositories/automaticBackupStateRepository.ts",
   "src/platform/sqlite/repositories/automaticSnapshotCapture.ts",
   "src/platform/sqlite/repositories/bodyweightRepository.ts",
+  "src/platform/sqlite/repositories/garminSyncSummaryRepository.ts",
   "src/platform/sqlite/repositories/importedActivityRepository.ts",
   "src/platform/sqlite/repositories/plansWorkoutRepository.ts",
   "src/platform/sqlite/repositories/progressRepository.ts",
@@ -173,7 +213,7 @@ const integrityCriticalFiles = [
   "src/platform/google/driveBackupStoreAdapter.ts",
 ];
 
-function coverageDirectoryArgument(args) {
+function coverageDirectoryArgument(args, fallback) {
   const joined = args.find((argument) =>
     argument.startsWith("--coverageDirectory=")
   );
@@ -184,7 +224,7 @@ function coverageDirectoryArgument(args) {
   }
   const index = args.indexOf("--coverageDirectory");
   return index === -1
-    ? coverageDirectory
+    ? fallback
     : path.resolve(projectRoot, args[index + 1] ?? "coverage");
 }
 
@@ -206,7 +246,7 @@ for (const argument of forwarded) {
 }
 if (focusPhase18) {
   focusedIntegrityFiles.push(...phase18IntegrityCriticalFiles);
-  focusedProjects.push("unit", "integration");
+  focusedProjects.push("unit", "components", "sqlite-host", "integration");
   jestForwarded.push(...phase18TargetedTests);
 }
 if (focusedIntegrityFiles.length > 0) {
@@ -221,7 +261,37 @@ if (focusedIntegrityFiles.length > 0) {
     process.exit(1);
   }
 }
-const outputDirectory = coverageDirectoryArgument(forwarded);
+let languageReports;
+if (focusPhase18) {
+  try {
+    languageReports = loadPhase18LanguageCoverageReports({ projectRoot });
+  } catch (error) {
+    console.error(JSON.stringify({
+      ok: false,
+      error: error instanceof Error ? error.message : "phase18_language_coverage_invalid",
+    }, null, 2));
+    process.exit(1);
+  }
+  const evidence = spawnSync(
+    process.execPath,
+    [
+      "--experimental-test-coverage",
+      ...phase18EvidenceFiles.map((file) => `--test-coverage-include=${file}`),
+      "--test-coverage-lines=100",
+      "--test-coverage-branches=100",
+      "--test-coverage-functions=100",
+      "--test",
+      ...phase18EvidenceTests,
+    ],
+    { cwd: projectRoot, encoding: "utf8", stdio: "inherit" },
+  );
+  if (evidence.error !== undefined) throw evidence.error;
+  if (evidence.status !== 0) process.exit(evidence.status ?? 1);
+}
+const outputDirectory = coverageDirectoryArgument(
+  forwarded,
+  focusPhase18 ? path.join(coverageDirectory, "phase18-jest") : coverageDirectory,
+);
 rmSync(outputDirectory, { force: true, recursive: true });
 
 const selectedProjects = focusedIntegrityFiles.length > 0
@@ -238,6 +308,11 @@ const jest = spawnSync(
     "--selectProjects",
     ...selectedProjects,
     "--coverage",
+    "--coverageDirectory",
+    outputDirectory,
+    "--coverageReporters=json-summary",
+    "--coverageReporters=text",
+    "--coverageReporters=json",
     ...collectionArguments,
     ...jestForwarded,
   ],
@@ -289,6 +364,12 @@ console.log(JSON.stringify({
   ok: true,
   integrity_critical_files: requiredIntegrityFiles.length,
   focused: focusedIntegrityFiles.length > 0,
+  ...(languageReports === undefined ? {} : {
+    language_reports: Object.fromEntries(Object.entries(languageReports).map(([language, report]) => [
+      language,
+      report.coverage,
+    ])),
+  }),
   metrics: ["statements", "branches", "functions", "lines"],
   required_percent: 100,
 }));

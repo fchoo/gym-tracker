@@ -61,4 +61,46 @@ test("rejects privacy-unsafe retained Phase 18 manifests", () => {
     pythonLockSha256: HASH,
     signatureSha256: HASH,
   }), /phase18_build_manifest_privacy_invalid/u);
+  assert.throws(() => sanitizePhase18BuildManifest(retained("phase18-garmin-acceptance", {
+    device: { serial: "private", abi: "arm64-v8a", identity_sha256: HASH },
+  }), {
+    suite: "phase18-garmin-acceptance",
+    pythonLockSha256: HASH,
+    signatureSha256: HASH,
+  }), /phase18_build_manifest_privacy_invalid/u);
+});
+
+test("rejects malformed retained Phase 18 manifests", () => {
+  const suite = "phase18-garmin-acceptance";
+  const validInput = { suite, pythonLockSha256: HASH, signatureSha256: HASH };
+  const variants = [
+    [retained(suite), null],
+    [retained(suite), { ...validInput, suite: "unknown-suite" }],
+    [retained(suite, { schema_version: 2 }), validInput],
+    [retained(suite, { suite: "phase18-garmin-proof" }), validInput],
+    [retained(suite, { profile: "release" }), validInput],
+    [retained(suite, { build_variant: "debug" }), validInput],
+    [retained(suite, { js_bundle: { embedded: false } }), validInput],
+    [retained(suite, { package: "private.package" }), validInput],
+    [retained(suite, { apk: { ...retained(suite).apk, path: "wrong.apk" } }), validInput],
+    [retained(suite, { apk: { ...retained(suite).apk, sha256: "bad" } }), validInput],
+    [retained(suite, { apk: { ...retained(suite).apk, sha256: undefined } }), validInput],
+    [retained(suite, { apk: { ...retained(suite).apk, page_alignment_verified: false } }), validInput],
+    [retained(suite, { installed_apk: { sha256: HASH, matches_retained_apk: false } }), validInput],
+    [retained(suite, { installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true } }), validInput],
+    [retained(suite, { device: { abi: "x86_64", identity_sha256: HASH } }), validInput],
+    [retained(suite, { device: { abi: "arm64-v8a", identity_sha256: "bad" } }), validInput],
+    [retained(suite, { device: { abi: "arm64-v8a", identity_sha256: undefined } }), validInput],
+    [retained(suite, { base_head: "bad" }), validInput],
+    [retained(suite, { base_head: undefined }), validInput],
+    [retained(suite, { source_tree_sha256: "bad" }), validInput],
+    [retained(suite, { source_tree_sha256: undefined }), validInput],
+    [retained(suite), { ...validInput, pythonLockSha256: "bad" }],
+    [retained(suite), { ...validInput, pythonLockSha256: undefined }],
+    [retained(suite), { ...validInput, signatureSha256: "bad" }],
+    [retained(suite), { ...validInput, signatureSha256: undefined }],
+  ];
+  for (const [manifest, input] of variants) {
+    assert.throws(() => sanitizePhase18BuildManifest(manifest, input), /phase18_build_manifest_invalid/u);
+  }
 });

@@ -217,6 +217,44 @@ describe("normalize Garmin activity", () => {
     });
   });
 
+  it("preserves timezone-only evidence and canonicalizes fractional local time", async () => {
+    const timezoneOnly = outdoorFixture();
+    timezoneOnly.activity.summaryDTO.timeZoneId = "Asia/Singapore";
+    const fractional = outdoorFixture();
+    Object.assign(fractional.activity.summaryDTO, {
+      startTimeGMT: "2026-10-05T23:30:00.100Z",
+      startTimeLocal: "2026-10-06T07:30:00.1",
+      timeZoneId: "Asia/Singapore",
+    });
+
+    await expect(normalizeGarminActivity(timezoneOnly, sha256)).resolves.toMatchObject({
+      normalized: { source_time_zone: "Asia/Singapore" },
+    });
+    await expect(normalizeGarminActivity(fractional, sha256)).resolves.toMatchObject({
+      normalized: { source_local_date_time: "2026-10-06T07:30:00.100" },
+    });
+    const localOnly = outdoorFixture();
+    Object.assign(localOnly.activity.summaryDTO, {
+      startTimeLocal: "2026-10-06T07:30:00",
+    });
+    await expect(normalizeGarminActivity(localOnly, sha256)).resolves.toMatchObject({
+      normalized: { source_local_date_time: "2026-10-06T07:30:00" },
+    });
+  });
+
+  it.each([
+    ["non-string timezone", { timeZoneId: 1 }],
+    ["oversized timezone", { timeZoneId: "x".repeat(121) }],
+    ["non-string local time", { startTimeLocal: 1 }],
+    ["malformed local time", { startTimeLocal: "not-a-local-time" }],
+    ["invalid local date", { startTimeLocal: "2026-02-30T07:30:00" }],
+    ["out-of-range offset", { startTimeLocal: "2026-10-07T23:30:00" }],
+  ])("rejects %s date provenance", async (_label, sourceDate) => {
+    const fixture = outdoorFixture();
+    Object.assign(fixture.activity.summaryDTO, sourceDate);
+    await expect(normalizeGarminActivity(fixture, sha256)).rejects.toThrow("garmin_source_invalid");
+  });
+
   it("keeps treadmill positions out of route while retaining descriptor-selected samples", async () => {
     const fixture = outdoorFixture();
     fixture.activity.activityTypeDTO.typeKey = "treadmill_running";
@@ -460,5 +498,11 @@ describe("normalize Garmin activity", () => {
       normalization_version: 1,
       normalized: envelope.normalized,
     })));
+    const legacyFixture = outdoorFixture();
+    delete (legacyFixture.details as Partial<typeof legacyFixture.details>).geoPolylineDTO;
+    legacyFixture.details.metricDescriptors = [];
+    legacyFixture.details.activityDetailMetrics = [];
+    const { fidelity_by_channel: _ignored, ...legacyEnvelope } = await normalizeGarminActivity(legacyFixture, sha256);
+    expect(isExactGarminEffortEligible(legacyEnvelope, 1_000)).toBe(true);
   });
 });

@@ -2154,6 +2154,109 @@ describe("portable merge plan", () => {
     })).rejects.toEqual(new MergePlanError("merge_plan_invalid"));
   });
 
+  it("remaps plan preferences and rejects every malformed preference payload", () => {
+    const preferenceKey = "gym_tracker.workout_plan_preferences.v1:archive-plan";
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
+    const archiveWith = (value_json: string) => snapshot(
+      { id: "archive", marker: "archive", modifiedAtMs: 2 },
+      { app_settings: [{ key: preferenceKey, value_json }] },
+    );
+    const valid = __mergePlanTestOnly.settingPlan(
+      archiveWith(JSON.stringify({ version: 1, planId: "archive-plan", weekStartsOn: 1 })),
+      local,
+      new Map([["archive-plan", "local-plan"]]),
+    );
+    expect(valid.inserts).toEqual([expect.objectContaining({
+      key: "gym_tracker.workout_plan_preferences.v1:local-plan",
+      value_json: JSON.stringify({ version: 1, planId: "local-plan", weekStartsOn: 1 }),
+    })]);
+
+    expect(() => __mergePlanTestOnly.settingPlan(
+      archiveWith(JSON.stringify({ version: 1, planId: "archive-plan" })),
+      local,
+      new Map(),
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+    for (const serialized of [
+      "{",
+      "null",
+      "[]",
+      JSON.stringify({ version: 2, planId: "archive-plan" }),
+      JSON.stringify({ version: 1, planId: "other-plan" }),
+    ]) {
+      expect(() => __mergePlanTestOnly.settingPlan(
+        archiveWith(serialized),
+        local,
+        new Map([["archive-plan", "local-plan"]]),
+      )).toThrow(new MergePlanError("merge_plan_invalid"));
+    }
+  });
+
+  it("retains running plan ledger families while materializing an owned plan", () => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32), plan_kind: "running" }],
+      running_plan_receipts: [{ request_id: "request", plan_id: "archive-plan" }],
+      running_plan_events: [{ id: "event", plan_id: "archive-plan" }],
+      running_goals: [{ id: "goal", plan_id: "archive-plan" }],
+    });
+    const aggregate = __mergePlanTestOnly.planAggregate(
+      archive,
+      snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }),
+      { aggregateClass: "owned_plan", kind: "insert", portableId: "c".repeat(32), archiveId: "archive-plan", localId: "archive-plan" },
+      new Map(),
+      new Map([["archive-plan", "archive-plan"]]),
+      new Map(),
+    );
+    expect(aggregate.tables.running_plan_receipts).toHaveLength(1);
+    expect(aggregate.tables.running_plan_events).toHaveLength(1);
+    expect(aggregate.tables.running_goals).toHaveLength(1);
+  });
+
+  it("fails closed or classifies conflicts for malformed source graph mappings", async () => {
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
+    const collision = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      schedule_collision_outcomes: [{ id: "outcome", strength_opportunity_id: "missing-opportunity" }],
+    });
+    expect(() => __mergePlanTestOnly.mappedGraphRows(collision, local))
+      .toThrow(new MergePlanError("merge_plan_invalid"));
+
+    const malformedActivity = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "external" }],
+      imported_activity_identities: [{ activity_id: "activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external" }],
+      imported_activity_events: [{ id: null, activity_id: "activity" }],
+    });
+    await expect(__mergePlanTestOnly.sourceGraphPlan(malformedActivity, local, payloadDigest))
+      .resolves.toEqual(expect.objectContaining({
+        operations: [expect.objectContaining({ kind: "conflict" })],
+      }));
+
+    const validActivity = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "external" }],
+      imported_activity_identities: [{ activity_id: "activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external" }],
+    });
+    await expect(__mergePlanTestOnly.sourceGraphPlan(validActivity, local, async () => "invalid"))
+      .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
+  it("classifies an identical residual source graph as duplicate", async () => {
+    const residual = {
+      schedule_collision_outcomes: [{ id: "outcome" }],
+    };
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, residual);
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, residual);
+    await expect(__mergePlanTestOnly.sourceGraphPlan(archive, local, payloadDigest, new Map([
+      ["schedule_collision_outcomes", new Map([["outcome", "outcome"]])],
+    ])))
+      .resolves.toEqual(expect.objectContaining({
+        operations: [expect.objectContaining({ kind: "duplicate" })],
+        aggregates: [],
+      }));
+  });
+
+  it("requires a matching source graph aggregate during lazy materialization", () => {
+    expect(() => __mergePlanTestOnly.requiredSourceGraphAggregate([], "missing"))
+      .toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
   it.each([
     ["a mutation request whose source selects this plan but result cannot map", {
       owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "archive-plan", result_plan_id: "other-plan" }],

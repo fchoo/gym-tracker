@@ -953,6 +953,15 @@ describe("logical merge repository", () => {
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([]), {
       ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: {},
     })).not.toThrow();
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([{
+      aggregateClass: "source_graph",
+      kind: "duplicate",
+      portableId: "a".repeat(32),
+      archiveId: "activity",
+      localId: "activity",
+    }]), {
+      ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: {},
+    })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([]), {
       ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: { app_settings: [{ key: " " }] },
     })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));

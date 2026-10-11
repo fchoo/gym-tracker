@@ -54,6 +54,16 @@ function coordinator(): GarminSyncControllerPort {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 let current: ReturnType<typeof useGarminConnectionController> | undefined;
 
 function Harness(input: Parameters<typeof useGarminConnectionController>[0]) {
@@ -62,6 +72,135 @@ function Harness(input: Parameters<typeof useGarminConnectionController>[0]) {
 }
 
 describe("useGarminConnectionController connection tracer", () => {
+  it.each([
+    [new Error("private restore detail"), { code: "temporary_failure", retryable: true }],
+    [Object.assign(new Error("private code"), { name: "GarminActivityAdapterError", code: "unknown" }), { code: "temporary_failure", retryable: true }],
+    [Object.assign(new Error("private throttle"), { name: "GarminActivityAdapterError", code: "rate_limited", retryAfterMs: 1 }), { code: "rate_limited", retryable: true, retryAfterMs: 1_000 }],
+    [Object.assign(new Error("private malformed retry"), { name: "GarminActivityAdapterError", code: "rate_limited", retryAfterMs: -1 }), { code: "rate_limited", retryable: true }],
+  ])("maps a restore boundary failure without exposing details", async (failure, expected) => {
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({ restoreSession: async () => Promise.reject(failure) })}
+    />);
+    await waitFor(() => expect(current?.state.error).toEqual(expected));
+    expect(JSON.stringify(current?.state)).not.toMatch(/private/u);
+    await act(async () => current?.clearError());
+    expect(current?.state.error).toBeNull();
+  });
+
+  it("rejects empty credentials and exposes a disconnected login result truthfully", async () => {
+    const login = jest.fn(async () => ({ kind: "disconnected" as const }));
+    const clearPasswordInput = jest.fn();
+    await render(<Harness
+      clearPasswordInput={clearPasswordInput}
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({ login })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
+    await act(async () => current?.openCredentials());
+    await act(async () => current?.submitCredentials());
+    expect(current?.state.error).toMatchObject({ code: "invalid_credentials" });
+    expect(login).not.toHaveBeenCalled();
+
+    await act(async () => {
+      current?.setEmail("owner@example.test");
+      current?.setPassword("synthetic-secret");
+    });
+    await act(async () => current?.submitCredentials());
+    expect(current?.state).toMatchObject({
+      connection: "disconnected",
+      operation: "idle",
+      error: { code: "sign_in_required" },
+    });
+    expect(clearPasswordInput).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears a prior history error after a connected login reload succeeds", async () => {
+    const loadActivities = jest.fn<() => Promise<readonly GarminActivityListItem[]>>()
+      .mockRejectedValueOnce(new Error("private history failure"))
+      .mockResolvedValueOnce([activity]);
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={loadActivities}
+      source={source({ login: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.error).toMatchObject({ code: "history_unavailable" }));
+    await act(async () => {
+      current?.openCredentials();
+      current?.setEmail("owner@example.test");
+      current?.setPassword("synthetic-secret");
+    });
+    await act(async () => current?.submitCredentials());
+    expect(current?.state).toMatchObject({ connection: "connected", historyStatus: "ready", error: null });
+  });
+
+  it("ignores a late login completion after cancellation and latches the credential controls", async () => {
+    const login = deferred<Awaited<ReturnType<GarminActivitySourcePort["login"]>>>();
+    const logout = jest.fn(async () => undefined);
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({ login: () => login.promise, logout })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
+    await act(async () => {
+      current?.openCredentials();
+      current?.setEmail("owner@example.test");
+      current?.setPassword("synthetic-secret");
+    });
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.submitCredentials();
+      await Promise.resolve();
+      current?.openCredentials();
+    });
+    expect(current?.state.operation).toBe("connecting");
+    await act(async () => current?.cancelConnection());
+    await act(async () => {
+      login.resolve({ kind: "connected", account_namespace: "private-account-namespace", generation: 2 });
+      await pending;
+    });
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(current?.state.connection).toBe("disconnected");
+  });
+
+  it("ignores startup completions after unmount", async () => {
+    const restore = deferred<Awaited<ReturnType<GarminActivitySourcePort["restoreSession"]>>>();
+    const history = deferred<readonly GarminActivityListItem[]>();
+    const summary = deferred<null>();
+    const view = await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={() => history.promise}
+      loadLastSuccessfulSync={() => summary.promise}
+      source={source({ restoreSession: () => restore.promise })}
+    />);
+    await view.unmount();
+    await act(async () => {
+      restore.resolve({ kind: "disconnected" });
+      history.resolve([]);
+      summary.resolve(null);
+      await Promise.all([restore.promise, history.promise, summary.promise]);
+    });
+
+    const failedRestore = deferred<Awaited<ReturnType<GarminActivitySourcePort["restoreSession"]>>>();
+    const failedHistory = deferred<readonly GarminActivityListItem[]>();
+    const failedSummary = deferred<null>();
+    const failedView = await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={() => failedHistory.promise}
+      loadLastSuccessfulSync={() => failedSummary.promise}
+      source={source({ restoreSession: () => failedRestore.promise })}
+    />);
+    await failedView.unmount();
+    await act(async () => {
+      failedRestore.reject(new Error("private restore"));
+      failedHistory.reject(new Error("private history"));
+      failedSummary.reject(new Error("private summary"));
+      await Promise.allSettled([failedRestore.promise, failedHistory.promise, failedSummary.promise]);
+    });
+  });
   it("restores the native session on a fresh mount before treating the account as disconnected", async () => {
     const connectionState = jest.fn(async () => ({ kind: "disconnected" as const }));
     const restoreSession = jest.fn(async () => ({
@@ -239,6 +378,69 @@ describe("useGarminConnectionController connection tracer", () => {
     expect(resumeMfa).toHaveBeenCalledTimes(2);
   });
 
+  it("requires an MFA code and preserves a retryable challenge after a transient failure", async () => {
+    const resumeMfa = jest.fn(async () => { throw new Error("private transient failure"); });
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({
+        restoreSession: async () => ({ kind: "mfa_required", challenge_handle: "opaque-challenge", generation: 1 }),
+        resumeMfa,
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("mfa"));
+    await act(async () => current?.submitMfa());
+    expect(current?.state.error).toMatchObject({ code: "mfa_expired" });
+    expect(resumeMfa).not.toHaveBeenCalled();
+    await act(async () => current?.setMfaCode("123456"));
+    await act(async () => current?.submitMfa());
+    expect(current?.state).toMatchObject({ connection: "mfa", error: { code: "temporary_failure" } });
+  });
+
+  it("reports an expired MFA flow when the source returns disconnected", async () => {
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({
+        restoreSession: async () => ({ kind: "mfa_required", challenge_handle: "opaque-challenge", generation: 1 }),
+        resumeMfa: async () => ({ kind: "disconnected" }),
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("mfa"));
+    await act(async () => current?.setMfaCode("123456"));
+    await act(async () => current?.submitMfa());
+    expect(current?.state).toMatchObject({ connection: "disconnected", error: { code: "mfa_expired" } });
+  });
+
+  it.each(["resolve", "reject"] as const)("ignores a late MFA %s after cancellation", async (outcome) => {
+    const continuation = deferred<Awaited<ReturnType<GarminActivitySourcePort["resumeMfa"]>>>();
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({
+        restoreSession: async () => ({ kind: "mfa_required", challenge_handle: "opaque-challenge", generation: 1 }),
+        resumeMfa: () => continuation.promise,
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("mfa"));
+    await act(async () => current?.setMfaCode("123456"));
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.submitMfa();
+      await Promise.resolve();
+    });
+    await act(async () => current?.cancelConnection());
+    await act(async () => {
+      if (outcome === "resolve") {
+        continuation.resolve({ kind: "connected", account_namespace: "private-account-namespace", generation: 2 });
+      } else {
+        continuation.reject(new Error("private late MFA error"));
+      }
+      await pending;
+    });
+    expect(current?.state.connection).toBe("disconnected");
+  });
+
   it("cancels an MFA continuation through logout without syncing or dropping retained history", async () => {
     const logout = jest.fn(async () => undefined);
     const syncNow = jest.fn(async () => ({ kind: "success" as const, counts: emptyCounts }));
@@ -265,6 +467,79 @@ describe("useGarminConnectionController connection tracer", () => {
       connection: "disconnected",
       activities: [activity],
     });
+  });
+
+  it("maps a current credential failure and allows idle cancellation without native logout", async () => {
+    const logout = jest.fn(async () => undefined);
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({
+        login: async () => { throw new Error("private login failure"); },
+        logout,
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
+    await act(async () => {
+      current?.openCredentials();
+      current?.setEmail("owner@example.test");
+      current?.setPassword("synthetic-secret");
+    });
+    await act(async () => current?.submitCredentials());
+    expect(current?.state).toMatchObject({
+      connection: "credentials",
+      operation: "idle",
+      error: { code: "temporary_failure", retryable: true },
+    });
+    await act(async () => current?.cancelConnection());
+    expect(logout).not.toHaveBeenCalled();
+    expect(current?.state.connection).toBe("disconnected");
+  });
+
+  it.each(["cancel", "unmount"] as const)("ignores a late credential rejection after %s", async (outcome) => {
+    const login = deferred<Awaited<ReturnType<GarminActivitySourcePort["login"]>>>();
+    const view = await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({ login: () => login.promise })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
+    await act(async () => {
+      current?.openCredentials();
+      current?.setEmail("owner@example.test");
+      current?.setPassword("synthetic-secret");
+    });
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.submitCredentials();
+      await Promise.resolve();
+    });
+    if (outcome === "cancel") await act(async () => current?.cancelConnection());
+    else await view.unmount();
+    login.reject(new Error("private late login"));
+    await pending;
+  });
+
+  it.each(["resolve", "reject"] as const)("ignores a late cancellation logout %s after unmount", async (outcome) => {
+    const logout = deferred<void>();
+    const view = await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source({
+        restoreSession: async () => ({ kind: "mfa_required", challenge_handle: "opaque-challenge", generation: 1 }),
+        logout: () => logout.promise,
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("mfa"));
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.cancelConnection();
+      await Promise.resolve();
+    });
+    await view.unmount();
+    if (outcome === "resolve") logout.resolve();
+    else logout.reject(new Error("private late cancellation"));
+    await pending;
   });
 });
 
@@ -425,6 +700,25 @@ describe("useGarminConnectionController committed sync semantics", () => {
     }
   });
 
+  it("drops malformed retry-after metadata from a rate-limit result", async () => {
+    await render(<Harness
+      coordinator={{ syncNow: async () => ({
+        kind: "failure",
+        counts: emptyCounts,
+        failure: { code: "rate_limited", retryable: true, retryAfterMs: -1 },
+      }) }}
+      loadActivities={async () => [activity]}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    await act(async () => current?.syncNow());
+    expect(current?.state.sync).toEqual({
+      kind: "failure",
+      counts: emptyCounts,
+      failure: { code: "rate_limited", retryable: true },
+    });
+  });
+
   it("ignores a prior attempt's late progress after retry starts a new generation", async () => {
     const options: Array<Parameters<GarminSyncControllerPort["syncNow"]>[0]> = [];
     let releaseSecond: ((value: Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>) => void) | undefined;
@@ -459,6 +753,133 @@ describe("useGarminConnectionController committed sync semantics", () => {
       await retry;
     });
     expect(current?.state.sync).toMatchObject({ kind: "success", counts: { pages: 2, newActivities: 1 } });
+  });
+
+  it("returns cancelled and thrown attempts to an idle, retryable state", async () => {
+    const syncNow = jest.fn<GarminSyncControllerPort["syncNow"]>()
+      .mockResolvedValueOnce({ kind: "cancelled", counts: emptyCounts })
+      .mockRejectedValueOnce(new Error("private sync detail"));
+    await render(<Harness
+      coordinator={{ syncNow }}
+      loadActivities={async () => [activity]}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    await act(async () => current?.syncNow());
+    expect(current?.state.sync).toEqual({ kind: "idle" });
+    await act(async () => current?.syncNow());
+    expect(current?.state).toMatchObject({
+      operation: "idle",
+      error: { code: "temporary_failure", retryable: true },
+      sync: { kind: "idle" },
+    });
+  });
+
+  it("publishes partial committed counts without replacing the durable success receipt", async () => {
+    const prior = { attemptId: "prior", completedAtMs: 1, counts: { ...emptyCounts, pages: 1 } };
+    await render(<Harness
+      coordinator={{ syncNow: async () => ({
+        kind: "partial",
+        counts: { ...emptyCounts, pages: 2, newActivities: 1, failedActivities: 1 },
+        failure: { code: "temporary_failure", retryable: true },
+      }) }}
+      loadActivities={async () => [activity]}
+      loadLastSuccessfulSync={async () => prior}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    await act(async () => current?.syncNow());
+    expect(current?.state).toMatchObject({
+      lastSuccessfulSync: prior,
+      sync: { kind: "partial", counts: { newActivities: 1, failedActivities: 1 } },
+    });
+  });
+
+  it("clears a retained history error only after a committed sync reload succeeds", async () => {
+    const loadActivities = jest.fn<() => Promise<readonly GarminActivityListItem[]>>()
+      .mockRejectedValueOnce(new Error("private history failure"))
+      .mockResolvedValueOnce([activity]);
+    await render(<Harness
+      coordinator={{ syncNow: async () => ({ kind: "success", counts: { ...emptyCounts, newActivities: 1 } }) }}
+      loadActivities={loadActivities}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.error).toMatchObject({ code: "history_unavailable" }));
+    await act(async () => current?.syncNow());
+    expect(current?.state).toMatchObject({ historyStatus: "ready", error: null, activities: [activity] });
+  });
+
+  it.each(["resolve", "reject"] as const)("ignores a stale successful-sync receipt %s after disconnect", async (outcome) => {
+    const save = deferred<void>();
+    await render(<Harness
+      coordinator={{ syncNow: async (options) => {
+        expect(options?.isCancelled()).toBe(false);
+        return { kind: "success", counts: emptyCounts };
+      } }}
+      loadActivities={async () => [activity]}
+      saveLastSuccessfulSync={() => save.promise}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.syncNow();
+      await Promise.resolve();
+      await current?.disconnect();
+    });
+    if (outcome === "resolve") save.resolve();
+    else save.reject(new Error("private stale save"));
+    await act(async () => pending);
+    expect(current?.state.connection).toBe("disconnected");
+  });
+
+  it("ignores stale sync completion after a committed-history reload", async () => {
+    const history = deferred<readonly GarminActivityListItem[]>();
+    const loadActivities = jest.fn<() => Promise<readonly GarminActivityListItem[]>>(async () => [activity])
+      .mockResolvedValueOnce([activity])
+      .mockImplementationOnce(() => history.promise);
+    await render(<Harness
+      coordinator={{ syncNow: async (options) => {
+        expect(options?.isCancelled()).toBe(false);
+        return { kind: "success", counts: { ...emptyCounts, newActivities: 1 } };
+      } }}
+      loadActivities={loadActivities}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.syncNow();
+      await Promise.resolve();
+      await current?.disconnect();
+      history.resolve([activity]);
+      await pending;
+    });
+    expect(current?.state.connection).toBe("disconnected");
+  });
+
+  it("ignores a stale thrown sync after disconnect", async () => {
+    const attempt = deferred<Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>>();
+    let options: Parameters<GarminSyncControllerPort["syncNow"]>[0];
+    await render(<Harness
+      coordinator={{ syncNow: async (value) => {
+        options = value;
+        return attempt.promise;
+      } }}
+      loadActivities={async () => [activity]}
+      source={source({ restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.syncNow();
+      await Promise.resolve();
+      await current?.disconnect();
+    });
+    expect(options!.isCancelled()).toBe(true);
+    attempt.reject(new Error("private stale sync"));
+    await act(async () => pending);
+    expect(current?.state.connection).toBe("disconnected");
   });
 });
 
@@ -531,5 +952,46 @@ describe("useGarminConnectionController disconnect semantics", () => {
       error: { code: "logout_failed", retryable: true },
     });
     expect(JSON.stringify(current?.state)).not.toContain("private native detail");
+  });
+
+  it("reports cancellation logout failure without leaking it", async () => {
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      source={source({
+        restoreSession: async () => ({ kind: "mfa_required", challenge_handle: "opaque-challenge", generation: 1 }),
+        logout: async () => { throw new Error("private logout detail"); },
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("mfa"));
+    await act(async () => current?.cancelConnection());
+    expect(current?.state).toMatchObject({
+      connection: "mfa",
+      operation: "idle",
+      error: { code: "logout_failed", retryable: true },
+    });
+    expect(JSON.stringify(current?.state)).not.toContain("private logout detail");
+  });
+
+  it.each(["resolve", "reject"] as const)("ignores a late disconnect %s after unmount", async (outcome) => {
+    const logout = deferred<void>();
+    const view = await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      source={source({
+        restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
+        logout: () => logout.promise,
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    let pending: Promise<void> | undefined;
+    await act(async () => {
+      pending = current?.disconnect();
+      await Promise.resolve();
+    });
+    await view.unmount();
+    if (outcome === "resolve") logout.resolve();
+    else logout.reject(new Error("private late logout"));
+    await pending;
   });
 });

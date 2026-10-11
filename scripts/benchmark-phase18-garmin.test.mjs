@@ -222,14 +222,40 @@ test("execute collects installed samples and writes evidence with source-owned b
 
 test("focused coverage gate registers every Phase 18 integrity-critical module", () => {
   const source = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
+  const languageCoverage = readFileSync("scripts/phase18-language-coverage.mjs", "utf8");
   for (const file of [
+    "src/domains/activities/activityDetails.ts",
+    "src/domains/activities/importCommands.ts",
+    "src/domains/portability/mergePlan.ts",
     "src/platform/garmin/garminActivityAdapter.ts",
     "src/platform/garmin/canonicalGarminPayload.ts",
     "src/platform/garmin/normalizeGarminActivity.ts",
     "src/platform/garmin/garminSyncCoordinator.ts",
+    "src/platform/sqlite/repositories/garminSyncSummaryRepository.ts",
+    "src/platform/sqlite/repositories/importedActivityRepository.ts",
+    "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+    "src/platform/sqlite/repositories/runningActivityMatchRepository.ts",
     "src/bootstrap/garminImportRuntime.tsx",
     "src/domains/running/activityMatchCommands.ts",
+    "src/ui/garmin/useGarminConnectionController.ts",
   ]) assert.match(source, new RegExp(file.replace(/[./]/gu, "\\$&"), "u"));
+  for (const testFile of [
+    "scripts/phase18-garmin-proof.test.mjs",
+    "scripts/phase18-build-manifest.test.mjs",
+    "scripts/phase18-garmin-acceptance.test.mjs",
+    "scripts/phase18-garmin-adversarial.test.mjs",
+    "tests/integration/garmin-import-portability.test.ts",
+    "tests/integration/imported-activity-facts.test.ts",
+    "tests/integration/running-activity-match.test.ts",
+    "tests/sqlite-host/garminSyncSummaryRepository.test.ts",
+    "tests/sqlite-host/logicalMergeRepository.test.ts",
+  ]) assert.match(source, new RegExp(testFile.replace(/[./]/gu, "\\$&"), "u"));
+  assert.match(languageCoverage, /phase18\/python-coverage\.json/u);
+  assert.match(languageCoverage, /phase18\/kotlin-coverage\.json/u);
+  assert.match(source, /loadPhase18LanguageCoverageReports/u);
+  assert.match(source, /--test-coverage-lines=100/u);
+  assert.match(source, /--test-coverage-branches=100/u);
+  assert.match(source, /--test-coverage-functions=100/u);
   assert.match(source, /--focus-phase18/u);
 });
 
@@ -241,6 +267,8 @@ test("package scripts expose the guarded benchmark and focused coverage gate", (
   );
   assert.equal(
     scripts["test:coverage:phase18"],
-    "node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand",
+    "npm run test:coverage:phase18:python && npm run test:coverage:phase18:kotlin && node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand",
   );
+  assert.equal(scripts["test:coverage:phase18:python"], "python3 scripts/run-phase18-python-coverage.py");
+  assert.equal(scripts["test:coverage:phase18:kotlin"], "node scripts/run-phase18-kotlin-coverage.mjs");
 });

@@ -81,7 +81,7 @@ function fixtures() {
       return {
         status: "ok" as const,
         generation: 1,
-        data: { items: [{ activityId: "42", activityType: { typeKey: "running" } }], nextStart: 1 },
+        data: { items: [{ activityId: 42, activityType: { typeKey: "running" } }], nextStart: 1 },
       };
     }),
     getActivity: jest.fn(async (input) => {
@@ -433,6 +433,35 @@ describe("Garmin activity adapter", () => {
     await expect((await connected(noCursorDriver)).listRunningSummaries({ limit: 1 }))
       .resolves.toEqual({ items: [] });
 
+    for (const item of [
+      { activityId: 0, activityType: { typeKey: "running" } },
+      { activityId: "42", activityType: { typeKey: "cycling" } },
+    ]) {
+      const malformedDiscoveryDriver = {
+        ...baseDriver,
+        getActivities: jest.fn(async () => ({
+          status: "ok",
+          generation: 1,
+          data: { items: [item] },
+        })),
+      };
+      await expect((await connected(malformedDiscoveryDriver)).listRunningSummaries({ limit: 1 }))
+        .rejects.toMatchObject({ code: "malformed_response" });
+    }
+
+    for (const nextStart of [1.5, 10_001]) {
+      const malformedCursorDriver = {
+        ...baseDriver,
+        getActivities: jest.fn(async () => ({
+          status: "ok",
+          generation: 1,
+          data: { items: [{ activityId: "42", activityType: { typeKey: "running" } }], nextStart },
+        })),
+      };
+      await expect((await connected(malformedCursorDriver)).listRunningSummaries({ limit: 1 }))
+        .rejects.toMatchObject({ code: "malformed_response" });
+    }
+
     const staleLogoutDriver = {
       ...baseDriver,
       logout: jest.fn(async () => ({
@@ -443,6 +472,37 @@ describe("Garmin activity adapter", () => {
     };
     await expect((await connected(staleLogoutDriver)).logout())
       .rejects.toMatchObject({ code: "stale_generation" });
+
+    const connectedLogoutDriver = {
+      ...baseDriver,
+      logout: jest.fn(async () => ({
+        status: "ok",
+        generation: 2,
+        data: { kind: "connected", account_namespace: accountNamespace },
+      })),
+    };
+    await expect((await connected(connectedLogoutDriver)).logout())
+      .rejects.toMatchObject({ code: "malformed_response" });
+  });
+
+  it("drops retryable MFA state when the authoritative challenge changed or cannot be read", async () => {
+    const { driver: baseDriver, mapper } = fixtures();
+    for (const connectionState of [
+      jest.fn(async () => ({ status: "ok", generation: 2, data: { kind: "disconnected" } })),
+      jest.fn(async () => { throw new Error("private native failure"); }),
+    ]) {
+      const driver = {
+        ...baseDriver,
+        connectionState,
+        resumeMfa: jest.fn(async () => ({ status: "error", error: { code: "mfa_expired" } })),
+      };
+      const adapter = createGarminActivityAdapter({ driver, mapper });
+      await adapter.login({ email: "owner", password: "synthetic-secret" });
+      await expect(adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" }))
+        .rejects.toMatchObject({ code: "mfa_expired" });
+      await expect(adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" }))
+        .rejects.toMatchObject({ code: "mfa_expired" });
+    }
   });
 
   it("keeps the authoritative connected state when native logout fails before deletion", async () => {
@@ -472,6 +532,43 @@ describe("Garmin activity adapter", () => {
     mockDefaultDriver = fixture.driver;
     const adapter = createGarminActivityAdapter({ mapper: fixture.mapper });
     await expect(adapter.connectionState()).resolves.toEqual({ kind: "disconnected" });
+  });
+
+  it("accepts bounded null provider data before mapper validation", async () => {
+    const fixture = fixtures();
+    const adapter = createGarminActivityAdapter({
+      driver: {
+        ...fixture.driver,
+        getActivity: jest.fn(async () => ({ status: "ok", generation: 1, data: null })),
+      },
+      mapper: fixture.mapper,
+    });
+    await adapter.login({ email: "owner", password: "synthetic-secret" });
+    await adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" });
+    await expect(adapter.readActivity("42")).resolves.toEqual(envelope("42"));
+    expect(fixture.mapper.fromActivity).toHaveBeenCalledWith(expect.objectContaining({ activity: null }));
+  });
+
+  it("rejects state rollback and accepts a newer disconnected logout generation", async () => {
+    const fixture = fixtures();
+    const staleState = createGarminActivityAdapter({
+      driver: {
+        ...fixture.driver,
+        connectionState: jest.fn(async () => ({
+          status: "ok",
+          generation: 0,
+          data: { kind: "disconnected" },
+        })),
+      },
+      mapper: fixture.mapper,
+    });
+    await staleState.login({ email: "owner", password: "synthetic-secret" });
+    await expect(staleState.connectionState()).rejects.toMatchObject({ code: "stale_generation" });
+
+    const logout = createGarminActivityAdapter({ driver: fixture.driver, mapper: fixture.mapper });
+    await logout.login({ email: "owner", password: "synthetic-secret" });
+    await expect(logout.logout()).resolves.toBeUndefined();
+    await expect(logout.readActivity("42")).rejects.toMatchObject({ code: "sign_in_required" });
   });
 
   it("rejects a mapper that changes the requested external activity identity", async () => {

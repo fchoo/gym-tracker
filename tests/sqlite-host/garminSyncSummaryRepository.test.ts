@@ -142,4 +142,53 @@ describe("Garmin sync summary repository host SQLite", () => {
     })).rejects.toThrow("garmin_sync_summary_invalid");
     await expect(repository.load()).resolves.toBeNull();
   });
+
+  it("rejects every invalid bounded receipt field before writing", async () => {
+    const repository = createGarminSyncSummaryRepository(await open());
+    const invalid = [
+      { ...firstSummary, attemptId: "" },
+      { ...firstSummary, attemptId: "x".repeat(129) },
+      { ...firstSummary, completedAtMs: -1 },
+      { ...firstSummary, completedAtMs: 1.5 },
+      { ...firstSummary, counts: { ...firstSummary.counts, pages: 0 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, discoveredActivities: -1 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, attemptedActivities: -1 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, newActivities: -1 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, unchangedActivities: -1 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, reviewActivities: -1 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, failedActivities: -1 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, discoveredActivities: 3 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, newActivities: 0 } },
+      { ...firstSummary, counts: { ...firstSummary.counts, failedActivities: 1 } },
+    ];
+
+    for (const summary of invalid) {
+      await expect(repository.save(summary)).rejects.toThrow("garmin_sync_summary_invalid");
+    }
+    await expect(repository.load()).resolves.toBeNull();
+  });
+
+  it("fails closed when the singleton read returns duplicate or malformed rows", async () => {
+    const validRow = {
+      attempt_id: firstSummary.attemptId,
+      completed_at_ms: firstSummary.completedAtMs,
+      pages: firstSummary.counts.pages,
+      discovered_activities: firstSummary.counts.discoveredActivities,
+      attempted_activities: firstSummary.counts.attemptedActivities,
+      new_activities: firstSummary.counts.newActivities,
+      unchanged_activities: firstSummary.counts.unchangedActivities,
+      review_activities: firstSummary.counts.reviewActivities,
+      failed_activities: firstSummary.counts.failedActivities,
+    };
+    const fakeKernel = (rows: readonly Record<string, unknown>[]) => ({
+      queryAll: async () => rows,
+    }) as unknown as SqliteKernel;
+
+    await expect(createGarminSyncSummaryRepository(fakeKernel([validRow, validRow])).load())
+      .rejects.toThrow("garmin_sync_summary_invalid");
+    await expect(createGarminSyncSummaryRepository(fakeKernel([{
+      ...validRow,
+      attempt_id: 42,
+    }])).load()).rejects.toThrow("garmin_sync_summary_invalid");
+  });
 });

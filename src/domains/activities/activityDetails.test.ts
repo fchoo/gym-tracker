@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  parseImportedActivityLocalId,
   projectImportedActivityDetail,
   type ImportedActivityDetailSourceRow,
 } from "./activityDetails";
@@ -109,6 +110,76 @@ describe("projectImportedActivityDetail accepted outdoor facts", () => {
 });
 
 describe("projectImportedActivityDetail truthfulness matrix", () => {
+  it("accepts only opaque local route identities", () => {
+    expect(parseImportedActivityLocalId("activity-local-01")).toBe("activity-local-01");
+    expect(parseImportedActivityLocalId("local-activity-a_1")).toBe("local-activity-a_1");
+    expect(parseImportedActivityLocalId("987654321")).toBeNull();
+    expect(parseImportedActivityLocalId(null)).toBeNull();
+  });
+
+  it("fails closed for removed, malformed, and unbound accepted aggregates", () => {
+    expect(projectImportedActivityDetail({
+      ...acceptedOutdoorRow(),
+      removalState: "removed",
+    })).toEqual({ kind: "removed" });
+    expect(projectImportedActivityDetail({
+      ...acceptedOutdoorRow(),
+      aggregateRevision: 0,
+    })).toEqual({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    expect(projectImportedActivityDetail({
+      ...acceptedOutdoorRow(),
+      acceptedNormalizedSha256: "invalid",
+    })).toEqual({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    expect(projectImportedActivityDetail({
+      ...acceptedOutdoorRow(),
+      aggregateJson: "{",
+    })).toEqual({ kind: "projection_error", code: "accepted_payload_unavailable" });
+  });
+
+  it("formats custom run types, sub-kilometer distance, and segmented routes", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.normalized.subtype = "trail_ultra-run";
+      aggregate.normalized.distance_meters = 999;
+      aggregate.normalized.route = [
+        { latitude_e6: 1, longitude_e6: 2, elapsed_ms: 0 },
+        { latitude_e6: 91_000_000, longitude_e6: 2, elapsed_ms: 1 },
+        { latitude_e6: 3, longitude_e6: 4, elapsed_ms: 200 },
+        { latitude_e6: 5, longitude_e6: 6, elapsed_ms: 300 },
+        { latitude_e6: 7, longitude_e6: 8, elapsed_ms: 250 },
+        { latitude_e6: 9, longitude_e6: 10, elapsed_ms: 400 },
+      ];
+    }));
+
+    expect(projected).toMatchObject({
+      kind: "ready",
+      detail: {
+        activityType: "Trail ultra run",
+        distance: "999 m",
+        route: {
+          kind: "available",
+          segments: [
+            [{ latitudeE6: 3, longitudeE6: 4 }, { latitudeE6: 5, longitudeE6: 6 }],
+            [{ latitudeE6: 7, longitudeE6: 8 }, { latitudeE6: 9, longitudeE6: 10 }],
+          ],
+        },
+      },
+    });
+  });
+
+  it("formats hour-long source durations without dropping zero-padded minutes", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.normalized.elapsed_ms = 3_661_000;
+    }));
+    expect(projected).toMatchObject({ kind: "ready", detail: { elapsed: "1:01:01" } });
+  });
+
+  it("treats an empty outdoor route as unavailable", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.normalized.route = [];
+    }));
+    expect(projected).toMatchObject({ kind: "ready", detail: { route: { kind: "unavailable" } } });
+  });
+
   it("always suppresses route for treadmill while preserving source timer, distance, and laps", () => {
     const projected = projectImportedActivityDetail(rowWith((aggregate) => {
       aggregate.normalized.subtype = "treadmill";

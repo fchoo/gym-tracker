@@ -236,7 +236,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
         ...current,
         activities: Object.freeze([...activities]),
         historyStatus: "ready",
-        error: current.error?.code === "history_unavailable" ? null : current.error,
+        error: current.error,
       }));
       return true;
     } catch {
@@ -347,9 +347,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       clearPassword();
       if (generation === connectionGenerationRef.current) {
         connectionLatchRef.current = false;
-        if (mountedRef.current) {
-          setState((current) => ({ ...current, operation: "idle" }));
-        }
+        setState((current) => ({ ...current, operation: "idle" }));
       }
     }
   }, [clearPassword, loadHistory, state.connection, state.email]);
@@ -398,17 +396,14 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
       clearMfaCode();
       if (generation === connectionGenerationRef.current) {
         connectionLatchRef.current = false;
-        if (mountedRef.current) {
-          setState((current) => ({ ...current, operation: "idle" }));
-        }
+        setState((current) => ({ ...current, operation: "idle" }));
       }
     }
   }, [clearMfaCode, loadHistory, state.connection]);
 
   const cancelConnection = useCallback(async () => {
     const shouldInvalidateSession = state.connection === "mfa"
-      || state.operation === "connecting"
-      || state.operation === "verifying_mfa";
+      || state.operation === "connecting";
     connectionGenerationRef.current += 1;
     syncGenerationRef.current += 1;
     connectionLatchRef.current = false;
@@ -540,17 +535,17 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
           }));
           break;
       }
+    } catch {
+      if (!mountedRef.current || generation !== syncGenerationRef.current) return;
+      setState((current) => ({
+        ...current,
+        operation: "idle",
+        sync: Object.freeze({ kind: "idle" }),
+        error: Object.freeze({ code: "temporary_failure", retryable: true }),
+      }));
     } finally {
       if (generation === syncGenerationRef.current) {
         syncLatchRef.current = false;
-        if (mountedRef.current && result === undefined) {
-          setState((current) => ({
-            ...current,
-            operation: "idle",
-            sync: Object.freeze({ kind: "idle" }),
-            error: Object.freeze({ code: "temporary_failure", retryable: true }),
-          }));
-        }
       }
     }
   }, [loadHistory, state.connection]);

@@ -2,7 +2,9 @@ import json
 import logging
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parents[2] / "main" / "python"))
 
@@ -293,6 +295,139 @@ class GarminBridgeTests(unittest.TestCase):
 
                 self.assertEqual(result, {"status": "error", "error": {"code": "malformed_response"}})
                 self.assertNotRegex(json.dumps(result), r"synthetic-secret|private|traceback|https?://|42")
+
+    def test_bounded_helpers_and_default_factory_cover_rejection_edges(self):
+        class DefaultClient:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+        with patch.dict(sys.modules, {"garminconnect": SimpleNamespace(Garmin=DefaultClient)}):
+            self.assertEqual(garmin_bridge._default_client_factory(email="owner").kwargs, {"email": "owner"})
+
+        for arguments in (None, [], {"unexpected": True}):
+            with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "arguments_rejected"):
+                garmin_bridge._exact_arguments(arguments, set())
+        self.assertIsNone(garmin_bridge._bounded_json(None))
+        self.assertTrue(garmin_bridge._bounded_json(True))
+        self.assertEqual(garmin_bridge._bounded_json(1.5), 1.5)
+        for value, kwargs in (
+            (9_007_199_254_740_992, {}),
+            ({"ok": True}, {"depth": 17}),
+            ({"ok": True}, {"budget": [25_000]}),
+        ):
+            with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "malformed_response"):
+                garmin_bridge._bounded_json(value, **kwargs)
+        with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "malformed_response"):
+            garmin_bridge._safe_namespace("provider-account")
+        self.assertIsInstance(garmin_bridge.create_bridge(), garmin_bridge.GarminBridge)
+
+    def test_session_state_and_auth_validation_fail_closed(self):
+        bridge = garmin_bridge.create_bridge()
+        self.assertEqual(bridge.dispatch("connectionState", {}), {
+            "status": "ok", "generation": 0, "data": {"kind": "disconnected"},
+        })
+        bridge._capture_tokens()
+
+        for email, password in (("", "secret"), ("owner", "")):
+            self.assertEqual(
+                bridge.dispatch("login", {"email": email, "password": password}),
+                {"status": "error", "error": {"code": "arguments_rejected"}},
+            )
+
+        malformed_handle = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: FakeClient(needs_mfa=True),
+            handle_factory=lambda: "short",
+        )
+        self.assertEqual(
+            malformed_handle.dispatch("login", {"email": "owner", "password": "secret"}),
+            {"status": "error", "error": {"code": "malformed_response"}},
+        )
+
+        pending = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: FakeClient(needs_mfa=True),
+            handle_factory=lambda: "opaque-challenge",
+        )
+        pending.dispatch("login", {"email": "owner", "password": "secret"})
+        self.assertEqual(pending.dispatch("connectionState", {})["data"]["kind"], "mfa_required")
+        for arguments, code in (
+            ({"challengeHandle": "different-handle", "code": "123456"}, "mfa_expired"),
+            ({"challengeHandle": "opaque-challenge", "code": "abc"}, "arguments_rejected"),
+        ):
+            self.assertEqual(pending.dispatch("resumeMfa", arguments)["error"]["code"], code)
+
+        for payload in (b"", b'{}', b'{"account_namespace":"invalid","di_client_id":"x","di_refresh_token":"y","di_token":"z"}'):
+            restored = bridge.dispatch("restoreSession", {"tokenPayload": payload})
+            self.assertEqual(restored, {"status": "error", "error": {"code": "sign_in_required"}})
+
+        for dumped in ("", "not-json", json.dumps({"di_token": "x"})):
+            fake = FakeClient()
+            fake.dumps = lambda dumped=dumped: dumped
+            invalid_tokens = garmin_bridge.create_bridge(
+                client_factory=lambda **_kwargs: fake,
+                namespace_factory=lambda: ACCOUNT_NAMESPACE,
+            )
+            self.assertEqual(
+                invalid_tokens.dispatch("login", {"email": "owner", "password": "secret"}),
+                {"status": "error", "error": {"code": "sign_in_required"}},
+            )
+
+    def test_activity_refresh_and_adversarial_branches_are_bounded(self):
+        for activities in ("not-a-list", [{"activityId": 1}, {"activityId": 2}]):
+            fake = FakeClient()
+            fake.get_activities = lambda *_args, activities=activities: activities
+            bridge = garmin_bridge.create_bridge(
+                client_factory=lambda **_kwargs: fake,
+                namespace_factory=lambda: ACCOUNT_NAMESPACE,
+            )
+            bridge.dispatch("login", {"email": "owner", "password": "secret"})
+            result = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
+            self.assertEqual(result, {"status": "error", "error": {"code": "malformed_response"}})
+
+        no_refresh = FakeClient()
+        no_refresh._refresh_di_token = None
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: no_refresh,
+            namespace_factory=lambda: ACCOUNT_NAMESPACE,
+        )
+        bridge.dispatch("login", {"email": "owner", "password": "secret"})
+        self.assertEqual(
+            bridge.dispatch("forceRefreshForTest", {}),
+            {"status": "error", "error": {"code": "operation_rejected"}},
+        )
+        self.assertEqual(
+            bridge.dispatch("runAdversarialSuite", {"confirmation": "wrong"}),
+            {"status": "error", "error": {"code": "arguments_rejected"}},
+        )
+        report = bridge.dispatch("runAdversarialSuite", {
+            "confirmation": "VERIFY-PHASE18-GARMIN-ADVERSARIAL",
+        })
+        self.assertEqual(report["status"], "TECHNICAL_REVIEW_REQUIRED")
+        self.assertEqual(len(report["cases"]), 16)
+
+    def test_module_entrypoints_and_retry_headers_fail_closed(self):
+        self.assertEqual(garmin_bridge.dispatch("runtimeInfo", {})["schemaVersion"], 1)
+        for arguments in (None, {"unexpected": True}):
+            with self.assertRaisesRegex(ValueError, "garmin_bridge_arguments_rejected"):
+                garmin_bridge.dispatch("runtimeInfo", arguments)
+        with self.assertRaisesRegex(ValueError, "garmin_bridge_request_rejected"):
+            garmin_bridge.dispatch("unknown", {})
+        self.assertEqual(garmin_bridge.dispatch("connectionState", {})["status"], "ok")
+        self.assertIsNone(garmin_bridge.take_persistable_tokens())
+
+        original_operations = garmin_bridge._OPERATIONS
+        try:
+            garmin_bridge._OPERATIONS = frozenset((*original_operations, "unhandled"))
+            self.assertEqual(
+                garmin_bridge.create_bridge().dispatch("unhandled", {}),
+                {"status": "error", "error": {"code": "operation_rejected"}},
+            )
+        finally:
+            garmin_bridge._OPERATIONS = original_operations
+
+        self.assertIsNone(garmin_bridge.GarminBridge._retry_after_ms(None))
+        self.assertIsNone(garmin_bridge.GarminBridge._retry_after_ms(
+            SimpleNamespace(headers={"Retry-After": "invalid"}),
+        ))
 
 
 if __name__ == "__main__":

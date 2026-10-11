@@ -220,7 +220,7 @@ internal class GarminClientWorker(
 
   private fun readCall(
     operation: String,
-    arguments: MutableMap<String, Any> = mutableMapOf()
+    arguments: MutableMap<String, Any>
   ): Map<String, Any?> = lock.withLock {
     if (!sessionAvailable) return@withLock error("sign_in_required")
     val startedGeneration = generation
@@ -265,8 +265,9 @@ internal class GarminClientWorker(
   }
 
   private fun connected(result: Map<String, Any?>): Boolean {
+    if (result["status"] != "ok") return false
     val data = result["data"] as? Map<*, *> ?: return false
-    return result["status"] == "ok" && data["kind"] == "connected"
+    return data["kind"] == "connected"
   }
 
   private fun safeDispatch(

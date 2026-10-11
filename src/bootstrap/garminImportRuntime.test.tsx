@@ -12,6 +12,7 @@ import type {
 } from "../domains/activities/importCommands";
 import type { GarminSourceEnvelope } from "../domains/activities/garminActivitySourcePort";
 import {
+  __garminImportRuntimeTestOnly,
   createGarminImportRuntime,
   createGarminRootRuntime,
   parseGarminRootOrigin,
@@ -58,6 +59,27 @@ function envelope(): GarminSourceEnvelope {
     }),
     sample_fidelity: "source_summary",
     normalized: Object.freeze(normalized),
+  });
+}
+
+function envelopeWithSourceDate(input: Readonly<{
+  sourceLocalDateTime: string;
+  sourceUtcOffsetMinutes?: number;
+}>): GarminSourceEnvelope {
+  const source = envelope();
+  const normalized = Object.freeze({
+    ...source.normalized,
+    source_local_date_time: input.sourceLocalDateTime,
+    ...(input.sourceUtcOffsetMinutes === undefined
+      ? {}
+      : { source_utc_offset_minutes: input.sourceUtcOffsetMinutes }),
+  });
+  return Object.freeze({
+    ...source,
+    normalized,
+    normalized_json_sha256: createHash("sha256")
+      .update(canonicalJson({ normalization_version: source.normalization_version, normalized }))
+      .digest("hex"),
   });
 }
 
@@ -248,6 +270,107 @@ describe("Garmin import runtime", () => {
       services: { importedActivities: repository },
       sha256,
       source,
+    });
+
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      failure: { code: "date_confirmation_required" },
+    });
+    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [-90, "UTC-01:30"],
+    [330, "UTC+05:30"],
+  ] as const)("derives %s-minute source offsets as %s without consulting the phone zone", async (offset, expectedZone) => {
+    const sourceEnvelope = envelopeWithSourceDate({
+      sourceLocalDateTime: "2026-06-20T08:00:00",
+      sourceUtcOffsetMinutes: offset,
+    });
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => ({
+        kind: "imported" as const,
+        activityId: `activity-${String(offset)}`,
+        aggregateRevision: 1,
+      })),
+    };
+    const source = {
+      connectionState: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+      restoreSession: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+      login: async () => ({ kind: "disconnected" as const }),
+      resumeMfa: async () => ({ kind: "disconnected" as const }),
+      logout: async () => undefined,
+      listRunningSummaries: async () => ({ items: [{
+        account_namespace: sourceEnvelope.account_namespace,
+        external_activity_id: sourceEnvelope.external_activity_id,
+      }] }),
+      readActivity: async () => sourceEnvelope,
+    };
+    const runtime = createGarminRootRuntime({
+      enforceSourceDatePolicy: true,
+      loadActivities: async () => [],
+      requestFor: async () => ({
+        requestId: `request-${String(offset)}`,
+        requestSha256: "9".repeat(64),
+        activityId: `activity-${String(offset)}`,
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "ignored",
+      }),
+      services: { importedActivities: repository },
+      sha256,
+      source,
+    });
+
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({ kind: "success" });
+    expect(repository.confirmGarminImport).toHaveBeenCalledWith(expect.objectContaining({
+      confirmedLocalDate: "2026-06-20",
+      dateProvenance: expect.objectContaining({ confirmedTimeZone: expectedZone }),
+    }));
+    await expect(runtime.loadLastSuccessfulSync()).resolves.toBeNull();
+    await expect(runtime.saveLastSuccessfulSync({
+      attemptId: "attempt",
+      completedAtMs: 1,
+      counts: {
+        pages: 1,
+        discoveredActivities: 1,
+        attemptedActivities: 1,
+        newActivities: 1,
+        unchangedActivities: 0,
+        reviewActivities: 0,
+        failedActivities: 0,
+      },
+    })).resolves.toBeUndefined();
+  });
+
+  it("requires confirmation when source local time has no bounded offset", async () => {
+    const sourceEnvelope = envelopeWithSourceDate({ sourceLocalDateTime: "2026-06-20T08:00:00" });
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => ({ kind: "conflict" as const, activityId: "unused", aggregateRevision: 0 })),
+    };
+    const runtime = createGarminRootRuntime({
+      enforceSourceDatePolicy: true,
+      loadActivities: async () => [],
+      requestFor: async () => ({
+        requestId: "request-local-only",
+        requestSha256: "8".repeat(64),
+        activityId: "activity-local-only",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "ignored",
+      }),
+      services: { importedActivities: repository },
+      sha256,
+      source: {
+        connectionState: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        restoreSession: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        login: async () => ({ kind: "disconnected" as const }),
+        resumeMfa: async () => ({ kind: "disconnected" as const }),
+        logout: async () => undefined,
+        listRunningSummaries: async () => ({ items: [{
+          account_namespace: sourceEnvelope.account_namespace,
+          external_activity_id: sourceEnvelope.external_activity_id,
+        }] }),
+        readActivity: async () => sourceEnvelope,
+      },
     });
 
     await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
@@ -488,6 +611,8 @@ describe("Garmin import runtime", () => {
       envelope: source,
       sourceDate: Object.freeze({}),
     });
+    await expect(__garminImportRuntimeTestOnly.createProductionRequestFactory(sha256)(noSourceProposal.staged))
+      .resolves.toMatchObject({ confirmedLocalDate: "date-confirmation-required" });
     await expect(runtime.confirmPreparedDate({
       proposal: noSourceProposal,
       request: {

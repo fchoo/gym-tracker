@@ -1378,7 +1378,8 @@ function planAggregate(
     const rows = rowsFor(snapshot, table).filter((row) => row.plan_id === archivePlanId);
     const mapped = mappedRows(local, table, rows, [
       { column: "plan_id", ids: planMap },
-    ], operation.kind === "keep_both", operation.portableId);
+    ], operation.kind === "keep_both", operation.portableId,
+    LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey[0]!);
     if (mapped.rows.length > 0) tables[table] = mapped.rows;
     recordMap(table, mapped.ids);
   }
@@ -1853,6 +1854,15 @@ async function sourceGraphPlan(
   return Object.freeze({ operations: Object.freeze(operations), aggregates: Object.freeze(aggregates) });
 }
 
+function requiredSourceGraphAggregate(
+  aggregates: readonly PortableMergeAggregate[],
+  portableId: string,
+): PortableMergeAggregate {
+  const aggregate = aggregates.find((candidate) => candidate.portableId === portableId);
+  if (aggregate === undefined) invalid();
+  return aggregate;
+}
+
 export async function buildPortableMergePlan(input: Readonly<{
   archive: PortableMergePlanSnapshot;
   local: PortableMergePlanSnapshot;
@@ -1914,8 +1924,6 @@ export async function buildPortableMergePlan(input: Readonly<{
   );
   const emptySessionMappings = new Map<string, string>();
   for (const operation of plans.operations) {
-    if (operation.aggregateClass !== "owned_plan"
-      || (operation.kind !== "insert" && operation.kind !== "keep_both" && operation.kind !== "duplicate")) continue;
     planAggregate(
       input.archive,
       input.local,
@@ -2026,9 +2034,7 @@ export async function buildPortableMergePlan(input: Readonly<{
         )];
       }
       if (operation.aggregateClass === "source_graph" && operation.kind === "insert") {
-        const aggregate = sourceGraph.aggregates.find((candidate) => candidate.portableId === operation.portableId);
-        if (aggregate === undefined) invalid();
-        return [aggregate];
+        return [requiredSourceGraphAggregate(sourceGraph.aggregates, operation.portableId)];
       }
       return [];
     }));
@@ -2095,6 +2101,7 @@ export const __mergePlanTestOnly = Object.freeze({
   sourceGraphPlan,
   sourceGraphRows,
   sourceIdentityKey,
+  requiredSourceGraphAggregate,
   settingPlan,
   tableOccupiedIds,
   textId,

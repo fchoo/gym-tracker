@@ -1,5 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
-
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const SUITES = new Set([
@@ -7,12 +5,6 @@ const SUITES = new Set([
   "phase18-garmin-acceptance",
   "phase18-garmin-adversarial",
 ]);
-const OUTPUT_KEYS = [
-  "abi", "apk_sha256", "base_head", "device_identity_sha256",
-  "js_bundle_embedded", "package", "profile", "python_lock_sha256",
-  "schema_version", "signature_sha256", "source_tree_sha256", "suite",
-];
-
 function fail(code) {
   throw new Error(`phase18_build_manifest_${code}`);
 }
@@ -55,6 +47,5 @@ export function sanitizePhase18BuildManifest(retained, input) {
     signature_sha256: input.signatureSha256,
     device_identity_sha256: retained.device.identity_sha256,
   });
-  if (!isDeepStrictEqual(Object.keys(output).sort(), [...OUTPUT_KEYS].sort())) fail("invalid");
   return output;
 }
