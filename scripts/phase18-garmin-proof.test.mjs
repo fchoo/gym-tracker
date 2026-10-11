@@ -237,7 +237,7 @@ function captureCli(fn, argv) {
   return { stdout, stderr };
 }
 
-test("Phase 18 runner is a Phase 20-only explicit native execution gate", () => {
+test("Phase 18 runner is a Phase 20-only explicit native execution gate", { concurrency: false }, () => {
   assert.deepEqual(parsePhase18GarminProofRunnerArgs([
     "--manifest",
     MANIFEST,
@@ -266,7 +266,7 @@ test("Phase 18 runner is a Phase 20-only explicit native execution gate", () => 
   );
 });
 
-test("Phase 18 runner plan preserves ordered proof, privacy, and no-fallback contracts", () => {
+test("Phase 18 runner plan preserves ordered proof, privacy, and no-fallback contracts", { concurrency: false }, () => {
   const plan = createPhase18GarminProofRunnerPlan();
   assert.deepEqual(plan.case_ids, [
     "PH18-PKG",
@@ -284,7 +284,7 @@ test("Phase 18 runner plan preserves ordered proof, privacy, and no-fallback con
   assert.equal(plan.runner_writes_final_evidence, false);
 });
 
-test("Phase 18 manifest binds only fresh hashed identity fields", () => {
+test("Phase 18 manifest binds only fresh hashed identity fields", { concurrency: false }, () => {
   assert.equal(validatePhase18GarminProofBuildManifest(manifest(), {
     currentHead: HEAD,
     currentSourceTreeSha256: HASH,
@@ -315,7 +315,7 @@ test("Phase 18 manifest binds only fresh hashed identity fields", () => {
   }
 });
 
-test("Phase 18 marker parser accepts exact pass and review markers and rejects malformed payloads", () => {
+test("Phase 18 marker parser accepts exact pass and review markers and rejects malformed payloads", { concurrency: false }, () => {
   assert.equal(parsePhase18GarminProofMarker("noise"), null);
   assert.deepEqual(
     parsePhase18GarminProofMarker(marker({
@@ -362,7 +362,7 @@ test("Phase 18 marker parser accepts exact pass and review markers and rejects m
   }
 });
 
-test("Phase 18 runner sanitizes the repository native-build manifest without manual evidence fabrication", () => {
+test("Phase 18 runner sanitizes the repository native-build manifest without manual evidence fabrication", { concurrency: false }, () => {
   const retained = {
     schema_version: 1,
     suite: "phase18-garmin-proof",
@@ -412,7 +412,7 @@ test("Phase 18 runner sanitizes the repository native-build manifest without man
   assert.match(buildScript, /device_identity_sha256/u);
 });
 
-test("Phase 18 host plan mode never resolves adb, installs, launches, or writes evidence", () => {
+test("Phase 18 host plan mode never resolves adb, installs, launches, or writes evidence", { concurrency: false }, () => {
   const calls = [];
   const result = executePhase18GarminProofRunner([
     "--manifest",
@@ -425,7 +425,7 @@ test("Phase 18 host plan mode never resolves adb, installs, launches, or writes 
   assert.deepEqual(calls, []);
 });
 
-test("Phase 18 runner classifies post-manifest failures without leaking exception details", () => {
+test("Phase 18 runner classifies post-manifest failures without leaking exception details", { concurrency: false }, () => {
   const report = createPhase18GarminTechnicalReviewReport({
     manifest: manifest(),
     passedCases: [],
@@ -457,7 +457,7 @@ test("Phase 18 runner classifies post-manifest failures without leaking exceptio
   );
 });
 
-test("Phase 18 runner executes ordered login, restore, rotation, and privacy checks in process", () => {
+test("Phase 18 runner executes ordered login, restore, rotation, and privacy checks in process", { concurrency: false }, () => {
   const workspace = withProofArtifacts();
   const writes = [];
   const logs = [
@@ -529,7 +529,7 @@ test("Phase 18 runner executes ordered login, restore, rotation, and privacy che
   }
 });
 
-test("Phase 18 runner records bounded review reports for technical stop, rotation failure, identity drift, and log failures", () => {
+test("Phase 18 runner records bounded review reports for technical stop, rotation failure, identity drift, and log failures", { concurrency: false }, () => {
   const scenarios = [
     {
       name: "technical stop preserves ordered failure stage",
@@ -612,7 +612,7 @@ test("Phase 18 runner records bounded review reports for technical stop, rotatio
   }
 });
 
-test("Phase 18 runner rejects device selection, malformed device identity, manifest identity drift, backup leakage, timeout, and out-of-order review logs", () => {
+test("Phase 18 runner rejects device selection, malformed device identity, manifest identity drift, backup leakage, timeout, and out-of-order review logs", { concurrency: false }, () => {
   const originalDateNow = Date.now;
   const scenarios = [
     {
@@ -723,7 +723,7 @@ test("Phase 18 runner rejects device selection, malformed device identity, manif
   }
 });
 
-test("Phase 18 route is guarded, uses the real adapter/module, and keeps secrets in secure fields", () => {
+test("Phase 18 route is guarded, uses the real adapter/module, and keeps secrets in secure fields", { concurrency: false }, () => {
   const route = readFileSync("app/__phase18-garmin-proof.tsx", "utf8");
   const bootstrap = readFileSync("src/bootstrap/phase18GarminProof.ts", "utf8");
   const layout = readFileSync("app/_layout.tsx", "utf8");
@@ -739,7 +739,7 @@ test("Phase 18 route is guarded, uses the real adapter/module, and keeps secrets
   assert.match(layout, /pathname === "\/__phase18-garmin-proof"/u);
 });
 
-test("Phase 18 package scripts expose only planning, focused tests, and strict verification", () => {
+test("Phase 18 package scripts expose only planning, focused tests, and strict verification", { concurrency: false }, () => {
   const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
   assert.equal(
     scripts["proof:phase18:garmin"],
@@ -755,7 +755,7 @@ test("Phase 18 package scripts expose only planning, focused tests, and strict v
   );
 });
 
-test("Phase 18 verifier accepts one exact ordered pass and binds current source/artifacts", () => {
+test("Phase 18 verifier accepts one exact ordered pass and binds current source/artifacts", { concurrency: false }, () => {
   const evidence = passedEvidence();
   assert.deepEqual(validatePhase18GarminProofEvidence(evidence), {
     status: "passed",
@@ -773,7 +773,7 @@ test("Phase 18 verifier accepts one exact ordered pass and binds current source/
   }), true);
 });
 
-test("Phase 18 verifier rejects missing, skipped, duplicated, and reordered cases", () => {
+test("Phase 18 verifier rejects missing, skipped, duplicated, and reordered cases", { concurrency: false }, () => {
   const exact = passedEvidence();
   const variants = [
     { ...exact, cases: exact.cases.slice(0, -1) },
@@ -790,7 +790,7 @@ test("Phase 18 verifier rejects missing, skipped, duplicated, and reordered case
   }
 });
 
-test("Phase 18 verifier rejects stale or wrong artifact bindings", () => {
+test("Phase 18 verifier rejects stale or wrong artifact bindings", { concurrency: false }, () => {
   const evidence = passedEvidence();
   const current = {
     currentHead: HEAD,
@@ -814,7 +814,7 @@ test("Phase 18 verifier rejects stale or wrong artifact bindings", () => {
   }
 });
 
-test("Phase 18 verifier rejects invalid durations, result hashes, installed identity drift, and mismatched final evidence", () => {
+test("Phase 18 verifier rejects invalid durations, result hashes, installed identity drift, and mismatched final evidence", { concurrency: false }, () => {
   const invalidPackage = passedEvidence({
     cases: [
       { id: "PH18-PKG", status: "passed", duration_ms: -1, result_sha256: HASH },
@@ -938,7 +938,7 @@ exit 0
   }
 });
 
-test("Phase 18 verifier accepts a bounded technical stop but never mistakes it for PASS", () => {
+test("Phase 18 verifier accepts a bounded technical stop but never mistakes it for PASS", { concurrency: false }, () => {
   const cases = createPhase18GarminProofRunnerPlan().case_ids
     .slice(0, 5)
     .map(passedCase);
@@ -966,7 +966,7 @@ test("Phase 18 verifier accepts a bounded technical stop but never mistakes it f
   );
 });
 
-test("Phase 18 verifier rejects secret, account, activity, route, health, filename, URL, and SQL data", () => {
+test("Phase 18 verifier rejects secret, account, activity, route, health, filename, URL, and SQL data", { concurrency: false }, () => {
   const forbidden = [
     { credentials: "secret" },
     { account_namespace: "private" },
@@ -987,7 +987,7 @@ test("Phase 18 verifier rejects secret, account, activity, route, health, filena
   }
 });
 
-test("Phase 18 final evidence can only be sealed from a matching bounded raw report", () => {
+test("Phase 18 final evidence can only be sealed from a matching bounded raw report", { concurrency: false }, () => {
   const report = passedEvidence();
   delete report.raw_report_sha256;
   delete report.case_ids;
@@ -1013,7 +1013,7 @@ test("Phase 18 final evidence can only be sealed from a matching bounded raw rep
   );
 });
 
-test("Phase 18 CLI helpers emit bounded stdout and stderr", () => {
+test("Phase 18 CLI helpers emit bounded stdout and stderr", { concurrency: false }, () => {
   const runner = captureCli(executePhase18GarminProofRunnerCli, [
     "node",
     "scripts/run-phase18-garmin-proof.mjs",
@@ -1039,7 +1039,7 @@ test("Phase 18 CLI helpers emit bounded stdout and stderr", () => {
   assert.match(runnerFailure.stderr, /phase18_runner_arguments_invalid/u);
 });
 
-test("Phase 18 sealing requires the explicit comprehensive Phase 20 checkpoint", () => {
+test("Phase 18 sealing requires the explicit comprehensive Phase 20 checkpoint", { concurrency: false }, () => {
   assert.deepEqual(parsePhase18GarminProofVerifierArgs([
     "--manifest",
     MANIFEST,

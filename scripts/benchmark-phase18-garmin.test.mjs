@@ -159,7 +159,7 @@ function captureCli(fn, argv) {
   return { stdout, stderr };
 }
 
-test("canonical manifest uses production component hashing and fidelity values", () => {
+test("canonical manifest uses production component hashing and fidelity values", { concurrency: false }, () => {
   assert.match(GARMIN_JSON_FIXTURE_MANIFEST_SHA256, /^[a-f0-9]{64}$/u);
   assert.deepEqual(GARMIN_JSON_FIXTURE_MANIFEST.map(({ id }) => id), [
     "synthetic-outdoor-bounded-v1",
@@ -182,7 +182,7 @@ test("canonical manifest uses production component hashing and fidelity values",
   }
 });
 
-test("benchmark retains every required raw measurement and reports exact maxima", () => {
+test("benchmark retains every required raw measurement and reports exact maxima", { concurrency: false }, () => {
   assert.deepEqual(PHASE18_GARMIN_BENCHMARK_METRICS, [
     "apk_size_bytes",
     "garmin_module_size_bytes",
@@ -202,7 +202,7 @@ test("benchmark retains every required raw measurement and reports exact maxima"
   assert.equal(result.sample_counts.frame_time_ms, 30);
 });
 
-test("benchmark rejects stale identities, missing/non-finite samples, regressions, and private fields", () => {
+test("benchmark rejects stale identities, missing/non-finite samples, regressions, and private fields", { concurrency: false }, () => {
   const variants = [];
   for (const key of Object.keys(identity())) {
     const value = evidence();
@@ -240,7 +240,7 @@ test("benchmark rejects stale identities, missing/non-finite samples, regression
   }
 });
 
-test("benchmark execution requires exact paths and explicit Phase 20 authority", () => {
+test("benchmark execution requires exact paths and explicit Phase 20 authority", { concurrency: false }, () => {
   assert.deepEqual(parsePhase18GarminBenchmarkArgs([
     "--manifest", MANIFEST_PATH,
     "--evidence", EVIDENCE_PATH,
@@ -268,7 +268,7 @@ test("benchmark execution requires exact paths and explicit Phase 20 authority",
   );
 });
 
-test("benchmark CLI helper emits deferred success and bounded argument errors", () => {
+test("benchmark CLI helper emits deferred success and bounded argument errors", { concurrency: false }, () => {
   const success = captureCli(executePhase18GarminBenchmarkCli, [
     "node",
     "scripts/benchmark-phase18-garmin.mjs",
@@ -287,7 +287,7 @@ test("benchmark CLI helper emits deferred success and bounded argument errors", 
   assert.match(failure.stderr, /phase18_garmin_benchmark_arguments_invalid/u);
 });
 
-test("execute collects installed samples and writes evidence with source-owned budgets", () => {
+test("execute collects installed samples and writes evidence with source-owned budgets", { concurrency: false }, () => {
   const writes = [];
   const collected = evidence();
   const result = executePhase18GarminBenchmark([
@@ -532,7 +532,7 @@ printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
   }
 });
 
-test("focused coverage gate registers every Phase 18 integrity-critical module", () => {
+test("focused coverage gate registers every Phase 18 integrity-critical module", { concurrency: false }, () => {
   const source = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
   const languageCoverage = readFileSync("scripts/phase18-language-coverage.mjs", "utf8");
   for (const file of [
@@ -585,7 +585,7 @@ test("focused coverage gate registers every Phase 18 integrity-critical module",
   assert.match(source, /--focus-phase18/u);
 });
 
-test("package scripts expose the guarded benchmark and focused coverage gate", () => {
+test("package scripts expose the guarded benchmark and focused coverage gate", { concurrency: false }, () => {
   const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
   assert.equal(
     scripts["benchmark:phase18:garmin"],
