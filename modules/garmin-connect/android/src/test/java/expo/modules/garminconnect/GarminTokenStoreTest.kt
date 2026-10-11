@@ -129,6 +129,33 @@ class GarminTokenStoreTest {
     assertArrayEquals("verified-rotation".toByteArray(), store.value)
   }
 
+  @Test
+  fun `worker strips unsafe errors and rejects unsafe success payloads`() {
+    val unsafeError = mapOf<String, Any?>(
+      "status" to "error",
+      "error" to mapOf(
+        "code" to "rate_limited",
+        "retryAfterMs" to 9_999_999,
+        "detail" to "synthetic-secret traceback",
+      ),
+    )
+    val unsafeSuccess = success(
+      0,
+      mapOf("activityId" to 42, "url" to "https://private.invalid"),
+    )
+    val dispatcher = RecordingDispatcher(ArrayDeque(listOf(unsafeError, unsafeSuccess)))
+    val worker = GarminClientWorker(dispatcher, MemorySessionStore())
+
+    assertEquals(
+      mapOf("status" to "error", "error" to mapOf("code" to "rate_limited", "retryAfterMs" to 900_000)),
+      worker.connectionState(),
+    )
+    assertEquals(
+      mapOf("status" to "error", "error" to mapOf("code" to "malformed_response")),
+      worker.connectionState(),
+    )
+  }
+
   private fun success(generation: Int, data: Map<String, Any?>): Map<String, Any?> = mapOf(
     "status" to "ok",
     "generation" to generation,

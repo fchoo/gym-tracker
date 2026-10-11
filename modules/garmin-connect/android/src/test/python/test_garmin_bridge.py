@@ -51,6 +51,17 @@ class FakeClient:
         return {"metricDescriptors": [], "activityDetailMetrics": []}
 
 
+def provider_error(name, *, status=None, retry_after=None):
+    error_type = type(name, (Exception,), {})
+    error = error_type("synthetic-secret traceback at private endpoint")
+    if status is not None:
+        response = type("Response", (), {})()
+        response.status_code = status
+        response.headers = {} if retry_after is None else {"Retry-After": retry_after}
+        error.response = response
+    return error
+
+
 class GarminBridgeTests(unittest.TestCase):
     def test_login_mfa_and_reads_use_only_the_fixed_operations(self):
         fake = FakeClient(needs_mfa=True)
@@ -126,6 +137,74 @@ class GarminBridgeTests(unittest.TestCase):
         self.assertNotIn("token", json.dumps([restored, read, logged_out, after_logout]))
         self.assertEqual(logged_out["generation"], restored["generation"] + 1)
         self.assertEqual(after_logout, {"status": "error", "error": {"code": "sign_in_required"}})
+
+    def test_authentication_and_restore_failures_are_context_specific(self):
+        invalid = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: (_ for _ in ()).throw(provider_error("GarminConnectAuthenticationError"))
+        )
+        invalid_result = invalid.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+
+        mfa_client = FakeClient(needs_mfa=True)
+        mfa_client.resume_login = lambda _state, _code: (_ for _ in ()).throw(provider_error("GarminConnectAuthenticationError"))
+        mfa = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: mfa_client, handle_factory=lambda: "opaque-challenge")
+        mfa.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        mfa_result = mfa.dispatch("resumeMfa", {"challengeHandle": "opaque-challenge", "code": "123456"})
+
+        restore_client = FakeClient()
+        restore_client.login = lambda tokenstore=None: (_ for _ in ()).throw(provider_error("GarminConnectConnectionError"))
+        restore = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: restore_client)
+        restore_result = restore.dispatch("restoreSession", {"tokenPayload": b'{"di_token":"fixture"}'})
+
+        self.assertEqual(invalid_result, {"status": "error", "error": {"code": "invalid_credentials"}})
+        self.assertEqual(mfa_result, {"status": "error", "error": {"code": "mfa_expired"}})
+        self.assertEqual(restore_result, {"status": "error", "error": {"code": "sign_in_required"}})
+
+    def test_read_failures_are_distinct_bounded_and_single_attempt(self):
+        cases = (
+            (provider_error("GarminConnectConnectionError", status=403), "data_access_denied", None),
+            (provider_error("GarminConnectTooManyRequestsError", status=429, retry_after="999999"), "rate_limited", 900000),
+            (ConnectionError("synthetic-secret"), "offline", None),
+            (TimeoutError("synthetic-secret"), "timeout", None),
+            (provider_error("GarminConnectConnectionError", status=503), "temporary_failure", None),
+        )
+        for failure, code, retry_after_ms in cases:
+            with self.subTest(code=code):
+                fake = FakeClient()
+                bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+                bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+                fake.calls.clear()
+
+                def fail_once(_activity_id):
+                    fake.calls.append(("get_activity", "called"))
+                    raise failure
+
+                fake.get_activity = fail_once
+                result = bridge.dispatch("getActivity", {"externalActivityId": "42"})
+
+                expected = {"status": "error", "error": {"code": code}}
+                if retry_after_ms is not None:
+                    expected["error"]["retryAfterMs"] = retry_after_ms
+                self.assertEqual(result, expected)
+                self.assertEqual(fake.calls, [("get_activity", "called")])
+                self.assertNotRegex(json.dumps(result), r"synthetic-secret|private endpoint|traceback|https?://|42")
+
+    def test_malformed_or_forbidden_provider_json_is_rejected_without_echo(self):
+        for payload in (
+            object(),
+            {"token": "synthetic-secret"},
+            {"location": "https://private.invalid/path"},
+            {"value": float("nan")},
+        ):
+            with self.subTest(payload_type=type(payload).__name__):
+                fake = FakeClient()
+                bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+                bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+                fake.get_activity = lambda _activity_id: payload
+
+                result = bridge.dispatch("getActivity", {"externalActivityId": "42"})
+
+                self.assertEqual(result, {"status": "error", "error": {"code": "malformed_response"}})
+                self.assertNotRegex(json.dumps(result), r"synthetic-secret|private|traceback|https?://|42")
 
 
 if __name__ == "__main__":

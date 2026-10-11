@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 import type { GarminSourceEnvelope } from "../../domains/activities/garminActivitySourcePort";
 import {
+  GarminActivityAdapterError,
   createGarminActivityAdapter,
   type GarminActivityMapper,
   type GarminNativeDriver,
@@ -162,4 +163,88 @@ describe("Garmin activity adapter", () => {
       expect(driver.getActivityDetails).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    ["invalid_credentials", false],
+    ["mfa_expired", false],
+    ["sign_in_required", false],
+    ["data_access_denied", false],
+    ["rate_limited", true],
+    ["offline", true],
+    ["timeout", true],
+    ["temporary_failure", true],
+    ["malformed_response", false],
+    ["stale_generation", false],
+  ] as const)("preserves the distinct %s failure without leaking native detail", async (code, retryable) => {
+    const { driver: baseDriver, mapper } = fixtures();
+    const driver: GarminNativeDriver = {
+      ...baseDriver,
+      getActivity: jest.fn(async () => ({
+        status: "error",
+        error: {
+          code,
+          retryAfterMs: code === "rate_limited" ? 9_999_999 : undefined,
+          detail: "synthetic-secret and a private endpoint",
+        },
+      })),
+    };
+    const adapter = createGarminActivityAdapter({ driver, mapper });
+    await adapter.login({ email: "owner", password: "synthetic-secret" });
+    await adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" });
+
+    const error = await adapter.readActivity("42").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(GarminActivityAdapterError);
+    expect(error).toMatchObject({ code, retryable });
+    if (code === "rate_limited") expect(error).toMatchObject({ retryAfterMs: 900_000 });
+    expect(JSON.stringify(error)).not.toMatch(/synthetic-secret|private endpoint|traceback|https?:/iu);
+    expect(driver.getActivity).toHaveBeenCalledTimes(1);
+    expect(driver.getActivitySplits).not.toHaveBeenCalled();
+  });
+
+  it("maps unknown error codes and thrown native failures to one bounded temporary failure", async () => {
+    const { driver: baseDriver, mapper } = fixtures();
+    const unknownDriver: GarminNativeDriver = {
+      ...baseDriver,
+      getActivity: jest.fn(async () => ({
+        status: "error",
+        error: { code: "private_provider_failure", detail: "synthetic-secret" },
+      })),
+    };
+    const thrownDriver: GarminNativeDriver = {
+      ...baseDriver,
+      getActivity: jest.fn(async () => {
+        throw new Error("synthetic-secret traceback at private endpoint");
+      }),
+    };
+
+    for (const driver of [unknownDriver, thrownDriver]) {
+      const adapter = createGarminActivityAdapter({ driver, mapper });
+      await adapter.login({ email: "owner", password: "synthetic-secret" });
+      await adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" });
+      const error = await adapter.readActivity("42").catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ code: "temporary_failure", retryable: true });
+      expect(JSON.stringify(error)).not.toMatch(/synthetic-secret|private_provider_failure|traceback|https?:/iu);
+    }
+  });
+
+  it("rejects stale generations and secret-bearing response shapes before mapping", async () => {
+    const { driver: baseDriver, mapper } = fixtures();
+    const staleDriver: GarminNativeDriver = {
+      ...baseDriver,
+      getActivity: jest.fn(async () => ({ status: "ok", generation: 0, data: { activityId: 42 } })),
+    };
+    const unsafeDriver: GarminNativeDriver = {
+      ...baseDriver,
+      getActivity: jest.fn(async () => ({ status: "ok", generation: 1, data: { token: "synthetic-secret" } })),
+    };
+
+    for (const [driver, code] of [[staleDriver, "stale_generation"], [unsafeDriver, "malformed_response"]] as const) {
+      const adapter = createGarminActivityAdapter({ driver, mapper });
+      await adapter.login({ email: "owner", password: "synthetic-secret" });
+      await adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" });
+      await expect(adapter.readActivity("42")).rejects.toMatchObject({ code });
+      expect(driver.getActivitySplits).not.toHaveBeenCalled();
+    }
+  });
 });
