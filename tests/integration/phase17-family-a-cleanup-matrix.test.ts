@@ -33,6 +33,10 @@ import { createPhase17FixtureProtocol } from "../../src/bootstrap/phase17NativeF
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
 import { createCustomExercise } from "../../src/domains/library/customExerciseCommands";
 import type { OwnedPlanDraftInput } from "../../src/domains/plans/ownedPlanCommands";
+import { createStarterPlanCopy, parseAcceptedStarterPlanPack, type AcceptedStarterPack, type AcceptedStarterTemplate } from "../../src/domains/plans/activateStarterPlan";
+import { parseExerciseCatalog } from "../../src/domains/content/catalog";
+import { createContentRepository } from "../../src/platform/sqlite/repositories/contentRepository";
+import { createStarterPlanRepository } from "../../src/platform/sqlite/repositories/starterPlanRepository";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
 
 /**
@@ -77,6 +81,13 @@ const kernels = new Set<SqliteKernel>();
 const NOW_MS = 1_794_225_600_000;
 const ENVELOPE_KEY = "development-test.phase17.action-envelope.v1";
 const SENTINEL_KEY = "phase17-matrix-nonfixture-sentinel";
+const repositoryRoot = join(__dirname, "../..");
+const starterPackBytes = readFileSync(join(repositoryRoot, "assets/content/starter-plans.v2.json"), "utf8");
+const starterAcceptanceBytes = readFileSync(join(repositoryRoot, "artifacts/review/phase2/starter-plans-acceptance.json"), "utf8");
+const catalogBytes = readFileSync(join(repositoryRoot, "assets/content/exercise-library.v1.json"), "utf8");
+const catalogManifestBytes = readFileSync(join(repositoryRoot, "assets/content/exercise-library.v1.manifest.json"), "utf8");
+const catalogAcceptanceBytes = readFileSync(join(repositoryRoot, "artifacts/review/phase2/exercise-library-acceptance.json"), "utf8");
+let acceptedStarterPack: Promise<AcceptedStarterPack> | undefined;
 
 afterEach(async () => {
   await Promise.all([...kernels].map((kernel) => kernel.close()));
@@ -101,9 +112,29 @@ async function migratedKernel(): Promise<SqliteKernel> {
   await createMigrationRunner({
     databaseName: path,
     kernel,
-    migrations,
+    migrations: migrations.filter(({ version }) => version <= 40),
     recoveryBackup: { async createAndValidate(request) {
       return { backupId: "phase17-matrix", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const };
+    } },
+  }).run();
+  const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+  const catalog = await parseExerciseCatalog({
+    catalogBytes,
+    manifestBytes: catalogManifestBytes,
+    acceptanceBytes: catalogAcceptanceBytes,
+    sha256,
+  });
+  try {
+    await createContentRepository(kernel).importAcceptedCatalog({ catalog, expectedInstalled: null });
+  } catch (error) {
+    throw new Error("phase17_matrix_catalog_install_failed", { cause: error });
+  }
+  await createMigrationRunner({
+    databaseName: path,
+    kernel,
+    migrations,
+    recoveryBackup: { async createAndValidate(request) {
+      return { backupId: "phase17-matrix-final", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const };
     } },
   }).run();
   return kernel;
@@ -172,6 +203,37 @@ function postFacts(row: FamilyARow, fixtureToken: string, planId: string, exerci
 function committed(result: OwnedPlanRepositoryResult): OwnedPlanCommittedResult {
   if (result.outcome !== "committed") throw new Error("phase17_matrix_command_not_committed");
   return result;
+}
+
+async function starterPack(): Promise<AcceptedStarterPack> {
+  acceptedStarterPack ??= parseAcceptedStarterPlanPack({
+    starterPackBytes,
+    acceptanceBytes: starterAcceptanceBytes,
+    sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+  });
+  return acceptedStarterPack;
+}
+
+function starterSchedule(template: AcceptedStarterTemplate) {
+  const suggestion = template.scheduleSuggestion;
+  return suggestion.mode === "rotation"
+    ? {
+        startLocalDate: "2026-08-24",
+        timeZone: "Asia/Singapore",
+        mode: "rotation" as const,
+        bindings: suggestion.rotation.map((planDaySourceId, ordinal) => ({ planDaySourceId, ordinal })),
+      }
+    : {
+        startLocalDate: "2026-08-24",
+        timeZone: "Asia/Singapore",
+        mode: "weekday" as const,
+        bindings: suggestion.cycleWeeks.flatMap((week, weekIndex) => week.map((binding, ordinal) => ({
+          planDaySourceId: binding.dayId,
+          ordinal: suggestion.cycleWeeks.slice(0, weekIndex).reduce((count, value) => count + value.length, 0) + ordinal,
+          weekIndex,
+          weekday: binding.weekday,
+        }))),
+      };
 }
 
 describe("Phase 17 Family A cleanup matrix", () => {
@@ -394,5 +456,112 @@ describe("Phase 17 Family A cleanup matrix", () => {
       .resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
     const after = await logicalDigest(kernel);
     expect(after).toEqual(before);
+  });
+
+  it.each([
+    { caseId: "library.starter-detail", label: "starter-editable-copy" },
+    { caseId: "library.template-update", label: "starter-template-update-copy" },
+  ] as const)("runs migrated schema-42/v8 $caseId through its real inactive-copy command and cleanup", async ({ caseId, label }) => {
+    const kernel = await migratedKernel();
+    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
+    expect(schema?.user_version).toBe(42);
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
+      [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
+    ));
+    const before = await logicalDigest(kernel);
+    const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const template = (await starterPack()).templates.find(({ id }) => id === "full-body-foundation");
+    if (template === undefined) throw new Error("phase17_matrix_starter_template_missing");
+    const envelope = createPhase17ActionEnvelopeSource({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: {
+        read: async () => {
+          const [setting] = await kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [ENVELOPE_KEY]);
+          return setting === undefined ? null : JSON.parse(setting.value_json) as Phase17ActionEnvelopeContext;
+        },
+        write: async (value) => { await kernel.write((transaction) => transaction.execute(
+          `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)
+           ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+          [ENVELOPE_KEY, JSON.stringify(value), NOW_MS],
+        )); },
+        clear: async (value) => { await kernel.write((transaction) => transaction.execute("DELETE FROM app_settings WHERE key = ? AND value_json = ?", [ENVELOPE_KEY, JSON.stringify(value)])); },
+      },
+    });
+    const protocol = createPhase17FixtureProtocol({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      createToken: () => "phase17:startercopy00000001",
+      adapter: {
+        baselineDigest: async () => (await logicalDigest(kernel)).digest,
+        canonicalHash: async (value) => sha256(JSON.stringify(value)),
+        selectorSchema: () => ({ selectors: ["ownedPlanId", "customExerciseId"], actionInputs: ["phase17ActionReceiptId"] }),
+        seed: async ({ fixtureToken }) => {
+          const actionReceiptId = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+          return {
+            selectors: { ownedPlanId: `starter:${template.id}:r${template.revision}`, customExerciseId: `phase17:unused:${fixtureToken.slice("phase17:".length)}` },
+            actionInputs: { phase17ActionReceiptId: actionReceiptId },
+            expectedPreState: { caseId, fixtureToken, actionReceiptId: null, copiedPlan: false, scheduleLifecycle: null },
+            expectedPostState: { caseId, fixtureToken, actionReceiptId, copiedPlan: true, scheduleLifecycle: "inactive" },
+            actionReceiptId,
+          };
+        },
+        probe: async ({ fixtureToken }) => {
+          const requestId = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+          const [receipt] = await kernel.queryAll<{ operation: string; result_plan_id: string; result_revision: number; result_json: string }>(
+            "SELECT operation, result_plan_id, result_revision, result_json FROM owned_plan_mutation_requests WHERE request_id = ?", [requestId],
+          );
+          if (receipt === undefined || receipt.operation !== "create") throw new Error("phase17_matrix_starter_copy_receipt_missing");
+          const result = JSON.parse(receipt.result_json) as { outcome?: string; schedule?: { id?: string; lifecycle?: string } };
+          const [copy] = await kernel.queryAll<{ id: string; is_active: number; revision: number }>(
+            "SELECT id, is_active, revision FROM plans WHERE id = ? AND origin = 'copied'", [receipt.result_plan_id],
+          );
+          if (result.outcome !== "committed" || result.schedule?.lifecycle !== "inactive" || typeof result.schedule.id !== "string" || copy === undefined || copy.is_active !== 0 || copy.revision !== receipt.result_revision) throw new Error("phase17_matrix_starter_copy_result_missing");
+          const facts = { caseId, fixtureToken, actionReceiptId: requestId, copiedPlan: true, scheduleLifecycle: "inactive" as const };
+          return { rowCount: 1, identityHash: await sha256(JSON.stringify(facts)), facts };
+        },
+        cleanup: async ({ caseId: cleanupCaseId, fixtureToken, selectors }) => cleanupPhase17FamilyAManifest(kernel, createPhase17FamilyACleanupManifest(cleanupCaseId, fixtureToken, {
+          ownedPlanId: selectors.ownedPlanId!, customExerciseId: selectors.customExerciseId!,
+        })),
+        finalizeCleanup: async ({ caseId: cleanupCaseId, fixtureToken }) => envelope.clear({ caseId: cleanupCaseId, fixtureToken }),
+      },
+    });
+    const fixture = await protocol.setup(caseId);
+    expect(fixture.baselineDigest).toBe(before.digest);
+    await envelope.activate({ caseId, fixtureToken: fixture.fixtureToken, envelopes: phase17ActionEnvelopePlan(caseId, fixture.fixtureToken), cleanupManifest: createPhase17FamilyACleanupManifest(caseId, fixture.fixtureToken, {
+      ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId!,
+    }) });
+    const requestId = await envelope.claim({ caseId, fixtureToken: fixture.fixtureToken, label });
+    if (requestId === null) throw new Error("phase17_matrix_starter_copy_request_missing");
+    let stage = "copy";
+    await createStarterPlanCopy({
+      starterPackBytes,
+      acceptanceBytes: starterAcceptanceBytes,
+      sha256,
+      repository: createStarterPlanRepository(kernel),
+      requestId,
+      createdAtMs: NOW_MS,
+      sourceOwnedPlanId: fixture.selectors.ownedPlanId!,
+      expectedSourcePlanRevision: template.revision,
+      expectedActiveScheduleRevision: null,
+      templateId: template.id,
+      templateRevision: template.revision,
+      ...starterSchedule(template),
+    });
+    stage = "probe";
+    await expect(protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable })).resolves.toMatchObject({ verdict: "matched" });
+    await envelope.assertConsumed({ caseId, fixtureToken: fixture.fixtureToken });
+    await envelope.updateCleanupManifest({ caseId, fixtureToken: fixture.fixtureToken, cleanupManifest: await materializePhase17FamilyACleanupManifest(kernel, createPhase17FamilyACleanupManifest(caseId, fixture.fixtureToken, {
+      ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId!,
+    })) });
+    stage = "cleanup";
+    try {
+      await expect(protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken })).resolves.toMatchObject({ verdict: "restored", baselineDigest: before.digest });
+    } catch (error) {
+      throw new Error(`phase17_matrix_starter_copy_${stage}`, { cause: error });
+    }
+    await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
+    await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY])).resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
+    expect(await logicalDigest(kernel)).toEqual(before);
   });
 });
