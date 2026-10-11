@@ -381,7 +381,7 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
   it("uses shared persisted appearance without resetting connected controller state", async () => {
     const appearanceStore = createMemoryAppearanceStore();
     const source = connectedSource();
-    const connectionState = jest.spyOn(source, "connectionState");
+    const restoreSession = jest.spyOn(source, "restoreSession");
     await renderScreen({ appearanceStore, source });
     expect(await screen.findByText("Connected to Garmin")).toBeOnTheScreen();
 
@@ -394,7 +394,7 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
 
     expect(screen.getByText("Connected to Garmin")).toBeOnTheScreen();
     expect(screen.getByText("Morning run")).toBeOnTheScreen();
-    expect(connectionState).toHaveBeenCalledTimes(1);
+    expect(restoreSession).toHaveBeenCalledTimes(1);
   });
 
   it("gives Back priority to Appearance and disconnect before the contextual route", async () => {
@@ -439,7 +439,7 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
       onBack,
       source: {
         ...connectedSource(),
-        connectionState: async () => ({
+        restoreSession: async () => ({
           kind: "mfa_required",
           challenge_handle: "opaque-continuation-handle-9876",
           generation: 2,
