@@ -4144,8 +4144,8 @@ export function WorkoutAppRuntimeProvider({
         familyC: createPhase17FamilyCFixtureDriver({
           kernel: services.kernel,
           graph: {
-            setupGraph: async (fixtureToken) => {
-              const suffix = fixtureToken.slice("phase17:".length);
+            setupGraph: async (fixtureToken, choice) => {
+              const suffix = `${fixtureToken.slice("phase17:".length)}:${choice}`;
               const runningPlanId = `phase17:running-plan:${suffix}`;
               const strength = await services.ownedPlans.createFixtureDraft({
                 requestId: `phase17:fixture:collision-strength:${suffix}:setup`,
@@ -4179,7 +4179,7 @@ export function WorkoutAppRuntimeProvider({
                 await transaction.execute("INSERT INTO owned_plan_schedule_opportunities (id, schedule_id, schedule_version_id, local_date, source, plan_day_id, state, outcome, session_id, revision, consumed_at_ms) VALUES (?, ?, ?, ?, 'weekday', ?, 'pending', NULL, NULL, 1, NULL)", [strengthOpportunityId, strengthScheduleId, strengthVersionId, localDate, strength.plan.days[0]!.id]);
                 await transaction.execute("INSERT INTO running_opportunities (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date, timezone, session_revision_id, state, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, 'Asia/Singapore', ?, 'planned', ?)", [runningOpportunityId, runningPlanId, runningScheduleId, runningVersionId, slot.slot.id, localDate, slot.session.id, now]);
               });
-              return Object.freeze({ runningPlanId, strengthPlanId: strength.plan.id, runningOpportunityId, strengthOpportunityId, runningScheduleId, strengthScheduleId, localDate });
+              return Object.freeze({ choice, runningPlanId, strengthPlanId: strength.plan.id, runningOpportunityId, strengthOpportunityId, runningScheduleId, strengthScheduleId, localDate });
             },
             cleanupGraph: async (graph) => {
               await services.kernel.write(async (transaction) => {

@@ -84,7 +84,7 @@ test("Phase 17 command trees keep the high-risk authoring, collision, and access
   assert.match(lifecycle, /Save changes/u);
   assert.match(lifecycle, /No sessions yet/u);
   const collision = values("library.running-conflict").join("\n");
-  for (const selector of ["Review schedule collision", "Move Running", "Confirm", "Calendar", "Today"]) assert.match(collision, new RegExp(selector, "u"));
+  for (const selector of ["Review schedule collision", "Move run", "Move strength", "Keep both", "Confirm schedule change", "Calendar", "Today"]) assert.match(collision, new RegExp(selector, "u"));
   const accessibility = values("library.accessibility-recovery").join("\n");
   for (const selector of ["Remote Dpad Down", "BACK", "ESCAPE", "Search exercises", "ENTER", "48 dp"]) assert.match(accessibility, new RegExp(selector, "u"));
 });
@@ -304,6 +304,17 @@ test("Phase 17 Running evidence plans zero-create, seven saves, and lifecycle wr
   const running = readFileSync("maestro/phase17/running-authoring.yaml", "utf8");
   assert.match(running, /running\/create\?fixturePlanId=\$\{PHASE17_RUNNING_PLAN_ID\}/u);
   assert.equal((commandTreeForPhase17Case({ "maestro/phase17/running-authoring.yaml": running }, "library.running-create-typed-sessions").filter(({ value }) => value === "Save session")).length, 7);
+});
+
+test("Phase 17 Family C requires all three independent collision choices, projections, and duplicate guards", () => {
+  const fixture = readFileSync("src/bootstrap/phase17FamilyCFixture.ts", "utf8");
+  const yaml = readFileSync("maestro/phase17/running-authoring.yaml", "utf8");
+  for (const choice of ["move_running", "move_strength", "keep_both"]) assert.match(fixture, new RegExp(`"${choice}"`, "u"));
+  for (const selector of ["RUNNING_PLAN_ID_MOVE_RUNNING", "RUNNING_PLAN_ID_MOVE_STRENGTH", "RUNNING_PLAN_ID_KEEP_BOTH", "Move run", "Move strength", "Keep both"]) assert.match(yaml, new RegExp(selector, "u"));
+  assert.match(fixture, /fixtures\.set\(token, byChoice\)/u);
+  assert.match(fixture, /rowCount: outcomes\.length/u);
+  assert.match(fixture, /phase17_collision_fixture_duplicate_event/u);
+  assert.match(fixture, /schedule_collision_projections/u);
 });
 
 test("Phase 17 routes claim only the hydrated fixture envelope before real Running commands", () => {
