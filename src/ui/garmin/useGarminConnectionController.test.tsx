@@ -34,6 +34,7 @@ const emptyCounts = Object.freeze({
 function source(overrides: Partial<GarminActivitySourcePort> = {}): GarminActivitySourcePort {
   return {
     connectionState: async () => ({ kind: "disconnected" }),
+    restoreSession: async () => overrides.connectionState?.() ?? ({ kind: "disconnected" }),
     login: async () => ({ kind: "disconnected" }),
     resumeMfa: async () => ({ kind: "disconnected" }),
     logout: async () => undefined,
@@ -57,6 +58,50 @@ function Harness(input: Parameters<typeof useGarminConnectionController>[0]) {
 }
 
 describe("useGarminConnectionController connection tracer", () => {
+  it("restores the native session on a fresh mount before treating the account as disconnected", async () => {
+    const connectionState = jest.fn(async () => ({ kind: "disconnected" as const }));
+    const restoreSession = jest.fn(async () => ({
+      kind: "connected" as const,
+      account_namespace: "private-account-namespace",
+      generation: 7,
+    }));
+
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      source={{ ...source({ connectionState }), restoreSession }}
+    />);
+
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    expect(restoreSession).toHaveBeenCalledTimes(1);
+    expect(connectionState).not.toHaveBeenCalled();
+    expect(current?.state.activities).toEqual([activity]);
+  });
+
+  it("keeps retained history visible when an encrypted session is missing or corrupt", async () => {
+    const restoreError = Object.assign(new Error("sign_in_required"), {
+      name: "GarminActivityAdapterError",
+      code: "sign_in_required",
+      retryable: false,
+    });
+
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      source={{
+        ...source(),
+        restoreSession: jest.fn(async () => Promise.reject(restoreError)),
+      }}
+    />);
+
+    await waitFor(() => expect(current?.state.historyStatus).toBe("ready"));
+    expect(current?.state).toMatchObject({
+      connection: "disconnected",
+      activities: [activity],
+      error: { code: "sign_in_required", retryable: false },
+    });
+  });
+
   it("serializes credentials and MFA once while keeping secret inputs and handles out of snapshots", async () => {
     const secretMarker = ["opaque", "credential", "input"].join("-");
     const codeMarker = ["opaque", "verification", "input"].join("-");

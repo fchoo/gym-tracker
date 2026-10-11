@@ -8,6 +8,7 @@ export type GarminConnectionState =
 /** The sole Phase 18-to-Phase 13 activity boundary.  It deliberately has no credential or URL fields. */
 export type GarminActivitySourcePort = Readonly<{
   connectionState(): Promise<GarminConnectionState>;
+  restoreSession(): Promise<GarminConnectionState>;
   login(input: Readonly<{ email: string; password: string }>): Promise<GarminConnectionState>;
   resumeMfa(input: Readonly<{ challenge_handle: string; code: string }>): Promise<GarminConnectionState>;
   logout(): Promise<void>;

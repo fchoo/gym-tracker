@@ -163,6 +163,19 @@ function createConnectedDriver(
           data: { kind: "disconnected" as const },
         };
     },
+    async restoreSession() {
+      count(state, "restoreSession");
+      return state.connected
+        ? {
+          status: "ok" as const,
+          generation: state.generation,
+          data: { kind: "connected" as const, account_namespace: ACCOUNT_NAMESPACE },
+        }
+        : {
+          status: "error" as const,
+          error: { code: "sign_in_required" as const },
+        };
+    },
     async login() {
       count(state, "login");
       return { status: "error" as const, error: { code: "operation_rejected" as const } };
@@ -481,6 +494,10 @@ function injectedDriver(id: InjectedCaseId, state: DriverState): GarminNativeDri
   return Object.freeze({
     async connectionState() {
       count(state, "connectionState");
+      return ok({ kind: "connected", account_namespace: ACCOUNT_NAMESPACE });
+    },
+    async restoreSession() {
+      count(state, "restoreSession");
       return ok({ kind: "connected", account_namespace: ACCOUNT_NAMESPACE });
     },
     async login() {

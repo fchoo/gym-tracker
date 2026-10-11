@@ -49,6 +49,11 @@ function fixtures() {
       generation: 0,
       data: { kind: "disconnected" as const },
     })),
+    restoreSession: jest.fn(async () => ({
+      status: "ok" as const,
+      generation: 1,
+      data: { kind: "connected" as const, account_namespace: "account-fixture" },
+    })),
     login: jest.fn(async (input) => {
       calls.push({ operation: "login", input });
       return {
@@ -117,6 +122,18 @@ const errorCases: Array<[GarminNativeErrorCode, boolean]> = [
 ];
 
 describe("Garmin activity adapter", () => {
+  it("restores an encrypted session through the typed native driver", async () => {
+    const { driver, mapper } = fixtures();
+    const adapter = createGarminActivityAdapter({ driver, mapper });
+
+    await expect(adapter.restoreSession()).resolves.toEqual({
+      kind: "connected",
+      account_namespace: "account-fixture",
+      generation: 1,
+    });
+    expect(driver.restoreSession).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps MFA on the same generation and exposes no secret fields", async () => {
     const { calls, driver, mapper } = fixtures();
     const adapter = createGarminActivityAdapter({ driver, mapper });

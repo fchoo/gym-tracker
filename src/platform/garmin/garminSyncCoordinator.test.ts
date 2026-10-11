@@ -67,6 +67,11 @@ async function connectedAdapter() {
       operations.push("connectionState");
       return { status: "ok" as const, generation: 1, data: { kind: "connected" as const, account_namespace: accountNamespace } };
     }),
+    restoreSession: jest.fn(async () => ({
+      status: "ok" as const,
+      generation: 1,
+      data: { kind: "connected" as const, account_namespace: accountNamespace },
+    })),
     login: jest.fn(async () => ({
       status: "ok" as const,
       generation: 1,
@@ -118,6 +123,7 @@ function pagedSource(
 ): GarminActivitySourcePort {
   return {
     connectionState: jest.fn(async () => ({ kind: "connected" as const, account_namespace: "account-fixture", generation: 1 })),
+    restoreSession: jest.fn(async () => ({ kind: "connected" as const, account_namespace: "account-fixture", generation: 1 })),
     login: jest.fn(async () => ({ kind: "connected" as const, account_namespace: "account-fixture", generation: 1 })),
     resumeMfa: jest.fn(async () => ({ kind: "connected" as const, account_namespace: "account-fixture", generation: 1 })),
     logout: jest.fn(async () => undefined),

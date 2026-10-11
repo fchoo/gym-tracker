@@ -131,6 +131,7 @@ describe("GarminSyncScreen connection tracer", () => {
     }));
     const source: GarminActivitySourcePort = {
       connectionState: async () => ({ kind: "disconnected" }),
+      restoreSession: async () => ({ kind: "disconnected" }),
       login,
       resumeMfa,
       logout: async () => undefined,
@@ -166,6 +167,7 @@ describe("GarminSyncScreen connection tracer", () => {
     });
     const source: GarminActivitySourcePort = {
       connectionState: async () => ({ kind: "disconnected" }),
+      restoreSession: async () => ({ kind: "disconnected" }),
       login,
       resumeMfa: async () => ({ kind: "disconnected" }),
       logout: async () => undefined,
@@ -192,6 +194,7 @@ describe("GarminSyncScreen connection tracer", () => {
 function connectedSource(): GarminActivitySourcePort {
   return {
     connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
+    restoreSession: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
     login: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
     resumeMfa: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
     logout: async () => undefined,

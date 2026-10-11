@@ -143,6 +143,7 @@ async function source(input: Readonly<{
   }, sha256);
   return {
     connectionState: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
+    restoreSession: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     login: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     resumeMfa: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     logout: jest.fn(async () => undefined),

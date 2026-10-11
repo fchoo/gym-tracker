@@ -247,7 +247,7 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
   useEffect(() => {
     mountedRef.current = true;
     const generation = ++connectionGenerationRef.current;
-    void inputRef.current.source.connectionState().then((connection) => {
+    void inputRef.current.source.restoreSession().then((connection) => {
       if (!mountedRef.current || generation !== connectionGenerationRef.current) return;
       setState((current) => ({
         ...current,

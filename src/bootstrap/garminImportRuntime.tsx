@@ -284,6 +284,9 @@ function createProductionGarminSource(sha256: GarminSha256): GarminActivitySourc
     async connectionState() {
       return rememberAccountNamespace(await adapter.connectionState(), accountNamespace);
     },
+    async restoreSession() {
+      return rememberAccountNamespace(await adapter.restoreSession(), accountNamespace);
+    },
     async login(input) {
       return rememberAccountNamespace(await adapter.login(input), accountNamespace);
     },

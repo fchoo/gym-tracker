@@ -93,6 +93,11 @@ describe("Garmin import runtime", () => {
         account_namespace: sourceEnvelope.account_namespace,
         generation: 1,
       })),
+      restoreSession: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
       login: jest.fn(async () => ({
         kind: "connected" as const,
         account_namespace: sourceEnvelope.account_namespace,
@@ -151,6 +156,11 @@ describe("Garmin import runtime", () => {
     const sourceEnvelope = envelope();
     const source = {
       connectionState: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      restoreSession: jest.fn(async () => ({
         kind: "connected" as const,
         account_namespace: sourceEnvelope.account_namespace,
         generation: 1,
@@ -216,6 +226,11 @@ describe("Garmin import runtime", () => {
     const sourceEnvelope = envelope();
     const source = {
       connectionState: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      restoreSession: jest.fn(async () => ({
         kind: "connected" as const,
         account_namespace: sourceEnvelope.account_namespace,
         generation: 1,
@@ -522,7 +537,11 @@ describe("Garmin import runtime", () => {
     });
     mockGarminNativeModule = {
       runtimeInfo: jest.fn(async () => undefined),
-      restoreSession: jest.fn(async () => undefined),
+      restoreSession: jest.fn(async () => ({
+        status: "ok",
+        generation: nativeGeneration,
+        data: { kind: "connected", account_namespace: "synthetic-runtime" },
+      })),
       connectionState: jest.fn(async () => ({
         status: "ok",
         generation: nativeGeneration,
@@ -584,6 +603,7 @@ describe("Garmin import runtime", () => {
     const rendered = await renderHook(() => useGarminImportRuntime({ application }));
 
     await act(async () => {
+      await expect(rendered.result.current.source.restoreSession()).resolves.toMatchObject({ kind: "connected" });
       await expect(rendered.result.current.source.connectionState()).resolves.toMatchObject({ kind: "connected" });
       await expect(rendered.result.current.source.login({ email: "synthetic", password: "synthetic" }))
         .resolves.toMatchObject({ kind: "mfa_required" });
@@ -600,6 +620,7 @@ describe("Garmin import runtime", () => {
       await expect(rendered.result.current.source.connectionState())
         .resolves.toEqual({ kind: "disconnected" });
     });
+    expect(mockGarminNativeModule.restoreSession).toHaveBeenCalledTimes(1);
     expect(application.confirmGarminImport).toHaveBeenCalledTimes(2);
     expect(mockGarminNativeModule.getActivityDetails).toHaveBeenCalledWith({
       externalActivityId: "18002",
@@ -651,6 +672,7 @@ describe("Garmin import runtime", () => {
   it("honors explicitly injected hook source, digest, and request factory", async () => {
     const source = {
       connectionState: jest.fn(async () => ({ kind: "disconnected" as const })),
+      restoreSession: jest.fn(async () => ({ kind: "disconnected" as const })),
       login: jest.fn(async () => ({ kind: "disconnected" as const })),
       resumeMfa: jest.fn(async () => ({ kind: "disconnected" as const })),
       logout: jest.fn(async () => undefined),

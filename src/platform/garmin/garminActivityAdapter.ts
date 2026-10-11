@@ -60,6 +60,7 @@ type GarminNativeConnectionData =
 
 export type GarminNativeDriver = Readonly<{
   connectionState(): Promise<unknown>;
+  restoreSession(): Promise<unknown>;
   login(input: Readonly<{ email: string; password: string }>): Promise<unknown>;
   resumeMfa(input: Readonly<{ challengeHandle: string; code: string }>): Promise<unknown>;
   logout(): Promise<unknown>;
@@ -227,6 +228,9 @@ export function createGarminActivityAdapter(input: Readonly<{
   return Object.freeze({
     async connectionState() {
       return acceptState(await callNative<GarminNativeConnectionData>(() => driver.connectionState()));
+    },
+    async restoreSession() {
+      return acceptState(await callNative<GarminNativeConnectionData>(() => driver.restoreSession()));
     },
     async login(credentials) {
       generation += 1;
