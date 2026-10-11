@@ -268,13 +268,13 @@ Plans:
   4. Outdoor detail shows only available elapsed/moving, distance, pace, route, heart-rate, and lap evidence; treadmill explicitly shows No route; the accessible lap table uses Lap, Time, and Pace with honest missing values.
   5. Matching shows stable candidates and writes only the explicitly selected occurrence after Confirm; Back/Leave unmatched writes nothing. Real account packaging/login/MFA/read/restart proof is required implementation evidence, not a product-decision or alternate-transport gate.
 
-**Plans**: 4/14 plans executed
+**Plans**: 5/14 plans executed
 
 - [x] 18-01-PLAN.md
 - [x] 18-02-PLAN.md
 - [x] 18-03-PLAN.md
 - [x] 18-04-PLAN.md
-- [ ] 18-05-PLAN.md
+- [x] 18-05-PLAN.md
 - [ ] 18-06-PLAN.md
 - [ ] 18-07-PLAN.md
 - [ ] 18-08-PLAN.md
@@ -339,7 +339,7 @@ Plans:
 | 15. Workout Parity | 15-workout-parity | 13/13 | In Progress|  |
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
 | 17. Library & Running Plans | 17-library-running-plans | 14/14 | In Progress|  |
-| 18. Garmin Account Sync | 18-garmin-import | 4/14 | In Progress|  |
+| 18. Garmin Account Sync | 18-garmin-import | 5/14 | In Progress|  |
 | 19. Progress Parity | 19-progress-parity | 0/10 | Not started | - |
 | 20. Native Acceptance | 20-native-acceptance | 0/12 | Not started | - |
 

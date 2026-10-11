@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Completed 18-04-PLAN.md
-last_updated: "2026-10-11T08:17:18.377Z"
+stopped_at: Completed 18-05-PLAN.md
+last_updated: "2026-10-11T08:42:46.840Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: 0e0097f639d95de73c53b0799b56a002c27da415
+state_head: ef2f246ec8539d849b07567a7f6c124ab150e9f3
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 59
+  completed_plans: 60
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 5 of 14
+Plan: 6 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -99,6 +99,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P02 | 48m 5s | 3 tasks | 13 files |
 | Phase 18 P03 | 24m 3s | 2 tasks | 10 files |
 | Phase 18 P04 | 18m | 2 tasks | 6 files |
+| Phase 18 P05 | 21m 12s | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -211,6 +212,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Plan 18-04 hashes only reviewed allowlisted Garmin projections, excluding operational fetch metadata from component and semantic identity.
 - [Phase 18]: Plan 18-04 permits exact efforts only from matching source summary or lap distance with a present source time basis; sampled evidence remains ineligible.
 - [Phase 18]: Plan 18-04 uses a focused 100% integrity coverage gate for canonicalGarminPayload.ts and normalizeGarminActivity.ts; the global matrix remains Phase 20-only.
+- [Phase 18]: Plan 18-05: Garmin foreground sync keeps the existing source port; the adapter owns complete component reads and the coordinator owns finite iteration and commit-derived outcomes.
+- [Phase 18]: Plan 18-05: The shared importer rechecks connection generation after canonical request preparation and immediately before the exclusive SQLite command.
+- [Phase 18]: Plan 18-05: Cancellation occurs only at activity boundaries and no source or import retry is implicit.
 
 ### Pending Owner Review
 
@@ -235,7 +239,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T08:17:17.945Z
-Stopped at: Completed 18-04-PLAN.md
+Last session: 2026-10-11T08:42:46.564Z
+Stopped at: Completed 18-05-PLAN.md
 Resume file: None
 Next action: Execute 18-03 only when the owner initiates its attended installed-app proof.
