@@ -301,7 +301,9 @@ function adbText(native, adb, serial, ...args) {
 }
 
 function readProofLog(native, adb, serial) {
-  return adbText(native, adb, serial, "logcat", "-d", "ReactNativeJS:I", "*:S");
+  const processId = adbText(native, adb, serial, "shell", "pidof", PACKAGE);
+  if (!/^\d+$/u.test(processId)) fail("app_process_missing");
+  return adbText(native, adb, serial, "logcat", "-d", "--pid", processId);
 }
 
 function markersFromLog(log) {
@@ -387,10 +389,6 @@ export function createPhase18GarminTechnicalReviewReport(input) {
       code: input.code,
     }),
   ]);
-  const reportDigest = sha256(JSON.stringify({
-    manifest: input.manifest,
-    cases,
-  }));
   return Object.freeze({
     schema_version: 1,
     suite: "phase18-garmin-proof",
@@ -399,9 +397,8 @@ export function createPhase18GarminTechnicalReviewReport(input) {
     cases,
     standalone: createPhase18GarminProofRunnerPlan().standalone,
     privacy_scan: Object.freeze({
-      status: "passed",
-      scanned_artifact_count: 1,
-      report_sha256: reportDigest,
+      status: "not_run",
+      scanned_artifact_count: 0,
     }),
     failure_stage: input.stage,
     failure_code: input.code,
@@ -506,12 +503,24 @@ export function executePhase18GarminProofRunner(
       ...login.cases.filter(({ status }) => status === "passed"),
     ]);
     let restore = Object.freeze({ log: "", cases: Object.freeze([]) });
+    let rotatedRestoreLog = "";
     if (!loginFailure) {
       currentStage = "PH18-RESTART";
       adbText(native, adb, device.serial, "shell", "am", "force-stop", PACKAGE);
       adbText(native, adb, device.serial, "logcat", "-c");
       launchRoute(native, adb, device.serial, "restore");
       restore = waitForCase(native, adb, device.serial, "PH18-REFRESH");
+      if (!restore.cases.some(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED")) {
+        adbText(native, adb, device.serial, "shell", "am", "force-stop", PACKAGE);
+        adbText(native, adb, device.serial, "logcat", "-c");
+        launchRoute(native, adb, device.serial, "restore");
+        const rotatedRestore = waitForCase(native, adb, device.serial, "PH18-REFRESH");
+        if (rotatedRestore.cases.some(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED")
+          || !rotatedRestore.cases.some(({ id, status }) => id === "PH18-RESTART" && status === "passed")) {
+          fail("rotated_session_restore_failed");
+        }
+        rotatedRestoreLog = rotatedRestore.log;
+      }
     }
     const proofCases = orderedReportCases([
       packageCase,
@@ -524,7 +533,7 @@ export function executePhase18GarminProofRunner(
     completedCases = proofCases.filter(({ status }) => status === "passed");
     currentStage = failure?.id ?? "PH18-PRIVACY";
 
-    const combinedLog = `${login.log}\n${restore.log}`;
+    const combinedLog = `${login.log}\n${restore.log}\n${rotatedRestoreLog}`;
     if (PRIVATE_LOG_PATTERN.test(combinedLog)) fail("privacy_scan_failed");
     const backupFiles = adbText(
       native,
@@ -534,13 +543,14 @@ export function executePhase18GarminProofRunner(
       "run-as",
       PACKAGE,
       "find",
-      "files",
-      "shared_prefs",
-      "databases",
+      ".",
       "-type",
       "f",
     );
-    if (/(?:garmin|session|token)/iu.test(backupFiles)) fail("backup_path_invalid");
+    const unsafePaths = backupFiles.split("\n").filter((entry) =>
+      /(?:garmin|session|token|staging)/iu.test(entry)
+      && !/^\.\/no_backup\/garmin-session\/garmin-di-session\.bin$/u.test(entry));
+    if (unsafePaths.length > 0) fail("backup_path_invalid");
     if (failure === undefined) {
       adbText(
         native,

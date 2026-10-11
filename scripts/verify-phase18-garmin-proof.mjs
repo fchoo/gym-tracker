@@ -143,15 +143,19 @@ function validateStandalone(value) {
   ) fail("standalone_invalid");
 }
 
-function validatePrivacyScan(value) {
-  if (
-    !exactKeys(value, ["report_sha256", "scanned_artifact_count", "status"])
+function validatePrivacyScan(value, review) {
+  const notRun = value?.status === "not_run";
+  if (notRun) {
+    if (!review || !exactKeys(value, ["scanned_artifact_count", "status"])
+      || value.scanned_artifact_count !== 0) fail("privacy_scan_invalid");
+    return;
+  }
+  if (!exactKeys(value, ["report_sha256", "scanned_artifact_count", "status"])
     || value.status !== "passed"
     || !Number.isSafeInteger(value.scanned_artifact_count)
     || value.scanned_artifact_count < 1
     || value.scanned_artifact_count > 100
-    || !HASH.test(value.report_sha256 ?? "")
-  ) fail("privacy_scan_invalid");
+    || !HASH.test(value.report_sha256 ?? "")) fail("privacy_scan_invalid");
 }
 
 export function validatePhase18GarminProofEvidence(evidence) {
@@ -181,7 +185,7 @@ export function validatePhase18GarminProofEvidence(evidence) {
   ) fail("schema_invalid");
   validateManifestShape(evidence.manifest);
   validateStandalone(evidence.standalone);
-  validatePrivacyScan(evidence.privacy_scan);
+  validatePrivacyScan(evidence.privacy_scan, review);
 
   if (!review) {
     if (evidence.cases.length !== PHASE18_GARMIN_PROOF_CASE_IDS.length) {

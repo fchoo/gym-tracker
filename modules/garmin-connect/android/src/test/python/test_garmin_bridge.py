@@ -18,6 +18,7 @@ class FakeClient:
         self.calls = []
         self.loaded_tokens = None
         self.client = self
+        self.token_generation = 1
 
     def login(self, tokenstore=None):
         self.calls.append(("login", tokenstore))
@@ -35,7 +36,11 @@ class FakeClient:
         self.calls.append(("logout", None))
 
     def dumps(self):
-        return json.dumps({"di_token": "fixture", "di_refresh_token": "fixture-refresh", "di_client_id": "fixture-client"})
+        return json.dumps({"di_token": f"fixture-{self.token_generation}", "di_refresh_token": "fixture-refresh", "di_client_id": "fixture-client"})
+
+    def _refresh_di_token(self):
+        self.calls.append(("force_refresh", None))
+        self.token_generation += 1
 
     def get_activities(self, start, limit, activitytype, activitysubtype=None):
         self.calls.append(("get_activities", start, limit, activitytype, activitysubtype))
@@ -182,6 +187,23 @@ class GarminBridgeTests(unittest.TestCase):
         self.assertNotIn("token", json.dumps([restored, read, logged_out, after_logout]))
         self.assertEqual(logged_out["generation"], restored["generation"] + 1)
         self.assertEqual(after_logout, {"status": "error", "error": {"code": "sign_in_required"}})
+
+    def test_force_refresh_rotates_the_persistable_record_without_exposing_tokens(self):
+        fake = FakeClient()
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: fake,
+            namespace_factory=lambda: ACCOUNT_NAMESPACE,
+        )
+        bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
+        before = bridge.take_persistable_tokens()
+
+        result = bridge.dispatch("forceRefreshForTest", {})
+        after = bridge.take_persistable_tokens()
+
+        self.assertEqual(result["data"], {"kind": "connected", "account_namespace": ACCOUNT_NAMESPACE})
+        self.assertNotEqual(before, after)
+        self.assertEqual(fake.calls[-1], ("force_refresh", None))
+        self.assertNotIn("token", json.dumps(result))
 
     def test_authentication_and_restore_failures_are_context_specific(self):
         invalid = garmin_bridge.create_bridge(

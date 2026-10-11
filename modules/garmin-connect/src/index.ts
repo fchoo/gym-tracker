@@ -15,6 +15,8 @@ export type GarminConnectNativeModule = Readonly<{
   login(input: Readonly<{ email: string; password: string }>): Promise<unknown>;
   resumeMfa(input: Readonly<{ challengeHandle: string; code: string }>): Promise<unknown>;
   restoreSession(): Promise<unknown>;
+  forceRefreshForTest(): Promise<unknown>;
+  sessionRecordState(): Promise<unknown>;
   logout(): Promise<unknown>;
   getActivities(input: Readonly<{ start: number; limit: number; activityType: "running" }>): Promise<unknown>;
   getActivity(input: Readonly<{ externalActivityId: string }>): Promise<unknown>;

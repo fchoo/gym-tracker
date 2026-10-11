@@ -30,6 +30,7 @@ _OPERATIONS = frozenset(
         "getActivity",
         "getActivitySplits",
         "getActivityDetails",
+        "forceRefreshForTest",
         "runAdversarialSuite",
     }
 )
@@ -165,6 +166,9 @@ class GarminBridge:
                 return self._activity_splits(arguments)
             if operation == "getActivityDetails":
                 return self._details(arguments)
+            if operation == "forceRefreshForTest":
+                _exact_arguments(arguments, set())
+                return self._force_refresh()
             if operation == "runAdversarialSuite":
                 return self._adversarial_suite(arguments)
         except _BridgeInputError as error:
@@ -378,6 +382,15 @@ class GarminBridge:
         value = self._require_client().get_activity_details(identifier, maxchart=2000, maxpoly=4000)
         self._capture_tokens()
         return self._success(value)
+
+    def _force_refresh(self) -> dict[str, Any]:
+        client = self._require_client()
+        refresh = getattr(client.client, "_refresh_di_token", None)
+        if not callable(refresh):
+            raise _BridgeInputError("operation_rejected")
+        refresh()
+        self._capture_tokens()
+        return self._success(self._connection_state())
 
     def _adversarial_suite(self, arguments: Any) -> dict[str, Any]:
         values = _exact_arguments(arguments, {"confirmation"})

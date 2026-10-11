@@ -140,6 +140,18 @@ internal class GarminClientWorker(
     }
   }
 
+  fun forceRefreshForTest(): Map<String, Any?> = lock.withLock {
+    if (!sessionAvailable) return@withLock error("sign_in_required")
+    val result = safeDispatch("forceRefreshForTest", mutableMapOf())
+    requireGeneration(result, generation)
+    persistPendingTokens(result)
+    result
+  }
+
+  fun sessionRecordState(): Map<String, Any?> = lock.withLock {
+    sessionStore.recordIdentity()
+  }
+
   fun logout(): Map<String, Any?> = lock.withLock {
     try {
       sessionStore.clear()

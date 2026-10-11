@@ -11,6 +11,7 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.security.KeyStore
+import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -44,6 +45,7 @@ internal interface GarminSessionStore {
   fun read(): ByteArray?
   fun replace(tokenBytes: ByteArray)
   fun clear()
+  fun recordIdentity(): Map<String, Any?>
 }
 
 internal interface GarminAtomicWriter {
@@ -213,6 +215,14 @@ internal class GarminTokenStore(
 
   override fun clear() {
     atomicWriter.remove(recordFile)
+  }
+
+  override fun recordIdentity(): Map<String, Any?> {
+    if (!recordFile.exists()) return mapOf("present" to false, "version" to RECORD_VERSION)
+    val digest = MessageDigest.getInstance("SHA-256")
+      .digest(recordFile.readBytes())
+      .joinToString("") { byte -> "%02x".format(byte) }
+    return mapOf("present" to true, "version" to RECORD_VERSION, "sha256" to digest)
   }
 
   internal fun recordFileForTest(): File = recordFile

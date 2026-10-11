@@ -118,6 +118,24 @@ class GarminConnectModule : Module() {
       .SuspendBody<Map<String, Any?>> { worker().restoreSession() }
       .runOnQueue(appContext.backgroundCoroutineScope)
 
+    AsyncFunction("forceRefreshForTest")
+      .SuspendBody<Map<String, Any?>> {
+        require(appContext.reactContext?.packageName == "com.fchoo.gymtracker.devtest") {
+          "garmin_operation_rejected"
+        }
+        worker().forceRefreshForTest()
+      }
+      .runOnQueue(appContext.backgroundCoroutineScope)
+
+    AsyncFunction("sessionRecordState")
+      .SuspendBody<Map<String, Any?>> {
+        require(appContext.reactContext?.packageName == "com.fchoo.gymtracker.devtest") {
+          "garmin_operation_rejected"
+        }
+        worker().sessionRecordState()
+      }
+      .runOnQueue(appContext.backgroundCoroutineScope)
+
     AsyncFunction("logout")
       .SuspendBody<Map<String, Any?>> { worker().logout() }
       .runOnQueue(appContext.backgroundCoroutineScope)

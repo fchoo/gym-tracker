@@ -47,6 +47,8 @@ type Phase18AuthPort = Pick<
 type Phase18NativePort = Pick<
   GarminConnectNativeModule,
   | "restoreSession"
+  | "forceRefreshForTest"
+  | "sessionRecordState"
   | "getActivities"
   | "getActivity"
   | "getActivitySplits"
@@ -171,6 +173,15 @@ function technicalReview(
 function assertHash(value: string): string {
   if (!HASH.test(value)) throw new Error("malformed_response");
   return value;
+}
+
+function sessionRecord(value: unknown): Readonly<{ version: number; sha256: string }> {
+  const state = record(value);
+  if (state.present !== true || !Number.isSafeInteger(state.version)
+    || (state.version as number) < 1 || typeof state.sha256 !== "string") {
+    throw new Error("sign_in_required");
+  }
+  return Object.freeze({ version: state.version as number, sha256: assertHash(state.sha256) });
 }
 
 export function createPhase18GarminProofHarness(input: Readonly<{
@@ -322,10 +333,26 @@ export function createPhase18GarminProofHarness(input: Readonly<{
         status: "passed",
         duration_ms: duration(startedAt, now()),
       });
-      return Object.freeze([
-        restartCase,
-        await readCase("PH18-REFRESH"),
-      ]);
+      const refreshStarted = now();
+      try {
+        const before = sessionRecord(await input.nativePort.sessionRecordState());
+        connected(await input.nativePort.forceRefreshForTest());
+        const after = sessionRecord(await input.nativePort.sessionRecordState());
+        if (before.sha256 === after.sha256) throw new Error("stale_generation");
+        const refreshCase: Phase18PassedCase = Object.freeze({
+          id: "PH18-REFRESH",
+          status: "passed",
+          duration_ms: duration(refreshStarted, now()),
+          count: 1,
+          result_sha256: assertHash(await input.sha256(JSON.stringify({ before, after }))),
+        });
+        return Object.freeze([restartCase, refreshCase]);
+      } catch (error) {
+        return Object.freeze([
+          restartCase,
+          technicalReview("PH18-REFRESH", refreshStarted, now(), error),
+        ]);
+      }
     },
   });
 }

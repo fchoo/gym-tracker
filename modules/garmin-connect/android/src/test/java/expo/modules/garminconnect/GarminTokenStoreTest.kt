@@ -5,6 +5,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -153,6 +154,26 @@ class GarminTokenStoreTest {
   }
 
   @Test
+  fun `explicit refresh proves the encrypted session record rotated`() {
+    val store = MemorySessionStore()
+    val dispatcher = RecordingDispatcher(ArrayDeque(listOf(
+      success(1, mapOf("kind" to "connected", "account_namespace" to "account-fixture")),
+      success(1, mapOf("kind" to "connected", "account_namespace" to "account-fixture")),
+    )))
+    dispatcher.pendingTokens = "first-session".toByteArray()
+    val worker = GarminClientWorker(dispatcher, store)
+    worker.login("owner", "synthetic-secret")
+    val before = worker.sessionRecordState()["sha256"]
+
+    dispatcher.pendingTokens = "rotated-session".toByteArray()
+    worker.forceRefreshForTest()
+    val after = worker.sessionRecordState()["sha256"]
+
+    assertFalse(before == after)
+    assertEquals(listOf("login", "forceRefreshForTest"), dispatcher.calls.map { it.first })
+  }
+
+  @Test
   fun `worker strips unsafe errors and rejects unsafe success payloads`() {
     val unsafeError = mapOf<String, Any?>(
       "status" to "error",
@@ -202,6 +223,14 @@ private class MemorySessionStore(
     if (failClear) throw GarminTokenStoreException("garmin_token_clear_failed")
     value?.fill(0)
     value = null
+  }
+
+  override fun recordIdentity(): Map<String, Any?> {
+    val bytes = value ?: return mapOf("present" to false, "version" to 1)
+    val digest = MessageDigest.getInstance("SHA-256")
+      .digest(bytes)
+      .joinToString("") { byte -> "%02x".format(byte) }
+    return mapOf("present" to true, "version" to 1, "sha256" to digest)
   }
 }
 

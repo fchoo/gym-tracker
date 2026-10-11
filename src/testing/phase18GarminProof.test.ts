@@ -12,6 +12,7 @@ import {
   phase18GarminProofEnabled,
 } from "./phase18GarminProof";
 import type { GarminConnectionState } from "../domains/activities/garminActivitySourcePort";
+import type { GarminConnectNativeModule } from "../../modules/garmin-connect/src";
 
 const HASH = "a".repeat(64);
 
@@ -33,6 +34,13 @@ function fixture() {
     })),
   };
   const nativePort = {
+    sessionRecordState: jest.fn<GarminConnectNativeModule["sessionRecordState"]>()
+      .mockResolvedValueOnce({ present: true, version: 1, sha256: "1".repeat(64) })
+      .mockResolvedValueOnce({ present: true, version: 1, sha256: "2".repeat(64) }),
+    forceRefreshForTest: jest.fn(async () => ok(2, {
+      kind: "connected",
+      account_namespace: "private-account-namespace",
+    })),
     restoreSession: jest.fn(async () => ok(2, {
       kind: "connected",
       account_namespace: "private-account-namespace",
@@ -206,7 +214,8 @@ describe("Phase 18 guarded Garmin proof", () => {
       },
     ]);
     expect(nativePort.restoreSession).toHaveBeenCalledTimes(1);
-    expect(nativePort.getActivities).toHaveBeenCalledTimes(1);
+    expect(nativePort.forceRefreshForTest).toHaveBeenCalledTimes(1);
+    expect(nativePort.sessionRecordState).toHaveBeenCalledTimes(2);
   });
 
   it("collapses unknown failures to a bounded technical-review result", async () => {

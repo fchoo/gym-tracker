@@ -233,6 +233,10 @@ test("Phase 18 runner classifies post-manifest failures without leaking exceptio
     code: "packaging_failed",
   }]);
   assert.equal(report.failure_stage, "PH18-PKG");
+  assert.deepEqual(report.privacy_scan, {
+    status: "not_run",
+    scanned_artifact_count: 0,
+  });
   assert.doesNotMatch(JSON.stringify(report), /private|path|token|account|123456789/iu);
   assert.throws(
     () => createPhase18GarminTechnicalReviewReport({
