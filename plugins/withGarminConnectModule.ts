@@ -7,6 +7,7 @@ import {
 
 const CHAQUOPY_PLUGIN = 'id("com.chaquo.python") version "17.0.0" apply false';
 const CHAQUOPY_CLASSPATH = "classpath('com.chaquo.python:gradle:17.0.0')";
+const CHAQUOPY_REPOSITORY = 'maven { url "https://chaquo.com/maven" }';
 const HOST_MARKER = "// gym-tracker: Garmin Connect embedded Python";
 
 type GradleProperty =
@@ -26,7 +27,9 @@ export function applyGarminGradleProperties(
 }
 
 export function applyGarminProjectBuildGradle(contents: string): string {
-  if (contents.includes(CHAQUOPY_PLUGIN) || contents.includes(CHAQUOPY_CLASSPATH)) return contents;
+  let configured = contents;
+  if (configured.includes(CHAQUOPY_PLUGIN)) return configured;
+  if (configured.includes(CHAQUOPY_CLASSPATH)) return addChaquopyRepository(configured);
   const pluginsBlock = /plugins\s*\{/u.exec(contents);
   if (pluginsBlock !== null) {
     const insertionPoint = (pluginsBlock.index ?? 0) + pluginsBlock[0].length;
@@ -35,7 +38,16 @@ export function applyGarminProjectBuildGradle(contents: string): string {
   const buildscriptDependencies = /buildscript\s*\{[\s\S]*?\bdependencies\s*\{/u.exec(contents);
   if (buildscriptDependencies === null) throw new Error("garmin_cng_missing_plugins_block");
   const insertionPoint = (buildscriptDependencies.index ?? 0) + buildscriptDependencies[0].length;
-  return `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_CLASSPATH}${contents.slice(insertionPoint)}`;
+  configured = `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_CLASSPATH}${contents.slice(insertionPoint)}`;
+  return addChaquopyRepository(configured);
+}
+
+function addChaquopyRepository(contents: string): string {
+  if (contents.includes(CHAQUOPY_REPOSITORY)) return contents;
+  const allProjectsRepositories = /allprojects\s*\{[\s\S]*?\brepositories\s*\{/u.exec(contents);
+  if (allProjectsRepositories === null) return contents;
+  const insertionPoint = (allProjectsRepositories.index ?? 0) + allProjectsRepositories[0].length;
+  return `${contents.slice(0, insertionPoint)}\n    ${CHAQUOPY_REPOSITORY}${contents.slice(insertionPoint)}`;
 }
 
 export function applyGarminAppBuildGradle(contents: string): string {
