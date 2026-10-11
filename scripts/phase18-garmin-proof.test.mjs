@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -9,6 +10,12 @@ import {
   parsePhase18GarminProofRunnerArgs,
   validatePhase18GarminProofBuildManifest,
 } from "./run-phase18-garmin-proof.mjs";
+import {
+  createPhase18GarminProofFinalEvidence,
+  parsePhase18GarminProofVerifierArgs,
+  validatePhase18GarminProofCurrentIdentity,
+  validatePhase18GarminProofEvidence,
+} from "./verify-phase18-garmin-proof.mjs";
 
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
@@ -28,6 +35,41 @@ function manifest(overrides = {}) {
     apk_sha256: HASH,
     signature_sha256: HASH,
     device_identity_sha256: HASH,
+    ...overrides,
+  };
+}
+
+function passedCase(id) {
+  const base = { id, status: "passed", duration_ms: 1 };
+  if (id === "PH18-PKG") return { ...base, result_sha256: HASH };
+  if (id === "PH18-MFA") return { ...base, outcome: "not_requested" };
+  if (["PH18-READ", "PH18-REFRESH", "PH18-PRIVACY"].includes(id)) {
+    return { ...base, count: 1, result_sha256: HASH };
+  }
+  return base;
+}
+
+function passedEvidence(overrides = {}) {
+  return {
+    schema_version: 1,
+    suite: "phase18-garmin-proof",
+    status: "passed",
+    manifest: manifest(),
+    case_ids: [...createPhase18GarminProofRunnerPlan().case_ids],
+    cases: createPhase18GarminProofRunnerPlan().case_ids.map(passedCase),
+    standalone: {
+      embedded_js: true,
+      external_python: false,
+      metro: false,
+      downloaded_scripts: false,
+      runtime_agent: false,
+    },
+    privacy_scan: {
+      status: "passed",
+      scanned_artifact_count: 2,
+      report_sha256: HASH,
+    },
+    raw_report_sha256: HASH,
     ...overrides,
   };
 }
@@ -146,5 +188,164 @@ test("Phase 18 package scripts expose only planning, focused tests, and strict v
   assert.equal(
     scripts["test:evidence:phase18:garmin-proof"],
     "node --test scripts/phase18-garmin-proof.test.mjs",
+  );
+});
+
+test("Phase 18 verifier accepts one exact ordered pass and binds current source/artifacts", () => {
+  const evidence = passedEvidence();
+  assert.deepEqual(validatePhase18GarminProofEvidence(evidence), {
+    status: "passed",
+    cases: 7,
+  });
+  assert.equal(validatePhase18GarminProofCurrentIdentity(evidence, {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+    rawReportSha256: HASH,
+  }), true);
+});
+
+test("Phase 18 verifier rejects missing, skipped, duplicated, and reordered cases", () => {
+  const exact = passedEvidence();
+  const variants = [
+    { ...exact, cases: exact.cases.slice(0, -1) },
+    { ...exact, cases: exact.cases.map((entry, index) => index === 3 ? { ...entry, status: "skipped" } : entry) },
+    { ...exact, cases: [...exact.cases.slice(0, -1), exact.cases[0]] },
+    { ...exact, cases: [exact.cases[1], exact.cases[0], ...exact.cases.slice(2)] },
+    { ...exact, case_ids: [...exact.case_ids].reverse() },
+  ];
+  for (const evidence of variants) {
+    assert.throws(
+      () => validatePhase18GarminProofEvidence(evidence),
+      /phase18_evidence_/u,
+    );
+  }
+});
+
+test("Phase 18 verifier rejects stale or wrong artifact bindings", () => {
+  const evidence = passedEvidence();
+  const current = {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+    rawReportSha256: HASH,
+  };
+  for (const key of Object.keys(current)) {
+    const wrong = {
+      ...current,
+      [key]: key === "currentHead" ? "c".repeat(40) : "c".repeat(64),
+    };
+    assert.throws(
+      () => validatePhase18GarminProofCurrentIdentity(evidence, wrong),
+      /phase18_evidence_current_identity_invalid/u,
+    );
+  }
+});
+
+test("Phase 18 verifier accepts a bounded technical stop but never mistakes it for PASS", () => {
+  const cases = createPhase18GarminProofRunnerPlan().case_ids
+    .slice(0, 5)
+    .map(passedCase);
+  cases[4] = {
+    id: "PH18-RESTART",
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    duration_ms: 1,
+    code: "sign_in_required",
+  };
+  const evidence = passedEvidence({
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    cases,
+    failure_stage: "PH18-RESTART",
+    failure_code: "sign_in_required",
+  });
+  assert.deepEqual(validatePhase18GarminProofEvidence(evidence), {
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    cases: 5,
+    stage: "PH18-RESTART",
+    code: "sign_in_required",
+  });
+  assert.throws(
+    () => validatePhase18GarminProofEvidence({ ...evidence, status: "passed" }),
+    /phase18_evidence_/u,
+  );
+});
+
+test("Phase 18 verifier rejects secret, account, activity, route, health, filename, URL, and SQL data", () => {
+  const forbidden = [
+    { credentials: "secret" },
+    { account_namespace: "private" },
+    { external_activity_id: "123456789" },
+    { route: [{ latitude: 1 }] },
+    { heart_rate: 151 },
+    { bodyweight: 70 },
+    { filename: "personal.fit" },
+    { url: "https://example.invalid" },
+    { sql_params: ["private"] },
+    { note: "owner@example.invalid" },
+  ];
+  for (const extra of forbidden) {
+    assert.throws(
+      () => validatePhase18GarminProofEvidence({ ...passedEvidence(), ...extra }),
+      /phase18_evidence_privacy_invalid/u,
+    );
+  }
+});
+
+test("Phase 18 final evidence can only be sealed from a matching bounded raw report", () => {
+  const report = passedEvidence();
+  delete report.raw_report_sha256;
+  delete report.case_ids;
+  const rawReportBytes = Buffer.from(`${JSON.stringify(report)}\n`);
+  const finalEvidence = createPhase18GarminProofFinalEvidence({
+    manifest: manifest(),
+    report,
+    rawReportBytes,
+  });
+  assert.equal(finalEvidence.raw_report_sha256, createHash("sha256").update(rawReportBytes).digest("hex"));
+  assert.deepEqual(finalEvidence.case_ids, createPhase18GarminProofRunnerPlan().case_ids);
+  assert.deepEqual(validatePhase18GarminProofEvidence(finalEvidence), {
+    status: "passed",
+    cases: 7,
+  });
+  assert.throws(
+    () => createPhase18GarminProofFinalEvidence({
+      manifest: manifest({ apk_sha256: "c".repeat(64) }),
+      report,
+      rawReportBytes,
+    }),
+    /phase18_evidence_report_identity_invalid/u,
+  );
+});
+
+test("Phase 18 sealing requires the explicit comprehensive Phase 20 checkpoint", () => {
+  assert.deepEqual(parsePhase18GarminProofVerifierArgs([
+    "--manifest",
+    MANIFEST,
+  ]), {
+    manifest: MANIFEST,
+    seal: false,
+    phase20Checkpoint: false,
+  });
+  assert.deepEqual(parsePhase18GarminProofVerifierArgs([
+    "--manifest",
+    MANIFEST,
+    "--seal",
+    "--phase20-native-checkpoint",
+  ]), {
+    manifest: MANIFEST,
+    seal: true,
+    phase20Checkpoint: true,
+  });
+  assert.throws(
+    () => parsePhase18GarminProofVerifierArgs(["--manifest", MANIFEST, "--seal"]),
+    /phase18_verifier_arguments_invalid/u,
   );
 });
