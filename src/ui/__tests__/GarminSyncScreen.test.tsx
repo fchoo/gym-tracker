@@ -53,6 +53,7 @@ async function renderScreen(input: Readonly<{
   reduceMotion?: boolean;
   width?: number;
   onBack?: () => void;
+  returnFocusActivityId?: string;
 }>) {
   const onOpenActivity = jest.fn();
   const onBack = input.onBack ?? jest.fn();
@@ -61,6 +62,7 @@ async function renderScreen(input: Readonly<{
     loadActivities: input.loadActivities ?? (async () => [activity]),
     onBack,
     onOpenActivity,
+    returnFocusActivityId: input.returnFocusActivityId,
     source: input.source,
     width: input.width,
   } as React.ComponentProps<typeof GarminSyncScreen> & Readonly<{
@@ -79,6 +81,40 @@ async function renderScreen(input: Readonly<{
 }
 
 describe("GarminSyncScreen connection tracer", () => {
+  it("publishes a synced row only after the shared commit resolves, then opens its opaque local ID", async () => {
+    let committedActivities: readonly GarminActivityListItem[] = [];
+    let acknowledgeCommit: (() => void) | undefined;
+    const loadActivities = jest.fn(async () => committedActivities);
+    const coordinator: GarminSyncControllerPort = {
+      syncNow: async () => {
+        await new Promise<void>((resolve) => {
+          acknowledgeCommit = resolve;
+        });
+        committedActivities = [activity];
+        return { kind: "success", counts };
+      },
+    };
+    const { onOpenActivity } = await renderScreen({
+      coordinator,
+      loadActivities,
+      returnFocusActivityId: "local-activity-1",
+      source: connectedSource(),
+    });
+
+    expect(await screen.findByText("No imported activities yet.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Sync now" }));
+    expect(screen.getByText("Syncing Garmin activities")).toBeOnTheScreen();
+    expect(screen.queryByText("Morning run")).not.toBeOnTheScreen();
+
+    await act(async () => acknowledgeCommit?.());
+
+    expect(await screen.findByText("Morning run")).toBeOnTheScreen();
+    const committedRow = screen.getByRole("button", { name: "Open Morning run" });
+    expect(committedRow).toHaveProp("accessibilityState", { selected: true });
+    await fireEvent.press(committedRow);
+    expect(onOpenActivity).toHaveBeenCalledWith("local-activity-1");
+  });
+
   it("moves from disconnected credentials through MFA to a connected source-backed list", async () => {
     const login = jest.fn(async () => ({
       kind: "mfa_required" as const,

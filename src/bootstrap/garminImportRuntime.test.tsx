@@ -8,7 +8,10 @@ import type {
   ImportedActivityCommandRepository,
 } from "../domains/activities/importCommands";
 import type { GarminSourceEnvelope } from "../domains/activities/garminActivitySourcePort";
-import { createGarminImportRuntime } from "./garminImportRuntime";
+import {
+  createGarminImportRuntime,
+  createGarminRootRuntime,
+} from "./garminImportRuntime";
 
 const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -44,6 +47,77 @@ function envelope(): GarminSourceEnvelope {
 }
 
 describe("Garmin import runtime", () => {
+  it("composes one source, coordinator, shared commit, and durable history reader", async () => {
+    const sourceEnvelope = envelope();
+    const durableActivities: Array<Readonly<{
+      activityId: string;
+      title: string;
+      activityType: string;
+      confirmedLocalDate: string;
+    }>> = [];
+    const operations: string[] = [];
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async (input) => {
+        operations.push("shared-commit");
+        durableActivities.push(Object.freeze({
+          activityId: input.activityId,
+          title: "Morning run",
+          activityType: "Running",
+          confirmedLocalDate: input.confirmedLocalDate,
+        }));
+        return Object.freeze({
+          kind: "imported" as const,
+          activityId: input.activityId,
+          aggregateRevision: 1,
+        });
+      }),
+    };
+    const source = {
+      connectionState: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      login: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      resumeMfa: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      logout: jest.fn(async () => undefined),
+      listRunningSummaries: jest.fn(async () => ({ items: [sourceEnvelope] })),
+      readActivity: jest.fn(async () => sourceEnvelope),
+    };
+    const runtime = createGarminRootRuntime({
+      loadActivities: async () => Object.freeze([...durableActivities]),
+      requestFor: async () => Object.freeze({
+        requestId: "garmin-root-request",
+        requestSha256: "d".repeat(64),
+        activityId: "activity-root-01",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-06-20",
+      }),
+      services: Object.freeze({ importedActivities: repository }),
+      sha256,
+      source,
+    });
+
+    await expect(runtime.loadActivities()).resolves.toEqual([]);
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "success",
+      counts: { newActivities: 1 },
+    });
+    await expect(runtime.loadActivities()).resolves.toEqual([
+      expect.objectContaining({ activityId: "activity-root-01" }),
+    ]);
+    expect(operations).toEqual(["shared-commit"]);
+    expect(source.readActivity).toHaveBeenCalledWith("424242");
+  });
+
   it("prepares the exact envelope and invalidates reads only after the committed result", async () => {
     const events: string[] = [];
     const committed: GarminImportResult = Object.freeze({
