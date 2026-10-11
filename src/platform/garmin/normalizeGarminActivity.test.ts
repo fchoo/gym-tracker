@@ -142,38 +142,43 @@ describe("normalize Garmin activity", () => {
     expect(envelope).not.toHaveProperty("fit_sha256");
   });
 
-  it("keeps semantic identity stable across key/fetch-time changes and changes it with content", async () => {
-    const first = outdoorFixture("2026-10-11T07:00:00.000Z");
-    const reordered = outdoorFixture("2026-10-11T08:00:00.000Z");
-    const second = {
-      ...reordered,
+  it("hashes complete raw components separately from their normalized semantics", async () => {
+    const first = outdoorFixture();
+    const reordered = {
+      ...first,
       activity: {
-        fetchTime: reordered.activity.fetchTime,
-        summaryDTO: { ...reordered.activity.summaryDTO },
-        activityTypeDTO: { ...reordered.activity.activityTypeDTO },
-        activityId: reordered.activity.activityId,
+        fetchTime: first.activity.fetchTime,
+        summaryDTO: { ...first.activity.summaryDTO },
+        activityTypeDTO: { ...first.activity.activityTypeDTO },
+        activityId: first.activity.activityId,
       },
     };
-    const changed = {
-      ...second,
+    const metadataChanged = {
+      ...reordered,
+      activity: { ...reordered.activity, fetchTime: "2026-10-11T08:00:00.000Z" },
+    };
+    const semanticChanged = {
+      ...metadataChanged,
       activity: {
-        ...second.activity,
-        summaryDTO: { ...second.activity.summaryDTO, distance: 5_001 },
+        ...metadataChanged.activity,
+        summaryDTO: { ...metadataChanged.activity.summaryDTO, distance: 5_001 },
       },
     };
 
-    const [firstEnvelope, secondEnvelope, changedEnvelope] = await Promise.all([
+    const [firstEnvelope, reorderedEnvelope, metadataEnvelope, semanticEnvelope] = await Promise.all([
       normalizeGarminActivity(first, sha256),
-      normalizeGarminActivity(second, sha256),
-      normalizeGarminActivity(changed, sha256),
+      normalizeGarminActivity(reordered, sha256),
+      normalizeGarminActivity(metadataChanged, sha256),
+      normalizeGarminActivity(semanticChanged, sha256),
     ]);
 
-    expect(secondEnvelope.normalized_json_sha256).toBe(firstEnvelope.normalized_json_sha256);
-    expect(secondEnvelope.raw_component_sha256).toEqual(firstEnvelope.raw_component_sha256);
-    expect(changedEnvelope.normalized_json_sha256).not.toBe(firstEnvelope.normalized_json_sha256);
-    expect(changedEnvelope.raw_component_sha256.activity).not.toBe(
-      firstEnvelope.raw_component_sha256.activity,
-    );
+    expect(reorderedEnvelope.raw_component_sha256).toEqual(firstEnvelope.raw_component_sha256);
+    expect(metadataEnvelope.normalized_json_sha256).toBe(firstEnvelope.normalized_json_sha256);
+    expect(metadataEnvelope.raw_component_sha256.activity).not.toBe(firstEnvelope.raw_component_sha256.activity);
+    expect(metadataEnvelope.raw_component_sha256.splits).toBe(firstEnvelope.raw_component_sha256.splits);
+    expect(metadataEnvelope.raw_component_sha256.details).toBe(firstEnvelope.raw_component_sha256.details);
+    expect(semanticEnvelope.normalized_json_sha256).not.toBe(metadataEnvelope.normalized_json_sha256);
+    expect(semanticEnvelope.raw_component_sha256.activity).not.toBe(metadataEnvelope.raw_component_sha256.activity);
   });
 
   it("preserves present zero separately from absent duration, HR, route, laps, and samples", async () => {

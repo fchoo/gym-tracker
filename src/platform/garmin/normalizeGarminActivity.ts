@@ -122,14 +122,6 @@ function normalizeSubtype(typeKey: unknown): "outdoor" | "treadmill" {
   throw new GarminActivityNormalizationError("garmin_sport_unsupported");
 }
 
-function projectSummary(summary: PlainRecord): PlainRecord {
-  const projected: PlainRecord = { startTimeGMT: summary.startTimeGMT };
-  for (const key of ["startTimeLocal", "timeZoneId", "distance", "duration", "elapsedDuration", "movingDuration", "averageHR"] as const) {
-    if (summary[key] !== undefined && summary[key] !== null) projected[key] = summary[key];
-  }
-  return projected;
-}
-
 function sourceDateEvidence(summary: PlainRecord, startedAtMs: number): Readonly<{
   sourceLocalDateTime?: string;
   sourceTimeZone?: string;
@@ -169,13 +161,9 @@ function sourceDateEvidence(summary: PlainRecord, startedAtMs: number): Readonly
   });
 }
 
-function normalizeLaps(splits: PlainRecord): Readonly<{
-  normalized: CanonicalGarminPayload["laps"];
-  projected: readonly PlainRecord[];
-}> {
+function normalizeLaps(splits: PlainRecord): CanonicalGarminPayload["laps"] {
   const sourceLaps = optionalArray(splits.lapDTOs, 1_000);
   const normalized: CanonicalGarminPayload["laps"][number][] = [];
-  const projected: PlainRecord[] = [];
   for (let ordinal = 0; ordinal < sourceLaps.length; ordinal += 1) {
     const source = record(sourceLaps[ordinal]);
     const lapIndex = sourceNumber(source, "lapIndex");
@@ -188,21 +176,12 @@ function normalizeLaps(splits: PlainRecord): Readonly<{
     assignIfPresent(lap, "average_heart_rate_bpm", heartRate(source, "averageHR"));
     if (Object.keys(lap).length === 1) invalid();
     normalized.push(lap as CanonicalGarminPayload["laps"][number]);
-    const sourceProjection: PlainRecord = {};
-    for (const key of ["lapIndex", "distance", "duration", "elapsedDuration", "movingDuration", "averageHR"] as const) {
-      if (source[key] !== undefined && source[key] !== null) sourceProjection[key] = source[key];
-    }
-    projected.push(sourceProjection);
   }
-  return { normalized, projected };
+  return normalized;
 }
 
-function metricDescriptors(details: PlainRecord): Readonly<{
-  projected: readonly Readonly<{ key: string; metricsIndex: number }>[];
-  reviewed: ReadonlyMap<string, number>;
-}> {
+function metricDescriptors(details: PlainRecord): ReadonlyMap<string, number> {
   const sourceDescriptors = optionalArray(details.metricDescriptors, 128);
-  const projected: Array<Readonly<{ key: string; metricsIndex: number }>> = [];
   const reviewed = new Map<string, number>();
   const indexes = new Set<number>();
   const keys = new Set<string>();
@@ -215,20 +194,18 @@ function metricDescriptors(details: PlainRecord): Readonly<{
       || keys.has(key) || indexes.has(index as number)) invalid();
     keys.add(key);
     indexes.add(index as number);
-    projected.push({ key, metricsIndex: index as number });
     if (REVIEWED_METRIC_KEYS.has(key)) reviewed.set(key, index as number);
   }
-  return { projected, reviewed };
+  return reviewed;
 }
 
-function normalizeSamples(details: PlainRecord, descriptors: ReadonlyMap<string, number>): Readonly<{
-  normalized: NonNullable<CanonicalGarminPayload["samples"]>;
-  projected: readonly Readonly<{ metrics: readonly (number | null)[] }>[];
-}> {
+function normalizeSamples(
+  details: PlainRecord,
+  descriptors: ReadonlyMap<string, number>,
+): NonNullable<CanonicalGarminPayload["samples"]> {
   const sourceSamples = optionalArray(details.activityDetailMetrics, 2_000);
   if (sourceSamples.length > 0 && descriptors.size === 0) invalid();
   const normalized: NonNullable<CanonicalGarminPayload["samples"]>[number][] = [];
-  const projected: Array<Readonly<{ metrics: readonly (number | null)[] }>> = [];
   for (const sourceSample of sourceSamples) {
     const metricsValue = record(sourceSample).metrics;
     if (!Array.isArray(metricsValue) || metricsValue.length > 128) invalid();
@@ -237,7 +214,6 @@ function normalizeSamples(details: PlainRecord, descriptors: ReadonlyMap<string,
       if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) invalid();
       return value;
     });
-    projected.push({ metrics });
     const sample: Record<string, number> = {};
     const elapsedIndex = descriptors.get("sumElapsedDuration");
     const distanceIndex = descriptors.get("sumDistance");
@@ -253,27 +229,23 @@ function normalizeSamples(details: PlainRecord, descriptors: ReadonlyMap<string,
     }
     if (Object.keys(sample).length > 0) normalized.push(sample as NonNullable<CanonicalGarminPayload["samples"]>[number]);
   }
-  return { normalized, projected };
+  return normalized;
 }
 
-function normalizeRoute(details: PlainRecord, subtype: "outdoor" | "treadmill"): Readonly<{
-  normalized: NonNullable<CanonicalGarminPayload["route"]>;
-  projected?: Readonly<{ polyline: readonly PlainRecord[] }>;
-}> {
+function normalizeRoute(
+  details: PlainRecord,
+  subtype: "outdoor" | "treadmill",
+): NonNullable<CanonicalGarminPayload["route"]> {
   const geoValue = details.geoPolylineDTO;
-  if (geoValue === undefined || geoValue === null) return { normalized: [] };
+  if (geoValue === undefined || geoValue === null) return [];
   const geo = record(geoValue);
   const sourcePoints = optionalArray(geo.polyline, 4_000);
-  const projected: PlainRecord[] = [];
   const normalized: NonNullable<CanonicalGarminPayload["route"]>[number][] = [];
   for (const sourcePoint of sourcePoints) {
     const source = record(sourcePoint);
     const latitude = sourceNumber(source, "lat");
     const longitude = sourceNumber(source, "lon");
     if (latitude === undefined || longitude === undefined || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) invalid();
-    const projection: PlainRecord = { lat: latitude, lon: longitude };
-    if (source.elapsedDuration !== undefined && source.elapsedDuration !== null) projection.elapsedDuration = source.elapsedDuration;
-    projected.push(projection);
     if (subtype === "outdoor") {
       const point: Record<string, number> = {
         latitude_e6: Math.round(latitude * 1_000_000),
@@ -283,7 +255,7 @@ function normalizeRoute(details: PlainRecord, subtype: "outdoor" | "treadmill"):
       normalized.push(point as NonNullable<CanonicalGarminPayload["route"]>[number]);
     }
   }
-  return { normalized, projected: { polyline: projected } };
+  return normalized;
 }
 
 function lastSampleDistance(samples: NonNullable<CanonicalGarminPayload["samples"]>): number | undefined {
@@ -319,10 +291,10 @@ export async function normalizeGarminActivity(
   const laps = normalizeLaps(record(input.splits));
   const details = record(input.details);
   const descriptors = metricDescriptors(details);
-  const samples = normalizeSamples(details, descriptors.reviewed);
+  const samples = normalizeSamples(details, descriptors);
   const route = normalizeRoute(details, subtype);
   const summaryDistance = meters(summary, "distance");
-  const sampledDistance = lastSampleDistance(samples.normalized);
+  const sampledDistance = lastSampleDistance(samples);
   const distanceMeters = summaryDistance ?? sampledDistance;
   if (distanceMeters === undefined) invalid();
   const startedAtMs = parseUtcTimestamp(summary.startTimeGMT);
@@ -342,32 +314,21 @@ export async function normalizeGarminActivity(
   assignIfPresent(normalizedCandidate, "timer_ms", secondsToMilliseconds(summary, "duration"));
   assignIfPresent(normalizedCandidate, "moving_ms", secondsToMilliseconds(summary, "movingDuration"));
   assignIfPresent(normalizedCandidate, "average_heart_rate_bpm", heartRate(summary, "averageHR"));
-  normalizedCandidate.laps = laps.normalized;
-  if (samples.normalized.length > 0) normalizedCandidate.samples = samples.normalized;
-  if (route.normalized.length > 0) normalizedCandidate.route = route.normalized;
+  normalizedCandidate.laps = laps;
+  if (samples.length > 0) normalizedCandidate.samples = samples;
+  if (route.length > 0) normalizedCandidate.route = route;
   const normalized = CanonicalGarminPayloadSchema.parse(normalizedCandidate);
 
-  const activityProjection = {
-    activityId: activity.activityId,
-    activityTypeDTO: { typeKey: activityType.typeKey },
-    summaryDTO: projectSummary(summary),
-  };
-  const splitsProjection = { lapDTOs: laps.projected };
-  const detailsProjection: PlainRecord = {
-    metricDescriptors: descriptors.projected,
-    activityDetailMetrics: samples.projected,
-  };
-  if (route.projected !== undefined) detailsProjection.geoPolylineDTO = route.projected;
   const [activityDigest, splitsDigest, detailsDigest, normalizedDigest] = await Promise.all([
-    hashCanonicalGarminPayload(activityProjection, sha256),
-    hashCanonicalGarminPayload(splitsProjection, sha256),
-    hashCanonicalGarminPayload(detailsProjection, sha256),
+    hashCanonicalGarminPayload(input.activity, sha256),
+    hashCanonicalGarminPayload(input.splits, sha256),
+    hashCanonicalGarminPayload(input.details, sha256),
     hashCanonicalGarminPayload({ normalization_version: GARMIN_NORMALIZATION_VERSION, normalized }, sha256),
   ]);
-  const exactEffortBasis = laps.normalized.length > 0
+  const exactEffortBasis = laps.length > 0
     ? "source_laps" as const
     : summaryDistance === undefined ? "sampled" as const : "source_summary" as const;
-  const hasSampledChannels = samples.normalized.length > 0 || route.normalized.length > 0;
+  const hasSampledChannels = samples.length > 0 || route.length > 0;
 
   return parseGarminSourceEnvelope({
     version: 1,
@@ -384,9 +345,9 @@ export async function normalizeGarminActivity(
     sample_fidelity: hasSampledChannels ? "sampled" : exactEffortBasis,
     fidelity_by_channel: {
       summary: "source_summary",
-      ...(laps.normalized.length === 0 ? {} : { laps: "source_laps" }),
-      ...(route.normalized.length === 0 ? {} : { route: "sampled" }),
-      ...(samples.normalized.some((sample) => sample.heart_rate_bpm !== undefined)
+      ...(laps.length === 0 ? {} : { laps: "source_laps" }),
+      ...(route.length === 0 ? {} : { route: "sampled" }),
+      ...(samples.some((sample) => sample.heart_rate_bpm !== undefined)
         ? { heart_rate_samples: "sampled" }
         : {}),
       exact_effort_basis: exactEffortBasis,
