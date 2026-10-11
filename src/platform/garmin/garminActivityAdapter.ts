@@ -342,7 +342,7 @@ export function createGarminActivityAdapter(input: Readonly<{
         details: details.data,
       });
       requireCurrent(details.generation, startedGeneration);
-      const parsed = parseGarminSourceEnvelope(envelope);
+      const parsed = parseGarminSourceEnvelope(envelope) as GarminSourceEnvelope;
       if (parsed.external_activity_id !== externalActivityId) throw new GarminActivityAdapterError("malformed_response");
       return parsed;
     },

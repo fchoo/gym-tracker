@@ -128,9 +128,17 @@ describe("normalize Garmin activity", () => {
         splits: expect.stringMatching(/^[a-f0-9]{64}$/u),
         details: expect.stringMatching(/^[a-f0-9]{64}$/u),
       },
-      sample_fidelity: "source_laps",
+      sample_fidelity: "sampled",
+      fidelity_by_channel: {
+        summary: "source_summary",
+        laps: "source_laps",
+        route: "sampled",
+        heart_rate_samples: "sampled",
+        exact_effort_basis: "source_laps",
+      },
       normalized: expectedNormalized,
     });
+    expect(isExactGarminEffortEligible(envelope, 1_000)).toBe(true);
     expect(envelope).not.toHaveProperty("fit_sha256");
   });
 
@@ -289,7 +297,8 @@ describe("normalize Garmin activity", () => {
 
     const envelope = await normalizeGarminActivity(fixture, sha256);
 
-    expect(envelope.sample_fidelity).toBe("source_summary");
+    expect(envelope.sample_fidelity).toBe("sampled");
+    expect(envelope.fidelity_by_channel?.exact_effort_basis).toBe("source_summary");
     expect(envelope.normalized.distance_meters).toBe(0);
   });
 

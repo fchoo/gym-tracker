@@ -37,7 +37,15 @@ const envelope = z.strictObject({
   version: z.literal(1), source_kind: z.literal("garmin_connect_account"), account_namespace: id,
   external_activity_id: id, normalization_version: z.number().int().min(1).max(100),
   normalized_json_sha256: hash, raw_component_sha256: z.strictObject({ activity: hash, splits: hash, details: hash }),
-  sample_fidelity: z.enum(["source_summary", "source_laps", "sampled"]), normalized: CanonicalGarminPayloadSchema,
+  sample_fidelity: z.enum(["source_summary", "source_laps", "sampled"]),
+  fidelity_by_channel: z.strictObject({
+    summary: z.literal("source_summary"),
+    laps: z.literal("source_laps").optional(),
+    route: z.literal("sampled").optional(),
+    heart_rate_samples: z.literal("sampled").optional(),
+    exact_effort_basis: z.enum(["source_summary", "source_laps", "sampled"]),
+  }).optional(),
+  normalized: CanonicalGarminPayloadSchema,
 });
 
 export class GarminImportBoundaryError extends Error {

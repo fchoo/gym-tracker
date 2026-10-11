@@ -21,6 +21,7 @@ function aggregateJson(input: ConfirmGarminImportInput): string {
     external_activity_id: envelope.external_activity_id,
     normalized_json_sha256: envelope.normalized_json_sha256,
     sample_fidelity: envelope.sample_fidelity,
+    ...(envelope.fidelity_by_channel === undefined ? {} : { fidelity_by_channel: envelope.fidelity_by_channel }),
     confirmed_local_date: input.confirmedLocalDate,
     ...(dateProvenance === undefined ? {} : {
       date_provenance: {

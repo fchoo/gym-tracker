@@ -364,6 +364,10 @@ export async function normalizeGarminActivity(
     hashCanonicalGarminPayload(detailsProjection, sha256),
     hashCanonicalGarminPayload({ normalization_version: GARMIN_NORMALIZATION_VERSION, normalized }, sha256),
   ]);
+  const exactEffortBasis = laps.normalized.length > 0
+    ? "source_laps" as const
+    : summaryDistance === undefined ? "sampled" as const : "source_summary" as const;
+  const hasSampledChannels = samples.normalized.length > 0 || route.normalized.length > 0;
 
   return parseGarminSourceEnvelope({
     version: 1,
@@ -377,9 +381,16 @@ export async function normalizeGarminActivity(
       splits: splitsDigest,
       details: detailsDigest,
     },
-    sample_fidelity: laps.normalized.length > 0
-      ? "source_laps"
-      : summaryDistance === undefined ? "sampled" : "source_summary",
+    sample_fidelity: hasSampledChannels ? "sampled" : exactEffortBasis,
+    fidelity_by_channel: {
+      summary: "source_summary",
+      ...(laps.normalized.length === 0 ? {} : { laps: "source_laps" }),
+      ...(route.normalized.length === 0 ? {} : { route: "sampled" }),
+      ...(samples.normalized.some((sample) => sample.heart_rate_bpm !== undefined)
+        ? { heart_rate_samples: "sampled" }
+        : {}),
+      exact_effort_basis: exactEffortBasis,
+    },
     normalized,
   }) as GarminSourceEnvelope;
 }
@@ -388,9 +399,11 @@ export function isExactGarminEffortEligible(
   envelope: GarminSourceEnvelope,
   distanceMeters: number,
 ): boolean {
-  if (!Number.isSafeInteger(distanceMeters) || distanceMeters <= 0 || envelope.sample_fidelity === "sampled") return false;
+  const exactEffortBasis = envelope.fidelity_by_channel?.exact_effort_basis
+    ?? envelope.sample_fidelity;
+  if (!Number.isSafeInteger(distanceMeters) || distanceMeters <= 0 || exactEffortBasis === "sampled") return false;
   if (hasDurationEvidence(envelope.normalized) && envelope.normalized.distance_meters === distanceMeters) return true;
-  return envelope.sample_fidelity === "source_laps" && envelope.normalized.laps.some((lap) =>
+  return exactEffortBasis === "source_laps" && envelope.normalized.laps.some((lap) =>
     lap.distance_meters === distanceMeters
     && hasDurationEvidence(lap));
 }

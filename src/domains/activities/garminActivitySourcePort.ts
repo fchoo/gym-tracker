@@ -30,5 +30,12 @@ export type GarminSourceEnvelope = Readonly<{
   normalized_json_sha256: string;
   raw_component_sha256: Readonly<{ activity: string; splits: string; details: string }>;
   sample_fidelity: "source_summary" | "source_laps" | "sampled";
+  fidelity_by_channel?: Readonly<{
+    summary: "source_summary";
+    laps?: "source_laps";
+    route?: "sampled";
+    heart_rate_samples?: "sampled";
+    exact_effort_basis: "source_summary" | "source_laps" | "sampled";
+  }>;
   normalized: CanonicalGarminPayload;
 }>;

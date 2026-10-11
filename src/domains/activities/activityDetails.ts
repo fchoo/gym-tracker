@@ -8,6 +8,13 @@ const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
 const acceptedAggregateSchema = z.object({
   normalized_json_sha256: sha256,
   sample_fidelity: z.enum(["source_summary", "source_laps", "sampled"]),
+  fidelity_by_channel: z.object({
+    summary: z.literal("source_summary"),
+    laps: z.literal("source_laps").optional(),
+    route: z.literal("sampled").optional(),
+    heart_rate_samples: z.literal("sampled").optional(),
+    exact_effort_basis: z.enum(["source_summary", "source_laps", "sampled"]),
+  }).optional(),
   confirmed_local_date: localDate,
   normalized: CanonicalGarminPayloadSchema,
 });
