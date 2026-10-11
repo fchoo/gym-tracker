@@ -18,6 +18,9 @@ import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
+  LOGICAL_BACKUP_FORMAT_VERSION,
+} from "../../src/domains/portability/backupContracts";
+import {
   createLogicalRestoreRepository,
 } from "../../src/platform/sqlite/repositories/logicalRestoreRepository";
 import {
@@ -426,10 +429,10 @@ describe("clean install logical restore", () => {
       createdAtMs: 1,
       snapshotId: "clean-install-empty-owner-state",
     })).resolves.toEqual({
-      version: 7,
+      version: LOGICAL_BACKUP_FORMAT_VERSION,
       snapshotId: "clean-install-empty-owner-state",
       createdAtMs: 1,
-      schemaVersion: 40,
+      schemaVersion: 42,
       manifest: {
         catalogReferenceCount: 0,
         rowCounts: expect.any(Object),
@@ -442,6 +445,7 @@ describe("clean install logical restore", () => {
       createdAtMs: 1,
       snapshotId: "clean-install-empty-owner-state-verify",
     });
+    expect(cleanOwnerState.tables.custom_exercise_mutation_receipts).toEqual([]);
     expect(
       Object.entries(cleanOwnerState.manifest.rowCounts)
         .filter(([table]) => table !== "portable_owner_identity")
@@ -460,6 +464,13 @@ describe("clean install logical restore", () => {
     await expect(bundledAuthoritySnapshot(clean, bundledExerciseId))
       .resolves.toEqual(cleanBundledAuthorityBeforeRestore);
     await expect(canonicalState(clean)).resolves.toEqual(expected);
+    expect(archive.tables.custom_exercise_mutation_receipts).toEqual([]);
+    expect((await createLogicalBackupRepository(clean).collect({
+      createdAtMs: 3,
+      snapshotId: "clean-install-receipt-roundtrip",
+    })).tables.custom_exercise_mutation_receipts).toEqual(
+      archive.tables.custom_exercise_mutation_receipts,
+    );
 
     const backupPlugin = readFileSync(
       join(process.cwd(), "plugins/withAndroidBackupRules.ts"),
