@@ -307,6 +307,26 @@ describe("GarminSyncScreen committed sync presentation", () => {
 });
 
 describe("GarminSyncScreen shared shell and disconnect contracts", () => {
+  it("keeps a stable one-line three-column header with an inert back placeholder", async () => {
+    await renderScreen({ source: connectedSource() });
+    await screen.findByText("Connected to Garmin");
+
+    const header = screen.getByTestId("garmin-three-column-header");
+    const placeholder = screen.getByTestId(
+      "garmin-inert-back-placeholder",
+      { includeHiddenElements: true },
+    );
+    expect(StyleSheet.flatten(header.props.style)).toMatchObject({
+      alignItems: "center",
+      flexDirection: "row",
+    });
+    expect(placeholder).toHaveProp("accessibilityElementsHidden", true);
+    expect(placeholder).toHaveProp("importantForAccessibility", "no-hide-descendants");
+    expect(screen.getByText("Garmin Sync")).toHaveProp("numberOfLines", 1);
+    expect(screen.queryByRole("button", { name: /back/iu })).not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Appearance" })).toBeOnTheScreen();
+  });
+
   it("cancels disconnect without writes, then confirms once and retains imported history", async () => {
     const logout = jest.fn(async () => undefined);
     await renderScreen({ source: { ...connectedSource(), logout } });
