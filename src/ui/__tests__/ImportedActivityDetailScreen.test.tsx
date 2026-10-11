@@ -42,7 +42,7 @@ const outdoorDetail: ImportedActivityDetail = Object.freeze({
   }),
 });
 
-function renderScreen(overrides: Partial<React.ComponentProps<typeof ImportedActivityDetailScreen>> = {}) {
+async function renderScreen(overrides: Partial<React.ComponentProps<typeof ImportedActivityDetailScreen>> = {}) {
   const props: React.ComponentProps<typeof ImportedActivityDetailScreen> = {
     state: { kind: "ready", detail: outdoorDetail },
     onBack: jest.fn(),
@@ -50,19 +50,20 @@ function renderScreen(overrides: Partial<React.ComponentProps<typeof ImportedAct
     onRetry: jest.fn(),
     ...overrides,
   };
-  return {
-    ...render(
+  const rendered = await render(
       <AppearanceProvider>
         <ImportedActivityDetailScreen {...props} />
       </AppearanceProvider>,
-    ),
+    );
+  return {
+    ...rendered,
     props,
   };
 }
 
 describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
-  it("renders factual summary, validated route alternative, optional HR, laps, and fidelity in order", () => {
-    renderScreen();
+  it("renders factual summary, validated route alternative, optional HR, laps, and fidelity in order", async () => {
+    await renderScreen();
 
     expect(screen.getByRole("header", { name: "Activity detail" })).toBeTruthy();
     expect(screen.getByText("Outdoor run")).toBeTruthy();
@@ -70,7 +71,7 @@ describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
     expect(screen.getByText("5.00 km")).toBeTruthy();
     expect(screen.getByText("26:00")).toBeTruthy();
     expect(screen.getByText("24:35")).toBeTruthy();
-    expect(screen.getByText("4:55/km")).toBeTruthy();
+    expect(screen.getAllByText("4:55/km")).toHaveLength(2);
     expect(screen.getByLabelText("Route from 2 validated source positions in 1 segment.")).toBeTruthy();
     expect(screen.getByLabelText("Average heart rate. 152 bpm.")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Lap" })).toBeTruthy();
@@ -80,8 +81,8 @@ describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
     expect(screen.queryByText(/987654321|must-never-render|garmin_connect_account/u)).toBeNull();
   });
 
-  it("keeps the only history action read-only and delegates matching explicitly", () => {
-    const { props } = renderScreen();
+  it("keeps the only history action read-only and delegates matching explicitly", async () => {
+    const { props } = await renderScreen();
 
     fireEvent.press(screen.getByRole("button", { name: "Match to scheduled workout" }));
 
