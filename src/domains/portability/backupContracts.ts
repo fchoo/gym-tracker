@@ -1,7 +1,7 @@
 /** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
-/** Version 8 carries durable custom-exercise mutation receipts. */
-export const LOGICAL_BACKUP_FORMAT_VERSION = 8 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8] as const);
+/** Version 9 carries immutable imported-activity revision review history. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 9 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -112,6 +112,8 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   imported_activity_identities: { primaryKey: ["activity_id"] },
   imported_activity_events: { primaryKey: ["id"] },
   imported_activity_match_invalidations: { primaryKey: ["id"] },
+  imported_activity_revision_proposals: { primaryKey: ["request_id"] },
+  imported_activity_revision_decisions: { primaryKey: ["request_id"] },
   running_match_events: { primaryKey: ["id"] },
   running_current_matches: { primaryKey: ["opportunity_id"] },
   running_activity_match_events: { primaryKey: ["id"] },
@@ -212,6 +214,15 @@ export const LOGICAL_BACKUP_V7_TABLES = Object.freeze(
 
 /** v8 adds durable custom-library command receipts. */
 export const LOGICAL_BACKUP_V8_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_current_matches",
+    "imported_activity_revision_proposals",
+    "imported_activity_revision_decisions",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v9 adds durable imported-activity revision review events. */
+export const LOGICAL_BACKUP_V9_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
 ) as readonly LogicalBackupTableName[];
 
@@ -283,6 +294,7 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
+  if (version === 9) return LOGICAL_BACKUP_V9_TABLES;
   if (version === 8) return LOGICAL_BACKUP_V8_TABLES;
   if (version === 7) return LOGICAL_BACKUP_V7_TABLES;
   if (version === 6) return LOGICAL_BACKUP_V6_TABLES;

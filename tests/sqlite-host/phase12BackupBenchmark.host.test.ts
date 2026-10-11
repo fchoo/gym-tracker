@@ -148,9 +148,9 @@ async function migratedKernel(): Promise<SqliteKernel> {
     recoveryBackup,
   }).run();
   expect(migrationResult).toEqual(expect.objectContaining({
-    currentVersion: 42,
+    currentVersion: 43,
   }));
-  expect(CURRENT_SCHEMA_VERSION).toBe(42);
+  expect(CURRENT_SCHEMA_VERSION).toBe(43);
   kernels.push(kernel);
   return kernel;
 }

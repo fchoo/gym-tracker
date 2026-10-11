@@ -2695,12 +2695,20 @@ export function WorkoutAppRuntimeProvider({
       accepted_normalized_sha256: string;
       removal_state: "active" | "removed";
       match_count: number;
+      pending_revision_count: number;
     }>(
       `SELECT activity.id AS activity_id, activity.aggregate_json,
               identity.aggregate_revision, identity.accepted_normalized_sha256,
               COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state,
               (SELECT count(*) FROM running_activity_current_matches current
-                WHERE current.activity_id = activity.id) AS match_count
+                WHERE current.activity_id = activity.id) AS match_count,
+              (SELECT count(*)
+                 FROM imported_activity_revision_proposals proposal
+                 LEFT JOIN imported_activity_revision_decisions decision
+                   ON decision.activity_id = proposal.activity_id
+                  AND decision.proposed_revision = proposal.proposed_revision
+                WHERE proposal.activity_id = activity.id
+                  AND decision.request_id IS NULL) AS pending_revision_count
          FROM imported_activities activity
          JOIN imported_activity_identities identity ON identity.activity_id = activity.id
          LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
@@ -2728,7 +2736,9 @@ export function WorkoutAppRuntimeProvider({
         confirmedLocalDate: projected.detail.confirmedLocalDate,
         ...(summary.length === 0 ? {} : { summary }),
         matchState: row.match_count === 1 ? "matched" as const : "unmatched" as const,
-        revisionState: "accepted" as const,
+        revisionState: row.pending_revision_count > 0
+          ? "needs_review" as const
+          : "accepted" as const,
       });
     }));
   }, [requireServices]);
@@ -2749,10 +2759,18 @@ export function WorkoutAppRuntimeProvider({
       aggregate_revision: number;
       accepted_normalized_sha256: string;
       removal_state: "active" | "removed";
+      pending_revision_count: number;
     }>(
       `SELECT activity.id AS activity_id, activity.aggregate_json,
               identity.aggregate_revision, identity.accepted_normalized_sha256,
-              COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state
+              COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state,
+              (SELECT count(*)
+                 FROM imported_activity_revision_proposals proposal
+                 LEFT JOIN imported_activity_revision_decisions decision
+                   ON decision.activity_id = proposal.activity_id
+                  AND decision.proposed_revision = proposal.proposed_revision
+                WHERE proposal.activity_id = activity.id
+                  AND decision.request_id IS NULL) AS pending_revision_count
          FROM imported_activities activity
          JOIN imported_activity_identities identity ON identity.activity_id = activity.id
          LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
@@ -2765,6 +2783,9 @@ export function WorkoutAppRuntimeProvider({
       return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
     }
     const row = rows[0]!;
+    if (row.pending_revision_count > 0) {
+      return Object.freeze({ kind: "revision_review" });
+    }
     return projectImportedActivityDetail({
       activityId: row.activity_id,
       aggregateJson: row.aggregate_json,

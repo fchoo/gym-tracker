@@ -39,6 +39,7 @@ import { runningSessionSlotMembershipMigration } from "./0039_running_session_sl
 import { scheduleCollisionOutcomesMigration } from "./0040_schedule_collision_outcomes";
 import { phase17FixtureCleanupMigration } from "./0041_phase17_fixture_cleanup";
 import { customExerciseMutationReceiptsMigration } from "./0042_custom_exercise_mutation_receipts";
+import { importedActivityRevisionReviewsMigration } from "./0043_imported_activity_revision_reviews";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -82,6 +83,7 @@ export const migrations = Object.freeze([
   scheduleCollisionOutcomesMigration,
   phase17FixtureCleanupMigration,
   customExerciseMutationReceiptsMigration,
+  importedActivityRevisionReviewsMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -129,6 +131,7 @@ export {
   scheduleCollisionOutcomesMigration,
   phase17FixtureCleanupMigration,
   customExerciseMutationReceiptsMigration,
+  importedActivityRevisionReviewsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

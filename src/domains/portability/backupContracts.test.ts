@@ -75,8 +75,8 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("sqlite_master");
   });
 
-  it("freezes prior formats while v8 adds durable custom-exercise command receipts", () => {
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(8);
+  it("freezes prior formats while v9 adds imported-activity revision reviews", () => {
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(9);
     expect(logicalBackupTablesForVersion(5)).not.toContain("imported_activity_identities");
     expect(logicalBackupTablesForVersion(5)).not.toContain("running_activity_match_events");
     expect(logicalBackupTablesForVersion(5)).not.toContain("workout_session_schedule_links");
@@ -103,6 +103,11 @@ describe("logical backup contract", () => {
     ]));
     expect(logicalBackupTablesForVersion(7)).not.toContain("custom_exercise_mutation_receipts");
     expect(logicalBackupTablesForVersion(8)).toContain("custom_exercise_mutation_receipts");
+    expect(logicalBackupTablesForVersion(8)).not.toContain("imported_activity_revision_proposals");
+    expect(logicalBackupTablesForVersion(9)).toEqual(expect.arrayContaining([
+      "imported_activity_revision_proposals",
+      "imported_activity_revision_decisions",
+    ]));
     expect(logicalBackupTablesForVersion(6)).not.toContain("running_activity_current_matches");
     expect(logicalBackupTablesForVersion(6)).not.toContain("imported_activity_current_lifecycle");
   });

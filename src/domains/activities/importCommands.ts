@@ -24,6 +24,33 @@ export type ConfirmGarminImportInput = Readonly<{
   dateProvenance?: GarminImportDateProvenance;
 }>;
 export type ImportedActivityCommandRepository = Readonly<{ confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult> }>;
+export type GarminRevisionDecisionInput = Readonly<{
+  action: "accept" | "keep";
+  requestId: string;
+  requestSha256: string;
+  activityId: string;
+  expectedAggregateRevision: number;
+  proposedRevision: number;
+  expectedProposedSha256: string;
+  occurredAtMs: number;
+}>;
+export type GarminRevisionDecisionResult = Readonly<{
+  kind: "revision_accepted" | "revision_kept" | "replayed" | "conflict";
+  activityId: string;
+  aggregateRevision: number;
+}>;
+export type GarminRevisionReview = Readonly<{
+  activityId: string;
+  acceptedRevision: number;
+  proposedRevision: number;
+  acceptedNormalizedSha256: string;
+  proposedNormalizedSha256: string;
+  changedFields: readonly string[];
+}>;
+export type ImportedActivityRevisionRepository = Readonly<{
+  resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
+  listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
+}>;
 export type ImportedActivityLifecycleRepository = Readonly<{ changeGarminActivityLifecycle(input: GarminActivityLifecycleInput): Promise<GarminImportResult> }>;
 export type GarminActivityLifecycleInput = Readonly<{ operation: "remove" | "restore"; requestId: string; requestSha256: string; activityId: string; expectedAggregateRevision: number; occurredAtMs: number; reason: string }>;
 
@@ -64,4 +91,23 @@ export async function confirmGarminImportDate(repository: ImportedActivityComman
   );
   if (!/^[a-f0-9]{64}$/u.test(input.requestSha256) || !/^[A-Za-z0-9._:-]{1,128}$/u.test(input.requestId) || !/^[A-Za-z0-9._:-]{1,128}$/u.test(input.activityId) || !Number.isSafeInteger(input.expectedAggregateRevision) || input.expectedAggregateRevision < 0 || !/^\d{4}-\d{2}-\d{2}$/u.test(input.confirmedLocalDate) || !validProvenance) throw new GarminImportBoundaryError("garmin_envelope_invalid");
   return repository.confirmGarminImport(input);
+}
+
+export async function resolveGarminImportRevision(
+  repository: ImportedActivityRevisionRepository,
+  input: GarminRevisionDecisionInput,
+): Promise<GarminRevisionDecisionResult> {
+  if (!/^[a-f0-9]{64}$/u.test(input.requestSha256)
+    || !/^[a-f0-9]{64}$/u.test(input.expectedProposedSha256)
+    || !/^[A-Za-z0-9._:-]{1,128}$/u.test(input.requestId)
+    || !/^[A-Za-z0-9._:-]{1,128}$/u.test(input.activityId)
+    || !Number.isSafeInteger(input.expectedAggregateRevision)
+    || input.expectedAggregateRevision < 1
+    || !Number.isSafeInteger(input.proposedRevision)
+    || input.proposedRevision <= input.expectedAggregateRevision
+    || !Number.isSafeInteger(input.occurredAtMs)
+    || input.occurredAtMs < 0) {
+    throw new GarminImportBoundaryError("garmin_envelope_invalid");
+  }
+  return repository.resolveGarminRevision(input);
 }

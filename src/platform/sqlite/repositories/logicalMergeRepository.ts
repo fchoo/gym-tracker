@@ -112,6 +112,7 @@ const FULL_PLAN_SOURCE_GRAPH_TABLES = Object.freeze([
   "imported_activity_laps", "imported_activity_chunks",
   "imported_activity_receipts", "imported_activity_removal_events",
   "imported_activity_events", "imported_activity_match_invalidations",
+  "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   "bodyweight_revisions", "bodyweight_entries", "bodyweight_tombstones",
   "bodyweight_entry_events", "bodyweight_command_receipts",
   "running_match_events", "running_activity_match_events",

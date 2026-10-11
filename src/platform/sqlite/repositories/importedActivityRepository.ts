@@ -1,12 +1,162 @@
-import type { ConfirmGarminImportInput, GarminImportResult } from "../../../domains/activities/importCommands";
+import type {
+  ConfirmGarminImportInput,
+  GarminImportResult,
+  GarminRevisionDecisionInput,
+  GarminRevisionDecisionResult,
+  GarminRevisionReview,
+} from "../../../domains/activities/importCommands";
+import { canonicalJson } from "../../../domains/activities/importContracts";
 import type { GarminActivityLifecycleInput } from "../../../domains/activities/importCommands";
 import { classifyGarminActivityIdentity } from "../../../domains/activities/activityIdentity";
 import type { SqliteKernel } from "../sqliteKernel";
 
 type Receipt = Readonly<{ request_sha256: string; activity_id: string }>;
 
+function aggregateJson(input: ConfirmGarminImportInput): string {
+  const envelope = input.staged.envelope;
+  const dateProvenance = input.dateProvenance;
+  return JSON.stringify({
+    source_kind: envelope.source_kind,
+    account_namespace: envelope.account_namespace,
+    external_activity_id: envelope.external_activity_id,
+    normalized_json_sha256: envelope.normalized_json_sha256,
+    sample_fidelity: envelope.sample_fidelity,
+    confirmed_local_date: input.confirmedLocalDate,
+    ...(dateProvenance === undefined ? {} : {
+      date_provenance: {
+        absolute_started_at_ms: dateProvenance.absoluteStartedAtMs,
+        ...(dateProvenance.sourceLocalDateTime === undefined ? {} : { source_local_date_time: dateProvenance.sourceLocalDateTime }),
+        ...(dateProvenance.sourceTimeZone === undefined ? {} : { source_time_zone: dateProvenance.sourceTimeZone }),
+        ...(dateProvenance.sourceUtcOffsetMinutes === undefined ? {} : { source_utc_offset_minutes: dateProvenance.sourceUtcOffsetMinutes }),
+        confirmed_local_date: dateProvenance.confirmedLocalDate,
+        confirmed_local_time: dateProvenance.confirmedLocalTime,
+        confirmed_time_zone: dateProvenance.confirmedTimeZone,
+        confirmed_utc_offset_minutes: dateProvenance.confirmedUtcOffsetMinutes,
+      },
+    }),
+    normalized: envelope.normalized,
+  });
+}
+
 export function createImportedActivityRepository(kernel: SqliteKernel) {
   return Object.freeze({
+    async listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]> {
+      const rows = await kernel.queryAll<{
+        activity_id: string;
+        aggregate_revision: number;
+        accepted_normalized_sha256: string;
+        accepted_aggregate_json: string;
+        proposed_revision: number;
+        normalized_sha256: string;
+        proposed_aggregate_json: string;
+      }>(`SELECT identity.activity_id, identity.aggregate_revision,
+                 identity.accepted_normalized_sha256,
+                 activity.aggregate_json AS accepted_aggregate_json,
+                 proposal.proposed_revision, proposal.normalized_sha256,
+                 proposal.envelope_json AS proposed_aggregate_json
+            FROM imported_activity_revision_proposals proposal
+            JOIN imported_activity_identities identity ON identity.activity_id = proposal.activity_id
+            JOIN imported_activities activity ON activity.id = proposal.activity_id
+            LEFT JOIN imported_activity_revision_decisions decision
+              ON decision.activity_id = proposal.activity_id
+             AND decision.proposed_revision = proposal.proposed_revision
+           WHERE decision.request_id IS NULL
+           ORDER BY proposal.activity_id, proposal.proposed_revision`);
+      return Object.freeze(rows.map((row) => {
+        const accepted = JSON.parse(row.accepted_aggregate_json) as Readonly<{ normalized?: Record<string, unknown> }>;
+        const proposed = JSON.parse(row.proposed_aggregate_json) as Readonly<{ normalized?: Record<string, unknown> }>;
+        const acceptedFacts = accepted.normalized ?? {};
+        const proposedFacts = proposed.normalized ?? {};
+        const changedFields = [...new Set([...Object.keys(acceptedFacts), ...Object.keys(proposedFacts)])]
+          .filter((key) => canonicalJson(acceptedFacts[key]) !== canonicalJson(proposedFacts[key]))
+          .sort();
+        return Object.freeze({
+          activityId: row.activity_id,
+          acceptedRevision: row.aggregate_revision,
+          proposedRevision: row.proposed_revision,
+          acceptedNormalizedSha256: row.accepted_normalized_sha256,
+          proposedNormalizedSha256: row.normalized_sha256,
+          changedFields: Object.freeze(changedFields),
+        });
+      }));
+    },
+    async resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult> {
+      return kernel.write(async (transaction) => {
+        const [receipt] = await transaction.queryAll<Receipt>(
+          "SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?",
+          [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (receipt.request_sha256 !== input.requestSha256 || receipt.activity_id !== input.activityId) {
+            return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision });
+          }
+          const [decision] = await transaction.queryAll<{ action: "accept" | "keep" }>(
+            "SELECT action FROM imported_activity_revision_decisions WHERE request_id = ?",
+            [input.requestId],
+          );
+          return Object.freeze({
+            kind: decision?.action === "accept" ? "revision_accepted" : decision?.action === "keep" ? "revision_kept" : "replayed",
+            activityId: input.activityId,
+            aggregateRevision: decision?.action === "accept" ? input.proposedRevision : input.expectedAggregateRevision,
+          });
+        }
+        const [identity] = await transaction.queryAll<{
+          aggregate_revision: number;
+          accepted_normalized_sha256: string;
+        }>(
+          "SELECT aggregate_revision, accepted_normalized_sha256 FROM imported_activity_identities WHERE activity_id = ?",
+          [input.activityId],
+        );
+        const [proposal] = await transaction.queryAll<{
+          normalized_sha256: string;
+          envelope_json: string;
+        }>(
+          `SELECT proposal.normalized_sha256, proposal.envelope_json
+             FROM imported_activity_revision_proposals proposal
+             LEFT JOIN imported_activity_revision_decisions decision
+               ON decision.activity_id = proposal.activity_id
+              AND decision.proposed_revision = proposal.proposed_revision
+            WHERE proposal.activity_id = ? AND proposal.proposed_revision = ?
+              AND decision.request_id IS NULL`,
+          [input.activityId, input.proposedRevision],
+        );
+        if (identity === undefined
+          || proposal === undefined
+          || identity.aggregate_revision !== input.expectedAggregateRevision
+          || proposal.normalized_sha256 !== input.expectedProposedSha256) {
+          return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: identity?.aggregate_revision ?? 0 });
+        }
+        if (input.action === "accept") {
+          await transaction.execute(
+            "UPDATE imported_activities SET aggregate_json = ? WHERE id = ?",
+            [proposal.envelope_json, input.activityId],
+          );
+          await transaction.execute(
+            "UPDATE imported_activity_identities SET aggregate_revision = ?, accepted_normalized_sha256 = ? WHERE activity_id = ? AND aggregate_revision = ?",
+            [input.proposedRevision, proposal.normalized_sha256, input.activityId, input.expectedAggregateRevision],
+          );
+          await transaction.execute(
+            "UPDATE imported_activity_current_lifecycle SET aggregate_revision = ? WHERE activity_id = ? AND aggregate_revision = ?",
+            [input.proposedRevision, input.activityId, input.expectedAggregateRevision],
+          );
+        }
+        await transaction.execute(
+          `INSERT INTO imported_activity_revision_decisions
+            (request_id, request_sha256, activity_id, proposed_revision, action, decided_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [input.requestId, input.requestSha256, input.activityId, input.proposedRevision, input.action, input.occurredAtMs],
+        );
+        await transaction.execute(
+          "INSERT INTO imported_activity_receipts(id, activity_id, request_sha256, committed_at_ms) VALUES (?, ?, ?, ?)",
+          [input.requestId, input.activityId, input.requestSha256, input.occurredAtMs],
+        );
+        return Object.freeze({
+          kind: input.action === "accept" ? "revision_accepted" : "revision_kept",
+          activityId: input.activityId,
+          aggregateRevision: input.action === "accept" ? input.proposedRevision : input.expectedAggregateRevision,
+        });
+      });
+    },
     async changeGarminActivityLifecycle(input: GarminActivityLifecycleInput): Promise<GarminImportResult> {
       return kernel.write(async (transaction) => {
         const [receipt] = await transaction.queryAll<Receipt>("SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?", [input.requestId]);
@@ -37,6 +187,24 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
         const [receipt] = await transaction.queryAll<Receipt>("SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?", [input.requestId]);
         if (receipt !== undefined) {
           if (receipt.request_sha256 !== input.requestSha256) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision });
+          const [proposal] = await transaction.queryAll<{ proposed_revision: number }>(
+            `SELECT proposal.proposed_revision
+               FROM imported_activity_revision_proposals proposal
+               LEFT JOIN imported_activity_revision_decisions decision
+                 ON decision.activity_id = proposal.activity_id
+                AND decision.proposed_revision = proposal.proposed_revision
+              WHERE proposal.activity_id = ?
+                AND (proposal.request_id = ? OR proposal.normalized_sha256 = ?)
+                AND decision.request_id IS NULL`,
+            [receipt.activity_id, input.requestId, input.staged.envelope.normalized_json_sha256],
+          );
+          if (proposal !== undefined) {
+            return Object.freeze({
+              kind: "revision_review",
+              activityId: receipt.activity_id,
+              aggregateRevision: proposal.proposed_revision - 1,
+            });
+          }
           const [replayed] = await transaction.queryAll<{ aggregate_revision: number; removal_state: "active" | "removed" }>(`SELECT identity.aggregate_revision,
             COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state
             FROM imported_activity_identities identity
@@ -60,31 +228,58 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
         const outcome = classifyGarminActivityIdentity(identityInput);
         if (outcome.kind === "duplicate") return Object.freeze({ kind: "replayed", activityId: existing!.activity_id, aggregateRevision: existing!.aggregate_revision });
         if (outcome.kind === "removed") return Object.freeze({ kind: "removed", activityId: existing!.activity_id, aggregateRevision: existing!.aggregate_revision });
-        if (outcome.kind !== "new") return Object.freeze({ kind: outcome.kind === "revision_review" ? "revision_review" : "conflict", activityId: existing?.activity_id ?? input.activityId, aggregateRevision: existing?.aggregate_revision ?? 0 });
+        if (outcome.kind === "revision_review") {
+          const activityId = existing!.activity_id;
+          const now = envelope.normalized.started_at_ms;
+          const [priorProposal] = await transaction.queryAll<{ proposed_revision: number }>(
+            `SELECT proposal.proposed_revision
+               FROM imported_activity_revision_proposals proposal
+               LEFT JOIN imported_activity_revision_decisions decision
+                 ON decision.activity_id = proposal.activity_id
+                AND decision.proposed_revision = proposal.proposed_revision
+              WHERE proposal.activity_id = ? AND proposal.normalized_sha256 = ?
+                AND decision.request_id IS NULL`,
+            [activityId, envelope.normalized_json_sha256],
+          );
+          if (priorProposal === undefined) {
+            const [latest] = await transaction.queryAll<{ proposed_revision: number }>(
+              "SELECT MAX(proposed_revision) AS proposed_revision FROM imported_activity_revision_proposals WHERE activity_id = ?",
+              [activityId],
+            );
+            const proposedRevision = Math.max(existing!.aggregate_revision, latest?.proposed_revision ?? 1) + 1;
+            await transaction.execute(
+              "INSERT INTO imported_activity_payloads(id, activity_id, payload_json, sha256) VALUES (?, ?, ?, ?)",
+              [`${activityId}:payload:${proposedRevision}`, activityId, input.staged.canonical_payload_json, envelope.normalized_json_sha256],
+            );
+            for (const [kind, value] of Object.entries(envelope.raw_component_sha256)) {
+              await transaction.execute(
+                "INSERT INTO imported_activity_references(id, activity_id, reference_kind, reference_value) VALUES (?, ?, ?, ?)",
+                [`${activityId}:proposal:${proposedRevision}:hash:${kind}`, activityId, `proposed_revision:${proposedRevision}:raw_component_sha256:${kind}`, value],
+              );
+            }
+            await transaction.execute(
+              `INSERT INTO imported_activity_revision_proposals
+                (request_id, request_sha256, activity_id, proposed_revision,
+                 normalized_sha256, envelope_json, confirmed_local_date, created_at_ms)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [input.requestId, input.requestSha256, activityId, proposedRevision,
+                envelope.normalized_json_sha256, aggregateJson(input), input.confirmedLocalDate, now],
+            );
+          }
+          await transaction.execute(
+            "INSERT INTO imported_activity_receipts(id, activity_id, request_sha256, committed_at_ms) VALUES (?, ?, ?, ?)",
+            [input.requestId, activityId, input.requestSha256, now],
+          );
+          return Object.freeze({
+            kind: "revision_review",
+            activityId,
+            aggregateRevision: existing!.aggregate_revision,
+          });
+        }
+        if (outcome.kind !== "new") return Object.freeze({ kind: "conflict", activityId: existing?.activity_id ?? input.activityId, aggregateRevision: existing?.aggregate_revision ?? 0 });
         if (input.expectedAggregateRevision !== 0) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: 0 });
         const now = envelope.normalized.started_at_ms;
-        const dateProvenance = input.dateProvenance;
-        const aggregate = JSON.stringify({
-          source_kind: envelope.source_kind,
-          account_namespace: envelope.account_namespace,
-          external_activity_id: envelope.external_activity_id,
-          normalized_json_sha256: envelope.normalized_json_sha256,
-          sample_fidelity: envelope.sample_fidelity,
-          confirmed_local_date: input.confirmedLocalDate,
-          ...(dateProvenance === undefined ? {} : {
-            date_provenance: {
-              absolute_started_at_ms: dateProvenance.absoluteStartedAtMs,
-              ...(dateProvenance.sourceLocalDateTime === undefined ? {} : { source_local_date_time: dateProvenance.sourceLocalDateTime }),
-              ...(dateProvenance.sourceTimeZone === undefined ? {} : { source_time_zone: dateProvenance.sourceTimeZone }),
-              ...(dateProvenance.sourceUtcOffsetMinutes === undefined ? {} : { source_utc_offset_minutes: dateProvenance.sourceUtcOffsetMinutes }),
-              confirmed_local_date: dateProvenance.confirmedLocalDate,
-              confirmed_local_time: dateProvenance.confirmedLocalTime,
-              confirmed_time_zone: dateProvenance.confirmedTimeZone,
-              confirmed_utc_offset_minutes: dateProvenance.confirmedUtcOffsetMinutes,
-            },
-          }),
-          normalized: envelope.normalized,
-        });
+        const aggregate = aggregateJson(input);
         await transaction.execute("INSERT INTO imported_activities(id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES (?, ?, ?, ?, ?, ?)", [input.activityId, `${envelope.source_kind}:${envelope.account_namespace}`, envelope.external_activity_id, envelope.normalized.started_at_ms, aggregate, now]);
         await transaction.execute("INSERT INTO imported_activity_identities(activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES (?, ?, ?, ?, 1, ?, 'active')", [input.activityId, envelope.source_kind, envelope.account_namespace, envelope.external_activity_id, envelope.normalized_json_sha256]);
         await transaction.execute("INSERT INTO imported_activity_payloads(id, activity_id, payload_json, sha256) VALUES (?, ?, ?, ?)", [`${input.activityId}:payload:1`, input.activityId, input.staged.canonical_payload_json, envelope.normalized_json_sha256]);

@@ -19,6 +19,7 @@ jest.mock("../../modules/garmin-connect/src", () => ({
 import { createGarminImportRuntime } from "../../src/bootstrap/garminImportRuntime";
 import { canonicalJson } from "../../src/domains/activities/importContracts";
 import type { GarminSourceEnvelope } from "../../src/domains/activities/garminActivitySourcePort";
+import { resolveGarminImportRevision } from "../../src/domains/activities/importCommands";
 import { confirmRunningActivityMatch } from "../../src/domains/running/activityMatchCommands";
 import { normalizeGarminActivity } from "../../src/platform/garmin/normalizeGarminActivity";
 import {
@@ -30,6 +31,8 @@ import {
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createImportedActivityRepository } from "../../src/platform/sqlite/repositories/importedActivityRepository";
+import { createLogicalBackupRepository } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
+import { createLogicalRestoreRepository } from "../../src/platform/sqlite/repositories/logicalRestoreRepository";
 import { createRunningActivityMatchRepository } from "../../src/platform/sqlite/repositories/runningActivityMatchRepository";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
@@ -117,6 +120,7 @@ async function applicationRuntime(input: Readonly<{
   });
   return {
     kernel,
+    repository: services.importedActivities,
     runtime: createGarminImportRuntime({
       services,
       sha256,
@@ -428,7 +432,7 @@ describe("Garmin envelope import boundary", () => {
   });
 
   it("keeps accepted facts and the current match pinned when the same source identity changes", async () => {
-    const { kernel, runtime } = await applicationRuntime();
+    const { kernel, repository, runtime } = await applicationRuntime();
     const accepted = await envelope();
     const acceptedInput = {
       envelope: accepted,
@@ -462,10 +466,14 @@ describe("Garmin envelope import boundary", () => {
     await expect(kernel.queryAll<{
       accepted_normalized_sha256: string;
       payloads: number;
+      proposals: number;
+      receipts: number;
       matched_activity_revision: number;
       opportunity_id: string;
     }>(`SELECT identity.accepted_normalized_sha256,
               (SELECT count(*) FROM imported_activity_payloads WHERE activity_id = identity.activity_id) AS payloads,
+              (SELECT count(*) FROM imported_activity_revision_proposals WHERE activity_id = identity.activity_id) AS proposals,
+              (SELECT count(*) FROM imported_activity_receipts WHERE activity_id = identity.activity_id) AS receipts,
               event.activity_revision AS matched_activity_revision,
               current.opportunity_id
          FROM imported_activity_identities identity
@@ -473,10 +481,92 @@ describe("Garmin envelope import boundary", () => {
          JOIN running_activity_match_events event ON event.id = current.event_id
         WHERE identity.activity_id = ?`, [acceptedInput.confirmation.activityId])).resolves.toEqual([{
       accepted_normalized_sha256: accepted.normalized_json_sha256,
-      payloads: 1,
+      payloads: 2,
+      proposals: 1,
+      receipts: 2,
       matched_activity_revision: 1,
       opportunity_id: "envelope-running-opportunity",
     }]);
+
+    await expect(runtime.commitEnvelope({
+      envelope: revised,
+      confirmation: {
+        ...acceptedInput.confirmation,
+        requestId: "request-revised",
+        requestSha256: "7".repeat(64),
+      },
+    })).resolves.toMatchObject({ kind: "revision_review" });
+    await expect(kernel.queryAll<{ proposals: number; payloads: number; receipts: number }>(
+      `SELECT
+         (SELECT count(*) FROM imported_activity_revision_proposals) AS proposals,
+         (SELECT count(*) FROM imported_activity_payloads) AS payloads,
+         (SELECT count(*) FROM imported_activity_receipts) AS receipts`,
+    )).resolves.toEqual([{ proposals: 1, payloads: 2, receipts: 2 }]);
+
+    await expect(repository.listGarminRevisionReviews()).resolves.toEqual([
+      expect.objectContaining({
+        activityId: acceptedInput.confirmation.activityId,
+        acceptedRevision: 1,
+        proposedRevision: 2,
+        acceptedNormalizedSha256: accepted.normalized_json_sha256,
+        proposedNormalizedSha256: revised.normalized_json_sha256,
+        changedFields: ["distance_meters"],
+      }),
+    ]);
+    await expect(resolveGarminImportRevision(repository, {
+      action: "keep",
+      requestId: "request-keep-revision-2",
+      requestSha256: "4".repeat(64),
+      activityId: acceptedInput.confirmation.activityId,
+      expectedAggregateRevision: 1,
+      proposedRevision: 2,
+      expectedProposedSha256: revised.normalized_json_sha256,
+      occurredAtMs: 10,
+    })).resolves.toMatchObject({ kind: "revision_kept", aggregateRevision: 1 });
+    await expect(repository.listGarminRevisionReviews()).resolves.toEqual([]);
+
+    const acceptedRevision = withNormalized(accepted, Object.freeze({
+      ...accepted.normalized,
+      distance_meters: accepted.normalized.distance_meters + 2,
+    }));
+    await runtime.commitEnvelope({
+      envelope: acceptedRevision,
+      confirmation: {
+        ...acceptedInput.confirmation,
+        requestId: "request-revision-3",
+        requestSha256: "5".repeat(64),
+      },
+    });
+    await expect(resolveGarminImportRevision(repository, {
+      action: "accept",
+      requestId: "request-accept-revision-3",
+      requestSha256: "3".repeat(64),
+      activityId: acceptedInput.confirmation.activityId,
+      expectedAggregateRevision: 1,
+      proposedRevision: 3,
+      expectedProposedSha256: acceptedRevision.normalized_json_sha256,
+      occurredAtMs: 11,
+    })).resolves.toMatchObject({ kind: "revision_accepted", aggregateRevision: 3 });
+    await expect(kernel.queryAll<{
+      aggregate_revision: number;
+      accepted_normalized_sha256: string;
+      matched_activity_revision: number;
+      aggregate_json: string;
+    }>(`SELECT identity.aggregate_revision, identity.accepted_normalized_sha256,
+              event.activity_revision AS matched_activity_revision,
+              activity.aggregate_json
+         FROM imported_activity_identities identity
+         JOIN imported_activities activity ON activity.id = identity.activity_id
+         JOIN running_activity_current_matches current ON current.activity_id = identity.activity_id
+         JOIN running_activity_match_events event ON event.id = current.event_id
+        WHERE identity.activity_id = ?`, [acceptedInput.confirmation.activityId])).resolves.toEqual([
+      expect.objectContaining({
+        aggregate_revision: 3,
+        accepted_normalized_sha256: acceptedRevision.normalized_json_sha256,
+        matched_activity_revision: 1,
+        aggregate_json: expect.stringContaining(`"normalized_json_sha256":"${acceptedRevision.normalized_json_sha256}"`),
+      }),
+    ]);
   });
 
   it("does not merge a distinct external identity by equal digest, date, title, or distance", async () => {
@@ -507,6 +597,51 @@ describe("Garmin envelope import boundary", () => {
     await expect(kernel.queryAll<{ count: number }>(
       "SELECT count(*) AS count FROM imported_activity_identities",
     )).resolves.toEqual([{ count: 2 }]);
+  });
+
+  it("restores an unresolved revision proposal and its factual diff from logical backup", async () => {
+    const sourceRuntime = await applicationRuntime();
+    const accepted = await envelope();
+    await sourceRuntime.runtime.commitEnvelope({
+      envelope: accepted,
+      confirmation: {
+        requestId: "proposal-backup-accepted",
+        requestSha256: "a".repeat(64),
+        activityId: "activity-proposal-backup",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-10-06",
+      },
+    });
+    const revised = withNormalized(accepted, {
+      ...accepted.normalized,
+      distance_meters: accepted.normalized.distance_meters + 50,
+    });
+    await sourceRuntime.runtime.commitEnvelope({
+      envelope: revised,
+      confirmation: {
+        requestId: "proposal-backup-revised",
+        requestSha256: "b".repeat(64),
+        activityId: "activity-proposal-backup",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-10-06",
+      },
+    });
+    const backup = await createLogicalBackupRepository(sourceRuntime.kernel).collect({
+      snapshotId: "proposal-backup",
+      createdAtMs: 20,
+    });
+    expect(backup.tables.imported_activity_revision_proposals).toHaveLength(1);
+
+    const restoredRuntime = await applicationRuntime();
+    await createLogicalRestoreRepository(restoredRuntime.kernel, { nowMs: () => 21 }).restore(backup);
+    await expect(createImportedActivityRepository(restoredRuntime.kernel).listGarminRevisionReviews())
+      .resolves.toEqual([
+        expect.objectContaining({
+          activityId: "activity-proposal-backup",
+          proposedNormalizedSha256: revised.normalized_json_sha256,
+          changedFields: ["distance_meters"],
+        }),
+      ]);
   });
 
   it("rejects capacity limit plus one and FIT/hash fallback shapes before any source write", async () => {

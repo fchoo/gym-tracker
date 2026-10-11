@@ -149,6 +149,8 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   imported_activity_identities: "1",
   imported_activity_events: "1",
   imported_activity_match_invalidations: "1",
+  imported_activity_revision_proposals: "1",
+  imported_activity_revision_decisions: "1",
   running_match_events: "1",
   running_current_matches: "1",
   running_activity_match_events: "1",
