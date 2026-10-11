@@ -20,7 +20,11 @@ import {
   createGarminSharedImportCommitter,
   createGarminSyncCoordinator,
 } from "./garminSyncCoordinator";
-import type { GarminSyncLimits, GarminSyncProgress } from "./garminSyncContracts";
+import type {
+  GarminSyncFailureCode,
+  GarminSyncLimits,
+  GarminSyncProgress,
+} from "./garminSyncContracts";
 import { GARMIN_SYNC_HARD_LIMITS } from "./garminSyncContracts";
 
 const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
@@ -123,6 +127,23 @@ const syncLimitCases: Array<[string, keyof GarminSyncLimits, number]> = [
   ["page count", "maxPages", GARMIN_SYNC_HARD_LIMITS.maxPages],
   ["activity count", "maxActivities", GARMIN_SYNC_HARD_LIMITS.maxActivities],
 ];
+
+const syncFailureCases: Array<[string, GarminSyncFailureCode, number | undefined]> = [
+  ["offline", "offline", undefined],
+  ["timeout", "timeout", undefined],
+  ["temporary_failure", "temporary_failure", undefined],
+  ["data_access_denied", "data_access_denied", undefined],
+  ["rate_limited", "rate_limited", 9_999_999],
+  ["malformed_response", "malformed_response", undefined],
+];
+
+function adapterError(code: string, retryAfterMs?: number): Error {
+  const error = new Error(code) as Error & { code: string; retryAfterMs?: number };
+  error.name = "GarminActivityAdapterError";
+  error.code = code;
+  if (retryAfterMs !== undefined) error.retryAfterMs = retryAfterMs;
+  return error;
+}
 
 describe("Garmin sync coordinator", () => {
   it("reads one complete Running activity and counts it only after the shared import commits", async () => {
@@ -270,5 +291,86 @@ describe("Garmin sync coordinator", () => {
       failure: { code: "malformed_response" },
     });
     expect(importActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(syncFailureCases)("reduces %s once without retrying or exposing source detail", async (sourceCode, expectedCode, retryAfterMs) => {
+    const summary = await envelope("1");
+    const readActivity = jest.fn(async () => {
+      throw adapterError(sourceCode, retryAfterMs);
+    });
+    const source = pagedSource(new Map([["start", { items: [summary] }]]), readActivity);
+    const importActivity = jest.fn(async () => ({ kind: "imported" as const, activityId: "local", aggregateRevision: 1 }));
+    const coordinator = createGarminSyncCoordinator({ source, importActivity });
+
+    const result = await coordinator.syncNow();
+
+    expect(result).toMatchObject({
+      kind: "failure",
+      counts: { attemptedActivities: 1, failedActivities: 1 },
+      failure: { code: expectedCode },
+    });
+    if (expectedCode === "rate_limited") {
+      expect(result).toMatchObject({ failure: { retryAfterMs: GARMIN_SYNC_HARD_LIMITS.maxRetryAfterMs } });
+    }
+    expect(readActivity).toHaveBeenCalledTimes(1);
+    expect(importActivity).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toMatch(/account-fixture|source detail|external_activity_id/u);
+  });
+
+  it("rejects logout during canonical preparation before the shared repository write", async () => {
+    const { source } = await connectedAdapter();
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => ({ kind: "imported" as const, activityId: "local", aggregateRevision: 1 })),
+    };
+    const prepareSha256 = jest.fn(async (value: string) => {
+      await source.logout();
+      return sha256(value);
+    });
+    const coordinator = createGarminSyncCoordinator({
+      source,
+      importActivity: createGarminSharedImportCommitter({
+        repository,
+        sha256: prepareSha256,
+        requestFor: async () => ({
+          requestId: "generation-fence",
+          requestSha256: "e".repeat(64),
+          activityId: "local",
+          expectedAggregateRevision: 0,
+          confirmedLocalDate: "2026-10-06",
+        }),
+      }),
+    });
+
+    await expect(coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      counts: { failedActivities: 1, newActivities: 0 },
+      failure: { code: "stale_generation" },
+    });
+    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+  });
+
+  it("serializes foreground attempts and rejects overlap without starting another page", async () => {
+    const summary = await envelope("1");
+    const source = pagedSource(new Map([["start", { items: [summary] }]]), async () => summary);
+    let releaseImport!: (result: GarminImportResult) => void;
+    const importResult = new Promise<GarminImportResult>((resolve) => {
+      releaseImport = resolve;
+    });
+    const importActivity = jest.fn(async () => importResult);
+    const coordinator = createGarminSyncCoordinator({ source, importActivity });
+    const first = coordinator.syncNow();
+    await new Promise<void>((resolve) => {
+      const check = () => importActivity.mock.calls.length === 1 ? resolve() : queueMicrotask(check);
+      check();
+    });
+
+    await expect(coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      failure: { code: "sync_in_progress" },
+    });
+    expect(source.listRunningSummaries).toHaveBeenCalledTimes(1);
+
+    releaseImport({ kind: "imported", activityId: "local", aggregateRevision: 1 });
+    await expect(first).resolves.toMatchObject({ kind: "success", counts: { newActivities: 1 } });
   });
 });
