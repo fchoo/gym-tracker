@@ -9,6 +9,7 @@ import {
   createPhase18GarminProofRunnerPlan,
   executePhase18GarminProofRunner,
   parsePhase18GarminProofRunnerArgs,
+  sanitizePhase18GarminProofBuildManifest,
   validatePhase18GarminProofBuildManifest,
 } from "./run-phase18-garmin-proof.mjs";
 import {
@@ -151,6 +152,56 @@ test("Phase 18 manifest binds only fresh hashed identity fields", () => {
       /phase18_manifest_invalid/u,
     );
   }
+});
+
+test("Phase 18 runner sanitizes the repository native-build manifest without manual evidence fabrication", () => {
+  const retained = {
+    schema_version: 1,
+    suite: "phase18-garmin-proof",
+    profile: "development-test",
+    build_variant: "release",
+    js_bundle: { embedded: true },
+    base_head: HEAD,
+    source_tree_sha256: HASH,
+    package: "com.fchoo.gymtracker.devtest",
+    apk: {
+      path: `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-proof-devtest.apk`,
+      sha256: HASH,
+      size_bytes: 1,
+      page_alignment_kib: 16,
+      page_alignment_verified: true,
+    },
+    installed_apk: { sha256: HASH, matches_retained_apk: true },
+    package_launch: { component: "safe-component", succeeded: true },
+    device: {
+      role: "automated-test-device",
+      api: 36,
+      abi: "arm64-v8a",
+      model: "bounded-device-class",
+      android_release: "16",
+      identity_sha256: HASH,
+    },
+    toolchain: {},
+    started_at: "bounded-time",
+    finished_at: "bounded-time",
+  };
+  assert.deepEqual(sanitizePhase18GarminProofBuildManifest(retained, {
+    currentPythonLockSha256: HASH,
+    retainedSignatureSha256: HASH,
+  }), manifest());
+  assert.throws(
+    () => sanitizePhase18GarminProofBuildManifest({
+      ...retained,
+      device: { ...retained.device, serial: "personal-device" },
+    }, {
+      currentPythonLockSha256: HASH,
+      retainedSignatureSha256: HASH,
+    }),
+    /phase18_build_manifest_privacy_invalid/u,
+  );
+  const buildScript = readFileSync("scripts/build-current-native-test-apk.sh", "utf8");
+  assert.match(buildScript, /phase18-garmin-proof/u);
+  assert.match(buildScript, /device_identity_sha256/u);
 });
 
 test("Phase 18 host plan mode never resolves adb, installs, launches, or writes evidence", () => {
