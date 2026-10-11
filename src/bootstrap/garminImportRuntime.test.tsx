@@ -116,4 +116,110 @@ describe("Garmin import runtime", () => {
     expect(repository.confirmGarminImport).not.toHaveBeenCalled();
     expect(invalidateReads).not.toHaveBeenCalled();
   });
+
+  it("prepares an ambiguous source date without writing and confirms owner-selected provenance through the shared command", async () => {
+    const source = envelope();
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => ({
+        kind: "imported" as const,
+        activityId: "activity-date",
+        aggregateRevision: 1,
+      })),
+    };
+    const invalidateReads = jest.fn(async () => undefined);
+    const runtime = createGarminImportRuntime({
+      services: Object.freeze({ importedActivities: repository }),
+      sha256,
+      invalidateReads,
+    });
+
+    const proposal = await runtime.prepareEnvelope({
+      envelope: source,
+      sourceDate: Object.freeze({
+        sourceLocalDateTime: "2026-06-20T00:30:00",
+      }),
+    });
+
+    expect(proposal).toMatchObject({
+      kind: "date_confirmation_required",
+      date: {
+        absoluteStartedAtMs: source.normalized.started_at_ms,
+        sourceLocalDateTime: "2026-06-20T00:30:00",
+      },
+    });
+    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+    expect(invalidateReads).not.toHaveBeenCalled();
+
+    await expect(runtime.confirmPreparedDate({
+      proposal,
+      request: {
+        requestId: "request-date",
+        requestSha256: "f".repeat(64),
+        activityId: "activity-date",
+        expectedAggregateRevision: 0,
+      },
+      decision: Object.freeze({
+        kind: "confirmed",
+        localDate: "2026-06-20",
+        localTime: "00:30:00",
+        timeZone: "Asia/Singapore",
+        utcOffsetMinutes: 480,
+      }),
+    })).resolves.toMatchObject({ kind: "imported" });
+
+    expect(repository.confirmGarminImport).toHaveBeenCalledWith({
+      requestId: "request-date",
+      requestSha256: "f".repeat(64),
+      activityId: "activity-date",
+      expectedAggregateRevision: 0,
+      confirmedLocalDate: "2026-06-20",
+      staged: proposal.staged,
+      dateProvenance: {
+        absoluteStartedAtMs: source.normalized.started_at_ms,
+        sourceLocalDateTime: "2026-06-20T00:30:00",
+        confirmedLocalDate: "2026-06-20",
+        confirmedLocalTime: "00:30:00",
+        confirmedTimeZone: "Asia/Singapore",
+        confirmedUtcOffsetMinutes: 480,
+      },
+    });
+    expect(invalidateReads).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["cancelled", "stale", "invalid", "dst_gap"] as const)(
+    "keeps %s date decisions outside persistence",
+    async (reason) => {
+      const repository: ImportedActivityCommandRepository = {
+        confirmGarminImport: jest.fn(async () => ({
+          kind: "imported" as const,
+          activityId: "activity-date",
+          aggregateRevision: 1,
+        })),
+      };
+      const invalidateReads = jest.fn(async () => undefined);
+      const runtime = createGarminImportRuntime({
+        services: Object.freeze({ importedActivities: repository }),
+        sha256,
+        invalidateReads,
+      });
+      const proposal = await runtime.prepareEnvelope({
+        envelope: envelope(),
+        sourceDate: Object.freeze({}),
+      });
+
+      await expect(runtime.confirmPreparedDate({
+        proposal,
+        request: {
+          requestId: `request-${reason}`,
+          requestSha256: "1".repeat(64),
+          activityId: `activity-${reason}`,
+          expectedAggregateRevision: 0,
+        },
+        decision: Object.freeze({ kind: reason }),
+      })).resolves.toEqual({ kind: "not_committed", reason });
+
+      expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+      expect(invalidateReads).not.toHaveBeenCalled();
+    },
+  );
 });

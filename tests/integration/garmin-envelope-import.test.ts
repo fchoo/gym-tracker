@@ -212,4 +212,88 @@ describe("Garmin envelope import boundary", () => {
       [input.confirmation.requestId],
     )).resolves.toEqual([{ count: 1 }]);
   });
+
+  it("prepares ambiguous source time without writes and persists explicit midnight provenance on confirmation", async () => {
+    const { kernel, runtime } = await applicationRuntime();
+    const proposal = await runtime.prepareEnvelope({
+      envelope: await envelope(),
+      sourceDate: Object.freeze({
+        sourceLocalDateTime: "2026-10-06T00:30:00",
+      }),
+    });
+
+    expect(proposal.kind).toBe("date_confirmation_required");
+    await expect(kernel.queryAll<{ activities: number; receipts: number }>(
+      `SELECT (SELECT count(*) FROM imported_activities) AS activities,
+              (SELECT count(*) FROM imported_activity_receipts) AS receipts`,
+    )).resolves.toEqual([{ activities: 0, receipts: 0 }]);
+
+    const request = {
+      requestId: "request-midnight",
+      requestSha256: "2".repeat(64),
+      activityId: "activity-midnight",
+      expectedAggregateRevision: 0,
+    };
+    const decision = Object.freeze({
+      kind: "confirmed" as const,
+      localDate: "2026-10-06",
+      localTime: "00:30:00",
+      timeZone: "Asia/Singapore",
+      utcOffsetMinutes: 480,
+    });
+
+    await expect(runtime.confirmPreparedDate({ proposal, request, decision })).resolves.toMatchObject({
+      kind: "imported",
+      activityId: request.activityId,
+    });
+    await expect(kernel.queryAll<{ date_provenance: string }>(
+      "SELECT json_extract(aggregate_json, '$.date_provenance') AS date_provenance FROM imported_activities WHERE id = ?",
+      [request.activityId],
+    )).resolves.toEqual([{
+      date_provenance: JSON.stringify({
+        absoluteStartedAtMs: proposal.date.absoluteStartedAtMs,
+        sourceLocalDateTime: "2026-10-06T00:30:00",
+        confirmedLocalDate: "2026-10-06",
+        confirmedLocalTime: "00:30:00",
+        confirmedTimeZone: "Asia/Singapore",
+        confirmedUtcOffsetMinutes: 480,
+      }),
+    }]);
+
+    await expect(runtime.confirmPreparedDate({ proposal, request, decision })).resolves.toMatchObject({
+      kind: "replayed",
+      activityId: request.activityId,
+    });
+  });
+
+  it.each([
+    ["cancelled", "America/New_York"],
+    ["stale", "Asia/Singapore"],
+    ["invalid", "Australia/Lord_Howe"],
+    ["dst_gap", "America/New_York"],
+  ] as const)("keeps %s date outcomes zero-write regardless of phone zone %s", async (reason, phoneZone) => {
+    const { kernel, runtime } = await applicationRuntime();
+    const proposal = await runtime.prepareEnvelope({
+      envelope: await envelope(),
+      sourceDate: Object.freeze({
+        sourceLocalDateTime: "2026-03-08T02:30:00",
+        sourceTimeZone: phoneZone,
+      }),
+    });
+
+    await expect(runtime.confirmPreparedDate({
+      proposal,
+      request: {
+        requestId: `request-${reason}`,
+        requestSha256: "3".repeat(64),
+        activityId: `activity-${reason}`,
+        expectedAggregateRevision: 0,
+      },
+      decision: Object.freeze({ kind: reason }),
+    })).resolves.toEqual({ kind: "not_committed", reason });
+    await expect(kernel.queryAll<{ activities: number; receipts: number }>(
+      `SELECT (SELECT count(*) FROM imported_activities) AS activities,
+              (SELECT count(*) FROM imported_activity_receipts) AS receipts`,
+    )).resolves.toEqual([{ activities: 0, receipts: 0 }]);
+  });
 });
