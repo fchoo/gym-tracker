@@ -95,11 +95,27 @@ export async function materializePhase17FamilyACleanupManifest(
   const receipt = receiptFor(manifest.caseId);
   if (receipt === undefined || requestId === undefined) return manifest;
   if (receipt[1] === "owned_plan_mutation_requests") {
-    const [row] = await kernel.queryAll<Readonly<{ source_plan_id: string | null; result_plan_id: string }>>(
-      "SELECT source_plan_id, result_plan_id FROM owned_plan_mutation_requests WHERE request_id = ?", [requestId],
+    const [row] = await kernel.queryAll<Readonly<{
+      source_plan_id: string | null;
+      result_plan_id: string;
+      result_json: string;
+    }>>(
+      "SELECT source_plan_id, result_plan_id, result_json FROM owned_plan_mutation_requests WHERE request_id = ?", [requestId],
     );
     if (row === undefined) throw new Error("phase17_family_a_cleanup_receipt_missing");
     planIds = [...planIds, row.result_plan_id, ...(row.source_plan_id === null ? [] : [row.source_plan_id])];
+    const result = JSON.parse(row.result_json) as { schedule?: { id?: unknown } };
+    if (typeof result.schedule?.id === "string") {
+      scheduleIds = [...scheduleIds, result.schedule.id];
+      const events = await kernel.queryAll<Readonly<{ id: string }>>(
+        `SELECT id
+         FROM owned_plan_schedule_events
+         WHERE schedule_id = ?
+         ORDER BY id`,
+        [result.schedule.id],
+      );
+      scheduleEventIds = [...scheduleEventIds, ...events.map(({ id }) => id)];
+    }
   } else if (receipt[1] === "starter_plan_activation_requests") {
     const [row] = await kernel.queryAll<Readonly<{ selected_plan_id: string | null; result_plan_id: string; result_schedule_id: string }>>(
       "SELECT selected_plan_id, result_plan_id, result_schedule_id FROM starter_plan_activation_requests WHERE request_id = ?", [requestId],
