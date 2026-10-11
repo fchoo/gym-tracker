@@ -1,0 +1,54 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 18 Garmin sync and recovery
+tags:
+  - phase18
+  - garmin
+  - exact-artifact
+---
+- launchApp:
+    clearState: false
+- assertVisible: "Garmin Sync"
+- tapOn: "Connect Garmin"
+- tapOn: "Email"
+- inputText: "${GARMIN_EMAIL}"
+- tapOn: "Password"
+- inputText: "${GARMIN_PASSWORD}"
+- hideKeyboard
+- tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "One-time code"
+    commands:
+      - tapOn: "One-time code"
+      - inputText: "${GARMIN_MFA_CODE}"
+      - hideKeyboard
+      - tapOn: "Verify"
+- extendedWaitUntil:
+    visible: "Connected to Garmin"
+    timeout: 30000
+- tapOn: "Sync now"
+- runFlow:
+    when:
+      visible: "Retry Garmin sync"
+    commands:
+      - tapOn: "Retry Garmin sync"
+- extendedWaitUntil:
+    visible: "Imported activities"
+    timeout: 30000
+- tapOn: "${GARMIN_ACTIVITY_ACCESSIBILITY_LABEL}"
+- assertVisible: "Laps"
+- tapOn: "Match to scheduled workout"
+- assertVisible: "Match to scheduled workout"
+- tapOn: "${GARMIN_MATCH_CANDIDATE_LABEL}"
+- tapOn: "Confirm match"
+- assertVisible: "Matched"
+- stopApp
+- launchApp:
+    clearState: false
+- assertVisible: "Connected to Garmin"
+- tapOn: "Disconnect Garmin"
+- assertVisible: "Disconnect Garmin?"
+- tapOn:
+    text: "Disconnect Garmin"
+    index: 1
+- assertVisible: "Garmin not connected"

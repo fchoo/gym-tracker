@@ -105,6 +105,9 @@
     ,"proof:phase18:garmin": "node scripts/run-phase18-garmin-proof.mjs --manifest artifacts/native/phase18-garmin-proof/build.json"
     ,"verify:phase18:garmin-proof": "node scripts/verify-phase18-garmin-proof.mjs --manifest artifacts/native/phase18-garmin-proof/build.json"
     ,"test:evidence:phase18:garmin-proof": "node --test scripts/phase18-garmin-proof.test.mjs"
+    ,"acceptance:phase18:garmin": "node scripts/run-phase18-garmin-acceptance.mjs --manifest artifacts/native/phase18-garmin-acceptance/build.json --record artifacts/native/phase18-garmin-acceptance/acceptance-record.json"
+    ,"verify:phase18:garmin-acceptance": "node scripts/verify-phase18-garmin-acceptance.mjs --manifest artifacts/native/phase18-garmin-acceptance/build.json"
+    ,"test:evidence:phase18:garmin-acceptance": "node --test scripts/phase18-garmin-acceptance.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",
