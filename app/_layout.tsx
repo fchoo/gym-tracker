@@ -151,6 +151,7 @@ function RootNavigator() {
           <Stack.Screen name="__phase12-google-auth-smoke" />
           <Stack.Screen name="__phase12-google-cleanup" />
           <Stack.Screen name="__phase18-garmin-proof" />
+          <Stack.Screen name="__phase18-garmin-adversarial" />
           <Stack.Screen name="index" redirect />
         </Stack>
         <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
@@ -216,6 +217,17 @@ function Phase18GarminProofNavigator() {
       screenOptions={{ animation: "none", headerShown: false }}
     >
       <Stack.Screen name="__phase18-garmin-proof" />
+    </Stack>
+  );
+}
+
+function Phase18GarminAdversarialNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase18-garmin-adversarial"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__phase18-garmin-adversarial" />
     </Stack>
   );
 }
@@ -286,12 +298,16 @@ function RootLayoutAttempt({
   const phase18GarminProofEnabled = nativeContractsEnabled
     && nativeContractSuite === "phase18-garmin-proof"
     && pathname === "/__phase18-garmin-proof";
+  const phase18GarminAdversarialEnabled = nativeContractsEnabled
+    && nativeContractSuite === "phase18-garmin-adversarial"
+    && pathname === "/__phase18-garmin-adversarial";
 
   const isolatedNativeRoute = attendedPreviewEnabled
     || phase6GestureSmokeEnabled
     || phase12CleanupEnabled
     || phase12GoogleAuthSmokeEnabled
-    || phase18GarminProofEnabled;
+    || phase18GarminProofEnabled
+    || phase18GarminAdversarialEnabled;
   const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
     ? productionAppearanceStore.read()
     : null;
@@ -321,6 +337,7 @@ function RootLayoutAttempt({
               : phase12CleanupEnabled
                   || phase12GoogleAuthSmokeEnabled
                   || phase18GarminProofEnabled
+                  || phase18GarminAdversarialEnabled
                 ? phase12CleanupAppearanceStore
                 : productionAppearanceStore}
           >
@@ -385,6 +402,18 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={phase12CleanupAppearanceStore}>
             <Phase18GarminProofNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase18GarminAdversarialEnabled) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+            <Phase18GarminAdversarialNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

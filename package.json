@@ -109,6 +109,9 @@
     ,"verify:phase18:garmin-acceptance": "node scripts/verify-phase18-garmin-acceptance.mjs --manifest artifacts/native/phase18-garmin-acceptance/build.json"
     ,"test:evidence:phase18:garmin-acceptance": "node --test scripts/phase18-garmin-acceptance.test.mjs"
     ,"benchmark:phase18:garmin": "node scripts/benchmark-phase18-garmin.mjs --manifest artifacts/native/phase18-garmin-acceptance/build.json --evidence artifacts/native/phase18-garmin-acceptance/benchmark.json"
+    ,"adversarial:phase18:garmin": "node scripts/run-phase18-garmin-adversarial.mjs --manifest artifacts/native/phase18-garmin-adversarial/build.json --record artifacts/native/phase18-garmin-adversarial/native-record.json"
+    ,"verify:phase18:garmin-adversarial": "node scripts/verify-phase18-garmin-adversarial.mjs --manifest artifacts/native/phase18-garmin-adversarial/build.json"
+    ,"test:evidence:phase18:garmin-adversarial": "node --test scripts/phase18-garmin-adversarial.test.mjs"
     ,"test:coverage:phase18": "node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand"
   },
   "dependencies": {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "@jest/globals";
 
@@ -9,6 +10,7 @@ import {
 } from "./phase18GarminAdversarial";
 
 const HASH = /^[a-f0-9]{64}$/u;
+const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("Phase 18 Garmin adversarial lifecycle harness", () => {
   it("requires the exact development-test suite and confirmation", () => {
@@ -28,7 +30,7 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
   });
 
   it("restores, rotates, reads, logs out, restarts signed out, and fences late work", async () => {
-    const report = await runPhase18GarminAdversarialHostSuite();
+    const report = await runPhase18GarminAdversarialHostSuite({ sha256 });
     expect(report.status).toBe("host-ready-native-deferred");
     expect(report.cases.map(({ id }) => id)).toEqual(PHASE18_GARMIN_ADVERSARIAL_CASE_IDS);
 
@@ -43,7 +45,12 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
     ]);
     expect(lifecycle.every(({ status }) => status === "passed")).toBe(true);
 
-    const [restore, refresh, read, logout, restart, late] = lifecycle;
+    const restore = lifecycle[0]!;
+    const refresh = lifecycle[1]!;
+    const read = lifecycle[2]!;
+    const logout = lifecycle[3]!;
+    const restart = lifecycle[4]!;
+    const late = lifecycle[5]!;
     expect(restore).toMatchObject({
       code: "completed",
       connection_state: "connected",
