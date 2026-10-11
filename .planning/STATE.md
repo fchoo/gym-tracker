@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Completed 18-09-PLAN.md
-last_updated: "2026-10-11T10:19:56.528Z"
+stopped_at: Completed 18-10-PLAN.md
+last_updated: "2026-10-11T10:48:14.115Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: 0f01f672fabae7f8e8fa31ee9248f78574e0c04d
+state_head: 4bb37c517cea1638ccd034edeffae3d81c13b79f
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 64
+  completed_plans: 65
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 10 of 14
+Plan: 11 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -104,6 +104,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P07 | 12m 30s | 3 tasks | 6 files |
 | Phase 18 P08 | 19m 47s | 3 tasks | 7 files |
 | Phase 18 P09 | 21m 17s | 3 tasks | 13 files |
+| Phase 18 P10 | 24m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -230,6 +231,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: The detail route accepts only prefixed local activity IDs; Calendar context is a bounded non-navigational token and Back always uses the route stack.
 - [Phase 18]: Phase 18: Activity matching revalidates the accepted payload plus opportunity, schedule, plan-day, slot, session, and relation revisions in one serialized transaction.
 - [Phase 18]: Phase 18: Match candidate reads and local selection are zero-write; only explicit Confirm crosses the application runtime to the shared match command.
+- [Phase 18]: Phase 18 Plan 10: Garmin root composition uses a narrow port backed by the existing WorkoutAppRuntime kernel; routes and screens receive no SQL, repository, or native-driver authority.
+- [Phase 18]: Phase 18 Plan 10: Deterministic opaque local and receipt identities make account sync replay-safe without exposing provider IDs in navigation.
+- [Phase 18]: Phase 18 Plan 10: Source revision review preserves accepted activity detail and match facts while marking the retained row for review.
 
 ### Pending Owner Review
 
@@ -254,7 +258,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T10:19:56.216Z
-Stopped at: Completed 18-09-PLAN.md
+Last session: 2026-10-11T10:48:13.837Z
+Stopped at: Completed 18-10-PLAN.md
 Resume file: None
-Next action: Execute 18-03 only when the owner initiates its attended installed-app proof.
+Next action: Execute 18-11-PLAN.md; comprehensive native/account/device acceptance remains deferred to Phase 20.

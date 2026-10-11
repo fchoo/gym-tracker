@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 8
+open_count: 10
 waived_count: 0
 fixed_count: 85
-total_count: 93
-last_updated: 2026-10-11T09:54:59.237Z
+total_count: 95
+last_updated: 2026-10-11T10:48:11.319Z
 ---
 
 # Broken Windows Ledger
@@ -108,6 +108,8 @@ last_updated: 2026-10-11T09:54:59.237Z
 | 91 | 18 | deviation | .planning/phases/18-garmin-import/18-03-SUMMARY.md |  | Plan 18-03 is host-ready with native execution deferred to Phase 20; Plan 18-04 may proceed without a D-18-11 PASS. | open |  | 2026-10-11T07:52:59.407Z |  |
 | 92 | 18 | unrun-verify | artifacts/native/phase18-garmin-proof/final-evidence.json |  | D-18-11 APK/account/read/restart/privacy native proof is owner-deferred to the comprehensive Phase 20 checkpoint; no final evidence exists. | open |  | 2026-10-11T07:53:21.408Z |  |
 | 93 | 18 | deviation | src/bootstrap/workoutAppRuntime.tsx |  | Added the missing application-owned accepted activity detail read capability required by Plan 18-08. | open |  | 2026-10-11T09:54:59.237Z |  |
+| 94 | 18 | deviation | src/bootstrap/workoutAppRuntime.tsx |  | Added the narrow existing-kernel Garmin import/read port omitted from the plan file list. | open |  | 2026-10-11T10:48:11.232Z |  |
+| 95 | 18 | deviation | src/ui/screens/GarminSyncScreen.tsx |  | Corrected failed history reads so they are not presented as an empty imported history. | open |  | 2026-10-11T10:48:11.319Z |  |
 
 ````json
 [
@@ -1225,6 +1227,30 @@ last_updated: 2026-10-11T09:54:59.237Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-11T09:54:59.237Z",
+    "resolved_at": null
+  },
+  {
+    "id": 94,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/bootstrap/workoutAppRuntime.tsx",
+    "line": null,
+    "description": "Added the narrow existing-kernel Garmin import/read port omitted from the plan file list.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T10:48:11.232Z",
+    "resolved_at": null
+  },
+  {
+    "id": 95,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/ui/screens/GarminSyncScreen.tsx",
+    "line": null,
+    "description": "Corrected failed history reads so they are not presented as an empty imported history.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T10:48:11.319Z",
     "resolved_at": null
   }
 ]
