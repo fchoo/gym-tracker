@@ -347,20 +347,19 @@ export function executePhase18GarminAcceptanceVerifier(
     const ownerEvidence = readJson(artifactPath);
     if (ownerVerifier === undefined) executeVerifier();
     else ownerVerifier(artifactPath, ownerEvidence);
+    validateEvidence(ownerEvidence);
     matchingArtifactIdentity(ownerEvidence.manifest, manifest);
     const artifactHash = sha256(readBytes(artifactPath));
     const row = evidence.cases.find(({ artifact }) => artifact === artifactPath);
     if (row?.status !== "verified" || row.artifact_sha256 !== artifactHash) fail("owner_artifact_invalid");
-    if (ownerVerifier === undefined) {
-      validateIdentity(ownerEvidence, dependencies.ownerCurrentIdentity?.[artifactPath] ?? {
-        ...current,
-        retainedApkSha256: ownerEvidence.manifest?.apk_sha256,
-        installedApkSha256: ownerEvidence.manifest?.apk_sha256,
-        nativeReportSha256: ownerEvidence.native_report?.sha256,
-        privacyReportSha256: ownerEvidence.privacy_scan?.report_sha256,
-        rawReportSha256: ownerEvidence.raw_report_sha256,
-      });
-    }
+    validateIdentity(ownerEvidence, dependencies.ownerCurrentIdentity?.[artifactPath] ?? {
+      ...current,
+      retainedApkSha256: ownerEvidence.manifest?.apk_sha256,
+      installedApkSha256: ownerEvidence.manifest?.apk_sha256,
+      nativeReportSha256: ownerEvidence.native_report?.sha256,
+      privacyReportSha256: ownerEvidence.privacy_scan?.report_sha256,
+      rawReportSha256: ownerEvidence.raw_report_sha256,
+    });
   }
   const maestro = readJson(MAESTRO_REPORT);
   const privacy = readJson(PRIVACY_REPORT);

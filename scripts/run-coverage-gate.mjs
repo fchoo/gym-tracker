@@ -60,6 +60,7 @@ const phase18EvidenceTests = [
   "scripts/phase18-garmin-adversarial.test.mjs",
   "scripts/phase18-garmin-proof.test.mjs",
   "scripts/phase18-language-coverage.test.mjs",
+  "scripts/phase18-verifier-cli.test.mjs",
   "scripts/run-phase18-kotlin-coverage.test.mjs",
 ];
 const phase18EvidenceFiles = [
