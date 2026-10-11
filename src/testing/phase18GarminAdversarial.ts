@@ -125,15 +125,6 @@ function createMapper(sha256: Sha256): GarminActivityMapper {
       ...input,
     }, sha256);
   return Object.freeze({
-    fromSummary: (summary) => {
-      if (summary === null || typeof summary !== "object" || Array.isArray(summary)) {
-        throw new Error("malformed_response");
-      }
-      const candidate = (summary as Readonly<Record<string, unknown>>).activityId;
-      const externalActivityId = typeof candidate === "number" ? String(candidate) : candidate;
-      if (typeof externalActivityId !== "string") throw new Error("malformed_response");
-      return normalize(externalActivityId);
-    },
     fromActivity: (input) => normalize(input.external_activity_id, {
       activity: input.activity,
       splits: input.splits,
@@ -202,7 +193,7 @@ function createConnectedDriver(
       return {
         status: "ok" as const,
         generation: state.generation,
-        data: { items: [{ activityId: EXTERNAL_ACTIVITY_ID }] },
+        data: { items: [{ activityId: EXTERNAL_ACTIVITY_ID, activityType: { typeKey: "running" } }] },
       };
     },
     async getActivity() {
@@ -429,7 +420,7 @@ async function lateGenerationCase(input: Readonly<{
   release?.({
     status: "ok",
     generation: generationBefore,
-    data: { items: [{ activityId: EXTERNAL_ACTIVITY_ID }] },
+    data: { items: [{ activityId: EXTERNAL_ACTIVITY_ID, activityType: { typeKey: "running" } }] },
   });
   let code = "temporary_failure";
   try {
@@ -522,12 +513,17 @@ function injectedDriver(id: InjectedCaseId, state: DriverState): GarminNativeDri
         case "PH18-ADV-5XX": return nativeFailure("temporary_failure");
         case "PH18-ADV-MALFORMED": return { status: "unexpected" };
         case "PH18-ADV-OVERSIZED": return ok({
-          items: [{ activityId: EXTERNAL_ACTIVITY_ID, payload: "x".repeat(16_385) }],
+          items: [{ activityId: EXTERNAL_ACTIVITY_ID, activityType: { typeKey: "running" }, payload: "x".repeat(16_385) }],
         });
         case "PH18-ADV-PARTIAL-PAGE": return ok({
-          items: [{ activityId: EXTERNAL_ACTIVITY_ID }, { activityId: "424243" }],
+          items: [
+            { activityId: EXTERNAL_ACTIVITY_ID, activityType: { typeKey: "running" } },
+            { activityId: "424243", activityType: { typeKey: "running" } },
+          ],
         });
-        default: return ok({ items: [{ activityId: EXTERNAL_ACTIVITY_ID }] });
+        default: return ok({
+          items: [{ activityId: EXTERNAL_ACTIVITY_ID, activityType: { typeKey: "running" } }],
+        });
       }
     },
     async getActivity({ externalActivityId }) {

@@ -109,7 +109,12 @@ describe("Garmin import runtime", () => {
         generation: 1,
       })),
       logout: jest.fn(async () => undefined),
-      listRunningSummaries: jest.fn(async () => ({ items: [sourceEnvelope] })),
+      listRunningSummaries: jest.fn(async () => ({
+        items: [{
+          account_namespace: sourceEnvelope.account_namespace,
+          external_activity_id: sourceEnvelope.external_activity_id,
+        }],
+      })),
       readActivity: jest.fn(async () => sourceEnvelope),
     };
     const runtime = createGarminRootRuntime({
@@ -168,7 +173,12 @@ describe("Garmin import runtime", () => {
       login: jest.fn(async () => ({ kind: "disconnected" as const })),
       resumeMfa: jest.fn(async () => ({ kind: "disconnected" as const })),
       logout: jest.fn(async () => undefined),
-      listRunningSummaries: jest.fn(async () => ({ items: [sourceEnvelope] })),
+      listRunningSummaries: jest.fn(async () => ({
+        items: [{
+          account_namespace: sourceEnvelope.account_namespace,
+          external_activity_id: sourceEnvelope.external_activity_id,
+        }],
+      })),
       readActivity: jest.fn(async () => sourceEnvelope),
     };
     const runtime = createGarminRootRuntime({
@@ -238,7 +248,12 @@ describe("Garmin import runtime", () => {
       login: jest.fn(async () => ({ kind: "disconnected" as const })),
       resumeMfa: jest.fn(async () => ({ kind: "disconnected" as const })),
       logout: jest.fn(async () => undefined),
-      listRunningSummaries: jest.fn(async () => ({ items: [sourceEnvelope] })),
+      listRunningSummaries: jest.fn(async () => ({
+        items: [{
+          account_namespace: sourceEnvelope.account_namespace,
+          external_activity_id: sourceEnvelope.external_activity_id,
+        }],
+      })),
       readActivity: jest.fn(async () => sourceEnvelope),
     };
     const createRuntime = () => createGarminRootRuntime({
@@ -535,6 +550,10 @@ describe("Garmin import runtime", () => {
         movingDuration: 1_475,
       },
     });
+    const discovery = (activityId: number | string) => ({
+      activityId,
+      activityType: { typeKey: "running" },
+    });
     mockGarminNativeModule = {
       runtimeInfo: jest.fn(async () => undefined),
       restoreSession: jest.fn(async () => ({
@@ -574,7 +593,7 @@ describe("Garmin import runtime", () => {
       getActivities: jest.fn(async () => ({
         status: "ok",
         generation: nativeGeneration,
-        data: { items: [summary(18_001), summary("18002")] },
+        data: { items: [discovery(18_001), discovery("18002")] },
       })),
       getActivity: jest.fn(async ({ externalActivityId }) => ({
         status: "ok",
@@ -664,7 +683,7 @@ describe("Garmin import runtime", () => {
       }));
       await rendered.result.current.source.connectionState();
       await expect(rendered.result.current.source.listRunningSummaries({ limit: 1 }))
-        .rejects.toThrow("garmin_source_invalid");
+        .rejects.toThrow("malformed_response");
       await rendered.unmount();
     }
   });

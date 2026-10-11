@@ -1,4 +1,5 @@
 import type {
+  GarminActivityDiscovery,
   GarminActivitySourcePort,
   GarminSourceEnvelope,
 } from "../../domains/activities/garminActivitySourcePort";
@@ -166,11 +167,11 @@ function emit(options: GarminSyncOptions, kind: GarminSyncProgress["kind"], coun
 }
 
 function validateSummary(
-  value: GarminSourceEnvelope,
+  value: GarminActivityDiscovery,
   fence: ConnectionFence,
   seenActivityIds: Set<string>,
 ): string {
-  const summary = parseGarminSourceEnvelope(value);
+  const summary = value;
   if (!EXTERNAL_ACTIVITY_ID.test(summary.external_activity_id)
     || summary.account_namespace !== fence.accountNamespace
     || seenActivityIds.has(summary.external_activity_id)) {

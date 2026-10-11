@@ -97,7 +97,6 @@ function fixtures() {
     }),
   };
   const mapper: GarminActivityMapper = {
-    fromSummary: jest.fn((summary) => envelope(String((summary as { activityId: string }).activityId))),
     fromActivity: jest.fn((input: Readonly<{
       external_activity_id: string;
       activity: unknown;
@@ -156,7 +155,13 @@ describe("Garmin activity adapter", () => {
     const page = await adapter.listRunningSummaries({ cursor: "0", limit: 1 });
     const activity = await adapter.readActivity("42");
 
-    expect(page).toEqual({ items: [envelope("42")], next_cursor: "1" });
+    expect(page).toEqual({
+      items: [{
+        account_namespace: "account-fixture",
+        external_activity_id: "42",
+      }],
+      next_cursor: "1",
+    });
     expect(activity).toEqual(envelope("42"));
     expect(calls).toContainEqual({
       operation: "getActivities",

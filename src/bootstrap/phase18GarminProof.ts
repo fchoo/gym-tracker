@@ -14,9 +14,6 @@ export function createProductionPhase18GarminProofHarness() {
     // Plan 18-04 owns canonical normalization. The proof path deliberately uses
     // this adapter only for auth and the fixed native bridge for bounded reads.
     mapper: {
-      fromSummary: () => {
-        throw new Error("phase18_proof_normalization_not_available");
-      },
       fromActivity: () => {
         throw new Error("phase18_proof_normalization_not_available");
       },

@@ -1,4 +1,5 @@
 import type {
+  GarminActivityDiscovery,
   GarminActivitySourcePort,
   GarminConnectionState,
   GarminSourceEnvelope,
@@ -75,7 +76,6 @@ export type GarminNativeDriver = Readonly<{
 }>;
 
 export type GarminActivityMapper = Readonly<{
-  fromSummary(summary: unknown): GarminSourceEnvelope | Promise<GarminSourceEnvelope>;
   fromActivity(input: Readonly<{
     external_activity_id: string;
     activity: unknown;
@@ -190,6 +190,29 @@ function validateActivityId(value: string): void {
   if (!EXTERNAL_ACTIVITY_ID.test(value)) throw new GarminActivityAdapterError("garmin_activity_id_invalid");
 }
 
+function parseDiscovery(
+  value: unknown,
+  accountNamespace: string,
+): GarminActivityDiscovery {
+  const summary = record(assertSafeJson(value));
+  const rawActivityId = summary.activityId;
+  const externalActivityId = typeof rawActivityId === "number"
+    && Number.isSafeInteger(rawActivityId)
+    && rawActivityId > 0
+      ? String(rawActivityId)
+      : rawActivityId;
+  const activityType = record(summary.activityType);
+  if (typeof externalActivityId !== "string"
+    || !EXTERNAL_ACTIVITY_ID.test(externalActivityId)
+    || activityType.typeKey !== "running") {
+    throw new GarminActivityAdapterError("malformed_response");
+  }
+  return Object.freeze({
+    account_namespace: accountNamespace,
+    external_activity_id: externalActivityId,
+  });
+}
+
 export function createGarminActivityAdapter(input: Readonly<{
   driver?: GarminNativeDriver;
   mapper: GarminActivityMapper;
@@ -276,8 +299,8 @@ export function createGarminActivityAdapter(input: Readonly<{
       requireCurrent(result.generation, startedGeneration);
       const data = record(result.data);
       if (!Array.isArray(data.items) || data.items.length > page.limit) throw new GarminActivityAdapterError("malformed_response");
-      const items = await Promise.all(data.items.map(async (item) =>
-        parseGarminSourceEnvelope(await input.mapper.fromSummary(assertSafeJson(item)))));
+      const accountNamespace = currentState.account_namespace;
+      const items = data.items.map((item) => parseDiscovery(item, accountNamespace));
       requireCurrent(result.generation, startedGeneration);
       const nextStart = data.nextStart;
       if (nextStart === undefined) return { items };

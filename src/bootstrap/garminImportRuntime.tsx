@@ -244,20 +244,6 @@ function rememberAccountNamespace(
   return state;
 }
 
-function activityIdFromSummary(summary: unknown): string {
-  if (summary === null || typeof summary !== "object" || Array.isArray(summary)) {
-    throw new Error("garmin_source_invalid");
-  }
-  const value = (summary as Readonly<Record<string, unknown>>).activityId;
-  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
-    return String(value);
-  }
-  if (typeof value === "string" && /^[1-9][0-9]{0,18}$/u.test(value)) {
-    return value;
-  }
-  throw new Error("garmin_source_invalid");
-}
-
 export function requireGarminAccountNamespace(value: string | null): string {
   if (value === null) throw new Error("sign_in_required");
   return value;
@@ -267,13 +253,6 @@ function createProductionGarminSource(sha256: GarminSha256): GarminActivitySourc
   const accountNamespace = { current: null as string | null };
   const adapter = createGarminActivityAdapter({
     mapper: {
-      fromSummary: (summary) => normalizeGarminActivity({
-        account_namespace: requireGarminAccountNamespace(accountNamespace.current),
-        external_activity_id: activityIdFromSummary(summary),
-        activity: summary,
-        splits: { lapDTOs: [] },
-        details: { metricDescriptors: [], activityDetailMetrics: [] },
-      }, sha256),
       fromActivity: (activity) => normalizeGarminActivity({
         account_namespace: requireGarminAccountNamespace(accountNamespace.current),
         ...activity,

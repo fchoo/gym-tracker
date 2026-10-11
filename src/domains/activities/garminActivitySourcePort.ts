@@ -5,6 +5,11 @@ export type GarminConnectionState =
   | Readonly<{ kind: "connected"; account_namespace: string; generation: number }>
   | Readonly<{ kind: "mfa_required"; challenge_handle: string; generation: number }>;
 
+export type GarminActivityDiscovery = Readonly<{
+  account_namespace: string;
+  external_activity_id: string;
+}>;
+
 /** The sole Phase 18-to-Phase 13 activity boundary.  It deliberately has no credential or URL fields. */
 export type GarminActivitySourcePort = Readonly<{
   connectionState(): Promise<GarminConnectionState>;
@@ -12,7 +17,7 @@ export type GarminActivitySourcePort = Readonly<{
   login(input: Readonly<{ email: string; password: string }>): Promise<GarminConnectionState>;
   resumeMfa(input: Readonly<{ challenge_handle: string; code: string }>): Promise<GarminConnectionState>;
   logout(): Promise<void>;
-  listRunningSummaries(input: Readonly<{ cursor?: string; limit: number }>): Promise<Readonly<{ items: readonly GarminSourceEnvelope[]; next_cursor?: string }>>;
+  listRunningSummaries(input: Readonly<{ cursor?: string; limit: number }>): Promise<Readonly<{ items: readonly GarminActivityDiscovery[]; next_cursor?: string }>>;
   readActivity(external_activity_id: string): Promise<GarminSourceEnvelope>;
 }>;
 

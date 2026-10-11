@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, jest } from "@jest/globals";
 
 import type {
+  GarminActivityDiscovery,
   GarminActivitySourcePort,
   GarminSourceEnvelope,
 } from "../../domains/activities/garminActivitySourcePort";
@@ -56,11 +57,6 @@ async function connectedAdapter() {
   const externalActivityId = "424242";
   const accountNamespace = "account-fixture";
   const components = sourceComponents(externalActivityId);
-  const summaryEnvelope = await normalizeGarminActivity({
-    account_namespace: accountNamespace,
-    external_activity_id: externalActivityId,
-    ...components,
-  }, sha256);
   const operations: string[] = [];
   const driver: GarminNativeDriver = {
     connectionState: jest.fn(async () => {
@@ -81,7 +77,11 @@ async function connectedAdapter() {
     logout: jest.fn(async () => ({ status: "ok" as const, generation: 2, data: { kind: "disconnected" as const } })),
     getActivities: jest.fn(async () => {
       operations.push("getActivities");
-      return { status: "ok" as const, generation: 1, data: { items: [{ activityId: externalActivityId }] } };
+      return {
+        status: "ok" as const,
+        generation: 1,
+        data: { items: [{ activityId: externalActivityId, activityType: { typeKey: "running" } }] },
+      };
     }),
     getActivity: jest.fn(async () => {
       operations.push("getActivity");
@@ -98,7 +98,6 @@ async function connectedAdapter() {
     }),
   };
   const mapper: GarminActivityMapper = {
-    fromSummary: () => summaryEnvelope,
     fromActivity: async (input) => {
       operations.push("normalizeGarminActivity");
       return normalizeGarminActivity({ account_namespace: accountNamespace, ...input }, sha256);
@@ -118,7 +117,7 @@ async function envelope(externalActivityId: string): Promise<GarminSourceEnvelop
 }
 
 function pagedSource(
-  pages: ReadonlyMap<string, Readonly<{ items: readonly GarminSourceEnvelope[]; next_cursor?: string }>>,
+  pages: ReadonlyMap<string, Readonly<{ items: readonly (GarminActivityDiscovery | GarminSourceEnvelope)[]; next_cursor?: string }>>,
   readActivity: (externalActivityId: string) => Promise<GarminSourceEnvelope>,
 ): GarminActivitySourcePort {
   return {
@@ -128,7 +127,10 @@ function pagedSource(
     resumeMfa: jest.fn(async () => ({ kind: "connected" as const, account_namespace: "account-fixture", generation: 1 })),
     logout: jest.fn(async () => undefined),
     listRunningSummaries: jest.fn(async (input: Readonly<{ cursor?: string; limit: number }>) =>
-      pages.get(input.cursor ?? "start") ?? { items: [] }),
+      (pages.get(input.cursor ?? "start") ?? { items: [] }) as Readonly<{
+        items: readonly GarminActivityDiscovery[];
+        next_cursor?: string;
+      }>),
     readActivity: jest.fn(readActivity),
   };
 }

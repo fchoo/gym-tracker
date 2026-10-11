@@ -136,18 +136,15 @@ async function source(input: Readonly<{
     splits: { lapDTOs: [] },
     details: { metricDescriptors: [], activityDetailMetrics: [] },
   };
-  const summaryEnvelope = await normalizeGarminActivity({
-    account_namespace: accountNamespace,
-    external_activity_id: externalActivityId,
-    ...components,
-  }, sha256);
   return {
     connectionState: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     restoreSession: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     login: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     resumeMfa: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     logout: jest.fn(async () => undefined),
-    listRunningSummaries: jest.fn(async () => ({ items: [summaryEnvelope] })),
+    listRunningSummaries: jest.fn(async () => ({
+      items: [{ account_namespace: accountNamespace, external_activity_id: externalActivityId }],
+    })),
     readActivity: jest.fn(input.readActivity ?? (async (activityId: string) => normalizeGarminActivity({
         account_namespace: accountNamespace,
         external_activity_id: activityId,
