@@ -57,7 +57,7 @@ describe("Garmin import runtime", () => {
     }>> = [];
     const operations: string[] = [];
     const repository: ImportedActivityCommandRepository = {
-      confirmGarminImport: jest.fn(async (input) => {
+      confirmGarminImport: jest.fn(async (input: ConfirmGarminImportInput) => {
         operations.push("shared-commit");
         durableActivities.push(Object.freeze({
           activityId: input.activityId,

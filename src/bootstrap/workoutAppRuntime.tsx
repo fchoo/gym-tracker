@@ -186,6 +186,10 @@ import {
   projectImportedActivityDetail,
   type ImportedActivityDetailReadResult,
 } from "../domains/activities/activityDetails";
+import type {
+  ConfirmGarminImportInput,
+  GarminImportResult,
+} from "../domains/activities/importCommands";
 import {
   confirmRunningActivityMatch,
   prepareRunningActivityMatchInput,
@@ -219,6 +223,9 @@ import {
 import {
   createRunningActivityMatchRepository,
 } from "../platform/sqlite/repositories/runningActivityMatchRepository";
+import {
+  createImportedActivityRepository,
+} from "../platform/sqlite/repositories/importedActivityRepository";
 import {
   createBackupCommands,
   type SecureBackupArchiveHandle,
@@ -428,6 +435,9 @@ import type {
   ScheduleOverrideSelection,
   ScheduleTimeZoneChoice,
 } from "../domains/scheduling/scheduleState";
+import type {
+  GarminImportApplicationPort,
+} from "./garminImportRuntime";
 import {
   readCustomExerciseDetail,
   readCustomExerciseMigration,
@@ -639,6 +649,7 @@ function sameRestAlertPreferences(
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
+  garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
@@ -1016,6 +1027,7 @@ type RuntimeServices = Readonly<{
   customExerciseRepository: ReturnType<typeof createCustomExerciseRepository>;
   historyCommandRepository: ReturnType<typeof createHistoryCommandRepository>;
   historyRepository: ReturnType<typeof createHistoryRepository>;
+  importedActivities: ReturnType<typeof createImportedActivityRepository>;
   progressRepository: ReturnType<typeof createProgressRepository>;
   kernel: SqliteKernel;
   librarySearchRepository: ReturnType<typeof createLibrarySearchRepository>;
@@ -2348,6 +2360,7 @@ export function WorkoutAppRuntimeProvider({
       customExerciseRepository,
       historyCommandRepository: createHistoryCommandRepository(kernel),
       historyRepository: createHistoryRepository(kernel),
+      importedActivities: createImportedActivityRepository(kernel),
       progressRepository: createProgressRepository(kernel),
       kernel,
       librarySearchRepository,
@@ -2669,6 +2682,61 @@ export function WorkoutAppRuntimeProvider({
   const getSessionDetail = useCallback((sessionId: string) => {
     return requireServices().outcomeRepository.getSessionDetail(sessionId);
   }, [requireServices]);
+
+  const confirmGarminImport = useCallback((input: ConfirmGarminImportInput): Promise<GarminImportResult> =>
+    requireServices().importedActivities.confirmGarminImport(input),
+  [requireServices]);
+
+  const loadGarminActivities = useCallback(async (): ReturnType<GarminImportApplicationPort["loadGarminActivities"]> => {
+    const rows = await requireServices().kernel.queryAll<{
+      activity_id: string;
+      aggregate_json: string;
+      aggregate_revision: number;
+      accepted_normalized_sha256: string;
+      removal_state: "active" | "removed";
+      match_count: number;
+    }>(
+      `SELECT activity.id AS activity_id, activity.aggregate_json,
+              identity.aggregate_revision, identity.accepted_normalized_sha256,
+              COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state,
+              (SELECT count(*) FROM running_activity_current_matches current
+                WHERE current.activity_id = activity.id) AS match_count
+         FROM imported_activities activity
+         JOIN imported_activity_identities identity ON identity.activity_id = activity.id
+         LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+        WHERE COALESCE(lifecycle.removal_state, identity.removal_state) = 'active'
+        ORDER BY activity.started_at_ms DESC, activity.id`,
+    );
+    return Object.freeze(rows.map((row) => {
+      const projected = projectImportedActivityDetail({
+        activityId: row.activity_id,
+        aggregateJson: row.aggregate_json,
+        aggregateRevision: row.aggregate_revision,
+        acceptedNormalizedSha256: row.accepted_normalized_sha256,
+        removalState: row.removal_state,
+      });
+      if (projected.kind !== "ready") {
+        throw new Error("garmin_history_projection_unavailable");
+      }
+      const summary = [projected.detail.distance, projected.detail.elapsed]
+        .filter((value): value is string => value !== undefined)
+        .join(" · ");
+      return Object.freeze({
+        activityId: row.activity_id,
+        title: projected.detail.activityType,
+        activityType: "Running",
+        confirmedLocalDate: projected.detail.confirmedLocalDate,
+        ...(summary.length === 0 ? {} : { summary }),
+        matchState: row.match_count === 1 ? "matched" as const : "unmatched" as const,
+        revisionState: "accepted" as const,
+      });
+    }));
+  }, [requireServices]);
+
+  const garminImport = useMemo<GarminImportApplicationPort>(() => Object.freeze({
+    confirmGarminImport,
+    loadGarminActivities,
+  }), [confirmGarminImport, loadGarminActivities]);
 
   const loadImportedActivityDetail = useCallback(async (
     activityId: string,
@@ -4609,6 +4677,7 @@ export function WorkoutAppRuntimeProvider({
 
   const value = useMemo<RuntimeValue>(() => ({
     ...state,
+    garminImport,
     actOnToday: (action) => requireServices().schedules.actOnToday(action),
     acceptRecommendation: acceptWorkoutRecommendation,
     activateAcceptedStarterPlan: activateAcceptedStarter,
@@ -4932,6 +5001,7 @@ export function WorkoutAppRuntimeProvider({
     finishWorkoutPartial,
     finishStarterSwitchWorkout,
     finishZeroSetWorkout,
+    garminImport,
     getActiveWorkout,
     getSessionDetail,
     loadImportedActivityDetail,

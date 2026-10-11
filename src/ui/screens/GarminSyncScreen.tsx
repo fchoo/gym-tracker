@@ -11,6 +11,8 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type TextStyle,
 } from "react-native";
 
@@ -43,8 +45,12 @@ import {
 } from "../theme";
 
 export type GarminSyncScreenProps = GarminConnectionControllerInput & Readonly<{
+  contextOrigin?: "workout" | "calendar" | "library" | "progress";
   onOpenActivity(activityId: string): void;
   onBack?(): void;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  returnFocusActivityId?: string;
+  scrollOffset?: number;
   width?: number;
 }>;
 
@@ -171,12 +177,21 @@ function ImportedActivities({
   activities,
   historyStatus,
   onOpenActivity,
+  returnFocusActivityId,
 }: Readonly<{
   activities: readonly GarminActivityListItem[];
   historyStatus: "loading" | "ready" | "failed";
   onOpenActivity(activityId: string): void;
+  returnFocusActivityId?: string;
 }>) {
   const { colors } = useAppTheme();
+  const returnFocusRef = useRef<View>(null);
+  useEffect(() => {
+    if (returnFocusActivityId !== undefined
+      && activities.some(({ activityId }) => activityId === returnFocusActivityId)) {
+      focusAccessible(returnFocusRef);
+    }
+  }, [activities, returnFocusActivityId]);
   return (
     <View style={styles.section}>
       <SectionHeader
@@ -199,8 +214,10 @@ function ImportedActivities({
         <FocusablePressable
           accessibilityLabel={`Open ${activity.title}`}
           accessibilityRole="button"
+          accessibilityState={{ selected: activity.activityId === returnFocusActivityId }}
           key={activity.activityId}
           onPress={() => onOpenActivity(activity.activityId)}
+          ref={activity.activityId === returnFocusActivityId ? returnFocusRef : undefined}
           style={styles.activityTarget}
         >
           <ContentCard {...(activity.revisionState === "needs_review" ? { status: "attention" as const } : {})}>
@@ -501,6 +518,9 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
         activities={state.activities}
         historyStatus={state.historyStatus}
         onOpenActivity={props.onOpenActivity}
+        {...(props.returnFocusActivityId === undefined
+          ? {}
+          : { returnFocusActivityId: props.returnFocusActivityId })}
       />
     </>
   );
@@ -516,6 +536,11 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
             ? { onRequestBack: requestBack }
             : {})}
         primary={primary}
+        {...(props.onScroll === undefined ? {} : { onScroll: props.onScroll })}
+        {...(props.scrollOffset === undefined ? {} : { scrollOffset: props.scrollOffset })}
+        {...(props.returnFocusActivityId === undefined
+          ? {}
+          : { scrollRestoreKey: props.returnFocusActivityId })}
         testID="garmin-sync-screen"
         {...(props.width === undefined ? {} : { width: props.width })}
       />

@@ -110,7 +110,10 @@ describe("GarminSyncScreen connection tracer", () => {
 
     expect(await screen.findByText("Morning run")).toBeOnTheScreen();
     const committedRow = screen.getByRole("button", { name: "Open Morning run" });
-    expect(committedRow).toHaveProp("accessibilityState", { selected: true });
+    expect(committedRow).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
     await fireEvent.press(committedRow);
     expect(onOpenActivity).toHaveBeenCalledWith("local-activity-1");
   });
