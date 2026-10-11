@@ -21,6 +21,14 @@ const directories = new Set<string>(); const kernels: SqliteKernel[] = [];
 afterEach(async () => { await Promise.all(kernels.splice(0).map((kernel) => kernel.close())); for (const directory of directories) rmSync(directory, { recursive: true, force: true }); directories.clear(); });
 async function runtime(observer: SqliteKernelTestObserver = {}) { const directory = mkdtempSync(join(tmpdir(), "gym-imported-activity-")); directories.add(directory); const path = join(directory, "gym.db"); const fixture = new DatabaseSync(path); fixture.exec(readFileSync(join(__dirname, "../migrations/fixtures/v6-metric-profiles.sql"), "utf8")); fixture.close(); const writer = new Connection(new DatabaseSync(path)); const reader = new Connection(new DatabaseSync(path)); await configureSqliteConnection(writer, { enableWal: true }); await configureSqliteConnection(reader, { enableWal: false }); const kernel = createSqliteKernel({ writer, reader }, observer); kernels.push(kernel); await createMigrationRunner({ databaseName: path, kernel, migrations, recoveryBackup: { async createAndValidate(request) { return { backupId: "test", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const }; } } }).run(); return { kernel, writer, repository: createImportedActivityRepository(kernel) }; }
 async function staged(options: Readonly<{ externalActivityId?: string; distanceMeters?: number; laps?: { ordinal: number; elapsed_ms: number }[]; samples?: { elapsed_ms: number; distance_meters: number }[] }> = {}) { const normalized = { version: 1 as const, started_at_ms: 1_700_000_000_000, sport: "running" as const, subtype: "outdoor", distance_meters: options.distanceMeters ?? 5000, elapsed_ms: 1_500_000, laps: options.laps ?? [], ...(options.samples === undefined ? {} : { samples: options.samples }) }; return prepareGarminImport({ version: 1 as const, source_kind: "garmin_connect_account" as const, account_namespace: "owner-a", external_activity_id: options.externalActivityId ?? "42", normalization_version: 1, normalized_json_sha256: createHash("sha256").update(canonicalJson({ normalization_version: 1, normalized })).digest("hex"), raw_component_sha256: { activity: "a".repeat(64), splits: "b".repeat(64), details: "c".repeat(64) }, sample_fidelity: "source_summary" as const, normalized }, async (value) => createHash("sha256").update(value).digest("hex")); }
+async function importedCounts(kernel: SqliteKernel) {
+  return kernel.queryAll<{ activities: number; identities: number; payloads: number; receipts: number; proposals: number }>(`SELECT
+    (SELECT count(*) FROM imported_activities) AS activities,
+    (SELECT count(*) FROM imported_activity_identities) AS identities,
+    (SELECT count(*) FROM imported_activity_payloads) AS payloads,
+    (SELECT count(*) FROM imported_activity_receipts) AS receipts,
+    (SELECT count(*) FROM imported_activity_revision_proposals) AS proposals`);
+}
 
 describe("imported activity facts", () => {
   it("commits source evidence exactly once without plan or session side effects", async () => { const { kernel, repository } = await runtime(); const before = await kernel.queryAll<{ plans: number; sessions: number }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM workout_sessions) AS sessions"); const input = { requestId: "request-1", requestSha256: "d".repeat(64), activityId: "activity-local-1", expectedAggregateRevision: 0, confirmedLocalDate: "2026-10-07", staged: await staged() }; await expect(confirmGarminImportDate(repository, input)).resolves.toEqual({ kind: "imported", activityId: "activity-local-1", aggregateRevision: 1 }); await expect(confirmGarminImportDate(repository, input)).resolves.toEqual({ kind: "replayed", activityId: "activity-local-1", aggregateRevision: 1 }); await expect(kernel.queryAll<{ plans: number; sessions: number }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM workout_sessions) AS sessions")).resolves.toEqual(before); await expect(kernel.queryAll<{ count: number }>("SELECT count(*) AS count FROM imported_activity_payloads")).resolves.toEqual([{ count: 1 }]); });
@@ -115,5 +123,74 @@ describe("imported activity facts", () => {
     await expect(kernel.queryAll<{ activities: number; receipts: number }>(`SELECT
       (SELECT count(*) FROM imported_activities) AS activities,
       (SELECT count(*) FROM imported_activity_receipts) AS receipts`)).resolves.toEqual([{ activities: 0, receipts: 0 }]);
+  });
+
+  it.each([
+    {
+      label: "account namespace mutation",
+      mutate: (value: Awaited<ReturnType<typeof staged>>) => ({
+        ...value,
+        envelope: {
+          ...value.envelope,
+          account_namespace: "owner-b",
+        },
+      }),
+    },
+    {
+      label: "external activity id mutation",
+      mutate: (value: Awaited<ReturnType<typeof staged>>) => ({
+        ...value,
+        envelope: {
+          ...value.envelope,
+          external_activity_id: "99",
+        },
+      }),
+    },
+    {
+      label: "source kind mutation",
+      mutate: (value: Awaited<ReturnType<typeof staged>>) => ({
+        ...value,
+        envelope: {
+          ...value.envelope,
+          source_kind: "garmin_connect_account_mutated" as never,
+        },
+      }),
+    },
+    {
+      label: "normalized payload mutation",
+      mutate: (value: Awaited<ReturnType<typeof staged>>) => ({
+        ...value,
+        envelope: {
+          ...value.envelope,
+          normalized: {
+            ...value.envelope.normalized,
+            distance_meters: value.envelope.normalized.distance_meters + 1,
+          },
+        },
+      }),
+    },
+  ])("writes zero rows when prepared import has a post-prepare $label", async ({ mutate }) => {
+    const { kernel, repository } = await runtime();
+    const input = {
+      requestId: "mutation-check",
+      requestSha256: "d".repeat(64),
+      activityId: "mutation-activity",
+      expectedAggregateRevision: 0,
+      confirmedLocalDate: "2026-10-07",
+      staged: mutate(await staged()),
+    };
+
+    await expect(confirmGarminImportDate(repository, input)).resolves.toEqual({
+      kind: "conflict",
+      activityId: "mutation-activity",
+      aggregateRevision: 0,
+    });
+    await expect(importedCounts(kernel)).resolves.toEqual([{
+      activities: 0,
+      identities: 0,
+      payloads: 0,
+      receipts: 0,
+      proposals: 0,
+    }]);
   });
 });

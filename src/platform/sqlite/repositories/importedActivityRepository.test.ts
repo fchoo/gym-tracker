@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "@jest/globals";
+import type { SQLInputValue } from "node:sqlite";
 
 import type { GarminRevisionDecisionInput } from "../../../domains/activities/importCommands";
 import { prepareGarminImport } from "../../../domains/activities/importCommands";
@@ -26,20 +27,23 @@ function writeKernel(responses: readonly (readonly Record<string, unknown>[])[])
 }
 
 function trackingKernel(responses: readonly (readonly Record<string, unknown>[])[]) {
-  const executed: string[] = [];
+  const operations: string[] = [];
   const kernel: SqliteKernel = {
     write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => {
       const pending = [...responses];
       return command({
-        queryAll: async <Row extends Record<string, unknown>>() => (pending.shift() ?? []) as readonly Row[],
+        queryAll: async <Row extends Record<string, unknown>>(sql: string, _parameters?: readonly SQLInputValue[]) => {
+          operations.push(`query:${sql}`);
+          return (pending.shift() ?? []) as readonly Row[];
+        },
         execute: async (sql) => {
-          executed.push(sql);
+          operations.push(`execute:${sql}`);
           return { changes: 1, lastInsertRowId: 0 };
         },
       });
     },
   } as unknown as SqliteKernel;
-  return { executed, kernel };
+  return { kernel, operations };
 }
 
 const decision: GarminRevisionDecisionInput = Object.freeze({
@@ -157,19 +161,54 @@ describe("imported activity repository defensive branches", () => {
     });
   });
 
-  it("rejects a mutated staged envelope before any durable write occurs", async () => {
-    const staged = await prepareGarminImport(envelope, sha256);
-    const mutated = {
-      ...staged,
-      envelope: {
-        ...staged.envelope,
-        normalized: {
-          ...staged.envelope.normalized,
-          distance_meters: 5_001,
+  it.each([
+    {
+      label: "source kind mutation",
+      mutate: (staged: Awaited<ReturnType<typeof prepareGarminImport>>) => ({
+        ...staged,
+        envelope: {
+          ...staged.envelope,
+          source_kind: "garmin_connect_account_mutated" as never,
         },
-      },
-    } as typeof staged;
-    const { kernel, executed } = trackingKernel([]);
+      }),
+    },
+    {
+      label: "account namespace mutation",
+      mutate: (staged: Awaited<ReturnType<typeof prepareGarminImport>>) => ({
+        ...staged,
+        envelope: {
+          ...staged.envelope,
+          account_namespace: "garmin:mutated-account",
+        },
+      }),
+    },
+    {
+      label: "external activity id mutation",
+      mutate: (staged: Awaited<ReturnType<typeof prepareGarminImport>>) => ({
+        ...staged,
+        envelope: {
+          ...staged.envelope,
+          external_activity_id: "99",
+        },
+      }),
+    },
+    {
+      label: "normalized payload mutation",
+      mutate: (staged: Awaited<ReturnType<typeof prepareGarminImport>>) => ({
+        ...staged,
+        envelope: {
+          ...staged.envelope,
+          normalized: {
+            ...staged.envelope.normalized,
+            distance_meters: 5_001,
+          },
+        },
+      }),
+    },
+  ])("rejects $label before any repository query or write occurs", async ({ mutate }) => {
+    const staged = await prepareGarminImport(envelope, sha256);
+    const mutated = mutate(staged);
+    const { kernel, operations } = trackingKernel([]);
     const repository = createImportedActivityRepository(kernel);
 
     await expect(repository.confirmGarminImport({
@@ -184,6 +223,6 @@ describe("imported activity repository defensive branches", () => {
       activityId: "activity-2",
       aggregateRevision: 0,
     });
-    expect(executed).toEqual([]);
+    expect(operations).toEqual([]);
   });
 });

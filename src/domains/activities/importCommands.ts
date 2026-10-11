@@ -1,7 +1,13 @@
 import type { GarminSourceEnvelope } from "./garminActivitySourcePort";
 import { canonicalJson, GarminImportBoundaryError, parseGarminSourceEnvelope } from "./importContracts";
 
-export type PreparedGarminImport = Readonly<{ envelope: GarminSourceEnvelope; canonical_payload_json: string }>;
+export type PreparedGarminImport = Readonly<{
+  envelope: GarminSourceEnvelope;
+  canonical_envelope_json: string;
+  canonical_envelope_sha256: string;
+  canonical_payload_json: string;
+  canonical_payload_sha256: string;
+}>;
 export type GarminSha256 = (canonicalPayload: string) => Promise<string>;
 export type GarminImportResult = Readonly<{ kind: "imported" | "replayed" | "revision_review" | "removed" | "conflict"; activityId: string; aggregateRevision: number }>;
 export type GarminImportDateProvenance = Readonly<{
@@ -54,15 +60,35 @@ export type ImportedActivityRevisionRepository = Readonly<{
 export type ImportedActivityLifecycleRepository = Readonly<{ changeGarminActivityLifecycle(input: GarminActivityLifecycleInput): Promise<GarminImportResult> }>;
 export type GarminActivityLifecycleInput = Readonly<{ operation: "remove" | "restore"; requestId: string; requestSha256: string; activityId: string; expectedAggregateRevision: number; occurredAtMs: number; reason: string }>;
 
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreeze(child);
+    }
+  }
+  return value;
+}
+
 export async function prepareGarminImport(
   envelope: GarminSourceEnvelope,
   sha256: GarminSha256,
 ): Promise<PreparedGarminImport> {
   const parsed = parseGarminSourceEnvelope(envelope) as GarminSourceEnvelope;
+  const canonical_envelope_json = canonicalJson(parsed);
   const canonical_payload_json = canonicalJson({ normalization_version: parsed.normalization_version, normalized: parsed.normalized });
-  const digest = await sha256(canonical_payload_json);
-  if (digest !== parsed.normalized_json_sha256) throw new GarminImportBoundaryError("garmin_digest_invalid");
-  return Object.freeze({ envelope: parsed, canonical_payload_json });
+  const [canonical_envelope_sha256, canonical_payload_sha256] = await Promise.all([
+    sha256(canonical_envelope_json),
+    sha256(canonical_payload_json),
+  ]);
+  if (canonical_payload_sha256 !== parsed.normalized_json_sha256) throw new GarminImportBoundaryError("garmin_digest_invalid");
+  return Object.freeze({
+    envelope: deepFreeze(parsed),
+    canonical_envelope_json,
+    canonical_envelope_sha256,
+    canonical_payload_json,
+    canonical_payload_sha256,
+  });
 }
 
 export async function changeGarminActivityLifecycle(repository: ImportedActivityLifecycleRepository, input: GarminActivityLifecycleInput): Promise<GarminImportResult> {

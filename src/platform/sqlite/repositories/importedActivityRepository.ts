@@ -16,8 +16,7 @@ import type { SqliteKernel } from "../sqliteKernel";
 
 type Receipt = Readonly<{ request_sha256: string; activity_id: string }>;
 
-function aggregateJson(input: ConfirmGarminImportInput): string {
-  const envelope = input.staged.envelope;
+function aggregateJson(envelope: ReturnType<typeof parseGarminSourceEnvelope>, input: ConfirmGarminImportInput): string {
   const dateProvenance = input.dateProvenance;
   return JSON.stringify({
     source_kind: envelope.source_kind,
@@ -41,6 +40,41 @@ function aggregateJson(input: ConfirmGarminImportInput): string {
     }),
     normalized: envelope.normalized,
   });
+}
+
+async function verifyPreparedImport(
+  input: ConfirmGarminImportInput,
+  sha256: (value: string) => Promise<string>,
+): Promise<Readonly<{
+  envelope: ReturnType<typeof parseGarminSourceEnvelope>;
+  canonicalPayloadJson: string;
+}>> {
+  const providedEnvelope = parseGarminSourceEnvelope(input.staged.envelope);
+  const canonicalEnvelopeJson = input.staged.canonical_envelope_json;
+  if (canonicalJson(providedEnvelope) !== canonicalEnvelopeJson) {
+    throw new Error("prepared_import_conflict");
+  }
+  const canonicalEnvelopeSha256 = await sha256(canonicalEnvelopeJson);
+  if (canonicalEnvelopeSha256 !== input.staged.canonical_envelope_sha256) {
+    throw new Error("prepared_import_conflict");
+  }
+  const envelope = parseGarminSourceEnvelope(JSON.parse(canonicalEnvelopeJson));
+  if (canonicalJson(envelope) !== canonicalEnvelopeJson) {
+    throw new Error("prepared_import_conflict");
+  }
+  const canonicalPayloadJson = canonicalJson({
+    normalization_version: envelope.normalization_version,
+    normalized: envelope.normalized,
+  });
+  if (canonicalPayloadJson !== input.staged.canonical_payload_json) {
+    throw new Error("prepared_import_conflict");
+  }
+  const canonicalPayloadSha256 = await sha256(canonicalPayloadJson);
+  if (canonicalPayloadSha256 !== input.staged.canonical_payload_sha256
+    || canonicalPayloadSha256 !== envelope.normalized_json_sha256) {
+    throw new Error("prepared_import_conflict");
+  }
+  return Object.freeze({ envelope, canonicalPayloadJson });
 }
 
 export function createImportedActivityRepository(kernel: SqliteKernel) {
@@ -195,26 +229,17 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
     },
     async confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult> {
       return kernel.write(async (transaction) => {
-        const reparsedEnvelope = parseGarminSourceEnvelope(input.staged.envelope);
-        const canonicalPayloadJson = canonicalJson({
-          normalization_version: reparsedEnvelope.normalization_version,
-          normalized: reparsedEnvelope.normalized,
-        });
-        if (canonicalPayloadJson !== input.staged.canonical_payload_json) {
+        let verified: Awaited<ReturnType<typeof verifyPreparedImport>>;
+        try {
+          verified = await verifyPreparedImport(input, sha256);
+        } catch {
           return Object.freeze({
             kind: "conflict",
             activityId: input.activityId,
             aggregateRevision: input.expectedAggregateRevision,
           });
         }
-        const canonicalDigest = await sha256(canonicalPayloadJson);
-        if (canonicalDigest !== reparsedEnvelope.normalized_json_sha256) {
-          return Object.freeze({
-            kind: "conflict",
-            activityId: input.activityId,
-            aggregateRevision: input.expectedAggregateRevision,
-          });
-        }
+        const { envelope, canonicalPayloadJson } = verified;
         const [receipt] = await transaction.queryAll<Receipt>("SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?", [input.requestId]);
         if (receipt !== undefined) {
           if (receipt.request_sha256 !== input.requestSha256) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision });
@@ -231,7 +256,7 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
               WHERE proposal.activity_id = ?
                 AND (proposal.request_id = ? OR proposal.normalized_sha256 = ?)
                 AND decision.request_id IS NULL`,
-            [receipt.activity_id, input.requestId, input.staged.envelope.normalized_json_sha256],
+            [receipt.activity_id, input.requestId, envelope.normalized_json_sha256],
           );
           if (proposal !== undefined) {
             return Object.freeze({
@@ -248,7 +273,6 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
           if (replayed === undefined) throw new Error("imported_activity_receipt_orphaned");
           return Object.freeze({ kind: replayed.removal_state === "removed" ? "removed" : "replayed", activityId: receipt.activity_id, aggregateRevision: replayed.aggregate_revision });
         }
-        const envelope = reparsedEnvelope;
         const [existing] = await transaction.queryAll<{ activity_id: string; aggregate_revision: number; accepted_normalized_sha256: string; removal_state: "active" | "removed" }>(
           `SELECT identity.activity_id, identity.aggregate_revision, identity.accepted_normalized_sha256,
                   COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state
@@ -284,7 +308,7 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
             const proposedRevision = Math.max(existing!.aggregate_revision, latest?.proposed_revision ?? 1) + 1;
             await transaction.execute(
               "INSERT INTO imported_activity_payloads(id, activity_id, payload_json, sha256) VALUES (?, ?, ?, ?)",
-              [`${activityId}:payload:${proposedRevision}`, activityId, input.staged.canonical_payload_json, envelope.normalized_json_sha256],
+              [`${activityId}:payload:${proposedRevision}`, activityId, canonicalPayloadJson, envelope.normalized_json_sha256],
             );
             for (const [kind, value] of Object.entries(envelope.raw_component_sha256)) {
               await transaction.execute(
@@ -298,7 +322,7 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
                  normalized_sha256, envelope_json, confirmed_local_date, created_at_ms)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
               [input.requestId, input.requestSha256, activityId, proposedRevision,
-                envelope.normalized_json_sha256, aggregateJson(input), input.confirmedLocalDate, now],
+                envelope.normalized_json_sha256, aggregateJson(envelope, input), input.confirmedLocalDate, now],
             );
           }
           await transaction.execute(
@@ -314,10 +338,10 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
         if (outcome.kind !== "new") return Object.freeze({ kind: "conflict", activityId: existing?.activity_id ?? input.activityId, aggregateRevision: existing?.aggregate_revision ?? 0 });
         if (input.expectedAggregateRevision !== 0) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: 0 });
         const now = envelope.normalized.started_at_ms;
-        const aggregate = aggregateJson(input);
+        const aggregate = aggregateJson(envelope, input);
         await transaction.execute("INSERT INTO imported_activities(id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES (?, ?, ?, ?, ?, ?)", [input.activityId, `${envelope.source_kind}:${envelope.account_namespace}`, envelope.external_activity_id, envelope.normalized.started_at_ms, aggregate, now]);
         await transaction.execute("INSERT INTO imported_activity_identities(activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES (?, ?, ?, ?, 1, ?, 'active')", [input.activityId, envelope.source_kind, envelope.account_namespace, envelope.external_activity_id, envelope.normalized_json_sha256]);
-        await transaction.execute("INSERT INTO imported_activity_payloads(id, activity_id, payload_json, sha256) VALUES (?, ?, ?, ?)", [`${input.activityId}:payload:1`, input.activityId, input.staged.canonical_payload_json, envelope.normalized_json_sha256]);
+        await transaction.execute("INSERT INTO imported_activity_payloads(id, activity_id, payload_json, sha256) VALUES (?, ?, ?, ?)", [`${input.activityId}:payload:1`, input.activityId, canonicalPayloadJson, envelope.normalized_json_sha256]);
         for (const [kind, value] of Object.entries(envelope.raw_component_sha256)) await transaction.execute("INSERT INTO imported_activity_references(id, activity_id, reference_kind, reference_value) VALUES (?, ?, ?, ?)", [`${input.activityId}:hash:${kind}`, input.activityId, `raw_component_sha256:${kind}`, value]);
         for (const lap of envelope.normalized.laps) await transaction.execute("INSERT INTO imported_activity_laps(id, activity_id, ordinal, lap_json) VALUES (?, ?, ?, ?)", [`${input.activityId}:lap:${lap.ordinal}`, input.activityId, lap.ordinal, JSON.stringify(lap)]);
         for (const [ordinal, sample] of (envelope.normalized.samples ?? []).entries()) await transaction.execute("INSERT INTO imported_activity_chunks(id, activity_id, ordinal, chunk_json) VALUES (?, ?, ?, ?)", [`${input.activityId}:sample:${ordinal}`, input.activityId, ordinal, JSON.stringify(sample)]);
