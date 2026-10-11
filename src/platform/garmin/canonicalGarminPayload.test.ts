@@ -3,7 +3,6 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   GARMIN_CANONICAL_LIMITS,
-  GarminCanonicalPayloadError,
   canonicalizeGarminPayload,
   hashCanonicalGarminPayload,
 } from "./canonicalGarminPayload";
@@ -47,10 +46,16 @@ describe("canonical Garmin payload", () => {
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
     const accessor = Object.defineProperty({}, "value", { enumerable: true, get: () => 1 });
+    const hidden = Object.defineProperty({}, "value", { enumerable: false, value: 1 });
     const symbolKey = { value: 1, [Symbol("private")]: 2 };
     const arrayProperty = Object.assign([1], { privateValue: 2 });
+    const sparseArrayProperty = Object.assign(Array(1), { privateValue: 2 });
+    const ghostKey = new Proxy({}, {
+      ownKeys: () => ["ghost"],
+      getOwnPropertyDescriptor: () => undefined,
+    });
 
-    for (const value of [cyclic, accessor, symbolKey, { "": 1 }, arrayProperty]) {
+    for (const value of [cyclic, accessor, hidden, symbolKey, { "": 1 }, arrayProperty, sparseArrayProperty, ghostKey]) {
       expect(() => canonicalizeGarminPayload(value)).toThrow("garmin_json_invalid");
     }
   });
@@ -120,9 +125,9 @@ describe("canonical Garmin payload", () => {
   });
 
   it("counts multi-byte canonical strings and rejects invalid digest seams", async () => {
-    expect(canonicalizeGarminPayload({ latin: "é", cjk: "漢", emoji: "🏃" })).toContain("🏃");
+    expect(canonicalizeGarminPayload({ latin: "é", cjk: "漢", emoji: "🏃", disabled: false })).toContain("🏃");
     await expect(hashCanonicalGarminPayload({ ok: true }, async () => "A".repeat(64))).rejects.toEqual(
-      expect.objectContaining<Partial<GarminCanonicalPayloadError>>({ code: "garmin_digest_invalid" }),
+      expect.objectContaining({ code: "garmin_digest_invalid" }),
     );
   });
 });

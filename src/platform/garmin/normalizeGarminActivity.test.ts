@@ -277,6 +277,132 @@ describe("normalize Garmin activity", () => {
     expect(envelope.normalized.distance_meters).toBe(0);
   });
 
+  it("accepts string source IDs, absent optional arrays, null channels, and GMT timestamps without milliseconds", async () => {
+    const fixture = outdoorFixture();
+    fixture.activity.activityId = "987654321" as unknown as number;
+    fixture.activity.summaryDTO.startTimeGMT = "2026-10-05 23:30:00";
+    fixture.splits = {} as typeof fixture.splits;
+    fixture.details = {
+      metricDescriptors: null,
+      activityDetailMetrics: null,
+      geoPolylineDTO: null,
+    } as unknown as typeof fixture.details;
+
+    const envelope = await normalizeGarminActivity(fixture, sha256);
+
+    expect(envelope.normalized).toMatchObject({
+      started_at_ms: Date.UTC(2026, 9, 5, 23, 30),
+      laps: [],
+    });
+    expect(envelope.normalized).not.toHaveProperty("samples");
+    expect(envelope.normalized).not.toHaveProperty("route");
+  });
+
+  it("omits descriptor channels that are null or outside a particular sample", async () => {
+    const fixture = outdoorFixture();
+    fixture.splits.lapDTOs = [];
+    fixture.details.metricDescriptors = [
+      { key: "sumElapsedDuration", metricsIndex: 0 },
+      { key: "sumDistance", metricsIndex: 1 },
+      { key: "directHeartRate", metricsIndex: 2 },
+    ];
+    fixture.details.activityDetailMetrics = [
+      { metrics: [0, 0] },
+      { metrics: [300, null, 145] },
+      { metrics: [600, 2_000, null] },
+    ] as unknown as typeof fixture.details.activityDetailMetrics;
+    fixture.details.geoPolylineDTO.polyline = [{ lat: 1, lon: 2 }] as typeof fixture.details.geoPolylineDTO.polyline;
+
+    const envelope = await normalizeGarminActivity(fixture, sha256);
+
+    expect(envelope.normalized.samples).toEqual([
+      { elapsed_ms: 0, distance_meters: 0 },
+      { elapsed_ms: 300_000, heart_rate_bpm: 145 },
+      { elapsed_ms: 600_000, distance_meters: 2_000 },
+    ]);
+    expect(envelope.normalized.route).toEqual([{ latitude_e6: 1_000_000, longitude_e6: 2_000_000 }]);
+  });
+
+  it("ignores unreviewed descriptors and samples with no described channel value", async () => {
+    const fixture = outdoorFixture();
+    fixture.splits.lapDTOs = [];
+    fixture.details.metricDescriptors = [
+      { key: "unknownCadence", metricsIndex: 0 },
+      { key: "sumDistance", metricsIndex: 2 },
+    ];
+    fixture.details.activityDetailMetrics = [
+      { metrics: [180] },
+      { metrics: [181, null, 1_000] },
+    ] as unknown as typeof fixture.details.activityDetailMetrics;
+
+    const envelope = await normalizeGarminActivity(fixture, sha256);
+
+    expect(envelope.normalized.samples).toEqual([{ distance_meters: 1_000 }]);
+  });
+
+  it("finds the last available sampled distance without assuming the final row has it", async () => {
+    const fixture = outdoorFixture();
+    delete (fixture.activity.summaryDTO as Partial<typeof fixture.activity.summaryDTO>).distance;
+    fixture.splits.lapDTOs = [];
+    fixture.details.activityDetailMetrics = [
+      { metrics: [0, 1_000, 140] },
+      { metrics: [300, null, 145] },
+    ] as unknown as typeof fixture.details.activityDetailMetrics;
+
+    const envelope = await normalizeGarminActivity(fixture, sha256);
+
+    expect(envelope.normalized.distance_meters).toBe(1_000);
+    expect(envelope.sample_fidelity).toBe("sampled");
+  });
+
+  it("accepts source laps with omitted indexes and only one truthful time basis", async () => {
+    const fixture = outdoorFixture();
+    fixture.splits.lapDTOs = [{ duration: 60, distance: 400 }] as typeof fixture.splits.lapDTOs;
+
+    const envelope = await normalizeGarminActivity(fixture, sha256);
+
+    expect(envelope.normalized.laps).toEqual([{ ordinal: 0, timer_ms: 60_000, distance_meters: 400 }]);
+    expect(isExactGarminEffortEligible(envelope, 400)).toBe(true);
+    const movingOnly = {
+      ...envelope,
+      normalized: {
+        ...envelope.normalized,
+        laps: [{ ordinal: 0, distance_meters: 400, moving_ms: 59_000 }],
+      },
+    };
+    expect(isExactGarminEffortEligible(movingOnly, 400)).toBe(true);
+    const noLapTime = {
+      ...envelope,
+      normalized: {
+        ...envelope.normalized,
+        laps: [{ ordinal: 0, distance_meters: 400 }],
+      },
+    };
+    expect(isExactGarminEffortEligible(noLapTime, 400)).toBe(false);
+  });
+
+  it.each([
+    ["array activity component", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: [] })],
+    ["non-array laps", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, splits: { lapDTOs: {} } })],
+    ["non-string start", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, summaryDTO: { ...fixture.activity.summaryDTO, startTimeGMT: 1 } } })],
+    ["malformed start", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, summaryDTO: { ...fixture.activity.summaryDTO, startTimeGMT: "not-a-date" } } })],
+    ["zero source activity ID", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, activityId: 0 } })],
+    ["non-scalar source activity ID", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, activityId: {} } })],
+    ["non-numeric source distance", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, summaryDTO: { ...fixture.activity.summaryDTO, distance: "5000" } } })],
+    ["negative distance", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, summaryDTO: { ...fixture.activity.summaryDTO, distance: -1 } } })],
+    ["mismatched lap index", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, splits: { lapDTOs: [{ ...fixture.splits.lapDTOs[0], lapIndex: 2 }] } })],
+    ["empty source lap", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, splits: { lapDTOs: [{ lapIndex: 1 }] } })],
+    ["non-array sample metrics", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, activityDetailMetrics: [{ metrics: {} }] } })],
+    ["non-numeric sample metric", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, activityDetailMetrics: [{ metrics: ["0", 0, 140] }] } })],
+    ["missing route latitude", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: [{ lon: 0 }] } } })],
+    ["missing route longitude", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: [{ lat: 0 }] } } })],
+    ["low route latitude", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: [{ lat: -91, lon: 0 }] } } })],
+    ["low route longitude", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: [{ lat: 0, lon: -181 }] } } })],
+    ["high route longitude", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: [{ lat: 0, lon: 181 }] } } })],
+  ])("rejects malformed nested source shape: %s", async (_label, mutate) => {
+    await expect(normalizeGarminActivity(mutate(outdoorFixture()), sha256)).rejects.toThrow(/garmin_(?:source_invalid|json_)/u);
+  });
+
   it.each([
     ["malformed account namespace", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, account_namespace: "account namespace" })],
     ["malformed external ID", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, external_activity_id: "activity/1" })],
@@ -284,9 +410,9 @@ describe("normalize Garmin activity", () => {
     ["unsupported sport", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, activityTypeDTO: { typeKey: "cycling" } } })],
     ["invalid GMT start", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, summaryDTO: { ...fixture.activity.summaryDTO, startTimeGMT: "2026-02-30T10:00:00.000Z" } } })],
     ["unsafe number", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, activity: { ...fixture.activity, summaryDTO: { ...fixture.activity.summaryDTO, distance: Number.POSITIVE_INFINITY } } })],
-    ["too many laps", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, splits: { lapDTOs: Array(1_001).fill(fixture.splits.lapDTOs[0]) } })],
-    ["too many detail samples", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, activityDetailMetrics: Array(2_001).fill(fixture.details.activityDetailMetrics[0]) } })],
-    ["too many route points", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: Array(4_001).fill(fixture.details.geoPolylineDTO.polyline[0]) } } })],
+    ["too many laps", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, splits: { lapDTOs: Array.from({ length: 1_001 }, (_, index) => ({ ...fixture.splits.lapDTOs[0], lapIndex: index + 1 })) } })],
+    ["too many detail samples", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, activityDetailMetrics: Array.from({ length: 2_001 }, () => ({ metrics: [0, 0, 140] })) } })],
+    ["too many route points", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: Array.from({ length: 4_001 }, () => ({ lat: 1, lon: 2 })) } } })],
     ["duplicate descriptor index", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, metricDescriptors: [{ key: "sumDistance", metricsIndex: 0 }, { key: "directHeartRate", metricsIndex: 0 }] } })],
     ["positional metrics without descriptors", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, metricDescriptors: [] } })],
     ["invalid route coordinate", (fixture: ReturnType<typeof outdoorFixture>) => ({ ...fixture, details: { ...fixture.details, geoPolylineDTO: { polyline: [{ lat: 91, lon: 0 }] } } })],

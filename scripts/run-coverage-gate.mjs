@@ -50,6 +50,8 @@ const integrityCriticalFiles = [
   "src/domains/activities/activityIdentity.ts",
   "src/domains/activities/garminActivitySourcePort.ts",
   "src/domains/activities/importCommands.ts",
+  "src/platform/garmin/canonicalGarminPayload.ts",
+  "src/platform/garmin/normalizeGarminActivity.ts",
   "src/domains/bodyweight/commands.ts",
   "src/domains/bodyweight/contracts.ts",
   "src/domains/running/activityMatchCommands.ts",
@@ -168,8 +170,37 @@ function coverageDirectoryArgument(args) {
 }
 
 const forwarded = process.argv.slice(2);
+const focusedIntegrityFiles = [];
+const focusedProjects = [];
+const jestForwarded = [];
+for (const argument of forwarded) {
+  if (argument.startsWith("--focus-integrity=")) {
+    focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
+  } else if (argument.startsWith("--focus-project=")) {
+    focusedProjects.push(...argument.slice("--focus-project=".length).split(",").filter(Boolean));
+  } else {
+    jestForwarded.push(argument);
+  }
+}
+if (focusedIntegrityFiles.length > 0) {
+  const invalidFiles = focusedIntegrityFiles.filter((file) => !integrityCriticalFiles.includes(file));
+  if (invalidFiles.length > 0 || focusedProjects.length === 0) {
+    console.error(JSON.stringify({
+      ok: false,
+      error: "focused_integrity_coverage_invalid",
+      invalid_files: invalidFiles,
+      focus_project_required: focusedProjects.length === 0,
+    }, null, 2));
+    process.exit(1);
+  }
+}
 const outputDirectory = coverageDirectoryArgument(forwarded);
 rmSync(outputDirectory, { force: true, recursive: true });
+
+const selectedProjects = focusedIntegrityFiles.length > 0
+  ? focusedProjects
+  : ["unit", "components", "sqlite-host", "integration"];
+const collectionArguments = focusedIntegrityFiles.flatMap((file) => [`--collectCoverageFrom=${file}`]);
 
 const jest = spawnSync(
   process.execPath,
@@ -178,12 +209,10 @@ const jest = spawnSync(
     "--config",
     "jest.config.js",
     "--selectProjects",
-    "unit",
-    "components",
-    "sqlite-host",
-    "integration",
+    ...selectedProjects,
     "--coverage",
-    ...forwarded,
+    ...collectionArguments,
+    ...jestForwarded,
   ],
   {
     cwd: projectRoot,
@@ -201,7 +230,10 @@ if (jest.status !== 0) {
 const resolvedSummary = path.join(outputDirectory, "coverage-summary.json");
 const summary = JSON.parse(readFileSync(resolvedSummary, "utf8"));
 const failures = [];
-for (const relativePath of integrityCriticalFiles) {
+const requiredIntegrityFiles = focusedIntegrityFiles.length > 0
+  ? focusedIntegrityFiles
+  : integrityCriticalFiles;
+for (const relativePath of requiredIntegrityFiles) {
   const absolutePath = path.join(projectRoot, relativePath);
   const coverage = summary[absolutePath];
   if (coverage === undefined) {
@@ -228,7 +260,8 @@ if (failures.length > 0) {
 
 console.log(JSON.stringify({
   ok: true,
-  integrity_critical_files: integrityCriticalFiles.length,
+  integrity_critical_files: requiredIntegrityFiles.length,
+  focused: focusedIntegrityFiles.length > 0,
   metrics: ["statements", "branches", "functions", "lines"],
   required_percent: 100,
 }));

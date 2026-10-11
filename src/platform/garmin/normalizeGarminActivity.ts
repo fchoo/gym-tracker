@@ -58,7 +58,7 @@ function optionalArray(value: unknown, maximum: number): readonly unknown[] {
 function sourceNumber(source: PlainRecord, key: string): number | undefined {
   const value = source[key];
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) invalid();
+  if (typeof value !== "number") invalid();
   return value;
 }
 
@@ -98,12 +98,12 @@ function parseUtcTimestamp(value: unknown): number {
   const [, yearText, monthText, dayText, hourText, minuteText, secondText, millisecondText] = iso;
   const parts = [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number);
   const [year, month, day, hour, minute, second] = parts;
-  if ([year, month, day, hour, minute, second].some((part) => !Number.isSafeInteger(part))) invalid();
   const millisecond = millisecondText === undefined ? 0 : Number(millisecondText);
   const timestamp = Date.UTC(year!, month! - 1, day!, hour!, minute!, second!, millisecond);
   const date = new Date(timestamp);
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month! - 1 || date.getUTCDate() !== day
-    || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second) invalid();
+  const expected = [year, month! - 1, day, hour, minute, second];
+  const actual = [date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()];
+  if (actual.some((part, index) => part !== expected[index])) invalid();
   return timestamp;
 }
 
@@ -187,6 +187,7 @@ function normalizeSamples(details: PlainRecord, descriptors: ReadonlyMap<string,
   projected: readonly Readonly<{ metrics: readonly (number | null)[] }>[];
 }> {
   const sourceSamples = optionalArray(details.activityDetailMetrics, 2_000);
+  if (sourceSamples.length > 0 && descriptors.size === 0) invalid();
   const normalized: NonNullable<CanonicalGarminPayload["samples"]>[number][] = [];
   const projected: Array<Readonly<{ metrics: readonly (number | null)[] }>> = [];
   for (const sourceSample of sourceSamples) {
@@ -252,6 +253,14 @@ function lastSampleDistance(samples: NonNullable<CanonicalGarminPayload["samples
     if (distance !== undefined) return distance;
   }
   return undefined;
+}
+
+function hasDurationEvidence(value: Readonly<{
+  elapsed_ms?: number | undefined;
+  timer_ms?: number | undefined;
+  moving_ms?: number | undefined;
+}>): boolean {
+  return [value.elapsed_ms, value.timer_ms, value.moving_ms].some((duration) => duration !== undefined);
 }
 
 export async function normalizeGarminActivity(
@@ -336,11 +345,8 @@ export function isExactGarminEffortEligible(
   distanceMeters: number,
 ): boolean {
   if (!Number.isSafeInteger(distanceMeters) || distanceMeters <= 0 || envelope.sample_fidelity === "sampled") return false;
-  const hasDuration = envelope.normalized.elapsed_ms !== undefined
-    || envelope.normalized.timer_ms !== undefined
-    || envelope.normalized.moving_ms !== undefined;
-  if (hasDuration && envelope.normalized.distance_meters === distanceMeters) return true;
+  if (hasDurationEvidence(envelope.normalized) && envelope.normalized.distance_meters === distanceMeters) return true;
   return envelope.sample_fidelity === "source_laps" && envelope.normalized.laps.some((lap) =>
     lap.distance_meters === distanceMeters
-    && (lap.elapsed_ms !== undefined || lap.timer_ms !== undefined || lap.moving_ms !== undefined));
+    && hasDurationEvidence(lap));
 }
