@@ -1,7 +1,7 @@
 ---
 phase: 17
 slug: library-running-plans
-status: implementation-complete-native-pending
+status: validated_host
 nyquist_compliant: false
 wave_0_complete: false
 created: 2026-10-06
@@ -73,41 +73,41 @@ Execution follows AGENTS.md and .trae/rules/rules.md. Every future implementatio
 
 | Task | Wave | Requirements | Threats | Automated proof | Status |
 |---|---:|---|---|---|---|
-| 17-01-01 | 1 | LIB-25, LIB-27, LIB-35 | T-17-01-01..04 | RunningPlanEditor local-session create + route | pending |
-| 17-01-02 | 1 | LIB-25, LIB-35 | T-17-01-01..04 | zero/nonempty/two-same-day runtime + integration | pending |
-| 17-01-03 | 1 | LIB-25..35 | T-17-01-01..04 | all seven typed local session drafts + goal helper/component | pending |
-| 17-02-01 | 3 | LIB-05..07 | T-17-02-01..04 | chooser + produced Strength/Running routes | pending |
-| 17-02-02 | 3 | LIB-01..04 | T-17-02-01..03 | LibraryScreen + Library route components | pending |
-| 17-02-03 | 3 | LIB-05, LIB-07, LIB-23 | T-17-02-02..04 | LibraryScreen state/recovery matrix | pending |
-| 17-03-01 | 4 | LIB-08, LIB-23 | T-17-03-01..03 | OwnedPlanDetail + Library route components | pending |
-| 17-03-02 | 4 | LIB-09, LIB-15 | T-17-03-01..02 | detail component + owned CRUD + multi-plan activation integration | pending |
-| 17-04-01 | 2 | LIB-13, LIB-15 | T-17-04-01..03 | OwnedPlanEditor + create route component | pending |
-| 17-04-02 | 2 | LIB-14 | T-17-04-01..02 | OwnedPlanEditor + PlanEditorFields components | pending |
-| 17-04-03 | 2 | LIB-15 | T-17-04-01..03 | editor component + owned CRUD integration | pending |
-| 17-05-01 | 2 | LIB-16 | T-17-05-01..03 | ScheduleEditor component + schedule integration | pending |
-| 17-05-02 | 2 | LIB-17 | T-17-05-01..02 | impact component + impact integration | pending |
-| 17-05-03 | 2 | LIB-18 | T-17-05-01..03 | removal component + impact integration | pending |
-| 17-06-01 | 2 | LIB-10, LIB-23 | T-17-06-01..03 | StarterPlans component | pending |
-| 17-06-02 | 2 | LIB-11 | T-17-06-01..03 | StarterPlans + starter/multi-plan activation integration | pending |
-| 17-06-03 | 2 | LIB-12, LIB-15, LIB-23 | T-17-06-01..03 | StarterPlans update-state matrix | pending |
-| 17-07-01 | 2 | LIB-04, LIB-19, LIB-23 | T-17-07-01..03 | CustomExerciseScreens component | pending |
-| 17-07-02 | 2 | LIB-20, LIB-21, LIB-23 | T-17-07-01..03 | custom component + custom exercise integration | pending |
-| 17-07-03 | 2 | LIB-22 | T-17-07-01..03 | custom component + metric migration integration | pending |
-| 17-08-01 | 3 | LIB-23..25 | T-17-08-01..03 | RunningPlanDetail component | pending |
-| 17-08-02 | 3 | LIB-26 | T-17-08-01..03 | RunningPlanEditor + produced child-route component | pending |
-| 17-08-03 | 3 | LIB-09, LIB-24 | T-17-08-01..03 | Running detail + multi-plan activation integration | pending |
-| 17-09-01 | 2 | LIB-27, LIB-28 | T-17-09-01..03 | RunningSessionEditor component | pending |
-| 17-09-02 | 2 | LIB-29, LIB-30 | T-17-09-01..03 | RunningSessionFields + editor components | pending |
-| 17-10-01 | 3 | LIB-31, LIB-32 | T-17-10-01..03 | RunningSessionFields + editor components | pending |
-| 17-10-02 | 3 | LIB-33 | T-17-10-01..03 | RunningSessionFields + editor components | pending |
-| 17-10-03 | 3 | LIB-34 | T-17-10-01..03 | runningFormDraft unit + RunningSessionFields component + typecheck | pending |
-| 17-11-01 | 4 | LIB-27, LIB-35 | T-17-11-01..03 | session component + authoring integration + running sqlite-host | pending |
-| 17-11-02 | 4 | LIB-35 | T-17-11-01..03 | plan editor component + running sqlite-host | pending |
-| 17-11-03 | 4 | LIB-25, LIB-35 | T-17-11-01..03 | running sqlite-host + authoring/portability integration | pending |
-| 17-12-01 | 4 | LIB-24, LIB-36 | T-17-12-01..03 | conflict/detail components + collision integration | pending |
-| 17-12-02 | 4 | LIB-36 | T-17-12-01..03 | all collision/stale/replay/rollback component/integration cases | pending |
-| 17-13-01 | 5 | LIB-01..36 | T-17-13-01..04 | canonical contract unit + verifier mutation tests | pending |
-| 17-13-02 | 5 | LIB-01..36 | T-17-13-01..04 | verifier mutation tests + boundaries + complete coverage | pending |
+| 17-01-01 | 1 | LIB-25, LIB-27, LIB-35 | T-17-01-01..04 | RunningPlanEditor local-session create + route | validated_host |
+| 17-01-02 | 1 | LIB-25, LIB-35 | T-17-01-01..04 | zero/nonempty/two-same-day runtime + integration | validated_host |
+| 17-01-03 | 1 | LIB-25..35 | T-17-01-01..04 | all seven typed local session drafts + goal helper/component | validated_host |
+| 17-02-01 | 3 | LIB-05..07 | T-17-02-01..04 | chooser + produced Strength/Running routes | validated_host |
+| 17-02-02 | 3 | LIB-01..04 | T-17-02-01..03 | LibraryScreen + Library route components | validated_host |
+| 17-02-03 | 3 | LIB-05, LIB-07, LIB-23 | T-17-02-02..04 | LibraryScreen state/recovery matrix | validated_host |
+| 17-03-01 | 4 | LIB-08, LIB-23 | T-17-03-01..03 | OwnedPlanDetail + Library route components | validated_host |
+| 17-03-02 | 4 | LIB-09, LIB-15 | T-17-03-01..02 | detail component + owned CRUD + multi-plan activation integration | validated_host |
+| 17-04-01 | 2 | LIB-13, LIB-15 | T-17-04-01..03 | OwnedPlanEditor + create route component | validated_host |
+| 17-04-02 | 2 | LIB-14 | T-17-04-01..02 | OwnedPlanEditor + PlanEditorFields components | validated_host |
+| 17-04-03 | 2 | LIB-15 | T-17-04-01..03 | editor component + owned CRUD integration | validated_host |
+| 17-05-01 | 2 | LIB-16 | T-17-05-01..03 | ScheduleEditor component + schedule integration | validated_host |
+| 17-05-02 | 2 | LIB-17 | T-17-05-01..02 | impact component + impact integration | validated_host |
+| 17-05-03 | 2 | LIB-18 | T-17-05-01..03 | removal component + impact integration | validated_host |
+| 17-06-01 | 2 | LIB-10, LIB-23 | T-17-06-01..03 | StarterPlans component | validated_host |
+| 17-06-02 | 2 | LIB-11 | T-17-06-01..03 | StarterPlans + starter/multi-plan activation integration | validated_host |
+| 17-06-03 | 2 | LIB-12, LIB-15, LIB-23 | T-17-06-01..03 | StarterPlans update-state matrix | validated_host |
+| 17-07-01 | 2 | LIB-04, LIB-19, LIB-23 | T-17-07-01..03 | CustomExerciseScreens component | validated_host |
+| 17-07-02 | 2 | LIB-20, LIB-21, LIB-23 | T-17-07-01..03 | custom component + custom exercise integration | validated_host |
+| 17-07-03 | 2 | LIB-22 | T-17-07-01..03 | custom component + metric migration integration | validated_host |
+| 17-08-01 | 3 | LIB-23..25 | T-17-08-01..03 | RunningPlanDetail component | validated_host |
+| 17-08-02 | 3 | LIB-26 | T-17-08-01..03 | RunningPlanEditor + produced child-route component | validated_host |
+| 17-08-03 | 3 | LIB-09, LIB-24 | T-17-08-01..03 | Running detail + multi-plan activation integration | validated_host |
+| 17-09-01 | 2 | LIB-27, LIB-28 | T-17-09-01..03 | RunningSessionEditor component | validated_host |
+| 17-09-02 | 2 | LIB-29, LIB-30 | T-17-09-01..03 | RunningSessionFields + editor components | validated_host |
+| 17-10-01 | 3 | LIB-31, LIB-32 | T-17-10-01..03 | RunningSessionFields + editor components | validated_host |
+| 17-10-02 | 3 | LIB-33 | T-17-10-01..03 | RunningSessionFields + editor components | validated_host |
+| 17-10-03 | 3 | LIB-34 | T-17-10-01..03 | runningFormDraft unit + RunningSessionFields component + typecheck | validated_host |
+| 17-11-01 | 4 | LIB-27, LIB-35 | T-17-11-01..03 | session component + authoring integration + running sqlite-host | validated_host |
+| 17-11-02 | 4 | LIB-35 | T-17-11-01..03 | plan editor component + running sqlite-host | validated_host |
+| 17-11-03 | 4 | LIB-25, LIB-35 | T-17-11-01..03 | running sqlite-host + authoring/portability integration | validated_host |
+| 17-12-01 | 4 | LIB-24, LIB-36 | T-17-12-01..03 | conflict/detail components + collision integration | validated_host |
+| 17-12-02 | 4 | LIB-36 | T-17-12-01..03 | all collision/stale/replay/rollback component/integration cases | validated_host |
+| 17-13-01 | 5 | LIB-01..36 | T-17-13-01..04 | canonical contract unit + verifier mutation tests | validated_host |
+| 17-13-02 | 5 | LIB-01..36 | T-17-13-01..04 | verifier mutation tests + boundaries + complete coverage | validated_host |
 | 17-14-01 | 6 | LIB-01..23 | T-17-14-01..03 | Library native flow + scoped consolidated evidence verification | host implementation complete; native evidence pending Phase 20 |
 | 17-14-02 | 6 | LIB-01..36 | T-17-14-01..03 | Running/accessibility native flows + all-evidence verification | host implementation complete; native evidence pending Phase 20 |
 
@@ -232,6 +232,26 @@ None. All Phase 17 behavior is automation-addressable. The milestone-wide owner-
 Excluded by source contract and not gaps: Running rotation, plan recommendations, Garmin workout push, automatic activation, Garmin authentication/JSON transport/detail, in-app run recording, gender/height, coaching/medical judgment, and Phase 14's already-approved DEV-02 implementation evidence.
 
 The installed decision-coverage checker parses only D-NN identifiers and therefore reports the source's D17-NN format as a parse mismatch. The explicit D17-01 through D17-08 rows above are the authoritative coverage audit; this planner does not renumber or rewrite the approved CONTEXT.md.
+
+## Execution-time host audit
+
+The per-task map above is the executable LIB map: every LIB-01..LIB-36 owner row is `validated_host`. The source audit rows retain `COVERED` as their design/traceability status; they are not being used as runtime evidence.
+
+| Gap / behavior | Real host proof | Result |
+|---|---|---|
+| Migrations 37-42, catalog instructions, and v8 durable custom-library receipt | `npm run test:integration -- --runInBand tests/integration/phase17-family-a-cleanup-matrix.test.ts` (26 tests, including the schema-42 instruction/receipt probe) | validated_host |
+| 25-row Family A matrix and exact cleanup | Same command (25 matrix journeys; 26 tests total) | validated_host |
+| A/B/C fixture protocol and bounded 39-case ledger | `npm run test:evidence:phase17` (19 tests) | validated_host |
+| Library state, chooser, deep routes, loading/error/retry/update states | Focused component command in the reusable command table (6 suites, 66 tests) | validated_host |
+| All seven Running session variants | `src/ui/components/RunningSessionFields.test.tsx` and Running editor suites (included in focused component command) | validated_host |
+| Running lifecycle, same-day order/true-empty/replay, portability, and collision choices | Focused Running integration/SQLite commands (36 integration tests; Running SQLite suite 5 tests) | validated_host |
+| v8 portability table boundary | `npm run test:integration -- --runInBand tests/integration/multi-plan-portability.test.ts` | validated_host |
+
+### Audit findings
+
+- Iteration 1 of the added schema-42 test used an invalid one-to-one instruction/library row-count assumption (actual: 310 instruction rows and 312 library rows). The assertion was corrected to test non-empty, bounded, source-backed instruction rows; iteration 2 passed.
+- The legacy `v27-multi-plan-baseline.sql` upgrade still fails before Phase 17 migration 37 with `no such column: dirty_since_ms` from a stale pre-Phase-17 backup trigger. This is the known pre-phase schema-27 global debt, proven by `tests/sqlite-host/migrations-effects.test.ts`; it is not classified as a Phase 17 gap because the v8→42 Phase 17 path passes.
+- No implementation files were changed. No native APK, device, 39-case execution, consolidated evidence JSON, or global host-suite PASS is claimed here.
 
 ## Pre-mortem controls
 
