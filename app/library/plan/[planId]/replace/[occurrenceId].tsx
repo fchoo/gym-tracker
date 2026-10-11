@@ -29,7 +29,10 @@ export default function ReplaceOwnedPlanExerciseRoute() {
       <Stack.Screen options={{ gestureEnabled: false }} />
       <ExerciseReplacementScreen
         createRequestId={() =>
-          runtime.createOwnedPlanId("plan-impact-replace")}
+          runtime.createPhase17ActionRequestId(
+            "plan-impact-replace",
+            runtime.createOwnedPlanId("plan-impact-replace"),
+          )}
         loadPreview={runtime.previewOwnedPlanExerciseReplacement}
         occurrenceId={occurrenceId}
         onBack={() => router.back()}

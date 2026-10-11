@@ -83,6 +83,7 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   taxonomy_terms: "EXISTS (SELECT 1 FROM exercise_taxonomy taxonomy JOIN exercises exercise ON exercise.id = taxonomy.exercise_id WHERE taxonomy.kind = taxonomy_terms.kind AND taxonomy.slug = taxonomy_terms.slug AND exercise.origin IN ('custom', 'copied'))",
   metric_profile_migration_events: "EXISTS (SELECT 1 FROM exercises exercise WHERE exercise.id = metric_profile_migration_events.exercise_id AND exercise.origin IN ('custom', 'copied'))",
   exercise_metric_baselines: "EXISTS (SELECT 1 FROM exercises exercise WHERE exercise.id = exercise_metric_baselines.exercise_id AND exercise.origin IN ('custom', 'copied'))",
+  custom_exercise_mutation_receipts: "1",
   plans: "origin IN ('custom', 'copied')",
   plan_schedules: ownedPlanWhere("plan_schedules"),
   plan_schedule_bindings: "EXISTS (SELECT 1 FROM plan_schedules schedule JOIN plans plan ON plan.id = schedule.plan_id WHERE schedule.id = plan_schedule_bindings.schedule_id AND plan.origin IN ('custom', 'copied'))",

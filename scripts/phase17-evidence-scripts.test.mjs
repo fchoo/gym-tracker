@@ -6,6 +6,7 @@ import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } f
 import { createPhase17FixtureProtocol, phase17ActionReceiptId } from "../src/bootstrap/phase17NativeFixture.ts";
 import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter } from "../src/bootstrap/phase17FamilyAFixture.ts";
 import { PHASE17_FAMILY_B_CASE_IDS, assertPhase17FamilyBRegistry, createPhase17FamilyFixtureAdapter } from "../src/bootstrap/phase17FamilyBFixture.ts";
+import { phase17ActionLabel } from "../src/bootstrap/phase17ActionEnvelope.ts";
 import { validatePhase17Evidence, validatePhase17IntegrityCoverageRegistry } from "./verify-phase17-evidence.mjs";
 import { PHASE17_FLOW_CASES, commandTreeForPhase17Case, createPhase17RunnerPlan, parsePhase17RunnerArgs, validatePhase17FlowSources } from "./run-phase17-maestro.mjs";
 
@@ -303,4 +304,37 @@ test("Phase 17 routes claim only the hydrated fixture envelope before real Runni
   const port = readFileSync("app/__phase17-maestro.tsx", "utf8");
   assert.match(runner, /phase17_action_envelope_missing/u);
   assert.match(port, /hydratePhase17ActionEnvelopes\(\{ caseId, fixtureToken \}\)/u);
+});
+
+test("Phase 17 has a reachable labelled product-command path and expected receipt for every mutating ledger case", () => {
+  const runtime = readFileSync("src/bootstrap/workoutAppRuntime.tsx", "utf8");
+  const envelope = readFileSync("src/bootstrap/phase17ActionEnvelope.ts", "utf8");
+  const runningRoutes = [
+    "app/library/running/create.tsx",
+    "app/library/running/[planId]/edit.tsx",
+    "app/library/running/[planId].tsx",
+    "app/library/running/[planId]/session/new.tsx",
+    "app/library/running/[planId]/session/[sessionId].tsx",
+  ].map((file) => readFileSync(file, "utf8")).join("\n");
+  const impactRoutes = [
+    "app/library/plan/[planId]/replace/[occurrenceId].tsx",
+    "app/library/plan/[planId]/day/[dayId]/remove.tsx",
+  ].map((file) => readFileSync(file, "utf8")).join("\n");
+  const mutating = PHASE17_CASE_ACTION_CONTRACTS.filter(({ proofMode }) => proofMode === "mutating");
+  assert.equal(mutating.length, 27);
+  assert.equal(PHASE17_FAMILY_A_CASE_IDS.filter((id) => mutating.some((entry) => entry.id === id)).length, 13);
+  assert.equal(PHASE17_FAMILY_B_CASE_IDS.length + 1, 15);
+  for (const { id } of mutating) {
+    const label = phase17ActionLabel(id);
+    assert.match(envelope, new RegExp(`"${id}": "${label}"`, "u"), id);
+    assert.match(envelope, /REQUEST_ID.*:action/u, id);
+    assert.ok(
+      new RegExp(`phase17RequestId\\([\\s\\S]{0,120}?"${label}"`, "u").test(runtime)
+      || runningRoutes.includes(`createPhase17ActionRequestId("${label}"`)
+      || impactRoutes.includes(`createPhase17ActionRequestId(\n            "${label}"`),
+      `${id} must bind ${label} to a real product command`,
+    );
+  }
+  assert.equal(runtime.includes("fail_closed_mutation"), false);
+  assert.equal(runtime.includes("phase17_family_a_action_receipt_unverified"), false);
 });

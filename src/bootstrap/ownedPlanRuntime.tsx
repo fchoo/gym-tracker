@@ -47,25 +47,30 @@ export type OwnedPlanRuntimePort = Readonly<{
   createDraft(input: Readonly<{
     name: string;
     dayName: string;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   loadPlan(planId: string): Promise<OwnedPlanSnapshot | null>;
   listExercises(): Promise<readonly OwnedPlanRuntimeExerciseOption[]>;
   savePlan(input: Readonly<{
     expectedRevision: number;
     plan: OwnedPlanDraftInput;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   duplicatePlan(input: Readonly<{
     sourcePlanId: string;
     expectedRevision: number;
     name: string;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   archivePlan(input: Readonly<{
     planId: string;
     expectedRevision: number;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   restorePlan(input: Readonly<{
     planId: string;
     expectedRevision: number;
+    requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
   previewDayRemoval(input: Readonly<{
     planId: string;
@@ -151,7 +156,7 @@ export function createOwnedPlanRuntimePort(
       return createOwnedPlanDraft({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-create"),
+          requestId: input.requestId ?? createId("owned-plan-create"),
           planId: createId("owned-plan"),
           name: input.name,
           dayId: createId("owned-plan-day"),
@@ -164,7 +169,7 @@ export function createOwnedPlanRuntimePort(
       saveOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-save"),
+          requestId: input.requestId ?? createId("owned-plan-save"),
           expectedRevision: input.expectedRevision,
           plan: input.plan,
           savedAtMs: dependencies.nowMs(),
@@ -174,7 +179,7 @@ export function createOwnedPlanRuntimePort(
       duplicateOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-duplicate"),
+          requestId: input.requestId ?? createId("owned-plan-duplicate"),
           sourcePlanId: input.sourcePlanId,
           expectedRevision: input.expectedRevision,
           newPlanId: createId("owned-plan"),
@@ -186,7 +191,7 @@ export function createOwnedPlanRuntimePort(
       archiveOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-archive"),
+          requestId: input.requestId ?? createId("owned-plan-archive"),
           planId: input.planId,
           expectedRevision: input.expectedRevision,
           updatedAtMs: dependencies.nowMs(),
@@ -196,7 +201,7 @@ export function createOwnedPlanRuntimePort(
       restoreOwnedPlan({
         ...commandContext,
         input: {
-          requestId: createId("owned-plan-restore"),
+          requestId: input.requestId ?? createId("owned-plan-restore"),
           planId: input.planId,
           expectedRevision: input.expectedRevision,
           updatedAtMs: dependencies.nowMs(),

@@ -298,7 +298,7 @@ describe("GTBK backup envelope", () => {
     }],
     ["a short nonce", (header: Record<string, unknown>) => { header.nonce = "AA=="; }],
     ["a negative payload size", (header: Record<string, unknown>) => { header.payloadBytes = -1; }],
-    ["an unsupported header version", (header: Record<string, unknown>) => { header.version = 8; }],
+    ["an unsupported header version", (header: Record<string, unknown>) => { header.version = 9; }],
   ])("rejects %s before key derivation", async (_label, mutateHeader) => {
     const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({ snapshot, password, salt, nonce });
     const header = headerFrom(archive);
@@ -308,7 +308,7 @@ describe("GTBK backup envelope", () => {
 
     await expect(codec.open({ archive: archiveWithHeader(archive, header), password })).rejects.toEqual(
       expect.objectContaining({
-        code: header.version === 8
+        code: header.version === 9
           ? "backup_archive_unsupported_version"
           : "backup_archive_invalid",
       }),

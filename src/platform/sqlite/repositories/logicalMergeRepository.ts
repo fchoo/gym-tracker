@@ -63,6 +63,7 @@ const FULL_PLAN_CUSTOM_EXERCISE_TABLES = Object.freeze([
   "exercise_owner_preferences",
   "exercise_metric_baselines",
   "metric_profile_migration_events",
+  "custom_exercise_mutation_receipts",
 ] as const satisfies readonly LogicalBackupTableName[]);
 
 const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([

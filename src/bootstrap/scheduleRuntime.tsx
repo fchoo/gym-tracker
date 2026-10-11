@@ -122,6 +122,8 @@ export type ScheduleEditorSnapshot = Readonly<{
 }>;
 
 export type ScheduleSaveDraft = Readonly<{
+  /** A caller may supply a durable request identity for an audited command. */
+  requestId?: string;
   planId: string;
   scheduleId: string | null;
   expectedPlanRevision: number;
@@ -1059,7 +1061,7 @@ export function createScheduleRuntimePort(
           preview,
         });
         const command = Object.freeze({
-          requestId: `schedule-activate:${dependencies.randomUUID()}`,
+          requestId: input.requestId ?? `schedule-activate:${dependencies.randomUUID()}`,
           planId: input.planId,
           expectedPlanRevision: input.expectedPlanRevision,
           expectedActivePair: input.expectedActivePair,
@@ -1109,7 +1111,7 @@ export function createScheduleRuntimePort(
         invalidate: async () => undefined,
         sha256: dependencies.sha256,
         input: {
-          requestId: `schedule-save:${dependencies.randomUUID()}`,
+          requestId: input.requestId ?? `schedule-save:${dependencies.randomUUID()}`,
           scheduleId: input.scheduleId,
           planId: input.planId,
           expectedScheduleRevision: input.expectedScheduleRevision,

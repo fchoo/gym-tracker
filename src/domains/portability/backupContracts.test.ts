@@ -64,6 +64,7 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("progression_recommendations");
     expect(LOGICAL_BACKUP_TABLES).toContain("owned_progression_recommendations");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_metric_baselines");
+    expect(LOGICAL_BACKUP_TABLES).toContain("custom_exercise_mutation_receipts");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_library_entries");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_aliases");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_taxonomy");
@@ -74,8 +75,8 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("sqlite_master");
   });
 
-  it("freezes v1-v6 while the schema-40 successor carries collision decision facts", () => {
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(7);
+  it("freezes prior formats while v8 adds durable custom-exercise command receipts", () => {
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(8);
     expect(logicalBackupTablesForVersion(5)).not.toContain("imported_activity_identities");
     expect(logicalBackupTablesForVersion(5)).not.toContain("running_activity_match_events");
     expect(logicalBackupTablesForVersion(5)).not.toContain("workout_session_schedule_links");
@@ -100,6 +101,8 @@ describe("logical backup contract", () => {
       "schedule_collision_receipts",
       "schedule_collision_projections",
     ]));
+    expect(logicalBackupTablesForVersion(7)).not.toContain("custom_exercise_mutation_receipts");
+    expect(logicalBackupTablesForVersion(8)).toContain("custom_exercise_mutation_receipts");
     expect(logicalBackupTablesForVersion(6)).not.toContain("running_activity_current_matches");
     expect(logicalBackupTablesForVersion(6)).not.toContain("imported_activity_current_lifecycle");
   });

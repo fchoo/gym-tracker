@@ -44,6 +44,7 @@ export const PORTABLE_MERGE_TABLE_CLASSES = Object.freeze({
   taxonomy_terms: "custom_exercise",
   metric_profile_migration_events: "custom_exercise",
   exercise_metric_baselines: "custom_exercise",
+  custom_exercise_mutation_receipts: "custom_exercise",
   plans: "owned_plan",
   plan_schedules: "owned_plan",
   plan_schedule_bindings: "owned_plan",

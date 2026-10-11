@@ -7,6 +7,7 @@ const mockEditorProps = jest.fn();
 const mockDetailProps = jest.fn();
 jest.mock("expo-router", () => ({ Stack: { Screen: () => null }, router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => ({ planId: "running-plan:id" }) }));
 jest.mock("../../../../src/bootstrap/runningPlanRuntime", () => ({ useRunningPlanRuntime: () => ({ createId: (kind: string) => `${kind}:id`, createInactivePlan: mockCreateInactivePlan, loadPlan: async () => ({ id: "running-plan:id", goal: { trainingDays: ["Monday"] }, sessions: [] }), savePlan: async (draft: { id: string }) => draft }), }));
+jest.mock("../../../../src/bootstrap/workoutAppRuntime", () => ({ useWorkoutAppRuntime: () => ({ createPhase17ActionRequestId: (_label: string, productionRequestId: string) => productionRequestId }) }));
 jest.mock("../../../../src/ui/screens/RunningPlanEditorScreen", () => ({ RunningPlanEditorScreen: (props: unknown) => { mockEditorProps(props); return null; } }));
 jest.mock("../../../../src/ui/screens/RunningPlanDetailScreen", () => ({ RunningPlanDetailScreen: (props: unknown) => { mockDetailProps(props); return null; } }));
 import CreateRunningPlanRoute from "../create";
@@ -20,7 +21,10 @@ describe("Running create route", () => {
     const props = mockEditorProps.mock.calls[0]![0] as { initialDraft: { id: string }; savePlan(input: { id: string }): Promise<{ id: string }>; onSaved(id: string): void };
     await expect(props.savePlan(props.initialDraft)).resolves.toEqual({ id: "running-plan:id" });
     props.onSaved("running-plan:id");
-    expect(mockCreateInactivePlan).toHaveBeenCalledWith({ plan: props.initialDraft });
+    expect(mockCreateInactivePlan).toHaveBeenCalledWith({
+      plan: props.initialDraft,
+      requestId: "running-plan-create:id",
+    });
     expect(router.replace).toHaveBeenCalledWith("/library/running/running-plan:id");
   });
 });

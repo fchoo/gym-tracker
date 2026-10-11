@@ -1,7 +1,7 @@
 /** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
-/** Version 7 carries the schema-40 collision-decision source graph. */
-export const LOGICAL_BACKUP_FORMAT_VERSION = 7 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7] as const);
+/** Version 8 carries durable custom-exercise mutation receipts. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 8 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -46,6 +46,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   exercise_metric_baselines: {
     primaryKey: ["exercise_id", "exercise_metric_generation"],
   },
+  custom_exercise_mutation_receipts: { primaryKey: ["request_id"] },
   plans: { primaryKey: ["id"] },
   plan_schedules: { primaryKey: ["id"] },
   plan_schedule_bindings: { primaryKey: ["id"] },
@@ -148,6 +149,7 @@ export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
     "running_activity_match_events", "running_activity_match_receipts",
     "schedule_collision_outcomes", "schedule_collision_receipts",
     "schedule_collision_projections",
+    "custom_exercise_mutation_receipts",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -203,6 +205,13 @@ export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
 
 /** v7 adds the schema-40 collision decision ledger; current matches still rebuild. */
 export const LOGICAL_BACKUP_V7_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_current_matches", "custom_exercise_mutation_receipts",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v8 adds durable custom-library command receipts. */
+export const LOGICAL_BACKUP_V8_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
 ) as readonly LogicalBackupTableName[];
 
@@ -274,6 +283,7 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
+  if (version === 8) return LOGICAL_BACKUP_V8_TABLES;
   if (version === 7) return LOGICAL_BACKUP_V7_TABLES;
   if (version === 6) return LOGICAL_BACKUP_V6_TABLES;
   const legacyTables = version === 5

@@ -50,6 +50,7 @@ export default function LibraryRoute() {
         ? {}
         : { contentUpdateFailed: runtime.contentUpdateFailed })}
       loadLibrary={runtime.loadLibrary}
+      retryInitialLibraryLoad={runtime.retryLibraryLoad}
       refreshGeneration={refreshGeneration}
       listRecentExercises={runtime.listLibraryRecentExercises}
       onCreateExercise={() =>

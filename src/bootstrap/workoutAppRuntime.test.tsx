@@ -3403,6 +3403,9 @@ describe("WorkoutAppRuntimeProvider", () => {
           { name: "default_rest_seconds_is_override", notnull: 1 },
         ];
       }
+      if (sql === "PRAGMA table_info(running_session_slots)") {
+        return [{ name: "retired_at_ms", notnull: 0 }];
+      }
       if (parameters.includes("workout_session_exercise_rest_default_receipts")) {
         return [{ name: "workout_session_exercise_rest_default_receipts" }];
       }
@@ -3437,6 +3440,9 @@ describe("WorkoutAppRuntimeProvider", () => {
         return parameters.map((name) => ({ name }));
       }
       if (sql === "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?") {
+        return parameters.map((name) => ({ name }));
+      }
+      if (sql.includes("FROM sqlite_master WHERE type = 'trigger' AND name = ?")) {
         return parameters.map((name) => ({ name }));
       }
       if (sql === "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('one_active_owned_plan_per_sport', 'one_active_owned_schedule_per_sport')") {

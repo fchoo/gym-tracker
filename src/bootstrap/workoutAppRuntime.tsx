@@ -775,6 +775,7 @@ type RuntimeValue = RuntimeState & Readonly<{
     ReturnType<typeof createScheduleRuntimePort>["consumeDateOverride"]
   >;
   loadLibrary(): Promise<LibraryRuntimeSnapshot>;
+  retryLibraryLoad(): Promise<LibraryRuntimeSnapshot>;
   loadStarterPlan(templateId: string): Promise<AcceptedStarterTemplate | null>;
   loadStarterActivationPreview(
     templateId: string,
@@ -2088,6 +2089,14 @@ export function WorkoutAppRuntimeProvider({
   const servicesRef = useRef<RuntimeServices | null>(null);
   const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
   const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
+  const phase17RequestId = useCallback((label: string, productionRequestId: string) => {
+    if (!phase17NativeContractEnabled()) return productionRequestId;
+    const source = phase17ActionEnvelopeSourceRef.current;
+    if (source === null) throw new Error("phase17_action_envelope_missing");
+    const requestId = source.claimCached(label);
+    if (requestId === null) throw new Error("phase17_action_envelope_missing");
+    return requestId;
+  }, []);
   const foregroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const automaticBackupForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const automaticBackupUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -2727,6 +2736,13 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [requireServices]);
 
+  const retryLibraryLoad = useCallback(async () => {
+    // Loading is normally read-only.  The development-test retry is recorded
+    // as an action only after the user presses the recovery control.
+    phase17RequestId("library-load-retry", `library-load-retry:${dependencies.nowMs()}`);
+    return loadLibrary();
+  }, [dependencies, loadLibrary, phase17RequestId]);
+
   const loadStarterPlan = useCallback(async (
     templateId: string,
   ): Promise<AcceptedStarterTemplate | null> => {
@@ -2784,7 +2800,10 @@ export function WorkoutAppRuntimeProvider({
       sha256: (value: string) =>
         digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       repository: createStarterPlanRepository(services.kernel),
-      requestId: `starter-ui:${command.templateId}:${activatedAtMs}`,
+      requestId: phase17RequestId(
+        "starter-plan-activation",
+        `starter-ui:${command.templateId}:${activatedAtMs}`,
+      ),
       activatedAtMs,
       expectedActiveScheduleRevision:
         command.expectedActiveScheduleRevision,
@@ -2810,7 +2829,7 @@ export function WorkoutAppRuntimeProvider({
         },
       })),
     });
-  }, [dependencies, requireServices, trustedRead]);
+  }, [dependencies, phase17RequestId, requireServices, trustedRead]);
 
   const createStarterEditableCopy = useCallback(async (
     templateId: string,
@@ -2940,8 +2959,10 @@ export function WorkoutAppRuntimeProvider({
     );
     const expectedPreferenceRevision = preference?.revision ?? null;
     const result = await services.customExerciseRepository.setExerciseFavorite({
-      requestId:
+      requestId: phase17RequestId(
+        "exercise-favorite",
         `favorite:${exerciseId}:${favorite ? "on" : "off"}:${expectedPreferenceRevision ?? "new"}`,
+      ),
       exerciseId,
       expectedPreferenceRevision,
       favorite,
@@ -2952,7 +2973,7 @@ export function WorkoutAppRuntimeProvider({
       favorite: result.favorite,
       preferenceRevision: result.preferenceRevision,
     });
-  }, [dependencies, requireServices]);
+  }, [dependencies, phase17RequestId, requireServices]);
 
   const createRuntimeCustomExercise = useCallback((
     input: Omit<CreateCustomExerciseInput, "createdAtMs">,
@@ -2963,10 +2984,11 @@ export function WorkoutAppRuntimeProvider({
       invalidate: async () => undefined,
       input: {
         ...input,
+        requestId: phase17RequestId("custom-exercise-create", input.requestId),
         createdAtMs: dependencies.nowMs(),
       },
     });
-  }, [dependencies, requireServices]);
+  }, [dependencies, phase17RequestId, requireServices]);
 
   const editRuntimeCustomExercise = useCallback((
     input: Omit<EditCustomExerciseInput, "editedAtMs">,
@@ -2977,10 +2999,11 @@ export function WorkoutAppRuntimeProvider({
       invalidate: async () => undefined,
       input: {
         ...input,
+        requestId: phase17RequestId("custom-exercise-edit", input.requestId),
         editedAtMs: dependencies.nowMs(),
       },
     });
-  }, [dependencies, requireServices]);
+  }, [dependencies, phase17RequestId, requireServices]);
 
   const loadRuntimeCustomExercise = useCallback((
     exerciseId: string,
@@ -3010,13 +3033,13 @@ export function WorkoutAppRuntimeProvider({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
-        requestId: services.ownedPlans.createId("exercise-favorite"),
+        requestId: phase17RequestId("exercise-favorite", services.ownedPlans.createId("exercise-favorite")),
         ...input,
         updatedAtMs: dependencies.nowMs(),
       },
     });
     return requireCustomExerciseDetail(services, input.exerciseId);
-  }, [dependencies, requireCustomExerciseDetail, requireServices]);
+  }, [dependencies, phase17RequestId, requireCustomExerciseDetail, requireServices]);
 
   const setRuntimeCustomExerciseHidden = useCallback(async (
     input: Readonly<{
@@ -3030,7 +3053,10 @@ export function WorkoutAppRuntimeProvider({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
-        requestId: services.ownedPlans.createId("exercise-hidden"),
+        requestId: phase17RequestId(
+          "custom-exercise-hide",
+          services.ownedPlans.createId("exercise-hidden"),
+        ),
         ...input,
         updatedAtMs: dependencies.nowMs(),
       },
@@ -3066,9 +3092,9 @@ export function WorkoutAppRuntimeProvider({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,
       input: {
-        requestId: services.ownedPlans.createId(
-          input.archived ? "exercise-archive" : "exercise-restore",
-        ),
+        requestId: input.archived
+          ? phase17RequestId("custom-exercise-archive", services.ownedPlans.createId("exercise-archive"))
+          : services.ownedPlans.createId("exercise-restore"),
         exerciseId: input.exerciseId,
         expectedExerciseRevision: input.expectedExerciseRevision,
         expectedPreferenceRevision: input.expectedPreferenceRevision,
@@ -3077,7 +3103,7 @@ export function WorkoutAppRuntimeProvider({
       },
     });
     return requireCustomExerciseDetail(services, input.exerciseId);
-  }, [dependencies, requireCustomExerciseDetail, requireServices]);
+  }, [dependencies, phase17RequestId, requireCustomExerciseDetail, requireServices]);
 
   const loadRuntimeCustomExerciseMigration = useCallback((
     exerciseId: string,
@@ -3090,9 +3116,10 @@ export function WorkoutAppRuntimeProvider({
     repository: createMetricRepository(requireServices().kernel),
     input: {
       ...input,
+      idempotencyKey: phase17RequestId("custom-exercise-metric-migration", input.idempotencyKey),
       migratedAtMs: dependencies.nowMs(),
     },
-  }), [dependencies, requireServices]);
+  }), [dependencies, phase17RequestId, requireServices]);
 
   const runOwnedPlanMutation = useCallback(async (
     mutation: (
@@ -3112,16 +3139,22 @@ export function WorkoutAppRuntimeProvider({
 
   const createOwnedDraft = useCallback((
     input: Readonly<{ name: string; dayName: string }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.createDraft(input)),
-  [runOwnedPlanMutation]);
+  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.createDraft({
+    ...input,
+    requestId: phase17RequestId("owned-plan-create", ownedPlans.createId("owned-plan-create")),
+  })),
+  [phase17RequestId, runOwnedPlanMutation]);
 
   const saveOwnedDraft = useCallback((
     input: Readonly<{
       expectedRevision: number;
       plan: OwnedPlanDraftInput;
     }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.savePlan(input)),
-  [runOwnedPlanMutation]);
+  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.savePlan({
+    ...input,
+    requestId: phase17RequestId("owned-plan-save", ownedPlans.createId("owned-plan-save")),
+  })),
+  [phase17RequestId, runOwnedPlanMutation]);
 
   const duplicateOwnedDraft = useCallback((
     input: Readonly<{
@@ -3129,13 +3162,19 @@ export function WorkoutAppRuntimeProvider({
       expectedRevision: number;
       name: string;
     }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.duplicatePlan(input)),
+  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.duplicatePlan({
+    ...input,
+    requestId: ownedPlans.createId("owned-plan-duplicate"),
+  })),
   [runOwnedPlanMutation]);
 
   const archiveOwnedDraft = useCallback((
     input: Readonly<{ planId: string; expectedRevision: number }>,
-  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.archivePlan(input)),
-  [runOwnedPlanMutation]);
+  ) => runOwnedPlanMutation((ownedPlans) => ownedPlans.archivePlan({
+    ...input,
+    requestId: phase17RequestId("owned-plan-lifecycle", ownedPlans.createId("owned-plan-archive")),
+  })),
+  [phase17RequestId, runOwnedPlanMutation]);
 
   const restoreOwnedDraft = useCallback((
     input: Readonly<{ planId: string; expectedRevision: number }>,
@@ -4197,13 +4236,55 @@ export function WorkoutAppRuntimeProvider({
             }
           })();
           if (rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
-          if (contract.proofMode === "mutating") {
-            // Do not promote a generic fixture row into evidence of a product
-            // mutation.  Every Family A mutator must grow an identity-scoped
-            // receipt/readback before native evidence can pass.
-            throw new Error("phase17_family_a_action_receipt_unverified");
+          const actionReceiptId = selectors.phase17ActionReceiptId;
+          const envelope = contract.proofMode === "mutating"
+            ? (await services.kernel.queryAll<Readonly<{ value_json: string }>>(
+                "SELECT value_json FROM app_settings WHERE key = ?",
+                [PHASE17_ACTION_ENVELOPE_SETTING_KEY],
+              ))[0]
+            : undefined;
+          if (contract.proofMode === "mutating" && (
+            actionReceiptId === undefined || envelope === undefined
+            || !envelope.value_json.includes(actionReceiptId)
+            || !envelope.value_json.includes('"nextEnvelope":1')
+          )) throw new Error("phase17_family_a_action_receipt_missing");
+          const customReceiptKind = ({
+            "library.exercise-favorites": "favorite",
+            "library.custom-exercise": "archive",
+            "library.create-exercise": "create",
+          } as Readonly<Record<string, string>>)[caseId];
+          if (customReceiptKind !== undefined && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{
+              mutation_kind: string;
+              request_json: string;
+              result_json: string;
+            }>>(
+              `SELECT mutation_kind, request_json, result_json
+               FROM custom_exercise_mutation_receipts
+               WHERE request_id = ?`,
+              [actionReceiptId],
+            );
+            if (receipt === undefined || receipt.mutation_kind !== customReceiptKind
+              || !receipt.request_json.includes(actionReceiptId)
+              || !receipt.result_json.includes('"outcome":"committed"')) {
+              throw new Error("phase17_family_a_action_receipt_missing");
+            }
           }
-          const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table });
+          if (caseId === "library.copy-metric-migration" && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{
+              result_json: string;
+            }>>(
+              `SELECT result_json FROM metric_profile_migration_events
+               WHERE idempotency_key = ?`,
+              [actionReceiptId],
+            );
+            if (receipt === undefined || !receipt.result_json.includes('"outcome":"committed"')) {
+              throw new Error("phase17_family_a_action_receipt_missing");
+            }
+          }
+          const facts = contract.proofMode === "mutating"
+            ? Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table, actionReceiptId, action: contract.action })
+            : Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table });
           return Object.freeze({ rowCount: 1, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${JSON.stringify(facts)}`), facts });
         },
         cleanup: async (_caseId, _fixtureToken, selectors) => {
@@ -4412,6 +4493,7 @@ export function WorkoutAppRuntimeProvider({
     listOwnedPlanExercises: () =>
       requireServices().ownedPlans.listExercises(),
     loadLibrary,
+    retryLibraryLoad,
     loadOwnedPlan: (planId) => requireServices().ownedPlans.loadPlan(planId),
     loadSchedule: (planId) => requireServices().schedules.loadSchedule(planId),
     loadToday: (instantMs) => requireServices().schedules.loadToday(instantMs),
@@ -4476,7 +4558,10 @@ export function WorkoutAppRuntimeProvider({
     },
     shareCsvExport: (handle) => requireServices().csvFiles.shareCsv(handle),
     saveOwnedPlan: saveOwnedDraft,
-    saveSchedule: (input) => requireServices().schedules.saveSchedule(input),
+    saveSchedule: (input) => requireServices().schedules.saveSchedule({
+      ...input,
+      requestId: phase17RequestId("schedule-save", requireServices().ownedPlans.createId("schedule-save")),
+    }),
     setDateOverride: (input) =>
       requireServices().schedules.setDateOverride(input),
     searchLibraryExercises,

@@ -144,6 +144,7 @@ export type LibrarySectionState = Readonly<Record<
 
 type LibraryScreenProps = Readonly<{
   loadLibrary(): Promise<LibraryBrowseSnapshot>;
+  retryInitialLibraryLoad?(): Promise<LibraryBrowseSnapshot>;
   refreshLibrary?(): Promise<LibraryBrowseSnapshot>;
   refreshGeneration?: number;
   onCreateExercise(): void;
@@ -1216,6 +1217,7 @@ export function LibraryScreen({
   contentUpdateFailed,
   contentUpdateResult,
   loadLibrary,
+  retryInitialLibraryLoad = loadLibrary,
   refreshLibrary = loadLibrary,
   refreshGeneration = 0,
   listRecentExercises,
@@ -1541,7 +1543,7 @@ export function LibraryScreen({
     loadGenerationRef.current = generation;
     loadRetryInFlightRef.current = true;
     setLoadRetrying(true);
-    void loadLibrary().then((value) => {
+    void retryInitialLibraryLoad().then((value) => {
       if (mountedRef.current && generation === loadGenerationRef.current) {
         setSnapshot(value);
         setLoadFailed(false);

@@ -12,9 +12,9 @@ import { createScheduleCollisionRepository, type ScheduleCollisionCommandResult 
 
 export type RunningPlanRuntimePort = Readonly<{
   createId(kind: string): string;
-  createInactivePlan(input: Omit<CreateInactiveRunningPlanInput, "requestId" | "requestSha256">): Promise<RunningPlanAggregate>;
+  createInactivePlan(input: Omit<CreateInactiveRunningPlanInput, "requestId" | "requestSha256"> & Readonly<{ requestId?: string }>): Promise<RunningPlanAggregate>;
   loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
-  savePlan(input: Omit<RunningPlanAggregate, "active" | "lifecycle">): Promise<RunningPlanAggregate>;
+  savePlan(input: Omit<RunningPlanAggregate, "active" | "lifecycle"> & Readonly<{ requestId?: string }>): Promise<RunningPlanAggregate>;
   saveSession(input: RunningSessionMutationInput): Promise<RunningSessionMutationResult>;
   previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview>;
   confirmLifecycle(input: RunningLifecycleConfirmationInput): Promise<RunningPlanAggregate>;
@@ -64,7 +64,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
     createId,
     loadPlan: (planId) => repository.readAggregate(planId),
     createInactivePlan: async (input) => {
-      const requestId = createId("running-plan-create");
+      const requestId = input.requestId ?? createId("running-plan-create");
       const requestSha256 = await dependencies.sha256(JSON.stringify({ requestId, plan: input.plan }));
       const committed = await createInactiveRunningPlan(repository, { ...input, requestId, requestSha256 });
       const readBack = await repository.readAggregate(committed.id);
@@ -76,7 +76,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       if (current === null || current.revision !== input.revision) throw new Error("running_plan_revision_conflict");
       const now = dependencies.nowMs();
       const command = {
-        requestId: createId("running-plan-save"), operation: "edit" as const, planId: current.id,
+        requestId: input.requestId ?? createId("running-plan-save"), operation: "edit" as const, planId: current.id,
         expectedPlanRevision: current.revision, createdAtMs: now,
         goal: { ...input.goal, id: createId("running-goal-revision"), revision: current.goal.revision + 1, createdAtMs: now },
         sessions: input.sessions.map((entry) => ({ ...entry.session, id: createId("running-session-revision"), revision: entry.session.revision + 1, createdAtMs: now })),
