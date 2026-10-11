@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 15
+open_count: 16
 waived_count: 0
 fixed_count: 88
-total_count: 103
-last_updated: 2026-10-11T12:16:42.968Z
+total_count: 104
+last_updated: 2026-10-11T12:32:08.977Z
 ---
 
 # Broken Windows Ledger
@@ -118,6 +118,7 @@ last_updated: 2026-10-11T12:16:42.968Z
 | 101 | 18 | unrun-verify | artifacts/native/phase18-garmin-adversarial/final-evidence.json |  | Real restore/refresh/read/logout/restart and adversarial native evidence is owner-deferred to Phase 20; no final evidence exists. | open |  | 2026-10-11T12:16:23.160Z |  |
 | 102 | 18 | deviation | .planning/phases/18-garmin-import/18-13-SUMMARY.md |  | Plan 18-13 is host-complete and native-deferred under the owner checkpoint override; no native PASS is claimed. | open |  | 2026-10-11T12:16:23.242Z |  |
 | 103 | 18 | deviation | app/_layout.tsx |  | Added the missing isolated development-test navigator for the guarded Plan 18-13 adversarial route. | open |  | 2026-10-11T12:16:42.968Z |  |
+| 104 | 18 | deviation | app/library/running/[planId].tsx |  | Plan 18-14 omitted the production Running-plan route from Task 2 files; the route was required to replace the inert Garmin callback with the typed library-origin stack handoff. | open |  | 2026-10-11T12:32:08.977Z |  |
 
 ````json
 [
@@ -1355,6 +1356,18 @@ last_updated: 2026-10-11T12:16:42.968Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-11T12:16:42.968Z",
+    "resolved_at": null
+  },
+  {
+    "id": 104,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "app/library/running/[planId].tsx",
+    "line": null,
+    "description": "Plan 18-14 omitted the production Running-plan route from Task 2 files; the route was required to replace the inert Garmin callback with the typed library-origin stack handoff.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T12:32:08.977Z",
     "resolved_at": null
   }
 ]

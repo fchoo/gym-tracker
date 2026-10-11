@@ -164,17 +164,17 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **GAR-01**: Open Garmin contextually from Workout and Running plan and publish a real Calendar-origin activity-detail route contract; CAL-17/20 own final Calendar entry/return integration after this destination exists. Preserve exactly four app roots.
 - [x] **GAR-02**: Keep Garmin Sync on one line in a stable three-column header with appearance flush right and an inert back placeholder at Garmin's root.
 - [x] **GAR-03**: Show Garmin not connected with Connect Garmin and retained imported-history access; show honest offline, unavailable and sign-in-needed states without fake partner-approval or FIT-fallback actions.
-- [ ] **GAR-04**: Sign in to the owner's account through the bundled native/Python client with foreground credentials/MFA, cancel/error/expired-session recovery and verified authenticated reads; persist refreshed tokens in Keystore-backed private encryption and never log or back them up.
+- [x] **GAR-04**: Sign in to the owner's account through the bundled native/Python client with foreground credentials/MFA, cancel/error/expired-session recovery and verified authenticated reads; persist refreshed tokens in Keystore-backed private encryption and never log or back them up.
 - [x] **GAR-05**: Show verified account connection, last successful sync, imported activities and durable dedupe status with Sync now and Disconnect Garmin; packaging runs standalone without AI agents, Python installed separately, or a development server.
 - [x] **GAR-06**: Execute bounded foreground sync with clear busy, new/unchanged/partial-failure, offline, 403/429 and sign-in-needed results; preserve prior facts, bound retries, and do not claim success from a fixture or failed data read.
 - [x] **GAR-07**: Disconnect locally by invalidating in-flight generations and clearing credentials/session state without deleting imported history; prevent late network results from writing, allow later reconnection, and never claim server-side revocation without a supported verified operation.
-- [ ] **GAR-08**: Read paginated Running summaries plus per-activity summary/splits/detail JSON through a typed allowlisted native bridge, validate and normalize it with explicit sampling/timezone provenance, and capacity-check before one atomic idempotent SQLite import.
-- [ ] **GAR-09**: Handle malformed/oversized/truncated JSON, missing channels, unsupported sport, duplicates, changed source revisions, ambiguous timezone and cancelled/interrupted sync with complete recovery paths and no partial facts or lost history.
-- [ ] **GAR-10**: Show imported outdoor elapsed/moving time, distance/pace facts, optional route and spaced Average heart rate label/value when present.
-- [ ] **GAR-11**: Show No route for treadmill activity plus distance/time/pace/laps and available source facts; never invent a route.
-- [ ] **GAR-12**: Display Lap, Time and Pace columns from imported lap semantics with accessible row/column labels and honest missing values.
-- [ ] **GAR-13**: Open Match to scheduled workout, show candidate identities and select one candidate without completing anything yet.
-- [ ] **GAR-14**: Persist exactly the selected candidate only on Confirm match; Leave unmatched/Back performs no match, and failed/stale confirmation preserves the activity.
+- [x] **GAR-08**: Read paginated Running summaries plus per-activity summary/splits/detail JSON through a typed allowlisted native bridge, validate and normalize it with explicit sampling/timezone provenance, and capacity-check before one atomic idempotent SQLite import.
+- [x] **GAR-09**: Handle malformed/oversized/truncated JSON, missing channels, unsupported sport, duplicates, changed source revisions, ambiguous timezone and cancelled/interrupted sync with complete recovery paths and no partial facts or lost history.
+- [x] **GAR-10**: Show imported outdoor elapsed/moving time, distance/pace facts, optional route and spaced Average heart rate label/value when present.
+- [x] **GAR-11**: Show No route for treadmill activity plus distance/time/pace/laps and available source facts; never invent a route.
+- [x] **GAR-12**: Display Lap, Time and Pace columns from imported lap semantics with accessible row/column labels and honest missing values.
+- [x] **GAR-13**: Open Match to scheduled workout, show candidate identities and select one candidate without completing anything yet.
+- [x] **GAR-14**: Persist exactly the selected candidate only on Confirm match; Leave unmatched/Back performs no match, and failed/stale confirmation preserves the activity.
 - [x] **GAR-15**: Provide loading, missing activity, parse/projection error and retry states with correct Back behavior and no fabricated detail.
 - [x] **GAR-16**: Use the same persisted Light/Dark/System appearance controls as App Settings, with synchronized selection and dismiss/focus restoration.
 
@@ -366,17 +366,17 @@ once and remains Pending until its owning phase is implemented and verified.
 | GAR-01 | 18 | garmin.entry | Complete |
 | GAR-02 | 18 | garmin.header | Complete |
 | GAR-03 | 18 | garmin.not-connected | Complete |
-| GAR-04 | 18 | garmin.consent | Pending |
+| GAR-04 | 18 | garmin.consent | Complete |
 | GAR-05 | 18 | garmin.connected | Complete |
 | GAR-06 | 18 | garmin.sync-states | Complete |
 | GAR-07 | 18 | garmin.revoke | Complete |
-| GAR-08 | 18 | garmin.json-sync | Pending |
-| GAR-09 | 18 | garmin.sync-recovery | Pending |
-| GAR-10 | 18 | garmin.activity-outdoor | Pending |
-| GAR-11 | 18 | garmin.activity-treadmill | Pending |
-| GAR-12 | 18 | garmin.laps | Pending |
-| GAR-13 | 18 | garmin.match-candidates | Pending |
-| GAR-14 | 18 | garmin.match-confirm | Pending |
+| GAR-08 | 18 | garmin.json-sync | Complete |
+| GAR-09 | 18 | garmin.sync-recovery | Complete |
+| GAR-10 | 18 | garmin.activity-outdoor | Complete |
+| GAR-11 | 18 | garmin.activity-treadmill | Complete |
+| GAR-12 | 18 | garmin.laps | Complete |
+| GAR-13 | 18 | garmin.match-candidates | Complete |
+| GAR-14 | 18 | garmin.match-confirm | Complete |
 | GAR-15 | 18 | garmin.detail-recovery | Complete |
 | GAR-16 | 18 | garmin.appearance | Complete |
 | PRO-01 | 19 | progress.sport-range | Pending |

@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
-status: executing
-stopped_at: Completed 18-13-PLAN.md
-last_updated: "2026-10-11T12:18:03.634Z"
+status: verifying
+stopped_at: Completed 18-14-PLAN.md
+last_updated: "2026-10-11T12:33:28.211Z"
 last_activity: 2026-10-11
-last_activity_desc: Phase 18 execution started
-state_head: ea3c3c936ffc036538b4ec4d209a7ea421a8b356
+last_activity_desc: Phase 18 Plan 14 completed; ready for targeted phase verification
+state_head: 13d8d920f8c3000e8fde03241ee95d6edaacac46
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 68
+  completed_plans: 69
   percent: 13
 ---
 
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
 Plan: 14 of 14
-Status: Ready to execute
-Last activity: 2026-10-11 — Phase 18 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-10-11 — Phase 18 Plan 14 completed; ready for targeted phase verification
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -108,6 +108,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P11 | 17m 44s | 3 tasks | 8 files |
 | Phase 18 P12 | 28m 14s | 3 tasks | 20 files |
 | Phase 18 P13 | 13m 36s | 3 tasks | 8 files |
+| Phase 18 P14 | 12m | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -247,6 +248,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Plan 18-13 is host-complete and native-deferred; real account, APK, device, and final evidence remain Phase 20-only.
 - [Phase 18]: Expected injected adversaries use passed plus expected-injected provenance; unexpected real failures remain TECHNICAL_REVIEW_REQUIRED plus unexpected provenance.
 - [Phase 18]: Plan 18-13 runner and write-once sealing require explicit Phase 20 authority and reject private records before raw-report write.
+- [Phase 18]: Phase 18 Garmin entries pass only closed origins; stack history retains source route, scroll, focus, and shared appearance state without return hrefs.
+- [Phase 18]: The Calendar activity-detail producer remains Phase 18-owned and accepts only origin=calendar, an opaque local activity ID, and an optional bounded return token.
+- [Phase 18]: The Phase 18 source audit checks executable tasks for stale topology while allowing explicit out-of-scope documentation.
 
 ### Pending Owner Review
 
@@ -271,7 +275,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T12:18:03.332Z
-Stopped at: Completed 18-13-PLAN.md
+Last session: 2026-10-11T12:33:27.904Z
+Stopped at: Completed 18-14-PLAN.md
 Resume file: None
-Next action: Execute 18-14-PLAN.md; Plan 18-13 real account/session/device evidence remains deferred to Phase 20.
+Next action: Verify Phase 18 host scope; Plan 18-13 real account/session/device evidence remains deferred to Phase 20.
