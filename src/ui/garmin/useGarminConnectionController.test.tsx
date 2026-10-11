@@ -264,3 +264,75 @@ describe("useGarminConnectionController committed sync semantics", () => {
     expect(current?.state.sync).toMatchObject({ kind: "success", counts: { pages: 2, newActivities: 1 } });
   });
 });
+
+describe("useGarminConnectionController disconnect semantics", () => {
+  it("invalidates in-flight sync, latches duplicate disconnect, and retains imported history", async () => {
+    let releaseSync: ((value: Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>) => void) | undefined;
+    let releaseLogout: (() => void) | undefined;
+    const syncNow = jest.fn(async () => new Promise<Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>>((resolve) => { releaseSync = resolve; }));
+    const logout = jest.fn(async () => new Promise<void>((resolve) => { releaseLogout = resolve; }));
+    const loadActivities = jest.fn(async () => [activity]);
+    await render(<Harness
+      coordinator={{ syncNow }}
+      loadActivities={loadActivities}
+      source={source({
+        connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
+        logout,
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+
+    let pendingSync: Promise<void> | undefined;
+    let disconnectOne: Promise<void> | undefined;
+    let disconnectTwo: Promise<void> | undefined;
+    await act(async () => {
+      pendingSync = current?.syncNow();
+      await Promise.resolve();
+      disconnectOne = current?.disconnect();
+      disconnectTwo = current?.disconnect();
+      await Promise.resolve();
+    });
+    expect(logout).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseLogout?.();
+      await Promise.all([disconnectOne, disconnectTwo]);
+    });
+    expect(current?.state).toMatchObject({
+      connection: "disconnected",
+      activities: [activity],
+      sync: { kind: "idle" },
+    });
+
+    await act(async () => {
+      releaseSync?.({ kind: "success", counts: { ...emptyCounts, newActivities: 3 } });
+      await pendingSync;
+    });
+    expect(current?.state).toMatchObject({
+      connection: "disconnected",
+      activities: [activity],
+      sync: { kind: "idle" },
+    });
+    expect(loadActivities).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the connected state and imported rows when local logout fails", async () => {
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      source={source({
+        connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
+        logout: async () => { throw new Error("private native detail"); },
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    await act(async () => current?.disconnect());
+
+    expect(current?.state).toMatchObject({
+      connection: "connected",
+      activities: [activity],
+      error: { code: "logout_failed", retryable: true },
+    });
+    expect(JSON.stringify(current?.state)).not.toContain("private native detail");
+  });
+});

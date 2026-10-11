@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -6,12 +7,21 @@ import {
 } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import {
+  BackHandler,
+  Dimensions,
+  StyleSheet,
+} from "react-native";
 
 import type { GarminActivitySourcePort } from "../../domains/activities/garminActivitySourcePort";
 import type { GarminSyncCoordinator } from "../../platform/garmin/garminSyncContracts";
 import type { GarminActivityListItem } from "../garmin/useGarminConnectionController";
 import { GarminSyncScreen } from "../screens/GarminSyncScreen";
-import { AppearanceProvider } from "../theme";
+import {
+  AppearanceProvider,
+  createMemoryAppearanceStore,
+  type AppearanceStore,
+} from "../theme";
 
 const activity: GarminActivityListItem = Object.freeze({
   activityId: "local-activity-1",
@@ -37,19 +47,30 @@ async function renderScreen(input: Readonly<{
   source: GarminActivitySourcePort;
   coordinator?: GarminSyncCoordinator;
   loadActivities?: () => Promise<readonly GarminActivityListItem[]>;
+  appearanceStore?: AppearanceStore;
+  reduceMotion?: boolean;
+  width?: number;
+  onBack?: () => void;
 }>) {
   const onOpenActivity = jest.fn();
+  const onBack = input.onBack ?? jest.fn();
+  const screenProps = {
+    coordinator: input.coordinator ?? { syncNow: async () => ({ kind: "success" as const, counts }) },
+    loadActivities: input.loadActivities ?? (async () => [activity]),
+    onBack,
+    onOpenActivity,
+    source: input.source,
+    width: input.width,
+  } as React.ComponentProps<typeof GarminSyncScreen> & Readonly<{
+    onBack(): void;
+    width?: number;
+  }>;
   await render(
-    <AppearanceProvider>
-      <GarminSyncScreen
-        coordinator={input.coordinator ?? { syncNow: async () => ({ kind: "success", counts }) }}
-        loadActivities={input.loadActivities ?? (async () => [activity])}
-        onOpenActivity={onOpenActivity}
-        source={input.source}
-      />
+    <AppearanceProvider reduceMotion={input.reduceMotion} store={input.appearanceStore}>
+      <GarminSyncScreen {...screenProps} />
     </AppearanceProvider>,
   );
-  return { onOpenActivity };
+  return { onBack, onOpenActivity };
 }
 
 describe("GarminSyncScreen connection tracer", () => {
@@ -218,5 +239,119 @@ describe("GarminSyncScreen committed sync presentation", () => {
     } else {
       expect(screen.getByRole("button", { name: action })).toBeOnTheScreen();
     }
+  });
+});
+
+describe("GarminSyncScreen shared shell and disconnect contracts", () => {
+  it("cancels disconnect without writes, then confirms once and retains imported history", async () => {
+    const logout = jest.fn(async () => undefined);
+    await renderScreen({ source: { ...connectedSource(), logout } });
+
+    await fireEvent.press(await screen.findByRole("button", { name: "Disconnect Garmin" }));
+    expect(screen.getByText("Disconnect Garmin?")).toBeOnTheScreen();
+    expect(screen.getByText(/Imported activity history remains on this device\./u)).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Keep connected" }));
+    expect(logout).not.toHaveBeenCalled();
+    expect(screen.getByText("Connected to Garmin")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Disconnect Garmin" }));
+    const confirmDisconnect = screen.getAllByRole("button", { name: "Disconnect Garmin" }).at(-1);
+    expect(confirmDisconnect).toBeDefined();
+    await fireEvent.press(confirmDisconnect!);
+    expect(await screen.findByText("Garmin not connected")).toBeOnTheScreen();
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Morning run")).toBeOnTheScreen();
+  });
+
+  it("uses shared persisted appearance without resetting connected controller state", async () => {
+    const appearanceStore = createMemoryAppearanceStore();
+    const source = connectedSource();
+    const connectionState = jest.spyOn(source, "connectionState");
+    await renderScreen({ appearanceStore, source });
+    expect(await screen.findByText("Connected to Garmin")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Dark" }));
+    expect(appearanceStore.read()).toBe("Dark");
+    const closeAppearance = screen.getAllByRole("button", { name: "Close appearance" }).at(-1);
+    expect(closeAppearance).toBeDefined();
+    await fireEvent.press(closeAppearance!);
+
+    expect(screen.getByText("Connected to Garmin")).toBeOnTheScreen();
+    expect(screen.getByText("Morning run")).toBeOnTheScreen();
+    expect(connectionState).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives Back priority to Appearance and disconnect before the contextual route", async () => {
+    const remove = jest.fn();
+    const addEventListener = jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove });
+    const onBack = jest.fn();
+    const logout = jest.fn(async () => undefined);
+    await renderScreen({ onBack, source: { ...connectedSource(), logout } });
+    await screen.findByText("Connected to Garmin");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
+    let listener = addEventListener.mock.calls.at(-1)?.[1];
+    await act(async () => {
+      expect(listener?.(undefined as never)).toBe(true);
+    });
+    expect(onBack).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("radio", { name: "System" })).not.toBeOnTheScreen());
+
+    await fireEvent.press(screen.getByRole("button", { name: "Disconnect Garmin" }));
+    listener = addEventListener.mock.calls.at(-1)?.[1];
+    await act(async () => {
+      expect(listener?.(undefined as never)).toBe(true);
+    });
+    expect(logout).not.toHaveBeenCalled();
+    expect(onBack).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText("Disconnect Garmin?")).not.toBeOnTheScreen());
+
+    listener = addEventListener.mock.calls.at(-1)?.[1];
+    await act(async () => {
+      expect(listener?.(undefined as never)).toBe(true);
+    });
+    expect(onBack).toHaveBeenCalledTimes(1);
+    addEventListener.mockRestore();
+  });
+
+  it("keyboard-activates each full-row target once and ignores D-pad movement", async () => {
+    const { onOpenActivity } = await renderScreen({ source: connectedSource() });
+    const row = await screen.findByRole("button", { name: "Open Morning run" });
+
+    await fireEvent(row, "keyDown", { nativeEvent: { key: "Enter" } });
+    await fireEvent(row, "keyDown", { nativeEvent: { key: " " } });
+    await fireEvent(row, "keyDown", { nativeEvent: { key: "ArrowDown" } });
+
+    expect(onOpenActivity).toHaveBeenCalledTimes(2);
+    expect(onOpenActivity).toHaveBeenNthCalledWith(1, "local-activity-1");
+    expect(onOpenActivity).toHaveBeenNthCalledWith(2, "local-activity-1");
+  });
+
+  it.each([
+    [360, 800, 1, "compact"],
+    [390, 844, 2, "compact"],
+    [600, 960, 1, "medium"],
+    [840, 1_080, 1, "expanded"],
+    [840, 360, 2, "expanded"],
+  ] as const)("keeps required actions and history reachable at %sx%s font %s", async (width, height, fontScale, widthClass) => {
+    Dimensions.set({
+      screen: { fontScale, height, scale: 1, width },
+      window: { fontScale, height, scale: 1, width },
+    });
+    await renderScreen({ reduceMotion: true, source: connectedSource(), width });
+
+    expect(await screen.findByText("Connected to Garmin")).toBeOnTheScreen();
+    expect(screen.getByTestId("garmin-sync-screen")).toHaveProp("accessibilityLabel", `${widthClass} layout`);
+    expect(screen.getByText("Garmin Sync")).toHaveProp("numberOfLines", 1);
+    for (const action of [
+      screen.getByRole("button", { name: "Appearance" }),
+      screen.getByRole("button", { name: "Sync now" }),
+      screen.getByRole("button", { name: "Disconnect Garmin" }),
+      screen.getByRole("button", { name: "Open Morning run" }),
+    ]) {
+      expect(StyleSheet.flatten(action.props.style).minHeight).toBeGreaterThanOrEqual(48);
+    }
+    expect(screen.getByTestId("garmin-sync-screen-scroll")).not.toHaveProp("horizontal", true);
   });
 });
