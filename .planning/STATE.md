@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Host-ready 18-03; native evidence deferred to Phase 20
-last_updated: "2026-10-11T07:54:12.362Z"
+stopped_at: Completed 18-04-PLAN.md
+last_updated: "2026-10-11T08:17:18.377Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: 7ca77b361cb66e09f4a66a6ec1a3db9c3d071672
+state_head: 0e0097f639d95de73c53b0799b56a002c27da415
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 58
+  completed_plans: 59
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 4 of 14
+Plan: 5 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -98,6 +98,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P01 | 9m 25s | 3 tasks | 16 files |
 | Phase 18 P02 | 48m 5s | 3 tasks | 13 files |
 | Phase 18 P03 | 24m 3s | 2 tasks | 10 files |
+| Phase 18 P04 | 18m | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: The Garmin adapter uses a typed native driver plus an injected envelope mapper so Plan 18-04 remains the sole canonicalization owner.
 - [Phase 18]: Native and Python outputs are untrusted and are reduced to a fixed error allowlist and bounded plain JSON before JavaScript receives them.
 - [Phase 18]: Plan 18-03 host proof contracts are implemented; D-18-11 native PASS remains deferred to Phase 20, while dependency-safe Plan 18-04 may proceed.
+- [Phase 18]: Plan 18-04 hashes only reviewed allowlisted Garmin projections, excluding operational fetch metadata from component and semantic identity.
+- [Phase 18]: Plan 18-04 permits exact efforts only from matching source summary or lap distance with a present source time basis; sampled evidence remains ineligible.
+- [Phase 18]: Plan 18-04 uses a focused 100% integrity coverage gate for canonicalGarminPayload.ts and normalizeGarminActivity.ts; the global matrix remains Phase 20-only.
 
 ### Pending Owner Review
 
@@ -231,7 +235,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T07:54:12.032Z
-Stopped at: Host-ready 18-03; native evidence deferred to Phase 20
+Last session: 2026-10-11T08:17:17.945Z
+Stopped at: Completed 18-04-PLAN.md
 Resume file: None
 Next action: Execute 18-03 only when the owner initiates its attended installed-app proof.
