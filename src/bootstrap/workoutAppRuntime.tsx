@@ -412,6 +412,7 @@ export {
 const DATABASE_NAME = "gym-tracker.db";
 const LIBRARY_SECTION_SETTING_KEY = "library.section";
 const LATEST_BACKUP_METADATA_SETTING_KEY = "backup.latest";
+const phase17FixtureActionReceiptId = (caseId: string, fixtureToken: string) => `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
 
 export type LibraryRuntimeSection = "plans" | "exercises";
 
@@ -4102,6 +4103,8 @@ export function WorkoutAppRuntimeProvider({
         }),
         familyA: {
         seed: async (caseId, fixtureToken, sourceTable) => {
+          const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+          if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
           const owned = await services.ownedPlans.createDraft({ name: `Phase17 ${caseId}`, dayName: "Fixture day" });
           if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
           const customId = `phase17-custom-${fixtureToken.slice(-16)}`;
@@ -4121,12 +4124,15 @@ export function WorkoutAppRuntimeProvider({
           ]);
           const plan = row[0]; const bundledExerciseId = bundled[0]?.exercise_id; const starterTemplateId = starter[0]?.template_id;
           if (plan === undefined || bundledExerciseId === undefined || starterTemplateId === undefined || custom.exercise.exerciseId !== customId) throw new Error("phase17_fixture_seed_failed");
-          if (sourceTable === "exercise_preferences") await setLibraryExerciseFavorite(bundledExerciseId, true);
-          const selectors = Object.freeze({ ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId });
+          const actionReceiptId = contract.proofMode === "mutating" ? phase17FixtureActionReceiptId(caseId, fixtureToken) : null;
+          const selectors = Object.freeze({ ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, ...(actionReceiptId === null ? {} : { phase17ActionReceiptId: actionReceiptId }) });
           const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable) });
-          return Object.freeze({ selectors, expectedPreState: facts, expectedPostState: facts });
+          const expectedPostState = actionReceiptId === null ? facts : Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable), actionReceiptId, action: contract.action });
+          return Object.freeze({ selectors, expectedPreState: facts, expectedPostState, actionReceiptId });
         },
         probe: async (caseId, fixtureToken, sourceTable, selectors) => {
+          const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+          if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
           const table = physicalTable(sourceTable);
           const customExerciseId = selectors.customExerciseId;
           const bundledExerciseId = selectors.bundledExerciseId;
@@ -4147,6 +4153,12 @@ export function WorkoutAppRuntimeProvider({
             }
           })();
           if (rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
+          if (contract.proofMode === "mutating") {
+            // Do not promote a generic fixture row into evidence of a product
+            // mutation.  Every Family A mutator must grow an identity-scoped
+            // receipt/readback before native evidence can pass.
+            throw new Error("phase17_family_a_action_receipt_unverified");
+          }
           const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table });
           return Object.freeze({ rowCount: 1, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${JSON.stringify(facts)}`), facts });
         },

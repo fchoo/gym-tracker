@@ -1,12 +1,27 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
-import { createPhase17FixtureProtocol } from "../src/bootstrap/phase17NativeFixture.ts";
+import { createPhase17FixtureProtocol, phase17ActionReceiptId } from "../src/bootstrap/phase17NativeFixture.ts";
 import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter } from "../src/bootstrap/phase17FamilyAFixture.ts";
 import { PHASE17_FAMILY_B_CASE_IDS, assertPhase17FamilyBRegistry, createPhase17FamilyFixtureAdapter } from "../src/bootstrap/phase17FamilyBFixture.ts";
 import { validatePhase17Evidence, validatePhase17IntegrityCoverageRegistry } from "./verify-phase17-evidence.mjs";
 import { PHASE17_FLOW_CASES, commandTreeForPhase17Case, createPhase17RunnerPlan, parsePhase17RunnerArgs, validatePhase17FlowSources } from "./run-phase17-maestro.mjs";
+
+function syntheticSeed(caseId, fixtureToken, selectors = {}) {
+  const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
+  assert.ok(contract, `missing contract for ${caseId}`);
+  const expectedPreState = { caseId, state: "before" };
+  const actionReceiptId = contract.proofMode === "mutating" ? phase17ActionReceiptId(caseId, fixtureToken) : null;
+  return {
+    selectors: { fixtureId: fixtureToken, ...selectors }, expectedPreState,
+    expectedPostState: actionReceiptId === null ? expectedPreState : { caseId, state: "after", actionReceiptId },
+    actionReceiptId,
+  };
+}
+
+const syntheticHash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 test("Phase 17 rejects any evidence that does not bind every case to a real action, UI readback, SQLite probe, report and cleanup", () => {
   assert.throws(() => validatePhase17Evidence({}), /phase17_evidence_invalid/u);
@@ -18,6 +33,8 @@ test("Phase 17 rejects any evidence that does not bind every case to a real acti
     assert.ok(contract.sourceProbe.length > 0);
     assert.equal(contract.rawReportRequired, true);
     assert.equal(contract.cleanupRequired, true);
+    assert.ok(["mutating", "read_only"].includes(contract.proofMode));
+    assert.equal(contract.actionReceiptRequired, contract.proofMode === "mutating");
   }
 });
 
@@ -49,6 +66,8 @@ test("Phase 17 parses actual YAML command trees and rejects comment-only or iner
   assert.throws(() => validatePhase17FlowSources(commentOnly, ["library.remembered-state"]), /phase17_flow_case_missing:library\.remembered-state/u);
   const inert = { ...flows, "maestro/phase17/accessibility.yaml": flows["maestro/phase17/accessibility.yaml"].replace("- pressKey: \"Remote Dpad Down\"", "- assertTrue: ${PHASE17_CASE_ID == 'library.accessibility-recovery'}") };
   assert.throws(() => validatePhase17FlowSources(inert), /phase17_flow_privacy_unsafe/u);
+  const missingReadOnlyPost = { ...flows, "maestro/phase17/library.yaml": flows["maestro/phase17/library.yaml"].replace('- assertVisible: "Instructions"', '- tapOn: "Instructions"') };
+  assert.throws(() => validatePhase17FlowSources(missingReadOnlyPost, ["library.builtin-exercise"]), /phase17_flow_assertion_missing:library\.builtin-exercise/u);
 });
 
 test("Phase 17 command trees keep the high-risk authoring, collision, and accessibility sequences executable", () => {
@@ -77,9 +96,9 @@ test("Phase 17 fixture protocol binds Library, session, lifecycle, and collision
     createToken: () => "phase17:fixture-token-0001",
     adapter: {
       baselineDigest: async () => digest,
-      canonicalHash: async () => "b".repeat(64),
-      seed: async ({ fixtureToken }) => ({ selectors: { runningPlanId: `running-${fixtureToken}`, ownedPlanId: "owned-opaque" }, expectedPreState: { lifecycle: "inactive", revision: 1 }, expectedPostState: { lifecycle: "inactive", revision: 1 } }),
-      probe: async ({ sourceTable }) => ({ rowCount: 1, identityHash: "b".repeat(64), facts: { lifecycle: sourceTable.length > 0 ? "inactive" : "invalid", revision: 1 } }),
+      canonicalHash: async (value) => syntheticHash(value),
+      seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken, { runningPlanId: `running-${fixtureToken}`, ownedPlanId: "owned-opaque" }),
+      probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "b".repeat(64), facts: syntheticSeed(caseId, fixtureToken).expectedPostState }),
       cleanup: async ({ fixtureToken }) => { cleaned.push(fixtureToken); digest = "a".repeat(64); },
     },
   });
@@ -99,9 +118,9 @@ test("Phase 17 fixture protocol fails closed for missing or mismatched lifecycle
     createToken: () => "phase17:fixture-token-0002",
     adapter: {
       baselineDigest: async () => digest,
-      canonicalHash: async () => "d".repeat(64),
-      seed: async () => ({ selectors: { ownedPlanId: "opaque-owned" }, expectedPreState: { lifecycle: "inactive", revision: 1 }, expectedPostState: { lifecycle: "inactive", revision: 1 } }),
-      probe: async () => ({ rowCount: 1, identityHash: "d".repeat(64), facts: { lifecycle: "inactive", revision: 1 } }),
+      canonicalHash: async (value) => syntheticHash(value),
+      seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken, { ownedPlanId: "opaque-owned" }),
+      probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "d".repeat(64), facts: syntheticSeed(caseId, fixtureToken).expectedPostState }),
       cleanup: async () => undefined,
     },
   });
@@ -116,12 +135,66 @@ test("Phase 17 fixture protocol fails closed for missing or mismatched lifecycle
   const cleanupFailure = createPhase17FixtureProtocol({
     contracts: PHASE17_CASE_ACTION_CONTRACTS,
     createToken: () => "phase17:fixture-token-0003",
-    adapter: { baselineDigest: async () => "f".repeat(64), canonicalHash: async () => "f".repeat(64), seed: async () => ({ selectors: { ownedPlanId: "opaque" }, expectedPreState: { lifecycle: "inactive" }, expectedPostState: { lifecycle: "inactive" } }), probe: async () => ({ rowCount: 1, identityHash: "f".repeat(64), facts: { lifecycle: "inactive" } }), cleanup: async () => { throw new Error("cleanup failed"); } },
+    adapter: { baselineDigest: async () => "f".repeat(64), canonicalHash: async (value) => syntheticHash(value), seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken, { ownedPlanId: "opaque" }), probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "f".repeat(64), facts: syntheticSeed(caseId, fixtureToken).expectedPostState }), cleanup: async () => { throw new Error("cleanup failed"); } },
   });
   const cleanupFixture = await cleanupFailure.setup("library.owned-summary");
   await assert.rejects(cleanupFailure.cleanup({ caseId: cleanupFixture.caseId, fixtureToken: cleanupFixture.fixtureToken }), /cleanup failed/u);
-  assert.deepEqual(Object.keys(fixture).sort(), ["baselineDigest", "caseId", "expectedPostState", "expectedPreState", "expectedState", "expectedStateHash", "fixtureToken", "selectors", "sourceTable"]);
+  assert.deepEqual(Object.keys(fixture).sort(), ["actionReceiptId", "baselineDigest", "caseId", "expectedPostState", "expectedPostStateHash", "expectedPreState", "expectedPreStateHash", "fixtureToken", "proofMode", "selectors", "sourceTable"]);
   assert.equal(JSON.stringify(fixture).includes("raw-row"), false);
+});
+
+test("Phase 17 requires explicit per-case proof modes, rejects skipped or wrong mutating receipts, and never falls back to setup state", async () => {
+  assert.equal(PHASE17_CASE_ACTION_CONTRACTS.length, 39);
+  for (const contract of PHASE17_CASE_ACTION_CONTRACTS) {
+    const token = `phase17:proof-${contract.id.replace("library.", "").replaceAll(".", "-")}-0001`;
+    const seed = syntheticSeed(contract.id, token);
+    if (contract.proofMode === "mutating") {
+      assert.notDeepEqual(seed.expectedPreState, seed.expectedPostState, contract.id);
+      assert.equal(seed.actionReceiptId, phase17ActionReceiptId(contract.id, token));
+    } else {
+      assert.equal(seed.actionReceiptId, null, contract.id);
+      assert.ok(contract.uiReadback.length > 0, contract.id);
+    }
+  }
+  let hashToken = 0;
+  const everyCase = createPhase17FixtureProtocol({
+    contracts: PHASE17_CASE_ACTION_CONTRACTS,
+    createToken: () => `phase17:all-cases-${String(++hashToken).padStart(16, "0")}`,
+    adapter: {
+      baselineDigest: async () => "0".repeat(64), canonicalHash: async (value) => syntheticHash(value),
+      seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken),
+      probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "f".repeat(64), facts: syntheticSeed(caseId, fixtureToken).expectedPostState }),
+      cleanup: async () => undefined,
+    },
+  });
+  for (const contract of PHASE17_CASE_ACTION_CONTRACTS) {
+    const fixture = await everyCase.setup(contract.id);
+    if (contract.proofMode === "mutating") assert.notEqual(fixture.expectedPreStateHash, fixture.expectedPostStateHash, contract.id);
+    await everyCase.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken });
+  }
+  const skipped = createPhase17FixtureProtocol({
+    contracts: PHASE17_CASE_ACTION_CONTRACTS, createToken: () => "phase17:skipped-action-0001",
+    adapter: {
+      baselineDigest: async () => "1".repeat(64), canonicalHash: async (value) => syntheticHash(value),
+      seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken),
+      probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "2".repeat(64), facts: syntheticSeed(caseId, fixtureToken).expectedPreState }),
+      cleanup: async () => undefined,
+    },
+  });
+  const skippedFixture = await skipped.setup("library.running-recovery");
+  await assert.rejects(skipped.probe({ caseId: skippedFixture.caseId, fixtureToken: skippedFixture.fixtureToken, sourceTable: skippedFixture.sourceTable }), /phase17_fixture_probe_failed/u);
+
+  const wrongReceipt = createPhase17FixtureProtocol({
+    contracts: PHASE17_CASE_ACTION_CONTRACTS, createToken: () => "phase17:wrong-receipt-0001",
+    adapter: {
+      baselineDigest: async () => "3".repeat(64), canonicalHash: async (value) => syntheticHash(value),
+      seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken),
+      probe: async ({ caseId, fixtureToken }) => ({ rowCount: 1, identityHash: "4".repeat(64), facts: { ...syntheticSeed(caseId, fixtureToken).expectedPostState, actionReceiptId: "phase17:wrong-action" } }),
+      cleanup: async () => undefined,
+    },
+  });
+  const wrongFixture = await wrongReceipt.setup("library.running-recovery");
+  await assert.rejects(wrongReceipt.probe({ caseId: wrongFixture.caseId, fixtureToken: wrongFixture.fixtureToken, sourceTable: wrongFixture.sourceTable }), /phase17_fixture_probe_failed/u);
 });
 
 test("Phase 17 rejects unrelated rows, fabricated identities, wrong facts or count, and cleanup leaks", async () => {
@@ -132,7 +205,7 @@ test("Phase 17 rejects unrelated rows, fabricated identities, wrong facts or cou
     adapter: {
       baselineDigest: async () => digest,
       canonicalHash: async () => "2".repeat(64),
-      seed: async () => ({ selectors: { runningPlanId: "returned-running-id" }, expectedPreState: { id: "returned-running-id", lifecycle: "inactive", revision: 1 }, expectedPostState: { id: "returned-running-id", lifecycle: "inactive", revision: 1 } }),
+      seed: async ({ caseId, fixtureToken }) => syntheticSeed(caseId, fixtureToken, { runningPlanId: "returned-running-id" }),
       probe: async () => ({ rowCount: 2, identityHash: "3".repeat(64), facts: { id: "unrelated-row", lifecycle: "inactive", revision: 1 } }),
       cleanup: async () => { digest = "4".repeat(64); },
     },
@@ -147,16 +220,15 @@ test("Phase 17 Family A is an explicit typed registry with table-specific seed, 
   const touched = [];
   const adapter = createPhase17FamilyAFixtureAdapter({
     baselineDigest: async () => "a".repeat(64),
-    canonicalHash: async () => "b".repeat(64),
+    canonicalHash: async (value) => syntheticHash(value),
     driver: {
       seed: async (caseId, token, sourceTable) => {
         touched.push(`seed:${caseId}:${sourceTable}`);
-        const facts = { id: `${caseId}:${token}`, sourceTable };
-        return { selectors: { fixtureId: facts.id }, expectedPreState: facts, expectedPostState: facts };
+        return syntheticSeed(caseId, token, { fixtureId: `${caseId}:${token}`, sourceTable });
       },
       probe: async (caseId, token, sourceTable, selectors) => {
         touched.push(`probe:${caseId}:${sourceTable}`);
-        return { rowCount: 1, identityHash: "c".repeat(64), facts: { id: selectors.fixtureId, sourceTable } };
+        return { rowCount: 1, identityHash: "c".repeat(64), facts: syntheticSeed(caseId, token, { fixtureId: selectors.fixtureId, sourceTable }).expectedPostState };
       },
       cleanup: async (caseId, token, selectors) => { touched.push(`cleanup:${caseId}:${selectors.fixtureId}`); },
     },
@@ -185,16 +257,15 @@ test("Phase 17 Family B maps every non-collision Running ledger ID to an explici
   const familyB = {
     seed: async (caseId, token, sourceTable) => {
       calls.push(`seed:${caseId}:${sourceTable}`);
-      const facts = { planId: `readback:${token}`, revision: 1, requestIds: [`request:${caseId}`] };
-      return { selectors: { runningPlanId: facts.planId, runningPlanRevision: "1", runningRequestId: facts.requestIds[0] }, expectedPreState: facts, expectedPostState: facts };
+      return syntheticSeed(caseId, token, { runningPlanId: `readback:${token}`, runningPlanRevision: "1", runningRequestId: `request:${caseId}` });
     },
     probe: async (caseId, token, sourceTable, selectors) => {
       calls.push(`probe:${caseId}:${sourceTable}`);
-      return { rowCount: 1, identityHash: "c".repeat(64), facts: { planId: selectors.runningPlanId, revision: 1, requestIds: [`request:${caseId}`] } };
+      return { rowCount: 1, identityHash: "c".repeat(64), facts: syntheticSeed(caseId, token).expectedPostState };
     },
     cleanup: async (caseId, token, selectors) => { calls.push(`cleanup:${caseId}:${selectors.runningPlanId}`); },
   };
-  const adapter = createPhase17FamilyFixtureAdapter({ baselineDigest: async () => "a".repeat(64), canonicalHash: async () => "b".repeat(64), familyA, familyB });
+  const adapter = createPhase17FamilyFixtureAdapter({ baselineDigest: async () => "a".repeat(64), canonicalHash: async (value) => syntheticHash(value), familyA, familyB });
   const protocol = createPhase17FixtureProtocol({ contracts: PHASE17_CASE_ACTION_CONTRACTS, adapter, createToken: () => "phase17:fixture-token-family-b" });
   for (const caseId of PHASE17_FAMILY_B_CASE_IDS) {
     const fixture = await protocol.setup(caseId);

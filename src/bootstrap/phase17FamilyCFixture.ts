@@ -10,6 +10,8 @@ import type { Phase17Facts, Phase17FixtureSeed } from "./phase17NativeFixture";
 export const PHASE17_FAMILY_C_CASE_IDS = Object.freeze(["library.running-conflict"] as const);
 export type Phase17FamilyCCaseId = (typeof PHASE17_FAMILY_C_CASE_IDS)[number];
 
+const actionReceiptId = (caseId: string, token: string) => `phase17:${caseId}:${token.slice("phase17:".length)}:action`;
+
 export function isPhase17FamilyCCaseId(value: string): value is Phase17FamilyCCaseId {
   return (PHASE17_FAMILY_C_CASE_IDS as readonly string[]).includes(value);
 }
@@ -73,16 +75,19 @@ export function createPhase17FamilyCFixtureDriver(input: Readonly<{ kernel: Sqli
     const preview = await collisions.previewForRunningPlan(graph.runningPlanId);
     if (preview === null || preview.running.occurrenceId !== graph.runningOpportunityId || preview.strength.occurrenceId !== graph.strengthOpportunityId || preview.running.localDate !== graph.localDate || preview.strength.localDate !== graph.localDate) throw new Error("phase17_collision_fixture_preview_missing");
     previews.set(token, preview);
-    const selectors = Object.freeze({ runningPlanId: graph.runningPlanId, strengthPlanId: graph.strengthPlanId, runningOpportunityId: graph.runningOpportunityId, strengthOpportunityId: graph.strengthOpportunityId, collisionToken: preview.confirmationToken });
-    return Object.freeze({ selectors, expectedPreState: facts(preview, null, null), expectedPostState: facts(preview, "move_running", null) });
+    const receiptId = actionReceiptId(_caseId, token);
+    const selectors = Object.freeze({ runningPlanId: graph.runningPlanId, strengthPlanId: graph.strengthPlanId, runningOpportunityId: graph.runningOpportunityId, strengthOpportunityId: graph.strengthOpportunityId, collisionToken: preview.confirmationToken, phase17ActionReceiptId: receiptId });
+    return Object.freeze({ selectors, expectedPreState: facts(preview, null, null), expectedPostState: Object.freeze({ ...facts(preview, "move_running", receiptId), actionReceiptId: receiptId }), actionReceiptId: receiptId });
   };
 
   const probe = async (_caseId: Phase17FamilyCCaseId, token: string, sourceTable: string, selectors: Readonly<Record<string, string>>) => {
     const preview = previews.get(token);
     if (preview === undefined || sourceTable !== "schedule_collision_projections" || selectors.runningOpportunityId !== preview.running.occurrenceId || selectors.strengthOpportunityId !== preview.strength.occurrenceId) throw new Error("phase17_collision_fixture_selector_invalid");
+    const actionReceiptId = selectors.phase17ActionReceiptId;
+    if (actionReceiptId === undefined) throw new Error("phase17_collision_fixture_action_receipt_missing");
     const [outcome] = await input.kernel.queryAll<Readonly<{ id: string; choice: ScheduleCollisionChoice }>>(
-      "SELECT id, choice FROM schedule_collision_outcomes WHERE running_opportunity_id = ? AND strength_opportunity_id = ? ORDER BY committed_at_ms DESC, id DESC LIMIT 1",
-      [preview.running.occurrenceId, preview.strength.occurrenceId],
+      "SELECT id, choice FROM schedule_collision_outcomes WHERE request_id = ? AND running_opportunity_id = ? AND strength_opportunity_id = ?",
+      [actionReceiptId, preview.running.occurrenceId, preview.strength.occurrenceId],
     );
     if (outcome === undefined) throw new Error("phase17_collision_fixture_probe_missing");
     const [projection] = await input.kernel.queryAll<Readonly<{ outcome_id: string }>>("SELECT outcome_id FROM schedule_collision_projections WHERE outcome_id = ?", [outcome.id]);
@@ -90,7 +95,8 @@ export function createPhase17FamilyCFixtureDriver(input: Readonly<{ kernel: Sqli
     const range = await calendar.loadRange({ startLocalDate: preview.running.localDate, endLocalDateExclusive: preview.running.movedLocalDate });
     const ids = range.events.map(({ id }) => id);
     if (ids.filter((id) => id === preview.running.occurrenceId).length > 1 || ids.filter((id) => id === preview.strength.occurrenceId).length > 1) throw new Error("phase17_collision_fixture_duplicate_event");
-    const value = facts(preview, outcome.choice, outcome.id);
+    if (outcome.choice !== "move_running") throw new Error("phase17_collision_fixture_choice_invalid");
+    const value = Object.freeze({ ...facts(preview, outcome.choice, actionReceiptId), actionReceiptId });
     return Object.freeze({ rowCount: 1, identityHash: await input.graph.sha256(JSON.stringify({ token, sourceTable, value })), facts: value });
   };
 

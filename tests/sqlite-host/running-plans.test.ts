@@ -118,7 +118,7 @@ describe("Running plan lifecycle persistence", () => {
     ]));
   });
 
-  it("seeds, reads, and token-cleans every non-collision Phase 17 Running fixture through real migrated SQLite commands", async () => {
+  it("seeds true preconditions for every non-collision Phase 17 Running fixture and rejects skipped actions", async () => {
     const kernel = await migratedKernel();
     let nonce = 0;
     const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
@@ -141,15 +141,37 @@ describe("Running plan lifecycle persistence", () => {
       if (planId === undefined) throw new Error(`${caseId}: fixture returned no running plan ID`);
       expect(planId).toContain("phase17:running-plan:");
       expect(seed.selectors.runningPlanRevision).toBeDefined();
-      expect(seed.expectedPreState).toEqual(seed.expectedPostState);
-      await expect(driver.probe(caseId, token, sourceTable, seed.selectors)).resolves.toEqual(expect.objectContaining({
-        rowCount: 1,
-        facts: seed.expectedPostState,
-      }));
+      if (caseId === "library.running-detail") {
+        expect(seed.actionReceiptId).toBeNull();
+        await expect(driver.probe(caseId, token, sourceTable, seed.selectors)).resolves.toEqual(expect.objectContaining({ rowCount: 1, facts: seed.expectedPostState }));
+      } else {
+        expect(seed.actionReceiptId).toMatch(/^phase17:library\.running-/u);
+        expect(seed.expectedPreState).not.toEqual(seed.expectedPostState);
+        await expect(driver.probe(caseId, token, sourceTable, seed.selectors)).rejects.toThrow(/action_receipt_missing/u);
+      }
       await driver.cleanup(caseId, token, seed.selectors);
       await expect(kernel.queryAll<{ id: string }>("SELECT id FROM plans WHERE id = ?", [planId])).resolves.toEqual([]);
       await expect(kernel.queryAll<{ request_id: string }>("SELECT request_id FROM running_plan_receipts WHERE plan_id = ?", [planId])).resolves.toEqual([]);
     }
+  });
+
+  it("accepts a real production Running save only when its deterministic fixture receipt and source facts match", async () => {
+    const kernel = await migratedKernel();
+    const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const running = createRunningPlanRuntimePort(kernel, { nowMs: () => 4_000, randomUUID: () => "fixture-action", sha256 });
+    const driver = createPhase17FamilyBFixtureDriver({ kernel, running, sha256 });
+    const token = "phase17:fixture-token-0000000000000042";
+    const seed = await driver.seed("library.running-recovery", token, "running_session_revisions");
+    const planId = seed.selectors.runningPlanId!;
+    const actionReceiptId = seed.actionReceiptId!;
+    const before = await running.loadPlan(planId);
+    if (before === null) throw new Error("fixture plan missing");
+    await running.saveSession({
+      planId, expectedPlanRevision: before.revision, requestId: actionReceiptId,
+      session: { sessionKind: "recovery", weekday: "Monday", phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 1_800_000 }] }], advisoryTarget: { rpe: 4 }, contextual: {} },
+    });
+    await expect(driver.probe("library.running-recovery", token, "running_session_revisions", seed.selectors)).resolves.toEqual(expect.objectContaining({ facts: seed.expectedPostState }));
+    await driver.cleanup("library.running-recovery", token, seed.selectors);
   });
 
   it("keeps real activation, archive, reactivate, and receipt retry facts scoped to a Running fixture plan", async () => {

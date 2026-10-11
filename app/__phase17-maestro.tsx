@@ -22,14 +22,14 @@ function Phase17Port() {
     if (runtime.launchState !== "trusted" || typeof caseId !== "string") return;
     if (operation === "setup") {
       void runtime.setupPhase17Fixture(caseId).then((fixture) => setOutput(
-        `PHASE17_SETUP_READY case=${fixture.caseId} fixture_token=${fixture.fixtureToken} baseline_sha256=${fixture.baselineDigest} source_table=${fixture.sourceTable} expected_state_hash=${fixture.expectedStateHash} selectors=${Object.entries(fixture.selectors).map(([key, value]) => `${key}:${value}`).join(",")}`,
+        `PHASE17_SETUP_READY case=${fixture.caseId} proof_mode=${fixture.proofMode} fixture_token=${fixture.fixtureToken} baseline_sha256=${fixture.baselineDigest} source_table=${fixture.sourceTable} expected_pre_state_hash=${fixture.expectedPreStateHash} expected_post_state_hash=${fixture.expectedPostStateHash} action_receipt_id=${fixture.actionReceiptId ?? "none"} selectors=${Object.entries(fixture.selectors).map(([key, value]) => `${key}:${value}`).join(",")}`,
       )).catch(() => setOutput("PHASE17_PORT_ERROR"));
       return;
     }
     if (typeof fixtureToken !== "string") { setOutput("PHASE17_PORT_FIXTURE_TOKEN_MISSING"); return; }
     if (operation === "probe" && typeof sourceTable === "string") {
       void runtime.probePhase17Fixture({ caseId, fixtureToken, sourceTable }).then((proof) => setOutput(
-        `PHASE17_SOURCE_PROBE case=${proof.caseId} fixture_token=${proof.fixtureToken} source_table=${proof.sourceTable} row_count=${proof.rowCount} identity_hash=${proof.identityHash} expected_state_hash=${proof.expectedStateHash} verdict=${proof.verdict}`,
+        `PHASE17_SOURCE_PROBE case=${proof.caseId} fixture_token=${proof.fixtureToken} source_table=${proof.sourceTable} row_count=${proof.rowCount} identity_hash=${proof.identityHash} expected_post_state_hash=${proof.expectedPostStateHash} verdict=${proof.verdict}`,
       )).catch(() => setOutput("PHASE17_PORT_ERROR"));
       return;
     }
