@@ -1165,18 +1165,20 @@ async function insertCopyReceipt(
   input: AcceptedStarterPlanCopyRepositoryInput,
   result: AcceptedStarterPlanCopy,
 ): Promise<void> {
+  const directStarterCopy = isDirectStarterCopy(input);
   await transaction.execute(
     `INSERT INTO owned_plan_mutation_requests
       (request_id, request_sha256, operation, source_plan_id,
        result_plan_id, expected_revision, result_revision, result_json,
        committed_at_ms)
-     VALUES (?, ?, 'duplicate', ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.requestId,
       input.requestSha256,
-      input.sourceOwnedPlanId,
+      directStarterCopy ? "create" : "duplicate",
+      directStarterCopy ? null : input.sourceOwnedPlanId,
       result.plan.id,
-      input.expectedSourcePlanRevision,
+      directStarterCopy ? null : input.expectedSourcePlanRevision,
       result.plan.revision,
       JSON.stringify(result),
       input.createdAtMs,
