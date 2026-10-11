@@ -4,10 +4,22 @@ import { join } from "node:path";
 
 import {
   applyGarminAppBuildGradle,
+  applyGarminGradleProperties,
   applyGarminProjectBuildGradle,
 } from "./withGarminConnectModule";
 
 describe("withGarminConnectModule", () => {
+  it("restricts the generated React Native architecture set to ARM64", () => {
+    const configured = applyGarminGradleProperties([
+      { type: "property", key: "reactNativeArchitectures", value: "armeabi-v7a,arm64-v8a,x86,x86_64" },
+      { type: "property", key: "newArchEnabled", value: "true" },
+    ]);
+
+    expect(configured.filter((entry) => entry.type === "property" && entry.key === "reactNativeArchitectures")).toEqual([
+      { type: "property", key: "reactNativeArchitectures", value: "arm64-v8a" },
+    ]);
+  });
+
   it("adds Chaquopy to Expo SDK 57's generated buildscript dependencies", () => {
     const project = `buildscript {
   repositories { google(); mavenCentral() }
