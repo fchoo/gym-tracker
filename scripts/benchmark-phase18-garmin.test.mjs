@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -9,6 +10,7 @@ import {
 } from "../tests/fixtures/garmin-json/fixture-manifest.ts";
 import {
   PHASE18_GARMIN_BENCHMARK_METRICS,
+  executePhase18GarminBenchmark,
   parsePhase18GarminBenchmarkArgs,
   validatePhase18GarminBenchmarkEvidence,
 } from "./benchmark-phase18-garmin.mjs";
@@ -17,8 +19,15 @@ const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
 const MANIFEST_PATH = "artifacts/native/phase18-garmin-acceptance/build.json";
 const EVIDENCE_PATH = "artifacts/native/phase18-garmin-acceptance/benchmark.json";
+const BASELINE_PATH = "tests/fixtures/garmin-json/phase18-performance-baseline.json";
+const BASELINE_BYTES = readFileSync(BASELINE_PATH);
+const BASELINE = JSON.parse(BASELINE_BYTES.toString("utf8"));
+const BASELINE_HASH = createHash("sha256").update(BASELINE_BYTES).digest("hex");
 
-const samples = (value) => [value, value + 1];
+const samples = (metric, value) => Array.from(
+  { length: BASELINE.metrics[metric].minimum_samples },
+  (_, index) => value + index,
+);
 
 function identity(overrides = {}) {
   return {
@@ -32,7 +41,7 @@ function identity(overrides = {}) {
     profile: "development-test",
     abi: "arm64-v8a",
     fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
-    workout_baseline_sha256: HASH,
+    workout_baseline_sha256: BASELINE_HASH,
     ...overrides,
   };
 }
@@ -56,23 +65,31 @@ function manifest() {
 
 function evidence(overrides = {}) {
   const measurements = Object.fromEntries(
-    PHASE18_GARMIN_BENCHMARK_METRICS.map((metric, index) => [metric, samples(index + 1)]),
+    PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, samples(metric, 1)]),
   );
-  const budgets = Object.fromEntries(
-    PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, 100]),
-  );
+  const commands = Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, `collect:${metric}`]));
+  const sample_labels = Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [
+    metric,
+    measurements[metric].map((_, index) => `${BASELINE.metrics[metric].mode}-${index + 1}`),
+  ]));
   return {
     schema_version: 1,
     suite: "phase18-garmin-acceptance",
-    producer: "phase18-garmin-benchmark/v1",
+    producer: "phase18-garmin-benchmark/v2",
     status: "passed",
     identity: identity(),
     budget_source: {
-      kind: "phase20-exact-artifact-baseline",
-      report_sha256: HASH,
+      kind: "source-owned-versioned-baseline",
+      path: BASELINE_PATH,
+      report_sha256: BASELINE_HASH,
     },
     measurements,
-    budgets,
+    measurement_context: {
+      profile: "physical-arm64",
+      device_identity_sha256: HASH,
+      commands,
+      sample_labels,
+    },
     skipped: 0,
     ...overrides,
   };
@@ -111,10 +128,10 @@ test("benchmark retains every required raw measurement and reports exact maxima"
     "frame_time_ms",
     "offline_workout_commit_ms",
   ]);
-  const result = validatePhase18GarminBenchmarkEvidence(evidence(), manifest());
-  assert.equal(result.sample_counts.apk_size_bytes, 2);
-  assert.equal(result.maxima.apk_size_bytes, 2);
-  assert.equal(result.maxima.offline_workout_commit_ms, 12);
+  const result = validatePhase18GarminBenchmarkEvidence(evidence(), manifest(), BASELINE, BASELINE_BYTES);
+  assert.equal(result.sample_counts.apk_size_bytes, 1);
+  assert.equal(result.maxima.apk_size_bytes, 1);
+  assert.equal(result.sample_counts.frame_time_ms, 30);
 });
 
 test("benchmark rejects stale identities, missing/non-finite samples, regressions, and private fields", () => {
@@ -135,6 +152,7 @@ test("benchmark rejects stale identities, missing/non-finite samples, regression
   variants.push(missing);
   const empty = evidence();
   empty.measurements.lap_render_ms = [];
+  empty.measurement_context.sample_labels.lap_render_ms = [];
   variants.push(empty);
   const nonFinite = evidence();
   nonFinite.measurements.js_task_ms = [Number.NaN];
@@ -148,7 +166,7 @@ test("benchmark rejects stale identities, missing/non-finite samples, regression
 
   for (const value of variants) {
     assert.throws(
-      () => validatePhase18GarminBenchmarkEvidence(value, manifest()),
+      () => validatePhase18GarminBenchmarkEvidence(value, manifest(), BASELINE, BASELINE_BYTES),
       /phase18_garmin_benchmark_/u,
     );
   }
@@ -172,6 +190,29 @@ test("benchmark execution requires exact paths and explicit Phase 20 authority",
     ]),
     /phase18_garmin_benchmark_arguments_invalid/u,
   );
+});
+
+test("execute collects installed samples and writes evidence with source-owned budgets", () => {
+  const writes = [];
+  const collected = evidence();
+  const result = executePhase18GarminBenchmark([
+    "--manifest", MANIFEST_PATH,
+    "--evidence", EVIDENCE_PATH,
+    "--execute",
+    "--phase20-native-checkpoint",
+  ], {
+    readJson: () => manifest(),
+    readBytes: () => BASELINE_BYTES,
+    collectMeasurements: () => ({
+      identity: collected.identity,
+      measurements: collected.measurements,
+      measurement_context: collected.measurement_context,
+    }),
+    writeEvidence: (value) => writes.push(value),
+  });
+  assert.equal(result.sample_counts.python_cold_start_ms, 5);
+  assert.equal(writes.length, 1);
+  assert.equal("budgets" in writes[0], false);
 });
 
 test("focused coverage gate registers every Phase 18 integrity-critical module", () => {

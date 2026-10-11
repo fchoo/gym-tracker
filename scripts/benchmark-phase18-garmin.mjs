@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
 
@@ -10,6 +12,8 @@ import {
 
 const MANIFEST = "artifacts/native/phase18-garmin-acceptance/build.json";
 const EVIDENCE = "artifacts/native/phase18-garmin-acceptance/benchmark.json";
+const BASELINE = "tests/fixtures/garmin-json/phase18-performance-baseline.json";
+const BENCHMARK_MARKER = "GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:";
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const PACKAGE = "com.fchoo.gymtracker.devtest";
@@ -98,13 +102,13 @@ function validateIdentity(identity, manifest) {
   ) fail("identity_invalid");
 }
 
-export function validatePhase18GarminBenchmarkEvidence(evidence, manifest) {
+export function validatePhase18GarminBenchmarkEvidence(evidence, manifest, baseline, baselineBytes) {
   privacySafe(evidence);
   if (
     !exactKeys(evidence, [
       "budget_source",
-      "budgets",
       "identity",
+      "measurement_context",
       "measurements",
       "producer",
       "schema_version",
@@ -114,35 +118,51 @@ export function validatePhase18GarminBenchmarkEvidence(evidence, manifest) {
     ])
     || evidence.schema_version !== 1
     || evidence.suite !== "phase18-garmin-acceptance"
-    || evidence.producer !== "phase18-garmin-benchmark/v1"
+    || evidence.producer !== "phase18-garmin-benchmark/v2"
     || evidence.status !== "passed"
     || evidence.skipped !== 0
   ) fail("envelope_invalid");
   validateIdentity(evidence.identity, manifest);
   if (
-    !exactKeys(evidence.budget_source, ["kind", "report_sha256"])
-    || evidence.budget_source.kind !== "phase20-exact-artifact-baseline"
+    !exactKeys(evidence.budget_source, ["kind", "path", "report_sha256"])
+    || evidence.budget_source.kind !== "source-owned-versioned-baseline"
+    || evidence.budget_source.path !== BASELINE
     || !HASH.test(evidence.budget_source.report_sha256 ?? "")
     || evidence.budget_source.report_sha256
       !== evidence.identity.workout_baseline_sha256
+    || evidence.budget_source.report_sha256 !== createHash("sha256").update(baselineBytes).digest("hex")
+    || baseline?.schema_version !== 1
+    || baseline?.suite !== "phase18-garmin-acceptance"
+    || baseline?.profile !== "physical-arm64"
+    || !exactKeys(baseline.metrics, PHASE18_GARMIN_BENCHMARK_METRICS)
     || !exactKeys(evidence.measurements, PHASE18_GARMIN_BENCHMARK_METRICS)
-    || !exactKeys(evidence.budgets, PHASE18_GARMIN_BENCHMARK_METRICS)
+    || !exactKeys(evidence.measurement_context, ["commands", "device_identity_sha256", "profile", "sample_labels"])
+    || evidence.measurement_context.profile !== "physical-arm64"
+    || evidence.measurement_context.device_identity_sha256 !== evidence.identity.device_identity_sha256
+    || !exactKeys(evidence.measurement_context.commands, PHASE18_GARMIN_BENCHMARK_METRICS)
+    || !exactKeys(evidence.measurement_context.sample_labels, PHASE18_GARMIN_BENCHMARK_METRICS)
   ) fail("measurement_schema_invalid");
 
   const sampleCounts = {};
   const maxima = {};
   for (const metric of PHASE18_GARMIN_BENCHMARK_METRICS) {
     const values = evidence.measurements[metric];
-    const budget = evidence.budgets[metric];
+    const specification = baseline.metrics[metric];
+    const labels = evidence.measurement_context.sample_labels[metric];
+    const command = evidence.measurement_context.commands[metric];
     if (
       !Array.isArray(values)
-      || values.length === 0
+      || !Array.isArray(labels)
+      || values.length !== labels.length
+      || values.length < specification.minimum_samples
       || values.some((value) => !Number.isFinite(value) || value < 0)
-      || !Number.isFinite(budget)
-      || budget < 0
+      || labels.some((label) => typeof label !== "string" || label.length < 1 || label.length > 64)
+      || typeof command !== "string" || command.length < 1 || command.length > 256
+      || !Number.isFinite(specification.maximum)
+      || specification.maximum < 0
     ) fail(`samples_invalid:${metric}`);
     const maximum = Math.max(...values);
-    if (maximum > budget) fail(`budget_exceeded:${metric}`);
+    if (maximum > specification.maximum) fail(`budget_exceeded:${metric}`);
     sampleCounts[metric] = values.length;
     maxima[metric] = maximum;
   }
@@ -175,7 +195,20 @@ export function parsePhase18GarminBenchmarkArgs(args) {
   return options;
 }
 
-export function executePhase18GarminBenchmark(args = process.argv.slice(2)) {
+function collectInstalledMeasurements() {
+  execFileSync("adb", ["logcat", "-c"], { stdio: "ignore" });
+  execFileSync("adb", ["shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", "gymtracker-devtest://__phase18-garmin-acceptance?mode=benchmark", PACKAGE], { stdio: "ignore" });
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const log = execFileSync("adb", ["logcat", "-d"], { encoding: "utf8" });
+    const line = log.split(/\r?\n/u).find((entry) => entry.includes(BENCHMARK_MARKER));
+    if (line !== undefined) return JSON.parse(line.slice(line.indexOf(BENCHMARK_MARKER) + BENCHMARK_MARKER.length));
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+  }
+  fail("collector_timeout");
+}
+
+export function executePhase18GarminBenchmark(args = process.argv.slice(2), dependencies = {}) {
   const options = parsePhase18GarminBenchmarkArgs(args);
   if (!options.execute) {
     return Object.freeze({
@@ -183,9 +216,33 @@ export function executePhase18GarminBenchmark(args = process.argv.slice(2)) {
       fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
     });
   }
-  const manifest = JSON.parse(readFileSync(options.manifest, "utf8"));
-  const evidence = JSON.parse(readFileSync(options.evidence, "utf8"));
-  return validatePhase18GarminBenchmarkEvidence(evidence, manifest);
+  const readJson = dependencies.readJson ?? ((file) => JSON.parse(readFileSync(file, "utf8")));
+  const readBytes = dependencies.readBytes ?? readFileSync;
+  const collect = dependencies.collectMeasurements ?? collectInstalledMeasurements;
+  const writeEvidence = dependencies.writeEvidence ?? ((value) => writeFileSync(options.evidence, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx" }));
+  const manifest = readJson(options.manifest);
+  const baselineBytes = readBytes(BASELINE);
+  const baseline = JSON.parse(Buffer.from(baselineBytes).toString("utf8"));
+  const collected = collect();
+  const baselineSha256 = createHash("sha256").update(baselineBytes).digest("hex");
+  const evidence = Object.freeze({
+    schema_version: 1,
+    suite: "phase18-garmin-acceptance",
+    producer: "phase18-garmin-benchmark/v2",
+    status: "passed",
+    identity: Object.freeze({
+      ...collected.identity,
+      fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
+      workout_baseline_sha256: baselineSha256,
+    }),
+    budget_source: Object.freeze({ kind: "source-owned-versioned-baseline", path: BASELINE, report_sha256: baselineSha256 }),
+    measurements: Object.freeze(collected.measurements),
+    measurement_context: Object.freeze(collected.measurement_context),
+    skipped: 0,
+  });
+  const result = validatePhase18GarminBenchmarkEvidence(evidence, manifest, baseline, baselineBytes);
+  writeEvidence(evidence);
+  return result;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
