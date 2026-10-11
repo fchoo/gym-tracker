@@ -259,10 +259,14 @@ async function seedRestoredRunningMatch(kernel: SqliteKernel): Promise<void> {
   await matches.confirm({
     requestId: "restored-running-match", requestSha256: "b".repeat(64), action: "match",
     activityId: "restored-activity", expectedActivityRevision: 1,
+    expectedAcceptedPayloadSha256: "a".repeat(64),
     opportunityId: "restored-running-opportunity", expectedOpportunityRevision: 1,
-    expectedRelationRevision: 0, scheduleId: "restored-running-schedule",
+    expectedRelationRevision: 0, planId: "restored-running-plan", scheduleId: "restored-running-schedule",
     scheduleVersionId: "restored-running-version", slotId: "restored-running-slot",
-    sessionRevisionId: "restored-running-session", occurredAtMs: 4,
+    expectedScheduleRevision: 2,
+    planDayId: "restored-running-anchor", expectedPlanDayRevision: 1,
+    slotRevisionId: "restored-running-slot:revision:1", expectedSlotRevision: 1,
+    sessionRevisionId: "restored-running-session", expectedSessionRevision: 1, occurredAtMs: 4,
   });
   await kernel.write(async (transaction) => {
     await transaction.execute("DELETE FROM running_activity_current_matches");

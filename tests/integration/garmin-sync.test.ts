@@ -205,19 +205,29 @@ async function seedRunningMatch(kernel: SqliteKernel, activityId: string): Promi
     createdAtMs: 3_000,
     occurrenceIds: ["garmin-running-opportunity"],
   });
+  const [activity] = await kernel.queryAll<{ accepted_normalized_sha256: string }>("SELECT accepted_normalized_sha256 FROM imported_activity_identities WHERE activity_id = ?", [activityId]);
+  if (activity === undefined) throw new Error("accepted_activity_missing");
   await confirmRunningActivityMatch(createRunningActivityMatchRepository(kernel), {
     requestId: "garmin-running-match",
     requestSha256: "f".repeat(64),
     action: "match",
     activityId,
     expectedActivityRevision: 1,
+    expectedAcceptedPayloadSha256: activity.accepted_normalized_sha256,
     opportunityId: "garmin-running-opportunity",
     expectedOpportunityRevision: 1,
     expectedRelationRevision: 0,
+    planId: "garmin-running-plan",
     scheduleId: "garmin-running-schedule",
     scheduleVersionId: "garmin-running-version",
+    expectedScheduleRevision: 2,
+    planDayId: "garmin-running-anchor",
+    expectedPlanDayRevision: 1,
     slotId: "garmin-running-slot",
+    slotRevisionId: "garmin-running-slot:revision:1",
+    expectedSlotRevision: 1,
     sessionRevisionId: "garmin-running-session-v1",
+    expectedSessionRevision: 1,
     occurredAtMs: 4_000,
   });
 }

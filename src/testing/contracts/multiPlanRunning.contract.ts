@@ -231,9 +231,11 @@ function requestHash(requestId: string): Promise<string> {
 
 type RunningFixture = Readonly<{
   planId: string;
+  planDayId: string;
   scheduleId: string;
   scheduleVersionId: string;
   slotId: string;
+  slotRevisionId: string;
   sessionRevisionId: string;
   opportunityId: string;
 }>;
@@ -244,9 +246,11 @@ async function seedRunningFixture(
 ): Promise<RunningFixture> {
   const fixture: RunningFixture = {
     planId: `${prefix}-running-plan`,
+    planDayId: `${prefix}-running-day`,
     scheduleId: `${prefix}-running-schedule`,
     scheduleVersionId: `${prefix}-running-version`,
     slotId: `${prefix}-running-slot`,
+    slotRevisionId: `${prefix}-running-slot:revision:1`,
     sessionRevisionId: `${prefix}-running-recovery-v1`,
     opportunityId: `${prefix}-running-opportunity`,
   };
@@ -664,11 +668,17 @@ const caseAssertions: Record<
   async "phase13-match-invalidation"(kernel) {
     const running = await seedRunningFixture(kernel, "match");
     const activityId = await importGarminActivity(kernel, "match");
+    const [activity] = await kernel.queryAll<{ accepted_normalized_sha256: string }>("SELECT accepted_normalized_sha256 FROM imported_activity_identities WHERE activity_id = ?", [activityId]);
+    invariant(activity !== undefined, "phase13_match_activity_missing");
     const repository = createRunningActivityMatchRepository(kernel);
     const input = { requestId: "match-command", requestSha256: await requestHash("match-command"), action: "match" as const, activityId,
       expectedActivityRevision: 1, opportunityId: running.opportunityId, expectedOpportunityRevision: 1,
+      expectedAcceptedPayloadSha256: activity.accepted_normalized_sha256,
       expectedRelationRevision: 0, scheduleId: running.scheduleId, scheduleVersionId: running.scheduleVersionId,
-      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId,
+      planId: running.planId, expectedScheduleRevision: 2,
+      planDayId: running.planDayId, expectedPlanDayRevision: 1,
+      slotId: running.slotId, slotRevisionId: running.slotRevisionId, expectedSlotRevision: 1,
+      sessionRevisionId: running.sessionRevisionId, expectedSessionRevision: 1,
       occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS - 1 };
     const matched = await confirmRunningActivityMatch(repository, input);
     const replay = await confirmRunningActivityMatch(repository, input);
@@ -702,6 +712,7 @@ const caseAssertions: Record<
       ...input,
       requestId: "match-command-after-restore",
       requestSha256: await requestHash("match-command-after-restore"),
+      expectedRelationRevision: 2,
       occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS + 2,
     });
     invariant(
@@ -751,11 +762,17 @@ const caseAssertions: Record<
     });
     const running = await seedRunningFixture(kernel, "backup-projection");
     const activityId = await importGarminActivity(kernel, "backup-projection");
+    const [activity] = await kernel.queryAll<{ accepted_normalized_sha256: string }>("SELECT accepted_normalized_sha256 FROM imported_activity_identities WHERE activity_id = ?", [activityId]);
+    invariant(activity !== undefined, "phase13_backup_match_activity_missing");
     await confirmRunningActivityMatch(createRunningActivityMatchRepository(kernel), {
       requestId: "backup-projection-match", requestSha256: await requestHash("backup-projection-match"), action: "match", activityId,
       expectedActivityRevision: 1, opportunityId: running.opportunityId, expectedOpportunityRevision: 1,
+      expectedAcceptedPayloadSha256: activity.accepted_normalized_sha256,
       expectedRelationRevision: 0, scheduleId: running.scheduleId, scheduleVersionId: running.scheduleVersionId,
-      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId,
+      planId: running.planId, expectedScheduleRevision: 2,
+      planDayId: running.planDayId, expectedPlanDayRevision: 1,
+      slotId: running.slotId, slotRevisionId: running.slotRevisionId, expectedSlotRevision: 1,
+      sessionRevisionId: running.sessionRevisionId, expectedSessionRevision: 1,
       occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS,
     });
     const restored = await createLogicalRestoreRepository(kernel, { nowMs: () => 8 }).restore(snapshot);

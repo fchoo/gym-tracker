@@ -102,9 +102,10 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
       setSelectedOpportunityId(null);
       return;
     }
-    setSelectedOpportunityId((current) => props.state.candidates.some((candidate) => candidate.opportunityId === current)
+    const candidates = props.state.candidates;
+    setSelectedOpportunityId((current) => candidates.some((candidate) => candidate.opportunityId === current)
       ? current
-      : props.state.candidates[0]?.opportunityId ?? null);
+      : candidates[0]?.opportunityId ?? null);
     setOutcome(null);
   }, [props.state]);
 
@@ -153,10 +154,10 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
       {props.state.kind === "loading" ? (
         <Text accessibilityLiveRegion="polite" accessibilityRole="progressbar" style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Loading scheduled workouts</Text>
       ) : null}
-      {props.state.kind === "missing" ? <EmptyState body="This local activity could not be opened." heading="Activity not found" /> : null}
-      {props.state.kind === "activity_unavailable" ? <EmptyState body="The activity is no longer available for matching." heading="Activity unavailable" /> : null}
+      {props.state.kind === "missing" ? <EmptyState body="This local activity could not be opened." heading="Activity not found" primaryAction={null} /> : null}
+      {props.state.kind === "activity_unavailable" ? <EmptyState body="The activity is no longer available for matching." heading="Activity unavailable" primaryAction={null} /> : null}
       {props.state.kind === "projection_error" ? <EmptyState body="Accepted match facts could not be loaded." heading="Scheduled workouts unavailable" primaryAction={<SecondaryAction label="Retry scheduled workouts" onPress={props.onRetry} />} /> : null}
-      {props.state.kind === "no_candidates" ? <EmptyState body="There are no open Running occurrences to match." heading="No scheduled workouts" /> : null}
+      {props.state.kind === "no_candidates" ? <EmptyState body="There are no open Running occurrences to match." heading="No scheduled workouts" primaryAction={null} /> : null}
       {props.state.kind === "already_matched" ? <InlineNotice body="This activity already has one committed scheduled workout relation." heading="Already matched" tone="neutral" /> : null}
       {outcome === "matched" ? <InlineNotice body="The selected scheduled workout was linked after the match committed." heading="Matched" tone="neutral" /> : null}
       {outcome === "stale" ? <View accessible focusable ref={statusRef}><InlineNotice body="The activity or scheduled workout changed. Reload before confirming again." heading="Match needs review" tone="error" /></View> : null}
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
   headerTitleColumn: { alignItems: "center", flex: 1, minWidth: 0 },
   headerTitle: { maxWidth: "100%", textAlign: "center" },
   headerAction: { minWidth: 104, width: 104 },
-  candidates: { gap: space[3] },
+  candidates: { gap: space[4] },
   candidateTarget: { minHeight: sizes.minimumTarget, width: "100%" },
   candidateCard: { borderRadius: radius.standard, gap: space[1], minHeight: sizes.minimumTarget },
   candidateHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },

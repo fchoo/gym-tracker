@@ -1,8 +1,8 @@
-import { parseImportedActivityLocalId } from "../activities/activityDetails";
 import type { RunningSessionKind } from "./contracts";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const ID = /^[A-Za-z0-9._:-]{1,128}$/u;
+const LOCAL_ACTIVITY_ID = /^(?:activity|local-activity)-[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/u;
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const LOCAL_TIME = /^\d{2}:\d{2}$/u;
 
@@ -104,7 +104,7 @@ function validRevision(value: number, minimum = 0): boolean {
 }
 
 function validCandidate(input: RunningActivityMatchCandidate): boolean {
-  return parseImportedActivityLocalId(input.activityId) !== null
+  return LOCAL_ACTIVITY_ID.test(input.activityId)
     && [
       input.opportunityId,
       input.planId,
@@ -180,11 +180,10 @@ export async function queryRunningActivityMatchCandidates(
   repository: RunningActivityMatchQueryRepository,
   activityId: string,
 ): Promise<RunningActivityMatchReadResult> {
-  const localActivityId = parseImportedActivityLocalId(activityId);
-  if (localActivityId === null) {
+  if (!LOCAL_ACTIVITY_ID.test(activityId)) {
     return Object.freeze({ kind: "missing", activityId: "invalid-local-activity" });
   }
-  const result = await repository.readCandidates(localActivityId);
+  const result = await repository.readCandidates(activityId);
   if (result.kind === "ready" && result.candidates.some((candidate) => !validCandidate(candidate))) {
     throw new RunningActivityMatchCommandError();
   }

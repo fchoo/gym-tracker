@@ -187,6 +187,15 @@ import {
   type ImportedActivityDetailReadResult,
 } from "../domains/activities/activityDetails";
 import {
+  confirmRunningActivityMatch,
+  prepareRunningActivityMatchInput,
+  queryRunningActivityMatchCandidates,
+  type RunningActivityMatchCandidate,
+  type RunningActivityMatchInput,
+  type RunningActivityMatchReadResult,
+  type RunningActivityMatchResult,
+} from "../domains/running/activityMatchCommands";
+import {
   createExpoHapticsAdapter,
 } from "../platform/haptics/expoHapticsAdapter";
 import {
@@ -207,6 +216,9 @@ import {
 import {
   createWorkoutPreferenceRepository,
 } from "../platform/sqlite/repositories/workoutPreferenceRepository";
+import {
+  createRunningActivityMatchRepository,
+} from "../platform/sqlite/repositories/runningActivityMatchRepository";
 import {
   createBackupCommands,
   type SecureBackupArchiveHandle,
@@ -714,6 +726,8 @@ type RuntimeValue = RuntimeState & Readonly<{
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
   loadImportedActivityDetail(activityId: string): Promise<ImportedActivityDetailReadResult>;
+  loadRunningActivityMatch(activityId: string): Promise<RunningActivityMatchReadResult>;
+  confirmActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
   loadHistoryCorrectionSession(sessionId: string): Promise<HistoryCorrectionEditorState>;
   listAvailableCorrectionExercises(): Promise<readonly AvailableCorrectionExercise[]>;
   correctHistorySession(
@@ -1012,6 +1026,7 @@ type RuntimeServices = Readonly<{
   schedules: ReturnType<typeof createScheduleRuntimePort>;
   repository: ReturnType<typeof createPlansWorkoutRepository>;
   restRepository: ReturnType<typeof createRestRepository>;
+  runningActivityMatches: ReturnType<typeof createRunningActivityMatchRepository>;
   outcomeRepository: ReturnType<typeof createWorkoutOutcomeRepository>;
   workoutRepository: ReturnType<typeof createWorkoutRepository>;
   workoutPreferenceRepository: ReturnType<typeof createWorkoutPreferenceRepository>;
@@ -2106,6 +2121,10 @@ export function WorkoutAppRuntimeProvider({
   dependencies: WorkoutAppRuntimeDependencies;
 }>) {
   const servicesRef = useRef<RuntimeServices | null>(null);
+  const pendingActivityMatchRef = useRef<Readonly<{
+    candidateKey: string;
+    input: RunningActivityMatchInput;
+  }> | null>(null);
   const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
   const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
   const phase17RequestId = useCallback(async (label: string, productionRequestId: string) => {
@@ -2139,6 +2158,7 @@ export function WorkoutAppRuntimeProvider({
     automaticBackupUnsubscribeRef.current = null;
     const services = servicesRef.current;
     servicesRef.current = null;
+    pendingActivityMatchRef.current = null;
     await services?.lifecycle.dispose?.().catch(() => undefined);
     services?.automaticBackupRuntime?.dispose();
     await services?.kernel.close().catch(() => undefined);
@@ -2339,6 +2359,7 @@ export function WorkoutAppRuntimeProvider({
       outcomeRepository,
       repository: dependencies.createRepository(kernel),
       restRepository,
+      runningActivityMatches: createRunningActivityMatchRepository(kernel),
       workoutRepository: dependencies.createWorkoutRepository(kernel),
       workoutPreferenceRepository: dependencies.createWorkoutPreferenceRepository?.(kernel)
         ?? createWorkoutPreferenceRepository(kernel),
@@ -2684,6 +2705,57 @@ export function WorkoutAppRuntimeProvider({
       removalState: row.removal_state,
     });
   }, [requireServices]);
+
+  const loadRunningActivityMatch = useCallback((activityId: string) =>
+    queryRunningActivityMatchCandidates(requireServices().runningActivityMatches, activityId),
+  [requireServices]);
+
+  const confirmActivityMatch = useCallback(async (
+    candidate: RunningActivityMatchCandidate,
+  ): Promise<RunningActivityMatchResult> => {
+    const candidateKey = JSON.stringify([
+      candidate.activityId,
+      candidate.expectedActivityRevision,
+      candidate.expectedAcceptedPayloadSha256,
+      candidate.opportunityId,
+      candidate.expectedOpportunityRevision,
+      candidate.expectedRelationRevision,
+      candidate.scheduleId,
+      candidate.scheduleVersionId,
+      candidate.expectedScheduleRevision,
+      candidate.planDayId,
+      candidate.expectedPlanDayRevision,
+      candidate.slotId,
+      candidate.slotRevisionId,
+      candidate.expectedSlotRevision,
+      candidate.sessionRevisionId,
+      candidate.expectedSessionRevision,
+    ]);
+    let prepared = pendingActivityMatchRef.current;
+    if (prepared?.candidateKey !== candidateKey) {
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+        randomUUID,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      prepared = Object.freeze({
+        candidateKey,
+        input: await prepareRunningActivityMatchInput({
+          action: "match",
+          candidate,
+          requestId: `running-match-${randomUUID()}`,
+          occurredAtMs: dependencies.nowMs(),
+        }, (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value)),
+      });
+      pendingActivityMatchRef.current = prepared;
+    }
+    const result = await confirmRunningActivityMatch(
+      requireServices().runningActivityMatches,
+      prepared.input,
+    );
+    pendingActivityMatchRef.current = null;
+    return result;
+  }, [dependencies, requireServices]);
 
   const loadHistoryCorrectionSession = useCallback((sessionId: string) =>
     requireServices().historyCommandRepository.loadCorrectionSession(sessionId),
@@ -4715,6 +4787,8 @@ export function WorkoutAppRuntimeProvider({
     getActiveWorkout,
     getSessionDetail,
     loadImportedActivityDetail,
+    loadRunningActivityMatch,
+    confirmActivityMatch,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctHistorySession: correctRuntimeHistorySession,
@@ -4861,6 +4935,8 @@ export function WorkoutAppRuntimeProvider({
     getActiveWorkout,
     getSessionDetail,
     loadImportedActivityDetail,
+    loadRunningActivityMatch,
+    confirmActivityMatch,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctRuntimeHistorySession,

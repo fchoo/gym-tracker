@@ -125,7 +125,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
       <AppearanceProvider store={appearanceStore}>
         <ActivityMatchScreen
           onBack={onBack}
-          onConfirm={jest.fn(async () => ({ kind: "conflict", activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
+          onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
           onLeaveUnmatched={jest.fn()}
           onRetry={jest.fn()}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate, alternateCandidate] }}
@@ -139,7 +139,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
     expect(appearanceStore.read()).toBe("Dark");
     const listener = addEventListener.mock.calls.at(-1)?.[1];
     await act(async () => {
-      expect(listener?.()).toBe(true);
+      expect(listener?.(undefined as never)).toBe(true);
     });
     expect(onBack).not.toHaveBeenCalled();
     expect(screen.queryByRole("radio", { name: "System" })).toBeNull();
@@ -155,7 +155,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
       <AppearanceProvider>
         <ActivityMatchScreen
           onBack={jest.fn()}
-          onConfirm={jest.fn(async () => ({ kind: "conflict", activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
+          onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
           onLeaveUnmatched={jest.fn()}
           onRetry={jest.fn()}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
@@ -177,7 +177,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
       <AppearanceProvider>
         <ActivityMatchScreen
           onBack={jest.fn()}
-          onConfirm={jest.fn(async () => ({ kind: "conflict", activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
+          onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
           onLeaveUnmatched={jest.fn()}
           onRetry={jest.fn()}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
@@ -198,7 +198,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
   ])("renders the bounded %s state", async (state, expected) => {
     await render(
       <AppearanceProvider>
-        <ActivityMatchScreen onBack={jest.fn()} onConfirm={jest.fn()} onLeaveUnmatched={jest.fn()} onRetry={jest.fn()} state={state} />
+        <ActivityMatchScreen onBack={jest.fn()} onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 0 }))} onLeaveUnmatched={jest.fn()} onRetry={jest.fn()} state={state} />
       </AppearanceProvider>,
     );
     expect(screen.getByText(expected)).toBeOnTheScreen();
