@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 7
+open_count: 8
 waived_count: 0
 fixed_count: 85
-total_count: 92
-last_updated: 2026-10-11T07:53:21.408Z
+total_count: 93
+last_updated: 2026-10-11T09:54:59.237Z
 ---
 
 # Broken Windows Ledger
@@ -107,6 +107,7 @@ last_updated: 2026-10-11T07:53:21.408Z
 | 90 | 17 | unrun-verify | .planning/phases/17-library-running-plans/17-VALIDATION.md |  | Phase 20 pending: deferred global host suite, CNG/APK, device state mutation, 39 native Maestro cases, and all-ID evidence verification. | open |  | 2026-10-10T21:20:49.264Z |  |
 | 91 | 18 | deviation | .planning/phases/18-garmin-import/18-03-SUMMARY.md |  | Plan 18-03 is host-ready with native execution deferred to Phase 20; Plan 18-04 may proceed without a D-18-11 PASS. | open |  | 2026-10-11T07:52:59.407Z |  |
 | 92 | 18 | unrun-verify | artifacts/native/phase18-garmin-proof/final-evidence.json |  | D-18-11 APK/account/read/restart/privacy native proof is owner-deferred to the comprehensive Phase 20 checkpoint; no final evidence exists. | open |  | 2026-10-11T07:53:21.408Z |  |
+| 93 | 18 | deviation | src/bootstrap/workoutAppRuntime.tsx |  | Added the missing application-owned accepted activity detail read capability required by Plan 18-08. | open |  | 2026-10-11T09:54:59.237Z |  |
 
 ````json
 [
@@ -1212,6 +1213,18 @@ last_updated: 2026-10-11T07:53:21.408Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-11T07:53:21.408Z",
+    "resolved_at": null
+  },
+  {
+    "id": 93,
+    "kind": "deviation",
+    "phase": "18",
+    "file": "src/bootstrap/workoutAppRuntime.tsx",
+    "line": null,
+    "description": "Added the missing application-owned accepted activity detail read capability required by Plan 18-08.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-11T09:54:59.237Z",
     "resolved_at": null
   }
 ]

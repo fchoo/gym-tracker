@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 18
 current_phase_name: Garmin Account Sync
 status: executing
-stopped_at: Completed 18-07-PLAN.md
-last_updated: "2026-10-11T09:31:56.358Z"
+stopped_at: Completed 18-08-PLAN.md
+last_updated: "2026-10-11T09:54:58.941Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 18 execution started
-state_head: 20dc570ea35a92e47819bbe233df0572f5a69b36
+state_head: 3625948a88dfd9ec5f108d9ae03c2a86803359af
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 62
+  completed_plans: 63
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 8 of 14
+Plan: 9 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 18 execution started
 
@@ -102,6 +102,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P05 | 21m 12s | 3 tasks | 5 files |
 | Phase 18 P06 | 27m 7s | 3 tasks | 5 files |
 | Phase 18 P07 | 12m 30s | 3 tasks | 6 files |
+| Phase 18 P08 | 19m 47s | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -223,6 +224,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: The Garmin import runtime reuses the application-owned imported-activity service and never opens a kernel or creates a repository.
 - [Phase 18]: Garmin date policy stays upstream; only confirmed absolute/source/local/offset/zone provenance crosses the shared import command, while every non-confirm result is zero-write.
 - [Phase 18]: Garmin commits recheck the captured account generation after preparation and invalidate rebuildable reads only after a newly imported result.
+- [Phase 18]: Detail projection requires the current accepted digest and exposes no account namespace, external activity ID, raw response, or provider fallback.
+- [Phase 18]: Average pace uses the first positive source-present basis in Moving, Timer, Elapsed order while every displayed duration keeps its own label.
+- [Phase 18]: The detail route accepts only prefixed local activity IDs; Calendar context is a bounded non-navigational token and Back always uses the route stack.
 
 ### Pending Owner Review
 
@@ -247,7 +251,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T09:31:56.074Z
-Stopped at: Completed 18-07-PLAN.md
+Last session: 2026-10-11T09:54:58.651Z
+Stopped at: Completed 18-08-PLAN.md
 Resume file: None
 Next action: Execute 18-03 only when the owner initiates its attended installed-app proof.
