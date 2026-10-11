@@ -33,6 +33,7 @@ const activity: GarminActivityListItem = Object.freeze({
   title: "Morning run",
   activityType: "Running",
   confirmedLocalDate: "2026-10-10",
+  identityCopy: "Accepted source title: Morning run",
   summary: "5.0 km · 28 min",
   matchState: "unmatched",
   revisionState: "accepted",
@@ -55,6 +56,8 @@ async function renderScreen(input: Readonly<{
   coordinator?: GarminSyncControllerPort;
   loadActivities?: () => Promise<readonly GarminActivityListItem[]>;
   loadLastSuccessfulSync?: () => Promise<GarminDurableSyncSummary | null>;
+  getPendingDateReview?: React.ComponentProps<typeof GarminSyncScreen>["getPendingDateReview"];
+  confirmPendingDateReview?: React.ComponentProps<typeof GarminSyncScreen>["confirmPendingDateReview"];
   appearanceStore?: AppearanceStore;
   reduceMotion?: boolean;
   width?: number;
@@ -69,6 +72,12 @@ async function renderScreen(input: Readonly<{
     ...(input.loadLastSuccessfulSync === undefined
       ? {}
       : { loadLastSuccessfulSync: input.loadLastSuccessfulSync }),
+    ...(input.getPendingDateReview === undefined
+      ? {}
+      : { getPendingDateReview: input.getPendingDateReview }),
+    ...(input.confirmPendingDateReview === undefined
+      ? {}
+      : { confirmPendingDateReview: input.confirmPendingDateReview }),
     onBack,
     onOpenActivity,
     returnFocusActivityId: input.returnFocusActivityId,
@@ -125,6 +134,23 @@ describe("GarminSyncScreen connection tracer", () => {
     );
     await fireEvent.press(committedRow);
     expect(onOpenActivity).toHaveBeenCalledWith("local-activity-1");
+  });
+
+  it("uses truthful identity copy for visible and accessible imported activity rows", async () => {
+    await renderScreen({
+      loadActivities: async () => [Object.freeze({
+        ...activity,
+        title: "Outdoor run",
+        identityCopy: "Accepted source title unavailable. Outdoor run on 2026-10-10.",
+      })],
+      source: connectedSource(),
+    });
+
+    expect(await screen.findByText("Accepted source title unavailable. Outdoor run on 2026-10-10.")).toBeOnTheScreen();
+    expect(screen.queryByText("Type-only title")).toBeNull();
+    expect(screen.getByRole("button", {
+      name: /Accepted source title unavailable\. Outdoor run on 2026-10-10\./u,
+    })).toBeOnTheScreen();
   });
 
   it("moves from disconnected credentials through MFA to a connected source-backed list", async () => {
@@ -460,6 +486,56 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
       expect(listener?.(undefined as never)).toBe(true);
     });
     expect(onBack).toHaveBeenCalledTimes(1);
+    addEventListener.mockRestore();
+  });
+
+  it("blocks Back and Keep for later while date review confirmation is in flight", async () => {
+    const remove = jest.fn();
+    const addEventListener = jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove });
+    let releaseDecision:
+      | ((value: { kind: "imported"; activityId: string; aggregateRevision: number }) => void)
+      | undefined;
+    const pendingReview = Object.freeze({
+      activityId: "local-activity-1",
+      absoluteStartedAtMs: Date.UTC(2026, 9, 10, 1, 0, 0),
+      sourceLocalDateTime: "2026-10-10T09:00:00",
+      sourceTimeZone: "Asia/Singapore",
+      sourceUtcOffsetMinutes: 480,
+      suggestedLocalDate: "2026-10-10",
+      suggestedLocalTime: "09:00:00",
+      suggestedTimeZone: "Asia/Singapore",
+      suggestedUtcOffsetMinutes: 480,
+    });
+    await renderScreen({
+      coordinator: {
+        syncNow: async () => ({
+          kind: "failure",
+          counts: { ...counts, newActivities: 0, attemptedActivities: 0 },
+          failure: { code: "date_confirmation_required", retryable: false },
+        }),
+      },
+      confirmPendingDateReview: async () => new Promise((resolve) => {
+        releaseDecision = resolve as typeof releaseDecision;
+      }),
+      getPendingDateReview: () => pendingReview,
+      source: connectedSource(),
+    });
+
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Review activity date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Use activity date" }));
+
+    const listener = addEventListener.mock.calls.at(-1)?.[1];
+    await act(async () => {
+      expect(listener?.(undefined as never)).toBe(true);
+    });
+
+    expect(screen.getByText("Confirm activity date")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Keep for later" })).toBeDisabled();
+
+    await act(async () => {
+      releaseDecision?.({ kind: "imported", activityId: "local-activity-1", aggregateRevision: 2 });
+    });
     addEventListener.mockRestore();
   });
 

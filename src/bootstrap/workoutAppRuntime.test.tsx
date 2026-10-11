@@ -45,6 +45,9 @@ import type {
   AdvancedTimingStateV1,
 } from "../domains/advancedTiming";
 import type {
+  RunningActivityMatchCandidate,
+} from "../domains/running/activityMatchCommands";
+import type {
   AdvancedTimingRepositoryPort,
 } from "../platform/sqlite/repositories/advancedTimingRepository";
 import type {
@@ -97,6 +100,13 @@ import {
 import {
   AppearanceProvider,
 } from "../ui/theme";
+
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async (_algorithm: string, value: string) =>
+    require("node:crypto").createHash("sha256").update(value).digest("hex"),
+  randomUUID: () => "00000000-0000-4000-8000-000000000000",
+}));
 
 jest.mock("../platform/notifications/expoRestNotificationAdapter", () => ({
   createExpoRestNotificationAdapter: jest.fn(() => ({
@@ -310,6 +320,74 @@ const activeWorkoutView: ActiveWorkoutView = {
     nextSetId: null,
   },
 };
+
+const acceptedGarminDigest = "c".repeat(64);
+
+function acceptedGarminAggregateJson(): string {
+  return JSON.stringify({
+    source_kind: "garmin_connect_account",
+    account_namespace: "must-not-render",
+    external_activity_id: "garmin-123",
+    normalized_json_sha256: acceptedGarminDigest,
+    sample_fidelity: "source_laps",
+    confirmed_local_date: "2026-10-04",
+    normalized: {
+      version: 1,
+      started_at_ms: Date.UTC(2026, 9, 4, 7, 12),
+      sport: "running",
+      subtype: "outdoor",
+      distance_meters: 5_000,
+      elapsed_ms: 1_560_000,
+      timer_ms: 1_500_000,
+      moving_ms: 1_475_000,
+      average_heart_rate_bpm: 152,
+      laps: [{
+        ordinal: 0,
+        elapsed_ms: 310_000,
+        timer_ms: 300_000,
+        moving_ms: 295_000,
+        distance_meters: 1_000,
+      }],
+      route: [
+        { latitude_e6: 1_352_100, longitude_e6: 103_819_800, elapsed_ms: 0 },
+        { latitude_e6: 1_353_200, longitude_e6: 103_821_100, elapsed_ms: 300_000 },
+      ],
+    },
+  });
+}
+
+function runningMatchCandidate(
+  overrides: Partial<RunningActivityMatchCandidate> = {},
+): RunningActivityMatchCandidate {
+  return Object.freeze({
+    activityId: "activity-local-01",
+    expectedActivityRevision: 1,
+    expectedAcceptedPayloadSha256: acceptedGarminDigest,
+    opportunityId: "opportunity-1",
+    expectedOpportunityRevision: 1,
+    planId: "plan-1",
+    planName: "Running plan",
+    scheduleId: "schedule-1",
+    scheduleVersionId: "schedule-version-1",
+    expectedScheduleRevision: 1,
+    planDayId: "day-1",
+    expectedPlanDayRevision: 1,
+    slotId: "slot-1",
+    slotRevisionId: "slot-revision-1",
+    expectedSlotRevision: 1,
+    slotOrdinal: 0,
+    sessionRevisionId: "session-revision-1",
+    expectedSessionRevision: 1,
+    sessionKind: "recovery",
+    localDate: "2026-10-11",
+    localTime: null,
+    timezone: "Asia/Singapore",
+    targetSummary: "30 min · easy Z2",
+    state: "planned",
+    expectedRelationRevision: 3,
+    ...overrides,
+  });
+}
 
 function activeWorkoutViewWithCommittedSet(
   setId: string,
@@ -4570,6 +4648,202 @@ describe("WorkoutAppRuntimeProvider", () => {
       },
     });
     expect(applySessionExerciseEdits).not.toHaveBeenCalled();
+  });
+
+  it("builds truthful Garmin identity copy from accepted source facts at the runtime facade", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll: jest.fn(async (sql: string) => {
+        if (sql.includes("FROM imported_activities activity")) {
+          return [{
+            activity_id: "activity-local-01",
+            aggregate_json: acceptedGarminAggregateJson(),
+            aggregate_revision: 1,
+            accepted_normalized_sha256: acceptedGarminDigest,
+            removal_state: "active",
+            match_count: 0,
+            pending_revision_count: 0,
+          }];
+        }
+        return [];
+      }),
+      write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) =>
+        command({
+          execute: jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 })),
+          queryAll: jest.fn(async () => []),
+        })),
+    } as unknown as SqliteKernel;
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          openKernel: jest.fn(async () => kernel),
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    await expect(captured.garminImport.loadGarminActivities()).resolves.toEqual([
+      expect.objectContaining({
+        activityId: "activity-local-01",
+        title: "Outdoor run",
+        confirmedLocalDate: "2026-10-04",
+        summary: "5.00 km · 26:00",
+        identityCopy: "Accepted source title unavailable. Outdoor run on 2026-10-04.",
+        matchState: "unmatched",
+        revisionState: "accepted",
+      }),
+    ]);
+  });
+
+  it("uses the current relation fence for runtime unmatch and reassignment commands", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const current = runningMatchCandidate();
+    const next = runningMatchCandidate({
+      opportunityId: "opportunity-2",
+      slotId: "slot-2",
+      slotRevisionId: "slot-revision-2",
+      slotOrdinal: 1,
+      sessionRevisionId: "session-revision-2",
+      sessionKind: "intervals",
+      targetSummary: "6 × 1 min · Z3",
+      expectedRelationRevision: 99,
+    });
+    const execute = jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 }));
+    const transactionQueryAllCalls = jest.fn();
+    const transactionQueryAll = async <Row extends Record<string, unknown>>(
+      sql: string,
+      parameters?: readonly unknown[],
+    ): Promise<readonly Row[]> => {
+      transactionQueryAllCalls(sql, parameters);
+      const opportunityId = parameters?.[0];
+      if (sql.includes("FROM running_activity_match_receipts")) {
+        return [] as readonly Row[];
+      }
+      if (sql.includes("FROM imported_activity_identities")) {
+        return [{
+          aggregate_revision: current.expectedActivityRevision,
+          accepted_normalized_sha256: current.expectedAcceptedPayloadSha256,
+          removal_state: "active",
+        }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM running_opportunities opportunity")) {
+        if (opportunityId === current.opportunityId) {
+          return [{
+            plan_id: current.planId,
+            schedule_id: current.scheduleId,
+            schedule_version_id: current.scheduleVersionId,
+            schedule_revision: current.expectedScheduleRevision,
+            schedule_lifecycle: "active",
+            plan_active: 1,
+            plan_day_id: current.planDayId,
+            plan_day_revision: current.expectedPlanDayRevision,
+            slot_id: current.slotId,
+            slot_revision_id: current.slotRevisionId,
+            slot_revision: current.expectedSlotRevision,
+            session_revision_id: current.sessionRevisionId,
+            session_revision: current.expectedSessionRevision,
+            state: "planned",
+          }] as unknown as readonly Row[];
+        }
+        if (opportunityId === next.opportunityId) {
+          return [{
+            plan_id: next.planId,
+            schedule_id: next.scheduleId,
+            schedule_version_id: next.scheduleVersionId,
+            schedule_revision: next.expectedScheduleRevision,
+            schedule_lifecycle: "active",
+            plan_active: 1,
+            plan_day_id: next.planDayId,
+            plan_day_revision: next.expectedPlanDayRevision,
+            slot_id: next.slotId,
+            slot_revision_id: next.slotRevisionId,
+            slot_revision: next.expectedSlotRevision,
+            session_revision_id: next.sessionRevisionId,
+            session_revision: next.expectedSessionRevision,
+            state: "planned",
+          }] as unknown as readonly Row[];
+        }
+        return [] as readonly Row[];
+      }
+      if (sql === "SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches WHERE activity_id = ?") {
+        return [{
+          activity_id: current.activityId,
+          opportunity_id: current.opportunityId,
+          relation_revision: current.expectedRelationRevision,
+        }] as unknown as readonly Row[];
+      }
+      if (sql === "SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches WHERE opportunity_id = ?") {
+        return opportunityId === current.opportunityId
+          ? [{
+            activity_id: current.activityId,
+            opportunity_id: current.opportunityId,
+            relation_revision: current.expectedRelationRevision,
+          }] as unknown as readonly Row[]
+          : [] as readonly Row[];
+      }
+      if (sql.includes("SELECT relation_revision FROM running_activity_match_events")) {
+        return [{ relation_revision: current.expectedRelationRevision }] as unknown as readonly Row[];
+      }
+      if (sql.includes("SELECT EXISTS")) {
+        return [{ invalid: 0 }] as unknown as readonly Row[];
+      }
+      return [] as readonly Row[];
+    };
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll: jest.fn(async () => []),
+      write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) =>
+        command({
+          execute,
+          queryAll: transactionQueryAll,
+        })),
+    } as unknown as SqliteKernel;
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          openKernel: jest.fn(async () => kernel),
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    await expect(captured.unmatchActivityMatch(current)).resolves.toEqual({
+      kind: "unmatched",
+      activityId: current.activityId,
+      opportunityId: current.opportunityId,
+      relationRevision: current.expectedRelationRevision + 1,
+    });
+    execute.mockClear();
+    transactionQueryAllCalls.mockClear();
+
+    await expect(captured.reassignActivityMatch({ current, next })).resolves.toEqual({
+      kind: "reassigned",
+      activityId: current.activityId,
+      opportunityId: next.opportunityId,
+      relationRevision: current.expectedRelationRevision + 1,
+    });
+    expect(execute).toHaveBeenCalled();
   });
 
   it("composes custom create, edit, archive preview, and migration capabilities", async () => {

@@ -41,6 +41,10 @@ type CandidateRow = OpportunityRow & Readonly<{
   relation_revision: number;
 }>;
 
+type CurrentCandidateRow = CandidateRow & Readonly<{
+  current_relation_revision: number;
+}>;
+
 function result(kind: RunningActivityMatchResult["kind"], activityId: string, opportunityId: string, relationRevision: number): RunningActivityMatchResult {
   return Object.freeze({ kind, activityId, opportunityId, relationRevision });
 }
@@ -150,9 +154,76 @@ async function readCandidates(
     return Object.freeze({ kind: "activity_unavailable", activityId });
   }
   if (activity.matched_opportunity_id !== null && activity.current_relation_revision !== null) {
+    const [current] = await executor.queryAll<CurrentCandidateRow>(`${opportunityFactsSql.replace("SELECT opportunity.plan_id", `SELECT
+      ? AS activity_id, ? AS aggregate_revision, ? AS accepted_normalized_sha256,
+      opportunity.id AS opportunity_id, plan.name AS plan_name,
+      slot_revision.ordinal AS slot_ordinal, session.session_kind,
+      session.definition_json, opportunity.local_date, opportunity.timezone,
+      ? AS relation_revision, ? AS current_relation_revision, opportunity.plan_id`)}
+      WHERE opportunity.id = ?`, [
+      activityId,
+      activity.aggregate_revision,
+      activity.accepted_normalized_sha256,
+      activity.latest_relation_revision,
+      activity.current_relation_revision,
+      activity.matched_opportunity_id,
+    ]);
+    const alternatives = await executor.queryAll<CandidateRow>(`${opportunityFactsSql.replace("SELECT opportunity.plan_id", `SELECT
+      ? AS activity_id, ? AS aggregate_revision, ? AS accepted_normalized_sha256,
+      opportunity.id AS opportunity_id, plan.name AS plan_name,
+      slot_revision.ordinal AS slot_ordinal, session.session_kind,
+      session.definition_json, opportunity.local_date, opportunity.timezone,
+      ? AS relation_revision, opportunity.plan_id`)}
+      LEFT JOIN running_activity_current_matches occupied
+        ON occupied.opportunity_id = opportunity.id
+      WHERE opportunity.state = 'planned'
+        AND schedule.lifecycle = 'active'
+        AND plan.is_active = 1
+        AND occupied.opportunity_id IS NULL
+      ORDER BY opportunity.local_date, slot_revision.ordinal, opportunity.id`, [
+      activityId,
+      activity.aggregate_revision,
+      activity.accepted_normalized_sha256,
+      activity.latest_relation_revision,
+    ]);
+    if (current === undefined) {
+      return Object.freeze({
+        kind: "activity_unavailable",
+        activityId,
+      });
+    }
+    const toCandidate = (row: CandidateRow): RunningActivityMatchCandidate => Object.freeze({
+      activityId: row.activity_id,
+      expectedActivityRevision: row.aggregate_revision,
+      expectedAcceptedPayloadSha256: row.accepted_normalized_sha256,
+      opportunityId: row.opportunity_id,
+      expectedOpportunityRevision: 1,
+      planId: row.plan_id,
+      planName: row.plan_name,
+      scheduleId: row.schedule_id,
+      scheduleVersionId: row.schedule_version_id,
+      expectedScheduleRevision: row.schedule_revision,
+      planDayId: row.plan_day_id,
+      expectedPlanDayRevision: row.plan_day_revision,
+      slotId: row.slot_id,
+      slotRevisionId: row.slot_revision_id,
+      expectedSlotRevision: row.slot_revision,
+      slotOrdinal: row.slot_ordinal,
+      sessionRevisionId: row.session_revision_id,
+      expectedSessionRevision: row.session_revision,
+      sessionKind: row.session_kind,
+      localDate: row.local_date,
+      localTime: null,
+      timezone: row.timezone,
+      targetSummary: targetSummary(row.definition_json, row.session_kind),
+      state: "planned",
+      expectedRelationRevision: row.relation_revision,
+    });
     return Object.freeze({
       kind: "already_matched",
       activityId,
+      currentCandidate: toCandidate(current),
+      candidates: Object.freeze(alternatives.map((row) => toCandidate(row))),
       opportunityId: activity.matched_opportunity_id,
       relationRevision: activity.current_relation_revision,
     });

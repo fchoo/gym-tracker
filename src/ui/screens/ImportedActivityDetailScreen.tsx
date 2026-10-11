@@ -65,6 +65,8 @@ export type ImportedActivityDetailScreenProps = Readonly<{
   onRetry(): void;
   onAcceptRevision?(): Promise<void>;
   onKeepRevision?(): Promise<void>;
+  returnFocusMatchActionToken?: string;
+  returnFocusMatchActionVersion?: number;
   width?: number;
 }>;
 
@@ -294,8 +296,9 @@ function LapTable({ laps, stacked }: Readonly<{
   );
 }
 
-function ReadyDetail({ detail, onMatch, stackedLaps }: Readonly<{
+function ReadyDetail({ detail, matchActionRef, onMatch, stackedLaps }: Readonly<{
   detail: ImportedActivityDetail;
+  matchActionRef: React.RefObject<View | null>;
   onMatch(): void;
   stackedLaps: boolean;
 }>) {
@@ -332,17 +335,19 @@ function ReadyDetail({ detail, onMatch, stackedLaps }: Readonly<{
       )}
       <LapTable laps={detail.laps} stacked={stackedLaps} />
       <InlineNotice body={detail.fidelity.body} heading={detail.fidelity.heading} tone="neutral" />
-      <PrimaryAction label="Match to scheduled workout" onPress={onMatch} />
+      <PrimaryAction label="Match to scheduled workout" onPress={onMatch} ref={matchActionRef} />
     </>
   );
 }
 
 function NonReadyDetail({
+  onBusyChange,
   state,
   onRetry,
   onAcceptRevision,
   onKeepRevision,
 }: Readonly<{
+  onBusyChange?(busy: boolean): void;
   state: Exclude<ImportedActivityDetailScreenState, Readonly<{ kind: "ready" }>>;
   onRetry(): void;
   onAcceptRevision?: () => Promise<void>;
@@ -351,6 +356,9 @@ function NonReadyDetail({
   const { colors } = useAppTheme();
   const [busy, setBusy] = useState<"accept" | "keep" | null>(null);
   const [resolution, setResolution] = useState<"stale" | "save_failure" | null>(null);
+  useEffect(() => {
+    onBusyChange?.(busy !== null);
+  }, [busy, onBusyChange]);
   switch (state.kind) {
     case "loading":
       return (
@@ -466,28 +474,45 @@ export function ImportedActivityDetailScreen({
   onRetry,
   onAcceptRevision,
   onKeepRevision,
+  returnFocusMatchActionToken,
+  returnFocusMatchActionVersion,
   width,
 }: ImportedActivityDetailScreenProps) {
   const dimensions = useWindowDimensions();
   const stackedLaps = (width ?? dimensions.width) < 600 || dimensions.fontScale >= 2;
   const appearanceRef = useRef<View>(null);
-  const headingRef = useRef<FocusTarget>(null);
+  const matchActionRef = useRef<FocusTarget | null>(null);
+  const headingRef = useRef<FocusTarget | null>(null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [revisionBusy, setRevisionBusy] = useState(false);
   useEffect(() => {
     focusAccessible(headingRef);
   }, []);
+  useEffect(() => {
+    if (returnFocusMatchActionToken !== undefined) {
+      focusAccessible(matchActionRef);
+    }
+  }, [returnFocusMatchActionToken, returnFocusMatchActionVersion]);
+  const requestBack = useMemo(() => (
+    appearanceOpen
+      ? () => setAppearanceOpen(false)
+      : revisionBusy
+        ? () => undefined
+        : onBack
+  ), [appearanceOpen, onBack, revisionBusy]);
   const primary = useMemo(() => (
     <>
       <DetailHeader
         appearanceRef={appearanceRef}
         headingRef={headingRef}
         onAppearance={() => setAppearanceOpen(true)}
-        onBack={onBack}
+        onBack={requestBack}
       />
       {state.kind === "ready" ? (
-        <ReadyDetail detail={state.detail} onMatch={onMatch} stackedLaps={stackedLaps} />
+        <ReadyDetail detail={state.detail} matchActionRef={matchActionRef} onMatch={onMatch} stackedLaps={stackedLaps} />
       ) : (
         <NonReadyDetail
+          onBusyChange={setRevisionBusy}
           onRetry={onRetry}
           state={state}
           {...(onAcceptRevision === undefined ? {} : { onAcceptRevision })}
@@ -495,11 +520,11 @@ export function ImportedActivityDetailScreen({
         />
       )}
     </>
-  ), [headingRef, onAcceptRevision, onBack, onKeepRevision, onMatch, onRetry, stackedLaps, state]);
+  ), [headingRef, matchActionRef, onAcceptRevision, onKeepRevision, onMatch, onRetry, requestBack, stackedLaps, state]);
   return (
     <>
       <AdaptiveScreen
-        onRequestBack={appearanceOpen ? () => setAppearanceOpen(false) : onBack}
+        onRequestBack={requestBack}
         primary={primary}
         testID="imported-activity-detail-screen"
         {...(width === undefined ? {} : { width })}

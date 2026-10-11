@@ -41,6 +41,7 @@ export type GarminImportedActivityListItem = Readonly<{
   title: string;
   activityType: string;
   confirmedLocalDate: string;
+  identityCopy?: string;
   summary?: string;
   matchState?: "matched" | "unmatched";
   revisionState?: "accepted" | "needs_review";

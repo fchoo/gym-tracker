@@ -256,16 +256,78 @@ describe("ActivityMatchScreen confirmation boundary", () => {
     expect(screen.getByText(/Time not scheduled/)).toBeOnTheScreen();
   });
 
+  it("offers explicit unmatch and selected-candidate reassignment when the activity is already matched", async () => {
+    const onUnmatch = jest.fn(async () => ({
+      kind: "unmatched" as const,
+      activityId: firstCandidate.activityId,
+      opportunityId: firstCandidate.opportunityId,
+      relationRevision: 2,
+    }));
+    const onReassign = jest.fn(async () => ({
+      kind: "reassigned" as const,
+      activityId: firstCandidate.activityId,
+      opportunityId: alternateCandidate.opportunityId,
+      relationRevision: 2,
+    }));
+    await render(
+      <AppearanceProvider>
+        <ActivityMatchScreen
+          onBack={jest.fn()}
+          onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 1 }))}
+          onLeaveUnmatched={jest.fn()}
+          onReassign={onReassign}
+          onRetry={jest.fn()}
+          onUnmatch={onUnmatch}
+          state={{
+            kind: "already_matched",
+            activityId: firstCandidate.activityId,
+            currentCandidate: firstCandidate,
+            candidates: [alternateCandidate],
+            opportunityId: firstCandidate.opportunityId,
+            relationRevision: 1,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByText("Currently matched")).toBeOnTheScreen();
+    expect(screen.getByText("30 min · easy Z2")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Unmatch activity" }));
+    await waitFor(() => expect(onUnmatch).toHaveBeenCalledWith(firstCandidate));
+
+    await fireEvent.press(screen.getByRole("radio", { name: /Intervals/ }));
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign match" }));
+    await waitFor(() => expect(onReassign).toHaveBeenCalledWith({
+      current: firstCandidate,
+      next: alternateCandidate,
+    }));
+  });
+
   it.each([
     [{ kind: "loading" as const }, "Loading scheduled workouts"],
     [{ kind: "missing" as const, activityId: "activity-local-1" }, "Activity not found"],
     [{ kind: "projection_error" as const }, "Scheduled workouts unavailable"],
     [{ kind: "no_candidates" as const, activityId: "activity-local-1" }, "No scheduled workouts"],
-    [{ kind: "already_matched" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 1 }, "Already matched"],
+    [{
+      kind: "already_matched" as const,
+      activityId: "activity-local-1",
+      currentCandidate: firstCandidate,
+      candidates: [],
+      opportunityId: "opportunity-1",
+      relationRevision: 1,
+    }, "Already matched"],
   ])("renders the bounded %s state", async (state, expected) => {
     await render(
       <AppearanceProvider>
-        <ActivityMatchScreen onBack={jest.fn()} onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 0 }))} onLeaveUnmatched={jest.fn()} onRetry={jest.fn()} state={state} />
+        <ActivityMatchScreen
+          onBack={jest.fn()}
+          onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 0 }))}
+          onLeaveUnmatched={jest.fn()}
+          onReassign={jest.fn(async () => ({ kind: "reassigned" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 1 }))}
+          onRetry={jest.fn()}
+          onUnmatch={jest.fn(async () => ({ kind: "unmatched" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 1 }))}
+          state={state}
+        />
       </AppearanceProvider>,
     );
     expect(screen.getByText(expected)).toBeOnTheScreen();

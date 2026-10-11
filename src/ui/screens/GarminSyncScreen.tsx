@@ -226,7 +226,7 @@ function ImportedActivities({
           accessibilityLabel={[
             `Open ${activity.title}.`,
             `${activity.activityType}. ${activity.confirmedLocalDate}.`,
-            "Type-only title.",
+            activity.identityCopy ?? null,
             activity.matchState === "matched" ? "Matched." : "Unmatched.",
             activity.revisionState === "needs_review" ? "Needs review." : "Accepted source facts.",
             activity.summary === undefined ? null : `${activity.summary}.`,
@@ -244,9 +244,11 @@ function ImportedActivities({
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 {`${activity.activityType} · ${activity.confirmedLocalDate}`}
               </Text>
-              <Text style={[typeScale.label as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                Type-only title
-              </Text>
+              {activity.identityCopy === undefined ? null : (
+                <Text style={[typeScale.label as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                  {activity.identityCopy}
+                </Text>
+              )}
               {activity.summary === undefined ? null : (
                 <Text style={[styles.numericSecondary, { color: colors.contentCardTextSecondary }]}>
                   {activity.summary}
@@ -511,6 +513,9 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
       return;
     }
     if (dateReviewOpen) {
+      if (dateReviewBusy) {
+        return;
+      }
       setDateReviewOpen(false);
       return;
     }
@@ -523,7 +528,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
       return;
     }
     props.onBack?.();
-  }, [appearanceOpen, cancelConnection, dateReviewOpen, disconnectOpen, props.onBack, state.connection]);
+  }, [appearanceOpen, cancelConnection, dateReviewBusy, dateReviewOpen, disconnectOpen, props.onBack, state.connection]);
 
   const openPendingDateReview = useCallback(() => {
     setDateReviewError(null);

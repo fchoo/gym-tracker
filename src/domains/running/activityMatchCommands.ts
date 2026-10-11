@@ -71,6 +71,8 @@ export type RunningActivityMatchReadResult =
   | Readonly<{
     kind: "already_matched";
     activityId: string;
+    currentCandidate: RunningActivityMatchCandidate;
+    candidates: readonly RunningActivityMatchCandidate[];
     opportunityId: string;
     relationRevision: number;
   }>;
@@ -185,6 +187,11 @@ export async function queryRunningActivityMatchCandidates(
   }
   const result = await repository.readCandidates(activityId);
   if (result.kind === "ready" && result.candidates.some((candidate) => !validCandidate(candidate))) {
+    throw new RunningActivityMatchCommandError();
+  }
+  if (result.kind === "already_matched"
+    && (!validCandidate(result.currentCandidate)
+      || result.candidates.some((candidate) => !validCandidate(candidate)))) {
     throw new RunningActivityMatchCommandError();
   }
   return result;

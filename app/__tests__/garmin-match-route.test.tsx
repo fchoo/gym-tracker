@@ -12,6 +12,8 @@ import { AppearanceProvider } from "../../src/ui/theme";
 const mockBack = jest.fn();
 const mockLoadRunningActivityMatch = jest.fn<(activityId: string) => Promise<RunningActivityMatchReadResult>>();
 const mockConfirmActivityMatch = jest.fn<(candidate: RunningActivityMatchCandidate) => Promise<RunningActivityMatchResult>>();
+const mockReassignActivityMatch = jest.fn<(input: Readonly<{ current: RunningActivityMatchCandidate; next: RunningActivityMatchCandidate }>) => Promise<RunningActivityMatchResult>>();
+const mockUnmatchActivityMatch = jest.fn<(candidate: RunningActivityMatchCandidate) => Promise<RunningActivityMatchResult>>();
 let mockParams: Readonly<{ activityId?: string | readonly string[]; origin?: string | readonly string[] }> = {};
 let mockShellProps: Readonly<Record<string, unknown>> = {};
 let pendingLoads: Array<Readonly<{
@@ -28,6 +30,8 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
     loadRunningActivityMatch: mockLoadRunningActivityMatch,
     confirmActivityMatch: mockConfirmActivityMatch,
+    reassignActivityMatch: mockReassignActivityMatch,
+    unmatchActivityMatch: mockUnmatchActivityMatch,
   }),
 }));
 
@@ -89,6 +93,8 @@ describe("ActivityMatchRoute local identity boundary", () => {
     mockBack.mockReset();
     mockLoadRunningActivityMatch.mockReset();
     mockConfirmActivityMatch.mockReset();
+    mockReassignActivityMatch.mockReset();
+    mockUnmatchActivityMatch.mockReset();
     mockParams = { activityId: "activity-local-01", origin: "progress" };
     mockShellProps = {};
     pendingLoads = [];
@@ -100,6 +106,18 @@ describe("ActivityMatchRoute local identity boundary", () => {
       activityId: "activity-local-01",
       opportunityId: "opportunity-1",
       relationRevision: 1,
+    });
+    mockReassignActivityMatch.mockResolvedValue({
+      kind: "reassigned",
+      activityId: "activity-local-01",
+      opportunityId: "opportunity-1",
+      relationRevision: 2,
+    });
+    mockUnmatchActivityMatch.mockResolvedValue({
+      kind: "unmatched",
+      activityId: "activity-local-01",
+      opportunityId: "opportunity-0",
+      relationRevision: 2,
     });
   });
 
@@ -173,6 +191,27 @@ describe("ActivityMatchRoute local identity boundary", () => {
     expect(screen.getByRole("button", { name: "Confirm match" })).toBeEnabled();
     await fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
     await waitFor(() => expect(mockConfirmActivityMatch).toHaveBeenLastCalledWith(refreshed));
+  });
+
+  it("routes explicit unmatch and reassignment through the runtime when the activity is already matched", async () => {
+    await renderRoute();
+    await settleLoad({
+      kind: "already_matched",
+      activityId: "activity-local-01",
+      currentCandidate: candidate(0),
+      candidates: [candidate(1)],
+      opportunityId: "opportunity-0",
+      relationRevision: 1,
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Unmatch activity" }));
+    await waitFor(() => expect(mockUnmatchActivityMatch).toHaveBeenCalledWith(candidate(0)));
+
+    await fireEvent.press(screen.getByRole("button", { name: "Reassign match" }));
+    await waitFor(() => expect(mockReassignActivityMatch).toHaveBeenCalledWith({
+      current: candidate(0),
+      next: candidate(1),
+    }));
   });
 });
 

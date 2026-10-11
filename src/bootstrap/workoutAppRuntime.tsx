@@ -776,6 +776,11 @@ type RuntimeValue = RuntimeState & Readonly<{
   loadImportedActivityDetail(activityId: string): Promise<ImportedActivityDetailReadResult>;
   loadRunningActivityMatch(activityId: string): Promise<RunningActivityMatchReadResult>;
   confirmActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
+  unmatchActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
+  reassignActivityMatch(input: Readonly<{
+    current: RunningActivityMatchCandidate;
+    next: RunningActivityMatchCandidate;
+  }>): Promise<RunningActivityMatchResult>;
   loadHistoryCorrectionSession(sessionId: string): Promise<HistoryCorrectionEditorState>;
   listAvailableCorrectionExercises(): Promise<readonly AvailableCorrectionExercise[]>;
   correctHistorySession(
@@ -2773,6 +2778,7 @@ export function WorkoutAppRuntimeProvider({
         title: projected.detail.activityType,
         activityType: "Running",
         confirmedLocalDate: projected.detail.confirmedLocalDate,
+        identityCopy: `Accepted source title unavailable. ${projected.detail.activityType} on ${projected.detail.confirmedLocalDate}.`,
         ...(summary.length === 0 ? {} : { summary }),
         matchState: row.match_count === 1 ? "matched" as const : "unmatched" as const,
         revisionState: row.pending_revision_count > 0
@@ -2910,26 +2916,30 @@ export function WorkoutAppRuntimeProvider({
     queryRunningActivityMatchCandidates(requireServices().runningActivityMatches, activityId),
   [requireServices]);
 
-  const confirmActivityMatch = useCallback(async (
-    candidate: RunningActivityMatchCandidate,
-  ): Promise<RunningActivityMatchResult> => {
+  const prepareActivityMatchCommand = useCallback(async (input: Readonly<{
+    action: "match" | "unmatch" | "reassign";
+    candidate: RunningActivityMatchCandidate;
+    expectedCurrentOpportunityId?: string;
+  }>): Promise<RunningActivityMatchInput> => {
     const candidateKey = JSON.stringify([
-      candidate.activityId,
-      candidate.expectedActivityRevision,
-      candidate.expectedAcceptedPayloadSha256,
-      candidate.opportunityId,
-      candidate.expectedOpportunityRevision,
-      candidate.expectedRelationRevision,
-      candidate.scheduleId,
-      candidate.scheduleVersionId,
-      candidate.expectedScheduleRevision,
-      candidate.planDayId,
-      candidate.expectedPlanDayRevision,
-      candidate.slotId,
-      candidate.slotRevisionId,
-      candidate.expectedSlotRevision,
-      candidate.sessionRevisionId,
-      candidate.expectedSessionRevision,
+      input.action,
+      input.candidate.activityId,
+      input.candidate.expectedActivityRevision,
+      input.candidate.expectedAcceptedPayloadSha256,
+      input.candidate.opportunityId,
+      input.candidate.expectedOpportunityRevision,
+      input.candidate.expectedRelationRevision,
+      input.candidate.scheduleId,
+      input.candidate.scheduleVersionId,
+      input.candidate.expectedScheduleRevision,
+      input.candidate.planDayId,
+      input.candidate.expectedPlanDayRevision,
+      input.candidate.slotId,
+      input.candidate.slotRevisionId,
+      input.candidate.expectedSlotRevision,
+      input.candidate.sessionRevisionId,
+      input.candidate.expectedSessionRevision,
+      input.expectedCurrentOpportunityId ?? null,
     ]);
     let prepared = pendingActivityMatchRef.current;
     if (prepared?.candidateKey !== candidateKey) {
@@ -2941,21 +2951,67 @@ export function WorkoutAppRuntimeProvider({
       prepared = Object.freeze({
         candidateKey,
         input: await prepareRunningActivityMatchInput({
-          action: "match",
-          candidate,
-          requestId: `running-match-${randomUUID()}`,
+          action: input.action,
+          candidate: input.candidate,
+          requestId: `running-match-${input.action}-${randomUUID()}`,
           occurredAtMs: dependencies.nowMs(),
+          ...(input.expectedCurrentOpportunityId === undefined
+            ? {}
+            : { expectedCurrentOpportunityId: input.expectedCurrentOpportunityId }),
         }, (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value)),
       });
       pendingActivityMatchRef.current = prepared;
     }
+    return prepared.input;
+  }, [dependencies]);
+
+  const confirmActivityMatch = useCallback(async (
+    candidate: RunningActivityMatchCandidate,
+  ): Promise<RunningActivityMatchResult> => {
     const result = await confirmRunningActivityMatch(
       requireServices().runningActivityMatches,
-      prepared.input,
+      await prepareActivityMatchCommand({
+        action: "match",
+        candidate,
+      }),
     );
     pendingActivityMatchRef.current = null;
     return result;
-  }, [dependencies, requireServices]);
+  }, [prepareActivityMatchCommand, requireServices]);
+
+  const unmatchActivityMatch = useCallback(async (
+    candidate: RunningActivityMatchCandidate,
+  ): Promise<RunningActivityMatchResult> => {
+    const result = await confirmRunningActivityMatch(
+      requireServices().runningActivityMatches,
+      await prepareActivityMatchCommand({
+        action: "unmatch",
+        candidate,
+        expectedCurrentOpportunityId: candidate.opportunityId,
+      }),
+    );
+    pendingActivityMatchRef.current = null;
+    return result;
+  }, [prepareActivityMatchCommand, requireServices]);
+
+  const reassignActivityMatch = useCallback(async (input: Readonly<{
+    current: RunningActivityMatchCandidate;
+    next: RunningActivityMatchCandidate;
+  }>): Promise<RunningActivityMatchResult> => {
+    const result = await confirmRunningActivityMatch(
+      requireServices().runningActivityMatches,
+      await prepareActivityMatchCommand({
+        action: "reassign",
+        candidate: Object.freeze({
+          ...input.next,
+          expectedRelationRevision: input.current.expectedRelationRevision,
+        }),
+        expectedCurrentOpportunityId: input.current.opportunityId,
+      }),
+    );
+    pendingActivityMatchRef.current = null;
+    return result;
+  }, [prepareActivityMatchCommand, requireServices]);
 
   const loadHistoryCorrectionSession = useCallback((sessionId: string) =>
     requireServices().historyCommandRepository.loadCorrectionSession(sessionId),
@@ -4993,6 +5049,8 @@ export function WorkoutAppRuntimeProvider({
     loadImportedActivityDetail,
     loadRunningActivityMatch,
     confirmActivityMatch,
+    unmatchActivityMatch,
+    reassignActivityMatch,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctHistorySession: correctRuntimeHistorySession,
@@ -5145,6 +5203,8 @@ export function WorkoutAppRuntimeProvider({
     loadImportedActivityDetail,
     loadRunningActivityMatch,
     confirmActivityMatch,
+    unmatchActivityMatch,
+    reassignActivityMatch,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
     correctRuntimeHistorySession,

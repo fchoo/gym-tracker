@@ -1,5 +1,6 @@
 import {
   router,
+  useFocusEffect,
   useLocalSearchParams,
   type Href,
 } from "expo-router";
@@ -7,6 +8,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -30,6 +32,7 @@ import {
 } from "../../../src/ui/screens/ImportedActivityDetailScreen";
 
 const CALENDAR_RETURN_TOKEN = /^calendar:[A-Za-z0-9:_-]{1,80}$/u;
+const MATCH_RETURN_FOCUS_TOKEN = /^match:[A-Za-z0-9_-]{1,96}$/u;
 
 type ActivityDetailRouteInput = Readonly<{
   activityId: string;
@@ -98,6 +101,9 @@ export default function ImportedActivityDetailRoute() {
   const [state, setState] = useState<ImportedActivityDetailScreenState>(
     activityId === null ? { kind: "missing" } : { kind: "loading" },
   );
+  const [matchReturnFocusToken, setMatchReturnFocusToken] = useState<string>();
+  const [matchReturnFocusVersion, setMatchReturnFocusVersion] = useState(0);
+  const pendingMatchReturnFocusTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (activityId === null) {
@@ -124,11 +130,24 @@ export default function ImportedActivityDetailRoute() {
     };
   }, [activityId, attempt, runtime.loadGarminRevisionReview, runtime.loadImportedActivityDetail]);
 
+  useFocusEffect(useCallback(() => {
+    const token = pendingMatchReturnFocusTokenRef.current;
+    if (token === null || !MATCH_RETURN_FOCUS_TOKEN.test(token)) {
+      return undefined;
+    }
+    setMatchReturnFocusToken(token);
+    setMatchReturnFocusVersion((current) => current + 1);
+    pendingMatchReturnFocusTokenRef.current = null;
+    return undefined;
+  }, []));
+
   const match = useCallback(() => {
     if (activityId === null) return;
+    const returnFocusToken = `match:${activityId}`;
+    pendingMatchReturnFocusTokenRef.current = returnFocusToken;
     router.push({
       pathname: "/garmin/match/[activityId]",
-      params: { activityId, origin },
+      params: { activityId, origin, returnFocusToken },
     } as Href);
   }, [activityId, origin]);
 
@@ -176,6 +195,12 @@ export default function ImportedActivityDetailRoute() {
           setState({ kind: "loading" });
           setAttempt((current) => current + 1);
         }}
+        {...(matchReturnFocusToken === undefined
+          ? {}
+          : {
+              returnFocusMatchActionToken: matchReturnFocusToken,
+              returnFocusMatchActionVersion: matchReturnFocusVersion,
+            })}
         state={state}
       />
     </GarminRouteShell>

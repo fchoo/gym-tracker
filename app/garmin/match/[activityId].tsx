@@ -14,6 +14,8 @@ import {
   type ActivityMatchScreenState,
 } from "../../../src/ui/screens/ActivityMatchScreen";
 
+const MATCH_RETURN_FOCUS_TOKEN = /^match:[A-Za-z0-9_-]{1,96}$/u;
+
 function scalar(value: string | readonly string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
@@ -31,18 +33,26 @@ export default function ActivityMatchRoute() {
   const params = useLocalSearchParams() as Readonly<{
     activityId?: string | readonly string[];
     origin?: string | readonly string[];
+    returnFocusToken?: string | readonly string[];
   }>;
   const runtime = useWorkoutAppRuntime();
   const rawActivityId = scalar(params.activityId);
   const origin = parseGarminRootOrigin(scalar(params.origin));
+  const returnFocusToken = scalar(params.returnFocusToken);
   const activityId = useMemo(() => parseImportedActivityLocalId(rawActivityId), [rawActivityId]);
+  const validReturnFocusToken = useMemo(
+    () => returnFocusToken === undefined || MATCH_RETURN_FOCUS_TOKEN.test(returnFocusToken),
+    [returnFocusToken],
+  );
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<ActivityMatchScreenState>(
-    activityId === null ? { kind: "missing", activityId: "invalid-local-activity" } : { kind: "loading" },
+    activityId === null || !validReturnFocusToken
+      ? { kind: "missing", activityId: "invalid-local-activity" }
+      : { kind: "loading" },
   );
 
   useEffect(() => {
-    if (activityId === null) {
+    if (activityId === null || !validReturnFocusToken) {
       setState({ kind: "missing", activityId: "invalid-local-activity" });
       return undefined;
     }
@@ -57,7 +67,7 @@ export default function ActivityMatchRoute() {
     return () => {
       active = false;
     };
-  }, [activityId, attempt, runtime.loadRunningActivityMatch]);
+  }, [activityId, attempt, runtime.loadRunningActivityMatch, validReturnFocusToken]);
 
   return (
     <GarminRouteShell origin={origin}>
@@ -65,10 +75,12 @@ export default function ActivityMatchRoute() {
         onBack={() => router.back()}
         onConfirm={(candidate: RunningActivityMatchCandidate) => runtime.confirmActivityMatch(candidate)}
         onLeaveUnmatched={() => router.back()}
+        onReassign={(input) => runtime.reassignActivityMatch(input)}
         onRetry={() => {
           setState({ kind: "loading" });
           setAttempt((current) => current + 1);
         }}
+        onUnmatch={(candidate) => runtime.unmatchActivityMatch(candidate)}
         state={state}
       />
     </GarminRouteShell>

@@ -41,6 +41,9 @@ jest.mock("expo-router", () => ({
     back: (...args: readonly unknown[]) => mockBack(...args),
     push: (...args: readonly unknown[]) => mockPush(...args),
   },
+  useFocusEffect: (effect: () => void | (() => void)) => {
+    effect();
+  },
   useLocalSearchParams: () => mockParams,
 }));
 
@@ -198,7 +201,11 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
 
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/garmin/match/[activityId]",
-      params: { activityId: "activity-local-01", origin: "calendar" },
+      params: {
+        activityId: "activity-local-01",
+        origin: "calendar",
+        returnFocusToken: "match:activity-local-01",
+      },
     });
   });
 });
