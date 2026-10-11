@@ -276,6 +276,34 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
     expect(screen.getByText("Morning run")).toBeOnTheScreen();
   });
 
+  it("allows confirmed disconnect to invalidate a foreground sync", async () => {
+    let releaseSync: ((value: Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>) => void) | undefined;
+    const logout = jest.fn(async () => undefined);
+    await renderScreen({
+      coordinator: {
+        syncNow: async () => new Promise<Awaited<ReturnType<GarminSyncControllerPort["syncNow"]>>>((resolve) => { releaseSync = resolve; }),
+      },
+      source: { ...connectedSource(), logout },
+    });
+
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+    expect(await screen.findByText("Syncing Garmin activities")).toBeOnTheScreen();
+    const disconnect = screen.getByRole("button", { name: "Disconnect Garmin" });
+    expect(disconnect).not.toBeDisabled();
+    await fireEvent.press(disconnect);
+    const confirmDisconnect = screen.getAllByRole("button", { name: "Disconnect Garmin" }).at(-1);
+    expect(confirmDisconnect).toBeDefined();
+    await fireEvent.press(confirmDisconnect!);
+
+    expect(await screen.findByText("Garmin not connected")).toBeOnTheScreen();
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Morning run")).toBeOnTheScreen();
+    await act(async () => {
+      releaseSync?.({ kind: "success", counts: { ...counts, newActivities: 3 } });
+    });
+    expect(screen.getByText("Garmin not connected")).toBeOnTheScreen();
+  });
+
   it("uses shared persisted appearance without resetting connected controller state", async () => {
     const appearanceStore = createMemoryAppearanceStore();
     const source = connectedSource();

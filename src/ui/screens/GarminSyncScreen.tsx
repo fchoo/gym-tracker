@@ -484,7 +484,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
               onPress={() => { void controller.syncNow(); }}
             />
             <SecondaryAction
-              disabled={state.operation !== "idle"}
+              disabled={state.operation === "disconnecting"}
               label="Disconnect Garmin"
               onPress={() => setDisconnectOpen(true)}
               ref={disconnectRef}
