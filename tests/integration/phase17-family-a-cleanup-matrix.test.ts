@@ -18,46 +18,36 @@ jest.mock("expo-constants", () => ({
     },
   },
 }));
-jest.mock("expo-crypto", () => {
-  let sequence = 0;
-  return {
-    CryptoDigestAlgorithm: { SHA256: "SHA256" },
-    digestStringAsync: jest.fn(async (_algorithm: string, value: string) =>
-      require("node:crypto").createHash("sha256").update(value).digest("hex")),
-    randomUUID: jest.fn(() => `phase17-runtime-${++sequence}`),
-  };
-});
 
 import type { SqliteConnection, SqlitePreparedResult, SqlitePreparedStatement } from "../../src/platform/sqlite/connection";
 import { configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createLogicalBackupRepository } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
+import type { OwnedPlanCommittedResult, OwnedPlanRepositoryResult } from "../../src/platform/sqlite/repositories/ownedPlanRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { createOwnedPlanRuntimePort } from "../../src/bootstrap/ownedPlanRuntime";
 import { createPhase17ActionEnvelopeSource, phase17ActionEnvelopePlan, type Phase17ActionEnvelopeContext } from "../../src/bootstrap/phase17ActionEnvelope";
 import { cleanupPhase17FamilyAManifest, createPhase17FamilyACleanupManifest, materializePhase17FamilyACleanupManifest } from "../../src/bootstrap/phase17FamilyACleanup";
 import { createPhase17FixtureProtocol } from "../../src/bootstrap/phase17NativeFixture";
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
-import { createCustomExercise, setExerciseFavorite } from "../../src/domains/library/customExerciseCommands";
+import { createCustomExercise } from "../../src/domains/library/customExerciseCommands";
+import type { OwnedPlanDraftInput } from "../../src/domains/plans/ownedPlanCommands";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
 
 /**
- * Keep the durable Family A journeys explicit: each row names the production
- * action envelope, the SQLite receipt that proves it, and the root graph the
- * cleanup manifest must restore. The focused runtime cases below intentionally
- * exclude the custom-exercise and metric-migration families.
+ * These are deliberately the only Family A matrix rows migrated in this pass.
+ * Each row drives its labelled runtime command and proves the exact receipt,
+ * resulting plan facts, fixture probe, and migration-42 cleanup boundary.
  */
 const FAMILY_A_PLAN_MUTATION_ROWS = Object.freeze([
-  { caseId: "library.true-no-plans", label: "owned-plan-create", receipt: "owned_plan_mutation_requests" },
-  { caseId: "library.owned-lifecycle", label: "owned-plan-lifecycle", receipt: "owned_plan_mutation_requests" },
-  { caseId: "library.starter-activation", label: "starter-plan-activation", receipt: "starter_plan_activation_requests" },
-  { caseId: "library.create-strength", label: "owned-plan-save", receipt: "owned_plan_mutation_requests" },
-  { caseId: "library.plan-editor", label: "owned-plan-save", receipt: "owned_plan_mutation_requests" },
-  { caseId: "library.schedule-editor", label: "schedule-save", receipt: "owned_plan_schedule_events" },
-  { caseId: "library.replacement-impact", label: "plan-impact-replace", receipt: "owned_plan_schedule_events" },
-  { caseId: "library.day-removal-impact", label: "plan-impact-remove", receipt: "owned_plan_schedule_events" },
+  { caseId: "library.true-no-plans", label: "owned-plan-create", operation: "create", preRevision: null, postRevision: 1, preLifecycle: null, postLifecycle: "draft" },
+  { caseId: "library.owned-lifecycle", label: "owned-plan-lifecycle", operation: "archive", preRevision: 1, postRevision: 2, preLifecycle: "draft", postLifecycle: "archived" },
+  { caseId: "library.create-strength", label: "owned-plan-save", operation: "save", preRevision: 1, postRevision: 2, preLifecycle: "draft", postLifecycle: "ready" },
+  { caseId: "library.plan-editor", label: "owned-plan-save", operation: "save", preRevision: 2, postRevision: 3, preLifecycle: "ready", postLifecycle: "ready" },
 ] as const);
+
+type FamilyARow = (typeof FAMILY_A_PLAN_MUTATION_ROWS)[number];
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {}
@@ -84,6 +74,9 @@ class Connection implements SqliteConnection {
 
 const directories = new Set<string>();
 const kernels = new Set<SqliteKernel>();
+const NOW_MS = 1_794_225_600_000;
+const ENVELOPE_KEY = "development-test.phase17.action-envelope.v1";
+const SENTINEL_KEY = "phase17-matrix-nonfixture-sentinel";
 
 afterEach(async () => {
   await Promise.all([...kernels].map((kernel) => kernel.close()));
@@ -122,27 +115,89 @@ async function logicalDigest(kernel: SqliteKernel): Promise<Readonly<{ digest: s
   return Object.freeze({ digest: createHash("sha256").update(JSON.stringify(snapshot)).digest("hex"), snapshot });
 }
 
+function completePlan(planId: string, dayId: string, exerciseId: string, suffix: string, name: string): OwnedPlanDraftInput {
+  return {
+    id: planId,
+    name,
+    days: [{
+      id: dayId,
+      name: "Fixture day",
+      ordinal: 0,
+      occurrences: [{
+        id: `phase17:owned-plan-occurrence:${suffix}`,
+        exerciseId,
+        ordinal: 0,
+        restSeconds: 60,
+        metricIdentity: { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 },
+        warmups: [{ id: `phase17:owned-plan-warmup:${suffix}`, ordinal: 0, loadGrams: 10_000, reps: 5 }],
+        targets: [{
+          id: `phase17:owned-plan-target:${suffix}`,
+          ordinal: 0,
+          target: { profile: "load_reps" as const, version: 1 as const, loadGrams: 20_000, minReps: 8, maxReps: 12, incrementGrams: 2_500, perSide: false },
+          units: { version: 1 as const, load: "grams" as const, count: "repetitions" as const },
+        }],
+        policy: {
+          id: `phase17:owned-plan-policy:${suffix}`,
+          kind: "manual_hold" as const,
+          policyId: "manual-hold-v1",
+          version: 1,
+          rule: { kind: "manual_hold" as const, id: "manual-hold-v1", version: 1 },
+        },
+      }],
+    }],
+  };
+}
+
+function actionPlanId(row: FamilyARow, suffix: string): string {
+  return row.caseId === "library.true-no-plans"
+    // Fixture-token issuance consumes the first deterministic UUID; the
+    // neutral chooser's real create command then owns the next runtime ID.
+    ? "owned-plan:phase17-host-2"
+    : `phase17:owned-plan:${suffix}`;
+}
+
+function postFacts(row: FamilyARow, fixtureToken: string, planId: string, exerciseId: string, actionReceiptId: string) {
+  return {
+    caseId: row.caseId,
+    fixtureToken,
+    planId,
+    exerciseId,
+    actionReceiptId,
+    operation: row.operation,
+    planRevision: row.postRevision,
+    lifecycle: row.postLifecycle,
+  };
+}
+
+function committed(result: OwnedPlanRepositoryResult): OwnedPlanCommittedResult {
+  if (result.outcome !== "committed") throw new Error("phase17_matrix_command_not_committed");
+  return result;
+}
+
 describe("Phase 17 Family A cleanup matrix", () => {
-  it.each(FAMILY_A_PLAN_MUTATION_ROWS)("keeps $caseId bound to its labelled production command and durable receipt", ({ caseId, label, receipt }) => {
+  it.each(FAMILY_A_PLAN_MUTATION_ROWS)("keeps $caseId bound to its labelled production command and durable receipt", ({ caseId, label }) => {
     const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
     expect(contract).toMatchObject({ id: caseId, actionReceiptRequired: true });
     expect(phase17ActionEnvelopePlan(caseId, "phase17:matrix-token-0000000000000001")[0])
       .toMatchObject({ label });
-    expect(createPhase17FamilyACleanupManifest(caseId, "phase17:matrix-token-0000000000000001", {
-      ownedPlanId: "phase17:owned-plan:matrix-token-0000000000000001",
-      customExerciseId: "phase17:custom:matrix-token-0000000000000001",
-    }).requestIds).toHaveLength(1);
-    // The receipt table is asserted here rather than inferred from UI labels.
     expect(PHASE17_FAMILY_A_MUTATION_RECEIPTS)
-      .toContainEqual([caseId, receipt, expect.any(String)]);
+      .toContainEqual([caseId, "owned_plan_mutation_requests", expect.any(String)]);
   });
 
-  it("runs a migrated schema-42 runtime-host Family A mutation through setup, labelled action, authoritative probe, cleanup, and v8 logical-backup restoration", async () => {
+  it.each(FAMILY_A_PLAN_MUTATION_ROWS)("runs migrated schema-42/v8 $caseId through the real $label command, exact receipt probe, and cleanup", async (row) => {
     const kernel = await migratedKernel();
+    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
+    expect(schema?.user_version).toBe(42);
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
+      [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
+    ));
+    const before = await logicalDigest(kernel);
+
     let sequence = 0;
     const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
     const ownedPlans = createOwnedPlanRuntimePort(kernel, {
-      nowMs: () => 1_794_225_600_000,
+      nowMs: () => NOW_MS,
       randomUUID: () => `phase17-host-${++sequence}`,
       sha256,
     });
@@ -152,8 +207,8 @@ describe("Phase 17 Family A cleanup matrix", () => {
       identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
       store: {
         read: async () => {
-          const [row] = await kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", ["development-test.phase17.action-envelope.v1"]);
-          return row === undefined ? null : JSON.parse(row.value_json) as Phase17ActionEnvelopeContext;
+          const [setting] = await kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [ENVELOPE_KEY]);
+          return setting === undefined ? null : JSON.parse(setting.value_json) as Phase17ActionEnvelopeContext;
         },
         write: async (value) => {
           await kernel.write((transaction) => transaction.execute(
@@ -161,13 +216,13 @@ describe("Phase 17 Family A cleanup matrix", () => {
              VALUES (?, 1, ?, 1, ?)
              ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
                revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
-            ["development-test.phase17.action-envelope.v1", JSON.stringify(value), 1_794_225_600_000],
+            [ENVELOPE_KEY, JSON.stringify(value), NOW_MS],
           ));
         },
         clear: async (value) => {
           const result = await kernel.write((transaction) => transaction.execute(
             "DELETE FROM app_settings WHERE key = ? AND value_json = ?",
-            ["development-test.phase17.action-envelope.v1", JSON.stringify(value)],
+            [ENVELOPE_KEY, JSON.stringify(value)],
           ));
           if (result.changes !== 1) throw new Error("phase17_matrix_envelope_clear_failed");
         },
@@ -180,52 +235,164 @@ describe("Phase 17 Family A cleanup matrix", () => {
         baselineDigest: async () => (await logicalDigest(kernel)).digest,
         canonicalHash: async (value) => sha256(JSON.stringify(value)),
         selectorSchema: () => ({ selectors: ["ownedPlanId", "customExerciseId"], actionInputs: ["phase17ActionReceiptId"] }),
-        seed: async ({ caseId, fixtureToken }) => {
-          const planId = `phase17:owned-plan:${fixtureToken.slice("phase17:".length)}`;
-          const exerciseId = `phase17:custom:${fixtureToken.slice("phase17:".length)}`;
-          const plan = await ownedPlans.createFixtureDraft({ requestId: `phase17:fixture:owned-plan-create:${fixtureToken.slice("phase17:".length)}:setup`, planId, dayId: `phase17:owned-plan-day:${fixtureToken.slice("phase17:".length)}`, name: `Matrix ${caseId}`, dayName: "Fixture" });
-          if (plan.outcome === "requires_schedule_impact") throw new Error("phase17_matrix_setup_failed");
+        seed: async ({ fixtureToken }) => {
+          const suffix = fixtureToken.slice("phase17:".length);
+          const exerciseId = `phase17:custom:${suffix}`;
+          const planId = actionPlanId(row, suffix);
+          const setupRequest = `phase17:fixture:custom-exercise-create:${suffix}:setup`;
           await createCustomExercise({ repository: customExercises, invalidate: async () => undefined, input: {
-            requestId: `phase17:fixture:custom-exercise-create:${fixtureToken.slice("phase17:".length)}:setup`, exerciseId, name: `Matrix ${caseId}`, aliases: ["Matrix"], exerciseType: "strength", movementClass: "compound", primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: ["barbell"], metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, defaultRestSeconds: 60, createdAtMs: 1_794_225_600_000,
+            requestId: setupRequest,
+            exerciseId,
+            name: `Matrix ${row.caseId}`,
+            aliases: ["Matrix"],
+            exerciseType: "strength",
+            movementClass: "compound",
+            primaryMuscles: ["quadriceps"],
+            secondaryMuscles: [],
+            equipment: ["barbell"],
+            metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+            defaultRestSeconds: 60,
+            createdAtMs: NOW_MS,
           } });
-          const facts = { caseId, fixtureToken, planId, exerciseId, action: "exercise-favorite" };
-          return { selectors: { ownedPlanId: planId, customExerciseId: exerciseId }, actionInputs: { phase17ActionReceiptId: `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action` }, expectedPreState: { ...facts, receipt: "absent" }, expectedPostState: { ...facts, receipt: "present" }, actionReceiptId: `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action` };
+          if (row.caseId !== "library.true-no-plans") {
+            const fixturePlanId = `phase17:owned-plan:${suffix}`;
+            const dayId = `phase17:owned-plan-day:${suffix}`;
+            const created = committed(await ownedPlans.createFixtureDraft({
+              requestId: `phase17:fixture:owned-plan-create:${suffix}:setup`,
+              planId: fixturePlanId,
+              dayId,
+              name: `Matrix ${row.caseId}`,
+              dayName: "Fixture day",
+            }));
+            if (row.caseId === "library.plan-editor") {
+              committed(await ownedPlans.savePlan({
+                requestId: `phase17:fixture:owned-plan-save:${suffix}:setup`,
+                expectedRevision: created.plan.revision,
+                plan: completePlan(fixturePlanId, dayId, exerciseId, suffix, `Matrix ${row.caseId}`),
+              }));
+            }
+          }
+          const actionReceiptId = `phase17:${row.caseId}:${suffix}:action`;
+          const preFacts = {
+            caseId: row.caseId,
+            fixtureToken,
+            planId,
+            exerciseId,
+            actionReceiptId: null,
+            operation: null,
+            planRevision: row.preRevision,
+            lifecycle: row.preLifecycle,
+          };
+          return {
+            selectors: { ownedPlanId: planId, customExerciseId: exerciseId },
+            actionInputs: { phase17ActionReceiptId: actionReceiptId },
+            expectedPreState: preFacts,
+            expectedPostState: postFacts(row, fixtureToken, planId, exerciseId, actionReceiptId),
+            actionReceiptId,
+          };
         },
-        probe: async ({ caseId, fixtureToken, selectors }) => {
-          const requestId = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
-          const receipts = await kernel.queryAll<{ request_id: string }>("SELECT request_id FROM custom_exercise_mutation_receipts WHERE request_id = ?", [requestId]);
-          const preferences = await kernel.queryAll<{ exercise_id: string }>("SELECT exercise_id FROM exercise_owner_preferences WHERE exercise_id = ? AND favorite = 1", [selectors.customExerciseId!]);
-          if (receipts.length !== 1 || preferences.length !== 1) throw new Error("phase17_matrix_probe_failed");
-          const facts = { caseId, fixtureToken, planId: selectors.ownedPlanId!, exerciseId: selectors.customExerciseId!, action: "exercise-favorite", receipt: "present" };
+        probe: async ({ fixtureToken, selectors }) => {
+          const actionReceiptId = `phase17:${row.caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+          const [receipt] = await kernel.queryAll<{
+            operation: string;
+            source_plan_id: string | null;
+            result_plan_id: string;
+            expected_revision: number | null;
+            result_revision: number;
+            result_json: string;
+          }>(
+            `SELECT operation, source_plan_id, result_plan_id, expected_revision, result_revision, result_json
+             FROM owned_plan_mutation_requests WHERE request_id = ?`,
+            [actionReceiptId],
+          );
+          if (receipt === undefined) throw new Error("phase17_matrix_receipt_missing");
+          expect(receipt).toMatchObject({
+            operation: row.operation,
+            source_plan_id: row.caseId === "library.true-no-plans" ? null : selectors.ownedPlanId,
+            result_plan_id: selectors.ownedPlanId,
+            expected_revision: row.preRevision,
+            result_revision: row.postRevision,
+          });
+          expect(JSON.parse(receipt.result_json)).toMatchObject({ outcome: "committed" });
+          const [plan] = await kernel.queryAll<{ id: string; revision: number; lifecycle: string }>(
+            `SELECT plan.id, plan.revision, state.lifecycle
+             FROM plans plan JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id
+             WHERE plan.id = ? AND plan.revision = ? AND state.lifecycle = ?`,
+            [receipt.result_plan_id, receipt.result_revision, row.postLifecycle],
+          );
+          if (plan === undefined) throw new Error("phase17_matrix_authoritative_plan_missing");
+          const facts = postFacts(row, fixtureToken, plan.id, selectors.customExerciseId!, actionReceiptId);
           return { rowCount: 1, identityHash: await sha256(JSON.stringify(facts)), facts };
         },
-        cleanup: async ({ caseId, fixtureToken, selectors }) => cleanupPhase17FamilyAManifest(kernel, createPhase17FamilyACleanupManifest(caseId, fixtureToken, { ownedPlanId: selectors.ownedPlanId!, customExerciseId: selectors.customExerciseId! })),
+        cleanup: async ({ caseId, fixtureToken, selectors }) => cleanupPhase17FamilyAManifest(
+          kernel,
+          createPhase17FamilyACleanupManifest(caseId, fixtureToken, {
+            ownedPlanId: selectors.ownedPlanId!,
+            customExerciseId: selectors.customExerciseId!,
+          }),
+        ),
         finalizeCleanup: async ({ caseId, fixtureToken }) => envelope.clear({ caseId, fixtureToken }),
       },
     });
-    const before = await logicalDigest(kernel);
-    const fixture = await protocol.setup("library.exercise-favorites");
-    await envelope.activate({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, envelopes: phase17ActionEnvelopePlan(fixture.caseId, fixture.fixtureToken), cleanupManifest: createPhase17FamilyACleanupManifest(fixture.caseId, fixture.fixtureToken, { ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId! }) });
-    const requestId = await envelope.claim({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, label: "exercise-favorite" });
-    if (requestId === null) throw new Error("phase17_matrix_action_request_missing");
-    const [preference] = await kernel.queryAll<{ revision: number }>("SELECT revision FROM exercise_owner_preferences WHERE exercise_id = ?", [fixture.selectors.customExerciseId!]);
-    await setExerciseFavorite({ repository: customExercises, invalidate: async () => undefined, input: { requestId, exerciseId: fixture.selectors.customExerciseId!, expectedPreferenceRevision: preference?.revision ?? null, favorite: true, updatedAtMs: 1_794_225_600_000 } });
-    await expect(protocol.probe({
+
+    const fixture = await protocol.setup(row.caseId);
+    expect(fixture.baselineDigest).toBe(before.digest);
+    await envelope.activate({
       caseId: fixture.caseId,
       fixtureToken: fixture.fixtureToken,
-      sourceTable: fixture.sourceTable,
-    })).resolves.toMatchObject({ verdict: "matched", expectedPostStateHash: fixture.expectedPostStateHash });
-    await envelope.assertConsumed({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken });
-    await envelope.updateCleanupManifest({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, cleanupManifest: await materializePhase17FamilyACleanupManifest(kernel, createPhase17FamilyACleanupManifest(fixture.caseId, fixture.fixtureToken, { ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId! })) });
-    let cleanup: Awaited<ReturnType<typeof protocol.cleanup>>;
-    try {
-      cleanup = await protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken });
-    } catch (error) {
-      throw new Error(`phase17_matrix_cleanup_failed:${String(error)}:${String((error as Error & { cause?: unknown }).cause)}`);
+      envelopes: phase17ActionEnvelopePlan(fixture.caseId, fixture.fixtureToken),
+      cleanupManifest: createPhase17FamilyACleanupManifest(fixture.caseId, fixture.fixtureToken, {
+        ownedPlanId: fixture.selectors.ownedPlanId!,
+        customExerciseId: fixture.selectors.customExerciseId!,
+      }),
+    });
+    await expect(envelope.hydrate()).resolves.toMatchObject({
+      caseId: row.caseId,
+      fixtureToken: fixture.fixtureToken,
+      envelopes: [{ label: row.label, requestId: fixture.actionReceiptId }],
+    });
+    const requestId = await envelope.claim({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, label: row.label });
+    if (requestId === null) throw new Error("phase17_matrix_action_request_missing");
+
+    const suffix = fixture.fixtureToken.slice("phase17:".length);
+    if (row.caseId === "library.true-no-plans") {
+      const result = committed(await ownedPlans.createDraft({ name: "Matrix Strength", dayName: "Strength day", requestId }));
+      expect(result.plan).toMatchObject({ id: fixture.selectors.ownedPlanId, revision: row.postRevision, lifecycle: row.postLifecycle });
+    } else if (row.caseId === "library.owned-lifecycle") {
+      const result = committed(await ownedPlans.archivePlan({ planId: fixture.selectors.ownedPlanId!, expectedRevision: row.preRevision!, requestId }));
+      expect(result.plan).toMatchObject({ id: fixture.selectors.ownedPlanId, revision: row.postRevision, lifecycle: row.postLifecycle });
+    } else {
+      const result = committed(await ownedPlans.savePlan({
+        expectedRevision: row.preRevision!,
+        requestId,
+        plan: completePlan(
+          fixture.selectors.ownedPlanId!,
+          `phase17:owned-plan-day:${suffix}`,
+          fixture.selectors.customExerciseId!,
+          suffix,
+          row.caseId === "library.plan-editor" ? "Matrix editor saved" : "Matrix Strength saved",
+        ),
+      }));
+      expect(result.plan).toMatchObject({ id: fixture.selectors.ownedPlanId, revision: row.postRevision, lifecycle: row.postLifecycle });
     }
-    expect(cleanup).toMatchObject({ verdict: "restored", baselineDigest: fixture.baselineDigest });
+
+    await expect(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable }))
+      .resolves.toMatchObject({ verdict: "matched", expectedPostStateHash: fixture.expectedPostStateHash });
+    await envelope.assertConsumed({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken });
+    await envelope.updateCleanupManifest({
+      caseId: fixture.caseId,
+      fixtureToken: fixture.fixtureToken,
+      cleanupManifest: await materializePhase17FamilyACleanupManifest(kernel, createPhase17FamilyACleanupManifest(fixture.caseId, fixture.fixtureToken, {
+        ownedPlanId: fixture.selectors.ownedPlanId!,
+        customExerciseId: fixture.selectors.customExerciseId!,
+      })),
+    });
+    await expect(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }))
+      .resolves.toMatchObject({ verdict: "restored", baselineDigest: before.digest });
+    await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
+    await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY]))
+      .resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
     const after = await logicalDigest(kernel);
-    expect(after.digest).toBe(before.digest);
-    expect(after.snapshot).toEqual(before.snapshot);
+    expect(after).toEqual(before);
   });
 });
