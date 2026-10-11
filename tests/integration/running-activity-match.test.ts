@@ -175,6 +175,104 @@ describe("Running activity matching", () => {
     await expect(repository.confirm({ ...first, requestId: "occupied-reassign", requestSha256: "4".repeat(64), action: "reassign", opportunityId: "running-opportunity-3", slotId: "running-slot-3", slotRevisionId: "running-slot-3:revision:1", expectedRelationRevision: 4, expectedCurrentOpportunityId: "running-opportunity-2" })).resolves.toMatchObject({ kind: "conflict" });
   });
 
+  it("keeps the current relation and audit ledger unchanged for mismatched unmatch identity", async () => {
+    const { kernel } = await runtime();
+    await seed(kernel);
+    const repository = createRunningActivityMatchRepository(kernel);
+    const first = matchInput({ requestId: "identity-match" });
+    await expect(repository.confirm(first)).resolves.toMatchObject({ kind: "matched", relationRevision: 1 });
+    await kernel.write(async (transaction) => {
+      await transaction.execute("INSERT INTO running_session_slots(id, plan_id, weekday, ordinal, session_revision_id, revision) VALUES ('running-slot-other', 'running-plan', 'Monday', 1, 'running-session-v1', 1)");
+      await transaction.execute("INSERT INTO running_session_slot_roots(id, plan_id, weekday, created_at_ms) VALUES ('running-slot-other', 'running-plan', 'Monday', 3)");
+      await transaction.execute("INSERT INTO running_session_slot_revisions(id, slot_root_id, revision, ordinal, session_root_id, session_revision_id, created_at_ms) VALUES ('running-slot-other:revision:1', 'running-slot-other', 1, 1, 'running-session-v1:root', 'running-session-v1', 3)");
+      await transaction.execute("INSERT INTO running_opportunities(id, plan_id, schedule_id, schedule_version_id, slot_id, local_date, timezone, session_revision_id, state, created_at_ms) VALUES ('running-opportunity-other', 'running-plan', 'running-schedule', 'running-version', 'running-slot-other', '2026-10-05', 'Asia/Singapore', 'running-session-v1', 'planned', 3)");
+    });
+    const before = await kernel.queryAll<{ events: number; receipts: number }>(`SELECT
+      (SELECT COUNT(*) FROM running_activity_match_events) AS events,
+      (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts`);
+
+    await expect(repository.confirm(matchInput({
+      requestId: "wrong-unmatch-target",
+      requestSha256: "b".repeat(64),
+      action: "unmatch",
+      opportunityId: "running-opportunity-other",
+      slotId: "running-slot-other",
+      slotRevisionId: "running-slot-other:revision:1",
+      expectedRelationRevision: 1,
+      expectedCurrentOpportunityId: "running-opportunity",
+    }))).resolves.toMatchObject({ kind: "conflict" });
+    await expect(kernel.queryAll("SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches"))
+      .resolves.toEqual([{ activity_id: "activity-1", opportunity_id: "running-opportunity", relation_revision: 1 }]);
+    await expect(kernel.queryAll(`SELECT
+      (SELECT COUNT(*) FROM running_activity_match_events) AS events,
+      (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts`)).resolves.toEqual(before);
+  });
+
+  it("makes every stale source fence and conflicting replay a zero-write failure", async () => {
+    const { kernel } = await runtime();
+    await seed(kernel);
+    const repository = createRunningActivityMatchRepository(kernel);
+    const baseline = await kernel.queryAll<{ events: number; receipts: number; relations: number }>(`SELECT
+      (SELECT COUNT(*) FROM running_activity_match_events) AS events,
+      (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts,
+      (SELECT COUNT(*) FROM running_activity_current_matches) AS relations`);
+    const staleInputs: readonly Partial<RunningActivityMatchInput>[] = [
+      { expectedAcceptedPayloadSha256: "b".repeat(64) },
+      { expectedOpportunityRevision: 2 },
+      { expectedScheduleRevision: 1 },
+      { expectedPlanDayRevision: 2 },
+      { slotRevisionId: "running-slot:revision:2", expectedSlotRevision: 2 },
+      { expectedSessionRevision: 2 },
+    ];
+    for (const [index, stale] of staleInputs.entries()) {
+      await expect(repository.confirm(matchInput({
+        requestId: `stale-fence-${index}`,
+        requestSha256: String(index + 1).repeat(64),
+        ...stale,
+      }))).resolves.toMatchObject({ kind: "conflict" });
+    }
+    await expect(kernel.queryAll(`SELECT
+      (SELECT COUNT(*) FROM running_activity_match_events) AS events,
+      (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts,
+      (SELECT COUNT(*) FROM running_activity_current_matches) AS relations`)).resolves.toEqual(baseline);
+
+    const committed = matchInput({ requestId: "replay-fence", requestSha256: "9".repeat(64) });
+    await expect(repository.confirm(committed)).resolves.toMatchObject({ kind: "matched" });
+    await expect(repository.confirm({ ...committed, requestSha256: "8".repeat(64) })).resolves.toMatchObject({ kind: "conflict" });
+    await expect(kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_activity_match_events")).resolves.toEqual([{ count: 1 }]);
+    await expect(kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_activity_match_receipts")).resolves.toEqual([{ count: 1 }]);
+  });
+
+  it("keeps immutable match evidence pinned to the accepted source revision across unmatch and reassignment", async () => {
+    const { kernel } = await runtime();
+    await seed(kernel);
+    const repository = createRunningActivityMatchRepository(kernel);
+    const first = matchInput({ requestId: "pin-match", requestSha256: "5".repeat(64) });
+    await expect(repository.confirm(first)).resolves.toMatchObject({ kind: "matched", relationRevision: 1 });
+    await expect(repository.confirm(matchInput({
+      requestId: "pin-unmatch",
+      requestSha256: "6".repeat(64),
+      action: "unmatch",
+      expectedRelationRevision: 1,
+      expectedCurrentOpportunityId: "running-opportunity",
+    }))).resolves.toMatchObject({ kind: "unmatched", relationRevision: 2 });
+
+    await expect(kernel.queryAll("SELECT action, activity_revision, opportunity_revision, prior_relation_revision, relation_revision FROM running_activity_match_events ORDER BY relation_revision"))
+      .resolves.toEqual([
+        { action: "matched", activity_revision: 1, opportunity_revision: 1, prior_relation_revision: 0, relation_revision: 1 },
+        { action: "unmatched", activity_revision: 1, opportunity_revision: 1, prior_relation_revision: 1, relation_revision: 2 },
+      ]);
+    await expect(kernel.write((transaction) => transaction.execute("UPDATE running_activity_match_events SET activity_revision = 2 WHERE id = 'pin-match:event'")))
+      .rejects.toThrow("sqlite_transaction_failed");
+    await expect(kernel.write((transaction) => transaction.execute("DELETE FROM running_activity_match_receipts WHERE request_id = 'pin-match'")))
+      .rejects.toThrow("sqlite_transaction_failed");
+    await expect(kernel.queryAll("SELECT action, activity_revision, relation_revision FROM running_activity_match_events ORDER BY relation_revision"))
+      .resolves.toEqual([
+        { action: "matched", activity_revision: 1, relation_revision: 1 },
+        { action: "unmatched", activity_revision: 1, relation_revision: 2 },
+      ]);
+  });
+
   it("fails closed if a corrupted current-match ledger violates the schema's one-to-one invariant", async () => {
     const { kernel, writer } = await runtime(); await seed(kernel); const repository = createRunningActivityMatchRepository(kernel);
     writer.db.exec("ALTER TABLE running_activity_current_matches RENAME TO running_activity_current_matches_valid");

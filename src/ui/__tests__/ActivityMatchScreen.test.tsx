@@ -80,4 +80,38 @@ describe("ActivityMatchScreen confirmation boundary", () => {
     expect(onConfirm).toHaveBeenCalledWith(alternateCandidate);
     expect(await screen.findByText("Matched")).toBeOnTheScreen();
   });
+
+  it("keeps Back, Leave unmatched, radio changes, and duplicate activation write-free", async () => {
+    let finishConfirm: ((value: { kind: "matched"; activityId: string; opportunityId: string; relationRevision: number }) => void) | undefined;
+    const onConfirm = jest.fn(() => new Promise<{ kind: "matched"; activityId: string; opportunityId: string; relationRevision: number }>((resolve) => {
+      finishConfirm = resolve;
+    }));
+    const onBack = jest.fn();
+    const onLeaveUnmatched = jest.fn();
+    await render(
+      <AppearanceProvider>
+        <ActivityMatchScreen
+          onBack={onBack}
+          onConfirm={onConfirm}
+          onLeaveUnmatched={onLeaveUnmatched}
+          onRetry={jest.fn()}
+          state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate, alternateCandidate] }}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("radio", { name: /Intervals/ }));
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Leave unmatched" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onLeaveUnmatched).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    const confirm = screen.getByRole("button", { name: "Confirm match" });
+    await fireEvent.press(confirm);
+    await fireEvent.press(confirm);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    finishConfirm?.({ kind: "matched", activityId: alternateCandidate.activityId, opportunityId: alternateCandidate.opportunityId, relationRevision: 1 });
+    await waitFor(() => expect(screen.getByText("Matched")).toBeOnTheScreen());
+  });
 });

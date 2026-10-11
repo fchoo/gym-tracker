@@ -178,4 +178,27 @@ describe("Running activity match commands", () => {
       occurredAtMs: 1_700_000_000_001,
     });
   });
+
+  it("rejects mismatched unmatch identity and no-op reassignment before the repository boundary", async () => {
+    const repository: RunningActivityMatchRepository = {
+      confirm: jest.fn(async () => ({
+        kind: "conflict" as const,
+        activityId: input.activityId,
+        opportunityId: input.opportunityId,
+        relationRevision: input.expectedRelationRevision,
+      })),
+    };
+
+    await expect(confirmRunningActivityMatch(repository, {
+      ...input,
+      action: "unmatch",
+      expectedCurrentOpportunityId: "another-opportunity",
+    })).rejects.toThrow("running_activity_match_invalid");
+    await expect(confirmRunningActivityMatch(repository, {
+      ...input,
+      action: "reassign",
+      expectedCurrentOpportunityId: input.opportunityId,
+    })).rejects.toThrow("running_activity_match_invalid");
+    expect(repository.confirm).not.toHaveBeenCalled();
+  });
 });
