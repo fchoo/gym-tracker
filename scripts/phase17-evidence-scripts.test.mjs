@@ -167,7 +167,7 @@ test("Phase 17 Family A is an explicit typed registry with table-specific seed, 
     await protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable });
     await protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken });
   }
-  assert.equal(PHASE17_FAMILY_A_CASE_IDS.length, 23);
+  assert.equal(PHASE17_FAMILY_A_CASE_IDS.length, 24);
   assert.equal(touched.filter((entry) => entry.startsWith("seed:")).length, 5);
   await assert.rejects(adapter.seed({ caseId: "library.running-detail", fixtureToken: "phase17:fixture-token-0005", sourceTable: "running_plans" }), /phase17_fixture_family_unimplemented/u);
 });

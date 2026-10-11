@@ -90,4 +90,14 @@ describe("running schedule collision command", () => {
     await repository.rebuildProjection();
     expect(await kernel.queryAll("SELECT acknowledged, selected_kind FROM schedule_collision_projections")).toEqual([{ acknowledged: 1, selected_kind: "none" }]);
   });
+
+  it("keeps ordinary collision source facts immutable while allowing projection rebuild", async () => {
+    const kernel = await runtime(); const repository = createScheduleCollisionRepository(kernel, sha256);
+    const preview = (await repository.previewForRunningPlan("running-plan"))!;
+    await repository.confirm({ requestId: "ordinary-guard", choice: "move_running", preview, committedAtMs: 10 });
+    await expect(kernel.write((transaction) => transaction.execute("DELETE FROM schedule_collision_receipts WHERE request_id = ?", ["ordinary-guard"]))).rejects.toThrow("sqlite_transaction_failed");
+    await expect(kernel.write((transaction) => transaction.execute("DELETE FROM schedule_collision_outcomes WHERE request_id = ?", ["ordinary-guard"]))).rejects.toThrow("sqlite_transaction_failed");
+    await repository.rebuildProjection();
+    expect(await kernel.queryAll("SELECT outcome_id FROM schedule_collision_projections")).toHaveLength(1);
+  });
 });

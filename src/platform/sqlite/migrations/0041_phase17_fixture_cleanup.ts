@@ -14,6 +14,11 @@ const DIRECT_PLAN_TABLES = [
   "running_plan_events", "running_session_revisions", "running_session_slots",
   "running_opportunities", "running_session_slot_roots",
 ] as const;
+const COLLISION_TABLES = [
+  // Projections are deliberately replaceable: rebuildProjection clears and
+  // recreates them for every owner, so only immutable source facts are guarded.
+  "schedule_collision_outcomes", "schedule_collision_receipts",
+] as const;
 
 export const phase17FixtureCleanupMigration: Migration = Object.freeze({
   version: 41,
@@ -39,6 +44,24 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
       await transaction.execute(`CREATE TRIGGER ${table}_immutable_delete
         BEFORE DELETE ON ${table}
         WHEN OLD.plan_id NOT GLOB '${FIXTURE_PLAN_GLOB}'
+        BEGIN SELECT RAISE(ABORT, '${table}_immutable'); END`);
+    }
+    // Collision facts remain immutable for ordinary owner rows. Fixture-owned
+    // rows are identified through their linked Running opportunity, never by a
+    // broad table predicate, so teardown cannot erase product history.
+    for (const table of COLLISION_TABLES) {
+      await transaction.execute(`DROP TRIGGER IF EXISTS ${table}_immutable_delete`);
+      const outcome = table === "schedule_collision_outcomes"
+        ? "OLD.running_opportunity_id"
+        : table === "schedule_collision_receipts"
+          ? "(SELECT running_opportunity_id FROM schedule_collision_outcomes WHERE id = OLD.outcome_id)"
+          : "(SELECT running_opportunity_id FROM schedule_collision_outcomes WHERE id = OLD.outcome_id)";
+      await transaction.execute(`CREATE TRIGGER ${table}_immutable_delete
+        BEFORE DELETE ON ${table}
+        WHEN NOT EXISTS (
+          SELECT 1 FROM running_opportunities opportunity
+          WHERE opportunity.id = ${outcome} AND opportunity.plan_id GLOB '${FIXTURE_PLAN_GLOB}'
+        )
         BEGIN SELECT RAISE(ABORT, '${table}_immutable'); END`);
     }
     await transaction.execute(`CREATE TRIGGER running_session_slot_revisions_immutable_delete

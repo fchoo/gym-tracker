@@ -15,6 +15,7 @@ export const PHASE17_FAMILY_A_CASE_IDS = Object.freeze([
   "library.schedule-editor", "library.replacement-impact", "library.day-removal-impact",
   "library.builtin-exercise", "library.custom-exercise", "library.create-exercise",
   "library.copy-metric-migration", "library.load-error-recovery",
+  "library.accessibility-recovery",
 ] as const);
 
 export type Phase17FamilyACaseId = (typeof PHASE17_FAMILY_A_CASE_IDS)[number];

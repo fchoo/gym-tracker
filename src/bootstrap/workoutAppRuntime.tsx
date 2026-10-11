@@ -355,6 +355,10 @@ import {
   createPhase17FamilyBFixtureDriver,
   createPhase17FamilyFixtureAdapter,
 } from "./phase17FamilyBFixture";
+import {
+  assertPhase17FamilyCRegistry,
+  createPhase17FamilyCFixtureDriver,
+} from "./phase17FamilyCFixture";
 import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
 import { PHASE17_CASE_ACTION_CONTRACTS } from "../testing/contracts/phase17LibraryRunning.contract";
 import {
@@ -4007,6 +4011,7 @@ export function WorkoutAppRuntimeProvider({
     const { CryptoDigestAlgorithm, digestStringAsync, randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
     assertPhase17FamilyARegistry(PHASE17_CASE_ACTION_CONTRACTS);
     assertPhase17FamilyBRegistry(PHASE17_CASE_ACTION_CONTRACTS);
+    assertPhase17FamilyCRegistry(PHASE17_CASE_ACTION_CONTRACTS);
     const physicalTable = (sourceTable: string) => ({
       library_view_state: "app_settings", library_action_state: "app_settings", plan_create_intent: "plans",
       exercise_search_index: "exercise_search_terms", exercise_preferences: "exercise_owner_preferences",
@@ -4035,6 +4040,65 @@ export function WorkoutAppRuntimeProvider({
             sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
           }),
           sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        }),
+        familyC: createPhase17FamilyCFixtureDriver({
+          kernel: services.kernel,
+          graph: {
+            setupGraph: async (fixtureToken) => {
+              const suffix = fixtureToken.slice("phase17:".length);
+              const runningPlanId = `phase17:running-plan:${suffix}`;
+              const strength = await services.ownedPlans.createDraft({ name: "Phase 17 collision Strength", dayName: "Fixture day" });
+              if (strength.outcome !== "committed") throw new Error("phase17_collision_strength_create_failed");
+              const runningPort = createRunningPlanRuntimePort(services.kernel, { nowMs: dependencies.nowMs, randomUUID, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) });
+              const now = dependencies.nowMs();
+              let running = await runningPort.createInactivePlan({ plan: {
+                version: 1, id: runningPlanId, name: "Phase 17 collision Running", revision: 1, createdAtMs: now,
+                goal: { version: 1, id: `phase17:running-goal:${suffix}`, planId: runningPlanId, revision: 1, goalDistanceMeters: 5_000, targetDurationMs: 1_800_000, trainingDays: ["Monday"], runsPerWeek: 1, longRunDay: "Monday", currentWeeklyDistanceMeters: 10_000, createdAtMs: now }, sessions: [],
+              } });
+              running = (await runningPort.saveSession({ planId: running.id, expectedPlanRevision: running.revision, requestId: `phase17:collision-recovery:${suffix}`, session: { sessionKind: "recovery", weekday: "Monday", phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 1_800_000 }] }], advisoryTarget: { rpe: 4 }, contextual: {} } })).plan;
+              const runningScheduleId = `phase17:collision-running-schedule:${suffix}`;
+              const runningVersionId = `phase17:collision-running-version:${suffix}`;
+              const strengthScheduleId = `phase17:collision-strength-schedule:${suffix}`;
+              const strengthVersionId = `phase17:collision-strength-version:${suffix}`;
+              const runningOpportunityId = `phase17:collision-running-opportunity:${suffix}`;
+              const strengthOpportunityId = `phase17:collision-strength-opportunity:${suffix}`;
+              const localDate = "2026-11-09";
+              const slot = running.sessions[0];
+              if (slot === undefined) throw new Error("phase17_collision_running_readback_missing");
+              await services.kernel.write(async (transaction) => {
+                await transaction.execute("INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind) VALUES (?, ?, 'active', 1, ?, NULL, 'running')", [runningScheduleId, runningPlanId, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedule_versions (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms) VALUES (?, ?, 1, ?, 'weekday', 'Asia/Singapore', NULL, ?)", [runningVersionId, runningScheduleId, localDate, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind) VALUES (?, ?, 'active', 1, ?, NULL, 'strength')", [strengthScheduleId, strength.plan.id, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedule_versions (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms) VALUES (?, ?, 1, ?, 'weekday', 'Asia/Singapore', NULL, ?)", [strengthVersionId, strengthScheduleId, localDate, now]);
+                await transaction.execute("INSERT INTO owned_plan_schedule_opportunities (id, schedule_id, schedule_version_id, local_date, source, plan_day_id, state, outcome, session_id, revision, consumed_at_ms) VALUES (?, ?, ?, ?, 'weekday', ?, 'pending', NULL, NULL, 1, NULL)", [strengthOpportunityId, strengthScheduleId, strengthVersionId, localDate, strength.plan.days[0]!.id]);
+                await transaction.execute("INSERT INTO running_opportunities (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date, timezone, session_revision_id, state, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, 'Asia/Singapore', ?, 'planned', ?)", [runningOpportunityId, runningPlanId, runningScheduleId, runningVersionId, slot.slot.id, localDate, slot.session.id, now]);
+              });
+              return Object.freeze({ runningPlanId, strengthPlanId: strength.plan.id, runningOpportunityId, strengthOpportunityId, runningScheduleId, strengthScheduleId, localDate });
+            },
+            cleanupGraph: async (graph) => {
+              await services.kernel.write(async (transaction) => {
+                await transaction.execute("DELETE FROM owned_plan_schedule_opportunities WHERE id = ?", [graph.strengthOpportunityId]);
+                await transaction.execute("DELETE FROM running_opportunities WHERE id = ?", [graph.runningOpportunityId]);
+                await transaction.execute("DELETE FROM owned_plan_schedule_versions WHERE schedule_id IN (?, ?)", [graph.runningScheduleId, graph.strengthScheduleId]);
+                await transaction.execute("DELETE FROM owned_plan_schedules WHERE id IN (?, ?)", [graph.runningScheduleId, graph.strengthScheduleId]);
+                await transaction.execute("DELETE FROM running_plan_events WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_plan_receipts WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_goals WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_slot_revisions WHERE slot_root_id IN (SELECT id FROM running_session_slot_roots WHERE plan_id = ?)", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_slots WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_slot_roots WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_revisions WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_session_roots WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM running_plans WHERE plan_id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM plans WHERE id = ?", [graph.runningPlanId]);
+                await transaction.execute("DELETE FROM owned_plan_aggregate_states WHERE plan_id = ?", [graph.strengthPlanId]);
+                await transaction.execute("DELETE FROM plan_days WHERE plan_id = ?", [graph.strengthPlanId]);
+                await transaction.execute("DELETE FROM plans WHERE id = ?", [graph.strengthPlanId]);
+              });
+            },
+            sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+            nowMs: dependencies.nowMs,
+          },
         }),
         familyA: {
         seed: async (caseId, fixtureToken, sourceTable) => {

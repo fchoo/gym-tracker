@@ -4,6 +4,13 @@ import type { SqliteKernel } from "../platform/sqlite";
 import type { RunningPlanAggregate, RunningSessionKind } from "../domains/running/contracts";
 import type { Phase17Facts, Phase17FixtureAdapter, Phase17FixtureSeed } from "./phase17NativeFixture";
 import type { Phase17FamilyAFixtureDriver } from "./phase17FamilyAFixture";
+import type { Phase17FamilyCFixtureDriver } from "./phase17FamilyCFixture";
+
+// Kept local so the lightweight evidence contract can load this router without
+// eagerly evaluating the SQLite-only Family C implementation.
+const FAMILY_C_CASE_IDS = Object.freeze(["library.running-conflict"] as const);
+const isPhase17FamilyCCaseId = (value: string): value is "library.running-conflict" =>
+  (FAMILY_C_CASE_IDS as readonly string[]).includes(value);
 
 /**
  * Running is deliberately a separate fixture family.  These IDs use the
@@ -36,13 +43,14 @@ export function assertPhase17FamilyBRegistry(contracts: readonly Phase17CaseActi
   return true;
 }
 
-/** Routes only explicit Family A/B implementations.  Everything else (notably
- * collision) fails closed instead of borrowing a superficially similar row. */
+/** Routes only explicit Family A/B/C implementations. Unknown ledger IDs fail
+ * closed instead of borrowing a superficially similar source row. */
 export function createPhase17FamilyFixtureAdapter(input: Readonly<{
   baselineDigest: Phase17FixtureAdapter["baselineDigest"];
   canonicalHash: Phase17FixtureAdapter["canonicalHash"];
   familyA: Phase17FamilyAFixtureDriver;
   familyB: Phase17FamilyBFixtureDriver;
+  familyC?: Phase17FamilyCFixtureDriver;
 }>): Phase17FixtureAdapter {
   // Family A's public type guard lives in its own module.  Avoid a generic
   // fallback by comparing against the supplied driver's explicit registry via
@@ -52,15 +60,27 @@ export function createPhase17FamilyFixtureAdapter(input: Readonly<{
     canonicalHash: input.canonicalHash,
     seed: async ({ caseId, fixtureToken, sourceTable }) => {
       if (isPhase17FamilyBCaseId(caseId)) return input.familyB.seed(caseId, fixtureToken, sourceTable);
+      if (isPhase17FamilyCCaseId(caseId)) {
+        if (input.familyC === undefined) throw new Error("phase17_fixture_family_unimplemented");
+        return input.familyC.seed(caseId, fixtureToken, sourceTable);
+      }
       try { return await (input.familyA as Phase17FamilyAFixtureDriver).seed(caseId as never, fixtureToken, sourceTable); }
       catch (error) { if ((error as Error).message === "phase17_fixture_family_unimplemented") throw error; throw error; }
     },
     probe: async ({ caseId, fixtureToken, sourceTable, selectors }) => {
       if (isPhase17FamilyBCaseId(caseId)) return input.familyB.probe(caseId, fixtureToken, sourceTable, selectors);
+      if (isPhase17FamilyCCaseId(caseId)) {
+        if (input.familyC === undefined) throw new Error("phase17_fixture_family_unimplemented");
+        return input.familyC.probe(caseId, fixtureToken, sourceTable, selectors);
+      }
       return input.familyA.probe(caseId as never, fixtureToken, sourceTable, selectors);
     },
     cleanup: async ({ caseId, fixtureToken, selectors }) => {
       if (isPhase17FamilyBCaseId(caseId)) return input.familyB.cleanup(caseId, fixtureToken, selectors);
+      if (isPhase17FamilyCCaseId(caseId)) {
+        if (input.familyC === undefined) throw new Error("phase17_fixture_family_unimplemented");
+        return input.familyC.cleanup(caseId, fixtureToken, selectors);
+      }
       await input.familyA.cleanup(caseId as never, fixtureToken, selectors);
     },
   });
