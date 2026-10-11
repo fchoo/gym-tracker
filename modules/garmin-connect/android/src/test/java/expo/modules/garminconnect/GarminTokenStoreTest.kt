@@ -3,6 +3,8 @@ package expo.modules.garminconnect
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -23,7 +25,7 @@ class GarminTokenStoreTest {
   @Test
   fun `encrypted record round trips without plaintext and declares Android Keystore`() {
     val root = temporaryFolder.newFolder("no-backup")
-    val store = GarminTokenStore(root, JvmAesGcmCipher())
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), JvmAtomicWriter())
     val tokenBytes = "synthetic-di-session".toByteArray()
 
     store.replace(tokenBytes)
@@ -37,7 +39,7 @@ class GarminTokenStoreTest {
   @Test
   fun `corrupt and unsupported records fail closed without exposing record bytes`() {
     val root = temporaryFolder.newFolder("corrupt")
-    val store = GarminTokenStore(root, JvmAesGcmCipher())
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), JvmAtomicWriter())
     store.replace("synthetic-di-session".toByteArray())
     val file = store.recordFileForTest()
 
@@ -60,7 +62,7 @@ class GarminTokenStoreTest {
   fun `failed verified rotation leaves the prior record readable`() {
     val root = temporaryFolder.newFolder("rotation")
     val cipher = JvmAesGcmCipher()
-    val stable = GarminTokenStore(root, cipher)
+    val stable = GarminTokenStore(root, cipher, JvmAtomicWriter())
     stable.replace("old-session".toByteArray())
     val failing = GarminTokenStore(root, cipher, VerifyThenFailWriter())
 
@@ -75,7 +77,7 @@ class GarminTokenStoreTest {
   @Test
   fun `clear removes only the encrypted session record`() {
     val root = temporaryFolder.newFolder("clear")
-    val store = GarminTokenStore(root, JvmAesGcmCipher())
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), JvmAtomicWriter())
     store.replace("synthetic-di-session".toByteArray())
     File(root, "unrelated").writeText("history")
 
@@ -83,6 +85,110 @@ class GarminTokenStoreTest {
 
     assertNull(store.read())
     assertEquals("history", File(root, "unrelated").readText())
+  }
+
+  @Test
+  fun `worker persists login and refresh rotations then clears them on fenced logout`() {
+    val store = MemorySessionStore()
+    val dispatcher = RecordingDispatcher(
+      ArrayDeque(
+        listOf(
+          success(1, mapOf("kind" to "connected", "account_namespace" to "account-fixture")),
+          success(1, mapOf("activityId" to 42)),
+          success(2, mapOf("kind" to "disconnected")),
+        )
+      )
+    )
+    dispatcher.pendingTokens = "first-session".toByteArray()
+    val worker = GarminClientWorker(dispatcher, store)
+
+    worker.login("owner", "synthetic-secret")
+    assertArrayEquals("first-session".toByteArray(), store.value)
+    dispatcher.pendingTokens = "rotated-session".toByteArray()
+    worker.getActivity("42")
+    assertArrayEquals("rotated-session".toByteArray(), store.value)
+
+    worker.logout()
+
+    assertNull(store.value)
+    assertEquals(2L, worker.generationForTest())
+  }
+
+  @Test
+  fun `worker injects decrypted bytes only into restore and persists the verified rotation`() {
+    val store = MemorySessionStore("stored-session".toByteArray())
+    val dispatcher = RecordingDispatcher(
+      ArrayDeque(listOf(success(1, mapOf("kind" to "connected", "account_namespace" to "account-fixture"))))
+    )
+    dispatcher.pendingTokens = "verified-rotation".toByteArray()
+    val worker = GarminClientWorker(dispatcher, store)
+
+    worker.restoreSession()
+
+    assertArrayEquals("stored-session".toByteArray(), dispatcher.calls.single().second["tokenPayload"] as ByteArray)
+    assertArrayEquals("verified-rotation".toByteArray(), store.value)
+  }
+
+  private fun success(generation: Int, data: Map<String, Any?>): Map<String, Any?> = mapOf(
+    "status" to "ok",
+    "generation" to generation,
+    "data" to data,
+  )
+}
+
+private class MemorySessionStore(initial: ByteArray? = null) : GarminSessionStore {
+  var value: ByteArray? = initial?.copyOf()
+
+  override fun read(): ByteArray? = value?.copyOf()
+
+  override fun replace(tokenBytes: ByteArray) {
+    value = tokenBytes.copyOf()
+  }
+
+  override fun clear() {
+    value?.fill(0)
+    value = null
+  }
+}
+
+private class RecordingDispatcher(
+  private val responses: ArrayDeque<Map<String, Any?>>,
+) : GarminPythonDispatcher {
+  val calls = mutableListOf<Pair<String, Map<String, Any>>>()
+  var pendingTokens: ByteArray? = null
+
+  override fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?> {
+    calls += operation to arguments.mapValues { (_, value) ->
+      if (value is ByteArray) value.copyOf() else value
+    }
+    return responses.removeFirst()
+  }
+
+  override fun takePersistableTokens(): ByteArray? = pendingTokens?.copyOf().also {
+    pendingTokens?.fill(0)
+    pendingTokens = null
+  }
+}
+
+private class JvmAtomicWriter : GarminAtomicWriter {
+  override fun replace(target: File, bytes: ByteArray, verify: (File) -> Unit) {
+    target.parentFile?.mkdirs()
+    val temporary = File.createTempFile(".garmin-di-", ".tmp", target.parentFile)
+    try {
+      FileOutputStream(temporary).use { output ->
+        output.write(bytes)
+        output.fd.sync()
+      }
+      verify(temporary)
+      Files.move(
+        temporary.toPath(),
+        target.toPath(),
+        StandardCopyOption.ATOMIC_MOVE,
+        StandardCopyOption.REPLACE_EXISTING,
+      )
+    } finally {
+      temporary.delete()
+    }
   }
 }
 

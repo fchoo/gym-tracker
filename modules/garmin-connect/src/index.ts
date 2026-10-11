@@ -9,9 +9,26 @@ export type GarminRuntimeInfo = Readonly<{
   capabilities: readonly ["runtimeInfo"];
 }>;
 
-type GarminConnectNativeModule = Readonly<{
+export type GarminConnectNativeModule = Readonly<{
   runtimeInfo(): Promise<unknown>;
+  connectionState(): Promise<unknown>;
+  login(input: Readonly<{ email: string; password: string }>): Promise<unknown>;
+  resumeMfa(input: Readonly<{ challengeHandle: string; code: string }>): Promise<unknown>;
+  restoreSession(): Promise<unknown>;
+  logout(): Promise<unknown>;
+  getActivities(input: Readonly<{ start: number; limit: number; activityType: "running" }>): Promise<unknown>;
+  getActivity(input: Readonly<{ externalActivityId: string }>): Promise<unknown>;
+  getActivitySplits(input: Readonly<{ externalActivityId: string }>): Promise<unknown>;
+  getActivityDetails(input: Readonly<{
+    externalActivityId: string;
+    maxchart: 2000;
+    maxpoly: 4000;
+  }>): Promise<unknown>;
 }>;
+
+export function getGarminConnectNativeModule(): GarminConnectNativeModule {
+  return requireNativeModule<GarminConnectNativeModule>("GarminConnect");
+}
 
 function isRuntimeInfo(value: unknown): value is GarminRuntimeInfo {
   if (value === null || typeof value !== "object") return false;
@@ -27,7 +44,7 @@ function isRuntimeInfo(value: unknown): value is GarminRuntimeInfo {
 }
 
 export async function readGarminRuntimeInfo(
-  nativeModule: GarminConnectNativeModule = requireNativeModule<GarminConnectNativeModule>("GarminConnect"),
+  nativeModule: GarminConnectNativeModule = getGarminConnectNativeModule(),
 ): Promise<GarminRuntimeInfo> {
   const info = await nativeModule.runtimeInfo();
   if (!isRuntimeInfo(info)) throw new Error("garmin_runtime_schema_invalid");

@@ -181,7 +181,24 @@ class GarminBridge:
         payload = self._client.client.dumps()
         if not isinstance(payload, str) or not payload:
             raise _BridgeInputError("sign_in_required")
-        self._pending_token_payload = payload.encode("utf-8")
+        try:
+            token_data = json.loads(payload)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise _BridgeInputError("sign_in_required") from error
+        if not isinstance(token_data, dict) or any(
+            not isinstance(token_data.get(key), str) or not token_data[key]
+            for key in ("di_token", "di_refresh_token", "di_client_id")
+        ):
+            raise _BridgeInputError("sign_in_required")
+        self._pending_token_payload = json.dumps(
+            {
+                "di_client_id": token_data["di_client_id"],
+                "di_refresh_token": token_data["di_refresh_token"],
+                "di_token": token_data["di_token"],
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
 
     def _login(self, arguments: Any) -> dict[str, Any]:
         values = _exact_arguments(arguments, {"email", "password"})

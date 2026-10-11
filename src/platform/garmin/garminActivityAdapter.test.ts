@@ -86,7 +86,12 @@ function fixtures() {
   };
   const mapper: GarminActivityMapper = {
     fromSummary: jest.fn((summary) => envelope(String((summary as { activityId: string }).activityId))),
-    fromActivity: jest.fn(({ external_activity_id }) => envelope(external_activity_id)),
+    fromActivity: jest.fn((input: Readonly<{
+      external_activity_id: string;
+      activity: unknown;
+      splits: unknown;
+      details: unknown;
+    }>) => envelope(input.external_activity_id)),
   };
   return { calls, driver, mapper };
 }
