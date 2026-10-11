@@ -118,6 +118,123 @@ describe("Garmin import runtime", () => {
     expect(source.readActivity).toHaveBeenCalledWith("424242");
   });
 
+  it("keeps the accepted row and marks it for review when the source revision changes", async () => {
+    const accepted = Object.freeze({
+      activityId: "activity-root-01",
+      title: "Morning run",
+      activityType: "Running",
+      confirmedLocalDate: "2026-06-20",
+      revisionState: "accepted" as const,
+    });
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => Object.freeze({
+        kind: "revision_review" as const,
+        activityId: accepted.activityId,
+        aggregateRevision: 1,
+      })),
+    };
+    const sourceEnvelope = envelope();
+    const source = {
+      connectionState: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      login: jest.fn(async () => ({ kind: "disconnected" as const })),
+      resumeMfa: jest.fn(async () => ({ kind: "disconnected" as const })),
+      logout: jest.fn(async () => undefined),
+      listRunningSummaries: jest.fn(async () => ({ items: [sourceEnvelope] })),
+      readActivity: jest.fn(async () => sourceEnvelope),
+    };
+    const runtime = createGarminRootRuntime({
+      loadActivities: async () => [accepted],
+      requestFor: async () => Object.freeze({
+        requestId: "garmin-root-revision",
+        requestSha256: "e".repeat(64),
+        activityId: accepted.activityId,
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: accepted.confirmedLocalDate,
+      }),
+      services: Object.freeze({ importedActivities: repository }),
+      sha256,
+      source,
+    });
+
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "success",
+      counts: { reviewActivities: 1 },
+    });
+    await expect(runtime.loadActivities()).resolves.toEqual([
+      { ...accepted, revisionState: "needs_review" },
+    ]);
+  });
+
+  it("replays a lost acknowledgement after remount without duplicating durable history", async () => {
+    const durableActivities: Array<Readonly<{
+      activityId: string;
+      title: string;
+      activityType: string;
+      confirmedLocalDate: string;
+    }>> = [];
+    let acknowledgementLost = true;
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async (input: ConfirmGarminImportInput) => {
+        if (durableActivities.length === 0) {
+          durableActivities.push(Object.freeze({
+            activityId: input.activityId,
+            title: "Morning run",
+            activityType: "Running",
+            confirmedLocalDate: input.confirmedLocalDate,
+          }));
+        }
+        if (acknowledgementLost) {
+          acknowledgementLost = false;
+          throw new Error("post_commit_acknowledgement_lost");
+        }
+        return Object.freeze({
+          kind: "replayed" as const,
+          activityId: input.activityId,
+          aggregateRevision: 1,
+        });
+      }),
+    };
+    const sourceEnvelope = envelope();
+    const source = {
+      connectionState: jest.fn(async () => ({
+        kind: "connected" as const,
+        account_namespace: sourceEnvelope.account_namespace,
+        generation: 1,
+      })),
+      login: jest.fn(async () => ({ kind: "disconnected" as const })),
+      resumeMfa: jest.fn(async () => ({ kind: "disconnected" as const })),
+      logout: jest.fn(async () => undefined),
+      listRunningSummaries: jest.fn(async () => ({ items: [sourceEnvelope] })),
+      readActivity: jest.fn(async () => sourceEnvelope),
+    };
+    const createRuntime = () => createGarminRootRuntime({
+      loadActivities: async () => Object.freeze([...durableActivities]),
+      requestFor: async () => Object.freeze({
+        requestId: "garmin-root-stable-receipt",
+        requestSha256: "f".repeat(64),
+        activityId: "activity-root-01",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-06-20",
+      }),
+      services: Object.freeze({ importedActivities: repository }),
+      sha256,
+      source,
+    });
+
+    await expect(createRuntime().coordinator.syncNow()).resolves.toMatchObject({ kind: "failure" });
+    const remounted = createRuntime();
+    await expect(remounted.loadActivities()).resolves.toHaveLength(1);
+    await expect(remounted.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "success",
+      counts: { unchangedActivities: 1 },
+    });
+    await expect(remounted.loadActivities()).resolves.toHaveLength(1);
+  });
+
   it("prepares the exact envelope and invalidates reads only after the committed result", async () => {
     const events: string[] = [];
     const committed: GarminImportResult = Object.freeze({

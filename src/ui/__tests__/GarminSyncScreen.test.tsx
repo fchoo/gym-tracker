@@ -292,6 +292,18 @@ describe("GarminSyncScreen committed sync presentation", () => {
       expect(screen.getByRole("button", { name: action })).toBeOnTheScreen();
     }
   });
+
+  it("does not present a failed history read as an empty imported history", async () => {
+    await renderScreen({
+      loadActivities: async () => {
+        throw new Error("history-read-failed");
+      },
+      source: connectedSource(),
+    });
+
+    expect(await screen.findByText("Imported history could not be loaded")).toBeOnTheScreen();
+    expect(screen.queryByText("No imported activities yet.")).not.toBeOnTheScreen();
+  });
 });
 
 describe("GarminSyncScreen shared shell and disconnect contracts", () => {
