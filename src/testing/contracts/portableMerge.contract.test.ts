@@ -121,6 +121,7 @@ describe("portable merge contract", () => {
       "portable-merge-commit-rollback",
       "portable-merge-deterministic-derivative-parity",
       "portable-merge-phase13-source-generation-once",
+      "portable-merge-garmin-clean-restore",
     ]);
     expect(result.cases.filter((item) => item.status === "failed")).toEqual([]);
     expect(result.status).toBe("passed");
