@@ -102,6 +102,15 @@ export default function TodayRoute() {
         triggerRef: settingsActionRef,
       })}
       onReviewSuggestion={() => router.push("/progress" as Href)}
+      onOpenRunningPlan={(planId) => {
+        router.push(`/library/running/${planId}` as Href);
+      }}
+      onSyncGarmin={() => {
+        router.push({
+          pathname: "/garmin",
+          params: { origin: "workout" },
+        } as Href);
+      }}
       onActivatePlan={() => {
         void runtime.activatePlan();
       }}

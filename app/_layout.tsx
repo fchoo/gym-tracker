@@ -140,6 +140,9 @@ function RootNavigator() {
           <Stack.Screen name="session/[sessionId]" />
           <Stack.Screen name="session/[sessionId]/correct" />
           <Stack.Screen name="exercise-history/[exerciseId]" />
+          <Stack.Screen name="garmin/index" />
+          <Stack.Screen name="garmin/activity/[activityId]" />
+          <Stack.Screen name="garmin/match/[activityId]" />
           <Stack.Screen name="more/index" />
           <Stack.Screen name="more/data-and-recovery" />
           <Stack.Screen name="more/automatic-backup-settings" />
