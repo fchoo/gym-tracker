@@ -55,7 +55,7 @@ function sourceComponents(externalActivityId = "424242") {
 
 async function connectedAdapter() {
   const externalActivityId = "424242";
-  const accountNamespace = "account-fixture";
+  const accountNamespace = "garmin:0123456789abcdef0123456789abcdef";
   const components = sourceComponents(externalActivityId);
   const operations: string[] = [];
   const driver: GarminNativeDriver = {

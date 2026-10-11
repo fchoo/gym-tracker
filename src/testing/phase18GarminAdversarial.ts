@@ -71,7 +71,7 @@ type DriverState = {
   calls: Map<string, number>;
 };
 
-const ACCOUNT_NAMESPACE = "synthetic-account";
+const ACCOUNT_NAMESPACE = "garmin:0123456789abcdef0123456789abcdef";
 const EXTERNAL_ACTIVITY_ID = "424242";
 
 export function phase18GarminAdversarialEnabled(input: Readonly<{

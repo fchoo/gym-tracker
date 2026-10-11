@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "main" / "python"))
 
 import garmin_bridge
 
+ACCOUNT_NAMESPACE = "garmin:abcdefabcdefabcdefabcdefabcdefab"
+
 
 class FakeClient:
     def __init__(self, *, needs_mfa=False):
@@ -64,9 +66,40 @@ def provider_error(name, *, status=None, retry_after=None):
 
 
 class GarminBridgeTests(unittest.TestCase):
+    def test_account_namespace_is_locally_generated_and_survives_profile_rename(self):
+        namespace = ACCOUNT_NAMESPACE
+        first_client = FakeClient()
+        first_client.display_name = "synthetic-owner@example.test"
+        first = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: first_client,
+            namespace_factory=lambda: namespace,
+        )
+
+        connected = first.dispatch(
+            "login",
+            {"email": "synthetic-owner@example.test", "password": "synthetic-secret"},
+        )
+        persisted = first.take_persistable_tokens()
+
+        renamed_client = FakeClient()
+        renamed_client.display_name = "Renamed Owner"
+        restored_bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: renamed_client,
+            namespace_factory=lambda: "garmin:ffffffffffffffffffffffffffffffff",
+        )
+        restored = restored_bridge.dispatch("restoreSession", {"tokenPayload": persisted})
+
+        self.assertEqual(connected["data"]["account_namespace"], namespace)
+        self.assertEqual(restored["data"]["account_namespace"], namespace)
+        self.assertNotRegex(json.dumps([connected, restored]), r"synthetic-owner|Renamed Owner|@")
+
     def test_login_mfa_and_reads_use_only_the_fixed_operations(self):
         fake = FakeClient(needs_mfa=True)
-        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake, handle_factory=lambda: "opaque-challenge")
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: fake,
+            handle_factory=lambda: "opaque-challenge",
+            namespace_factory=lambda: ACCOUNT_NAMESPACE,
+        )
         login_arguments = {"email": "owner", "password": "synthetic-secret"}
 
         pending = bridge.dispatch("login", login_arguments)
@@ -83,7 +116,7 @@ class GarminBridgeTests(unittest.TestCase):
         mfa_arguments = {"challengeHandle": "opaque-challenge", "code": "123456"}
         connected = bridge.dispatch("resumeMfa", mfa_arguments)
         self.assertEqual(connected["generation"], 1)
-        self.assertEqual(connected["data"], {"kind": "connected", "account_namespace": "account-fixture"})
+        self.assertEqual(connected["data"], {"kind": "connected", "account_namespace": ACCOUNT_NAMESPACE})
         self.assertEqual(mfa_arguments, {})
 
         page = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
@@ -103,7 +136,10 @@ class GarminBridgeTests(unittest.TestCase):
 
     def test_unknown_operations_and_malformed_inputs_never_reach_the_client(self):
         fake = FakeClient()
-        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: fake,
+            namespace_factory=lambda: ACCOUNT_NAMESPACE,
+        )
 
         for operation, arguments in (
             ("eval", {}),
@@ -121,9 +157,15 @@ class GarminBridgeTests(unittest.TestCase):
 
     def test_restore_rotation_and_logout_keep_tokens_out_of_dispatch_results(self):
         fake = FakeClient()
-        bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: fake,
+            namespace_factory=lambda: ACCOUNT_NAMESPACE,
+        )
         restore_arguments = {
-            "tokenPayload": b'{"di_client_id":"fixture-client","di_refresh_token":"fixture-refresh","di_token":"fixture"}'
+            "tokenPayload": (
+                b'{"account_namespace":"garmin:abcdefabcdefabcdefabcdefabcdefab",'
+                b'"di_client_id":"fixture-client","di_refresh_token":"fixture-refresh","di_token":"fixture"}'
+            )
         }
 
         restored = bridge.dispatch("restoreSession", restore_arguments)
@@ -149,7 +191,11 @@ class GarminBridgeTests(unittest.TestCase):
 
         mfa_client = FakeClient(needs_mfa=True)
         mfa_client.resume_login = lambda _state, _code: (_ for _ in ()).throw(provider_error("GarminConnectAuthenticationError"))
-        mfa = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: mfa_client, handle_factory=lambda: "opaque-challenge")
+        mfa = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: mfa_client,
+            handle_factory=lambda: "opaque-challenge",
+            namespace_factory=lambda: ACCOUNT_NAMESPACE,
+        )
         mfa.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
         mfa_result = mfa.dispatch("resumeMfa", {"challengeHandle": "opaque-challenge", "code": "123456"})
 
@@ -159,7 +205,10 @@ class GarminBridgeTests(unittest.TestCase):
         restore_result = restore.dispatch(
             "restoreSession",
             {
-                "tokenPayload": b'{"di_client_id":"fixture-client","di_refresh_token":"fixture-refresh","di_token":"fixture"}'
+                "tokenPayload": (
+                    b'{"account_namespace":"garmin:abcdefabcdefabcdefabcdefabcdefab",'
+                    b'"di_client_id":"fixture-client","di_refresh_token":"fixture-refresh","di_token":"fixture"}'
+                )
             },
         )
         corrupt_result = restore.dispatch("restoreSession", {"tokenPayload": b"not-json"})
@@ -181,7 +230,10 @@ class GarminBridgeTests(unittest.TestCase):
         for failure, code, retry_after_ms in cases:
             with self.subTest(code=code):
                 fake = FakeClient()
-                bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+                bridge = garmin_bridge.create_bridge(
+                    client_factory=lambda **_kwargs: fake,
+                    namespace_factory=lambda: ACCOUNT_NAMESPACE,
+                )
                 bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
                 fake.calls.clear()
 
@@ -208,7 +260,10 @@ class GarminBridgeTests(unittest.TestCase):
         ):
             with self.subTest(payload_type=type(payload).__name__):
                 fake = FakeClient()
-                bridge = garmin_bridge.create_bridge(client_factory=lambda **_kwargs: fake)
+                bridge = garmin_bridge.create_bridge(
+                    client_factory=lambda **_kwargs: fake,
+                    namespace_factory=lambda: ACCOUNT_NAMESPACE,
+                )
                 bridge.dispatch("login", {"email": "owner", "password": "synthetic-secret"})
                 fake.get_activity = lambda _activity_id: payload
 

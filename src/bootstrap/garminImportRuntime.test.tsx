@@ -539,6 +539,7 @@ describe("Garmin import runtime", () => {
   it("composes the production hook through the packaged module and default digest/request factories", async () => {
     let nativeGeneration = 1;
     let nativeConnected = true;
+    const productionAccountNamespace = "garmin:0123456789abcdef0123456789abcdef";
     const summary = (activityId: number | string) => ({
       activityId,
       activityTypeDTO: { typeKey: "running" },
@@ -559,13 +560,13 @@ describe("Garmin import runtime", () => {
       restoreSession: jest.fn(async () => ({
         status: "ok",
         generation: nativeGeneration,
-        data: { kind: "connected", account_namespace: "synthetic-runtime" },
+        data: { kind: "connected", account_namespace: productionAccountNamespace },
       })),
       connectionState: jest.fn(async () => ({
         status: "ok",
         generation: nativeGeneration,
         data: nativeConnected
-          ? { kind: "connected", account_namespace: "synthetic-runtime" }
+          ? { kind: "connected", account_namespace: productionAccountNamespace }
           : { kind: "disconnected" },
       })),
       login: jest.fn(async () => {
@@ -579,7 +580,7 @@ describe("Garmin import runtime", () => {
       resumeMfa: jest.fn(async () => ({
         status: "ok",
         generation: nativeGeneration,
-        data: { kind: "connected", account_namespace: "synthetic-runtime" },
+        data: { kind: "connected", account_namespace: productionAccountNamespace },
       })),
       logout: jest.fn(async () => {
         nativeGeneration = 3;
@@ -657,7 +658,10 @@ describe("Garmin import runtime", () => {
         connectionState: jest.fn(async () => ({
           status: "ok",
           generation: 1,
-          data: { kind: "connected", account_namespace: "synthetic-runtime" },
+          data: {
+            kind: "connected",
+            account_namespace: "garmin:0123456789abcdef0123456789abcdef",
+          },
         })),
         login: jest.fn(async () => undefined),
         resumeMfa: jest.fn(async () => undefined),

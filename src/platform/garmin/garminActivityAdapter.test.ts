@@ -15,12 +15,13 @@ jest.mock("../../../modules/garmin-connect/src", () => ({
 }));
 
 const hash = (character: string) => character.repeat(64);
+const accountNamespace = "garmin:abcdefabcdefabcdefabcdefabcdefab";
 
 function envelope(externalActivityId: string): GarminSourceEnvelope {
   return {
     version: 1,
     source_kind: "garmin_connect_account",
-    account_namespace: "account-fixture",
+    account_namespace: accountNamespace,
     external_activity_id: externalActivityId,
     normalization_version: 1,
     normalized_json_sha256: hash("a"),
@@ -52,7 +53,7 @@ function fixtures() {
     restoreSession: jest.fn(async () => ({
       status: "ok" as const,
       generation: 1,
-      data: { kind: "connected" as const, account_namespace: "account-fixture" },
+      data: { kind: "connected" as const, account_namespace: accountNamespace },
     })),
     login: jest.fn(async (input) => {
       calls.push({ operation: "login", input });
@@ -67,7 +68,7 @@ function fixtures() {
       return {
         status: "ok" as const,
         generation: 1,
-        data: { kind: "connected" as const, account_namespace: "account-fixture" },
+        data: { kind: "connected" as const, account_namespace: accountNamespace },
       };
     }),
     logout: jest.fn(async () => ({
@@ -127,7 +128,7 @@ describe("Garmin activity adapter", () => {
 
     await expect(adapter.restoreSession()).resolves.toEqual({
       kind: "connected",
-      account_namespace: "account-fixture",
+      account_namespace: accountNamespace,
       generation: 1,
     });
     expect(driver.restoreSession).toHaveBeenCalledTimes(1);
@@ -141,7 +142,7 @@ describe("Garmin activity adapter", () => {
     expect(pending).toEqual({ kind: "mfa_required", challenge_handle: "opaque-challenge", generation: 1 });
 
     const connected = await adapter.resumeMfa({ challenge_handle: "opaque-challenge", code: "123456" });
-    expect(connected).toEqual({ kind: "connected", account_namespace: "account-fixture", generation: 1 });
+    expect(connected).toEqual({ kind: "connected", account_namespace: accountNamespace, generation: 1 });
     expect(JSON.stringify([pending, connected])).not.toMatch(/password|123456|synthetic-secret|token|traceback|https?:/iu);
     expect(calls.map(({ operation }) => operation)).toEqual(["login", "resumeMfa"]);
   });
@@ -157,7 +158,7 @@ describe("Garmin activity adapter", () => {
 
     expect(page).toEqual({
       items: [{
-        account_namespace: "account-fixture",
+        account_namespace: accountNamespace,
         external_activity_id: "42",
       }],
       next_cursor: "1",
@@ -285,6 +286,7 @@ describe("Garmin activity adapter", () => {
       null,
       { status: "ok", generation: -1, data: { kind: "disconnected" } },
       { status: "ok", generation: 1, data: { kind: "unknown" } },
+      { status: "ok", generation: 1, data: { kind: "connected", account_namespace: "owner@example.test" } },
       { status: "unknown", generation: 1, data: { kind: "disconnected" } },
       { status: "error", error: { code: "INVALID" } },
       { status: "error", error: { code: "rate_limited", retryAfterMs: -1 } },
@@ -364,7 +366,7 @@ describe("Garmin activity adapter", () => {
       resumeMfa: jest.fn(async () => ({
         status: "ok",
         generation: 2,
-        data: { kind: "connected", account_namespace: "account-fixture" },
+        data: { kind: "connected", account_namespace: accountNamespace },
       })),
     };
     const stale = createGarminActivityAdapter({ driver: staleDriver, mapper });

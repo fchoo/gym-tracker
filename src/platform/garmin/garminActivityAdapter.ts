@@ -13,6 +13,7 @@ const MAX_JSON_DEPTH = 16;
 const MAX_JSON_NODES = 25_000;
 const MAX_JSON_STRING_LENGTH = 16_384;
 const EXTERNAL_ACTIVITY_ID = /^[1-9][0-9]{0,18}$/u;
+const ACCOUNT_NAMESPACE = /^garmin:[a-f0-9]{32}$/u;
 const SAFE_CODE = /^[a-z][a-z0-9_]{0,63}$/u;
 const FORBIDDEN_KEY = /(authorization|ciphertext|cookie|credential|email|password|refresh|token|traceback|url)/iu;
 const URL_VALUE = /^(?:https?|ftp):\/\//iu;
@@ -166,7 +167,7 @@ function parseNativeResult<T>(value: unknown): GarminNativeSuccess<T> {
 function connectionState(result: GarminNativeSuccess<GarminNativeConnectionData>): GarminConnectionState {
   const data = record(result.data);
   if (data.kind === "disconnected") return { kind: "disconnected" };
-  if (data.kind === "connected" && typeof data.account_namespace === "string" && data.account_namespace.length > 0 && data.account_namespace.length <= 128) {
+  if (data.kind === "connected" && typeof data.account_namespace === "string" && ACCOUNT_NAMESPACE.test(data.account_namespace)) {
     return { kind: "connected", account_namespace: data.account_namespace, generation: result.generation };
   }
   if (data.kind === "mfa_required" && typeof data.challenge_handle === "string" && /^[A-Za-z0-9_-]{16,128}$/u.test(data.challenge_handle)) {
