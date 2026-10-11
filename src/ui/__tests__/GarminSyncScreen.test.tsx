@@ -123,3 +123,80 @@ describe("GarminSyncScreen connection tracer", () => {
     expect(screen.queryByText("private provider detail")).not.toBeOnTheScreen();
   });
 });
+
+function connectedSource(): GarminActivitySourcePort {
+  return {
+    connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
+    login: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
+    resumeMfa: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }),
+    logout: async () => undefined,
+    listRunningSummaries: async () => ({ items: [] }),
+    readActivity: async () => { throw new Error("not used"); },
+  };
+}
+
+describe("GarminSyncScreen committed sync presentation", () => {
+  it.each([
+    [1, "1 new activity committed."],
+    [2, "2 new activities committed."],
+    [0, "Your imported history is up to date."],
+  ] as const)("renders committed new count %s with correct grammar", async (newActivities, expected) => {
+    await renderScreen({
+      source: connectedSource(),
+      coordinator: { syncNow: async () => ({ kind: "success", counts: { ...counts, newActivities } }) },
+    });
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+    expect(await screen.findByText(expected)).toBeOnTheScreen();
+    expect(screen.getByText("Morning run")).toBeOnTheScreen();
+  });
+
+  it("shows revision review and partial committed counts without replacing prior rows", async () => {
+    await renderScreen({
+      source: connectedSource(),
+      coordinator: {
+        syncNow: async () => ({
+          kind: "partial",
+          counts: { ...counts, newActivities: 1, reviewActivities: 1, failedActivities: 1 },
+          failure: { code: "offline", retryable: true },
+        }),
+      },
+    });
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+
+    expect(await screen.findByText("Sync partly completed")).toBeOnTheScreen();
+    expect(screen.getByText("2 activities committed before the connection was interrupted.")).toBeOnTheScreen();
+    expect(screen.getByText("1 activity needs review.")).toBeOnTheScreen();
+    expect(screen.getByText("Morning run")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Retry Garmin sync" })).toBeOnTheScreen();
+  });
+
+  it.each([
+    ["offline", "You are offline", "Retry Garmin sync"],
+    ["temporary_failure", "Garmin is temporarily unavailable", "Retry Garmin sync"],
+    ["sign_in_required", "Sign in to Garmin again", "Sign in again"],
+    ["data_access_denied", "Garmin data access was denied", "Sign in again"],
+    ["rate_limited", "Garmin asked us to wait", "Retry Garmin sync"],
+    ["timeout", "Garmin took too long to respond", "Retry Garmin sync"],
+    ["malformed_response", "Garmin returned data this app could not use", null],
+  ] as const)("renders distinct %s recovery while retaining history", async (code, heading, action) => {
+    await renderScreen({
+      source: connectedSource(),
+      coordinator: {
+        syncNow: async () => ({
+          kind: "failure",
+          counts: { ...counts, newActivities: 0, attemptedActivities: 0 },
+          failure: { code, retryable: action === "Retry Garmin sync", ...(code === "rate_limited" ? { retryAfterMs: 60_000 } : {}) },
+        }),
+      },
+    });
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+
+    expect(await screen.findByText(heading)).toBeOnTheScreen();
+    expect(screen.getByText("Morning run")).toBeOnTheScreen();
+    if (action === null) {
+      expect(screen.queryByRole("button", { name: "Retry Garmin sync" })).not.toBeOnTheScreen();
+    } else {
+      expect(screen.getByRole("button", { name: action })).toBeOnTheScreen();
+    }
+  });
+});

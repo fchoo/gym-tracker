@@ -149,3 +149,118 @@ describe("useGarminConnectionController connection tracer", () => {
     });
   });
 });
+
+describe("useGarminConnectionController committed sync semantics", () => {
+  it("publishes bounded progress and reloads history only from a committed result", async () => {
+    const refreshedActivity = Object.freeze({ ...activity, activityId: "local-activity-2", title: "Evening run" });
+    const loadActivities = jest.fn()
+      .mockResolvedValueOnce([activity])
+      .mockResolvedValueOnce([activity, refreshedActivity]);
+    let release: ((value: Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>) => void) | undefined;
+    const syncNow = jest.fn(async (options?: Parameters<GarminSyncCoordinator["syncNow"]>[0]) => {
+      options?.onProgress?.({ kind: "page", counts: { ...emptyCounts, pages: 1, discoveredActivities: 2 } });
+      return new Promise<Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>>((resolve) => { release = resolve; });
+    });
+    await render(<Harness
+      coordinator={{ syncNow }}
+      loadActivities={loadActivities}
+      now={() => 123_456}
+      source={source({ connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+
+    let first: Promise<void> | undefined;
+    await act(async () => {
+      first = current?.syncNow();
+      void current?.syncNow();
+      await Promise.resolve();
+    });
+    expect(syncNow).toHaveBeenCalledTimes(1);
+    expect(loadActivities).toHaveBeenCalledTimes(1);
+    expect(current?.state.sync).toMatchObject({
+      kind: "syncing",
+      progress: { kind: "page", counts: { pages: 1, discoveredActivities: 2 } },
+    });
+
+    await act(async () => {
+      release?.({ kind: "success", counts: { ...emptyCounts, pages: 1, discoveredActivities: 2, attemptedActivities: 2, newActivities: 2 } });
+      await first;
+    });
+
+    expect(loadActivities).toHaveBeenCalledTimes(2);
+    expect(current?.state).toMatchObject({
+      activities: [activity, refreshedActivity],
+      sync: { kind: "success", counts: { newActivities: 2 }, completedAtMs: 123_456 },
+    });
+  });
+
+  it.each([
+    ["offline", true],
+    ["temporary_failure", true],
+    ["sign_in_required", false],
+    ["data_access_denied", false],
+    ["rate_limited", true],
+    ["timeout", true],
+    ["malformed_response", false],
+    ["stale_generation", false],
+  ] as const)("retains prior rows for %s without inventing committed counts", async (code, retryable) => {
+    const failure = Object.freeze({
+      code,
+      retryable,
+      ...(code === "rate_limited" ? { retryAfterMs: 9_999_999 } : {}),
+    });
+    await render(<Harness
+      coordinator={{ syncNow: async () => ({ kind: "failure", counts: emptyCounts, failure }) }}
+      loadActivities={async () => [activity]}
+      source={source({ connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    await act(async () => current?.syncNow());
+
+    expect(current?.state.activities).toEqual([activity]);
+    expect(current?.state.sync).toMatchObject({
+      kind: "failure",
+      counts: emptyCounts,
+      failure: { code, retryable },
+    });
+    if (code === "rate_limited" && current?.state.sync.kind === "failure") {
+      expect(current.state.sync.failure.retryAfterMs).toBe(900_000);
+    }
+  });
+
+  it("ignores a prior attempt's late progress after retry starts a new generation", async () => {
+    const options: Array<Parameters<GarminSyncCoordinator["syncNow"]>[0]> = [];
+    let releaseSecond: ((value: Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>) => void) | undefined;
+    const syncNow = jest.fn(async (attemptOptions?: Parameters<GarminSyncCoordinator["syncNow"]>[0]) => {
+      options.push(attemptOptions);
+      if (options.length === 1) {
+        return { kind: "failure" as const, counts: emptyCounts, failure: { code: "offline" as const, retryable: true } };
+      }
+      return new Promise<Awaited<ReturnType<GarminSyncCoordinator["syncNow"]>>>((resolve) => { releaseSecond = resolve; });
+    });
+    await render(<Harness
+      coordinator={{ syncNow }}
+      loadActivities={async () => [activity]}
+      source={source({ connectionState: async () => ({ kind: "connected", account_namespace: "private-account-namespace", generation: 1 }) })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+    await act(async () => current?.syncNow());
+
+    let retry: Promise<void> | undefined;
+    await act(async () => {
+      retry = current?.syncNow();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      options[1]?.onProgress?.({ kind: "page", counts: { ...emptyCounts, pages: 2 } });
+      options[0]?.onProgress?.({ kind: "page", counts: { ...emptyCounts, pages: 99 } });
+    });
+    expect(current?.state.sync).toMatchObject({ kind: "syncing", progress: { counts: { pages: 2 } } });
+
+    await act(async () => {
+      releaseSecond?.({ kind: "success", counts: { ...emptyCounts, pages: 2, newActivities: 1 } });
+      await retry;
+    });
+    expect(current?.state.sync).toMatchObject({ kind: "success", counts: { pages: 2, newActivities: 1 } });
+  });
+});
