@@ -153,6 +153,8 @@ describe("Plan 01-07 TodayScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Sync Garmin" }));
     expect(viewPlan).toHaveBeenCalledWith("running-plan");
     expect(syncGarmin).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole("button", { name: "Sync Garmin" })).toHaveLength(1);
+    expect(screen.getByText("Full Body A")).toBeOnTheScreen();
     expect(screen.queryByRole("button", { name: /Start Run/u })).not.toBeOnTheScreen();
   });
   it("renders the selected real occurrence before its complete persisted-order preview", async () => {

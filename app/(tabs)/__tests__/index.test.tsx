@@ -106,6 +106,7 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       launchState,
       onOpenSettings,
       onReviewSuggestion,
+      onSyncGarmin,
       onStartEmpty,
       onStartPlanDay,
       pendingRecommendations,
@@ -115,6 +116,7 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       launchState: string;
       onOpenSettings(): void;
       onReviewSuggestion(exerciseId: string): void;
+      onSyncGarmin(): void;
       onStartEmpty(): void;
       onStartPlanDay(
         dayId: string,
@@ -141,6 +143,11 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
           accessibilityLabel="Review pending target"
           accessibilityRole="button"
           onPress={() => onReviewSuggestion("bench")}
+        />
+        <Pressable
+          accessibilityLabel="Sync Garmin from Workout"
+          accessibilityRole="button"
+          onPress={() => onSyncGarmin()}
         />
         <Pressable
           accessibilityLabel="Start empty workout"
@@ -225,6 +232,21 @@ describe("TodayRoute readiness", () => {
     }));
 
     expect(mockPush).toHaveBeenCalledWith("/progress");
+  });
+
+  it("pushes the one Garmin root with only the Workout origin", async () => {
+    mockLaunchState = "trusted";
+
+    await render(<TodayRoute />);
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Sync Garmin from Workout",
+    }));
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/garmin",
+      params: { origin: "workout" },
+    });
   });
 
   it("delegates Workout settings requests to the shared root settings controller", async () => {

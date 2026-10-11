@@ -12,6 +12,8 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
@@ -103,6 +105,31 @@ describe("Garmin root route", () => {
       });
     },
   );
+
+  it("registers one Garmin root, activity, and match stack outside the exact four tabs", () => {
+    const rootLayout = readFileSync(join(process.cwd(), "app/_layout.tsx"), "utf8");
+    const tabsLayout = readFileSync(join(process.cwd(), "app/(tabs)/_layout.tsx"), "utf8");
+
+    for (const route of [
+      "garmin/index",
+      "garmin/activity/[activityId]",
+      "garmin/match/[activityId]",
+    ]) {
+      expect(rootLayout.match(new RegExp(`<Stack\\.Screen name="${route.replaceAll("[", "\\[").replaceAll("]", "\\]")}"`, "gu")))
+        .toHaveLength(1);
+    }
+    expect(Array.from(
+      tabsLayout.matchAll(/<Tabs\.Screen name="([^"]+)" options=\{\{ title: "([^"]+)" \}\} \/>/gu),
+      (match) => [match[1], match[2]],
+    ))
+      .toEqual([
+        ["index", "Workout"],
+        ["calendar", "Calendar"],
+        ["library", "Library"],
+        ["progress", "Progress"],
+      ]);
+    expect(tabsLayout).not.toContain("name=\"garmin\"");
+  });
 
   it.each([
     undefined,
