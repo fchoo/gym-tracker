@@ -289,3 +289,18 @@ test("Phase 17 Running YAML consumes only fixture-owned Running IDs and names th
     assert.match(running, new RegExp(action, "u"));
   }
 });
+
+test("Phase 17 routes claim only the hydrated fixture envelope before real Running commands", () => {
+  for (const [file, label] of [
+    ["app/library/running/[planId].tsx", "running-lifecycle"],
+    ["app/library/running/[planId]/session/new.tsx", "running-session-save"],
+    ["app/library/running/[planId]/session/[sessionId].tsx", "running-session-save"],
+  ]) {
+    const source = readFileSync(file, "utf8");
+    assert.ok(source.includes(`createPhase17ActionRequestId("${label}"`));
+  }
+  const runner = readFileSync("scripts/run-phase17-maestro.mjs", "utf8");
+  const port = readFileSync("app/__phase17-maestro.tsx", "utf8");
+  assert.match(runner, /phase17_action_envelope_missing/u);
+  assert.match(port, /hydratePhase17ActionEnvelopes\(\{ caseId, fixtureToken \}\)/u);
+});

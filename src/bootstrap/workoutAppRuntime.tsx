@@ -348,6 +348,10 @@ import {
   type Phase17SourceProbe,
 } from "./phase17NativeFixture";
 import {
+  createPhase17ActionEnvelopeSource,
+  phase17ActionLabel,
+} from "./phase17ActionEnvelope";
+import {
   assertPhase17FamilyARegistry,
 } from "./phase17FamilyAFixture";
 import {
@@ -412,6 +416,7 @@ export {
 const DATABASE_NAME = "gym-tracker.db";
 const LIBRARY_SECTION_SETTING_KEY = "library.section";
 const LATEST_BACKUP_METADATA_SETTING_KEY = "backup.latest";
+const PHASE17_ACTION_ENVELOPE_SETTING_KEY = "development-test.phase17.action-envelope.v1";
 const phase17FixtureActionReceiptId = (caseId: string, fixtureToken: string) => `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
 
 export type LibraryRuntimeSection = "plans" | "exercises";
@@ -612,6 +617,8 @@ type RuntimeValue = RuntimeState & Readonly<{
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
   probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe>;
   cleanupPhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string }>): Promise<Readonly<{ caseId: string; fixtureToken: string; baselineDigest: string; verdict: "restored" }>>;
+  hydratePhase17ActionEnvelopes(input: Readonly<{ caseId: string; fixtureToken: string }>): Promise<boolean>;
+  createPhase17ActionRequestId(label: string, productionRequestId: string): string;
   connectAutomaticBackup(): Promise<void>;
   deferAutomaticRestore(): Promise<void>;
   cancelAutomaticBackupCheck(): Promise<void>;
@@ -2080,6 +2087,7 @@ export function WorkoutAppRuntimeProvider({
 }>) {
   const servicesRef = useRef<RuntimeServices | null>(null);
   const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
+  const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
   const foregroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const automaticBackupForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const automaticBackupUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -4005,6 +4013,42 @@ export function WorkoutAppRuntimeProvider({
     [dependencies, runOutcomeMutation],
   );
 
+  const phase17ActionEnvelopeSource = useCallback(() => {
+    if (!phase17NativeContractEnabled()) throw new Error("phase17_action_envelope_unavailable");
+    if (phase17ActionEnvelopeSourceRef.current !== null) return phase17ActionEnvelopeSourceRef.current;
+    const services = requireServices();
+    const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+    phase17ActionEnvelopeSourceRef.current = createPhase17ActionEnvelopeSource({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      identity: () => ({
+        packageName: Constants.expoConfig?.android?.package ?? Constants.expoConfig?.ios?.bundleIdentifier,
+        buildProfile: Constants.expoConfig?.extra?.buildProfile,
+        nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+        suite: Constants.expoConfig?.extra?.nativeContractSuite,
+      }),
+      store: {
+        read: async () => {
+          const [row] = await services.kernel.queryAll<Readonly<{ value_json: string }>>("SELECT value_json FROM app_settings WHERE key = ?", [PHASE17_ACTION_ENVELOPE_SETTING_KEY]);
+          if (row === undefined) return null;
+          try { return JSON.parse(row.value_json); } catch { throw new Error("phase17_action_envelope_invalid"); }
+        },
+        write: async (context) => {
+          await services.kernel.write((transaction) => transaction.execute(
+            `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+             VALUES (?, 1, ?, 1, ?)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+               revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+            [PHASE17_ACTION_ENVELOPE_SETTING_KEY, JSON.stringify(context), dependencies.nowMs()],
+          ));
+        },
+        clear: async () => {
+          await services.kernel.write((transaction) => transaction.execute("DELETE FROM app_settings WHERE key = ?", [PHASE17_ACTION_ENVELOPE_SETTING_KEY]));
+        },
+      },
+    });
+    return phase17ActionEnvelopeSourceRef.current;
+  }, [dependencies, requireServices]);
+
   const phase17FixtureProtocol = useCallback(() => {
     if (!phase17NativeContractEnabled()) throw new Error("phase17_fixture_unavailable");
     if (phase17FixtureProtocolRef.current !== null) return phase17FixtureProtocolRef.current;
@@ -4217,9 +4261,46 @@ export function WorkoutAppRuntimeProvider({
         sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
     },
-    setupPhase17Fixture: (caseId) => phase17FixtureProtocol().setup(caseId),
+    setupPhase17Fixture: async (caseId) => {
+      const fixture = await phase17FixtureProtocol().setup(caseId);
+      if (fixture.actionReceiptId !== null) {
+        await phase17ActionEnvelopeSource().activate({
+          caseId: fixture.caseId,
+          fixtureToken: fixture.fixtureToken,
+          envelopes: [{ label: phase17ActionLabel(fixture.caseId), requestId: fixture.actionReceiptId }],
+        });
+      }
+      return fixture;
+    },
     probePhase17Fixture: (input) => phase17FixtureProtocol().probe(input),
-    cleanupPhase17Fixture: (input) => phase17FixtureProtocol().cleanup(input),
+    cleanupPhase17Fixture: async (input) => {
+      let envelopeFailure: unknown;
+      if (PHASE17_CASE_ACTION_CONTRACTS.some(({ id, proofMode }) => id === input.caseId && proofMode === "mutating")) {
+        try { await phase17ActionEnvelopeSource().assertConsumed(input); } catch (error) { envelopeFailure = error; }
+      }
+      try {
+        const receipt = await phase17FixtureProtocol().cleanup(input);
+        if (envelopeFailure !== undefined) throw envelopeFailure;
+        return receipt;
+      } finally {
+        if (phase17NativeContractEnabled()) await phase17ActionEnvelopeSource().clear();
+      }
+    },
+    hydratePhase17ActionEnvelopes: async (input) => {
+      const active = await phase17ActionEnvelopeSource().hydrate();
+      if (active === null || active.caseId !== input.caseId || active.fixtureToken !== input.fixtureToken) {
+        throw new Error("phase17_action_envelope_token_mismatch");
+      }
+      return true;
+    },
+    createPhase17ActionRequestId: (label, productionRequestId) => {
+      if (!phase17NativeContractEnabled()) return productionRequestId;
+      const source = phase17ActionEnvelopeSourceRef.current;
+      if (source === null) throw new Error("phase17_action_envelope_missing");
+      const requestId = source.claimCached(label);
+      if (requestId === null) throw new Error("phase17_action_envelope_missing");
+      return requestId;
+    },
     createSecureBackup: (input) =>
       requireServices().backupCommands.createSecureBackup(input),
     connectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.connect()),

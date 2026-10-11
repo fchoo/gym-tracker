@@ -236,6 +236,10 @@ function runCase({ adbPath, manifest, id, fixture }) {
   const flow = flowFor(id);
   const profile = profileFor(id);
   applyDeviceProfile(adbPath, manifest.device.serial, profile);
+  // Activation opens the bounded test-control route. Return to the product
+  // root without killing the process so the hydrated envelope stays in the
+  // runtime that receives the following real UI interaction.
+  adb(adbPath, manifest.device.serial, "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", "gymtracker-devtest:///", PACKAGE);
   const artifactDirectory = path.join(ROOT, ARTIFACT_ROOT, "maestro", id);
   mkdirSync(artifactDirectory, { recursive: true });
   const report = path.join(artifactDirectory, "report.xml");
@@ -316,6 +320,10 @@ export function executePhase17Maestro(args = process.argv.slice(2)) {
   try {
     const results = options.ids.map((id) => {
       const fixture = setupPhase17Case(adbPath, manifest.device.serial, id);
+      if (fixture.actionReceiptId !== null) {
+        const activation = readPhase17Port(adbPath, manifest.device.serial, "activate", id, fixture);
+        if (!activation.includes(`PHASE17_ACTION_ENVELOPE_READY case=${id} fixture_token=${fixture.fixtureToken}`)) throw new Error(`phase17_action_envelope_missing:${id}`);
+      }
       try { return runCase({ adbPath, manifest, id, fixture }); }
       finally { cleanupPhase17Case(adbPath, manifest.device.serial, id, fixture); }
     });

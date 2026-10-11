@@ -4,7 +4,7 @@ tags: [phase-17, native-only, development-test]
 ---
 - launchApp:
     clearState: false
-    stopApp: true
+    stopApp: false
     permissions: { notifications: deny }
 - extendedWaitUntil: { visible: "Workout", timeout: 90000 }
 - tapOn: "Library"

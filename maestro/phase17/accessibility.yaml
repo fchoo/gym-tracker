@@ -2,7 +2,7 @@ appId: com.fchoo.gymtracker.devtest
 name: Phase 17 accessibility executable journey
 tags: [phase-17, native-only, development-test]
 ---
-- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- launchApp: { clearState: false, stopApp: false, permissions: { notifications: deny } }
 - extendedWaitUntil: { visible: "Workout", timeout: 90000 }
 - tapOn: "Library"
 - extendedWaitUntil: { visible: "Library section", timeout: 30000 }

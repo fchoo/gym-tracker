@@ -27,6 +27,12 @@ function Phase17Port() {
       return;
     }
     if (typeof fixtureToken !== "string") { setOutput("PHASE17_PORT_FIXTURE_TOKEN_MISSING"); return; }
+    if (operation === "activate") {
+      void runtime.hydratePhase17ActionEnvelopes({ caseId, fixtureToken }).then((active) => setOutput(
+        active ? `PHASE17_ACTION_ENVELOPE_READY case=${caseId} fixture_token=${fixtureToken}` : "PHASE17_ACTION_ENVELOPE_MISSING",
+      )).catch(() => setOutput("PHASE17_PORT_ERROR"));
+      return;
+    }
     if (operation === "probe" && typeof sourceTable === "string") {
       void runtime.probePhase17Fixture({ caseId, fixtureToken, sourceTable }).then((proof) => setOutput(
         `PHASE17_SOURCE_PROBE case=${proof.caseId} fixture_token=${proof.fixtureToken} source_table=${proof.sourceTable} row_count=${proof.rowCount} identity_hash=${proof.identityHash} expected_post_state_hash=${proof.expectedPostStateHash} verdict=${proof.verdict}`,
