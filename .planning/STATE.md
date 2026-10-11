@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
-current_phase: 17
-current_phase_name: Library & Running Plans
-status: verifying
-stopped_at: Completed 17-14-PLAN.md (native validation deferred to Phase 20)
-last_updated: "2026-10-10T21:20:50.752Z"
+current_phase: 18
+current_phase_name: Garmin Account Sync
+status: executing
+stopped_at: Completed 18-01-PLAN.md
+last_updated: "2026-10-11T04:56:42.536Z"
 last_activity: 2026-10-11
-last_activity_desc: Phase 17 execution started
-state_head: d2c17327764c57073135a7c631edfc0cb6dee1e0
+last_activity_desc: Phase 18 execution started
+state_head: ed1688a3b4f6978b0464fb3cf86d9c59e711e15a
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 55
+  completed_plans: 56
   percent: 13
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-06)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 17 — Library & Running Plans
+**Current focus:** Phase 18 — Garmin Account Sync
 
 ## Current Position
 
-Phase: 17 (Library & Running Plans) — EXECUTING
-Plan: 14 of 14
-Status: Phase complete — ready for verification
-Last activity: 2026-10-11 — Phase 17 execution started
+Phase: 18 (Garmin Account Sync) — EXECUTING
+Plan: 2 of 14
+Status: Ready to execute
+Last activity: 2026-10-11 — Phase 18 execution started
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -95,6 +95,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 17 P12 | 20m | 2 tasks | 18 files |
 | Phase 17 P13 | 31m | 2 tasks | 7 files |
 | Phase 17 P14 | 5m | 2 tasks | 7 files |
+| Phase 18 P01 | 9m 25s | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -198,6 +199,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 17]: Phase 17 Library native evidence uses a 39-case fail-closed ledger bound to exact retained artifacts.
 - [Phase 17]: Phase 17 native runner requires explicit --execute and never writes consolidated evidence.
 - [Phase 17]: Phase 20 owns deferred global host validation, exact APK/device execution, and current evidence PASS.
+- [Phase 18]: Chaquopy 17.0 is applied once to the generated Android app via deterministic CNG; the Expo module remains the narrow ARM64 bridge contract.
+- [Phase 18]: runtimeInfo is the sole Plan 18-01 bridge operation and the Python lock verifier gates preBuild on the reviewed client commit, ABI, wheel, and hashes.
 
 ### Pending Owner Review
 
@@ -222,7 +225,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T21:20:50.596Z
-Stopped at: Completed 17-14-PLAN.md (native validation deferred to Phase 20)
+Last session: 2026-10-11T04:56:42.237Z
+Stopped at: Completed 18-01-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
