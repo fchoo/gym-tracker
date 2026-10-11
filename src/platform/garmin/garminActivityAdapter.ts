@@ -74,13 +74,13 @@ export type GarminNativeDriver = Readonly<{
 }>;
 
 export type GarminActivityMapper = Readonly<{
-  fromSummary(summary: unknown): GarminSourceEnvelope;
+  fromSummary(summary: unknown): GarminSourceEnvelope | Promise<GarminSourceEnvelope>;
   fromActivity(input: Readonly<{
     external_activity_id: string;
     activity: unknown;
     splits: unknown;
     details: unknown;
-  }>): GarminSourceEnvelope;
+  }>): GarminSourceEnvelope | Promise<GarminSourceEnvelope>;
 }>;
 
 export class GarminActivityAdapterError extends Error {
@@ -272,7 +272,9 @@ export function createGarminActivityAdapter(input: Readonly<{
       requireCurrent(result.generation, startedGeneration);
       const data = record(result.data);
       if (!Array.isArray(data.items) || data.items.length > page.limit) throw new GarminActivityAdapterError("malformed_response");
-      const items = data.items.map((item) => parseGarminSourceEnvelope(input.mapper.fromSummary(assertSafeJson(item))));
+      const items = await Promise.all(data.items.map(async (item) =>
+        parseGarminSourceEnvelope(await input.mapper.fromSummary(assertSafeJson(item)))));
+      requireCurrent(result.generation, startedGeneration);
       const nextStart = data.nextStart;
       if (nextStart === undefined) return { items };
       if (!Number.isSafeInteger(nextStart) || (nextStart as number) < 0 || (nextStart as number) > MAX_PAGE_START) {
@@ -294,12 +296,13 @@ export function createGarminActivityAdapter(input: Readonly<{
         maxpoly: 4_000,
       }));
       requireCurrent(details.generation, startedGeneration);
-      const envelope = input.mapper.fromActivity({
+      const envelope = await input.mapper.fromActivity({
         external_activity_id: externalActivityId,
         activity: activity.data,
         splits: splits.data,
         details: details.data,
       });
+      requireCurrent(details.generation, startedGeneration);
       const parsed = parseGarminSourceEnvelope(envelope);
       if (parsed.external_activity_id !== externalActivityId) throw new GarminActivityAdapterError("malformed_response");
       return parsed;

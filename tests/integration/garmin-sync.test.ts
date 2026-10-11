@@ -142,7 +142,7 @@ async function source(): Promise<GarminActivitySourcePort> {
     resumeMfa: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     logout: jest.fn(async () => undefined),
     listRunningSummaries: jest.fn(async () => ({ items: [summaryEnvelope] })),
-    readActivity: jest.fn(async (activityId) => normalizeGarminActivity({
+    readActivity: jest.fn(async (activityId: string) => normalizeGarminActivity({
       account_namespace: accountNamespace,
       external_activity_id: activityId,
       ...components,
