@@ -72,6 +72,7 @@ export type ExerciseEditorOrigin =
   | Readonly<{
       kind: "custom_copy";
       sourceExerciseId: string;
+      sourceExerciseRevision: number;
       sourceName: string;
       draft: ExerciseEditorDraft;
     }>;

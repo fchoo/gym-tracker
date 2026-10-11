@@ -159,6 +159,7 @@ describe("custom exercise ordinary create and custom copy origins", () => {
       origin: {
         kind: "custom_copy",
         sourceExerciseId: "builtin-squat",
+        sourceExerciseRevision: 1,
         sourceName: "Barbell Back Squat",
         draft: {
           name: "Barbell Back Squat Copy",

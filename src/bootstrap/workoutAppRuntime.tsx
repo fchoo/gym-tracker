@@ -48,6 +48,7 @@ import type {
 } from "../domains/library/search";
 import {
   archiveCustomExercise,
+  createCustomCopy,
   createCustomExercise as createCustomExerciseCommand,
   editCustomExercise as editCustomExerciseCommand,
   previewCustomExerciseArchive,
@@ -55,6 +56,7 @@ import {
   setExerciseHidden,
   setExerciseFavorite as setExerciseFavoriteCommand,
   type CreateCustomExerciseInput,
+  type CreateCustomCopyInput,
   type EditCustomExerciseInput,
 } from "../domains/library/customExerciseCommands";
 import {
@@ -827,6 +829,9 @@ type RuntimeValue = RuntimeState & Readonly<{
   editCustomExercise(
     input: Omit<EditCustomExerciseInput, "editedAtMs">,
   ): ReturnType<typeof editCustomExerciseCommand>;
+  createCustomCopy(
+    input: Omit<CreateCustomCopyInput, "createdAtMs">,
+  ): ReturnType<typeof createCustomCopy>;
   createCustomExerciseId(kind: string): string;
   loadCustomExercise(
     exerciseId: string,
@@ -3021,6 +3026,18 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [dependencies, phase17RequestId, requireServices]);
 
+  const createRuntimeCustomCopy = useCallback(async (
+    input: Omit<CreateCustomCopyInput, "createdAtMs">,
+  ) => {
+    const services = requireServices();
+    const requestId = await phase17RequestId("custom-exercise-copy", input.requestId);
+    return createCustomCopy({
+      repository: services.customExerciseRepository,
+      invalidate: async () => undefined,
+      input: { ...input, requestId, createdAtMs: dependencies.nowMs() },
+    });
+  }, [dependencies, phase17RequestId, requireServices]);
+
   const loadRuntimeCustomExercise = useCallback((
     exerciseId: string,
   ) => readCustomExerciseDetail(requireServices(), exerciseId),
@@ -4630,6 +4647,7 @@ export function WorkoutAppRuntimeProvider({
       };
     },
     createCustomExercise: createRuntimeCustomExercise,
+    createCustomCopy: createRuntimeCustomCopy,
     createCustomExerciseId: (kind) =>
       requireServices().ownedPlans.createId(kind),
     editCustomExercise: editRuntimeCustomExercise,
@@ -4785,6 +4803,7 @@ export function WorkoutAppRuntimeProvider({
     completeWorkoutWarmup,
     requireServices,
     createRuntimeCustomExercise,
+    createRuntimeCustomCopy,
     runAutomaticBackupCommand,
     editRuntimeCustomExercise,
     createOwnedDraft,
