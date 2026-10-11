@@ -4,116 +4,118 @@ phase_name: library-running-plans
 audited: "2026-10-11"
 baseline: .planning/phases/17-library-running-plans/17-UI-SPEC.md
 screenshots: not captured (no dev server on ports 3000, 5173, or 8080)
-native_matrix: deferred to Phase 20 by owner direction
-overall_score: 7/24
-scores:
-  copywriting: 2
-  visuals: 1
-  color: 1
-  typography: 1
-  spacing: 1
-  experience_design: 1
-registry_audit: skipped (components.json absent; no shadcn registry)
+native_proof: deferred by owner; not scored as a defect
+registry_audit: skipped (components.json absent; UI-SPEC declares no third-party registries)
+overall_score: 20/24
+status: passed
+recommendation: clean at source-contract level; proceed to deferred native proof
 ---
 
 # Phase 17 — UI Review
 
-**Audited:** 2026-10-11  
-**Baseline:** `17-UI-SPEC.md`, with owner brief/decisions and source-precedence order applied.  
-**Screenshots:** Not captured; no development server responded on ports 3000, 5173, or 8080.  
-**Native proof:** APK, screenshots, and the native accessibility matrix are intentionally deferred to Phase20 and are not scored as Phase17 implementation defects.
-
 ## UI REVIEW COMPLETE
+
+This is a final source-and-component-suite confirmation after `6758311`, `0befdb8a`, `2b0eaef`, `2bfd7f7`, and the related Phase 17 fixes. No product source was changed and no commit was created. The existing review was overwritten with this report.
 
 ## Pillar Scores
 
-| Pillar | Score | Key Finding |
+| Pillar | Score | Key finding |
 |---|---:|---|
-| 1. Copywriting | 2/4 | Several Phase17 screens use non-contract labels and state copy, including exercise no-match, Library retry, Running empty/error, and collision text. |
-| 2. Visuals | 1/4 | Running detail/editor/session surfaces render raw React Native text and controls, so the approved Library/deep-route hierarchy is not actually applied. |
-| 3. Color | 1/4 | Raw Running surfaces do not consume semantic theme colors; dark mode therefore has platform-default text/controls against the dark canvas. |
-| 4. Typography | 1/4 | Running routes bypass `typeScale`; the session form contains unstyled `Text` and `TextInput`, and factual values use implementation units such as `ms`. |
-| 5. Spacing | 1/4 | Shared deep headers are 48dp instead of 64dp, navigation rows are 48dp instead of 88dp, and the Running forms do not use the shared adaptive/inset layout. |
-| 6. Experience Design | 1/4 | The core state logic exists and focused tests pass, but long Running forms are not keyboard-safe/scrollable, and several required recovery/focus/confirmation states are missing or materially different. |
+| 1. Copywriting | 4/4 | Required facts, exact recovery copy, seven session labels/summaries, success/count language, and component-suite labels are present and covered by passing tests. |
+| 2. Visuals | 3/4 | The source has the required hierarchy and chooser geometry, but rendered 200% text, long-name wrapping, landscape balance, and keyboard-visible composition were not captured. |
+| 3. Color | 3/4 | Themed light/dark semantic tokens and sport/status roles are wired; rendered 60/30/10 composition and contrast remain unobserved. |
+| 4. Typography | 3/4 | Shared Archivo/IBM Plex roles and contract sizes are used in the audited Phase 17 surfaces; 200% wrapping and native font rendering remain unverified. |
+| 5. Spacing | 3/4 | AdaptiveScreen, the 4dp spacing scale, and 64/88/120 geometry are source-backed; runtime safe-area, expansion, and keyboard reachability remain unobserved. |
+| 6. Experience Design | 4/4 | All prior named interaction defects are fixed and the full component suite is green, including save recovery, first-invalid focus, Escape reorder, draft/delete restoration, lifecycle, and collision confirmation paths. |
 
-**Overall: 7/24**
+**Overall: 20/24**
 
-## Top 3 Priority Fixes
+## Prior Finding Confirmation
 
-1. **Move every Running plan/session route onto the shared `AdaptiveScreen` and field/action primitives** — current raw `View`/`TextInput` forms can be clipped or covered at 200% text and by the keyboard, and their dark-mode presentation is unthemed — use the Phase14 shell, `PlanEditorTextField`/shared fields, semantic type tokens, keyboard insets, and a scrollable content area with the Save action reachable.
-2. **Restore exact Phase17 state/copy contracts** — mismatches currently make empty, missing, load-failure, save-failure, and collision outcomes ambiguous — implement the exact strings from `17-UI-SPEC.md`, including `No sessions yet` with its body/CTA, `Retry loading Library`, `Retry refreshing Library`, `No exercise matches`, the contextual missing-detail CTA, and collision copy with “no medical judgment is made.”
-3. **Correct shared geometry and route hierarchy before native validation** — the shared `ScreenHeader` is 48dp and `NavigationRow` is 48dp while Phase17 requires a 64dp deep header and 88dp list rows — change the shared tokens/components, preserve 48dp only for individual controls, and then rerun 200%/focus/keyboard checks in Phase20.
+| Prior finding | Result | Evidence |
+|---|---|---|
+| Goal facts | Verified | `RunningPlanDetailScreen.tsx:25` and `RunningPlanEditorScreen.tsx:159-174` render goal distance, target time/pace, runs/week, available days, long-run day, and current weekly distance with units. |
+| Benchmark provenance and dates | Verified | `RunningPlanDetailScreen.tsx:25` reads benchmark value, provenance, and recorded date; `runningFormDraft.ts:52-67` rejects impossible calendar dates and tests cover leap-year and invalid-date cases. |
+| Week/day facts | Verified | The editor and detail surfaces render weekly count, selected days, long-run day, and stable weekday session slots. |
+| Distance facts and units | Verified | `RunningSessionFields.tsx:149-166,170-183` preserves distance/time/pace/heart-rate/RPE units in preview and persisted readback. |
+| Seven summaries and effort units | Verified | The seven kinds are enumerated in `RunningSessionFields.tsx` and `RunningPlanEditorScreen.tsx:176-177`; Recovery, Long run, Progression, Tempo, Intervals, Hills, and Fartlek have distinct summaries, and Hills/structured Fartlek include effort targets plus unit-bearing quantities. `RunningSessionFields.test.tsx` covers the branches. |
+| Exact copy, success, and count | Verified | Chooser copy is exact in `PlanTypeChooserScreen.tsx:44-62`; save success explicitly says activation stays separate in `RunningPlanEditorScreen.tsx:139-145` and `RunningSessionEditorScreen.tsx:176-181`; the full component suite now passes all former stale-label/count contracts. |
+| Save-error heading, focus, and retry | Verified | Both save catches render noun-specific headings and retry actions; `RunningPlanEditorScreen.tsx:94-100,178` and `RunningSessionEditorScreen.tsx:153-158,178-192` focus stable error-heading IDs after async failure. Focus/retry tests pass. |
+| First-invalid focus | Verified | Plan validation maps each plan error to a ref in `RunningPlanEditorScreen.tsx:115-125`; session validation returns the first visible field and uses stable native IDs in `RunningSessionEditorScreen.tsx:144-152` and `RunningSessionFields.tsx:102-136`. |
+| Escape reorder | Verified | `PlanEditorFields.tsx:396-407` handles ordinary Escape before the Shift-key arrow guard and clears the reorder preview without mutating the order. |
+| Delete/draft focus restoration | Verified | `RunningPlanEditorScreen.tsx:34-44,81-92,177-183` restores focus to the next row, previous row, or Add session after deletion and restores the launching action through draft/confirmation flows. Tests pass. |
+| Chooser geometry | Verified at source level | `PlanTypeChooserScreen.tsx:83-100,104-110` gives Strength and Running equal focusable choices, 48dp-capable pressables, equal `minHeight: 156`, shared spacing, identity labels, and required copy. |
+| Themed AdaptiveScreen / 64 / 88 / 120 | Verified at source level | Running screens use `AdaptiveScreen`; `src/ui/theme/index.ts:32-61` defines the 4dp scale, 48/56 targets, and 64/88/120 geometry; `AdaptiveScreen.tsx:197-216` applies keyboard-adjusted scrolling and safe-area/dock composition. |
+| Lifecycle/collision confirmations | Verified | `RunningPlanDetailScreen.tsx:34-41` keeps operation-specific confirmation labels/consequences and retains review on failure; collision review uses `ScheduleConflictSheet` and the current confirmation token path. Related component/integration contracts pass. |
+| Dark / 200% source contracts | Source contract verified; runtime deferred | Semantic light/dark tokens are consumed by the Phase 17 screens and shared controls; type roles use the declared Archivo/IBM Plex families and 14/16/20 sizes. No native screenshot or 200% runtime proof was requested, so this is not classified as a defect. |
+| Component suite labels | Verified | `npm run test:components -- --runInBand` passes 71 suites and 684 tests, including the formerly failing retry and reorder label suites. |
+
+## Top 3 Priority Follow-ups
+
+These are deferred verification items, not unresolved Phase 17 source defects:
+
+1. Capture the native deep routes at 200% text and landscape to confirm long facts, error/retry copy, seven summaries, and chooser choices reflow without clipping.
+2. Capture Light and Dark native states to confirm the declared 60/30/10 composition, small-text contrast, focus ring, blue Running context, green success, and red destructive roles.
+3. Run the owner’s native accessibility/device matrix for keyboard/D-pad focus and safe-area/keyboard reachability; specifically exercise save-error focus, first-invalid focus, Escape reorder, delete restoration, and lifecycle/collision confirmation retry.
 
 ## Detailed Findings
 
-### Pillar 1: Copywriting (2/4)
+### Pillar 1: Copywriting (4/4)
 
-WARNING findings:
+The previously reported factual and copy defects are closed. Goal, benchmark provenance/date, target date, weekly count, selected weekdays, long-run day, current weekly distance, and session readback are explicit in `src/ui/screens/RunningPlanDetailScreen.tsx:24-25` and `src/ui/screens/RunningPlanEditorScreen.tsx:159-177`. The seven typed session summaries retain user-facing units and effort context in `src/ui/components/RunningSessionFields.tsx:149-183`.
 
-- `src/ui/screens/LibraryScreen.tsx:877-881` says `No exercises match` and `Try another name...`; the contract requires heading `No matches` and body `No exercise matches your search and current filters.`
-- `src/ui/screens/LibraryScreen.tsx:861-866` uses `Retry exercise search` for the root load failure; the contract requires `Retry loading Library`. The root retry at `src/ui/screens/LibraryScreen.tsx:1800-1807` is `Retry Library`, also not the declared CTA.
-- `src/ui/screens/LibraryScreen.tsx:1787-1793` uses `Retry Library refresh` and a different body; the contract requires `Library could not refresh. Your current results are still shown.` and `Retry refreshing Library`.
-- `src/ui/screens/RunningPlanDetailScreen.tsx:54` uses `No weekly sessions scheduled.` instead of the exact `No sessions yet` empty-session state. The required body and `Add session` CTA are absent.
-- `src/ui/screens/RunningPlanDetailScreen.tsx:88-89` uses `Return to Library and choose a Running plan.`, `Retry`, and `Your Library was not changed. Try again.` instead of the missing-detail and contextual load-error copy.
-- `src/ui/screens/RunningPlanEditorScreen.tsx:59,62-83` exposes the internal error string `running_save_failed`, omits `Goal and weekly sessions` and its explanatory body, and uses `Save changes` rather than the declared Running create/edit CTAs. Its delete review says `Remove ...` / `Remove session` rather than `Delete {Workout type} session?` / `Delete session`.
-- `src/ui/screens/RunningSessionEditorScreen.tsx:155-168` uses generic loading/missing/error wording and `Discard session edits?`; the contract requires the documented missing-detail, save-error, and three-way draft confirmation language.
-- `src/ui/components/ScheduleConflictSheet.tsx:102-110,126,130-135` uses generic `Schedule conflict`, `Back`, and `Review schedule change`; the required grammar is `{weekday} conflict`, includes `no medical judgment is made`, and uses the exact confirmation/cancel contract. Stale text is also different from the required “Check the latest dates and choose again.”
+The chooser matches the contract at `src/ui/screens/PlanTypeChooserScreen.tsx:44-62`. Save success and failure copy is noun-specific and keeps activation separate. The formerly stale generic retry/reorder labels are reconciled: the full component run passed 71/71 suites and 684/684 tests.
 
-### Pillar 2: Visuals (1/4)
+### Pillar 2: Visuals (3/4) — WARNING
 
-BLOCKER findings:
+Source structure now provides the required deep-route hierarchy: header, status, identity, explanation, flat factual rows, weekly structure, typed session rows, and explicit actions (`RunningPlanDetailScreen.tsx:24-41`). The neutral chooser has equal Strength/Running choice structure and explicit equal minimum geometry (`PlanTypeChooserScreen.tsx:83-110`).
 
-- `src/ui/screens/RunningPlanDetailScreen.tsx:41-59,134-146` renders the entire detail hierarchy with unstyled `Text`, `View`, and actions. There is no status-tag treatment, fact-row composition, intro block, or shared editorial surface corresponding to the approved deep-route composition.
-- `src/ui/screens/RunningPlanEditorScreen.tsx:62-84` and `src/ui/screens/RunningSessionEditorScreen.tsx:159-169` render raw controls in a bare `View`, without the shared form sections, field labels/help, scroll container, or deep-route layout. Passing component tests do not prove the resulting hierarchy or responsive composition.
-- The Running detail route presents `Revision N` as a visible UI fact (`RunningPlanDetailScreen.tsx:56`) even though revision is an implementation/source fact, not a declared user-facing detail in the Phase17 composition.
+The score remains 3 because no dev server was available and native proof is deferred. There is no rendered evidence for 200% text, long plan names, landscape, safe-area headers, or keyboard-visible editor composition. Those are verification gaps, not claims that the source contract is absent.
 
-### Pillar 3: Color (1/4)
+### Pillar 3: Color (3/4) — WARNING
 
-BLOCKER findings:
+The Phase 17 surfaces consume `useAppTheme` and semantic roles rather than local palette forks (`RunningPlanDetailScreen.tsx:24-25`, `RunningPlanEditorScreen.tsx:56`, `PlanTypeChooserScreen.tsx:38-99`). Light and dark tokens, Running blue, success green, attention yellow, destructive red, and focus blue are defined in `src/ui/theme/index.ts:211-233`.
 
-- `src/ui/screens/RunningPlanDetailScreen.tsx:41-59,134-146` has no `useAppTheme`, semantic color, or `typeScale` use. All status, goal, session, and action-adjacent text falls back to native defaults, so the route cannot meet the persisted Light/Dark contract.
-- `src/ui/screens/RunningPlanEditorScreen.tsx:1-84`, `src/ui/screens/RunningSessionEditorScreen.tsx:1-169`, and `src/ui/components/RunningSessionFields.tsx:1-244` likewise omit theme colors for text, inputs, labels, validation, and previews. This is a direct dark-mode failure, not a native-proof-only concern.
-- The token source is mostly present in `src/ui/theme/index.ts:208-230`, but token existence does not compensate for consumers that do not apply it. No third-party registry audit was required because `components.json` is absent.
+Rendered 60/30/10 distribution, dark-theme contrast, and focus-ring appearance could not be observed without native rendering. No hard-coded Phase 17 palette violation was found in the audited source.
 
-### Pillar 4: Typography (1/4)
+### Pillar 4: Typography (3/4) — WARNING
 
-BLOCKER findings:
+The shared Phase 14 type contract is consumed by the audited Phase 17 routes: 20sp/24sp Archivo 800 headings, 16sp/22sp body/control, and 14sp/20sp supporting labels (`src/ui/theme/index.ts:67-119`; `RunningPlanDetailScreen.tsx:24-25`; `RunningPlanEditorScreen.tsx:159-177`; `RunningSessionFields.tsx:170-183`). Data-like readbacks remain separated from prose roles.
 
-- `src/ui/screens/RunningPlanDetailScreen.tsx:46-59` uses bare `Text` for title, status, facts, session labels, and revisions; none uses Archivo/IBM Plex Mono through the declared Phase17 roles.
-- `src/ui/components/RunningSessionFields.tsx:140-165,178-242` uses bare labels and inputs for all seven session kinds. The contract requires 16sp/22sp body, 14sp factual mono values where appropriate, 20sp/24sp headings/actions, and wrapping at 200%.
-- `src/ui/screens/RunningPlanEditorScreen.tsx:64-82` and `RunningSessionEditorScreen.tsx:155-168` also bypass typography tokens. The preview emits `m` and `ms` (`RunningSessionFields.tsx:118-125`) rather than user-facing distance/time units, making factual values implementation-oriented and inconsistent with the UI contract.
-- `src/ui/theme/index.ts:64-124` correctly defines the shared Phase14 scale, but the Phase17 Running consumers do not use it. The inherited Workout-only extra roles do not excuse raw Phase17 consumers.
+The remaining warning is evidence-only: Android font scaling and 200% wrapping/clipping were not run. Native proof is deferred and is not a shipping blocker in this review.
 
-### Pillar 5: Spacing (1/4)
+### Pillar 5: Spacing (3/4) — WARNING
 
-BLOCKER findings:
+The shared tokens define the declared 4/8/16/24/32/48/64 scale plus 48dp minimum target, 56dp action, 64dp deep header, 88dp collection row, and 120dp active-plan row (`src/ui/theme/index.ts:32-61`). `AdaptiveScreen.tsx:177-245` supplies safe-area, keyboard-adjusted scrolling, and dock-aware content; chooser and session controls use the shared spacing tokens.
 
-- `src/ui/components/index.ts:1362-1367` defines the shared `screenHeader` with `minHeight: sizes.minimumTarget` (48dp), while the Phase17 deep-route header requires 64dp.
-- `src/ui/components/NavigationRow.tsx:64-67` defines a list navigation row with `minHeight: 48`; Phase17 plan/exercise/session rows require 88dp minimum and active-plan rows 120dp. Its own test codifies the 48dp geometry at `src/ui/components/NavigationRow.test.tsx:37`.
-- `src/ui/screens/PlanTypeChooserScreen.tsx:104-110` introduces a literal `minHeight: 156` for choices. It is not a declared Phase17 geometry token and is not responsive to text expansion; at 200% it is only a minimum with no evidence that the surrounding layout reflows safely.
-- Running editor/session routes do not use `AdaptiveScreen` (`RunningPlanEditorScreen.tsx:62`, `RunningSessionEditorScreen.tsx:159`), so they do not receive the shared gutters, readable max width, keyboard/navigation inset, or landscape scroll behavior required by the contract.
+Runtime geometry is not captured. The remaining uncertainty is whether long content expands every row/header and keeps Save, retry, and confirmation actions reachable at 200% text and keyboard-visible states.
 
-### Pillar 6: Experience Design (1/4)
+### Pillar 6: Experience Design (4/4)
 
-BLOCKER findings:
+The formerly identified interaction gaps are fixed and test-backed:
 
-- `src/ui/screens/RunningSessionEditorScreen.tsx:155-169` is a non-scrollable bare `View` for the longest form. It has no keyboard inset handling, no focus-to-first-invalid behavior, and no guarantee that validation, preview, or Save remains reachable above the keyboard at 200% text.
-- `src/ui/screens/RunningPlanEditorScreen.tsx:70-72` renders `RunningSessionFields` for persisted rows with `onChange={() => undefined}`. Those visible controls are inert; editing is delegated to another action while a form-shaped UI is presented as if interactive.
-- `src/ui/screens/RunningPlanEditorScreen.tsx:76-78` provides reorder actions, but there is no lifted-row/insertion-marker or explicit Escape-cancel path in the screen; the Phase17 reorder contract requires keyboard/D-pad semantics plus cancellation without mutation.
-- Lifecycle review in `src/ui/screens/RunningPlanDetailScreen.tsx:134-141` is an inline block rather than the shared focus-trapping confirmation surface. It does not use the exact reviewed confirmation copy and has no explicit focus ownership for opening, confirmation, cancel, or stale retry.
-- Loading/error recovery is incomplete or non-shared: `RunningPlanDetailScreen.tsx:87-89` uses skeletons but no announced loading contract or contextual Retry label; `RunningSessionEditorScreen.tsx:155-157` renders plain loading/error text; save failure is a raw alert string at `:165` rather than a focused error notice followed by the noun-specific retry action.
-- Positive evidence: Library state separation and scroll offsets are implemented in `src/ui/screens/LibraryScreen.tsx:1263-1266,1869-1877`; focus-capable shared controls exist; and the focused Phase17 component suites passed 7/7 suites and 60/60 tests. Those strengths do not cover the unstyled Running surfaces or deferred native proof.
+- Save failures retain drafts, announce noun-specific recovery, focus the error heading, and expose noun-specific retry actions (`RunningPlanEditorScreen.tsx:94-100,137-146,178`; `RunningSessionEditorScreen.tsx:153-182,192`).
+- First-invalid focus is field-specific for plan and all seven session forms (`RunningPlanEditorScreen.tsx:115-135`; `RunningSessionFields.tsx:39-55,102-136`).
+- Escape cancels reorder, while Shift+Arrow retains reorder semantics (`PlanEditorFields.tsx:396-417`).
+- Delete confirmation and dirty-draft confirmation restore focus to the appropriate surviving row, Add session, or launching action (`RunningPlanEditorScreen.tsx:81-92,177-183`).
+- Loading, missing, load-error, empty-session, disabled/busy, save-error, retry, lifecycle, and collision confirmation states are represented by shared notices/dialogs/sheets.
+- Full component verification is green: 71 suites, 684 tests. `npm run typecheck` and `npm run check:boundaries` also pass.
 
-## Native / Screenshot Boundary
+## Registry Safety
 
-No APK, native screenshots, device mutation, or native accessibility matrix was performed, per owner direction. Phase20 owns that proof. The absence of that evidence is recorded here and is not scored as a Phase17 implementation defect; the findings above are source-level contradictions visible without native execution.
+Registry audit: not applicable. `components.json` is absent, `17-UI-SPEC.md` declares `shadcn_initialized: false`, and its registry table declares no third-party blocks.
 
 ## Files Audited
 
-- Contract/context: `.planning/phases/17-library-running-plans/17-UI-SPEC.md`, `17-CONTEXT.md`, `17-01` through `17-14` PLAN/SUMMARY files, `17-VALIDATION.md`.
-- Owner/source precedence: `.planning/v1.2-OWNER-BRIEF.md`, `.planning/v1.2-OWNER-DECISIONS.md`, `.planning/design/v1.2-SOURCE-PRECEDENCE.md`, external Revision18 approval/prototype references under `/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/`.
-- Shared shell/token consumers: `src/ui/layout/AdaptiveScreen.tsx`, `src/ui/components/index.ts`, `src/ui/components/NavigationRow.tsx`, `src/ui/theme/index.ts`.
-- Library: `src/ui/screens/LibraryScreen.tsx`, `src/ui/components/PlanRow.tsx`, `src/ui/components/M3SearchField.tsx`, `src/ui/components/M3FilterChip.tsx`, `src/ui/__tests__/LibraryScreen.test.tsx`, `src/ui/__tests__/PlanTypeChooserScreen.test.tsx`.
-- Strength/exercise ownership: `src/ui/screens/OwnedPlanDetailScreen.tsx`, `src/ui/screens/OwnedPlanEditorScreen.tsx`, `src/ui/screens/ExerciseDetailScreen.tsx`, `src/ui/screens/ExerciseEditorScreen.tsx`, `src/ui/__tests__/OwnedPlanDetailScreen.test.tsx`, `src/ui/__tests__/OwnedPlanEditor.test.tsx`, `src/ui/__tests__/CustomExerciseScreens.test.tsx`.
-- Running: `src/ui/screens/RunningPlanDetailScreen.tsx`, `src/ui/screens/RunningPlanEditorScreen.tsx`, `src/ui/screens/RunningSessionEditorScreen.tsx`, `src/ui/components/RunningSessionFields.tsx`, `src/ui/components/ScheduleConflictSheet.tsx`, corresponding focused tests, and `tests/integration/running-plan-authoring.test.ts`, `tests/integration/running-schedule-collision.test.ts`, `tests/integration/multi-plan-lifecycle.test.ts`.
-- Phase14 reference read-only: `.planning/phases/14-prototype-visual-shell/14-UI-SPEC.md` and related shell artifacts were consulted only for the inherited contract; no Phase14 evidence was modified by this audit.
+- Contract: `.planning/phases/17-library-running-plans/17-UI-SPEC.md`, `17-VALIDATION.md`, `17-UI-REVIEW-FIX.md`, `17-REVIEW-FIX.md`.
+- Running UI: `src/ui/screens/RunningPlanDetailScreen.tsx`, `RunningPlanEditorScreen.tsx`, `RunningSessionEditorScreen.tsx`, `src/ui/components/RunningSessionFields.tsx`, `src/ui/running/runningFormDraft.ts`.
+- Shared UI: `src/ui/layout/AdaptiveScreen.tsx`, `src/ui/theme/index.ts`, `src/ui/components/PlanEditorFields.tsx`, `src/ui/components/ConfirmationDialog.tsx`, `src/ui/components/ScheduleConflictSheet.tsx`, `src/ui/components/NavigationRow.tsx`, `src/ui/components/PlanRow.tsx`.
+- Chooser and library contracts: `src/ui/screens/PlanTypeChooserScreen.tsx`, `src/ui/screens/LibraryScreen.tsx`.
+- Tests: `src/ui/__tests__/RunningPlanEditorScreen.test.tsx`, `RunningPlanDetailScreen.test.tsx`, `RunningSessionEditorScreen.test.tsx`, `PlanTypeChooserScreen.test.tsx`, `src/ui/components/RunningSessionFields.test.tsx`, `src/ui/running/runningFormDraft.test.ts`, `src/ui/components/PlanEditorFields.test.tsx`, `src/ui/components/ScheduleConflictSheet.test.tsx`, plus the complete component project.
+
+## Verification Commands
+
+- `npm run test:components -- --runInBand` — passed, 71 suites / 684 tests.
+- `npm run typecheck` — passed.
+- `npm run check:boundaries` — passed, 371 files.
+- Screenshot probes — no server on ports 3000, 5173, or 8080; no screenshots captured.
