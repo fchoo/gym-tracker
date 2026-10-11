@@ -117,5 +117,13 @@ describe("Garmin import portability integration", () => {
       id: "portable-merge-garmin-clean-restore",
       status: "passed",
     }));
+    expect(result.cases.filter(({ id }) => id.startsWith("portable-merge-garmin-")))
+      .toEqual([
+        "portable-merge-garmin-clean-restore",
+        "portable-merge-garmin-exact-repeat-noop",
+        "portable-merge-garmin-conflict-isolation",
+        "portable-merge-garmin-remap-tombstone-match",
+        "portable-merge-garmin-tamper-capacity-rollback",
+      ].map((id) => expect.objectContaining({ id, status: "passed" })));
   });
 });
