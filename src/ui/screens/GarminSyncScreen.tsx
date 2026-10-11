@@ -207,7 +207,7 @@ function ImportedActivities({
           Loading imported activities
         </Text>
       ) : null}
-      {historyStatus !== "loading" && activities.length === 0 ? (
+      {historyStatus === "ready" && activities.length === 0 ? (
         <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>No imported activities yet.</Text>
       ) : null}
       {activities.map((activity) => (

@@ -195,6 +195,7 @@ export function createGarminRootRuntime(input: Readonly<{
   requestFor: GarminSharedImportRequestFactory;
   loadActivities(): Promise<readonly GarminImportedActivityListItem[]>;
 }>): GarminRootRuntime {
+  const revisionReviews = new Set<string>();
   const importer = createGarminImportRuntime({
     services: input.services,
     sha256: input.sha256,
@@ -207,17 +208,28 @@ export function createGarminRootRuntime(input: Readonly<{
       const confirmation = await input.requestFor(
         await prepareGarminImport(envelope, input.sha256),
       );
-      return importer.commitEnvelope({
+      const result = await importer.commitEnvelope({
         envelope,
         confirmation,
         assertCurrentGeneration,
       });
+      if (result.kind === "revision_review") {
+        revisionReviews.add(result.activityId);
+      } else if (result.kind === "imported") {
+        revisionReviews.delete(result.activityId);
+      }
+      return result;
     },
   });
   return Object.freeze({
     source: input.source,
     coordinator,
-    loadActivities: input.loadActivities,
+    async loadActivities() {
+      const activities = await input.loadActivities();
+      return Object.freeze(activities.map((activity) => revisionReviews.has(activity.activityId)
+        ? Object.freeze({ ...activity, revisionState: "needs_review" as const })
+        : activity));
+    },
   });
 }
 
