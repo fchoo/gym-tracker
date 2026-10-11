@@ -48,6 +48,15 @@ function acceptedOutdoorRow(): ImportedActivityDetailSourceRow {
   });
 }
 
+function rowWith(
+  transform: (aggregate: Record<string, any>) => void,
+): ImportedActivityDetailSourceRow {
+  const source = acceptedOutdoorRow();
+  const aggregate = JSON.parse(source.aggregateJson) as Record<string, any>;
+  transform(aggregate);
+  return Object.freeze({ ...source, aggregateJson: JSON.stringify(aggregate) });
+}
+
 describe("projectImportedActivityDetail accepted outdoor facts", () => {
   it("projects only the accepted local revision with distinct source-present facts", () => {
     const projected = projectImportedActivityDetail(acceptedOutdoorRow());
@@ -95,6 +104,112 @@ describe("projectImportedActivityDetail accepted outdoor facts", () => {
     expect(projected).toEqual({
       kind: "projection_error",
       code: "accepted_payload_unavailable",
+    });
+  });
+});
+
+describe("projectImportedActivityDetail truthfulness matrix", () => {
+  it("always suppresses route for treadmill while preserving source timer, distance, and laps", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.normalized.subtype = "treadmill";
+      delete aggregate.normalized.moving_ms;
+      delete aggregate.normalized.average_heart_rate_bpm;
+    }));
+
+    expect(projected).toMatchObject({
+      kind: "ready",
+      detail: {
+        activityType: "Treadmill run",
+        distance: "5.00 km",
+        secondaryDuration: { label: "Timer", value: "25:00" },
+        averagePace: { basis: "Timer time", value: "5:00/km" },
+        route: { kind: "none" },
+      },
+    });
+    expect(projected.kind === "ready" && projected.detail).not.toHaveProperty("averageHeartRate");
+  });
+
+  it("keeps outdoor route, HR, durations, and pace unavailable rather than manufacturing zeroes", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      delete aggregate.normalized.route;
+      delete aggregate.normalized.elapsed_ms;
+      delete aggregate.normalized.timer_ms;
+      delete aggregate.normalized.moving_ms;
+      delete aggregate.normalized.average_heart_rate_bpm;
+    }));
+
+    expect(projected).toMatchObject({
+      kind: "ready",
+      detail: {
+        route: { kind: "unavailable" },
+        distance: "5.00 km",
+      },
+    });
+    if (projected.kind !== "ready") throw new Error("expected_ready");
+    for (const key of ["elapsed", "secondaryDuration", "averagePace", "averageHeartRate"] as const) {
+      expect(projected.detail).not.toHaveProperty(key);
+    }
+  });
+
+  it("shows source-present zero distance without deriving pace", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.normalized.distance_meters = 0;
+    }));
+
+    expect(projected).toMatchObject({ kind: "ready", detail: { distance: "0 m" } });
+    expect(projected.kind === "ready" && projected.detail).not.toHaveProperty("averagePace");
+  });
+
+  it("preserves lap source order and keeps missing lap time and pace unavailable", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.normalized.laps = [
+        { ordinal: 4, distance_meters: 1_000 },
+        { ordinal: 1, elapsed_ms: 310_000 },
+      ];
+    }));
+
+    expect(projected).toMatchObject({
+      kind: "ready",
+      detail: {
+        laps: [
+          { lap: "5" },
+          { lap: "2", time: { basis: "Elapsed time", value: "5:10" } },
+        ],
+      },
+    });
+    if (projected.kind !== "ready") throw new Error("expected_ready");
+    expect(projected.detail.laps[0]).not.toHaveProperty("time");
+    expect(projected.detail.laps[0]).not.toHaveProperty("pace");
+    expect(projected.detail.laps[1]).not.toHaveProperty("pace");
+  });
+
+  it("retains a bounded large lap list without reordering it", () => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.normalized.laps = Array.from({ length: 240 }, (_, ordinal) => ({
+        ordinal,
+        elapsed_ms: 60_000,
+        distance_meters: 200,
+      }));
+    }));
+
+    if (projected.kind !== "ready") throw new Error("expected_ready");
+    expect(projected.detail.laps).toHaveLength(240);
+    expect(projected.detail.laps[0]?.lap).toBe("1");
+    expect(projected.detail.laps[239]?.lap).toBe("240");
+  });
+
+  it.each([
+    ["source_summary", "Source summary", "Summary facts come from accepted source fields."],
+    ["source_laps", "Source laps", "Lap and summary facts come from accepted source fields."],
+    ["sampled", "Sampled data", "Sampled positions and charts cannot prove exact arbitrary-distance best efforts."],
+  ] as const)("discloses %s fidelity without promoting sampled evidence", (kind, heading, body) => {
+    const projected = projectImportedActivityDetail(rowWith((aggregate) => {
+      aggregate.sample_fidelity = kind;
+    }));
+
+    expect(projected).toMatchObject({
+      kind: "ready",
+      detail: { fidelity: { kind, heading, body } },
     });
   });
 });

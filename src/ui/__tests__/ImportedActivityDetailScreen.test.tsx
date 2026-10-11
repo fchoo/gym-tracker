@@ -90,3 +90,74 @@ describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
     expect(screen.queryByRole("button", { name: /edit|delete|remove|replace/u })).toBeNull();
   });
 });
+
+describe("ImportedActivityDetailScreen missing-channel and reflow matrix", () => {
+  it("renders treadmill No route and never draws stray source positions or a missing HR row", async () => {
+    await renderScreen({
+      state: {
+        kind: "ready",
+        detail: {
+          ...outdoorDetail,
+          activityType: "Treadmill run",
+          route: { kind: "none" },
+          averageHeartRate: undefined,
+        },
+      },
+    });
+
+    expect(screen.getByText("No route")).toBeTruthy();
+    expect(screen.queryByTestId("activity-detail-route")).toBeNull();
+    expect(screen.queryByText("Average heart rate")).toBeNull();
+  });
+
+  it("renders Route unavailable and Laps unavailable without zero-value substitutes", async () => {
+    await renderScreen({
+      state: {
+        kind: "ready",
+        detail: {
+          ...outdoorDetail,
+          elapsed: undefined,
+          secondaryDuration: undefined,
+          averagePace: undefined,
+          route: { kind: "unavailable" },
+          averageHeartRate: undefined,
+          laps: [],
+        },
+      },
+    });
+
+    expect(screen.getByText("Route unavailable")).toBeTruthy();
+    expect(screen.getByText("Laps unavailable")).toBeTruthy();
+    expect(screen.queryByText("0:00")).toBeNull();
+    expect(screen.queryByText("0 bpm")).toBeNull();
+  });
+
+  it("announces missing lap cells as unavailable and keeps exact headers", async () => {
+    await renderScreen({
+      state: {
+        kind: "ready",
+        detail: {
+          ...outdoorDetail,
+          laps: [{ lap: "7" }],
+        },
+      },
+    });
+
+    expect(screen.getByRole("row", {
+      name: "Lap 7. Time Unavailable. Pace Unavailable.",
+    })).toBeTruthy();
+    expect(screen.getAllByText("Unavailable")).toHaveLength(2);
+    expect(screen.getByRole("columnheader", { name: "Lap" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Time" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Pace" })).toBeTruthy();
+  });
+
+  it("stacks label/value lap cells at compact width as the 200% text alternative", async () => {
+    await renderScreen({ width: 360 });
+
+    expect(screen.getByTestId("activity-detail-lap-row-0")).toHaveStyle({
+      flexDirection: "column",
+    });
+    expect(screen.getAllByTestId("activity-detail-lap-cell-label")).toHaveLength(3);
+  });
+});
