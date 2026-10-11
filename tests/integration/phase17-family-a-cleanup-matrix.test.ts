@@ -33,11 +33,23 @@ import { createPhase17FixtureProtocol } from "../../src/bootstrap/phase17NativeF
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
 import { createCustomExercise } from "../../src/domains/library/customExerciseCommands";
 import type { OwnedPlanDraftInput } from "../../src/domains/plans/ownedPlanCommands";
-import { createStarterPlanCopy, parseAcceptedStarterPlanPack, type AcceptedStarterPack, type AcceptedStarterTemplate } from "../../src/domains/plans/activateStarterPlan";
+import {
+  activateStarterPlan,
+  createStarterPlanActivationConfirmationToken,
+  createStarterPlanCopy,
+  parseAcceptedStarterPlanPack,
+  type AcceptedStarterPack,
+  type AcceptedStarterTemplate,
+} from "../../src/domains/plans/activateStarterPlan";
 import { parseExerciseCatalog } from "../../src/domains/content/catalog";
 import { createContentRepository } from "../../src/platform/sqlite/repositories/contentRepository";
-import { createStarterPlanRepository } from "../../src/platform/sqlite/repositories/starterPlanRepository";
+import { createStarterPlanRepository, installAcceptedStarterPlanSources } from "../../src/platform/sqlite/repositories/starterPlanRepository";
+import { createWorkoutOutcomeRepository } from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
+import { discardWorkout } from "../../src/domains/workout/finishWorkout";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
+import { createScheduleRuntimePort } from "../../src/bootstrap/scheduleRuntime";
+import { createStarterTemplateUpdatePreview, legacyFullBodySourceJson } from "../../src/bootstrap/starterPlanRuntime";
+import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
 
 /**
  * These are deliberately the only Family A matrix rows migrated in this pass.
@@ -137,6 +149,28 @@ async function migratedKernel(): Promise<SqliteKernel> {
       return { backupId: "phase17-matrix-final", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const };
     } },
   }).run();
+  const activeWorkouts = await kernel.queryAll<{ id: string; revision: number }>(
+    "SELECT id, revision FROM workout_sessions WHERE status = 'in_progress' ORDER BY id",
+  );
+  for (const active of activeWorkouts) {
+    await discardWorkout({
+      repository: createWorkoutOutcomeRepository(kernel),
+      input: {
+        sessionId: active.id,
+        expectedSessionRevision: active.revision,
+        confirmation: "discard_workout",
+        endedAtMs: NOW_MS,
+      },
+    });
+  }
+  // The v6 migration fixture predates the owned-schedule activation model and
+  // carries an active plan without an active schedule.  Normalize that legacy
+  // fixture-only state before capturing the matrix baseline so each journey's
+  // activation owns the entire active-plan transition it later cleans up.
+  await kernel.write((transaction) => transaction.execute(
+    "UPDATE plans SET is_active = 0 WHERE is_active = 1",
+  ));
+  await installAcceptedStarterPlanSources(kernel, await starterPack());
   return kernel;
 }
 
@@ -234,6 +268,40 @@ function starterSchedule(template: AcceptedStarterTemplate) {
           weekday: binding.weekday,
         }))),
       };
+}
+
+async function activateStarterFixture(input: Readonly<{
+  kernel: SqliteKernel;
+  template: AcceptedStarterTemplate;
+  requestId: string;
+  expectedActiveScheduleRevision: number | null;
+}>) {
+  const schedule = starterSchedule(input.template);
+  const pack = await starterPack();
+  return activateStarterPlan({
+    kind: "accepted",
+    starterPackBytes,
+    acceptanceBytes: starterAcceptanceBytes,
+    sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+    repository: createStarterPlanRepository(input.kernel),
+    requestId: input.requestId,
+    activatedAtMs: NOW_MS,
+    expectedActiveScheduleRevision: input.expectedActiveScheduleRevision,
+    confirmationToken: createStarterPlanActivationConfirmationToken({
+      assetSha256: pack.assetSha256,
+      templateId: input.template.id,
+      templateRevision: input.template.revision,
+      startLocalDate: schedule.startLocalDate,
+      timeZone: schedule.timeZone,
+      mode: schedule.mode,
+      bindings: schedule.bindings,
+      copyChoice: null,
+    }),
+    templateId: input.template.id,
+    templateRevision: input.template.revision,
+    copyChoice: null,
+    ...schedule,
+  });
 }
 
 describe("Phase 17 Family A cleanup matrix", () => {
@@ -458,10 +526,9 @@ describe("Phase 17 Family A cleanup matrix", () => {
     expect(after).toEqual(before);
   });
 
-  it.each([
-    { caseId: "library.starter-detail", label: "starter-editable-copy" },
-    { caseId: "library.template-update", label: "starter-template-update-copy" },
-  ] as const)("runs migrated schema-42/v8 $caseId through its real inactive-copy command and cleanup", async ({ caseId, label }) => {
+  it("runs migrated schema-42/v8 library.starter-detail through its real inactive-copy command and cleanup", async () => {
+    const caseId = "library.starter-detail";
+    const label = "starter-editable-copy";
     const kernel = await migratedKernel();
     const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
     expect(schema?.user_version).toBe(42);
@@ -560,6 +627,304 @@ describe("Phase 17 Family A cleanup matrix", () => {
     } catch (error) {
       throw new Error(`phase17_matrix_starter_copy_${stage}`, { cause: error });
     }
+    await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
+    await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY])).resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
+    expect(await logicalDigest(kernel)).toEqual(before);
+  });
+
+  it("runs migrated schema-42/v8 library.template-update from a source-backed older owned copy through preview, copy, receipt, and cleanup", async () => {
+    const caseId = "library.template-update";
+    const label = "starter-template-update-copy";
+    const kernel = await migratedKernel();
+    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
+    expect(schema?.user_version).toBe(42);
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
+      [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
+    ));
+    const before = await logicalDigest(kernel);
+    const template = (await starterPack()).templates.find(({ id }) => id === "full-body-foundation");
+    if (template === undefined) throw new Error("phase17_matrix_starter_template_missing");
+    const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const envelope = createPhase17ActionEnvelopeSource({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: {
+        read: async () => {
+          const [setting] = await kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [ENVELOPE_KEY]);
+          return setting === undefined ? null : JSON.parse(setting.value_json) as Phase17ActionEnvelopeContext;
+        },
+        write: async (value) => { await kernel.write((transaction) => transaction.execute(
+          `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+           VALUES (?, 1, ?, 1, ?)
+           ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+             revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+          [ENVELOPE_KEY, JSON.stringify(value), NOW_MS],
+        )); },
+        clear: async (value) => { await kernel.write((transaction) => transaction.execute("DELETE FROM app_settings WHERE key = ? AND value_json = ?", [ENVELOPE_KEY, JSON.stringify(value)])); },
+      },
+    });
+    const protocol = createPhase17FixtureProtocol({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      createToken: () => "phase17:templateupdate0001",
+      adapter: {
+        baselineDigest: async () => (await logicalDigest(kernel)).digest,
+        canonicalHash: async (value) => sha256(JSON.stringify(value)),
+        selectorSchema: () => ({ selectors: ["ownedPlanId", "customExerciseId"], actionInputs: ["phase17ActionReceiptId"] }),
+        seed: async ({ fixtureToken }) => {
+          const legacyPlanId = `phase17:legacy-copy:${fixtureToken.slice("phase17:".length)}`;
+          await kernel.write((transaction) => transaction.execute(
+            `INSERT INTO plans
+              (id, content_pack_id, origin, source_namespace, upstream_id, name,
+               days_per_week, audience, goal, estimate_minutes, attribution,
+               is_active, revision)
+             VALUES (?, NULL, 'copied', 'gym-tracker.original', ?, ?, 2, ?, ?, ?, ?, 0, 1)`,
+            [legacyPlanId, template.id, template.displayName, template.audience, template.goal, template.estimatedDurationMinutes, "source-backed historical copy"],
+          ));
+          const actionReceiptId = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+          return {
+            selectors: { ownedPlanId: legacyPlanId, customExerciseId: `phase17:unused:${fixtureToken.slice("phase17:".length)}` },
+            actionInputs: { phase17ActionReceiptId: actionReceiptId },
+            expectedPreState: { caseId, fixtureToken, actionReceiptId: null, copiedPlan: false, sourceRevision: 1 },
+            expectedPostState: { caseId, fixtureToken, actionReceiptId, copiedPlan: true, sourceRevision: template.revision },
+            actionReceiptId,
+          };
+        },
+        probe: async ({ fixtureToken, selectors }) => {
+          const requestId = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+          const [receipt] = await kernel.queryAll<{ operation: string; source_plan_id: string | null; result_plan_id: string; expected_revision: number | null; result_revision: number; result_json: string }>(
+            "SELECT operation, source_plan_id, result_plan_id, expected_revision, result_revision, result_json FROM owned_plan_mutation_requests WHERE request_id = ?", [requestId],
+          );
+          if (receipt === undefined) throw new Error("phase17_matrix_template_update_receipt_missing");
+          expect(receipt).toMatchObject({ operation: "duplicate", source_plan_id: selectors.ownedPlanId, expected_revision: 1, result_revision: 1 });
+          const [source] = await kernel.queryAll<{ source_revision: number }>(
+            "SELECT source_revision FROM owned_plan_starter_sources WHERE plan_id = ?", [receipt.result_plan_id],
+          );
+          expect(source?.source_revision).toBe(template.revision);
+          expect(JSON.parse(receipt.result_json)).toMatchObject({ outcome: "committed", sourceOwnedPlanId: selectors.ownedPlanId, plan: { id: receipt.result_plan_id, sourceRevision: template.revision, isActive: false } });
+          const facts = { caseId, fixtureToken, actionReceiptId: requestId, copiedPlan: true, sourceRevision: template.revision };
+          return { rowCount: 1, identityHash: await sha256(JSON.stringify(facts)), facts };
+        },
+        cleanup: async ({ caseId: cleanupCaseId, fixtureToken, selectors }) => cleanupPhase17FamilyAManifest(kernel, createPhase17FamilyACleanupManifest(cleanupCaseId, fixtureToken, {
+          ownedPlanId: selectors.ownedPlanId!, customExerciseId: selectors.customExerciseId!,
+        })),
+        finalizeCleanup: async ({ caseId: cleanupCaseId, fixtureToken }) => envelope.clear({ caseId: cleanupCaseId, fixtureToken }),
+      },
+    });
+    const fixture = await protocol.setup(caseId);
+    expect(fixture.baselineDigest).toBe(before.digest);
+    const [acceptedSource] = await kernel.queryAll<{ source_revision: number; template_json: string }>(
+      "SELECT source_revision, template_json FROM starter_plan_sources WHERE source_namespace = ? AND template_id = ? AND source_revision = ?",
+      [(await starterPack()).namespace, template.id, template.revision],
+    );
+    expect(acceptedSource).toMatchObject({ source_revision: template.revision, template_json: template.sourceJson });
+    const preview = createStarterTemplateUpdatePreview({
+      ownedPlanId: fixture.selectors.ownedPlanId!,
+      ownedPlanName: template.displayName,
+      ownedPlanRevision: 1,
+      activeScheduleRevision: null,
+      previousSourceJson: legacyFullBodySourceJson(fullBodyFoundationAsset, template),
+      template,
+    });
+    expect(preview.sections.flatMap(({ changes }) => changes).some(({ kind }) => kind !== "Unchanged")).toBe(true);
+    await envelope.activate({ caseId, fixtureToken: fixture.fixtureToken, envelopes: phase17ActionEnvelopePlan(caseId, fixture.fixtureToken), cleanupManifest: createPhase17FamilyACleanupManifest(caseId, fixture.fixtureToken, {
+      ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId!,
+    }) });
+    const requestId = await envelope.claim({ caseId, fixtureToken: fixture.fixtureToken, label });
+    if (requestId === null) throw new Error("phase17_matrix_template_update_request_missing");
+    const result = await createStarterPlanCopy({
+      starterPackBytes,
+      acceptanceBytes: starterAcceptanceBytes,
+      sha256,
+      repository: createStarterPlanRepository(kernel),
+      requestId,
+      createdAtMs: NOW_MS,
+      sourceOwnedPlanId: preview.ownedPlanId,
+      expectedSourcePlanRevision: preview.ownedPlanRevision,
+      expectedActiveScheduleRevision: preview.activeScheduleRevision,
+      templateId: preview.template.id,
+      templateRevision: preview.template.revision,
+      ...starterSchedule(preview.template),
+    });
+    expect(result).toMatchObject({ outcome: "committed", sourceOwnedPlanId: preview.ownedPlanId, plan: { sourceRevision: template.revision, isActive: false } });
+    await expect(protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable })).resolves.toMatchObject({ verdict: "matched" });
+    await envelope.assertConsumed({ caseId, fixtureToken: fixture.fixtureToken });
+    await envelope.updateCleanupManifest({ caseId, fixtureToken: fixture.fixtureToken, cleanupManifest: await materializePhase17FamilyACleanupManifest(kernel, createPhase17FamilyACleanupManifest(caseId, fixture.fixtureToken, {
+      ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId!,
+    })) });
+    await expect(protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken })).resolves.toMatchObject({ verdict: "restored", baselineDigest: before.digest });
+    await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
+    await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY])).resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
+    expect(await logicalDigest(kernel)).toEqual(before);
+  });
+
+  it.each([
+    { caseId: "library.starter-activation", label: "starter-plan-activation" },
+    { caseId: "library.schedule-editor", label: "schedule-save" },
+    { caseId: "library.replacement-impact", label: "plan-impact-replace" },
+    { caseId: "library.day-removal-impact", label: "plan-impact-remove" },
+  ] as const)("runs migrated schema-42/v8 $caseId through its reviewed production preview, confirmation, receipt, and cleanup", async ({ caseId, label }) => {
+    const kernel = await migratedKernel();
+    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
+    expect(schema?.user_version).toBe(42);
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
+      [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
+    ));
+    const before = await logicalDigest(kernel);
+    const template = (await starterPack()).templates.find(({ id }) => id === "full-body-foundation");
+    if (template === undefined) throw new Error("phase17_matrix_starter_template_missing");
+    let sequence = 0;
+    const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const ownedPlans = createOwnedPlanRuntimePort(kernel, {
+      nowMs: () => NOW_MS,
+      randomUUID: () => `phase17-journey-${++sequence}`,
+      sha256,
+    });
+    const envelope = createPhase17ActionEnvelopeSource({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: {
+        read: async () => {
+          const [setting] = await kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [ENVELOPE_KEY]);
+          return setting === undefined ? null : JSON.parse(setting.value_json) as Phase17ActionEnvelopeContext;
+        },
+        write: async (value) => { await kernel.write((transaction) => transaction.execute(
+          `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+           VALUES (?, 1, ?, 1, ?)
+           ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+             revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+          [ENVELOPE_KEY, JSON.stringify(value), NOW_MS],
+        )); },
+        clear: async (value) => { await kernel.write((transaction) => transaction.execute("DELETE FROM app_settings WHERE key = ? AND value_json = ?", [ENVELOPE_KEY, JSON.stringify(value)])); },
+      },
+    });
+    const protocol = createPhase17FixtureProtocol({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      createToken: () => `phase17:journey-${String(++sequence).padStart(16, "0")}`,
+      adapter: {
+        baselineDigest: async () => (await logicalDigest(kernel)).digest,
+        canonicalHash: async (value) => sha256(JSON.stringify(value)),
+        selectorSchema: () => ({ selectors: ["ownedPlanId", "customExerciseId"], actionInputs: ["phase17ActionReceiptId"] }),
+        seed: async ({ fixtureToken }) => {
+          const actionReceiptId = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+          if (caseId === "library.starter-activation") {
+            return {
+              selectors: { ownedPlanId: `starter:${template.id}:r${template.revision}`, customExerciseId: `phase17:unused:${fixtureToken.slice("phase17:".length)}` },
+              actionInputs: { phase17ActionReceiptId: actionReceiptId },
+              expectedPreState: { caseId, fixtureToken, actionReceiptId: null, activated: false },
+              expectedPostState: { caseId, fixtureToken, actionReceiptId, activated: true },
+              actionReceiptId,
+            };
+          }
+          const setup = await activateStarterFixture({
+            kernel,
+            template,
+            requestId: `phase17:fixture:starter-activation:${fixtureToken.slice("phase17:".length)}:setup`,
+            expectedActiveScheduleRevision: null,
+          });
+          return {
+            selectors: { ownedPlanId: setup.plan.id, customExerciseId: `phase17:unused:${fixtureToken.slice("phase17:".length)}` },
+            actionInputs: { phase17ActionReceiptId: actionReceiptId },
+            expectedPreState: { caseId, fixtureToken, actionReceiptId: null, planRevision: setup.plan.revision, scheduleRevision: setup.schedule.revision },
+            expectedPostState: { caseId, fixtureToken, actionReceiptId, committed: true },
+            actionReceiptId,
+          };
+        },
+        probe: async ({ fixtureToken, selectors }) => {
+          const requestId = `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
+          if (caseId === "library.starter-activation") {
+            const [receipt] = await kernel.queryAll<{ result_plan_id: string; result_schedule_id: string; source_revision: number; result_json: string }>(
+              "SELECT result_plan_id, result_schedule_id, source_revision, result_json FROM starter_plan_activation_requests WHERE request_id = ?", [requestId],
+            );
+            if (receipt === undefined) throw new Error("phase17_matrix_activation_receipt_missing");
+            const result = JSON.parse(receipt.result_json) as { outcome?: string; plan?: { revision?: number; isActive?: boolean }; schedule?: { revision?: number; lifecycle?: string } };
+            expect(receipt.source_revision).toBe(template.revision);
+            expect(result).toMatchObject({ outcome: "committed", plan: { id: receipt.result_plan_id, revision: 1, isActive: true }, schedule: { id: receipt.result_schedule_id, revision: 1, lifecycle: "active" } });
+            const facts = { caseId, fixtureToken, actionReceiptId: requestId, activated: true };
+            return { rowCount: 1, identityHash: await sha256(JSON.stringify(facts)), facts };
+          }
+          const eventId = caseId === "library.schedule-editor" ? `schedule-command:${requestId}` : `plan-impact-command:${requestId}`;
+          const [event] = await kernel.queryAll<{ schedule_id: string; event_type: string; schedule_revision: number; payload_json: string }>(
+            "SELECT schedule_id, event_type, schedule_revision, payload_json FROM owned_plan_schedule_events WHERE id = ?", [eventId],
+          );
+          if (event === undefined) throw new Error("phase17_matrix_impact_receipt_missing");
+          const payload = JSON.parse(event.payload_json) as { result?: { outcome?: string; planId?: string; planRevision?: number; scheduleRevision?: number } };
+          expect(payload.result).toMatchObject({ outcome: "committed", planId: selectors.ownedPlanId });
+          const facts = { caseId, fixtureToken, actionReceiptId: requestId, committed: true };
+          return { rowCount: 1, identityHash: await sha256(JSON.stringify(facts)), facts };
+        },
+        cleanup: async ({ caseId: cleanupCaseId, fixtureToken, selectors }) => cleanupPhase17FamilyAManifest(kernel, createPhase17FamilyACleanupManifest(cleanupCaseId, fixtureToken, {
+          ownedPlanId: selectors.ownedPlanId!, customExerciseId: selectors.customExerciseId!,
+        })),
+        finalizeCleanup: async ({ caseId: cleanupCaseId, fixtureToken }) => envelope.clear({ caseId: cleanupCaseId, fixtureToken }),
+      },
+    });
+    const fixture = await protocol.setup(caseId);
+    expect(fixture.baselineDigest).toBe(before.digest);
+    await envelope.activate({ caseId, fixtureToken: fixture.fixtureToken, envelopes: phase17ActionEnvelopePlan(caseId, fixture.fixtureToken), cleanupManifest: createPhase17FamilyACleanupManifest(caseId, fixture.fixtureToken, {
+      ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId!,
+    }) });
+    const requestId = await envelope.claim({ caseId, fixtureToken: fixture.fixtureToken, label });
+    if (requestId === null) throw new Error("phase17_matrix_journey_request_missing");
+
+    if (caseId === "library.starter-activation") {
+      const result = await activateStarterFixture({ kernel, template, requestId, expectedActiveScheduleRevision: null });
+      expect(result).toMatchObject({ outcome: "committed", plan: { isActive: true, revision: 1 }, schedule: { lifecycle: "active", revision: 1 } });
+    } else {
+      const plan = await ownedPlans.loadPlan(fixture.selectors.ownedPlanId!);
+      if (plan === null || plan.scheduleDefaults === null) throw new Error("phase17_matrix_setup_plan_missing");
+      if (caseId === "library.schedule-editor") {
+        const schedules = createScheduleRuntimePort(kernel, ownedPlans, {
+          now: () => new Date(NOW_MS), nowMs: () => NOW_MS, randomUUID: () => `phase17-schedule-${++sequence}`, sha256,
+        });
+        const beforeSchedule = await schedules.loadSchedule(plan.id);
+        if (beforeSchedule === null || beforeSchedule.current === null) throw new Error("phase17_matrix_schedule_preview_missing");
+        const saved = await schedules.saveSchedule({
+          requestId,
+          planId: plan.id,
+          scheduleId: beforeSchedule.scheduleId,
+          expectedPlanRevision: beforeSchedule.planRevision,
+          expectedScheduleRevision: beforeSchedule.scheduleRevision,
+          expectedActivePair: beforeSchedule.activeSchedule,
+          before: beforeSchedule.current,
+          todayLocalDate: beforeSchedule.todayLocalDate,
+          next: { effectiveLocalDate: beforeSchedule.todayLocalDate, mode: "rotation", timeZone: "Asia/Singapore", bindings: beforeSchedule.days.map(({ id, ordinal }) => ({ planDayId: id, ordinal })) },
+        });
+        expect(saved).toMatchObject({ planRevision: 2, scheduleRevision: 2, current: { mode: "rotation", versionNumber: 2 } });
+      } else if (caseId === "library.replacement-impact") {
+        const [occurrence] = await kernel.queryAll<{ id: string }>(
+          `SELECT occurrence.id
+           FROM owned_plan_day_exercises occurrence
+           JOIN plan_days day ON day.id = occurrence.plan_day_id
+           WHERE day.plan_id = ?
+           ORDER BY day.ordinal, occurrence.ordinal
+           LIMIT 1`,
+          [plan.id],
+        );
+        const occurrenceId = occurrence?.id;
+        if (occurrenceId === undefined) throw new Error("phase17_matrix_replacement_occurrence_missing");
+        const preview = await ownedPlans.previewExerciseReplacement({ planId: plan.id, occurrenceId });
+        const replacement = preview.candidates.find(({ compatible }) => compatible);
+        if (replacement === undefined) throw new Error("phase17_matrix_replacement_candidate_missing");
+        const result = await ownedPlans.replaceExercise({ requestId, planId: plan.id, sourceOccurrenceId: occurrenceId, expectedPlanRevision: preview.planRevision, previewToken: preview.previewToken, scope: "all_occurrences", replacementExerciseId: replacement.exerciseId, review: { targets: true, warmups: true, rest: true, progression: true, historyImmutable: true }, occurrences: preview.occurrences });
+        expect(result).toMatchObject({ outcome: "committed", planId: plan.id, planRevision: 2, replacementExerciseId: replacement.exerciseId });
+      } else {
+        const dayId = plan.days[0]?.id;
+        if (dayId === undefined) throw new Error("phase17_matrix_day_removal_target_missing");
+        const preview = await ownedPlans.previewDayRemoval({ planId: plan.id, dayId });
+        if (preview.schedule === null) throw new Error("phase17_matrix_day_removal_schedule_preview_missing");
+        const result = await ownedPlans.removeDayWithImpact({ requestId, planId: plan.id, dayId, expectedPlanRevision: preview.planRevision, expectedScheduleRevision: preview.schedule.revision, previewToken: preview.previewToken, choice: { kind: "remove_binding" } });
+        expect(result).toMatchObject({ outcome: "committed", planId: plan.id, planRevision: 2, scheduleRevision: 2 });
+      }
+    }
+
+    await expect(protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable })).resolves.toMatchObject({ verdict: "matched" });
+    await envelope.assertConsumed({ caseId, fixtureToken: fixture.fixtureToken });
+    await envelope.updateCleanupManifest({ caseId, fixtureToken: fixture.fixtureToken, cleanupManifest: await materializePhase17FamilyACleanupManifest(kernel, createPhase17FamilyACleanupManifest(caseId, fixture.fixtureToken, {
+      ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId!,
+    })) });
+    await expect(protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken })).resolves.toMatchObject({ verdict: "restored", baselineDigest: before.digest });
     await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
     await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY])).resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
     expect(await logicalDigest(kernel)).toEqual(before);

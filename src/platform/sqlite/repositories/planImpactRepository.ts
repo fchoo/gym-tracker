@@ -1201,6 +1201,42 @@ async function applyExerciseReplacementTransaction(
       input.replacementExerciseId,
     ),
   });
+  const [schedule] = await transaction.queryAll<Readonly<{
+    id: string;
+    revision: number;
+    effective_local_date: string;
+  }>>(
+    `SELECT schedule.id, schedule.revision, version.effective_local_date
+     FROM owned_plan_schedules schedule
+     JOIN owned_plan_schedule_versions version
+       ON version.schedule_id = schedule.id
+     WHERE schedule.plan_id = ?
+     ORDER BY version.version_number DESC
+     LIMIT 1`,
+    [input.planId],
+  );
+  if (schedule !== undefined) {
+    await transaction.execute(
+      `INSERT INTO owned_plan_schedule_events
+        (id, schedule_id, event_type, local_date, payload_json,
+         schedule_revision, created_at_ms)
+       VALUES (?, ?, 'plan_exercise_replaced', ?, ?, ?, ?)`,
+      [
+        `plan-impact-command:${input.requestId}`,
+        schedule.id,
+        schedule.effective_local_date,
+        JSON.stringify({
+          requestSha256: input.requestSha256,
+          planId: input.planId,
+          sourceOccurrenceId: input.sourceOccurrenceId,
+          replacementExerciseId: input.replacementExerciseId,
+          result,
+        }),
+        schedule.revision,
+        input.committedAtMs,
+      ],
+    );
+  }
   return result;
 }
 

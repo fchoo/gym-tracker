@@ -5,7 +5,7 @@ const TOKEN = /^phase17:[a-z0-9-]{16,128}$/u;
 const requestIdFor = (caseId: string, fixtureToken: string) =>
   `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
 const setupRequestIdFor = (
-  kind: "owned-plan-create" | "owned-plan-save" | "custom-exercise-create",
+  kind: "owned-plan-create" | "owned-plan-save" | "custom-exercise-create" | "starter-activation",
   fixtureToken: string,
 ) =>
   `phase17:fixture:${kind}:${fixtureToken.slice("phase17:".length)}:setup`;
@@ -69,8 +69,8 @@ export function createPhase17FamilyACleanupManifest(
 
 function validManifest(manifest: Phase17FamilyACleanupManifest): boolean {
   return manifest.version === 1 && manifest.family === "A" && TOKEN.test(manifest.fixtureToken)
-    && manifest.requestIds.length === (receiptFor(manifest.caseId) === undefined ? 0 : 1)
-    && (manifest.requestIds.length === 0 || manifest.requestIds[0] === requestIdFor(manifest.caseId, manifest.fixtureToken))
+    && manifest.requestIds.length >= (receiptFor(manifest.caseId) === undefined ? 0 : 1)
+    && (receiptFor(manifest.caseId) === undefined || manifest.requestIds.includes(requestIdFor(manifest.caseId, manifest.fixtureToken)))
     && manifest.planIds.length >= 1 && manifest.exerciseIds.length >= 1
     && [manifest.requestIds, manifest.planIds, manifest.exerciseIds, manifest.scheduleIds, manifest.scheduleEventIds]
       .every((values) => values.every((value) => typeof value === "string" && value.length > 0));
@@ -87,13 +87,22 @@ export async function materializePhase17FamilyACleanupManifest(
   manifest: Phase17FamilyACleanupManifest,
 ): Promise<Phase17FamilyACleanupManifest> {
   if (!validManifest(manifest)) throw new Error("phase17_family_a_cleanup_manifest_invalid");
-  const requestId = manifest.requestIds[0];
+  const requestId = receiptFor(manifest.caseId) === undefined
+    ? undefined
+    : requestIdFor(manifest.caseId, manifest.fixtureToken);
+  let requestIds = [...manifest.requestIds];
   let planIds = [...manifest.planIds];
   let exerciseIds = [...manifest.exerciseIds];
   let scheduleIds = [...manifest.scheduleIds];
   let scheduleEventIds = [...manifest.scheduleEventIds];
   const receipt = receiptFor(manifest.caseId);
   if (receipt === undefined || requestId === undefined) return manifest;
+  const setupActivationRequestId = setupRequestIdFor("starter-activation", manifest.fixtureToken);
+  const [setupActivation] = await kernel.queryAll<Readonly<{ request_id: string }>>(
+    "SELECT request_id FROM starter_plan_activation_requests WHERE request_id = ?",
+    [setupActivationRequestId],
+  );
+  if (setupActivation !== undefined) requestIds = [...requestIds, setupActivation.request_id];
   if (receipt[1] === "owned_plan_mutation_requests") {
     const [row] = await kernel.queryAll<Readonly<{
       source_plan_id: string | null;
@@ -166,7 +175,7 @@ export async function materializePhase17FamilyACleanupManifest(
     if (typeof exerciseId !== "string") throw new Error("phase17_family_a_cleanup_receipt_invalid");
     exerciseIds = [...exerciseIds, exerciseId];
   }
-  return Object.freeze({ ...manifest, planIds: sorted(planIds), exerciseIds: sorted(exerciseIds), scheduleIds: sorted(scheduleIds), scheduleEventIds: sorted(scheduleEventIds) });
+  return Object.freeze({ ...manifest, requestIds: sorted(requestIds), planIds: sorted(planIds), exerciseIds: sorted(exerciseIds), scheduleIds: sorted(scheduleIds), scheduleEventIds: sorted(scheduleEventIds) });
 }
 
 const placeholders = (values: readonly string[]) => values.map(() => "?").join(", ");
@@ -194,6 +203,7 @@ export async function cleanupPhase17FamilyAManifest(
     await removeByIds(transaction, "custom_exercise_mutation_receipts", "request_id", [setupRequestIdFor("custom-exercise-create", exact.fixtureToken)]);
     await removeByIds(transaction, "owned_plan_mutation_requests", "request_id", [setupRequestIdFor("owned-plan-create", exact.fixtureToken)]);
     await removeByIds(transaction, "owned_plan_mutation_requests", "request_id", [setupRequestIdFor("owned-plan-save", exact.fixtureToken)]);
+    await removeByIds(transaction, "starter_plan_activation_requests", "request_id", [setupRequestIdFor("starter-activation", exact.fixtureToken)]);
 
     // Schedule descendants must precede versions and schedules; all lists are exact manifest IDs.
     await removeByIds(transaction, "owned_plan_schedule_overrides", "schedule_id", exact.scheduleIds);

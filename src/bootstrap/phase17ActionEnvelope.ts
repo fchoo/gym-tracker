@@ -155,8 +155,8 @@ function validContext(
   const manifest = context.cleanupManifest;
   const manifestIsValid = manifest === undefined || (
     manifest.version === 1 && manifest.family === "A" && manifest.caseId === context.caseId
-    && manifest.fixtureToken === context.fixtureToken && manifest.requestIds.length === 1
-    && manifest.requestIds[0] === phase17ActionEnvelopePlan(context.caseId, context.fixtureToken)[0]?.requestId
+    && manifest.fixtureToken === context.fixtureToken && manifest.requestIds.length >= 1
+    && manifest.requestIds.includes(phase17ActionEnvelopePlan(context.caseId, context.fixtureToken)[0]?.requestId ?? "")
     && manifest.planIds.length >= 1 && manifest.exerciseIds.length >= 1
     && [manifest.requestIds, manifest.planIds, manifest.exerciseIds, manifest.scheduleIds, manifest.scheduleEventIds]
       .every((values) => values.every((value) => typeof value === "string" && value.length > 0))
