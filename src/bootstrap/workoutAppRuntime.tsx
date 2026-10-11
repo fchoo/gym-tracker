@@ -4141,7 +4141,13 @@ export function WorkoutAppRuntimeProvider({
             setupGraph: async (fixtureToken) => {
               const suffix = fixtureToken.slice("phase17:".length);
               const runningPlanId = `phase17:running-plan:${suffix}`;
-              const strength = await services.ownedPlans.createDraft({ name: "Phase 17 collision Strength", dayName: "Fixture day" });
+              const strength = await services.ownedPlans.createFixtureDraft({
+                requestId: `phase17:fixture:collision-strength:${suffix}:setup`,
+                planId: `phase17:collision-strength-plan:${suffix}`,
+                dayId: `phase17:collision-strength-day:${suffix}`,
+                name: "Phase 17 collision Strength",
+                dayName: "Fixture day",
+              });
               if (strength.outcome !== "committed") throw new Error("phase17_collision_strength_create_failed");
               const runningPort = createRunningPlanRuntimePort(services.kernel, { nowMs: dependencies.nowMs, randomUUID, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) });
               const now = dependencies.nowMs();
@@ -4200,7 +4206,13 @@ export function WorkoutAppRuntimeProvider({
           if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
           fixtureSetupIds.begin(fixtureToken);
           try {
-          const owned = await services.ownedPlans.createDraft({ name: `Phase17 ${caseId}`, dayName: "Fixture day" });
+          const owned = await services.ownedPlans.createFixtureDraft({
+            requestId: fixtureSetupIds.requestId("owned-plan-create"),
+            planId: fixtureSetupIds.ownedPlanId(),
+            dayId: fixtureSetupIds.ownedPlanDayId(),
+            name: `Phase17 ${caseId}`,
+            dayName: "Fixture day",
+          });
           if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
           const customId = fixtureSetupIds.customExerciseId();
           const custom = await createCustomExerciseCommand({

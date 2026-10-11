@@ -49,6 +49,14 @@ export type OwnedPlanRuntimePort = Readonly<{
     dayName: string;
     requestId?: string;
   }>): Promise<OwnedPlanRepositoryResult>;
+  /** Native-contract fixture escape hatch; production UI never supplies IDs. */
+  createFixtureDraft(input: Readonly<{
+    requestId: string;
+    planId: string;
+    dayId: string;
+    name: string;
+    dayName: string;
+  }>): Promise<OwnedPlanRepositoryResult>;
   loadPlan(planId: string): Promise<OwnedPlanSnapshot | null>;
   listExercises(): Promise<readonly OwnedPlanRuntimeExerciseOption[]>;
   savePlan(input: Readonly<{
@@ -165,6 +173,10 @@ export function createOwnedPlanRuntimePort(
         },
       });
     },
+    createFixtureDraft: (input) => createOwnedPlanDraft({
+      ...commandContext,
+      input: { ...input, createdAtMs: dependencies.nowMs() },
+    }),
     savePlan: (input) =>
       saveOwnedPlan({
         ...commandContext,

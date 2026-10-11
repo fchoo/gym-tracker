@@ -9,7 +9,13 @@ import type { SqliteTransactionExecutor } from "../sqliteKernel";
  * immutable.  This keeps a native case independent and restores its baseline.
  */
 const EVENT_TABLE = "running_plan_events";
-const FIXTURE_PLAN_GLOB = "phase17:running-plan:*";
+const FIXTURE_PLAN_GLOBS = [
+  "phase17:running-plan:*",
+  "phase17:owned-plan:*",
+  "phase17:collision-strength-plan:*",
+] as const;
+const fixturePlanPredicate = (column: string) =>
+  FIXTURE_PLAN_GLOBS.map((glob) => `${column} GLOB '${glob}'`).join(" OR ");
 const DIRECT_PLAN_TABLES = [
   "running_plan_events", "running_session_revisions", "running_session_slots",
   "running_opportunities", "running_session_slot_roots",
@@ -29,11 +35,11 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
     await transaction.execute("DROP TRIGGER IF EXISTS owned_plan_days_no_permanent_delete");
     await transaction.execute(`CREATE TRIGGER owned_plans_no_permanent_delete
       BEFORE DELETE ON plans
-      WHEN OLD.origin IN ('custom', 'copied') AND OLD.id NOT GLOB '${FIXTURE_PLAN_GLOB}'
+      WHEN OLD.origin IN ('custom', 'copied') AND NOT (${fixturePlanPredicate("OLD.id")})
       BEGIN SELECT RAISE(ABORT, 'owned_plan_permanent_delete_forbidden'); END`);
     await transaction.execute(`CREATE TRIGGER owned_plan_days_no_permanent_delete
       BEFORE DELETE ON plan_days
-      WHEN OLD.plan_id NOT GLOB '${FIXTURE_PLAN_GLOB}' AND EXISTS (
+      WHEN NOT (${fixturePlanPredicate("OLD.plan_id")}) AND EXISTS (
         SELECT 1 FROM owned_plan_aggregate_states WHERE plan_id = OLD.plan_id
       )
       BEGIN SELECT RAISE(ABORT, 'owned_plan_day_permanent_delete_forbidden'); END`);
@@ -43,7 +49,7 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
     for (const table of DIRECT_PLAN_TABLES) {
       await transaction.execute(`CREATE TRIGGER ${table}_immutable_delete
         BEFORE DELETE ON ${table}
-        WHEN OLD.plan_id NOT GLOB '${FIXTURE_PLAN_GLOB}'
+        WHEN NOT (${fixturePlanPredicate("OLD.plan_id")})
         BEGIN SELECT RAISE(ABORT, '${table}_immutable'); END`);
     }
     // Collision facts remain immutable for ordinary owner rows. Fixture-owned
@@ -60,7 +66,7 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
         BEFORE DELETE ON ${table}
         WHEN NOT EXISTS (
           SELECT 1 FROM running_opportunities opportunity
-          WHERE opportunity.id = ${outcome} AND opportunity.plan_id GLOB '${FIXTURE_PLAN_GLOB}'
+          WHERE opportunity.id = ${outcome} AND (${fixturePlanPredicate("opportunity.plan_id")})
         )
         BEGIN SELECT RAISE(ABORT, '${table}_immutable'); END`);
     }
@@ -68,7 +74,7 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
       BEFORE DELETE ON running_session_slot_revisions
       WHEN NOT EXISTS (
         SELECT 1 FROM running_session_slot_roots root
-        WHERE root.id = OLD.slot_root_id AND root.plan_id GLOB '${FIXTURE_PLAN_GLOB}'
+        WHERE root.id = OLD.slot_root_id AND (${fixturePlanPredicate("root.plan_id")})
       )
       BEGIN SELECT RAISE(ABORT, 'running_session_slot_revisions_immutable'); END`);
   },

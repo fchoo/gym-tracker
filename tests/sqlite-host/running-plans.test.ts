@@ -155,6 +155,24 @@ describe("Running plan lifecycle persistence", () => {
     }
   });
 
+  it("permits cleanup only for exact Phase 17 fixture-owned plan namespaces", async () => {
+    const kernel = await migratedKernel();
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "INSERT INTO plans (id, origin, name, days_per_week, revision) VALUES ('ordinary-custom', 'custom', 'Ordinary custom', 1, 1)",
+      );
+      await transaction.execute(
+        "INSERT INTO plans (id, origin, source_namespace, upstream_id, name, days_per_week, revision) VALUES ('ordinary-copied', 'copied', 'fixture-source', 'fixture-upstream', 'Ordinary copied', 1, 1)",
+      );
+      await transaction.execute(
+        "INSERT INTO plans (id, origin, name, days_per_week, revision) VALUES ('phase17:owned-plan:fixture-token-0000000000000042', 'custom', 'Fixture owned', 1, 1)",
+      );
+    });
+    await expect(kernel.write((transaction) => transaction.execute("DELETE FROM plans WHERE id = ?", ["ordinary-custom"]))).rejects.toThrow("sqlite_transaction_failed");
+    await expect(kernel.write((transaction) => transaction.execute("DELETE FROM plans WHERE id = ?", ["ordinary-copied"]))).rejects.toThrow("sqlite_transaction_failed");
+    await expect(kernel.write((transaction) => transaction.execute("DELETE FROM plans WHERE id = ?", ["phase17:owned-plan:fixture-token-0000000000000042"]))).resolves.toMatchObject({ changes: 1 });
+  });
+
   it("accepts a real production Running save only when its deterministic fixture receipt and source facts match", async () => {
     const kernel = await migratedKernel();
     const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
