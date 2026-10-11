@@ -323,6 +323,64 @@ async function activateStarterFixture(input: Readonly<{
 }
 
 describe("Phase 17 Family A cleanup matrix", () => {
+  it("keeps the schema-42 instruction and durable custom-library receipt paths live after the v8 upgrade", async () => {
+    const kernel = await migratedKernel();
+
+    await expect(kernel.queryAll<{ user_version: number }>("PRAGMA user_version"))
+      .resolves.toEqual([{ user_version: 42 }]);
+
+    const [instructionCount] = await kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM exercise_instruction_sets",
+    );
+    const [exerciseCount] = await kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM exercise_library_entries",
+    );
+    expect(instructionCount?.count).toBeGreaterThan(0);
+    expect(instructionCount?.count).toBeLessThanOrEqual(exerciseCount?.count ?? 0);
+    const [invalidInstruction] = await kernel.queryAll<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM exercise_instruction_sets
+       WHERE length(trim(source_namespace)) = 0
+          OR length(trim(source_revision)) = 0
+          OR length(trim(source_license)) = 0
+          OR length(trim(source_attribution)) = 0
+          OR json_array_length(steps_json) < 1`,
+    );
+    expect(invalidInstruction?.count).toBe(0);
+
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO custom_exercise_mutation_receipts
+        (request_id, mutation_kind, request_json, result_json, committed_at_ms)
+       VALUES (?, 'favorite', ?, ?, ?)`,
+      [
+        "phase17:migration-42-receipt",
+        JSON.stringify({ exerciseId: "phase17:probe", favorite: true }),
+        JSON.stringify({ outcome: "committed", revision: 2 }),
+        NOW_MS,
+      ],
+    ));
+    await expect(kernel.write((transaction) => transaction.execute(
+      `INSERT INTO custom_exercise_mutation_receipts
+        (request_id, mutation_kind, request_json, result_json, committed_at_ms)
+       VALUES (?, 'favorite', ?, ?, ?)`,
+      [
+        "phase17:migration-42-receipt",
+        JSON.stringify({ exerciseId: "phase17:probe", favorite: true }),
+        JSON.stringify({ outcome: "committed", revision: 2 }),
+        NOW_MS,
+      ],
+    ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+
+    const [receipt] = await kernel.queryAll<{ mutation_kind: string; result_json: string }>(
+      "SELECT mutation_kind, result_json FROM custom_exercise_mutation_receipts WHERE request_id = ?",
+      ["phase17:migration-42-receipt"],
+    );
+    expect(receipt).toEqual({
+      mutation_kind: "favorite",
+      result_json: JSON.stringify({ outcome: "committed", revision: 2 }),
+    });
+  });
+
   it.each(FAMILY_A_PLAN_MUTATION_ROWS)("keeps $caseId bound to its labelled production command and durable receipt", ({ caseId, label }) => {
     const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
     expect(contract).toMatchObject({ id: caseId, actionReceiptRequired: true });
