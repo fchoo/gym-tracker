@@ -232,13 +232,10 @@ export function createGarminActivityAdapter(input: Readonly<{
   }
 
   function acceptState(value: unknown): GarminConnectionState {
-    const next = connectionState(parseNativeResult<GarminNativeConnectionData>(value));
-    if (next.kind === "disconnected") {
-      currentState = next;
-      return next;
-    }
-    if (next.generation < generation) throw new GarminActivityAdapterError("stale_generation");
-    generation = next.generation;
+    const result = parseNativeResult<GarminNativeConnectionData>(value);
+    if (result.generation < generation) throw new GarminActivityAdapterError("stale_generation");
+    const next = connectionState(result);
+    generation = result.generation;
     currentState = next;
     return next;
   }
