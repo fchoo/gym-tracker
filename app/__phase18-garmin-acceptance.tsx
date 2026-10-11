@@ -51,7 +51,9 @@ export default function Phase18GarminAcceptanceScreen() {
   const benchmarkEnabled = phase18GarminAcceptanceBenchmarkEnabled(params);
   const enabled = phase18GarminAcceptanceEnabled(params);
 
-  if (benchmarkEnabled) return <Phase18GarminBenchmarkScreen nonce={nonce} />;
+  if (benchmarkEnabled && typeof nonce === "string") {
+    return <Phase18GarminBenchmarkScreen nonce={nonce} />;
+  }
   if (!enabled) return <Redirect href="/" />;
 
   return (

@@ -183,6 +183,7 @@ describe("ImportedActivityDetailScreen route states and shared shell", () => {
           activityId: "activity-local-01",
           acceptedRevision: 2,
           proposedRevision: 3,
+          expectedProposedSha256: "b".repeat(64),
           changedFields: [
             { field: "distance_meters", accepted: "5000", proposed: "5050" },
           ],

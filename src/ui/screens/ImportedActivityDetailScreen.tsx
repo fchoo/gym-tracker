@@ -48,6 +48,7 @@ export type ImportedActivityDetailScreenState =
       activityId: string;
       acceptedRevision: number;
       proposedRevision: number;
+      expectedProposedSha256: string;
       changedFields: readonly Readonly<{
         field: string;
         accepted: string;
@@ -487,10 +488,10 @@ export function ImportedActivityDetailScreen({
         <ReadyDetail detail={state.detail} onMatch={onMatch} stackedLaps={stackedLaps} />
       ) : (
         <NonReadyDetail
-          onAcceptRevision={onAcceptRevision}
-          onKeepRevision={onKeepRevision}
           onRetry={onRetry}
           state={state}
+          {...(onAcceptRevision === undefined ? {} : { onAcceptRevision })}
+          {...(onKeepRevision === undefined ? {} : { onKeepRevision })}
         />
       )}
     </>
