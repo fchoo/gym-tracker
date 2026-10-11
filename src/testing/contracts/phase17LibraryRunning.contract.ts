@@ -94,6 +94,33 @@ export const PHASE17_FAMILY_A_MUTATION_RECEIPTS = Object.freeze([
   ["library.copy-metric-migration", "metric_profile_migration_events", "migrated_exercise_generation_and_revision"],
 ] as const);
 
+/** Matrix-only mutation registry. It extends the immutable 39-case native
+ * ledger with the remaining custom/metric commands that need schema-42/v8
+ * teardown proof, without changing Maestro or native execution scope. */
+export const PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_RECEIPTS = Object.freeze([
+  ["library.exercise-favorites", "custom_exercise_mutation_receipts", "favorite_and_preference_revision"],
+  ["library.create-exercise", "custom_exercise_mutation_receipts", "created_exercise_revision"],
+  ["library.custom-exercise", "custom_exercise_mutation_receipts", "archived_exercise_revision"],
+  ["library.copy-metric-migration", "metric_profile_migration_events", "migrated_exercise_generation_and_revision"],
+  ["library.custom-exercise-edit", "custom_exercise_mutation_receipts", "edited_exercise_revision"],
+  ["library.custom-exercise-hide", "custom_exercise_mutation_receipts", "hidden_preference_revision"],
+  ["library.custom-exercise-unhide", "custom_exercise_mutation_receipts", "unhidden_preference_revision"],
+  ["library.custom-exercise-copy-bundled", "custom_exercise_mutation_receipts", "copied_exercise_revision"],
+  ["library.custom-exercise-archive", "custom_exercise_mutation_receipts", "archived_preference_revision"],
+  ["library.custom-exercise-reactivate", "custom_exercise_mutation_receipts", "reactivated_preference_revision"],
+  ["library.metric-profile-migration", "metric_profile_migration_events", "migrated_exercise_generation_and_revision"],
+] as const);
+
+const matrixOnlyContracts = [
+  ["library.custom-exercise-edit", "edit-custom-exercise", "edited-custom-exercise-visible", "custom_exercises"],
+  ["library.custom-exercise-hide", "hide-custom-exercise", "hidden-custom-exercise-visible", "exercise_preferences"],
+  ["library.custom-exercise-unhide", "unhide-custom-exercise", "unhidden-custom-exercise-visible", "exercise_preferences"],
+  ["library.custom-exercise-copy-bundled", "copy-bundled-exercise", "copied-custom-exercise-visible", "custom_exercises"],
+  ["library.custom-exercise-archive", "archive-custom-exercise", "archived-custom-exercise-visible", "exercise_preferences"],
+  ["library.custom-exercise-reactivate", "reactivate-custom-exercise", "reactivated-custom-exercise-visible", "exercise_preferences"],
+  ["library.metric-profile-migration", "preview-and-confirm-metric-profile-migration", "migrated-metric-profile-visible", "metric_profile_migration_events"],
+] as const;
+
 export type Phase17FamilyAMutationReceipt = Readonly<{
   caseId: (typeof PHASE17_FAMILY_A_MUTATION_RECEIPTS)[number][0];
   receiptTable: (typeof PHASE17_FAMILY_A_MUTATION_RECEIPTS)[number][1];
@@ -101,6 +128,10 @@ export type Phase17FamilyAMutationReceipt = Readonly<{
 }>;
 
 export const PHASE17_CASE_ACTION_CONTRACTS = Object.freeze(rows.map(([id, , proofMode, action, uiReadback, sourceProbe]) => Object.freeze({ id, proofMode, action, uiReadback, sourceProbe, rawReportRequired: true as const, cleanupRequired: true as const, actionReceiptRequired: proofMode === "mutating" })));
+export const PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS = Object.freeze([
+  ...PHASE17_CASE_ACTION_CONTRACTS.filter(({ id }) => PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_RECEIPTS.some(([caseId]) => caseId === id)),
+  ...matrixOnlyContracts.map(([id, action, uiReadback, sourceProbe]) => Object.freeze({ id, proofMode: "mutating" as const, action, uiReadback, sourceProbe, rawReportRequired: true as const, cleanupRequired: true as const, actionReceiptRequired: true })),
+]);
 export const PHASE17_LIBRARY_RUNNING_CASES = Object.freeze(rows.map(([id, requirement, , , , , ...assertions]) => Object.freeze({ id, requirements: Object.freeze(requirement === null ? [] : [requirement]), assertions: Object.freeze(assertions) })));
 export const PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS = Object.freeze(PHASE17_LIBRARY_RUNNING_CASES.map(({ id }) => id));
 export const PHASE17_EVIDENCE_PATH = ".planning/phases/17-library-running-plans/evidence/phase17-library-running.json";

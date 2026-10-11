@@ -430,8 +430,8 @@ test("Phase 17 has a reachable labelled product-command path and expected receip
     "app/library/plan/[planId]/day/[dayId]/remove.tsx",
   ].map((file) => readFileSync(file, "utf8")).join("\n");
   const mutating = PHASE17_CASE_ACTION_CONTRACTS.filter(({ proofMode }) => proofMode === "mutating");
-  assert.equal(mutating.length, 26);
-  assert.equal(PHASE17_FAMILY_A_CASE_IDS.filter((id) => mutating.some((entry) => entry.id === id)).length, 12);
+  assert.equal(mutating.length, 28);
+  assert.equal(PHASE17_FAMILY_A_CASE_IDS.filter((id) => mutating.some((entry) => entry.id === id)).length, 14);
   assert.equal(PHASE17_FAMILY_B_CASE_IDS.length + 1, 15);
   for (const { id } of mutating) {
     const label = phase17ActionLabel(id);

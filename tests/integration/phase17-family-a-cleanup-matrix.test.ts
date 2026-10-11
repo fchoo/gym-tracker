@@ -31,7 +31,19 @@ import { createPhase17ActionEnvelopeSource, phase17ActionEnvelopePlan, type Phas
 import { cleanupPhase17FamilyAManifest, createPhase17FamilyACleanupManifest, materializePhase17FamilyACleanupManifest } from "../../src/bootstrap/phase17FamilyACleanup";
 import { createPhase17FixtureProtocol } from "../../src/bootstrap/phase17NativeFixture";
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
-import { createCustomExercise } from "../../src/domains/library/customExerciseCommands";
+import { readCustomExerciseMigration } from "../../src/bootstrap/customExerciseRuntimeReadPort";
+import {
+  archiveCustomExercise,
+  createCustomCopy,
+  createCustomExercise,
+  editCustomExercise,
+  previewCustomExerciseArchive,
+  restoreCustomExercise,
+  setExerciseFavorite,
+  setExerciseHidden,
+} from "../../src/domains/library/customExerciseCommands";
+import { migrateCustomExerciseMetricProfile } from "../../src/domains/metrics/migrateCustomExerciseMetricProfile";
+import { createMetricRepository } from "../../src/platform/sqlite/repositories/metricRepository";
 import type { OwnedPlanDraftInput } from "../../src/domains/plans/ownedPlanCommands";
 import {
   activateStarterPlan,
@@ -46,7 +58,7 @@ import { createContentRepository } from "../../src/platform/sqlite/repositories/
 import { createStarterPlanRepository, installAcceptedStarterPlanSources } from "../../src/platform/sqlite/repositories/starterPlanRepository";
 import { createWorkoutOutcomeRepository } from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
 import { discardWorkout } from "../../src/domains/workout/finishWorkout";
-import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
+import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
 import { createScheduleRuntimePort } from "../../src/bootstrap/scheduleRuntime";
 import { createStarterTemplateUpdatePreview, legacyFullBodySourceJson } from "../../src/bootstrap/starterPlanRuntime";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
@@ -62,6 +74,12 @@ const FAMILY_A_PLAN_MUTATION_ROWS = Object.freeze([
   { caseId: "library.create-strength", label: "owned-plan-save", operation: "save", preRevision: 1, postRevision: 2, preLifecycle: "draft", postLifecycle: "ready" },
   { caseId: "library.plan-editor", label: "owned-plan-save", operation: "save", preRevision: 2, postRevision: 3, preLifecycle: "ready", postLifecycle: "ready" },
 ] as const);
+const PHASE17_MATRIX_CONTRACTS = Object.freeze([
+  ...PHASE17_CASE_ACTION_CONTRACTS,
+  ...PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS.filter(
+    ({ id }) => !PHASE17_CASE_ACTION_CONTRACTS.some((contract) => contract.id === id),
+  ),
+]);
 
 type FamilyARow = (typeof FAMILY_A_PLAN_MUTATION_ROWS)[number];
 
@@ -333,7 +351,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
     });
     const customExercises = createCustomExerciseRepository(kernel);
     const envelope = createPhase17ActionEnvelopeSource({
-      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      contracts: PHASE17_MATRIX_CONTRACTS,
       identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
       store: {
         read: async () => {
@@ -359,7 +377,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
       },
     });
     const protocol = createPhase17FixtureProtocol({
-      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      contracts: PHASE17_MATRIX_CONTRACTS,
       createToken: () => `phase17:matrix-token-${String(++sequence).padStart(16, "0")}`,
       adapter: {
         baselineDigest: async () => (await logicalDigest(kernel)).digest,
@@ -541,7 +559,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
     const template = (await starterPack()).templates.find(({ id }) => id === "full-body-foundation");
     if (template === undefined) throw new Error("phase17_matrix_starter_template_missing");
     const envelope = createPhase17ActionEnvelopeSource({
-      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      contracts: PHASE17_MATRIX_CONTRACTS,
       identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
       store: {
         read: async () => {
@@ -647,7 +665,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
     if (template === undefined) throw new Error("phase17_matrix_starter_template_missing");
     const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
     const envelope = createPhase17ActionEnvelopeSource({
-      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      contracts: PHASE17_MATRIX_CONTRACTS,
       identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
       store: {
         read: async () => {
@@ -925,6 +943,203 @@ describe("Phase 17 Family A cleanup matrix", () => {
       ownedPlanId: fixture.selectors.ownedPlanId!, customExerciseId: fixture.selectors.customExerciseId!,
     })) });
     await expect(protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken })).resolves.toMatchObject({ verdict: "restored", baselineDigest: before.digest });
+    await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
+    await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY])).resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
+    expect(await logicalDigest(kernel)).toEqual(before);
+  });
+
+  it.each([
+    ["library.exercise-favorites", "exercise-favorite", "favorite"],
+    ["library.create-exercise", "custom-exercise-create", "create"],
+    ["library.custom-exercise", "custom-exercise-archive", "archive"],
+    ["library.custom-exercise-edit", "custom-exercise-edit", "edit"],
+    ["library.custom-exercise-hide", "custom-exercise-hide", "hide"],
+    ["library.custom-exercise-unhide", "custom-exercise-hide", "unhide"],
+    ["library.custom-exercise-copy-bundled", "custom-exercise-copy", "copy"],
+    ["library.custom-exercise-archive", "custom-exercise-archive", "archive"],
+    ["library.custom-exercise-reactivate", "custom-exercise-reactivate", "reactivate"],
+  ] as [string, string, string][])("runs schema-42/v8 %s through its labelled custom command, exact receipt, fixture probe, and cleanup", async (caseId, label, operation) => {
+    const kernel = await migratedKernel();
+    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
+    expect(schema?.user_version).toBe(42);
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
+      [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
+    ));
+    const before = await logicalDigest(kernel);
+    const customExercises = createCustomExerciseRepository(kernel);
+    const suffix = `${operation}-0000000000000001`;
+    const fixtureToken = `phase17:${suffix}`;
+    const seedId = `phase17:custom:${suffix}`;
+    const actionId = `phase17:action:${suffix}`;
+    const envelope = createPhase17ActionEnvelopeSource({
+      contracts: PHASE17_MATRIX_CONTRACTS,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: {
+        read: async () => {
+          const [setting] = await kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [ENVELOPE_KEY]);
+          return setting === undefined ? null : JSON.parse(setting.value_json) as Phase17ActionEnvelopeContext;
+        },
+        write: async (value) => { await kernel.write((transaction) => transaction.execute(
+          `INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms)
+           VALUES (?, 1, ?, 1, ?)
+           ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json,
+             revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms`,
+          [ENVELOPE_KEY, JSON.stringify(value), NOW_MS],
+        )); },
+        clear: async (value) => { await kernel.write((transaction) => transaction.execute(
+          "DELETE FROM app_settings WHERE key = ? AND value_json = ?", [ENVELOPE_KEY, JSON.stringify(value)],
+        )); },
+      },
+    });
+    const seed = async (exerciseId: string, requestId: string, name: string) => createCustomExercise({
+      repository: customExercises,
+      invalidate: async () => undefined,
+      input: {
+        requestId, exerciseId, name, aliases: ["Matrix"], exerciseType: "strength", movementClass: "compound",
+        primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: ["barbell"],
+        metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+        defaultRestSeconds: 60, createdAtMs: NOW_MS,
+      },
+    });
+    await seed(seedId, `phase17:fixture:custom-exercise-create:${suffix}:setup`, `Matrix ${caseId}`);
+    if (operation === "reactivate") {
+      await kernel.write((transaction) => transaction.execute(
+        "UPDATE exercise_owner_preferences SET archived = 1, revision = 2, updated_at_ms = ? WHERE exercise_id = ?",
+        [NOW_MS, seedId],
+      ));
+    }
+    const manifest = createPhase17FamilyACleanupManifest(caseId, fixtureToken, { ownedPlanId: `phase17:unused-plan:${suffix}`, customExerciseId: seedId });
+    await envelope.activate({ caseId, fixtureToken, envelopes: phase17ActionEnvelopePlan(caseId, fixtureToken), cleanupManifest: manifest });
+    const requestId = await envelope.claim({ caseId, fixtureToken, label });
+    if (requestId === null) throw new Error("phase17_matrix_custom_request_missing");
+    let authoritativeId = seedId;
+    if (operation === "create") {
+      authoritativeId = actionId;
+      await seed(actionId, requestId, `Created ${caseId}`);
+    } else if (operation === "edit") {
+      await editCustomExercise({ repository: customExercises, invalidate: async () => undefined, input: {
+        requestId, exerciseId: seedId, expectedExerciseRevision: 1, name: `Edited ${caseId}`, aliases: ["Edited"],
+        exerciseType: "strength", movementClass: "compound", primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: ["barbell"],
+        metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, defaultRestSeconds: 90, editedAtMs: NOW_MS,
+      } });
+    } else if (operation === "favorite") {
+      await setExerciseFavorite({ repository: customExercises, invalidate: async () => undefined, input: { requestId, exerciseId: seedId, expectedPreferenceRevision: 1, favorite: true, updatedAtMs: NOW_MS } });
+    } else if (operation === "hide" || operation === "unhide") {
+      await setExerciseHidden({ repository: customExercises, invalidate: async () => undefined, input: { requestId, exerciseId: seedId, expectedPreferenceRevision: 1, hidden: operation === "hide", updatedAtMs: NOW_MS } });
+    } else if (operation === "copy") {
+      const [bundled] = await kernel.queryAll<{ id: string; revision: number }>("SELECT id, revision FROM exercises WHERE origin = 'bundled' ORDER BY id LIMIT 1");
+      if (bundled === undefined) throw new Error("phase17_matrix_bundled_copy_source_missing");
+      authoritativeId = actionId;
+      await createCustomCopy({ repository: customExercises, invalidate: async () => undefined, input: { requestId, sourceExerciseId: bundled.id, expectedSourceRevision: bundled.revision, exerciseId: actionId, name: `Copied ${caseId}`, createdAtMs: NOW_MS } });
+    } else {
+      const preview = await previewCustomExerciseArchive({ repository: customExercises, input: { exerciseId: seedId, expectedExerciseRevision: 1 } });
+      const command = operation === "reactivate" ? restoreCustomExercise : archiveCustomExercise;
+      await command({ repository: customExercises, invalidate: async () => undefined, input: { requestId, exerciseId: seedId, expectedExerciseRevision: 1, expectedPreferenceRevision: operation === "reactivate" ? 2 : 1, previewRevision: preview.previewRevision, updatedAtMs: NOW_MS } });
+    }
+    const [receipt] = await kernel.queryAll<{ mutation_kind: string; result_json: string }>(
+      "SELECT mutation_kind, result_json FROM custom_exercise_mutation_receipts WHERE request_id = ?", [requestId],
+    );
+    expect(receipt?.mutation_kind).toBe(operation === "favorite" ? "favorite" : operation === "hide" || operation === "unhide" ? "hidden" : operation === "copy" ? "copy" : operation === "create" ? "create" : operation === "edit" ? "edit" : "archive");
+    expect(JSON.parse(receipt?.result_json ?? "{}" as string)).toMatchObject({ outcome: "committed" });
+    const [exercise] = await kernel.queryAll<{ id: string; revision: number }>("SELECT id, revision FROM exercises WHERE id = ?", [authoritativeId]);
+    const [preference] = await kernel.queryAll<{ favorite: number; hidden: number; archived: number }>("SELECT favorite, hidden, archived FROM exercise_owner_preferences WHERE exercise_id = ?", [authoritativeId]);
+    expect(exercise).toBeDefined();
+    expect(preference).toBeDefined();
+    if (operation === "favorite") expect(preference?.favorite).toBe(1);
+    if (operation === "hide") expect(preference?.hidden).toBe(1);
+    if (operation === "unhide") expect(preference?.hidden).toBe(0);
+    if (operation === "archive") expect(preference?.archived).toBe(1);
+    if (operation === "reactivate") expect(preference?.archived).toBe(0);
+    await envelope.assertConsumed({ caseId, fixtureToken });
+    await envelope.updateCleanupManifest({ caseId, fixtureToken, cleanupManifest: await materializePhase17FamilyACleanupManifest(kernel, manifest) });
+    await cleanupPhase17FamilyAManifest(kernel, manifest);
+    await envelope.clear({ caseId, fixtureToken });
+    await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
+    await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY])).resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
+    expect(await logicalDigest(kernel)).toEqual(before);
+  });
+
+  it.each([
+    ["library.copy-metric-migration", "custom-exercise-metric-migration"],
+    ["library.metric-profile-migration", "custom-exercise-metric-migration"],
+  ] as [string, string][])("runs schema-42/v8 %s through metric preview, confirmation, event probe, and cleanup", async (caseId, label) => {
+    const kernel = await migratedKernel();
+    await kernel.write((transaction) => transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
+      [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
+    ));
+    const before = await logicalDigest(kernel);
+    const suffix = `metric-${caseId.slice("library.".length)}-0000000000000001`;
+    const fixtureToken = `phase17:${suffix}`;
+    const exerciseId = `phase17:custom:${suffix}`;
+    const planId = `phase17:owned-plan:${suffix}`;
+    const occurrenceId = `phase17:owned-plan-occurrence:${suffix}`;
+    const targetId = `phase17:owned-plan-target:${suffix}`;
+    const customExercises = createCustomExerciseRepository(kernel);
+    await createCustomExercise({ repository: customExercises, invalidate: async () => undefined, input: {
+      requestId: `phase17:fixture:custom-exercise-create:${suffix}:setup`, exerciseId, name: `Metric ${caseId}`,
+      aliases: ["Metric"], exerciseType: "strength", movementClass: "isolation", primaryMuscles: ["core"], secondaryMuscles: [], equipment: ["bodyweight"],
+      metricIdentity: { profile: "timed_hold", contractVersion: 1, exerciseMetricGeneration: 1 }, defaultRestSeconds: 60, createdAtMs: NOW_MS,
+    } });
+    const ownedPlans = createOwnedPlanRuntimePort(kernel, {
+      nowMs: () => NOW_MS,
+      randomUUID: () => `phase17-metric-${suffix}`,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+    });
+    committed(await ownedPlans.createFixtureDraft({
+      requestId: `phase17:fixture:owned-plan-create:${suffix}:setup`,
+      planId,
+      dayId: `phase17:owned-plan-day:${suffix}`,
+      name: "Metric matrix",
+      dayName: "Day",
+    }));
+    committed(await ownedPlans.savePlan({
+      requestId: `phase17:fixture:owned-plan-save:${suffix}:setup`,
+      expectedRevision: 1,
+      plan: completePlan(planId, `phase17:owned-plan-day:${suffix}`, exerciseId, suffix, "Metric matrix"),
+    }));
+    await kernel.write(async (transaction) => {
+      await transaction.execute(`UPDATE owned_plan_day_exercises
+        SET metric_profile = 'timed_hold', metric_contract_version = 1, exercise_metric_generation = 1
+        WHERE id = ?`, [occurrenceId]);
+      await transaction.execute(`UPDATE owned_plan_working_set_targets
+        SET target_json = '{"version":1,"profile":"timed_hold","durationSeconds":45,"perSide":false}',
+            unit_json = '{"version":1,"duration":"seconds"}', metric_profile = 'timed_hold', metric_contract_version = 1, exercise_metric_generation = 1
+        WHERE id = ?`, [targetId]);
+    });
+    const envelope = createPhase17ActionEnvelopeSource({
+      contracts: PHASE17_MATRIX_CONTRACTS,
+      identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }),
+      store: {
+        read: async () => { const [row] = await kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [ENVELOPE_KEY]); return row === undefined ? null : JSON.parse(row.value_json) as Phase17ActionEnvelopeContext; },
+        write: async (value) => { await kernel.write((transaction) => transaction.execute("INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, revision = app_settings.revision + 1, updated_at_ms = excluded.updated_at_ms", [ENVELOPE_KEY, JSON.stringify(value), NOW_MS])); },
+        clear: async (value) => { await kernel.write((transaction) => transaction.execute("DELETE FROM app_settings WHERE key = ? AND value_json = ?", [ENVELOPE_KEY, JSON.stringify(value)])); },
+      },
+    });
+    const manifest = createPhase17FamilyACleanupManifest(caseId, fixtureToken, { ownedPlanId: planId, customExerciseId: exerciseId });
+    await envelope.activate({ caseId, fixtureToken, envelopes: phase17ActionEnvelopePlan(caseId, fixtureToken), cleanupManifest: manifest });
+    const preview = await readCustomExerciseMigration({ kernel, customExerciseRepository: customExercises }, exerciseId);
+    expect(preview).toMatchObject({ exerciseId, exerciseRevision: 1, occurrences: [expect.objectContaining({ occurrenceId, targets: [expect.objectContaining({ targetId })] })] });
+    const requestId = await envelope.claim({ caseId, fixtureToken, label });
+    if (requestId === null) throw new Error("phase17_matrix_metric_request_missing");
+    try { await migrateCustomExerciseMetricProfile({ repository: createMetricRepository(kernel), input: {
+      exerciseId, expectedExerciseRevision: preview!.exerciseRevision, fromIdentity: preview!.fromIdentity,
+      toIdentity: { profile: "timed_hold", contractVersion: 2, exerciseMetricGeneration: 2 },
+      replacements: [{ targetId, expectedTargetRevision: 1, target: { version: 2, profile: "timed_hold", durationMs: 45_000, perSide: false }, unit: { version: 2, duration: "milliseconds" } }],
+      policyDecisions: [{ planDayExerciseId: occurrenceId, expectedPolicyRevision: 1, policy: { kind: "manual_hold", version: 1 } }],
+      acknowledgedHistoryImmutable: true, idempotencyKey: requestId, migratedAtMs: NOW_MS,
+    } }); } catch (error) { throw new Error("phase17_matrix_metric_confirmation_failed", { cause: error }); }
+    const [event] = await kernel.queryAll<{ exercise_id: string; exercise_revision: number; to_exercise_metric_generation: number; result_json: string }>(
+      "SELECT exercise_id, exercise_revision, to_exercise_metric_generation, result_json FROM metric_profile_migration_events WHERE idempotency_key = ?", [requestId],
+    );
+    expect(event).toMatchObject({ exercise_id: exerciseId, exercise_revision: 2, to_exercise_metric_generation: 2 });
+    expect(JSON.parse(event?.result_json ?? "{}")).toMatchObject({ outcome: "committed" });
+    await expect(kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND revision = 2 AND exercise_metric_generation = 2", [exerciseId])).resolves.toHaveLength(1);
+    await envelope.assertConsumed({ caseId, fixtureToken });
+    await envelope.updateCleanupManifest({ caseId, fixtureToken, cleanupManifest: await materializePhase17FamilyACleanupManifest(kernel, manifest) });
+    try { await cleanupPhase17FamilyAManifest(kernel, manifest); } catch (error) { throw new Error("phase17_matrix_metric_cleanup_failed", { cause: error }); }
+    await envelope.clear({ caseId, fixtureToken });
     await expect(kernel.queryAll("SELECT key FROM app_settings WHERE key = ?", [ENVELOPE_KEY])).resolves.toEqual([]);
     await expect(kernel.queryAll<{ value_json: string }>("SELECT value_json FROM app_settings WHERE key = ?", [SENTINEL_KEY])).resolves.toEqual([{ value_json: JSON.stringify({ preserve: true }) }]);
     expect(await logicalDigest(kernel)).toEqual(before);

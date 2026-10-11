@@ -3125,7 +3125,7 @@ export function WorkoutAppRuntimeProvider({
       : restoreCustomExercise;
     const requestId = input.archived
       ? await phase17RequestId("custom-exercise-archive", services.ownedPlans.createId("exercise-archive"))
-      : services.ownedPlans.createId("exercise-restore");
+      : await phase17RequestId("custom-exercise-reactivate", services.ownedPlans.createId("exercise-restore"));
     await command({
       repository: services.customExerciseRepository,
       invalidate: async () => undefined,

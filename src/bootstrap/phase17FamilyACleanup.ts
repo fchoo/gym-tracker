@@ -1,5 +1,5 @@
 import type { SqliteKernel, SqliteTransactionExecutor } from "../platform/sqlite/sqliteKernel";
-import { PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../testing/contracts/phase17LibraryRunning.contract";
+import { PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_RECEIPTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../testing/contracts/phase17LibraryRunning.contract";
 
 const TOKEN = /^phase17:[a-z0-9-]{16,128}$/u;
 const requestIdFor = (caseId: string, fixtureToken: string) =>
@@ -32,7 +32,7 @@ export type Phase17FamilyACleanupSelectors = Readonly<{
 
 const sorted = (values: readonly string[]) => Object.freeze([...new Set(values)].sort());
 const receiptFor = (caseId: string) =>
-  PHASE17_FAMILY_A_MUTATION_RECEIPTS.find(([id]) => id === caseId);
+  [...PHASE17_FAMILY_A_MUTATION_RECEIPTS, ...PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_RECEIPTS].find(([id]) => id === caseId);
 const HANDLED_RECEIPT_TABLES = new Set([
   "custom_exercise_mutation_receipts", "metric_profile_migration_events",
   "owned_plan_schedule_events", "starter_plan_activation_requests", "owned_plan_mutation_requests",
@@ -235,6 +235,11 @@ export async function cleanupPhase17FamilyAManifest(
     // Remove only the fixture manifest's exact exercise preferences before
     // deleting the roots so the logical v8 backup returns to its baseline.
     await removeByIds(transaction, "exercise_owner_preferences", "exercise_id", exact.exerciseIds);
+    // Metric confirmation creates a future-only baseline with an explicit
+    // RESTRICT edge to its exercise. The event is removed above by exact
+    // idempotency key; this exact fixture-root delete clears its paired
+    // baseline without touching ordinary history or another exercise's facts.
+    await removeByIds(transaction, "exercise_metric_baselines", "exercise_id", exact.exerciseIds);
     // Custom-library children cascade from exercise_library_entries/exercises; delete exact roots only.
     await removeByIds(transaction, "exercises", "id", exact.exerciseIds);
   });
