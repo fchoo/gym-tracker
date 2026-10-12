@@ -52,6 +52,7 @@ tasks.register('phase18GarminKotlinCoverageReport', JacocoReport) {
   sourceDirectories.from(files('src/main/java'))
   classDirectories.from(files(fileTree(layout.buildDirectory.dir('tmp/kotlin-classes/debug')) {
     include 'expo/modules/garminconnect/GarminClientWorker.class'
+    include 'expo/modules/garminconnect/GarminAdversarialSuiteRunner*.class'
     include 'expo/modules/garminconnect/GarminTokenStore.class'
   }))
   reports {

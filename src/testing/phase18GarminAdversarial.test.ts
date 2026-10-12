@@ -7,6 +7,7 @@ import {
   PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
   phase18GarminAdversarialEnabled,
   runPhase18GarminAdversarialHostSuite,
+  runPhase18GarminAdversarialNativeSuite,
 } from "./phase18GarminAdversarial";
 
 const HASH = /^[a-f0-9]{64}$/u;
@@ -117,6 +118,124 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
     expect(route).not.toMatch(/GARMIN_EMAIL|GARMIN_PASSWORD|GARMIN_MFA/iu);
     expect(layout).toContain('nativeContractSuite === "phase18-garmin-adversarial"');
     expect(layout).toContain('pathname === "/__phase18-garmin-adversarial"');
+  });
+
+  it("binds strict native rows to build and installed runtime identity", async () => {
+    const host = await runPhase18GarminAdversarialHostSuite({ sha256 });
+    const raw = {
+      schema_version: 1,
+      suite: "phase18-garmin-adversarial",
+      status: "passed",
+      runtime_identity: {
+        retainedApkSha256: "d".repeat(64),
+        retainedSignatureSha256: "e".repeat(64),
+        deviceIdentitySha256: "f".repeat(64),
+      },
+      cases: host.cases.map((entry) => ({
+        ...entry,
+        status: "passed",
+        provenance: "native-exact-artifact",
+        stage: entry.id.toLowerCase().replaceAll("ph18-adv-", "").replaceAll("-", "_"),
+      })),
+    };
+    const buildIdentity = {
+      currentHead: "a".repeat(40),
+      currentSourceTreeSha256: "b".repeat(64),
+      currentPythonLockSha256: "c".repeat(64),
+    };
+
+    const report = await runPhase18GarminAdversarialNativeSuite({
+      runAdversarialSuite: async () => raw,
+    } as never, buildIdentity);
+
+    expect(report.status).toBe("passed");
+    expect(report.current_identity).toEqual({
+      ...buildIdentity,
+      ...raw.runtime_identity,
+    });
+    expect(report.cases).toHaveLength(16);
+    expect(report.cases.every(({ provenance }) => provenance === "native-exact-artifact")).toBe(true);
+  });
+
+  it("rejects native count drift, identity drift, and privacy-unsafe additions", async () => {
+    const host = await runPhase18GarminAdversarialHostSuite({ sha256 });
+    const exact = {
+      schema_version: 1,
+      suite: "phase18-garmin-adversarial",
+      status: "passed",
+      runtime_identity: {
+        retainedApkSha256: "d".repeat(64),
+        retainedSignatureSha256: "e".repeat(64),
+        deviceIdentitySha256: "f".repeat(64),
+      },
+      cases: host.cases.map((entry) => ({
+        ...entry,
+        status: "passed",
+        provenance: "native-exact-artifact",
+        stage: entry.id.toLowerCase().replaceAll("ph18-adv-", "").replaceAll("-", "_"),
+      })),
+    };
+    const buildIdentity = {
+      currentHead: "a".repeat(40),
+      currentSourceTreeSha256: "b".repeat(64),
+      currentPythonLockSha256: "c".repeat(64),
+    };
+    const invalid = [
+      { ...exact, cases: exact.cases.map((entry, index) => index === 7 ? { ...entry, call_count: 2 } : entry) },
+      { ...exact, runtime_identity: { ...exact.runtime_identity, retainedApkSha256: "short" } },
+      { ...exact, cases: exact.cases.map((entry, index) => index === 0 ? { ...entry, raw_json: "private" } : entry) },
+    ];
+
+    for (const raw of invalid) {
+      await expect(runPhase18GarminAdversarialNativeSuite({
+        runAdversarialSuite: async () => raw,
+      } as never, buildIdentity)).rejects.toThrow("phase18_garmin_native_report_invalid");
+    }
+  });
+
+  it("preserves privacy-safe unexpected native failures as technical review rows", async () => {
+    const buildIdentity = {
+      currentHead: "a".repeat(40),
+      currentSourceTreeSha256: "b".repeat(64),
+      currentPythonLockSha256: "c".repeat(64),
+    };
+    const raw = {
+      schema_version: 1,
+      suite: "phase18-garmin-adversarial",
+      status: "TECHNICAL_REVIEW_REQUIRED",
+      runtime_identity: {
+        retainedApkSha256: "d".repeat(64),
+        retainedSignatureSha256: "e".repeat(64),
+        deviceIdentitySha256: "f".repeat(64),
+      },
+      cases: PHASE18_GARMIN_ADVERSARIAL_CASE_IDS.map((id) => ({
+        id,
+        status: "TECHNICAL_REVIEW_REQUIRED",
+        provenance: "unexpected",
+        stage: id.toLowerCase().replaceAll("ph18-adv-", "").replaceAll("-", "_"),
+        code: "temporary_failure",
+        duration_ms: 0,
+        call_count: 0,
+        automatic_retry_count: 0,
+        retry_after_ms: 0,
+        source_write_count: 0,
+        connection_state: "disconnected",
+        sync_state: "failure-temporary-failure",
+        session_digest: "1".repeat(64),
+        history_digest: "2".repeat(64),
+        source_digest: "3".repeat(64),
+        match_digest: "4".repeat(64),
+        generation_before: 0,
+        generation_after: 0,
+      })),
+    };
+
+    const report = await runPhase18GarminAdversarialNativeSuite({
+      runAdversarialSuite: async () => raw,
+    } as never, buildIdentity);
+
+    expect(report.status).toBe("TECHNICAL_REVIEW_REQUIRED");
+    expect(report.cases.every(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED")).toBe(true);
   });
 
   it("reduces every injected provider and session failure exactly once without losing prior facts", async () => {

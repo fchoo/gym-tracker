@@ -173,7 +173,8 @@ internal class AndroidKeystoreGarminTokenCipher : GarminTokenCipher {
 internal class GarminTokenStore(
   root: File,
   private val cipher: GarminTokenCipher = AndroidKeystoreGarminTokenCipher(),
-  private val atomicWriter: GarminAtomicWriter = AndroidGarminAtomicWriter()
+  private val atomicWriter: GarminAtomicWriter = AndroidGarminAtomicWriter(),
+  private val beforeCommit: () -> Unit = {},
 ) : GarminSessionStore {
   private val recordFile = File(root, "garmin-di-session.bin")
 
@@ -190,11 +191,24 @@ internal class GarminTokenStore(
     var encrypted: EncryptedGarminTokens? = null
     var record: ByteArray? = null
     try {
+      if (recordFile.exists()) {
+        val existing = try {
+          readRecord(recordFile)
+        } catch (_: GarminTokenStoreException) {
+          null
+        }
+        try {
+          if (existing?.contentEquals(owned) == true) return
+        } finally {
+          existing?.fill(0)
+        }
+      }
       encrypted = cipher.encrypt(owned, RECORD_AAD)
       if (encrypted.nonce.size != NONCE_BYTES || encrypted.ciphertext.size < GCM_TAG_BYTES) {
         throw GarminTokenStoreException("garmin_token_encrypt_failed")
       }
       record = encode(encrypted)
+      beforeCommit()
       atomicWriter.replace(recordFile, record) { candidate ->
         val verified = readRecord(candidate)
         try {

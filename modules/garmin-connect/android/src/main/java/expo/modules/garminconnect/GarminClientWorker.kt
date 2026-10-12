@@ -197,16 +197,6 @@ internal class GarminClientWorker(
     )
   }
 
-  fun runAdversarialSuite(confirmation: String): Map<String, Any?> = lock.withLock {
-    require(confirmation == "VERIFY-PHASE18-GARMIN-ADVERSARIAL") {
-      "garmin_arguments_rejected"
-    }
-    safeDispatch(
-      "runAdversarialSuite",
-      mutableMapOf("confirmation" to confirmation),
-    )
-  }
-
   private fun activityCall(operation: String, externalActivityId: String): Map<String, Any?> {
     validateActivityId(externalActivityId)
     return readCall(operation, mutableMapOf("externalActivityId" to externalActivityId))
@@ -221,15 +211,22 @@ internal class GarminClientWorker(
   private fun readCall(
     operation: String,
     arguments: MutableMap<String, Any>
-  ): Map<String, Any?> = lock.withLock {
-    if (!sessionAvailable) return@withLock error("sign_in_required")
-    val startedGeneration = generation
-    val result = safeDispatch(operation, arguments)
-    if (result["status"] == "ok" && resultGeneration(result) != startedGeneration) {
-      return@withLock error("stale_generation")
+  ): Map<String, Any?> {
+    val startedGeneration = lock.withLock {
+      if (!sessionAvailable) return error("sign_in_required")
+      generation
     }
-    persistPendingTokens(result)
-    result
+    val result = safeDispatch(operation, arguments)
+    return lock.withLock {
+      if (
+        generation != startedGeneration
+        || (result["status"] == "ok" && resultGeneration(result) != startedGeneration)
+      ) {
+        return@withLock error("stale_generation")
+      }
+      persistPendingTokens(result)
+      result
+    }
   }
 
   private fun acceptGeneration(result: Map<String, Any?>) {

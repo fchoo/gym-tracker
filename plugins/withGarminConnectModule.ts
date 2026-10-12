@@ -78,8 +78,9 @@ chaquopy {
     defaultConfig {
         version = "3.13"
         pip {
+            options "--no-deps"
             garminPythonLock.packages.each { lockedPackage ->
-                install "--no-deps", new File(garminPythonArtifactDir, lockedPackage.artifact.filename).absolutePath
+                install new File(garminPythonArtifactDir, lockedPackage.artifact.filename).absolutePath
             }
         }
     }

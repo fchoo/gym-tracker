@@ -53,7 +53,9 @@ allprojects {
     expect(configuredApp).toContain("verifyGarminPythonLock");
     expect(configuredApp).toContain("garmin-python-lock.json");
     expect(configuredApp).toContain("garmin-python-artifacts");
-    expect(configuredApp).toContain('install "--no-deps"');
+    expect(configuredApp).toContain('options "--no-deps"');
+    expect(configuredApp).toContain('install new File(garminPythonArtifactDir');
+    expect(configuredApp).not.toContain('install "--no-deps"');
     expect(configuredApp).toContain("materializeGarminPythonLock");
     expect(configuredApp).not.toContain("git+https://");
     expect(configuredApp).not.toContain("files.pythonhosted.org");

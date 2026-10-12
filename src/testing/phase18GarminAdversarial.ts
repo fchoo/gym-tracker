@@ -658,12 +658,160 @@ export async function runPhase18GarminAdversarialHostSuite(input: Readonly<{
   });
 }
 
+export type Phase18GarminAdversarialBuildIdentity = Readonly<{
+  currentHead: string;
+  currentSourceTreeSha256: string;
+  currentPythonLockSha256: string;
+}>;
+
+type Phase18GarminAdversarialRuntimeIdentity = Readonly<{
+  retainedApkSha256: string;
+  retainedSignatureSha256: string;
+  deviceIdentitySha256: string;
+}>;
+
+type Phase18GarminAdversarialCurrentIdentity =
+  & Phase18GarminAdversarialBuildIdentity
+  & Phase18GarminAdversarialRuntimeIdentity;
+
+const NATIVE_CASE_KEYS = Object.freeze([
+  "automatic_retry_count",
+  "call_count",
+  "code",
+  "connection_state",
+  "duration_ms",
+  "generation_after",
+  "generation_before",
+  "history_digest",
+  "id",
+  "match_digest",
+  "provenance",
+  "retry_after_ms",
+  "session_digest",
+  "source_digest",
+  "source_write_count",
+  "stage",
+  "status",
+  "sync_state",
+] as const);
+const NATIVE_EXPECTED_CODES = Object.freeze([
+  "completed", "completed", "completed", "completed", "sign_in_required", "stale_generation",
+  "data_access_denied", "rate_limited", "offline", "timeout", "temporary_failure",
+  "malformed_response", "malformed_response", "malformed_response", "temporary_failure", "stale_generation",
+]);
+const NATIVE_EXPECTED_CALLS = Object.freeze([1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 5, 3]);
+const NATIVE_EXPECTED_CONNECTIONS = Object.freeze([
+  "connected", "connected", "connected", "disconnected", "sign-in-required", "disconnected",
+  ...Array.from({ length: 10 }, () => "connected"),
+]);
+const NATIVE_EXPECTED_SYNC_STATES = Object.freeze([
+  "idle", "success", "success", "idle", "idle", "failure-stale-generation",
+  "failure-data-access-denied", "failure-rate-limited", "failure-offline", "failure-timeout",
+  "failure-temporary-failure", "failure-malformed-response", "failure-malformed-response",
+  "failure-malformed-response", "partial-temporary-failure", "failure-stale-generation",
+]);
+const NATIVE_HASH = /^[a-f0-9]{64}$/u;
+const NATIVE_HEAD = /^[a-f0-9]{40}$/u;
+const NATIVE_SAFE_TEXT = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
+const NATIVE_FORBIDDEN_KEY = /(?:^|_)(?:account_namespace|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
+const NATIVE_FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\bauthorization\b|\bbearer\b|\bciphertext\b|\bcredentials?\b|\bmfa(?:[_ -]?code)?\b|\bpassword\b|\btoken\b)/iu;
+
+function isNativeRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactNativeKeys(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function nativeInteger(value: unknown, maximum = Number.MAX_SAFE_INTEGER): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= maximum;
+}
+
+function nativePrivacySafe(value: unknown): boolean {
+  if (typeof value === "string") return !NATIVE_FORBIDDEN_VALUE.test(value);
+  if (Array.isArray(value)) return value.every(nativePrivacySafe);
+  if (isNativeRecord(value)) {
+    return Object.entries(value).every(([key, entry]) =>
+      !NATIVE_FORBIDDEN_KEY.test(key) && nativePrivacySafe(entry));
+  }
+  return true;
+}
+
+function validNativeCase(value: unknown, index: number): value is Phase18GarminAdversarialCase {
+  if (!isNativeRecord(value) || !hasExactNativeKeys(value, NATIVE_CASE_KEYS)) return false;
+  const id = PHASE18_GARMIN_ADVERSARIAL_CASE_IDS[index];
+  const passed = value.status === "passed";
+  const structural = value.id === id
+    && (passed || value.status === "TECHNICAL_REVIEW_REQUIRED")
+    && (passed ? value.provenance === "native-exact-artifact" : value.provenance === "unexpected")
+    && value.stage === id?.toLowerCase().replaceAll("ph18-adv-", "").replaceAll("-", "_")
+    && typeof value.code === "string"
+    && NATIVE_SAFE_TEXT.test(value.code)
+    && typeof value.connection_state === "string" && NATIVE_SAFE_TEXT.test(value.connection_state)
+    && typeof value.sync_state === "string" && NATIVE_SAFE_TEXT.test(value.sync_state)
+    && nativeInteger(value.duration_ms, 24 * 60 * 60 * 1_000)
+    && nativeInteger(value.call_count, 100)
+    && nativeInteger(value.automatic_retry_count, 10)
+    && nativeInteger(value.retry_after_ms, 900_000)
+    && nativeInteger(value.source_write_count, 100)
+    && nativeInteger(value.generation_before)
+    && nativeInteger(value.generation_after)
+    && typeof value.session_digest === "string" && NATIVE_HASH.test(value.session_digest)
+    && typeof value.history_digest === "string" && NATIVE_HASH.test(value.history_digest)
+    && typeof value.source_digest === "string" && NATIVE_HASH.test(value.source_digest)
+    && typeof value.match_digest === "string" && NATIVE_HASH.test(value.match_digest);
+  if (!structural || !passed) return structural;
+  return value.code === NATIVE_EXPECTED_CODES[index]
+    && value.connection_state === NATIVE_EXPECTED_CONNECTIONS[index]
+    && value.sync_state === NATIVE_EXPECTED_SYNC_STATES[index]
+    && value.call_count === NATIVE_EXPECTED_CALLS[index]
+    && value.automatic_retry_count === 0
+    && value.retry_after_ms === (index === 7 ? 900_000 : 0)
+    && value.source_write_count === 0;
+}
+
+function validNativeRelationships(cases: readonly Phase18GarminAdversarialCase[]): boolean {
+  const first = cases[0];
+  if (first === undefined || cases.some((entry) =>
+    entry.history_digest !== first.history_digest
+    || entry.source_digest !== first.source_digest
+    || entry.match_digest !== first.match_digest)) return false;
+  return cases[0]?.session_digest !== cases[1]?.session_digest
+    && cases[1]?.session_digest === cases[2]?.session_digest
+    && cases[3]?.session_digest === cases[4]?.session_digest
+    && cases[4]?.session_digest === cases[5]?.session_digest
+    && cases[2]?.session_digest !== cases[3]?.session_digest
+    && cases.slice(7).every((entry) => entry.session_digest === cases[6]?.session_digest)
+    && cases[3]!.generation_after > cases[3]!.generation_before
+    && cases[5]!.generation_after > cases[5]!.generation_before
+    && cases.every((entry, index) => index === 3 || index === 5
+      || entry.generation_after === entry.generation_before);
+}
+
+function validBuildIdentity(value: unknown): value is Phase18GarminAdversarialBuildIdentity {
+  return isNativeRecord(value)
+    && hasExactNativeKeys(value, ["currentHead", "currentPythonLockSha256", "currentSourceTreeSha256"])
+    && typeof value.currentHead === "string" && NATIVE_HEAD.test(value.currentHead)
+    && typeof value.currentSourceTreeSha256 === "string" && NATIVE_HASH.test(value.currentSourceTreeSha256)
+    && typeof value.currentPythonLockSha256 === "string" && NATIVE_HASH.test(value.currentPythonLockSha256);
+}
+
+function validRuntimeIdentity(value: unknown): value is Phase18GarminAdversarialRuntimeIdentity {
+  return isNativeRecord(value)
+    && hasExactNativeKeys(value, ["deviceIdentitySha256", "retainedApkSha256", "retainedSignatureSha256"])
+    && Object.values(value).every((entry) => typeof entry === "string" && NATIVE_HASH.test(entry));
+}
+
 export async function runPhase18GarminAdversarialNativeSuite(
   nativeModule = getGarminConnectNativeModule(),
+  buildIdentity?: Phase18GarminAdversarialBuildIdentity,
 ): Promise<Readonly<{
   status: "passed" | "TECHNICAL_REVIEW_REQUIRED";
   cases: readonly Phase18GarminAdversarialCase[];
-  current_identity: Readonly<Record<string, string>>;
+  current_identity: Phase18GarminAdversarialCurrentIdentity;
 }>> {
   const raw = await nativeModule.runAdversarialSuite({
     confirmation: PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
@@ -672,26 +820,33 @@ export async function runPhase18GarminAdversarialNativeSuite(
     throw new Error("phase18_garmin_native_report_invalid");
   }
   const report = raw as Readonly<Record<string, unknown>>;
-  if (report.schema_version !== 1
+  if (!hasExactNativeKeys(report, ["cases", "runtime_identity", "schema_version", "status", "suite"])
+    || report.schema_version !== 1
     || report.suite !== "phase18-garmin-adversarial"
     || (report.status !== "passed" && report.status !== "TECHNICAL_REVIEW_REQUIRED")
-    || report.current_identity === null
-    || typeof report.current_identity !== "object"
-    || Array.isArray(report.current_identity)
+    || !validBuildIdentity(buildIdentity)
+    || !validRuntimeIdentity(report.runtime_identity)
     || !Array.isArray(report.cases)
     || report.cases.length !== PHASE18_GARMIN_ADVERSARIAL_CASE_IDS.length
-    || report.cases.some((entry, index) => {
-      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return true;
-      const candidate = entry as Readonly<Record<string, unknown>>;
-      return candidate.id !== PHASE18_GARMIN_ADVERSARIAL_CASE_IDS[index]
-        || (candidate.status === "passed" && candidate.provenance !== "native-exact-artifact")
-        || (candidate.status !== "passed" && candidate.status !== "TECHNICAL_REVIEW_REQUIRED");
-    })) {
+    || report.cases.some((entry, index) => !validNativeCase(entry, index))) {
+    throw new Error("phase18_garmin_native_report_invalid");
+  }
+  const cases = report.cases as Phase18GarminAdversarialCase[];
+  const expectedStatus = cases.every(({ status }) => status === "passed")
+    ? "passed"
+    : "TECHNICAL_REVIEW_REQUIRED";
+  const currentIdentity = {
+    ...buildIdentity,
+    ...report.runtime_identity,
+  };
+  if (report.status !== expectedStatus
+    || (report.status === "passed" && !validNativeRelationships(cases))
+    || !nativePrivacySafe({ cases, current_identity: currentIdentity })) {
     throw new Error("phase18_garmin_native_report_invalid");
   }
   return Object.freeze({
     status: report.status,
-    cases: Object.freeze(report.cases as Phase18GarminAdversarialCase[]),
-    current_identity: Object.freeze(report.current_identity as Record<string, string>),
+    cases: Object.freeze(cases),
+    current_identity: Object.freeze(currentIdentity),
   });
 }

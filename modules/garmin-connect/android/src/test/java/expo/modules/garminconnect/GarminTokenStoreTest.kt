@@ -7,6 +7,10 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.ByteBuffer
 import java.security.MessageDigest
+import java.lang.reflect.InvocationTargetException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -78,6 +82,43 @@ class GarminTokenStoreTest {
   }
 
   @Test
+  fun `controlled before-commit interruption preserves the prior encrypted record`() {
+    val root = temporaryFolder.newFolder("controlled-rotation")
+    var interrupt = false
+    val store = GarminTokenStore(
+      root,
+      JvmAesGcmCipher(),
+      JvmAtomicWriter(),
+      beforeCommit = {
+        if (interrupt) throw GarminTokenStoreException("garmin_token_write_failed")
+      },
+    )
+    store.replace("last-valid-session".toByteArray())
+    val before = store.recordIdentity()
+    interrupt = true
+
+    val error = assertThrows(GarminTokenStoreException::class.java) {
+      store.replace("rotated-session".toByteArray())
+    }
+
+    assertEquals("garmin_token_write_failed", error.code)
+    assertEquals(before, store.recordIdentity())
+    assertArrayEquals("last-valid-session".toByteArray(), store.read())
+  }
+
+  @Test
+  fun `rewriting identical plaintext preserves encrypted record identity`() {
+    val root = temporaryFolder.newFolder("stable-identity")
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), JvmAtomicWriter())
+    store.replace("same-session".toByteArray())
+    val before = store.recordIdentity()
+
+    store.replace("same-session".toByteArray())
+
+    assertEquals(before, store.recordIdentity())
+  }
+
+  @Test
   fun `clear removes only the encrypted session record`() {
     val root = temporaryFolder.newFolder("clear")
     val store = GarminTokenStore(root, JvmAesGcmCipher(), JvmAtomicWriter())
@@ -130,6 +171,26 @@ class GarminTokenStoreTest {
 
     assertNull(store.value)
     assertEquals(2L, worker.generationForTest())
+  }
+
+  @Test
+  fun `logout overtakes a delayed read and rejects its pre-logout generation`() {
+    val dispatcher = DelayedReadDispatcher()
+    val worker = GarminClientWorker(dispatcher, MemorySessionStore())
+    worker.login("owner", "synthetic-secret")
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val delayed = executor.submit<Map<String, Any?>> { worker.getActivity("42") }
+      assertTrue(dispatcher.readStarted.await(1, TimeUnit.SECONDS))
+      val logout = executor.submit<Map<String, Any?>> { worker.logout() }
+
+      assertEquals("ok", logout.get(1, TimeUnit.SECONDS)["status"])
+      dispatcher.releaseRead.countDown()
+      assertEquals("stale_generation", errorCode(delayed.get(1, TimeUnit.SECONDS)))
+    } finally {
+      dispatcher.releaseRead.countDown()
+      executor.shutdownNow()
+    }
   }
 
   @Test
@@ -350,12 +411,281 @@ class GarminTokenStoreTest {
     for (identifier in listOf("", "0", "01", "1".repeat(20))) {
       assertThrows(IllegalArgumentException::class.java) { reads.getActivity(identifier) }
     }
-    assertThrows(IllegalArgumentException::class.java) { reads.runAdversarialSuite("wrong") }
-    val adversarial = GarminClientWorker(
-      RecordingDispatcher(ArrayDeque(listOf(success(0, emptyMap())))),
-      MemorySessionStore(),
+  }
+
+  @Test
+  fun `native adversarial runner emits sixteen observed lifecycle and injected rows`() {
+    val dispatcher = ProtocolAdversarialDispatcher()
+    val store = MemorySessionStore()
+    var now = 0L
+    val runner = GarminAdversarialSuiteRunner(
+      dispatcher = dispatcher,
+      sessionStore = store,
+      interruptRotation = { store.failNextReplace = true },
+      now = { ++now },
     )
-    assertEquals("ok", adversarial.runAdversarialSuite("VERIFY-PHASE18-GARMIN-ADVERSARIAL")["status"])
+
+    val report = runner.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")
+    val cases = report["cases"] as List<*>
+    val rows = cases.map { it as Map<*, *> }
+
+    assertEquals("passed", report["status"])
+    assertEquals(16, rows.size)
+    assertEquals(
+      listOf(1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 5, 3),
+      rows.map { it["call_count"] },
+    )
+    assertEquals(
+      listOf(
+        "completed", "completed", "completed", "completed", "sign_in_required", "stale_generation",
+        "data_access_denied", "rate_limited", "offline", "timeout", "temporary_failure",
+        "malformed_response", "malformed_response", "malformed_response", "temporary_failure", "stale_generation",
+      ),
+      rows.map { it["code"] },
+    )
+    assertTrue(rows.all { it["status"] == "passed" })
+    assertTrue(rows.all { it["provenance"] == "native-exact-artifact" })
+    assertTrue(rows.all { it["automatic_retry_count"] == 0 })
+    assertTrue(rows.all { it["source_write_count"] == 0 })
+    assertEquals(900_000L, rows[7]["retry_after_ms"])
+    assertTrue(rows.filterIndexed { index, _ -> index != 7 }.all { it["retry_after_ms"] == 0L })
+
+    assertFalse(rows[0]["session_digest"] == rows[1]["session_digest"])
+    assertEquals(rows[1]["session_digest"], rows[2]["session_digest"])
+    assertEquals(rows[3]["session_digest"], rows[4]["session_digest"])
+    assertEquals(rows[4]["session_digest"], rows[5]["session_digest"])
+    assertFalse(rows[2]["session_digest"] == rows[3]["session_digest"])
+    assertTrue(rows.drop(7).all { it["session_digest"] == rows[6]["session_digest"] })
+    assertTrue(rows.all { (it["history_digest"] as String).matches(Regex("^[a-f0-9]{64}$")) })
+    assertTrue(rows.all { it["history_digest"] == rows[0]["history_digest"] })
+    assertTrue(rows.all { it["source_digest"] == rows[0]["source_digest"] })
+    assertTrue(rows.all { it["match_digest"] == rows[0]["match_digest"] })
+    assertTrue((rows[3]["generation_after"] as Long) > (rows[3]["generation_before"] as Long))
+    assertTrue((rows[5]["generation_after"] as Long) > (rows[5]["generation_before"] as Long))
+    assertFalse(store.failNextReplace)
+    assertNull(store.value)
+    assertFalse(Regex("email|password|credential|raw_json|route|heart_rate|external_activity_id", RegexOption.IGNORE_CASE)
+      .containsMatchIn(report.toString()))
+  }
+
+  @Test
+  fun `unexpected adversarial runtime failure remains technical review required`() {
+    val failingDispatcher = object : GarminPythonDispatcher {
+      override fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?> {
+        throw IOException("injected runtime failure")
+      }
+
+      override fun takePersistableTokens(): ByteArray? = null
+    }
+    val runner = GarminAdversarialSuiteRunner(
+      dispatcher = failingDispatcher,
+      sessionStore = MemorySessionStore(),
+      interruptRotation = {},
+    )
+
+    val report = runner.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")
+    val rows = report["cases"] as List<*>
+
+    assertEquals("TECHNICAL_REVIEW_REQUIRED", report["status"])
+    assertEquals(16, rows.size)
+    assertTrue(rows.all { (it as Map<*, *>)["status"] == "TECHNICAL_REVIEW_REQUIRED" })
+    assertTrue(rows.all { (it as Map<*, *>)["provenance"] == "unexpected" })
+    assertThrows(IllegalArgumentException::class.java) { runner.run("wrong") }
+  }
+
+  @Test
+  fun `adversarial runner rejects malformed controlled observations and results`() {
+    val corruptions = listOf<(String, Map<String, Any>, String?, Map<String, Any?>) -> Map<String, Any?>>(
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
+          result.withData("operation_counts", "invalid")
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
+          result.withData("operation_counts", mapOf(1 to 1))
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
+          result.withData("operation_counts", mapOf("restoreSession" to "invalid"))
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
+          result.withoutData("automatic_retry_count")
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
+          result.withoutData("source_write_count")
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
+          result.withData("history_digest", 1)
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
+          result.withData("history_digest", "short")
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "start") {
+          result + ("data" to "invalid")
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          result.withData("items", "invalid")
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          result.withData("items", listOf("invalid"))
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          result.withData("items", listOf(mapOf("activityId" to true)))
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          mapOf("status" to "error", "error" to "invalid")
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          mapOf("status" to "error", "error" to mapOf("code" to 1))
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          mapOf("status" to "unknown")
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          mapOf("status" to "ok", "generation" to 1, "data" to null)
+        } else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "connectionState" && caseId == "PH18-ADV-RESTART") {
+          result.withData("kind", "connected")
+        } else result
+      },
+      { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "awaitLateStart") {
+          result.withData("started", false)
+        } else result
+      },
+      { operation, _, _, result ->
+        if (operation == "restoreSession") result.withData("kind", "mfa_required") else result
+      },
+      { operation, _, caseId, result ->
+        if (operation == "getActivities" && caseId == "PH18-ADV-READ") {
+          result.withData("items", listOf(mapOf("activityId" to 424242)))
+        } else result
+      },
+      { operation, arguments, caseId, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe" && caseId == "PH18-ADV-REFRESH") {
+          result.withData("operation_counts", mapOf("forceRefreshForTest" to 0))
+        } else result
+      },
+      { operation, arguments, caseId, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe" && caseId == "PH18-ADV-REFRESH") {
+          result.withData("automatic_retry_count", 1)
+        } else result
+      },
+      { operation, arguments, caseId, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe" && caseId == "PH18-ADV-REFRESH") {
+          result.withData("source_write_count", 1)
+        } else result
+      },
+      { operation, arguments, caseId, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "observe" && caseId == "PH18-ADV-REFRESH") {
+          result.withData("history_digest", "8".repeat(64))
+        } else result
+      },
+    )
+    for (corruption in corruptions) {
+      val runner = GarminAdversarialSuiteRunner(
+        dispatcher = TransformingAdversarialDispatcher(transform = corruption),
+        sessionStore = MemorySessionStore(),
+        interruptRotation = {},
+      )
+      assertEquals("TECHNICAL_REVIEW_REQUIRED", runner.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")["status"])
+    }
+
+    val missingTokens = GarminAdversarialSuiteRunner(
+      dispatcher = TransformingAdversarialDispatcher(dropTokens = true),
+      sessionStore = MemorySessionStore(),
+      interruptRotation = {},
+    )
+    assertEquals("TECHNICAL_REVIEW_REQUIRED", missingTokens.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")["status"])
+  }
+
+  @Test
+  fun `adversarial runner exercises every defensive relationship and helper branch`() {
+    val store = MemorySessionStore()
+    val runner = GarminAdversarialSuiteRunner(
+      dispatcher = ProtocolAdversarialDispatcher(),
+      sessionStore = store,
+      interruptRotation = { store.failNextReplace = true },
+    )
+    val report = runner.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")
+    @Suppress("UNCHECKED_CAST")
+    val baseRows = (report["cases"] as List<*>).map { (it as Map<String, Any?>).toMutableMap() }
+
+    val relationships = GarminAdversarialSuiteRunner::class.java
+      .getDeclaredMethod("digestAndGenerationRelationshipsValid", List::class.java)
+      .apply { isAccessible = true }
+    fun valid(rows: List<Map<String, Any?>>) = relationships.invoke(runner, rows) as Boolean
+    assertTrue(valid(baseRows))
+    assertFalse(valid(baseRows.dropLast(1)))
+    val mutations = listOf<(MutableList<MutableMap<String, Any?>>) -> Unit>(
+      { it[1]["history_digest"] = "8".repeat(64) },
+      { it[1]["source_digest"] = "8".repeat(64) },
+      { it[1]["match_digest"] = "8".repeat(64) },
+      { it[0]["session_digest"] = it[1]["session_digest"] },
+      { it[2]["session_digest"] = "8".repeat(64) },
+      { it[3]["session_digest"] = "8".repeat(64) },
+      { it[5]["session_digest"] = "8".repeat(64) },
+      {
+        val shared = it[1]["session_digest"]
+        for (index in 1..5) it[index]["session_digest"] = shared
+      },
+      { it[7]["session_digest"] = "8".repeat(64) },
+      { it[3]["generation_after"] = it[3]["generation_before"] },
+      { it[5]["generation_after"] = it[5]["generation_before"] },
+      { it[0]["generation_after"] = (it[0]["generation_before"] as Long) + 1 },
+    )
+    for (mutate in mutations) {
+      val rows = baseRows.map { it.toMutableMap() }.toMutableList()
+      mutate(rows)
+      assertFalse(valid(rows))
+    }
+
+    fun invoke(name: String, parameter: Class<*>, value: Any?) {
+      val method = GarminAdversarialSuiteRunner::class.java.getDeclaredMethod(name, parameter)
+        .apply { isAccessible = true }
+      assertThrows(InvocationTargetException::class.java) { method.invoke(runner, value) }
+    }
+    invoke("successData", Map::class.java, mapOf("status" to "ok", "data" to "invalid"))
+    invoke("successValue", Map::class.java, mapOf("status" to "error", "error" to "invalid"))
+    invoke("successValue", Map::class.java, mapOf("status" to "error", "error" to mapOf("code" to 1)))
+    invoke("successValue", Map::class.java, mapOf("status" to "unknown"))
+    invoke("successValue", Map::class.java, mapOf("status" to "ok", "data" to null))
+    invoke("digest", Any::class.java, 1)
+    invoke("digest", Any::class.java, "short")
+
+    val errorCode = GarminAdversarialSuiteRunner::class.java
+      .getDeclaredMethod("errorCode", Map::class.java)
+      .apply { isAccessible = true }
+    assertEquals("temporary_failure", errorCode.invoke(runner, mapOf("error" to "invalid")))
+    assertEquals("temporary_failure", errorCode.invoke(runner, mapOf("error" to mapOf("code" to 1))))
   }
 
   @Test
@@ -506,6 +836,7 @@ private class MemorySessionStore(
   private val failReplace: Boolean = false,
 ) : GarminSessionStore {
   var value: ByteArray? = initial?.copyOf()
+  var failNextReplace = false
 
   override fun read(): ByteArray? {
     if (failRead) throw GarminTokenStoreException("sign_in_required")
@@ -513,6 +844,11 @@ private class MemorySessionStore(
   }
 
   override fun replace(tokenBytes: ByteArray) {
+    if (value?.contentEquals(tokenBytes) == true) return
+    if (failNextReplace) {
+      failNextReplace = false
+      throw GarminTokenStoreException("garmin_token_write_failed")
+    }
     if (failReplace) throw GarminTokenStoreException("garmin_token_write_failed")
     value = tokenBytes.copyOf()
   }
@@ -530,6 +866,178 @@ private class MemorySessionStore(
       .joinToString("") { byte -> "%02x".format(byte) }
     return mapOf("present" to true, "version" to 1, "sha256" to digest)
   }
+}
+
+private class ProtocolAdversarialDispatcher : GarminPythonDispatcher {
+  private var generation = 0L
+  private var configuredCase = "PH18-ADV-RESTORE"
+  private var tokenGeneration = 1
+  private var pendingTokens: ByteArray? = null
+  private var lateStarted = CountDownLatch(1)
+  private var releaseLate = CountDownLatch(1)
+  private val operationCounts = linkedMapOf<String, Int>()
+  private val facts = mapOf(
+    "history_digest" to "5".repeat(64),
+    "source_digest" to "6".repeat(64),
+    "match_digest" to "7".repeat(64),
+  )
+
+  override fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?> {
+    if (operation == "runAdversarialSuite") return control(arguments)
+    operationCounts[operation] = (operationCounts[operation] ?: 0) + 1
+    return when (operation) {
+      "restoreSession" -> {
+        generation += 1
+        pendingTokens = tokenBytes()
+        success(mapOf("kind" to "connected", "account_namespace" to "garmin:fixture"))
+      }
+      "forceRefreshForTest" -> {
+        tokenGeneration += 1
+        pendingTokens = tokenBytes()
+        success(mapOf("kind" to "connected", "account_namespace" to "garmin:fixture"))
+      }
+      "connectionState" -> success(mapOf("kind" to "disconnected"))
+      "logout" -> {
+        generation += 1
+        pendingTokens = null
+        success(mapOf("kind" to "disconnected"))
+      }
+      "getActivities" -> activities(arguments)
+      "getActivity" -> activity(arguments)
+      "getActivitySplits" -> splits()
+      "getActivityDetails" -> success(mapOf("metricDescriptors" to emptyList<Any>(), "activityDetailMetrics" to emptyList<Any>()))
+      else -> throw AssertionError("unexpected operation")
+    }
+  }
+
+  override fun takePersistableTokens(): ByteArray? = pendingTokens?.copyOf().also {
+    pendingTokens?.fill(0)
+    pendingTokens = null
+  }
+
+  private fun control(arguments: Map<String, Any>): Map<String, Any?> = when (arguments["action"]) {
+    "start" -> {
+      generation = 0
+      configuredCase = "PH18-ADV-RESTORE"
+      tokenGeneration = 1
+      pendingTokens = tokenBytes()
+      operationCounts.clear()
+      success(mapOf("kind" to "prepared") + facts)
+    }
+    "reset" -> {
+      generation = 0
+      success(mapOf("kind" to "reset"))
+    }
+    "configure" -> {
+      configuredCase = arguments["caseId"] as String
+      operationCounts.clear()
+      lateStarted = CountDownLatch(1)
+      releaseLate = CountDownLatch(1)
+      success(mapOf("kind" to "configured"))
+    }
+    "observe" -> success(mapOf(
+      "operation_counts" to operationCounts.toMap(),
+      "automatic_retry_count" to 0,
+      "source_write_count" to 0,
+    ) + facts)
+    "awaitLateStart" -> success(mapOf("started" to lateStarted.await(2, TimeUnit.SECONDS)))
+    "releaseLate" -> {
+      releaseLate.countDown()
+      success(mapOf("released" to true))
+    }
+    "finish" -> {
+      releaseLate.countDown()
+      success(mapOf("kind" to "finished"))
+    }
+    else -> throw AssertionError("unexpected control")
+  }
+
+  private fun activities(arguments: Map<String, Any>): Map<String, Any?> = when (configuredCase) {
+    "PH18-ADV-403" -> failure("data_access_denied")
+    "PH18-ADV-429" -> failure("rate_limited", 900_000L)
+    "PH18-ADV-OFFLINE" -> failure("offline")
+    "PH18-ADV-TIMEOUT" -> failure("timeout")
+    "PH18-ADV-5XX" -> failure("temporary_failure")
+    "PH18-ADV-MALFORMED", "PH18-ADV-OVERSIZED" -> failure("malformed_response")
+    "PH18-ADV-LATE-GENERATION" -> {
+      val startedGeneration = generation
+      lateStarted.countDown()
+      releaseLate.await(2, TimeUnit.SECONDS)
+      mapOf(
+        "status" to "ok",
+        "generation" to startedGeneration,
+        "data" to mapOf("items" to listOf(discovery("424242"))),
+      )
+    }
+    "PH18-ADV-PARTIAL-PAGE" -> success(mapOf("items" to listOf(discovery("424242"), discovery("424243"))))
+    else -> success(mapOf("items" to listOf(discovery("424242"))))
+  }
+
+  private fun activity(arguments: Map<String, Any>): Map<String, Any?> {
+    if (configuredCase == "PH18-ADV-PARTIAL-PAGE" && arguments["externalActivityId"] == "424243") {
+      return failure("temporary_failure")
+    }
+    pendingTokens = tokenBytes()
+    return success(mapOf("activityId" to 424242))
+  }
+
+  private fun splits(): Map<String, Any?> {
+    if (configuredCase == "PH18-ADV-MISSING-COMPONENT") return success(null)
+    if (configuredCase == "PH18-ADV-ROTATION") tokenGeneration += 1
+    pendingTokens = tokenBytes()
+    return success(mapOf("lapDTOs" to emptyList<Any>()))
+  }
+
+  private fun success(data: Any?): Map<String, Any?> = mapOf(
+    "status" to "ok",
+    "generation" to generation,
+    "data" to data,
+  )
+
+  private fun failure(code: String, retryAfterMs: Long? = null): Map<String, Any?> = mapOf(
+    "status" to "error",
+    "error" to mapOf("code" to code) + if (retryAfterMs == null) emptyMap() else mapOf("retryAfterMs" to retryAfterMs),
+  )
+
+  private fun discovery(id: String) = mapOf("activityId" to id, "activityType" to mapOf("typeKey" to "running"))
+
+  private fun tokenBytes() = "controlled-session-$tokenGeneration".toByteArray()
+}
+
+private class TransformingAdversarialDispatcher(
+  private val delegate: ProtocolAdversarialDispatcher = ProtocolAdversarialDispatcher(),
+  private val dropTokens: Boolean = false,
+  private val transform: (String, Map<String, Any>, String?, Map<String, Any?>) -> Map<String, Any?> =
+    { _, _, _, result -> result },
+) : GarminPythonDispatcher {
+  private var configuredCase: String? = null
+
+  override fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?> {
+    if (operation == "runAdversarialSuite" && arguments["action"] == "configure") {
+      configuredCase = arguments["caseId"] as? String
+    }
+    val result = delegate.dispatch(operation, arguments)
+    return transform(operation, arguments, configuredCase, result)
+  }
+
+  override fun takePersistableTokens(): ByteArray? =
+    if (dropTokens) null else delegate.takePersistableTokens()
+}
+
+private fun Map<String, Any?>.withData(key: String, value: Any?): Map<String, Any?> {
+  val data = (this["data"] as? Map<*, *>)?.entries?.associate { (entryKey, entryValue) ->
+    entryKey as String to entryValue
+  }?.toMutableMap() ?: mutableMapOf()
+  data[key] = value
+  return this + ("data" to data)
+}
+
+private fun Map<String, Any?>.withoutData(key: String): Map<String, Any?> {
+  val data = (this["data"] as? Map<*, *>)?.entries?.associate { (entryKey, entryValue) ->
+    entryKey as String to entryValue
+  }?.toMutableMap() ?: mutableMapOf()
+  data.remove(key)
+  return this + ("data" to data)
 }
 
 private class RecordingDispatcher(
@@ -551,6 +1059,33 @@ private class RecordingDispatcher(
     pendingTokens?.fill(0)
     pendingTokens = null
   }
+}
+
+private class DelayedReadDispatcher : GarminPythonDispatcher {
+  val readStarted = CountDownLatch(1)
+  val releaseRead = CountDownLatch(1)
+
+  override fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?> =
+    when (operation) {
+      "login" -> mapOf(
+        "status" to "ok",
+        "generation" to 1,
+        "data" to mapOf("kind" to "connected"),
+      )
+      "getActivity" -> {
+        readStarted.countDown()
+        releaseRead.await(2, TimeUnit.SECONDS)
+        mapOf("status" to "ok", "generation" to 1, "data" to mapOf("activityId" to 42))
+      }
+      "logout" -> mapOf(
+        "status" to "ok",
+        "generation" to 2,
+        "data" to mapOf("kind" to "disconnected"),
+      )
+      else -> throw AssertionError("unexpected operation")
+    }
+
+  override fun takePersistableTokens(): ByteArray? = null
 }
 
 private class FixedCipher(

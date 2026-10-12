@@ -2,6 +2,7 @@ import json
 import logging
 from pathlib import Path
 import sys
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -444,11 +445,196 @@ class GarminBridgeTests(unittest.TestCase):
             bridge.dispatch("runAdversarialSuite", {"confirmation": "wrong"}),
             {"status": "error", "error": {"code": "arguments_rejected"}},
         )
-        report = bridge.dispatch("runAdversarialSuite", {
-            "confirmation": "VERIFY-PHASE18-GARMIN-ADVERSARIAL",
+        self.assertEqual(
+            bridge.dispatch("runAdversarialSuite", {
+                "confirmation": "VERIFY-PHASE18-GARMIN-ADVERSARIAL",
+            }),
+            {"status": "error", "error": {"code": "arguments_rejected"}},
+        )
+
+    def test_adversarial_control_uses_the_real_bridge_seam_without_live_transport(self):
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: self.fail("live client factory must not be called"),
+        )
+        confirmation = "VERIFY-PHASE18-GARMIN-ADVERSARIAL"
+
+        prepared = bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "start",
         })
-        self.assertEqual(report["status"], "TECHNICAL_REVIEW_REQUIRED")
-        self.assertEqual(len(report["cases"]), 16)
+        token_payload = bridge.take_persistable_tokens()
+        self.assertEqual(prepared["status"], "ok")
+        self.assertIsInstance(token_payload, bytes)
+        self.assertNotRegex(json.dumps(prepared), r"token|credential|route|heart|https?://")
+
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "reset",
+        })
+        restored = bridge.dispatch("restoreSession", {"tokenPayload": token_payload})
+        bridge.take_persistable_tokens()
+        self.assertEqual(restored["data"], {
+            "kind": "connected",
+            "account_namespace": ACCOUNT_NAMESPACE,
+        })
+
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "configure",
+            "caseId": "PH18-ADV-READ",
+        })
+        page = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
+        identifier = str(page["data"]["items"][0]["activityId"])
+        bridge.dispatch("getActivity", {"externalActivityId": identifier})
+        bridge.dispatch("getActivitySplits", {"externalActivityId": identifier})
+        bridge.dispatch("getActivityDetails", {
+            "externalActivityId": identifier,
+            "maxchart": 2000,
+            "maxpoly": 4000,
+        })
+        observed = bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "observe",
+        })["data"]
+
+        self.assertEqual(observed["operation_counts"], {
+            "getActivities": 1,
+            "getActivity": 1,
+            "getActivitySplits": 1,
+            "getActivityDetails": 1,
+        })
+        self.assertEqual(observed["automatic_retry_count"], 0)
+        self.assertEqual(observed["source_write_count"], 0)
+        for key in ("history_digest", "source_digest", "match_digest"):
+            self.assertRegex(observed[key], r"^[a-f0-9]{64}$")
+
+    def test_adversarial_control_injects_every_failure_once_and_fences_late_results(self):
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: self.fail("live client factory must not be called"),
+        )
+        confirmation = "VERIFY-PHASE18-GARMIN-ADVERSARIAL"
+        bridge.dispatch("runAdversarialSuite", {"confirmation": confirmation, "action": "start"})
+        token_payload = bridge.take_persistable_tokens()
+        bridge.dispatch("runAdversarialSuite", {"confirmation": confirmation, "action": "reset"})
+        bridge.dispatch("restoreSession", {"tokenPayload": token_payload})
+        bridge.take_persistable_tokens()
+
+        cases = (
+            ("PH18-ADV-403", "data_access_denied", 0),
+            ("PH18-ADV-429", "rate_limited", 900_000),
+            ("PH18-ADV-OFFLINE", "offline", 0),
+            ("PH18-ADV-TIMEOUT", "timeout", 0),
+            ("PH18-ADV-5XX", "temporary_failure", 0),
+            ("PH18-ADV-MALFORMED", "malformed_response", 0),
+            ("PH18-ADV-OVERSIZED", "malformed_response", 0),
+        )
+        for case_id, code, retry_after_ms in cases:
+            with self.subTest(case_id=case_id):
+                bridge.dispatch("runAdversarialSuite", {
+                    "confirmation": confirmation,
+                    "action": "configure",
+                    "caseId": case_id,
+                })
+                failure = bridge.dispatch("getActivities", {
+                    "start": 0,
+                    "limit": 1,
+                    "activityType": "running",
+                })
+                self.assertEqual(failure["status"], "error")
+                self.assertEqual(failure["error"]["code"], code)
+                self.assertEqual(failure["error"].get("retryAfterMs", 0), retry_after_ms)
+                observed = bridge.dispatch("runAdversarialSuite", {
+                    "confirmation": confirmation,
+                    "action": "observe",
+                })["data"]
+                self.assertEqual(observed["operation_counts"], {"getActivities": 1})
+                self.assertEqual(observed["automatic_retry_count"], 0)
+
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "configure",
+            "caseId": "PH18-ADV-MISSING-COMPONENT",
+        })
+        page = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
+        identifier = str(page["data"]["items"][0]["activityId"])
+        bridge.dispatch("getActivity", {"externalActivityId": identifier})
+        missing = bridge.dispatch("getActivitySplits", {"externalActivityId": identifier})
+        self.assertIsNone(missing["data"])
+        self.assertEqual(bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "observe",
+        })["data"]["operation_counts"], {
+            "getActivities": 1,
+            "getActivity": 1,
+            "getActivitySplits": 1,
+        })
+
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "configure",
+            "caseId": "PH18-ADV-PARTIAL-PAGE",
+        })
+        page = bridge.dispatch("getActivities", {"start": 0, "limit": 2, "activityType": "running"})
+        first, second = [str(item["activityId"]) for item in page["data"]["items"]]
+        bridge.dispatch("getActivity", {"externalActivityId": first})
+        bridge.dispatch("getActivitySplits", {"externalActivityId": first})
+        bridge.dispatch("getActivityDetails", {
+            "externalActivityId": first, "maxchart": 2000, "maxpoly": 4000,
+        })
+        partial = bridge.dispatch("getActivity", {"externalActivityId": second})
+        self.assertEqual(partial, {"status": "error", "error": {"code": "temporary_failure"}})
+        self.assertEqual(sum(bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "observe",
+        })["data"]["operation_counts"].values()), 5)
+
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "configure",
+            "caseId": "PH18-ADV-ROTATION",
+        })
+        page = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
+        identifier = str(page["data"]["items"][0]["activityId"])
+        bridge.take_persistable_tokens()
+        bridge.dispatch("getActivity", {"externalActivityId": identifier})
+        bridge.take_persistable_tokens()
+        bridge.dispatch("getActivitySplits", {"externalActivityId": identifier})
+        self.assertIsInstance(bridge.take_persistable_tokens(), bytes)
+        self.assertEqual(sum(bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "observe",
+        })["data"]["operation_counts"].values()), 3)
+
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "configure",
+            "caseId": "PH18-ADV-LATE-GENERATION",
+        })
+        result = {}
+        delayed = threading.Thread(target=lambda: result.update(bridge.dispatch(
+            "getActivities",
+            {"start": 0, "limit": 1, "activityType": "running"},
+        )))
+        delayed.start()
+        started = bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "awaitLateStart",
+        })
+        self.assertTrue(started["data"]["started"])
+        before_logout = bridge._generation
+        bridge.dispatch("logout", {})
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "releaseLate",
+        })
+        delayed.join(timeout=2)
+        self.assertFalse(delayed.is_alive())
+        self.assertEqual(result["generation"], before_logout)
+        self.assertGreater(bridge._generation, result["generation"])
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "finish",
+        })
 
     def test_module_entrypoints_and_retry_headers_fail_closed(self):
         self.assertEqual(garmin_bridge.dispatch("runtimeInfo", {})["schemaVersion"], 1)

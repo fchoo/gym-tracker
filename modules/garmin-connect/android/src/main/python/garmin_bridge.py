@@ -8,6 +8,7 @@ import logging
 import math
 import re
 import secrets
+import threading
 from typing import Any, Callable
 
 _RUNTIME_INFO_OPERATION = "runtimeInfo"
@@ -46,6 +47,42 @@ _MAX_JSON_NODES = 25_000
 _MAX_JSON_STRING_LENGTH = 16_384
 _MAX_PAGE_START = 10_000
 _MAX_PAGE_SIZE = 50
+_ADVERSARIAL_CONFIRMATION = "VERIFY-PHASE18-GARMIN-ADVERSARIAL"
+_ADVERSARIAL_ACCOUNT_NAMESPACE = "garmin:abcdefabcdefabcdefabcdefabcdefab"
+_ADVERSARIAL_CASE_IDS = frozenset(
+    {
+        "PH18-ADV-RESTORE",
+        "PH18-ADV-REFRESH",
+        "PH18-ADV-READ",
+        "PH18-ADV-LOGOUT",
+        "PH18-ADV-RESTART",
+        "PH18-ADV-LATE-GENERATION",
+        "PH18-ADV-403",
+        "PH18-ADV-429",
+        "PH18-ADV-OFFLINE",
+        "PH18-ADV-TIMEOUT",
+        "PH18-ADV-5XX",
+        "PH18-ADV-MALFORMED",
+        "PH18-ADV-OVERSIZED",
+        "PH18-ADV-MISSING-COMPONENT",
+        "PH18-ADV-PARTIAL-PAGE",
+        "PH18-ADV-ROTATION",
+    }
+)
+_ADVERSARIAL_RETAINED_FACTS = {
+    "history": {"aggregate_revision": 1, "import_outcome": "replayed"},
+    "source": {
+        "activity_type": "running",
+        "distance_metres": 5_000,
+        "duration_seconds": 1_500,
+        "elapsed_seconds": 1_560,
+        "moving_seconds": 1_475,
+        "lap_count": 0,
+        "metric_descriptor_count": 0,
+        "metric_sample_count": 0,
+    },
+    "match": {"decision": "retained", "source_revision": 1},
+}
 
 
 def _silence_provider_logging() -> None:
@@ -144,6 +181,153 @@ def _safe_namespace(value: Any) -> str:
     return value
 
 
+def _canonical_digest(value: Any) -> str:
+    payload = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _adversarial_provider_error(name: str, status: int, retry_after: str | None = None) -> Exception:
+    error = type(name, (Exception,), {})("injected_failure")
+    response = type("AdversarialResponse", (), {})()
+    response.status_code = status
+    response.headers = {} if retry_after is None else {"Retry-After": retry_after}
+    error.response = response
+    return error
+
+
+class _AdversarialController:
+    def __init__(self) -> None:
+        self.mode = "PH18-ADV-RESTORE"
+        self.token_generation = 1
+        self.operation_counts: dict[str, int] = {}
+        self.late_started = threading.Event()
+        self.late_release = threading.Event()
+        self.history_digest = _canonical_digest(_ADVERSARIAL_RETAINED_FACTS["history"])
+        self.source_digest = _canonical_digest(_ADVERSARIAL_RETAINED_FACTS["source"])
+        self.match_digest = _canonical_digest(_ADVERSARIAL_RETAINED_FACTS["match"])
+
+    def configure(self, case_id: str) -> None:
+        if case_id not in _ADVERSARIAL_CASE_IDS:
+            raise _BridgeInputError("arguments_rejected")
+        self.mode = case_id
+        self.operation_counts = {}
+        self.late_started = threading.Event()
+        self.late_release = threading.Event()
+
+    def record(self, operation: str) -> None:
+        self.operation_counts[operation] = self.operation_counts.get(operation, 0) + 1
+
+    def token_payload(self) -> bytes:
+        return json.dumps(
+            {
+                "account_namespace": _ADVERSARIAL_ACCOUNT_NAMESPACE,
+                "di_client_id": "native-adversarial-client",
+                "di_refresh_token": "native-adversarial-refresh",
+                "di_token": f"native-adversarial-{self.token_generation}",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+
+    def observation(self) -> dict[str, Any]:
+        return {
+            "operation_counts": dict(self.operation_counts),
+            "automatic_retry_count": 0,
+            "source_write_count": 0,
+            "history_digest": self.history_digest,
+            "source_digest": self.source_digest,
+            "match_digest": self.match_digest,
+        }
+
+    def rotate(self) -> None:
+        self.token_generation += 1
+
+    def client(self) -> _AdversarialClient:
+        return _AdversarialClient(self)
+
+
+class _AdversarialClient:
+    def __init__(self, controller: _AdversarialController) -> None:
+        self.controller = controller
+        self.client = self
+
+    def login(self, tokenstore: str | None = None) -> tuple[None, None]:
+        json.loads(tokenstore or "{}")
+        return None, None
+
+    def dumps(self) -> str:
+        return self.controller.token_payload().decode("utf-8")
+
+    def _refresh_di_token(self) -> None:
+        self.controller.rotate()
+
+    def get_activities(
+        self,
+        _start: int,
+        _limit: int,
+        _activity_type: str,
+    ) -> Any:
+        mode = self.controller.mode
+        if mode == "PH18-ADV-403":
+            raise _adversarial_provider_error("GarminConnectConnectionError", 403)
+        if mode == "PH18-ADV-429":
+            raise _adversarial_provider_error("GarminConnectTooManyRequestsError", 429, "999999")
+        if mode == "PH18-ADV-OFFLINE":
+            raise ConnectionError("injected_failure")
+        if mode == "PH18-ADV-TIMEOUT":
+            raise TimeoutError("injected_failure")
+        if mode == "PH18-ADV-5XX":
+            raise _adversarial_provider_error("GarminConnectConnectionError", 503)
+        if mode == "PH18-ADV-MALFORMED":
+            return object()
+        if mode == "PH18-ADV-OVERSIZED":
+            return [self._discovery(424242), self._discovery(424243)]
+        if mode == "PH18-ADV-PARTIAL-PAGE":
+            return [self._discovery(424242), self._discovery(424243)]
+        if mode == "PH18-ADV-LATE-GENERATION":
+            self.controller.late_started.set()
+            self.controller.late_release.wait(2)
+        return [self._discovery(424242)]
+
+    def get_activity(self, activity_id: str) -> dict[str, Any]:
+        if self.controller.mode == "PH18-ADV-PARTIAL-PAGE" and activity_id == "424243":
+            raise _adversarial_provider_error("GarminConnectConnectionError", 503)
+        return {
+            "activityId": int(activity_id),
+            "activityTypeDTO": {"typeKey": "running"},
+            "summaryDTO": {
+                "startTimeGMT": "2026-10-05T23:30:00.000Z",
+                "distance": 5_000,
+                "duration": 1_500,
+                "elapsedDuration": 1_560,
+                "movingDuration": 1_475,
+            },
+        }
+
+    def get_activity_splits(self, _activity_id: str) -> dict[str, Any] | None:
+        if self.controller.mode == "PH18-ADV-MISSING-COMPONENT":
+            return None
+        if self.controller.mode == "PH18-ADV-ROTATION":
+            self.controller.rotate()
+        return {"lapDTOs": []}
+
+    def get_activity_details(
+        self,
+        _activity_id: str,
+        maxchart: int,
+        maxpoly: int,
+    ) -> dict[str, Any]:
+        return {
+            "metricDescriptors": [],
+            "activityDetailMetrics": [],
+            "bounds": {"maxchart": maxchart, "maxpoly": maxpoly},
+        }
+
+    @staticmethod
+    def _discovery(activity_id: int) -> dict[str, Any]:
+        return {"activityId": activity_id, "activityType": {"typeKey": "running"}}
+
+
 class GarminBridge:
     def __init__(
         self,
@@ -161,11 +345,14 @@ class GarminBridge:
         self._pending_token_payload: bytes | None = None
         self._account_namespace: str | None = None
         self._generation = 0
+        self._adversarial: _AdversarialController | None = None
 
     def dispatch(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(operation, str) or operation not in _OPERATIONS:
             return self._error("operation_rejected")
         try:
+            if self._adversarial is not None and operation != "runAdversarialSuite":
+                self._adversarial.record(operation)
             if operation == "connectionState":
                 _exact_arguments(arguments, set())
                 return self._success(self._connection_state())
@@ -203,8 +390,9 @@ class GarminBridge:
         self._pending_token_payload = None
         return payload
 
-    def _success(self, data: Any) -> dict[str, Any]:
-        return {"status": "ok", "generation": self._generation, "data": _bounded_json(data)}
+    def _success(self, data: Any, *, generation: int | None = None) -> dict[str, Any]:
+        observed_generation = self._generation if generation is None else generation
+        return {"status": "ok", "generation": observed_generation, "data": _bounded_json(data)}
 
     @staticmethod
     def _error(code: str, retry_after_ms: int | None = None) -> dict[str, Any]:
@@ -278,7 +466,7 @@ class GarminBridge:
         self._generation += 1
         self._clear_client()
         try:
-            client = self._client_factory(
+            client = self._create_client(
                 email=email,
                 password=password,
                 return_on_mfa=True,
@@ -354,7 +542,7 @@ class GarminBridge:
                 separators=(",", ":"),
                 sort_keys=True,
             )
-            client = self._client_factory(
+            client = self._create_client(
                 email=None,
                 password=None,
                 return_on_mfa=True,
@@ -399,6 +587,7 @@ class GarminBridge:
             or values.get("activityType") != "running"
         ):
             raise _BridgeInputError("arguments_rejected")
+        started_generation = self._generation
         items = self._require_client().get_activities(start, limit, "running")
         if not isinstance(items, list) or len(items) > limit:
             raise _BridgeInputError("malformed_response")
@@ -406,25 +595,28 @@ class GarminBridge:
         data: dict[str, Any] = {"items": [_running_discovery_item(item) for item in items]}
         if len(items) == limit:
             data["nextStart"] = start + len(items)
-        return self._success(data)
+        return self._success(data, generation=started_generation)
 
     def _activity(self, arguments: Any) -> dict[str, Any]:
         identifier = _activity_id(arguments)
+        started_generation = self._generation
         value = self._require_client().get_activity(identifier)
         self._capture_tokens()
-        return self._success(value)
+        return self._success(value, generation=started_generation)
 
     def _activity_splits(self, arguments: Any) -> dict[str, Any]:
         identifier = _activity_id(arguments)
+        started_generation = self._generation
         value = self._require_client().get_activity_splits(identifier)
         self._capture_tokens()
-        return self._success(value)
+        return self._success(value, generation=started_generation)
 
     def _details(self, arguments: Any) -> dict[str, Any]:
         identifier = _activity_id(arguments, details=True)
+        started_generation = self._generation
         value = self._require_client().get_activity_details(identifier, maxchart=2000, maxpoly=4000)
         self._capture_tokens()
-        return self._success(value)
+        return self._success(value, generation=started_generation)
 
     def _force_refresh(self) -> dict[str, Any]:
         client = self._require_client()
@@ -436,45 +628,49 @@ class GarminBridge:
         return self._success(self._connection_state())
 
     def _adversarial_suite(self, arguments: Any) -> dict[str, Any]:
-        values = _exact_arguments(arguments, {"confirmation"})
-        if values.get("confirmation") != "VERIFY-PHASE18-GARMIN-ADVERSARIAL":
+        if not isinstance(arguments, dict) or arguments.get("confirmation") != _ADVERSARIAL_CONFIRMATION:
             raise _BridgeInputError("arguments_rejected")
-        case_ids = (
-            "PH18-ADV-RESTORE", "PH18-ADV-REFRESH", "PH18-ADV-READ",
-            "PH18-ADV-LOGOUT", "PH18-ADV-RESTART", "PH18-ADV-LATE-GENERATION",
-            "PH18-ADV-403", "PH18-ADV-429", "PH18-ADV-OFFLINE",
-            "PH18-ADV-TIMEOUT", "PH18-ADV-5XX", "PH18-ADV-MALFORMED",
-            "PH18-ADV-OVERSIZED", "PH18-ADV-MISSING-COMPONENT",
-            "PH18-ADV-PARTIAL-PAGE", "PH18-ADV-ROTATION",
-        )
-        digest = hashlib.sha256(b"native-observation-unavailable").hexdigest()
-        cases = [{
-            "id": case_id,
-            "status": "TECHNICAL_REVIEW_REQUIRED",
-            "provenance": "unexpected",
-            "stage": case_id.lower().replace("ph18-adv-", "").replace("-", "_"),
-            "code": "native_probe_unavailable",
-            "duration_ms": 0,
-            "call_count": 0,
-            "automatic_retry_count": 0,
-            "retry_after_ms": 0,
-            "source_write_count": 0,
-            "connection_state": self._connection_state()["kind"],
-            "sync_state": "not_run",
-            "session_digest": digest,
-            "history_digest": digest,
-            "source_digest": digest,
-            "match_digest": digest,
-            "generation_before": self._generation,
-            "generation_after": self._generation,
-        } for case_id in case_ids]
-        return {
-            "schema_version": 1,
-            "suite": "phase18-garmin-adversarial",
-            "status": "TECHNICAL_REVIEW_REQUIRED",
-            "current_identity": {},
-            "cases": cases,
-        }
+        action = arguments.get("action")
+        expected_keys = {"confirmation", "action", "caseId"} if action == "configure" else {"confirmation", "action"}
+        values = _exact_arguments(arguments, expected_keys)
+        if action == "start":
+            self._clear_client()
+            self._generation = 0
+            self._adversarial = _AdversarialController()
+            self._pending_token_payload = self._adversarial.token_payload()
+            return self._success({"kind": "prepared", **self._adversarial.observation()})
+        controller = self._adversarial
+        if controller is None:
+            raise _BridgeInputError("arguments_rejected")
+        if action == "reset":
+            self._clear_client()
+            self._generation = 0
+            return self._success({"kind": "reset"})
+        if action == "configure":
+            case_id = values.get("caseId")
+            if not isinstance(case_id, str):
+                raise _BridgeInputError("arguments_rejected")
+            controller.configure(case_id)
+            return self._success({"kind": "configured"})
+        if action == "observe":
+            return self._success(controller.observation())
+        if action == "awaitLateStart":
+            return self._success({"started": controller.late_started.wait(2)})
+        if action == "releaseLate":
+            controller.late_release.set()
+            return self._success({"released": True})
+        if action == "finish":
+            controller.late_release.set()
+            self._clear_client()
+            self._adversarial = None
+            self._generation = 0
+            return self._success({"kind": "finished"})
+        raise _BridgeInputError("arguments_rejected")
+
+    def _create_client(self, **kwargs: Any) -> Any:
+        if self._adversarial is not None:
+            return self._adversarial.client()
+        return self._client_factory(**kwargs)
 
     def _clear_client(self) -> None:
         self._client = None

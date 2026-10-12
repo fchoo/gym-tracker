@@ -1,5 +1,8 @@
 package expo.modules.garminconnect
 
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Process
 import android.os.SystemClock
 import com.chaquo.python.Python
@@ -10,6 +13,8 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
 import java.util.zip.ZipFile
 
 private const val RUNTIME_INFO_OPERATION = "runtimeInfo"
@@ -43,6 +48,21 @@ private data class GarminActivityDetailsInput(
 private data class GarminAdversarialSuiteInput(
   @Field val confirmation: String = ""
 ) : Record
+
+private class GarminAdversarialRotationGate {
+  @Volatile
+  private var armed = false
+
+  fun arm() {
+    armed = true
+  }
+
+  fun beforeCommit() {
+    if (!armed) return
+    armed = false
+    throw GarminTokenStoreException("garmin_token_write_failed")
+  }
+}
 
 private data class GarminRuntimeInfo(
   val schemaVersion: Int,
@@ -119,6 +139,7 @@ private data class GarminBenchmarkRuntimeInfo(
 
 class GarminConnectModule : Module() {
   private var clientWorker: GarminClientWorker? = null
+  private var adversarialSuiteRunner: GarminAdversarialSuiteRunner? = null
 
   override fun definition() = ModuleDefinition {
     Name("GarminConnect")
@@ -184,10 +205,14 @@ class GarminConnectModule : Module() {
     }).runOnQueue(appContext.backgroundCoroutineScope)
 
     (AsyncFunction("runAdversarialSuite") Coroutine { input: GarminAdversarialSuiteInput ->
-      require(appContext.reactContext?.packageName == "com.fchoo.gymtracker.devtest") {
+      val context = appContext.reactContext?.applicationContext
+        ?: throw IllegalStateException("garmin_runtime_unavailable")
+      require(context.packageName == "com.fchoo.gymtracker.devtest") {
         "garmin_operation_rejected"
       }
-      worker().runAdversarialSuite(input.confirmation)
+      adversarialRunner().run(input.confirmation) + mapOf(
+        "runtime_identity" to installedRuntimeIdentity(context),
+      )
     }).runOnQueue(appContext.backgroundCoroutineScope)
   }
 
@@ -265,4 +290,73 @@ class GarminConnectModule : Module() {
         ?.times(1_024L)
     }
   }.getOrNull()
+
+  private fun adversarialRunner(): GarminAdversarialSuiteRunner {
+    adversarialSuiteRunner?.let { return it }
+    val context = appContext.reactContext?.applicationContext
+      ?: throw IllegalStateException("garmin_runtime_unavailable")
+    return synchronized(this) {
+      adversarialSuiteRunner ?: run {
+        val gate = GarminAdversarialRotationGate()
+        val dispatcher = ChaquopyGarminPythonDispatcher(context)
+        val store = GarminTokenStore(
+          root = context.noBackupFilesDir.resolve("garmin-adversarial-session"),
+          beforeCommit = gate::beforeCommit,
+        )
+        GarminAdversarialSuiteRunner(
+          dispatcher = dispatcher,
+          sessionStore = store,
+          interruptRotation = gate::arm,
+        )
+      }.also { adversarialSuiteRunner = it }
+    }
+  }
+
+  private fun installedRuntimeIdentity(context: Context): Map<String, String> {
+    val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      context.packageManager.getPackageInfo(
+        context.packageName,
+        PackageManager.GET_SIGNING_CERTIFICATES,
+      )
+    } else {
+      @Suppress("DEPRECATION")
+      context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+    }
+    val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      packageInfo.signingInfo?.apkContentsSigners
+    } else {
+      @Suppress("DEPRECATION")
+      packageInfo.signatures
+    } ?: throw IllegalStateException("garmin_runtime_identity_invalid")
+    if (signatures.size != 1) throw IllegalStateException("garmin_runtime_identity_invalid")
+    val deviceIdentity = listOf(
+      Build.FINGERPRINT,
+      Build.SUPPORTED_ABIS.firstOrNull()
+        ?: throw IllegalStateException("garmin_runtime_identity_invalid"),
+      Build.MODEL,
+      Build.VERSION.SDK_INT.toString(),
+      Build.VERSION.RELEASE,
+    ).joinToString(separator = "\n", postfix = "\n")
+    return mapOf(
+      "retainedApkSha256" to FileInputStream(context.applicationInfo.sourceDir).use(::sha256),
+      "retainedSignatureSha256" to sha256(signatures.single().toByteArray()),
+      "deviceIdentitySha256" to sha256(deviceIdentity.toByteArray(Charsets.UTF_8)),
+    )
+  }
+
+  private fun sha256(input: java.io.InputStream): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    val buffer = ByteArray(64 * 1024)
+    while (true) {
+      val count = input.read(buffer)
+      if (count < 0) break
+      digest.update(buffer, 0, count)
+    }
+    buffer.fill(0)
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+  }
+
+  private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes)
+    .joinToString("") { byte -> "%02x".format(byte) }
 }

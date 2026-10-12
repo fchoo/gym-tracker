@@ -15,9 +15,10 @@ const REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
 
 function Phase18GarminAdversarialContent() {
   const [status, setStatus] = React.useState(INITIAL_STATUS);
+  const buildIdentity = Constants.expoConfig?.extra?.phase18GarminAdversarialBuildIdentity;
   React.useEffect(() => {
     let active = true;
-    void collectAdversarialReport().then((report) => {
+    void collectAdversarialReport(undefined, buildIdentity).then((report) => {
       if (!active) return;
       for (const entry of report.cases) {
         console.log(`${PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER}${JSON.stringify(entry)}`);
@@ -30,7 +31,7 @@ function Phase18GarminAdversarialContent() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [buildIdentity]);
   return (
     <View style={styles.root}>
       <Text accessibilityRole="header" style={styles.title}>
