@@ -188,6 +188,42 @@ describe("CalendarScreen", () => {
     expect(screen.queryByText(/resume|correct|remove|match workout/u)).toBeNull();
   });
 
+  it("restores the retained expanded month after Calendar returns from a detail route", async () => {
+    const onOpenEvent = jest.fn();
+    const loadCalendarRange = jest.fn(async () => completedStrengthRange);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={onOpenEvent}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
+    await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+    expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={onOpenEvent}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(await screen.findByText("August 2026")).toBeOnTheScreen();
+    expect(onOpenEvent).toHaveBeenCalledTimes(1);
+  });
+
   it("retains the last good month during refresh and retries the exact failed range", async () => {
     let rejectNextRange: ((error: Error) => void) | undefined;
     const loadCalendarRange = jest.fn() as jest.MockedFunction<CalendarReadPort["loadCalendarRange"]>;
