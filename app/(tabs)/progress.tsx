@@ -31,14 +31,9 @@ export default function ProgressRoute() {
 
   return (
     <ProgressScreen
-      loadProgress={runtime.loadProgress}
+      loadProgress={(input) => runtime.loadProgress(input)}
       nowLocalDate={nowLocalDate}
       workoutRefreshGeneration={runtime.workoutRefreshGeneration}
-      onAcceptRecommendation={async (recommendationId) => {
-        const result = await runtime.acceptRecommendation(recommendationId);
-        await runtime.refresh();
-        return result;
-      }}
       onOpenExercise={(exerciseId, exerciseName) =>
         router.push(("/exercise-history/" + exerciseId + "?exerciseName=" + encodeURIComponent(exerciseName)) as Href)}
       onOpenSettings={() => rootSettings.openRootSettings({
@@ -47,11 +42,6 @@ export default function ProgressRoute() {
         triggerRef: settingsActionRef,
       })}
       onOpenSession={(sessionId) => router.push(("/session/" + sessionId) as Href)}
-      onKeepCurrentTarget={async (recommendationId) => {
-        const result = await runtime.keepCurrentTarget(recommendationId);
-        await runtime.refresh();
-        return result;
-      }}
       headingRef={headingRef}
       settingsActionRef={settingsActionRef}
       settingsActionNativeID={settingsActionNativeID}
