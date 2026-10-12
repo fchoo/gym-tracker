@@ -510,7 +510,9 @@ export function phase18GarminBenchmarkCollectorBudgetMs(baseline, sequence) {
 
 export function collectInstalledMeasurements(
   baseline = JSON.parse(readFileSync(BASELINE, "utf8")),
+  deviceIdentitySha256,
 ) {
+  if (!regexMatch(HASH, deviceIdentitySha256)) fail("device_identity_invalid");
   const adb = resolveAndroidTool("adb");
   const coldStartRuns = [];
   let coldStartSamples = Object.freeze([]);
@@ -568,7 +570,10 @@ export function collectInstalledMeasurements(
             status: parsed.status,
           }),
           measurements: parsed.measurements,
-          measurement_context: parsed.measurement_context,
+          measurement_context: Object.freeze({
+            ...parsed.measurement_context,
+            device_identity_sha256: deviceIdentitySha256,
+          }),
         });
         break;
       }
@@ -598,9 +603,9 @@ export function executePhase18GarminBenchmark(args = process.argv.slice(2), depe
   const manifest = readJson(options.manifest);
   const baselineBytes = readBytes(BASELINE);
   const baseline = JSON.parse(Buffer.from(baselineBytes).toString("utf8"));
-  const collected = collect(baseline);
-  const baselineSha256 = createHash("sha256").update(baselineBytes).digest("hex");
   const identity = currentIdentity();
+  const collected = collect(baseline, identity.device_identity_sha256);
+  const baselineSha256 = createHash("sha256").update(baselineBytes).digest("hex");
   const evidence = Object.freeze({
     schema_version: 1,
     suite: "phase18-garmin-acceptance",

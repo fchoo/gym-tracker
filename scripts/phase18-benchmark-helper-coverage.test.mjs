@@ -406,6 +406,15 @@ test("benchmark parser rejects unknown switches and execution can defer without 
   );
 });
 
+test("benchmark collector requires a canonical host device digest before native work", () => {
+  for (const deviceIdentitySha256 of [undefined, "wrong"]) {
+    assert.throws(
+      () => collectInstalledMeasurements(undefined, deviceIdentitySha256),
+      /phase18_garmin_benchmark_device_identity_invalid/u,
+    );
+  }
+});
+
 test("benchmark execution covers default manifest, baseline, and evidence file IO", () => {
   const baselineBytes = readFileSync(BASELINE_PATH);
   const baselineReport = JSON.parse(baselineBytes.toString("utf8"));
@@ -474,18 +483,21 @@ test("benchmark collector retries after an empty pid poll and then parses the in
   const processIds = [4701, 4702, 4703, 4704, 4705];
   withColdStartCollector({ processIds }, ({ state }) => {
     writeFileSync(path.join(state, "empty-first-pid"), "enabled");
-    const result = collectInstalledMeasurements();
+    const result = collectInstalledMeasurements(undefined, HASH);
     assert.equal(result.producer_context.source_pid, 4705);
     assert.equal(result.producer_context.kind, "installed-route-log");
     assert.deepEqual(result.measurements, { python_cold_start_ms: [1, 2, 3, 4, 5] });
-    assert.deepEqual(result.measurement_context, { profile: "physical-arm64" });
+    assert.deepEqual(result.measurement_context, {
+      profile: "physical-arm64",
+      device_identity_sha256: HASH,
+    });
   });
 });
 
 test("benchmark collector completes five nonce-bound fresh-process cold starts before the remaining producer stage", () => {
   const processIds = [4101, 4102, 4103, 4104, 4105];
   withColdStartCollector({ processIds }, ({ state }) => {
-    const result = collectInstalledMeasurements();
+    const result = collectInstalledMeasurements(undefined, HASH);
     assert.equal(result.producer_context.status, "passed");
     assert.equal(result.producer_context.process_id, 4105);
     assert.deepEqual(
@@ -554,7 +566,7 @@ test("benchmark collector deadline admits five maximum bounded-sync samples plus
     withColdStartCollector({
       processIds: [4901, 4902, 4903, 4904, 4905],
     }, () => {
-      const result = collectInstalledMeasurements();
+      const result = collectInstalledMeasurements(undefined, HASH);
       assert.equal(result.producer_context.source_pid, 4905);
       assert.equal(result.producer_context.status, "passed");
     });
@@ -666,7 +678,7 @@ test("benchmark cold-start handshake rejects repeated PIDs, gaps, order drift, s
   for (const scenario of cases) {
     withColdStartCollector(scenario, () => {
       assert.throws(
-        () => collectInstalledMeasurements(),
+        () => collectInstalledMeasurements(undefined, HASH),
         /phase18_garmin_benchmark_producer_(?:invalid|process_reused)/u,
         scenario.name,
       );
@@ -694,7 +706,7 @@ test("benchmark collector retains producer verdict metadata and rejects ambiguou
         typeof extra === "string" ? extra : JSON.stringify(extra),
       );
       assert.throws(
-        () => collectInstalledMeasurements(),
+        () => collectInstalledMeasurements(undefined, HASH),
         /phase18_garmin_benchmark_producer_cardinality_invalid/u,
         name,
       );
@@ -703,7 +715,7 @@ test("benchmark collector retains producer verdict metadata and rejects ambiguou
   withColdStartCollector({ processIds }, ({ state }) => {
     writeFileSync(path.join(state, "payload-1.json"), "{malformed");
     assert.throws(
-      () => collectInstalledMeasurements(),
+      () => collectInstalledMeasurements(undefined, HASH),
       /phase18_garmin_benchmark_producer_invalid/u,
       "malformed",
     );
@@ -917,7 +929,7 @@ fi
 exit 1
 `,
   }, () => {
-    assert.throws(() => collectInstalledMeasurements(), /phase18_garmin_benchmark_producer_invalid/u);
+    assert.throws(() => collectInstalledMeasurements(undefined, HASH), /phase18_garmin_benchmark_producer_invalid/u);
   });
 });
 
@@ -940,7 +952,7 @@ if [ "$1" = "logcat" ] && [ "$2" = "--pid" ] && [ "$4" = "-d" ]; then printf 'no
 exit 1
 `,
     }, () => {
-      assert.throws(() => collectInstalledMeasurements(), /phase18_garmin_benchmark_collector_timeout/u);
+      assert.throws(() => collectInstalledMeasurements(undefined, HASH), /phase18_garmin_benchmark_collector_timeout/u);
     });
   } finally {
     Date.now = originalNow;

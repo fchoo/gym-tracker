@@ -1705,7 +1705,7 @@ exit 0
 `,
     apksignerScript: "#!/bin/sh\nprintf 'certificate SHA-256 digest: aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa\\n'\n",
   }, () => {
-    assert.throws(() => collectInstalledMeasurements(), /phase18_garmin_benchmark_producer_invalid/u);
+    assert.throws(() => collectInstalledMeasurements(undefined, HASH), /phase18_garmin_benchmark_producer_invalid/u);
   }));
 
   withWorkspaceFiles({ [benchmarkApk]: "apk", [MAESTRO_SOURCE]: "maestro-source\n" }, () => {

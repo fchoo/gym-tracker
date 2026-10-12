@@ -12,6 +12,10 @@ import {
 } from "../tests/fixtures/garmin-json/fixture-manifest.ts";
 import { canonicalizeGarminPayload } from "../src/platform/garmin/canonicalGarminPayload.ts";
 import {
+  PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES,
+  createPhase18GarminBenchmarkMarkerReport,
+} from "../src/testing/phase18GarminAcceptance.ts";
+import {
   PHASE18_GARMIN_BENCHMARK_METRICS,
   executePhase18GarminBenchmark,
   executePhase18GarminBenchmarkCli,
@@ -136,17 +140,33 @@ function benchmarkMeasurements() {
   );
 }
 
-function benchmarkMeasurementContext(identitySha256) {
-  const measurements = benchmarkMeasurements();
-  return {
-    profile: "physical-arm64",
-    device_identity_sha256: identitySha256,
-    commands: Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, `collect:${metric}`])),
-    sample_labels: Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [
-      metric,
-      measurements[metric].map((_, index) => `${BASELINE.metrics[metric].mode}-${index + 1}`),
-    ])),
-  };
+async function createInstalledProducerReport(sequence, processIds, measurements) {
+  const processId = processIds[sequence - 1];
+  return createPhase18GarminBenchmarkMarkerReport({
+    nonce: "f".repeat(32),
+    measurementPort: {
+      kind: "installed-observation-port",
+      processId: async () => processId,
+      observe: async (metric) => {
+        const count = metric === "python_cold_start_ms"
+          ? sequence
+          : PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES[metric];
+        return Array.from({ length: count }, (_, index) => ({
+          value: measurements[metric][index],
+          observed_at_monotonic_ms: 70_000
+            + (PHASE18_GARMIN_BENCHMARK_METRICS.indexOf(metric) * 1_000)
+            + index,
+          operation: metric === "python_cold_start_ms"
+            ? "native-runtime:python-cold-start"
+            : `collector:${metric.replaceAll("_", "-")}`,
+          process_id: metric === "python_cold_start_ms"
+            ? processIds[index]
+            : processId,
+          sequence: index + 1,
+        }));
+      },
+    },
+  });
 }
 
 function writeExecutable(filePath, contents) {
@@ -358,7 +378,7 @@ test("execute collects installed samples and writes evidence with source-owned b
   });
 });
 
-test("execute follows the installed-route benchmark path in-process", { concurrency: false }, () => {
+test("execute adds collector-owned host identity to actual installed producer reports", { concurrency: false }, async () => {
   const artifactRoot = path.resolve("artifacts/native/phase18-garmin-acceptance");
   const sdkRoot = path.resolve("artifacts/fake-android-sdk-benchmark");
   const apkPath = path.join(artifactRoot, "gym-tracker-phase18-garmin-acceptance-devtest.apk");
@@ -397,33 +417,18 @@ test("execute follows the installed-route benchmark path in-process", { concurre
     writeFileSync(installedApkPath, retainedApkBytes);
     writeFileSync(pidPath, `${coldStartProcessIds.join("\n")}\n`);
     const finalMeasurements = benchmarkMeasurements();
-    const coldStartSamples = coldStartProcessIds.map((process_id, index) => ({
-      value: finalMeasurements.python_cold_start_ms[index],
-      observed_at_monotonic_ms: 70_000 + index,
-      operation: "native-runtime:python-cold-start",
-      process_id,
-      sequence: index + 1,
-    }));
     for (let index = 0; index < payloadPaths.length; index += 1) {
       const sequence = index + 1;
-      const complete = sequence === 5;
-      writeFileSync(payloadPaths[index], JSON.stringify({
-        run_nonce: "__NONCE__",
-        process_id: coldStartProcessIds[index],
-        source: "installed-route-log",
-        status: complete ? "passed" : "REVIEW_REQUIRED",
-        review_required: complete ? [] : ["python_cold_start_ms:minimum_samples_missing"],
-        cold_start_handshake: {
-          next_sequence: complete ? null : sequence + 1,
-          samples: coldStartSamples.slice(0, sequence),
-        },
-        measurements: complete
-          ? finalMeasurements
-          : { python_cold_start_ms: finalMeasurements.python_cold_start_ms.slice(0, sequence) },
-        measurement_context: complete
-          ? benchmarkMeasurementContext(deviceIdentitySha256)
-          : { profile: "physical-arm64" },
-      }));
+      const producerReport = await createInstalledProducerReport(
+        sequence,
+        coldStartProcessIds,
+        finalMeasurements,
+      );
+      assert.equal("device_identity_sha256" in producerReport.measurement_context, false);
+      writeFileSync(
+        payloadPaths[index],
+        JSON.stringify(producerReport).replaceAll("f".repeat(32), "__NONCE__"),
+      );
     }
     writeFileSync(path.join(artifactRoot, "build.json"), `${JSON.stringify({
       schema_version: 1,
@@ -533,6 +538,11 @@ printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
     });
     assert.equal(report.sample_counts.python_warm_start_ms, 10);
     assert.equal(report.maxima.frame_time_ms, 30);
+    const writtenEvidence = JSON.parse(readFileSync(EVIDENCE_PATH, "utf8"));
+    assert.equal(
+      writtenEvidence.measurement_context.device_identity_sha256,
+      deviceIdentitySha256,
+    );
   } finally {
     if (originalAndroidHome === undefined) delete process.env.ANDROID_HOME;
     else process.env.ANDROID_HOME = originalAndroidHome;
