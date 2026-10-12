@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -279,6 +279,76 @@ describe("ProgressScreen", () => {
     expect(screen.queryByText(/Latest ·|Best ·/u)).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Refresh progress" }));
     await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+  });
+
+  it("runs only the declared bounded automatic refresh backoff and stops at current", async () => {
+    jest.useFakeTimers();
+    try {
+      let call = 0;
+      const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => {
+        call += 1;
+        return call < 4 ? {
+          sport: input.sport,
+          period: input.period as "4_weeks" | "12_weeks" | "all_time",
+          freshness: "updating" as const,
+          dashboard: null,
+          refresh: {
+            generation: 7,
+            automaticRefresh: { maxAttempts: 3, backoffMs: [250, 1_000, 4_000], terminal: "updating" as const },
+          },
+        } : {
+          sport: input.sport,
+          period: input.period as "4_weeks" | "12_weeks" | "all_time",
+          freshness: "current" as const,
+          dashboard: dashboardFor(input.sport),
+          refresh: {
+            generation: 8,
+            automaticRefresh: { maxAttempts: 3, backoffMs: [250, 1_000, 4_000], terminal: "current" as const },
+          },
+        };
+      });
+      await renderProgress(loadProgress as never);
+      await act(async () => undefined);
+      expect(loadProgress).toHaveBeenCalledTimes(1);
+
+      for (const delay of [250, 1_000, 4_000]) {
+        await act(async () => {
+          jest.advanceTimersByTime(delay);
+          await Promise.resolve();
+        });
+      }
+      expect(loadProgress).toHaveBeenCalledTimes(4);
+      expect(screen.getByText("No progress history yet")).toBeOnTheScreen();
+      await act(async () => { jest.advanceTimersByTime(20_000); });
+      expect(loadProgress).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("cancels an obsolete automatic refresh when the selected sport changes", async () => {
+    jest.useFakeTimers();
+    try {
+      const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+        sport: input.sport,
+        period: input.period as "4_weeks" | "12_weeks" | "all_time",
+        freshness: input.sport === "All" ? "updating" as const : "current" as const,
+        dashboard: input.sport === "All" ? null : dashboardFor(input.sport),
+        refresh: {
+          generation: 1,
+          automaticRefresh: { maxAttempts: 3, backoffMs: [250, 1_000, 4_000], terminal: input.sport === "All" ? "updating" as const : "current" as const },
+        },
+      }));
+      await renderProgress(loadProgress as never);
+      await act(async () => undefined);
+      await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+      await act(async () => undefined);
+      expect(loadProgress).toHaveBeenCalledTimes(2);
+      await act(async () => { jest.advanceTimersByTime(10_000); });
+      expect(loadProgress).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("opens exact Running history evidence and retains sport and range on close", async () => {

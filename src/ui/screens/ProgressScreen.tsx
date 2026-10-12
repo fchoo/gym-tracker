@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent, type TextStyle } from "react-native";
 
 import type { ProgressPeriod, ProgressPeriodProjection, ProgressProjectionDiagnostic, ProgressProjectionFreshness, ProgressRecommendationReview } from "../../domains/progress";
-import type { ProgressAllGoal, ProgressDashboardProjection, ProgressRunningGoal, ProgressSport, ProgressStrengthGoal, ProgressStrengthValueFormat } from "../../domains/progress/contracts";
+import type { ProgressDashboardProjection, ProgressRefreshMetadata, ProgressRunningGoal, ProgressSport, ProgressStrengthGoal, ProgressStrengthValueFormat } from "../../domains/progress/contracts";
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
 import type { ProgressBodyweightEntry, ProgressBodyweightSaveInput } from "../../bootstrap/workoutAppRuntime";
@@ -26,6 +26,7 @@ type ProgressSnapshot = Readonly<{
   dashboard?: ProgressDashboardProjection | null;
   projection?: ProgressPeriodProjection | null;
   diagnostic?: ProgressProjectionDiagnostic;
+  refresh?: ProgressRefreshMetadata;
   runningTargetSources?: readonly RunningPlanAggregate[];
 }>;
 
@@ -359,6 +360,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const requestRef = useRef(0);
+  const automaticRefreshAttemptRef = useRef(0);
   const historyTriggerRef = useRef<View>(null);
   const targetTriggerRefs = useRef(new Map<number, View>());
   const bodyMetricsTriggerRef = useRef<View>(null);
@@ -395,8 +397,29 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   }, [loadProgress, nowLocalDate, period, sport]);
 
   useEffect(() => {
+    automaticRefreshAttemptRef.current = 0;
     void readProgress(true).catch(() => undefined);
+    return () => {
+      requestRef.current += 1;
+    };
   }, [readProgress, retry, workoutRefreshGeneration]);
+
+  useEffect(() => {
+    if (snapshot?.freshness !== "updating" || snapshot.refresh === undefined) return;
+    const attempt = automaticRefreshAttemptRef.current;
+    const { automaticRefresh } = snapshot.refresh;
+    if (attempt >= automaticRefresh.maxAttempts || automaticRefresh.backoffMs.length === 0) return;
+    const delay = automaticRefresh.backoffMs[
+      Math.min(attempt, automaticRefresh.backoffMs.length - 1)
+    ]!;
+    const activeRequest = requestRef.current;
+    const timer = setTimeout(() => {
+      if (requestRef.current !== activeRequest) return;
+      automaticRefreshAttemptRef.current = attempt + 1;
+      void readProgress(false).catch(() => undefined);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [readProgress, snapshot]);
 
   useEffect(() => {
     if (returnFocusVersion === 0 || returnFocusToken === undefined) return;
