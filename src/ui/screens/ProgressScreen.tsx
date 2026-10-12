@@ -152,21 +152,43 @@ function distanceLabel(distanceMeters: number): string {
   return `${distanceMeters} m`;
 }
 
-function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget, onRetry, targetAvailable, targetTriggerRef }: Readonly<{
+function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget, onRetry, targetSources, targetTriggerRefs }: Readonly<{
   dashboard: Extract<ProgressDashboardProjection, { sport: "Running" }>;
   historyTriggerRef: React.RefObject<View | null>;
   onOpenHistory(goal: ProgressRunningGoal): void;
   onOpenTarget(distanceMeters: number): void;
   onRetry(): void;
-  targetAvailable: boolean;
-  targetTriggerRef: React.RefObject<View | null>;
+  targetSources: readonly RunningPlanAggregate[];
+  targetTriggerRefs: React.MutableRefObject<Map<number, View>>;
 }>) {
   const { colors } = useAppTheme();
+  const goalRow = (distanceMeters: number) => {
+    const label = distanceLabel(distanceMeters);
+    const source = targetSources.find(({ goal: sourceGoal }) => sourceGoal.goalDistanceMeters === distanceMeters);
+    const effort = dashboard.goals.find((candidate) => candidate.distanceMeters === distanceMeters);
+    const target = source?.goal.targetDurationMs === undefined
+      ? "Target unset"
+      : formatDuration(source.goal.targetDurationMs / 1_000);
+    const evidence = effort === undefined
+      ? "No effort recorded"
+      : `Best ${formatDuration(effort.best.durationSeconds)}`;
+    const copy = `${label} · ${target} · ${evidence} · Set target`;
+    if (source === undefined) return <Text key={distanceMeters} style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{copy}</Text>;
+    return <FocusablePressable
+      accessibilityLabel={`Set target for ${label}`}
+      accessibilityRole="button"
+      focusable
+      key={distanceMeters}
+      onPress={() => onOpenTarget(distanceMeters)}
+      ref={(node) => { if (node === null) targetTriggerRefs.current.delete(distanceMeters); else targetTriggerRefs.current.set(distanceMeters, node); }}
+      style={[styles.goalAction, { borderColor: colors.divider }]}
+    ><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{copy}</Text></FocusablePressable>;
+  };
   const goal = dashboard.goals.find((candidate) => candidate.distanceMeters === 2400) ?? dashboard.goals[0];
   if (goal === undefined) return <View style={styles.content}>
     <InlineNotice body="Running facts and best efforts come from accepted imported Garmin activities." heading="Imported activity evidence" tone="neutral" />
     <EmptyState body="Import or accept a 2.4 km effort to establish a benchmark. No zero result is shown." heading="No 2.4 km effort recorded" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
-    <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>10 km · Target unset · No effort recorded · Set target</Text><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Half Marathon · Target unset · No effort recorded · Set target</Text></View>
+    <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text>{goalRow(10_000)}{goalRow(21_097)}</View>
   </View>;
   const target = goal.target === null ? "Target unset" : formatDuration(goal.target.durationSeconds);
   const pace = goal.target === null || goal.distanceMeters !== 2400 ? null : Math.round(goal.target.durationSeconds / 2.4);
@@ -190,13 +212,13 @@ function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget
         <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Evidence · ${goal.evidenceCount} accepted imported ${goal.evidenceCount === 1 ? "activity" : "activities"}`}</Text>
         <View style={styles.actions}>
           <FocusablePressable accessibilityLabel={`Open history for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenHistory(goal)} ref={historyTriggerRef} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
-          {targetAvailable ? <FocusablePressable accessibilityLabel={`Set target for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenTarget(goal.distanceMeters)} ref={targetTriggerRef} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Set target</Text></FocusablePressable> : null}
+          {targetSources.some(({ goal: sourceGoal }) => sourceGoal.goalDistanceMeters === goal.distanceMeters) ? <FocusablePressable accessibilityLabel={`Set target for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenTarget(goal.distanceMeters)} ref={(node) => { if (node === null) targetTriggerRefs.current.delete(goal.distanceMeters); else targetTriggerRefs.current.set(goal.distanceMeters, node); }} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Set target</Text></FocusablePressable> : null}
         </View>
       </View>
       <View style={styles.goalRows}>
         <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text>
-        <Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>10 km · Target unset · No effort recorded · Set target</Text>
-        <Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Half Marathon · Target unset · No effort recorded · Set target</Text>
+        {goalRow(10_000)}
+        {goalRow(21_097)}
       </View>
     </View>
   );
@@ -257,7 +279,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const [retry, setRetry] = useState(0);
   const requestRef = useRef(0);
   const historyTriggerRef = useRef<View>(null);
-  const targetTriggerRef = useRef<View>(null);
+  const targetTriggerRefs = useRef(new Map<number, View>());
   const bodyMetricsTriggerRef = useRef<View>(null);
   const progressSettingsTriggerRef = useRef<View>(null);
   const bodyweightSettingsActionRef = useRef<View>(null);
@@ -300,7 +322,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     const exerciseMatch = /^progress:Strength:[A-Za-z0-9_]+:exercise:([A-Za-z0-9._:-]{1,128})$/u.exec(returnFocusToken);
     const target = exerciseMatch === null
       ? returnFocusToken.startsWith("running-target:")
-        ? targetTriggerRef.current
+        ? targetTriggerRefs.current.get(Number(returnFocusToken.split(":").at(-1))) ?? null
         : returnFocusToken.startsWith("running-history:")
           ? historyTriggerRef.current
           : null
@@ -357,15 +379,14 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   else if (snapshot.freshness !== "current" || snapshot.dashboard === null || snapshot.dashboard === undefined) content = <View style={styles.content}><InlineNotice body={rebuildText(snapshot.diagnostic)} heading="Updating progress" tone="neutral" />{retryAction}</View>;
   else if (snapshot.dashboard.sport === "Running") {
     const runningDashboard = snapshot.dashboard;
-    const primaryDistance = runningDashboard.goals[0]?.distanceMeters;
     content = <RunningRoot
       dashboard={runningDashboard}
       historyTriggerRef={historyTriggerRef}
       onOpenHistory={(goal) => { setTargetDistanceMeters(null); setHistoryGoal(goal); }}
       onOpenTarget={(distanceMeters) => { setHistoryGoal(null); setTargetDistanceMeters(distanceMeters); }}
       onRetry={() => setRetry((current) => current + 1)}
-      targetAvailable={runningTargetRuntime !== undefined && primaryDistance !== undefined && (snapshot.runningTargetSources ?? []).some(({ goal }) => goal.goalDistanceMeters === primaryDistance)}
-      targetTriggerRef={targetTriggerRef}
+      targetSources={runningTargetRuntime === undefined ? [] : snapshot.runningTargetSources ?? []}
+      targetTriggerRefs={targetTriggerRefs}
     />;
   } else content = <DashboardContent
     dashboard={snapshot.dashboard}
@@ -413,7 +434,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
         await readProgress(false);
         semanticToast?.enqueue({ message: `${distanceLabel(saved.goal.goalDistanceMeters)} target saved.` });
       }}
-      restoreFocusRef={targetTriggerRef}
+      restoreFocusRef={{ current: targetDistanceMeters === null ? null : targetTriggerRefs.current.get(targetDistanceMeters) ?? null }}
       runtime={runningTargetRuntime}
       sources={targetSources}
       todayLocalDate={nowLocalDate}
