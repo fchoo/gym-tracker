@@ -1,6 +1,8 @@
 const IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
-const MAX_GRAMS = 1_000_000;
+export const MIN_BODYWEIGHT_GRAMS = 20_000;
+export const MAX_BODYWEIGHT_GRAMS = 400_000;
+export const BODYWEIGHT_GRAMS_INCREMENT = 100;
 const LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 
 export type BodyweightOperation = "create" | "edit" | "delete" | "restore";
@@ -89,6 +91,23 @@ function validLocalDate(value: string): boolean {
     && candidate.getUTCDate() === day;
 }
 
+function currentOwnerLocalDate(timezone: string): string {
+  const fields = Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: timezone,
+    year: "numeric",
+  }).formatToParts(new Date(Date.now()));
+  const lookup = new Map(fields.map((field) => [field.type, field.value]));
+  const year = lookup.get("year");
+  const month = lookup.get("month");
+  const day = lookup.get("day");
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
+  }
+  return `${year}-${month}-${day}`;
+}
+
 function measurementRequired(input: BodyweightCommand): boolean {
   return input.operation === "create" || input.operation === "edit" || input.operation === "restore";
 }
@@ -108,13 +127,16 @@ export function validateBodyweightCommand(
   }
   if (measurementRequired(input)) {
     const { localDate, timezone, grams } = input;
-    if (typeof localDate !== "string" || typeof timezone !== "string" || typeof grams !== "number" || !Number.isSafeInteger(grams) || grams < 1 || grams > MAX_GRAMS) {
+    if (typeof localDate !== "string" || typeof timezone !== "string" || typeof grams !== "number" || !Number.isSafeInteger(grams) || grams < MIN_BODYWEIGHT_GRAMS || grams > MAX_BODYWEIGHT_GRAMS || grams % BODYWEIGHT_GRAMS_INCREMENT !== 0) {
       throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
     }
     if (!validLocalDate(localDate)) {
       throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
     }
     if (!validTimezone(timezone)) throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
+    if (localDate > currentOwnerLocalDate(timezone)) {
+      throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
+    }
   } else if (input.localDate !== undefined || input.timezone !== undefined || input.grams !== undefined) {
     throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
   }
