@@ -13,6 +13,7 @@ import {
   createPhase18GarminProofRunnerPlan,
   executePhase18GarminProofRunner,
   executePhase18GarminProofRunnerCli,
+  markersFromLog,
   parsePhase18GarminProofRunnerArgs,
   parsePhase18GarminProofMarker,
   sanitizePhase18GarminProofBuildManifest,
@@ -360,6 +361,41 @@ test("Phase 18 marker parser accepts exact pass and review markers and rejects m
       /phase18_marker_invalid/u,
     );
   }
+});
+
+test("Phase 18 log parser immediately rejects duplicate pass, failure, and mixed markers", { concurrency: false }, () => {
+  const passed = marker({
+    id: "PH18-LOGIN",
+    status: "passed",
+    duration_ms: 1,
+  });
+  const failed = marker({
+    id: "PH18-LOGIN",
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    duration_ms: 1,
+    code: "timeout",
+  });
+  for (const log of [
+    `${passed}\n${passed}`,
+    `${failed}\n${failed}`,
+    `${passed}\n${failed}`,
+    `${failed}\n${passed}`,
+    `${passed}\n${passed}\n${PHASE18_GARMIN_PROOF_RESULT_MARKER}{`,
+  ]) {
+    assert.throws(() => markersFromLog(log), /^Error: phase18_case_duplicate$/u);
+  }
+  assert.deepEqual(
+    markersFromLog(`${passed}\n${marker({
+      id: "PH18-MFA",
+      status: "passed",
+      duration_ms: 1,
+      outcome: "not_requested",
+    })}`),
+    [
+      { id: "PH18-LOGIN", status: "passed", duration_ms: 1 },
+      { id: "PH18-MFA", status: "passed", duration_ms: 1, outcome: "not_requested" },
+    ],
+  );
 });
 
 test("Phase 18 runner sanitizes the repository native-build manifest without manual evidence fabrication", { concurrency: false }, () => {

@@ -316,11 +316,14 @@ function readProofLog(native, adb, serial) {
   return adbText(native, adb, serial, "logcat", "-d", "--pid", processId);
 }
 
-function markersFromLog(log) {
+export function markersFromLog(log) {
   const byId = new Map();
   for (const line of log.split("\n")) {
     const marker = parsePhase18GarminProofMarker(line);
-    if (marker !== null) byId.set(marker.id, marker);
+    if (marker !== null) {
+      if (byId.has(marker.id)) fail("case_duplicate");
+      byId.set(marker.id, marker);
+    }
   }
   return [...byId.values()];
 }
