@@ -33,9 +33,13 @@ import {
 import {
   createWorkoutOutcomeRepository,
 } from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
+import type {
+  ProgressPeriod,
+} from "../../src/domains/progress";
 import {
   createSqliteKernel,
   type SqliteKernel,
+  type SqliteSnapshotKernel,
 } from "../../src/platform/sqlite/sqliteKernel";
 
 class Result<Row extends Record<string, unknown>>
@@ -306,6 +310,70 @@ async function seedCurrentProjection(kernel: SqliteKernel): Promise<void> {
   });
 }
 
+async function seedAcceptedRunningActivity(
+  kernel: SqliteKernel,
+  input: Readonly<{
+    id: string;
+    aggregateRevision: number;
+    lifecycle: "active" | "removed";
+    localDate: string;
+    startedAtMs: number;
+  }>,
+): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO imported_activities
+        (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms)
+       VALUES (?, 'garmin', ?, ?, ?, ?)`,
+      [
+        input.id,
+        `${input.id}-external`,
+        input.startedAtMs,
+        JSON.stringify({
+          confirmed_local_date: input.localDate,
+          sample_fidelity: "source_summary",
+          normalized: {
+            distance_meters: 2_400,
+            elapsed_ms: 660_000,
+          },
+        }),
+        input.startedAtMs,
+      ],
+    );
+    await transaction.execute(
+      `INSERT INTO imported_activity_identities
+        (activity_id, source_kind, account_namespace, external_activity_id,
+         aggregate_revision, accepted_normalized_sha256, removal_state)
+       VALUES (?, 'garmin_connect_account', 'owner', ?, ?, ?, ?)`,
+      [
+        input.id,
+        `${input.id}-external`,
+        input.aggregateRevision,
+        "a".repeat(64),
+        input.lifecycle,
+      ],
+    );
+    await transaction.execute(
+      `INSERT INTO imported_activity_events
+        (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms)
+       VALUES (?, ?, ?, ?, '{}', ?)`,
+      [
+        `${input.id}-event`,
+        input.id,
+        input.aggregateRevision,
+        input.lifecycle === "active" ? "imported" : "removed",
+        input.startedAtMs,
+      ],
+    );
+    await transaction.execute(
+      `INSERT INTO imported_activity_current_lifecycle
+        (activity_id, aggregate_revision, removal_state, lifecycle_event_id)
+       VALUES (?, ?, ?, ?)`,
+      [input.id, input.aggregateRevision, input.lifecycle, `${input.id}-event`],
+    );
+  });
+}
+
 async function seedRecommendationGraph(kernel: SqliteKernel): Promise<void> {
   await kernel.write(async (transaction) => {
     await transaction.execute(
@@ -447,6 +515,124 @@ async function insertRecommendation(
 }
 
 describe("progress repository", () => {
+  it("loads a Running dashboard through exactly one source-coherent SQLite snapshot", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    let snapshots = 0;
+    const snapshotKernel = {
+      ...kernel,
+      readSnapshot: async (query: unknown) => {
+        snapshots += 1;
+        return kernel.readSnapshot!(query as never);
+      },
+    } as unknown as SqliteSnapshotKernel;
+
+    const result = await createProgressRepository(snapshotKernel).load({
+      sport: "Running",
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(snapshots).toBe(1);
+    expect(result).toMatchObject({
+      sport: "Running",
+      freshness: "current",
+      dashboard: {
+        sport: "Running",
+        state: "empty",
+      },
+    });
+  });
+
+  it("accepts only the current active imported revision and never exposes a provider payload", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    await seedAcceptedRunningActivity(kernel, {
+      id: "accepted-running-2400",
+      aggregateRevision: 3,
+      lifecycle: "active",
+      localDate: "2026-08-24",
+      startedAtMs: 100,
+    });
+    await seedAcceptedRunningActivity(kernel, {
+      id: "removed-running-2400",
+      aggregateRevision: 4,
+      lifecycle: "removed",
+      localDate: "2026-08-24",
+      startedAtMs: 101,
+    });
+
+    const result = await createProgressRepository(kernel).load({
+      sport: "Running",
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      sport: "Running",
+      freshness: "current",
+      dashboard: {
+        sport: "Running",
+        state: "sparse",
+        goals: [expect.objectContaining({
+          distanceMeters: 2_400,
+          latest: expect.objectContaining({
+            activityId: "accepted-running-2400",
+            sourceRevision: 3,
+            durationSeconds: 660,
+          }),
+        })],
+      },
+    }));
+    expect(result).not.toHaveProperty("sourceFacts");
+    expect(JSON.stringify(result)).not.toContain("aggregate_json");
+    expect(JSON.stringify(result)).not.toContain("removed-running-2400");
+  });
+
+  const progressRanges: ReadonlyArray<readonly [ProgressPeriod, string | null]> = [
+    ["4_weeks", "2026-07-28"],
+    ["12_weeks", "2026-06-02"],
+    ["all_time", null],
+  ];
+
+  it.each(progressRanges)("binds %s date predicates before materializing Progress rows", async (...[period, expectedStart]) => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    const queries: Array<Readonly<{ sql: string; parameters: readonly unknown[] }>> = [];
+    const snapshotKernel = {
+      ...kernel,
+      readSnapshot: async (query: unknown) => kernel.readSnapshot!(async (transaction) =>
+        (query as (executor: typeof transaction) => Promise<unknown>)({
+          queryAll: async <Row extends Record<string, unknown>>(
+            sql: string,
+            parameters: readonly (null | number | string | Uint8Array)[] = [],
+          ) => {
+            queries.push({ sql, parameters });
+            return transaction.queryAll<Row>(sql, parameters);
+          },
+        }),
+      ),
+    } as unknown as SqliteSnapshotKernel;
+
+    await createProgressRepository(snapshotKernel).load({
+      sport: "All",
+      period,
+      nowLocalDate: "2026-08-24",
+    });
+
+    const boundedRows = queries.filter(({ sql }) =>
+      sql.includes("history_projection_period_inputs")
+      || sql.includes("history_projection_comparable_exposures")
+      || sql.includes("owned_plan_schedule_opportunities")
+    );
+    expect(boundedRows).toHaveLength(3);
+    for (const { sql, parameters } of boundedRows) {
+      expect(sql).toContain("local_date >= ?");
+      expect(parameters).toContain(expectedStart);
+    }
+    expect(queries.some(({ sql }) => /INSERT|UPDATE|DELETE/u.test(sql))).toBe(false);
+  });
+
   it("reads only current all-period and metric projections with persisted opportunities", async () => {
     const kernel = await open();
     await seedCurrentProjection(kernel);
@@ -670,12 +856,23 @@ describe("progress repository", () => {
     });
 
     await expect(repository.load({
+      sport: "Running",
       period: "4_weeks",
       nowLocalDate: "2026-08-24",
     })).resolves.toEqual({
+      sport: "Running",
       period: "4_weeks",
       freshness: "unavailable",
       projection: null,
+      dashboard: null,
+      refresh: {
+        generation: 2,
+        automaticRefresh: {
+          maxAttempts: 3,
+          backoffMs: [250, 1_000, 4_000],
+          terminal: "unavailable",
+        },
+      },
       diagnostic: {
         code: "history_projection_unavailable",
         affectedSubjects: ["all_period"],

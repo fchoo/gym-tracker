@@ -860,9 +860,13 @@ function dependencies(
   repository: Repository,
   overrides: Partial<WorkoutAppRuntimeDependencies> = {},
 ): WorkoutAppRuntimeDependencies {
+  const queryAll = jest.fn(async () => []);
   const kernel = {
     close: jest.fn(async () => undefined),
-    queryAll: jest.fn(async () => []),
+    queryAll,
+    readSnapshot: jest.fn(async (query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>) =>
+      query({ queryAll }),
+    ),
     write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) =>
       command({
         execute: jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 })),
@@ -1539,9 +1543,14 @@ describe("WorkoutAppRuntimeProvider", () => {
   });
 
   it("exposes factual progress only through the trusted runtime boundary", async () => {
+    const queryAll = jest.fn(async () => []);
+    const readSnapshot = jest.fn(async (
+      query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
+    ) => query({ queryAll }));
     const kernel = {
       close: jest.fn(async () => undefined),
-      queryAll: jest.fn(async () => []),
+      queryAll,
+      readSnapshot,
     } as unknown as SqliteKernel;
     const repository = runtimeRepository([noPlanView], [null]);
     let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
@@ -1562,31 +1571,33 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
 
     await expect(captured!.loadProgress({
+      sport: "Running",
       period: "4_weeks",
       nowLocalDate: "2026-08-24",
     })).resolves.toEqual({
+      sport: "Running",
       period: "4_weeks",
       freshness: "current",
+      refresh: {
+        generation: 0,
+        automaticRefresh: {
+          maxAttempts: 3,
+          backoffMs: [250, 1_000, 4_000],
+          terminal: "current",
+        },
+      },
       projection: expect.objectContaining({
         state: "baseline",
         window: { start: "2026-07-28", end: "2026-08-24" },
       }),
-      sourceFacts: {
-        running: {
-          kind: "unavailable",
-          activityKind: "unavailable",
-          activities: [],
-          goalKind: "unavailable",
-          goals: [],
-        },
-        bodyweight: {
-          kind: "unavailable",
-          entries: [],
-        },
+      dashboard: {
+        sport: "Running",
+        state: "empty",
+        goals: [],
+        absenceReason: "no_factual_points",
       },
     });
-    expect((kernel as unknown as { queryAll: jest.Mock }).queryAll)
-      .toHaveBeenCalled();
+    expect(readSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the development expiry bridge unavailable until launch is trusted", async () => {

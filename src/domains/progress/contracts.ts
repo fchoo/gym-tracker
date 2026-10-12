@@ -294,3 +294,17 @@ export type ProgressDashboardInput = Readonly<{
   }>;
   goals?: readonly ProgressGoalRevision[];
 }>;
+
+/**
+ * Repository-owned refresh facts. Automatic refresh is deliberately bounded:
+ * callers can react to a new source generation, but cannot turn an updating
+ * projection into a permanent polling loop.
+ */
+export type ProgressRefreshMetadata = Readonly<{
+  generation: number;
+  automaticRefresh: Readonly<{
+    maxAttempts: number;
+    backoffMs: readonly number[];
+    terminal: ProgressProjectionFreshness;
+  }>;
+}>;
