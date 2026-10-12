@@ -1,570 +1,141 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  type TextStyle,
-} from "react-native";
-import {
-  Gesture,
-  GestureDetector,
-} from "react-native-gesture-handler";
+import React, { useEffect, useMemo, useState } from "react";
+import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
-import type {
-  CalendarDayState,
-  CalendarMonth,
-  HistoryProgress,
-  HistorySessionSummary,
-} from "../../domains/history";
-import {
-  addLocalDays,
-  parseLocalDate,
-  type LocalDate,
-} from "../../domains/scheduling";
-import {
-  weekdayForLocalDate,
-} from "../../domains/scheduling/localDate";
-import {
-  ContentCard,
-  FocusablePressable,
-  IconAction,
-  PrimaryAction,
-  ScreenHeader,
-  SkeletonBlock,
-} from "../components";
-import {
-  AdaptiveScreen,
-} from "../layout/AdaptiveScreen";
-import {
-  radius,
-  space,
-  typeScale,
-  useAppTheme,
-} from "../theme";
+import { addLocalDays, parseLocalDate, type LocalDate } from "../../domains/scheduling";
+import { weekdayForLocalDate } from "../../domains/scheduling/localDate";
+import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
+import { CalendarWeekRow } from "../calendar/CalendarWeekRow";
+import { IconAction, ScreenHeader, SkeletonBlock } from "../components";
+import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import type { RootFocusTarget } from "../shell/rootFocus";
+import { space, typeScale, useAppTheme } from "../theme";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ] as const;
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const CALENDAR_CELL_COUNT = 42;
-const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
-const WEEKDAY_INDEX = {
-  Sunday: 0,
-  Monday: 1,
-  Tuesday: 2,
-  Wednesday: 3,
-  Thursday: 4,
-  Friday: 5,
-  Saturday: 6,
-} as const;
+const MONDAY_FIRST = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 type CalendarScreenProps = Readonly<{
   initialDate: string;
-  loadCalendarMonth(input: Readonly<{
-    month: string;
-    selectedDate: string;
-    today: string;
-  }>): Promise<CalendarMonth>;
-  onOpenSession(sessionId: string): void;
+  loadCalendarRange: CalendarReadPort["loadCalendarRange"];
+  onOpenEvent(destination: CalendarEventDestination): void;
   onOpenSettings?(): void;
   today?: string;
-  width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
 }>;
 
-const noOp = () => undefined;
+function startOfMonth(value: LocalDate): LocalDate {
+  return parseLocalDate(`${value.slice(0, 8)}01`);
+}
 
-function monthStart(value: LocalDate): LocalDate {
-  return parseLocalDate(value.slice(0, 8) + "01");
+function monthLabel(value: LocalDate): string {
+  return `${MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? ""} ${value.slice(0, 4)}`;
+}
+
+function mondayGridStart(value: LocalDate): LocalDate {
+  const weekday = weekdayForLocalDate(value);
+  const mondayOffset = weekday === "Sunday" ? 6 : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].indexOf(weekday);
+  return addLocalDays(value, -mondayOffset);
+}
+
+function sixWeekGrid(value: LocalDate): readonly LocalDate[] {
+  const start = mondayGridStart(startOfMonth(value));
+  return Array.from({ length: 42 }, (_, offset) => addLocalDays(start, offset));
 }
 
 function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate | null {
   const year = Number(value.slice(0, 4));
-  const month = Number(value.slice(5, 7));
-  const total = year * 12 + month - 1 + direction;
-  const nextYear = Math.floor(total / 12);
-  const nextMonthNumber = (total % 12) + 1;
-  if (nextYear < 1 || nextYear > 9_999) {
-    return null;
-  }
-  return parseLocalDate(
-    nextYear.toString().padStart(4, "0")
-      + "-"
-      + nextMonthNumber.toString().padStart(2, "0")
-      + "-01",
-  );
-}
-
-function daysInMonth(value: LocalDate): number {
-  const year = Number(value.slice(0, 4));
-  const month = Number(value.slice(5, 7));
-  if (month === 2) {
-    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
-      ? 29
-      : 28;
-  }
-  return [4, 6, 9, 11].includes(month) ? 30 : 31;
-}
-
-function monthLabel(value: LocalDate): string {
-  return (MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? "")
-    + " " + value.slice(0, 4);
-}
-
-function dateLabel(value: LocalDate): string {
-  return Number(value.slice(8, 10))
-    + " " + (MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? "")
-    + " " + value.slice(0, 4);
-}
-
-export function calendarMonthDirectionForHorizontalSwipe(
-  translationX: number,
-): -1 | 1 | null {
-  "worklet";
-
-  if (translationX <= -MONTH_SWIPE_COMPLETE_DISTANCE) {
-    return 1;
-  }
-  if (translationX >= MONTH_SWIPE_COMPLETE_DISTANCE) {
-    return -1;
-  }
-  return null;
-}
-
-function completeGridDates(firstOfMonth: LocalDate): Array<LocalDate | null> {
-  const firstGridOffset = -WEEKDAY_INDEX[weekdayForLocalDate(firstOfMonth)];
-  return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) => {
-    try {
-      return addLocalDays(firstOfMonth, firstGridOffset + offset);
-    } catch {
-      return null;
-    }
-  });
-}
-
-function stateLabel(state: CalendarDayState): string {
-  switch (state) {
-    case "completed": return "Completed";
-    case "partial": return "Partial";
-    case "manual": return "Manual";
-    case "planned_not_completed": return "Planned, not completed";
-    case "today": return "Today";
-  }
-}
-
-function stateGlyph(state: CalendarDayState): string {
-  switch (state) {
-    case "completed": return "✓";
-    case "partial": return "◐";
-    case "manual": return "M";
-    case "planned_not_completed": return "–";
-    case "today": return "•";
-  }
-}
-
-function progressLabel(label: string, progress: HistoryProgress): string {
-  const percent = progress.percent === null ? "" : " (" + progress.percent + "%)";
-  return label + " · " + progress.completed + "/" + progress.planned + percent;
-}
-
-function titleForSession(session: HistorySessionSummary): string {
-  const context = [session.planName, session.dayName].filter(Boolean).join(" · ");
-  return context === "" ? session.sourceLabel : context;
-}
-
-function timeLabel(instantMs: number, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: timezone,
-    }).format(new Date(instantMs));
-  } catch {
-    return "Time unavailable";
-  }
-}
-
-function CalendarGrid({
-  month,
-  days,
-  selectedDate,
-  onChangeMonth,
-  onSelectDate,
-}: Readonly<{
-  month: LocalDate;
-  days: CalendarMonth["days"];
-  selectedDate: LocalDate;
-  onChangeMonth(direction: -1 | 1): void;
-  onSelectDate(value: LocalDate): void;
-}>) {
-  const { colors } = useAppTheme();
-  const statesByDate = useMemo(
-    () => new Map(days.map((day) => [day.localDate, day.states])),
-    [days],
-  );
-  const gridDates = useMemo(() => completeGridDates(month), [month]);
-  const horizontalMonthGesture = useMemo(
-    () => Gesture.Pan()
-      .activeOffsetX([-12, 12])
-      .failOffsetY([-24, 24])
-      .runOnJS(true)
-      .onEnd((event) => {
-        const direction = calendarMonthDirectionForHorizontalSwipe(
-          event.translationX,
-        );
-        if (direction !== null) {
-          onChangeMonth(direction);
-        }
-      }),
-    [onChangeMonth],
-  );
-  const cells = gridDates.map((date, index) => {
-    if (date === null) {
-      return (
-        <View
-          accessible={false}
-          key={`unavailable-${index}`}
-          style={styles.dayCell}
-          testID={`calendar-day-unavailable-${index}`}
-        />
-      );
-    }
-    const states = statesByDate.get(date) ?? [];
-    const selected = date === selectedDate;
-    const adjacent = monthStart(date) !== month;
-    const accessibilityLabel = [
-      dateLabel(date),
-      adjacent ? "Adjacent month" : null,
-      ...states.map(stateLabel),
-    ].filter((value): value is string => value !== null).join(". ") + ".";
-    return (
-      <FocusablePressable
-        accessibilityLabel={accessibilityLabel}
-        accessibilityRole="button"
-        accessibilityState={{ selected }}
-        focusable
-        key={date}
-        onKeyDown={(event: { nativeEvent: { key: string } }) => {
-          const deltas: Record<string, number> = {
-            ArrowDown: 7,
-            ArrowLeft: -1,
-            ArrowRight: 1,
-            ArrowUp: -7,
-          };
-          const delta = deltas[event.nativeEvent.key];
-          if (delta === undefined) {
-            return;
-          }
-          try {
-            onSelectDate(addLocalDays(date, delta));
-          } catch {}
-        }}
-        onPress={() => onSelectDate(date)}
-        style={({ pressed }: { pressed: boolean }) => [
-          styles.dayCell,
-          {
-            backgroundColor: selected
-              ? colors.contentCardSelected
-              : pressed ? colors.contentCardPressed : colors.contentCard,
-            borderColor: selected ? colors.action : colors.contentCardBorder,
-            opacity: adjacent ? 0.72 : 1,
-          },
-        ]}
-        testID={"calendar-day-" + date}
-      >
-        <Text style={[
-          typeScale.label as TextStyle,
-          { color: adjacent ? colors.contentCardTextSecondary : colors.contentCardText },
-        ]}>
-          {Number(date.slice(8, 10))}
-        </Text>
-        {states.length === 0 ? null : (
-          <Text
-            numberOfLines={1}
-            style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
-          >
-            {states.map(stateGlyph).join(" ")}
-          </Text>
-        )}
-      </FocusablePressable>
-    );
-  });
-  return (
-    <GestureDetector gesture={horizontalMonthGesture}>
-      <View accessibilityLabel="Calendar month grid" style={styles.grid} testID="calendar-month-grid">
-        {WEEKDAYS.map((day) => (
-          <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>
-            {day}
-          </Text>
-        ))}
-        {cells}
-      </View>
-    </GestureDetector>
-  );
-}
-
-function SelectedDateSessions({
-  selectedDate,
-  days,
-  sessions,
-  onOpenSession,
-}: Readonly<{
-  selectedDate: LocalDate;
-  days: CalendarMonth["days"];
-  sessions: CalendarMonth["sessions"];
-  onOpenSession(sessionId: string): void;
-}>) {
-  const { colors } = useAppTheme();
-  const selectedStates = days.find((day) => day.localDate === selectedDate)?.states ?? [];
-  return (
-    <View style={styles.selectedSection}>
-      <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>
-        {dateLabel(selectedDate)}
-      </Text>
-      {selectedStates.length === 0 ? null : (
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
-          {selectedStates.map(stateLabel).join(" · ")}
-        </Text>
-      )}
-      {sessions.length === 0 ? (
-        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-          No sessions on {dateLabel(selectedDate)}
-        </Text>
-      ) : sessions.map((session) => (
-        <FocusablePressable
-          accessibilityLabel={"Open workout details for " + titleForSession(session)}
-          accessibilityRole="button"
-          focusable
-          key={session.id}
-          onPress={() => onOpenSession(session.id)}
-          style={({ pressed }: { pressed: boolean }) => [styles.sessionPressable, { opacity: pressed ? 0.86 : 1 }]}
-        >
-          <ContentCard style={styles.sessionCard} testID={"calendar-session-card-" + session.id}>
-            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
-              {titleForSession(session)}
-            </Text>
-            <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-              {session.status === "partial" ? "Partial" : session.status === "manual_visit" ? "Manual" : "Completed"}
-              {" · "}{timeLabel(session.effective.startedAtMs, session.effective.timezone)}
-            </Text>
-            <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-              {progressLabel("Exercises", session.exerciseProgress)}
-            </Text>
-            <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-              {progressLabel("Working sets", session.workingSetProgress)}
-            </Text>
-          </ContentCard>
-        </FocusablePressable>
-      ))}
-    </View>
-  );
+  const month = Number(value.slice(5, 7)) + direction;
+  const nextYear = month === 0 ? year - 1 : month === 13 ? year + 1 : year;
+  const nextMonth = month === 0 ? 12 : month === 13 ? 1 : month;
+  if (nextYear < 1 || nextYear > 9_999) return null;
+  return parseLocalDate(`${String(nextYear).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01`);
 }
 
 export function CalendarScreen({
   initialDate,
-  loadCalendarMonth,
-  onOpenSession,
-  onOpenSettings = noOp,
+  loadCalendarRange,
+  onOpenEvent,
+  onOpenSettings = () => undefined,
   today = initialDate,
-  width,
   headingRef,
-  settingsActionRef,
   settingsActionNativeID,
+  settingsActionRef,
 }: CalendarScreenProps) {
   const { colors } = useAppTheme();
-  const parsedInitial = parseLocalDate(initialDate);
   const parsedToday = parseLocalDate(today);
-  const [month, setMonth] = useState(() => monthStart(parsedInitial));
-  const [selectedDate, setSelectedDate] = useState(parsedInitial);
-  const [snapshot, setSnapshot] = useState<CalendarMonth | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [requestKey, setRequestKey] = useState(0);
-  const adaptiveWidth = width === undefined ? {} : { width };
+  const [month, setMonth] = useState(() => startOfMonth(parseLocalDate(initialDate)));
+  const [selectedDate, setSelectedDate] = useState(() => parseLocalDate(initialDate));
+  const [range, setRange] = useState<CalendarRange | null>(null);
+  const grid = useMemo(() => sixWeekGrid(month), [month]);
+  const rangeInput = useMemo(() => ({
+    startLocalDate: grid[0]!,
+    endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 1),
+  }), [grid]);
 
   useEffect(() => {
-    let active = true;
-    setFailed(false);
-    setSnapshot(null);
-    void loadCalendarMonth({ month, selectedDate, today: parsedToday }).then((next) => {
-      if (active) {
-        setSnapshot(next);
-      }
-    }).catch(() => {
-      if (active) {
-        setFailed(true);
-      }
+    let current = true;
+    setRange(null);
+    void loadCalendarRange(rangeInput).then((next) => {
+      if (current) setRange(next);
     });
-    return () => { active = false; };
-  }, [loadCalendarMonth, month, parsedToday, requestKey, selectedDate]);
+    return () => { current = false; };
+  }, [loadCalendarRange, rangeInput]);
 
-  const selectDate = (next: LocalDate) => {
-    setSelectedDate(next);
-    const nextDateMonth = monthStart(next);
-    if (nextDateMonth !== month) {
-      setMonth(nextDateMonth);
-    }
-  };
-
-  const changeMonth = (direction: -1 | 1) => {
-    const next = nextMonth(month, direction);
-    if (next === null) {
-      return;
-    }
-    const selectedDay = Math.min(Number(selectedDate.slice(8, 10)), daysInMonth(next));
-    setMonth(next);
-    setSelectedDate(parseLocalDate(next.slice(0, 8) + selectedDay.toString().padStart(2, "0")));
-  };
-
-  if (failed) {
-    return (
-      <AdaptiveScreen
-        {...adaptiveWidth}
-        primary={
-          <>
-            <ScreenHeader
-              {...(headingRef === undefined
-                ? {}
-                : { ref: headingRef as React.Ref<View> })}
-              action={(
-                <IconAction
-                  accessibilityHint="Opens App Settings"
-                  accessibilityLabel="Open App Settings"
-                  icon="settings"
-                  nativeID={settingsActionNativeID}
-                  onPress={onOpenSettings}
-                  ref={settingsActionRef as React.Ref<View>}
-                />
-              )}
-              title="Calendar could not be loaded"
-            />
-            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-              Your workout history was not changed. Try loading Calendar again.
-            </Text>
-            <PrimaryAction label="Retry Calendar" onPress={() => setRequestKey((value) => value + 1)} />
-          </>
-        }
-      />
-    );
-  }
-
-  if (snapshot === null) {
-    return (
-      <AdaptiveScreen
-        {...adaptiveWidth}
-        primary={
-          <>
-            <ScreenHeader
-              {...(headingRef === undefined
-                ? {}
-                : { ref: headingRef as React.Ref<View> })}
-              action={(
-                <IconAction
-                  accessibilityHint="Opens App Settings"
-                  accessibilityLabel="Open App Settings"
-                  icon="settings"
-                  nativeID={settingsActionNativeID}
-                  onPress={onOpenSettings}
-                  ref={settingsActionRef as React.Ref<View>}
-                />
-              )}
-              title="Calendar"
-            />
-            <SkeletonBlock height={42} width="72%" />
-            <SkeletonBlock height={300} />
-            <SkeletonBlock height={136} />
-          </>
-        }
-      />
-    );
-  }
-
-  const previousMonth = nextMonth(snapshot.month, -1);
-  const followingMonth = nextMonth(snapshot.month, 1);
-  const primary = (
-    <>
-      <ScreenHeader
-        {...(headingRef === undefined
-          ? {}
-          : { ref: headingRef as React.Ref<View> })}
-        action={(
-          <IconAction
-            accessibilityHint="Opens App Settings"
-            accessibilityLabel="Open App Settings"
-            icon="settings"
-            nativeID={settingsActionNativeID}
-            onPress={onOpenSettings}
-            ref={settingsActionRef as React.Ref<View>}
-          />
-        )}
-        title="Calendar"
-      />
-      <View style={styles.monthHeader}>
+  const header = (
+    <ScreenHeader
+      {...(headingRef === undefined ? {} : { ref: headingRef as React.Ref<View> })}
+      action={(
         <IconAction
-          accessibilityLabel={previousMonth === null
-            ? "Previous month unavailable"
-            : "Show " + monthLabel(previousMonth)}
-          disabled={previousMonth === null}
-          icon="back"
-          onPress={() => changeMonth(-1)}
+          accessibilityLabel="Open App Settings"
+          icon="settings"
+          nativeID={settingsActionNativeID}
+          onPress={onOpenSettings}
+          ref={settingsActionRef as React.Ref<View>}
         />
-        <Text
-          accessibilityRole="header"
-          style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}
-        >
-          {monthLabel(snapshot.month)}
-        </Text>
-        <IconAction
-          accessibilityLabel={followingMonth === null
-            ? "Next month unavailable"
-            : "Show " + monthLabel(followingMonth)}
-          disabled={followingMonth === null}
-          icon="forward"
-          onPress={() => changeMonth(1)}
-        />
-      </View>
-      <CalendarGrid
-        days={snapshot.days}
-        month={snapshot.month}
-        onChangeMonth={changeMonth}
-        onSelectDate={selectDate}
-        selectedDate={snapshot.selectedDate}
-      />
-    </>
-  );
-  const selected = (
-    <SelectedDateSessions
-      days={snapshot.days}
-      onOpenSession={onOpenSession}
-      selectedDate={snapshot.selectedDate}
-      sessions={snapshot.sessions}
+      )}
+      title="Calendar"
     />
   );
-  return <AdaptiveScreen {...adaptiveWidth} primary={primary} secondary={selected} />;
+
+  if (range === null) {
+    return <AdaptiveScreen primary={<>{header}<Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>Loading Calendar</Text><SkeletonBlock height={52} /><SkeletonBlock height={340} /></>} />;
+  }
+
+  const eventsByDate = new Map<LocalDate, readonly CalendarRange["events"][number][]>();
+  for (const event of range.events) {
+    eventsByDate.set(event.localDate, [...(eventsByDate.get(event.localDate) ?? []), event]);
+  }
+  const previous = nextMonth(month, -1);
+  const following = nextMonth(month, 1);
+
+  return (
+    <AdaptiveScreen
+      primary={(
+        <>
+          {header}
+          <View style={styles.navigation}>
+            <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={previous === null} icon="back" onPress={() => previous !== null && setMonth(previous)} />
+            <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{monthLabel(month)}</Text>
+            <IconAction accessibilityLabel={following === null ? "Next month unavailable" : `Show ${monthLabel(following)}`} disabled={following === null} icon="forward" onPress={() => following !== null && setMonth(following)} />
+          </View>
+          <View accessibilityLabel="Calendar month grid" style={styles.grid}>
+            <View style={styles.weekdayRow}>{MONDAY_FIRST.map((day) => <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>{day}</Text>)}</View>
+            {[0, 1, 2, 3, 4, 5].map((row) => <CalendarWeekRow dates={grid.slice(row * 7, row * 7 + 7)} eventsByDate={eventsByDate} key={grid[row * 7]} month={month} onPressDate={(date, events) => { setSelectedDate(date); const first = events[0]; if (first !== undefined) onOpenEvent(first.destination); }} selectedDate={selectedDate} today={parsedToday} />)}
+          </View>
+        </>
+      )}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
-  dayCell: {
-    borderRadius: radius.standard,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: space[1],
-    justifyContent: "space-between",
-    minHeight: 64,
-    padding: space[2],
-    width: "14.285%",
-  },
-  grid: { flexDirection: "row", flexWrap: "wrap" },
-  monthHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  selectedSection: { gap: space[2] },
-  sessionCard: { gap: space[1] },
-  sessionPressable: { borderRadius: radius.standard },
-  weekday: { textAlign: "center", width: "14.285%" },
+  grid: { gap: 2 },
+  navigation: { alignItems: "center", flexDirection: "row", gap: 3, justifyContent: "space-between", minHeight: 52 },
+  weekday: { flex: 1, textAlign: "center" },
+  weekdayRow: { flexDirection: "row", gap: 2 },
+  visuallyHidden: { height: 0, opacity: 0, width: 0 },
 });
