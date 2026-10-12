@@ -25,7 +25,7 @@ import {
   clearPhase16CalendarTestControls,
   configurePhase16CalendarTestControls,
 } from "../../src/bootstrap/phase16CalendarTestControls";
-import { createImportedActivityDetailHref } from "../garmin/activity/[activityId]";
+import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
