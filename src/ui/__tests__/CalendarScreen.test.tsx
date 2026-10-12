@@ -510,6 +510,8 @@ describe("CalendarScreen", () => {
 
     expect(screen.getByText("Updating Calendar")).toBeOnTheScreen();
     expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
+    expect(screen.getByText("August 2026")).toBeOnTheScreen();
+    expect(screen.queryByText("September 2026")).toBeNull();
 
     rejectNextRange?.(new Error("offline"));
 

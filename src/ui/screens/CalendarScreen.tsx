@@ -586,7 +586,7 @@ export function CalendarScreen({
   const following = nextMonth(month, 1);
   const titleBaseMonth = calendarTransition.phase === "settling"
     ? monthIdDate(calendarTransition.currentMonthId)
-    : month;
+    : visibleMonth;
   const titleMonth = calendarTransition.titlePanel === "previous" ? nextMonth(titleBaseMonth, -1)
     : calendarTransition.titlePanel === "next" ? nextMonth(titleBaseMonth, 1)
       : titleBaseMonth;
