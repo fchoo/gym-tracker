@@ -1,6 +1,7 @@
 import React from "react";
 import {
   router,
+  useFocusEffect,
   type Href,
 } from "expo-router";
 
@@ -25,6 +26,8 @@ export default function CalendarRoute() {
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
   const runtime = useWorkoutAppRuntime();
+  const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
+  const hasFocused = React.useRef(false);
   const now = new Date();
   const initialDate = [
     now.getFullYear().toString().padStart(4, "0"),
@@ -48,6 +51,14 @@ export default function CalendarRoute() {
     }
   };
 
+  useFocusEffect(React.useCallback(() => {
+    if (hasFocused.current) {
+      setReturnFocusGeneration((generation) => generation + 1);
+    } else {
+      hasFocused.current = true;
+    }
+  }, []));
+
   return (
     <CalendarScreen
       initialDate={initialDate}
@@ -58,6 +69,8 @@ export default function CalendarRoute() {
         triggerRef: settingsActionRef,
       })}
       onOpenEvent={openEvent}
+      onRequestRootBack={() => router.back()}
+      returnFocusGeneration={returnFocusGeneration}
       today={initialDate}
       headingRef={headingRef}
       settingsActionRef={settingsActionRef}
