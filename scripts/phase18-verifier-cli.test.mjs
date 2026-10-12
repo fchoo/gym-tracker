@@ -582,6 +582,8 @@ function createAdversarialRunnerWorkspace() {
     },
   };
   const markerPath = path.join(root, "artifacts", "adversarial-logcat-count.txt");
+  const noncePath = path.join(root, "artifacts", "adversarial-nonce.txt");
+  const nativeRecordWithNonce = { ...nativeRecord, run_nonce: "__NONCE__" };
   const sdkRoot = createFakeAndroidSdk(root, {
     packageName: PACKAGE,
     retainedSignatureSha256,
@@ -615,15 +617,22 @@ fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
   exit 0
 fi
-if [ "$1" = "shell" ] && [ "$2" = "am" ]; then
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
+  for argument in "$@"; do
+    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+  done
   exit 0
 fi
-if [ "$1" = "logcat" ] && [ "$2" = "-d" ]; then
+if [ "$1" = "shell" ] && [ "$2" = "am" ]; then exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '4242\n'; exit 0; fi
+if [ "$1" = "logcat" ] && [ "$2" = "--pid" ] && [ "$4" = "-d" ]; then
   count=0
   [ -f "${markerPath}" ] && count=$(cat "${markerPath}")
   count=$((count + 1))
   printf '%s' "$count" > "${markerPath}"
-  printf 'D/Adv GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:%s\\n' '${JSON.stringify(nativeRecord)}'
+  nonce=$(cat "${noncePath}")
+  payload=$(printf '%s' '${JSON.stringify(nativeRecordWithNonce)}' | sed "s/__NONCE__/$nonce/")
+  printf 'D/Adv GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:%s\\n' "$payload"
   exit 0
 fi
 `,

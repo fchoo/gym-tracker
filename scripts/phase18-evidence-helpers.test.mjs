@@ -1278,12 +1278,28 @@ test("adversarial runner default IO paths and native collector stay bounded", ()
   const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-collector-"));
   try {
     const adbPath = path.join(root, "adb");
+    const noncePath = path.join(root, "nonce");
+    const collectedWithNonce = { ...collectedReport, run_nonce: "__NONCE__" };
     writeFileSync(adbPath, `#!/bin/sh
 set -eu
+if [ "$1" = "devices" ]; then
+  printf 'List of devices attached\nSERIAL\tdevice\n'
+  exit 0
+fi
+if [ "$1" = "-s" ]; then shift 2; fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
+  for argument in "$@"; do
+    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+  done
+  exit 0
+fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ]; then exit 0; fi
-if [ "$1" = "logcat" ] && [ "$2" = "-d" ]; then
-  printf 'GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:%s\\n' '${JSON.stringify(collectedReport)}'
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '4242\n'; exit 0; fi
+if [ "$1" = "logcat" ] && [ "$2" = "--pid" ] && [ "$4" = "-d" ]; then
+  nonce=$(cat "${noncePath}")
+  payload=$(printf '%s' '${JSON.stringify(collectedWithNonce)}' | sed "s/__NONCE__/$nonce/")
+  printf 'GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:%s\\n' "$payload"
   exit 0
 fi
 exit 0

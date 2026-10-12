@@ -453,6 +453,136 @@ test("runner rejects private native records before any raw report write", () => 
   assert.equal(writes.length, 0);
 });
 
+test("native collector scopes one selected device, package PID, and cryptographic report nonce", () => {
+  const originalPath = process.env.PATH;
+  const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-scoped-"));
+  const callsPath = path.join(root, "calls.txt");
+  const noncePath = path.join(root, "nonce.txt");
+  const report = {
+    schema_version: 1,
+    suite: "phase18-garmin-adversarial",
+    status: "passed",
+    cases: cases(),
+    current_identity: {
+      currentHead: HEAD,
+      currentSourceTreeSha256: HASH,
+      currentPythonLockSha256: HASH,
+      retainedApkSha256: HASH,
+      retainedSignatureSha256: HASH,
+      deviceIdentitySha256: HASH,
+    },
+    run_nonce: "__NONCE__",
+  };
+  try {
+    writeExecutable(path.join(root, "adb"), `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "${callsPath}"
+if [ "$1" = "devices" ]; then
+  printf 'List of devices attached\nONLY_DEVICE\tdevice\n'
+  exit 0
+fi
+if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "force-stop" ]; then exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
+  for argument in "$@"; do
+    case "$argument" in
+      *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;;
+    esac
+  done
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '4242\n'; exit 0; fi
+if [ "$1" = "logcat" ]; then
+  nonce=''
+  [ -f "${noncePath}" ] && nonce=$(cat "${noncePath}")
+  payload=$(printf '%s' '${JSON.stringify(report)}' | sed "s/__NONCE__/$nonce/")
+  printf 'GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:%s\n' "$payload"
+  exit 0
+fi
+exit 1
+`);
+    process.env.PATH = `${root}:${originalPath ?? ""}`;
+
+    const collected = collectInstalledNativeReport();
+    const calls = readFileSync(callsPath, "utf8").trim().split("\n");
+    assert.equal(calls[0], "devices");
+    assert.ok(calls.slice(1).every((line) => line.startsWith("-s ONLY_DEVICE ")), calls.join("\n"));
+    const launch = calls.find((line) => line.includes(" shell am start "));
+    const nonce = launch?.match(/[?&]nonce=([a-f0-9]{32})(?:&|\s|$)/u)?.[1];
+    assert.match(nonce ?? "", /^[a-f0-9]{32}$/u);
+    assert.equal(collected.report.run_nonce, nonce);
+    assert.ok(calls.includes("-s ONLY_DEVICE shell pidof com.fchoo.gymtracker.devtest"));
+    assert.ok(calls.includes("-s ONLY_DEVICE logcat --pid 4242 -d"));
+    assert.doesNotMatch(readFileSync("scripts/adversarial-runner-evidence.mjs", "utf8"), /Math\.random/u);
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native collector rejects ambiguous device selection and mismatched report nonces", () => {
+  const originalPath = process.env.PATH;
+  const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-binding-"));
+  const adbPath = path.join(root, "adb");
+  const payloadPath = path.join(root, "payload.json");
+  try {
+    writeExecutable(adbPath, `#!/bin/sh
+if [ "$1" = "devices" ]; then
+  printf 'List of devices attached\nDEVICE_A\tdevice\nDEVICE_B\tdevice\n'
+  exit 0
+fi
+exit 1
+`);
+    process.env.PATH = `${root}:${originalPath ?? ""}`;
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_device_selection_invalid/u,
+    );
+
+    const stale = {
+      schema_version: 1,
+      suite: "phase18-garmin-adversarial",
+      status: "passed",
+      cases: cases(),
+      current_identity: {},
+      run_nonce: "0".repeat(32),
+    };
+    writeFileSync(payloadPath, JSON.stringify(stale));
+    writeExecutable(adbPath, `#!/bin/sh
+if [ "$1" = "devices" ]; then printf 'List of devices attached\nDEVICE_A\tdevice\n'; exit 0; fi
+if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '4242\n'; exit 0; fi
+if [ "$1" = "logcat" ] && [ "$2" = "--pid" ]; then
+  printf 'GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:'
+  cat "${payloadPath}"
+  printf '\n'
+  exit 0
+fi
+exit 0
+`);
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_nonce_invalid/u,
+    );
+    writeFileSync(payloadPath, "null");
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_nonce_invalid/u,
+    );
+    writeFileSync(payloadPath, JSON.stringify({ ...stale, run_nonce: "malformed" }));
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_nonce_invalid/u,
+    );
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("runner rejects privacy-unsafe free-form strings and native collection timeouts", () => {
   assert.throws(
     () => executePhase18GarminAdversarialRunner([
@@ -485,14 +615,28 @@ test("runner rejects privacy-unsafe free-form strings and native collection time
   const originalDateNow = Date.now;
   const originalPath = process.env.PATH;
   const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-timeout-"));
+  const pidCountPath = path.join(root, "pid-count");
   try {
     writeExecutable(path.join(root, "adb"), `#!/bin/sh
 set -eu
+if [ "$1" = "devices" ]; then
+  printf 'List of devices attached\nTIMEOUT_DEVICE\tdevice\n'
+  exit 0
+fi
+if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then
+  count=0
+  [ -f "${pidCountPath}" ] && count=$(cat "${pidCountPath}")
+  count=$((count + 1))
+  printf '%s' "$count" > "${pidCountPath}"
+  if [ "$count" -eq 1 ]; then printf '4242\n'; fi
+  exit 0
+fi
 exit 0
 `);
     process.env.PATH = `${root}:${originalPath ?? ""}`;
     let index = 0;
-    const timeline = [0, 0, 31_000];
+    const timeline = [0, 0, 0, 31_000];
     Date.now = () => timeline[Math.min(index++, timeline.length - 1)];
     assert.throws(
       () => collectInstalledNativeReport(),

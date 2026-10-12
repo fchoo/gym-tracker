@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
@@ -26,6 +26,7 @@ const PRIVACY_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/privacy-repo
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
+const RUN_NONCE = /^[a-f0-9]{32}$/u;
 const FORBIDDEN_KEY = /(?:^|_)(?:account_namespace|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
 const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\bauthorization\b|\bbearer\b|\bciphertext\b|\bcredentials?\b|\bmfa(?:[_ -]?code)?\b|\bpassword\b|\btoken\b)/iu;
 const PRIVATE_FILENAME = /(?:^|[\\/])[^\\/]+\.(?:csv|fit|gpx|json|tcx)(?:$|[?#])/iu;
@@ -178,19 +179,37 @@ function sha256Bytes(bytes) {
 
 export function collectInstalledNativeReport() {
   const marker = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
-  execFileSync("adb", ["logcat", "-c"], { stdio: "ignore" });
-  execFileSync("adb", ["shell", "am", "force-stop", PACKAGE], { stdio: "ignore" });
-  execFileSync("adb", [
+  const devices = execFileSync("adb", ["devices"], { encoding: "utf8" })
+    .split(/\r?\n/u)
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/u))
+    .filter(([, state]) => state === "device");
+  if (devices.length !== 1 || devices[0]?.[0] === undefined) fail("device_selection_invalid");
+  const serial = devices[0][0];
+  const adb = (args, options) => execFileSync("adb", ["-s", serial, ...args], options);
+  const runNonce = randomBytes(16).toString("hex");
+  adb(["logcat", "-c"], { stdio: "ignore" });
+  adb(["shell", "am", "force-stop", PACKAGE], { stdio: "ignore" });
+  adb([
     "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
-    "gymtracker-devtest://__phase18-garmin-adversarial?confirmation=VERIFY-PHASE18-GARMIN-ADVERSARIAL",
+    `gymtracker-devtest://__phase18-garmin-adversarial?confirmation=VERIFY-PHASE18-GARMIN-ADVERSARIAL&nonce=${runNonce}`,
     PACKAGE,
   ], { stdio: "ignore" });
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    const logcat = execFileSync("adb", ["logcat", "-d"], { encoding: "utf8" });
+    const processId = adb(["shell", "pidof", PACKAGE], { encoding: "utf8" }).trim();
+    if (!/^\d+$/u.test(processId)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+      continue;
+    }
+    const logcat = adb(["logcat", "--pid", processId, "-d"], { encoding: "utf8" });
     const line = logcat.split(/\r?\n/u).find((entry) => entry.includes(marker));
     if (line !== undefined) {
-      return { report: JSON.parse(line.slice(line.indexOf(marker) + marker.length)), logcat };
+      const report = JSON.parse(line.slice(line.indexOf(marker) + marker.length));
+      if (!RUN_NONCE.test(report?.run_nonce ?? "") || report.run_nonce !== runNonce) {
+        fail("native_report_nonce_invalid");
+      }
+      return { report, logcat };
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
   }

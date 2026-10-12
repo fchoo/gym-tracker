@@ -248,9 +248,16 @@ printf '%s' '${apksignerOutput.replaceAll("'", "'\"'\"'")}'
 
 function createRunnerAdb(root, payload) {
   const scriptPath = path.join(root, "fake-bin", "adb");
-  const marker = `GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:${JSON.stringify(payload).replaceAll("'", "'\"'\"'")}`;
+  const noncePath = path.join(root, "fake-bin", "nonce");
+  const markerPayload = JSON.stringify({ ...payload, run_nonce: "__NONCE__" })
+    .replaceAll("'", "'\"'\"'");
   writeExecutable(scriptPath, `#!/bin/sh
 set -eu
+if [ "$1" = "devices" ]; then
+  printf 'List of devices attached\nSERIAL\tdevice\n'
+  exit 0
+fi
+if [ "$1" = "-s" ]; then shift 2; fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
   exit 0
 fi
@@ -258,10 +265,19 @@ if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "force-stop" ]; then
   exit 0
 fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
+  for argument in "$@"; do
+    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+  done
   exit 0
 fi
-if [ "$1" = "logcat" ] && [ "$2" = "-d" ]; then
-  printf 'I/Test(0): ${marker}\\n'
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then
+  printf '4242\n'
+  exit 0
+fi
+if [ "$1" = "logcat" ] && [ "$2" = "--pid" ] && [ "$4" = "-d" ]; then
+  nonce=$(cat "${noncePath}")
+  marker=$(printf '%s' '${markerPayload}' | sed "s/__NONCE__/$nonce/")
+  printf 'I/Test(0): GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:%s\\n' "$marker"
   exit 0
 fi
 exit 1
