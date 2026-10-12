@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { ProgressDashboardProjection } from "../../domains/progress/contracts";
+import type { ProgressRecommendationReview } from "../../domains/progress";
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import { ProgressScreen } from "../screens/ProgressScreen";
 import { SemanticToastProvider } from "../components/SemanticToast";
@@ -81,6 +82,24 @@ const runningDashboard = (): ProgressDashboardProjection => ({
     evidenceCount: 2,
   }],
 });
+
+const pendingReview: ProgressRecommendationReview = {
+  id: "recommendation-bench-1",
+  exerciseId: "bench-press",
+  exerciseName: "Bench Press",
+  sourceSessionId: "session-42",
+  status: "pending",
+  lifecycle: "pending",
+  rule: { id: "load_reps.double_progression.v1", version: 1 },
+  confidence: "high",
+  reason: "All planned working sets reached the upper rep bound.",
+  metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+  currentTarget: { version: 1, profile: "load_reps", loadGrams: 60_000, minReps: 8, maxReps: 8, targetReps: [8, 8, 8], incrementGrams: 2_500, perSide: false },
+  proposedTarget: { version: 1, profile: "load_reps", loadGrams: 62_500, minReps: 6, maxReps: 6, targetReps: [6, 6, 6], incrementGrams: 2_500, perSide: false },
+  evidenceVersion: 2,
+  sourceRevision: 4,
+  targetRevision: 3,
+};
 
 function dashboardFor(sport: "All" | "Strength" | "Running"): ProgressDashboardProjection {
   return sport === "Running"
@@ -310,5 +329,82 @@ describe("ProgressScreen", () => {
       nowLocalDate: "2026-08-24",
     }));
     expect(screen.getByText("2.4 km target saved.")).toBeOnTheScreen();
+  });
+
+  it("opens Strength history with retained context and commits an explicit recommendation once", async () => {
+    const onOpenExercise = jest.fn();
+    const decide = jest.fn(async () => ({ recommendationId: pendingReview.id, status: "accepted" as const }));
+    let committed = false;
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "Strength" ? {
+        sport: "Strength" as const,
+        state: "ready" as const,
+        facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+      } : dashboardFor(input.sport),
+      projection: { recommendations: committed ? [] : [pendingReview] },
+    }));
+    decide.mockImplementation(async () => {
+      committed = true;
+      return { recommendationId: pendingReview.id, status: "accepted" as const };
+    });
+    await renderProgress(loadProgress as never, {
+      onOpenExercise,
+      progressRecommendationRuntime: { decide },
+    });
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Open exercise history for Bench Press" }));
+    expect(onOpenExercise).toHaveBeenCalledWith(
+      "bench-press",
+      "Bench Press",
+      "progress:Strength:4_weeks:exercise:bench-press",
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Review target for Bench Press" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Close review target" }));
+    expect(decide).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Review target for Bench Press" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Use target" }));
+
+    await waitFor(() => expect(decide).toHaveBeenCalledWith(pendingReview, "use_target"));
+    await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("Bench Press target updated to 62.5 kg × 6.")).toBeOnTheScreen();
+  });
+
+  it("moves through Progress settings and bodyweight add/delete with authoritative lists", async () => {
+    const entry = { entryId: "bodyweight-1", revision: 1, localDate: "2026-08-24", grams: 72_100 };
+    const loadHistory = jest.fn(async () => [] as readonly typeof entry[]);
+    const save = jest.fn(async () => [entry] as readonly typeof entry[]);
+    const remove = jest.fn(async () => [] as readonly typeof entry[]);
+    await renderProgress(undefined, {
+      progressBodyweightRuntime: {
+        createId: (kind) => `${kind}:request`,
+        loadHistory,
+        save,
+        delete: remove,
+      },
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("header", { name: "Progress settings" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Bodyweight history" }));
+    expect(await screen.findByRole("header", { name: "Bodyweight" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Add first entry" }));
+    await fireEvent.changeText(screen.getByLabelText("Bodyweight, kg"), "72.1");
+    await fireEvent.press(screen.getByRole("button", { name: "Save entry" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      expectedRevision: 0,
+      localDate: "2026-08-24",
+      grams: 72_100,
+    })));
+    expect(screen.getByText("Bodyweight entry saved.")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Delete bodyweight entry for 2026-08-24" }));
+    expect(screen.getByText("Delete bodyweight entry?")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Delete bodyweight entry" }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(entry));
+    expect(screen.getByText("Bodyweight entry deleted.")).toBeOnTheScreen();
   });
 });

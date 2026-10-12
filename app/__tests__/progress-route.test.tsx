@@ -69,4 +69,30 @@ describe("ProgressRoute", () => {
       },
     });
   });
+
+  it("navigates Strength history with an allowlisted retained return token", async () => {
+    mockLoadProgress.mockImplementation(async (input: { sport?: string; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "Strength" ? {
+        sport: "Strength" as const,
+        state: "ready" as const,
+        facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+      } : { sport: "All" as const, state: "empty" as const, primaryGoal: null },
+    }));
+    await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);
+    await fireEvent.press(await screen.findByRole("tab", { name: "Strength" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Open exercise history for Bench Press" }));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/exercise-history/[exerciseId]",
+      params: {
+        exerciseId: "bench-press",
+        exerciseName: "Bench Press",
+        origin: "progress",
+        returnToken: "progress:Strength:4_weeks:exercise:bench-press",
+      },
+    });
+  });
 });

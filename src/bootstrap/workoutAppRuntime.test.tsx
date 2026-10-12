@@ -53,6 +53,8 @@ import type {
 import type {
   ProgressionRepository,
 } from "../domains/progression";
+import type { ProgressRecommendationReview } from "../domains/progress";
+import type { BodyweightEntryState } from "../domains/bodyweight/contracts";
 import type {
   ActiveWorkoutRepository,
   ActiveWorkoutView,
@@ -1785,6 +1787,90 @@ describe("WorkoutAppRuntimeProvider", () => {
       targetDurationMs: 660_000,
       trainingDays: ["Monday"],
     })).resolves.toEqual({ outcome: "committed", plan: targetSource });
+  });
+
+  it("keeps Progress recommendation and bodyweight commands behind typed receipt adapters", async () => {
+    const bodyweightEntry = Object.freeze({
+      entryId: "bodyweight-1",
+      ownerId: "owner-1",
+      revision: 1,
+      lifecycle: "active" as const,
+      revisionId: "bodyweight-revision-1",
+      eventId: "bodyweight-event-1",
+      localDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+      grams: 72_100,
+    }) satisfies BodyweightEntryState;
+    const loadBodyweightHistory = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([bodyweightEntry]);
+    const commitBodyweight = jest.fn(async () => Object.freeze({
+      kind: "created" as const,
+      entry: bodyweightEntry,
+    }));
+    mockedCreateTrainingFoundationRuntimePort.mockImplementationOnce(() => Object.freeze({
+      loadCalendarRange: jest.fn(),
+      loadPlannedStrengthOccurrence: jest.fn(),
+      loadToday: jest.fn(),
+      loadBodyweightHistory,
+      commitBodyweight,
+    }) as never);
+    const outcomeRepository = runtimeOutcomeRepository();
+    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM portable_owner_identity")
+      ? [{ owner_namespace: "owner-1" }]
+      : []);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (
+        query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
+      ) => query({ queryAll: queryAll as unknown as SqliteTransactionExecutor["queryAll"] })),
+    } as unknown as SqliteKernel;
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(<RuntimeCaptureHarness
+      dependencies={dependencies(repository, {
+        createOutcomeRepository: () => outcomeRepository,
+        openKernel: jest.fn(async () => kernel),
+      })}
+      onReady={(runtime) => { captured = runtime; }}
+    />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+
+    await expect(captured!.progressBodyweightRuntime.loadHistory()).resolves.toEqual([]);
+    await expect(captured!.progressBodyweightRuntime.save({
+      entryId: "bodyweight-1",
+      expectedRevision: 0,
+      grams: 72_100,
+      localDate: "2026-08-17",
+      requestId: "bodyweight-save-1",
+    })).resolves.toEqual([bodyweightEntry]);
+    expect(commitBodyweight).toHaveBeenCalledWith(expect.objectContaining({
+      operation: "create",
+      ownerId: "owner-1",
+      requestId: "bodyweight-save-1",
+      requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    }));
+
+    const recommendation = {
+      id: "recommendation-1",
+      evidenceVersion: 2,
+      sourceRevision: 4,
+      targetRevision: 3,
+    } as ProgressRecommendationReview;
+    await expect(captured!.progressRecommendationRuntime.decide(
+      recommendation,
+      "use_target",
+    )).resolves.toEqual({ recommendationId: "recommendation-1", status: "accepted" });
+    expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledWith(expect.objectContaining({
+      decision: "use_target",
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 4,
+      expectedTargetRevision: 3,
+      recommendationId: "recommendation-1",
+      requestId: expect.stringMatching(/^progress-recommendation-use:/u),
+    }));
   });
 
   it("keeps the development expiry bridge unavailable until launch is trusted", async () => {
