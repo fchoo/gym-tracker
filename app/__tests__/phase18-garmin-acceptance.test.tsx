@@ -13,6 +13,26 @@ import Phase18GarminAcceptanceScreen from "../__phase18-garmin-acceptance";
 
 let mockRenderProbe: ((kind: "route" | "laps") => Promise<unknown>) | undefined;
 const mockConfirmGarminImport = jest.fn();
+const mockRunBoundedSync = jest.fn(async () => ({ kind: "success" }));
+const mockUseWorkoutAppRuntime = jest.fn(() => ({
+  garminImport: {
+    confirmGarminImport: mockConfirmGarminImport,
+  },
+}));
+let mockBenchmarkSignal: AbortSignal | undefined;
+const mockRunTemporaryDatabase = jest.fn(async (input: Readonly<{
+  signal?: AbortSignal;
+  run(session: Readonly<{
+    databaseName: string;
+    runBoundedSync: typeof mockRunBoundedSync;
+  }>): Promise<unknown>;
+}>) => {
+  mockBenchmarkSignal = input.signal;
+  return input.run({
+    databaseName: "gym-tracker-phase18-garmin-benchmark-test.db",
+    runBoundedSync: mockRunBoundedSync,
+  });
+});
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -40,11 +60,14 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({
-    garminImport: {
-      confirmGarminImport: mockConfirmGarminImport,
-    },
-  }),
+  useWorkoutAppRuntime: () => mockUseWorkoutAppRuntime(),
+}));
+
+jest.mock("../../src/bootstrap/phase18GarminBenchmarkRuntime", () => ({
+  createPhase18GarminBenchmarkBoundedSync: jest.fn(() => mockRunBoundedSync),
+  withPhase18GarminBenchmarkTemporaryDatabase: (input: Parameters<
+    typeof mockRunTemporaryDatabase
+  >[0]) => mockRunTemporaryDatabase(input),
 }));
 
 jest.mock("../../src/testing/phase18GarminAcceptance", () => {
@@ -67,6 +90,9 @@ jest.mock("../../src/testing/phase18GarminAcceptance", () => {
 describe("Phase 18 Garmin benchmark route", () => {
   beforeEach(() => {
     mockRenderProbe = undefined;
+    mockBenchmarkSignal = undefined;
+    mockRunTemporaryDatabase.mockClear();
+    mockUseWorkoutAppRuntime.mockClear();
     jest.spyOn(console, "log").mockImplementation(() => undefined);
   });
 
@@ -85,6 +111,9 @@ describe("Phase 18 Garmin benchmark route", () => {
     await waitFor(() => {
       expect(mockRenderProbe).toBeDefined();
     });
+    expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
+    expect(mockRunTemporaryDatabase).toHaveBeenCalledTimes(1);
+    expect(mockBenchmarkSignal?.aborted).toBe(false);
     let routeProbe!: Promise<unknown>;
     act(() => {
       routeProbe = mockRenderProbe!("route");

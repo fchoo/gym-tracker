@@ -1,3 +1,5 @@
+import { deleteDatabaseAsync } from "expo-sqlite";
+
 import type {
   GarminSha256,
   ImportedActivityCommandRepository,
@@ -16,9 +18,139 @@ import {
   type GarminSyncResult,
 } from "../platform/garmin/garminSyncContracts";
 import { normalizeGarminActivity } from "../platform/garmin/normalizeGarminActivity";
+import {
+  openSqliteKernel,
+  type SqliteKernel,
+} from "../platform/sqlite";
+import { createMigrationRunner } from "../platform/sqlite/migrationRunner";
+import { migrations } from "../platform/sqlite/migrations";
+import { createImportedActivityRepository } from "../platform/sqlite/repositories/importedActivityRepository";
 import { PHASE18_GARMIN_BENCHMARK_MAX_FIXTURE } from "../testing/phase18GarminAcceptance";
 
 const BENCHMARK_NONCE = /^[a-f0-9]{32}$/u;
+const BENCHMARK_DATABASE_PREFIX = "gym-tracker-phase18-garmin-benchmark-";
+
+type BoundedSync = ReturnType<typeof createPhase18GarminBenchmarkBoundedSync>;
+
+export type Phase18GarminBenchmarkDatabaseDependencies = Readonly<{
+  removeDatabase(databaseName: string): Promise<void>;
+  openKernel(databaseName: string): Promise<SqliteKernel>;
+  migrate(databaseName: string, kernel: SqliteKernel): Promise<void>;
+  createRepository(kernel: SqliteKernel): ImportedActivityCommandRepository;
+  createBoundedSync(input: Readonly<{
+    nonce: string;
+    repository: ImportedActivityCommandRepository;
+    sha256: GarminSha256;
+  }>): BoundedSync;
+}>;
+
+type BenchmarkAbortSignal = Readonly<{ aborted: boolean }>;
+
+const productionDatabaseDependencies: Phase18GarminBenchmarkDatabaseDependencies = Object.freeze({
+  removeDatabase: deleteDatabaseAsync,
+  openKernel: openSqliteKernel,
+  async migrate(databaseName, kernel) {
+    await createMigrationRunner({
+      databaseName,
+      kernel,
+      migrations,
+      recoveryBackup: {
+        async createAndValidate(request) {
+          if (request.databaseName !== databaseName || request.fromVersion !== 0) {
+            throw new Error("phase18_garmin_benchmark_recovery_invalid");
+          }
+          return Object.freeze({
+            backupId: `${databaseName}:empty-database`,
+            ...request,
+            validated: true as const,
+          });
+        },
+      },
+    }).run();
+  },
+  createRepository: createImportedActivityRepository,
+  createBoundedSync: createPhase18GarminBenchmarkBoundedSync,
+});
+
+export function phase18GarminBenchmarkDatabaseName(nonce: string): string {
+  if (!BENCHMARK_NONCE.test(nonce)) {
+    throw new Error("phase18_garmin_benchmark_database_identity_invalid");
+  }
+  return `${BENCHMARK_DATABASE_PREFIX}${nonce}.db`;
+}
+
+function assertBenchmarkActive(signal: BenchmarkAbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw new Error("phase18_garmin_benchmark_cancelled");
+  }
+}
+
+export async function withPhase18GarminBenchmarkTemporaryDatabaseDependencies<Result>(
+  input: Readonly<{
+    nonce: string;
+    sha256: GarminSha256;
+    signal?: BenchmarkAbortSignal;
+    run(session: Readonly<{
+      databaseName: string;
+      runBoundedSync: BoundedSync;
+    }>): Promise<Result>;
+  }>,
+  dependencies: Phase18GarminBenchmarkDatabaseDependencies,
+): Promise<Result> {
+  const databaseName = phase18GarminBenchmarkDatabaseName(input.nonce);
+  let kernel: SqliteKernel | undefined;
+  await dependencies.removeDatabase(databaseName);
+  try {
+    assertBenchmarkActive(input.signal);
+    kernel = await dependencies.openKernel(databaseName);
+    await dependencies.migrate(databaseName, kernel);
+    assertBenchmarkActive(input.signal);
+    const runBoundedSync = dependencies.createBoundedSync({
+      nonce: input.nonce,
+      repository: dependencies.createRepository(kernel),
+      sha256: input.sha256,
+    });
+    return await input.run(Object.freeze({
+      databaseName,
+      runBoundedSync: async (sampleSequence) => {
+        assertBenchmarkActive(input.signal);
+        const result = await runBoundedSync(sampleSequence);
+        assertBenchmarkActive(input.signal);
+        return result;
+      },
+    }));
+  } finally {
+    let cleanupFailed = false;
+    try {
+      await kernel?.close();
+    } catch {
+      cleanupFailed = true;
+    }
+    try {
+      await dependencies.removeDatabase(databaseName);
+    } catch {
+      cleanupFailed = true;
+    }
+    if (cleanupFailed) {
+      throw new Error("phase18_garmin_benchmark_database_cleanup_failed");
+    }
+  }
+}
+
+export function withPhase18GarminBenchmarkTemporaryDatabase<Result>(input: Readonly<{
+  nonce: string;
+  sha256: GarminSha256;
+  signal?: BenchmarkAbortSignal;
+  run(session: Readonly<{
+    databaseName: string;
+    runBoundedSync: BoundedSync;
+  }>): Promise<Result>;
+}>): Promise<Result> {
+  return withPhase18GarminBenchmarkTemporaryDatabaseDependencies(
+    input,
+    productionDatabaseDependencies,
+  );
+}
 
 function boundedExternalActivityId(
   nonce: string,
