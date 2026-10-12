@@ -4,6 +4,8 @@ import React from "react";
 import { View } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
 
+import type { LocalDate } from "../../domains/scheduling";
+
 import {
   CalendarTransitionError,
   clampMonthDrag,
@@ -14,6 +16,7 @@ import {
 import {
   calendarMonthPanEnabled,
   calendarPanelTranslate,
+  calendarWeekGeometryForGeneration,
   CalendarMonthViewport,
 } from "../calendar/CalendarMonthViewport";
 
@@ -29,7 +32,15 @@ describe("Calendar semantic transitions", () => {
     expect(calendarMonthPanEnabled("dragging")).toBe(true);
     expect(calendarMonthPanEnabled("settling")).toBe(false);
     expect(calendarMonthPanEnabled("adjacent-collapsing")).toBe(false);
+    expect(calendarMonthPanEnabled("adjacent-measuring")).toBe(false);
     expect(calendarMonthPanEnabled("adjacent-expanding")).toBe(false);
+  });
+
+  it("accepts only row geometry measured for the current layout generation", () => {
+    const current = Object.freeze({ y: 96, height: 72, generation: 4 });
+    expect(calendarWeekGeometryForGeneration(current, 4)).toBe(current);
+    expect(calendarWeekGeometryForGeneration(current, 5)).toBeNull();
+    expect(calendarWeekGeometryForGeneration(null, 4)).toBeNull();
   });
 
   it("mounts the viewport with its pan disabled for the full settle lifetime", async () => {
@@ -45,7 +56,7 @@ describe("Calendar semantic transitions", () => {
       <CalendarMonthViewport
         command={null}
         focusedWeek={null}
-        month="2026-11-01"
+        month={"2026-11-01" as LocalDate}
         onCancel={jest.fn()}
         onComplete={jest.fn()}
         onPreview={jest.fn()}
@@ -173,7 +184,17 @@ describe("Calendar semantic transitions", () => {
       pendingMonthId: "2026-12",
       pendingSelectedLocalDate: "2026-12-01",
     });
-    expect(transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 }).state)
+    const measuring = transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 });
+    expect(measuring).toEqual({
+      state: expect.objectContaining({
+        currentMonthId: "2026-12",
+        selectedLocalDate: "2026-12-01",
+        mode: "month",
+        phase: "adjacent-measuring",
+      }),
+      commands: [],
+    });
+    expect(transitionCalendar(measuring.state, { type: "layout-ready" }).state)
       .toMatchObject({ currentMonthId: "2026-12", selectedLocalDate: "2026-12-01", phase: "adjacent-expanding" });
   });
 
@@ -206,10 +227,13 @@ describe("Calendar semantic transitions", () => {
       mode: "month", selectedLocalDate: "2026-11-01", pendingSelectedLocalDate: "2026-11-08", phase: "adjacent-collapsing",
     });
     expect(adjacent.commands[0]).toMatchObject({ kind: "settle-week", phase: "collapse" });
-    const expanding = transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 });
+    const measuring = transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 });
+    expect(measuring.state).toMatchObject({ mode: "month", selectedLocalDate: "2026-11-08", phase: "adjacent-measuring" });
+    expect(measuring.commands).toEqual([]);
+    const expanding = transitionCalendar(measuring.state, { type: "layout-ready" });
     expect(expanding.state).toMatchObject({ mode: "focused", selectedLocalDate: "2026-11-08", phase: "adjacent-expanding" });
     expect(expanding.commands[0]).toMatchObject({ kind: "settle-week", phase: "expand" });
-    const stable = transitionCalendar(expanding.state, { type: "settle-complete", epoch: 3 }).state;
+    const stable = transitionCalendar(expanding.state, { type: "settle-complete", epoch: expanding.state.epoch }).state;
     expect(stable).toMatchObject({ mode: "focused", phase: "idle" });
     expect(transitionCalendar(stable, { type: "back" }).state).toMatchObject({ mode: "month", phase: "settling" });
 
@@ -253,6 +277,7 @@ describe("Calendar semantic transitions", () => {
       .toMatchObject({ mode: "month", selectedLocalDate: "2026-11-02" });
     expect(transitionCalendar(expanded.state, { type: "select-adjacent", localDate: "2026-11-02" }))
       .toEqual({ state: expanded.state, commands: [] });
+    expect(transitionCalendar(initial(), { type: "layout-ready" })).toEqual({ state: initial(), commands: [] });
 
     const reducedExpanded = transitionCalendar(initial(true), { type: "expand" });
     expect(reducedExpanded).toEqual({ state: expect.objectContaining({ mode: "focused", phase: "idle" }), commands: [] });

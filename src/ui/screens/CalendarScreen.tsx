@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
+  AppState,
   StyleSheet,
   Text,
   View,
@@ -16,7 +17,11 @@ import {
 } from "../../domains/scheduling/localDate";
 import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
 import { CalendarAgenda, type CalendarAgendaHandle, type CalendarAgendaRowHandle } from "../calendar/CalendarAgenda";
-import { CalendarMonthViewport, type CalendarWeekGeometry } from "../calendar/CalendarMonthViewport";
+import {
+  CalendarMonthViewport,
+  calendarWeekGeometryForGeneration,
+  type CalendarWeekGeometry,
+} from "../calendar/CalendarMonthViewport";
 import { CalendarWeekRow } from "../calendar/CalendarWeekRow";
 import {
   createCalendarTransitionState,
@@ -91,7 +96,7 @@ export function CalendarScreen({
   returnFocusGeneration = 0,
 }: CalendarScreenProps) {
   const { colors, reduceMotion } = useAppTheme();
-  const { width: safeWidth } = useWindowDimensions();
+  const { fontScale, height: safeHeight, width: safeWidth } = useWindowDimensions();
   const parsedToday = parseLocalDate(today);
   const [month, setMonth] = useState(() => startOfLocalMonth(parseLocalDate(initialDate)));
   const selectedDateRef = useRef<LocalDate>(parseLocalDate(initialDate));
@@ -110,8 +115,8 @@ export function CalendarScreen({
   }));
   const [calendarCommand, setCalendarCommand] = useState<CalendarMotionCommand | null>(null);
   const [weekMeasurements, setWeekMeasurements] = useState<ReadonlyMap<LocalDate, CalendarWeekGeometry>>(() => new Map());
+  const [layoutGeneration, setLayoutGeneration] = useState(0);
   const requestGeneration = useRef(0);
-  const layoutGeneration = useRef(0);
   const calendarTransitionRef = useRef(calendarTransition);
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
@@ -184,7 +189,16 @@ export function CalendarScreen({
 
     if (previousState.currentMonthId !== result.state.currentMonthId) {
       const nextDate = parseLocalDate(result.state.selectedLocalDate);
-      pendingMonthRef.current = Object.freeze({ month: startOfLocalMonth(nextDate), selectedDate: nextDate });
+      const pending = Object.freeze({ month: startOfLocalMonth(nextDate), selectedDate: nextDate });
+      if (result.state.phase === "adjacent-measuring" || result.state.reducedMotion) {
+        pendingMonthRef.current = null;
+        setWeekMeasurements(new Map());
+        setLayoutGeneration((generation) => generation + 1);
+        setMonth(pending.month);
+        selectDate(pending.selectedDate);
+      } else {
+        pendingMonthRef.current = pending;
+      }
     } else if (previousState.selectedLocalDate !== result.state.selectedLocalDate) {
       selectDate(parseLocalDate(result.state.selectedLocalDate));
     }
@@ -203,6 +217,23 @@ export function CalendarScreen({
   useEffect(() => {
     dispatchCalendarTransition({ type: "set-reduced-motion", reducedMotion: reduceMotion });
   }, [dispatchCalendarTransition, reduceMotion]);
+
+  const invalidateLayout = useCallback(() => {
+    setWeekMeasurements(new Map());
+    setLayoutGeneration((generation) => generation + 1);
+    dispatchCalendarTransition({ type: "invalidate" });
+  }, [dispatchCalendarTransition]);
+
+  useEffect(() => {
+    invalidateLayout();
+  }, [fontScale, invalidateLayout, safeHeight, safeWidth]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") invalidateLayout();
+    });
+    return () => subscription.remove();
+  }, [invalidateLayout]);
 
   const navigateMonth = (direction: -1 | 1) => {
     const next = nextMonth(month, direction);
@@ -292,10 +323,10 @@ export function CalendarScreen({
       const existing = current.get(weekStart);
       if (existing?.y === geometry.y && existing.height === geometry.height) return current;
       const next = new Map(current);
-      next.set(weekStart, Object.freeze({ ...geometry, generation: layoutGeneration.current }));
+      next.set(weekStart, Object.freeze({ ...geometry, generation: layoutGeneration }));
       return next;
     });
-  }, []);
+  }, [layoutGeneration]);
 
   const visibleMonth = range !== null && (isLoading || error !== null)
     ? lastGoodMonth
@@ -313,9 +344,17 @@ export function CalendarScreen({
     : Object.freeze({
       selectedDates: selectedWeek,
       followingDates: followingWeek,
-      selectedGeometry: weekMeasurements.get(selectedWeek[0]!) ?? null,
-      followingGeometry: weekMeasurements.get(followingWeek[0]!) ?? null,
+      selectedGeometry: calendarWeekGeometryForGeneration(weekMeasurements.get(selectedWeek[0]!), layoutGeneration),
+      followingGeometry: calendarWeekGeometryForGeneration(weekMeasurements.get(followingWeek[0]!), layoutGeneration),
     });
+
+  useEffect(() => {
+    if (calendarTransition.phase !== "adjacent-measuring"
+      || focusedWeek?.selectedGeometry === null
+      || focusedWeek?.followingGeometry === null
+      || focusedWeek === null) return;
+    dispatchCalendarTransition({ type: "layout-ready" });
+  }, [calendarTransition.phase, dispatchCalendarTransition, focusedWeek]);
   const calendarInset = Math.min(18, Math.max(0, (safeWidth - 348) / 2));
   const adaptiveScreenInset = safeWidth < 600 ? space[4] : safeWidth < 840 ? space[6] : space[8];
 
@@ -426,8 +465,9 @@ export function CalendarScreen({
               <CalendarMonthViewport
                 command={calendarCommand}
                 focusedWeek={focusedWeek}
+                layoutGeneration={layoutGeneration}
                 month={visibleMonth}
-                onCancel={() => dispatchCalendarTransition({ type: "invalidate" })}
+                onCancel={invalidateLayout}
                 onComplete={(epoch) => dispatchCalendarTransition({ type: "settle-complete", epoch })}
                 onPreview={(dx, viewportWidth) => dispatchCalendarTransition({ type: "drag", dx, dy: 0, viewportWidth })}
                 onRelease={({ dx, dy, targetMonthId, viewportWidth }) => dispatchCalendarTransition({

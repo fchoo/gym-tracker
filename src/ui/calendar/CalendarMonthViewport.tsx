@@ -32,6 +32,13 @@ type PanelOffset = -1 | 0 | 1;
 
 export type CalendarWeekGeometry = Readonly<{ y: number; height: number; generation: number }>;
 
+export function calendarWeekGeometryForGeneration(
+  geometry: CalendarWeekGeometry | null | undefined,
+  generation: number,
+): CalendarWeekGeometry | null {
+  return geometry?.generation === generation ? geometry : null;
+}
+
 /** The three panels are always separated by one measured viewport width. */
 export function calendarPanelTranslate(offset: PanelOffset, dx: number, viewportWidth: number): number {
   return offset * viewportWidth + clampMonthDrag(dx, viewportWidth);
@@ -88,6 +95,7 @@ function FocusedWeekOverlay({
 export function CalendarMonthViewport({
   command,
   focusedWeek,
+  layoutGeneration = 0,
   month,
   onCancel,
   onComplete,
@@ -98,6 +106,7 @@ export function CalendarMonthViewport({
   transition,
 }: Readonly<{
   command: CalendarMotionCommand | null;
+  layoutGeneration?: number;
   focusedWeek: Readonly<{
     selectedDates: readonly LocalDate[];
     followingDates: readonly LocalDate[];
@@ -157,10 +166,10 @@ export function CalendarMonthViewport({
 
   useEffect(() => {
     if (command?.kind !== "settle-week") return;
-    const selectedGeometry = focusedWeek?.selectedGeometry;
-    const followingGeometry = focusedWeek?.followingGeometry;
-    if (selectedGeometry === null || selectedGeometry === undefined || followingGeometry === null || followingGeometry === undefined) {
-      onComplete(command.epoch);
+    const selectedGeometry = calendarWeekGeometryForGeneration(focusedWeek?.selectedGeometry, layoutGeneration);
+    const followingGeometry = calendarWeekGeometryForGeneration(focusedWeek?.followingGeometry, layoutGeneration);
+    if (selectedGeometry === null || followingGeometry === null) {
+      onCancel();
       return;
     }
     weekCompletionEpoch.value = command.epoch;
@@ -181,7 +190,7 @@ export function CalendarMonthViewport({
         scheduleOnRN(onComplete, command.epoch);
       }
     });
-  }, [command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, onComplete, weekCompletionEpoch]);
+  }, [command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, onCancel, onComplete, viewportHeight, weekCompletionEpoch]);
 
   useEffect(() => {
     if (!transition.reducedMotion) return;
