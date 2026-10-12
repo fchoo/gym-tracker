@@ -29,6 +29,7 @@ const phase18IntegrityCriticalFiles = [
   "src/platform/sqlite/repositories/logicalMergeRepository.ts",
   "src/platform/sqlite/repositories/runningActivityMatchRepository.ts",
   "src/bootstrap/garminImportRuntime.tsx",
+  "src/bootstrap/phase18GarminBenchmarkRuntime.ts",
   "src/ui/garmin/useGarminConnectionController.ts",
 ];
 const phase18TargetedTests = [
@@ -43,6 +44,7 @@ const phase18TargetedTests = [
   "src/platform/sqlite/repositories/importedActivityRepository.test.ts",
   "src/platform/sqlite/repositories/runningActivityMatchRepository.test.ts",
   "src/bootstrap/garminImportRuntime.test.tsx",
+  "src/bootstrap/phase18GarminBenchmarkRuntime.test.ts",
   "src/ui/garmin/useGarminConnectionController.test.tsx",
   "src/ui/__tests__/GarminSyncScreen.test.tsx",
   "tests/integration/garmin-envelope-import.test.ts",
@@ -139,6 +141,7 @@ const integrityCriticalFiles = [
   "src/platform/garmin/garminActivityAdapter.ts",
   "src/platform/garmin/garminSyncCoordinator.ts",
   "src/bootstrap/garminImportRuntime.tsx",
+  "src/bootstrap/phase18GarminBenchmarkRuntime.ts",
   "src/ui/garmin/useGarminConnectionController.ts",
   "src/domains/bodyweight/commands.ts",
   "src/domains/bodyweight/contracts.ts",

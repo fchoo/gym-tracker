@@ -165,7 +165,7 @@ function benchmarkNativeSuccess(data: unknown) {
   return Object.freeze({ status: "ok" as const, generation: 1, data });
 }
 
-function createBoundedBenchmarkDriver(
+export function createPhase18GarminBenchmarkDriver(
   nonce: string,
   sampleSequence: number,
 ): GarminNativeDriver {
@@ -240,7 +240,7 @@ export function createPhase18GarminBenchmarkBoundedSync(input: Readonly<{
     }
     const accountNamespace = `garmin:${input.nonce}`;
     const source = createGarminActivityAdapter({
-      driver: createBoundedBenchmarkDriver(input.nonce, sampleSequence),
+      driver: createPhase18GarminBenchmarkDriver(input.nonce, sampleSequence),
       mapper: {
         fromActivity: (activity) => normalizeGarminActivity({
           account_namespace: accountNamespace,
