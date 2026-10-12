@@ -593,9 +593,6 @@ function recommendationFromRow(
       metricIdentity: actionable.metricIdentity,
       currentTarget: actionable.currentTarget,
       proposedTarget: actionable.proposedTarget,
-      evidenceVersion: row.evidence_version,
-      sourceRevision: row.source_revision,
-      targetRevision: evidenceBoundTargetRevision,
     });
   } catch {
     return null;

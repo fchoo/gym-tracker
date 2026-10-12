@@ -96,9 +96,6 @@ const pendingReview: ProgressRecommendationReview = {
   metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
   currentTarget: { version: 1, profile: "load_reps", loadGrams: 60_000, minReps: 8, maxReps: 8, targetReps: [8, 8, 8], incrementGrams: 2_500, perSide: false },
   proposedTarget: { version: 1, profile: "load_reps", loadGrams: 62_500, minReps: 6, maxReps: 6, targetReps: [6, 6, 6], incrementGrams: 2_500, perSide: false },
-  evidenceVersion: 2,
-  sourceRevision: 4,
-  targetRevision: 3,
 };
 
 function dashboardFor(sport: "All" | "Strength" | "Running"): ProgressDashboardProjection {

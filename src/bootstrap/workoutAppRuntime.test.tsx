@@ -1816,9 +1816,16 @@ describe("WorkoutAppRuntimeProvider", () => {
       commitBodyweight,
     }) as never);
     const outcomeRepository = runtimeOutcomeRepository();
-    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM portable_owner_identity")
-      ? [{ owner_namespace: "owner-1" }]
-      : []);
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("FROM portable_owner_identity")) return [{ owner_namespace: "owner-1" }];
+      if (sql.includes("FROM progression_recommendations")) return [{
+        evidence_version: 2,
+        source_revision: 4,
+        target_revision: 3,
+        status: "pending",
+      }];
+      return [];
+    });
     const kernel = {
       close: jest.fn(async () => undefined),
       queryAll,
@@ -1861,9 +1868,6 @@ describe("WorkoutAppRuntimeProvider", () => {
     const recommendation = {
       id: "recommendation-1",
       lifecycle: "pending",
-      evidenceVersion: 2,
-      sourceRevision: 4,
-      targetRevision: 3,
     } as ProgressRecommendationReview;
     let decisionResult: unknown;
     await act(async () => {

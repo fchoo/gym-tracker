@@ -22,6 +22,11 @@ function snapshotKernel(
 }
 
 describe("progress repository factual source reads", () => {
+  it("requires the source-coherent snapshot kernel", () => {
+    expect(() => createProgressRepository({ queryAll: jest.fn() } as never))
+      .toThrow("progress_snapshot_kernel_required");
+  });
+
   it("returns source-linked Running, goal, and current bodyweight facts without inventing zeroes", async () => {
     const queryAll = jest.fn(async (sql: string) => {
       if (sql.includes("FROM imported_activities activity")) return [{
@@ -76,6 +81,13 @@ describe("progress repository factual source reads", () => {
       if (sql.includes("FROM imported_activities activity")) return [{
         id: "legacy-malformed", started_at_ms: 1, aggregate_json: "not-json",
         opportunity_id: null,
+      }];
+      if (sql.includes("FROM running_goals")) return [{
+        id: "malformed-goal",
+        plan_id: "plan-1",
+        revision: 1,
+        goal_json: "not-json",
+        created_at_ms: 1,
       }];
       if (sql.includes("FROM progression_recommendations recommendation")) return [{
         id: "legacy-malformed-evidence", exercise_id: "exercise", exercise_name: "Exercise",

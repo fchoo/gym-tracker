@@ -4709,27 +4709,40 @@ export function WorkoutAppRuntimeProvider({
     if (recommendation.lifecycle !== "pending") {
       throw new Error("recommendation_no_longer_actionable");
     }
-    if (!Number.isSafeInteger(recommendation.evidenceVersion)
-      || recommendation.evidenceVersion === undefined
-      || recommendation.evidenceVersion < 1
-      || !Number.isSafeInteger(recommendation.sourceRevision)
-      || recommendation.sourceRevision === undefined
-      || recommendation.sourceRevision < 1
-      || !Number.isSafeInteger(recommendation.targetRevision)
-      || recommendation.targetRevision === undefined
-      || recommendation.targetRevision < 1) {
-      throw new Error("recommendation_revision_fence_unavailable");
-    }
     const key = `${decision}:${recommendation.id}`;
     let command = progressRecommendationCommandsRef.current.get(key);
     if (command === undefined) {
+      const fences = await requireServices().kernel.queryAll<{
+        evidence_version: number;
+        source_revision: number;
+        target_revision: number;
+        status: string;
+      }>(
+        `SELECT evidence_version, source_revision, target_revision, status
+           FROM progression_recommendations WHERE id = ?
+         UNION ALL
+         SELECT evidence_version, source_revision, target_revision, status
+           FROM owned_progression_recommendations WHERE id = ?`,
+        [recommendation.id, recommendation.id],
+      );
+      const fence = fences.length === 1 ? fences[0] : undefined;
+      if (fence === undefined
+        || fence.status !== "pending"
+        || !Number.isSafeInteger(fence.evidence_version)
+        || fence.evidence_version < 1
+        || !Number.isSafeInteger(fence.source_revision)
+        || fence.source_revision < 1
+        || !Number.isSafeInteger(fence.target_revision)
+        || fence.target_revision < 1) {
+        throw new Error("recommendation_revision_fence_unavailable");
+      }
       command = Object.freeze({
         recommendationId: recommendation.id,
         requestId: createProgressId(`progress-recommendation-${decision === "use_target" ? "use" : "keep"}`),
         decision,
-        expectedEvidenceVersion: recommendation.evidenceVersion,
-        expectedSourceRevision: recommendation.sourceRevision,
-        expectedTargetRevision: recommendation.targetRevision,
+        expectedEvidenceVersion: fence.evidence_version,
+        expectedSourceRevision: fence.source_revision,
+        expectedTargetRevision: fence.target_revision,
         decidedAtMs: dependencies.nowMs(),
       });
       progressRecommendationCommandsRef.current.set(key, command);
@@ -4741,7 +4754,7 @@ export function WorkoutAppRuntimeProvider({
       : keepCurrentTarget({ repository, input: committedCommand }));
     progressRecommendationCommandsRef.current.delete(key);
     return result;
-  }, [createProgressId, dependencies, runOutcomeMutation]);
+  }, [createProgressId, dependencies, requireServices, runOutcomeMutation]);
 
   const progressRecommendationRuntime = useMemo(() => Object.freeze({
     decide: decideProgressRecommendation,

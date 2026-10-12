@@ -63,9 +63,6 @@ const pendingReview: ProgressRecommendationReview = {
     incrementGrams: 2_500,
     perSide: false,
   },
-  evidenceVersion: 2,
-  sourceRevision: 4,
-  targetRevision: 3,
 };
 
 const legacyRecommendation: SessionRecommendation = {
