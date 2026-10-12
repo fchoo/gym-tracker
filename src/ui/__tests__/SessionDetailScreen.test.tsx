@@ -24,4 +24,19 @@ describe("CalendarReadOnlyWorkout", () => {
     fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
     expect(onGoBack).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps partial facts read-only and changes only local disclosure visibility", async () => {
+    const partial = { ...detail, status: "partial" as const, statusLabel: "Partial", resumable: true };
+    await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={partial} onGoBack={jest.fn()} /></AppearanceProvider>);
+
+    expect(screen.getByText("Partial · read only")).toBeOnTheScreen();
+    expect(screen.getByText("Not completed")).toBeOnTheScreen();
+    const disclosure = screen.getByRole("button", { name: /Bench press/u });
+    await fireEvent.press(disclosure);
+    expect(screen.queryByText("Not completed")).toBeNull();
+    expect(disclosure).toHaveProp("accessibilityState", expect.objectContaining({ expanded: false }));
+    expect(screen.queryByText("Resume workout")).toBeNull();
+    expect(screen.queryByText("Correct workout")).toBeNull();
+    expect(screen.queryByText("Remove from history")).toBeNull();
+  });
 });

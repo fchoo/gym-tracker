@@ -6,7 +6,13 @@ import type { SessionDetail } from "../../src/domains/workout";
 
 const mockBack = jest.fn();
 const mockGetSessionDetail = jest.fn<() => Promise<SessionDetail>>();
-const mockRemoveHistorySession = jest.fn();
+const mockMutationCommands = {
+  addExercise: jest.fn(), addWarmup: jest.fn(), addWorkingSet: jest.fn(), adjustRest: jest.fn(), completeSet: jest.fn(), completeWarmup: jest.fn(),
+  discardWorkout: jest.fn(), finishCompleted: jest.fn(), finishPartial: jest.fn(), removeExercise: jest.fn(), removeHistorySession: jest.fn(), removeWarmup: jest.fn(),
+  removeWorkingSet: jest.fn(), reorderExercises: jest.fn(), replaceExercise: jest.fn(), resumePartialWorkout: jest.fn(), resumeRest: jest.fn(),
+  reviseCompletedSet: jest.fn(), saveZeroSetWorkout: jest.fn(), setWorkoutPreferences: jest.fn(), skipExercise: jest.fn(), skipRest: jest.fn(),
+  startManualRest: jest.fn(), updateActiveSetDraft: jest.fn(), updateSessionExerciseDefaultRest: jest.fn(), updateWarmupDraft: jest.fn(),
+};
 let mockParams: Readonly<{ sessionId?: string | readonly string[]; origin?: string | readonly string[] }> = {
   sessionId: "calendar-session",
   origin: "calendar",
@@ -19,15 +25,14 @@ jest.mock("expo-router", () => ({
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
     getSessionDetail: mockGetSessionDetail,
-    removeHistorySession: mockRemoveHistorySession,
-    resumePartialWorkout: jest.fn(),
+    ...mockMutationCommands,
     workoutRefreshGeneration: 0,
   }),
 }));
 jest.mock("../../src/ui/calendar/CalendarReadOnlyWorkout", () => ({
   CalendarReadOnlyWorkout: ({ detail, onGoBack }: { detail: SessionDetail; onGoBack(): void }) => {
     const { Pressable, Text } = require("react-native") as typeof import("react-native");
-    return <><Text>{`Calendar facts ${detail.id}`}</Text><Pressable accessibilityRole="button" accessibilityLabel="Back to Calendar agenda" onPress={onGoBack} /></>;
+    return <><Text>{`Calendar facts ${detail.id}`}</Text><Pressable accessibilityRole="button" accessibilityLabel="Toggle disclosure" /><Pressable accessibilityRole="button" accessibilityLabel="Back to Calendar agenda" onPress={onGoBack} /></>;
   },
 }));
 jest.mock("../../src/ui/screens/SessionDetailScreen", () => ({
@@ -51,16 +56,20 @@ const detail = {
 } as unknown as SessionDetail;
 
 describe("SessionDetailRoute", () => {
-  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); mockRemoveHistorySession.mockReset(); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
+  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
 
   it("opens an exact Calendar session through the query-only facts branch", async () => {
     mockGetSessionDetail.mockResolvedValue(detail);
-    await render(<SessionDetailRoute />);
+    const sourceDigest = JSON.stringify(detail);
+    const rendered = await render(<SessionDetailRoute />);
     expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
     expect(mockGetSessionDetail).toHaveBeenCalledWith("calendar-session");
     expect(screen.queryByLabelText("Correct workout")).toBeNull();
     expect(screen.queryByLabelText("Remove from history")).toBeNull();
-    expect(mockRemoveHistorySession).not.toHaveBeenCalled();
+    screen.getByRole("button", { name: "Toggle disclosure" });
+    rendered.unmount();
+    expect(JSON.stringify(detail)).toBe(sourceDigest);
+    Object.values(mockMutationCommands).forEach((command) => expect(command).not.toHaveBeenCalled());
   });
 
   it("fails closed for missing or array Calendar identities", async () => {
@@ -76,5 +85,6 @@ describe("SessionDetailRoute", () => {
     await render(<SessionDetailRoute />);
     expect(await screen.findByText("Management details")).toBeOnTheScreen();
     expect(screen.getByLabelText("Correct workout")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Remove from history")).toBeOnTheScreen();
   });
 });
