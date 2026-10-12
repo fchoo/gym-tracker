@@ -193,8 +193,8 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **PRO-11**: Offer Load/Relative only when a valid optional bodyweight exists for a load metric; disclose its measurement basis and never change targets.
 - [ ] **PRO-12**: Edit Distance, Target time, Optional target date and Available training days while showing a read-only Current benchmark and explicit Save target/Cancel.
 - [ ] **PRO-13**: Persist validated target edits to source facts; reject invalid time/date without losing draft and keep plan/detail/Progress goal displays consistent.
-- [x] **PRO-14**: Show Review target with Current/Proposed values, personal-history evidence and Keep current/Use target choices.
-- [x] **PRO-15**: Persist acceptance/keep decisions once with revision checks; keep failure/retry visible and prevent a dismissed recommendation reappearing from a fixture rerender.
+- [ ] **PRO-14**: Show Review target with Current/Proposed values, personal-history evidence and Keep current/Use target choices.
+- [ ] **PRO-15**: Persist acceptance/keep decisions once with revision checks; keep failure/retry visible and prevent a dismissed recommendation reappearing from a fixture rerender.
 - [ ] **PRO-16**: Keep Body metrics/Settings and Bodyweight history reachable; explain personal history and optional measurements without collecting gender/height or creating a score.
 - [ ] **PRO-17**: Show optional empty/bodyweight history with Add first entry/Add entry, dated values, Edit and two-step Delete/Confirm.
 - [ ] **PRO-18**: Provide dated kg input with Add/Edit, Save entry/Cancel, error feedback and persistence; enforce reviewed valid measurement/date bounds.
@@ -392,8 +392,8 @@ once and remains Pending until its owning phase is implemented and verified.
 | PRO-11 | 19 | progress.relative-view | Pending |
 | PRO-12 | 19 | progress.target-editor | Pending |
 | PRO-13 | 19 | progress.target-persistence | Pending |
-| PRO-14 | 19 | progress.recommendation | Complete |
-| PRO-15 | 19 | progress.recommendation-persistence | Complete |
+| PRO-14 | 19 | progress.recommendation | Pending |
+| PRO-15 | 19 | progress.recommendation-persistence | Pending |
 | PRO-16 | 19 | progress.progress-settings | Pending |
 | PRO-17 | 19 | progress.bodyweight-history | Pending |
 | PRO-18 | 19 | progress.bodyweight-editor | Pending |

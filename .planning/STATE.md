@@ -5,11 +5,11 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 16
 current_phase_name: Calendar Parity (parallel with Phase 19 Progress Parity)
 status: executing
-stopped_at: Completed 19-07-PLAN.md
-last_updated: "2026-10-12T17:44:01.430Z"
+stopped_at: Phase 18 host gates complete; Phases 16 and 19 ready for parallel execution
+last_updated: "2026-10-12T15:02:00.000Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 18 passed all targeted gates; Phase 16 and Phase 19 are dependency-safe to execute in parallel
-state_head: b0d275298c64417578543b33f7bea04c1a3bd707
+state_head: 312c7bf3207613fee45b27366b69dba75a7af0fa
 progress:
   total_phases: 8
   completed_phases: 5
@@ -109,7 +109,6 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P12 | 28m 14s | 3 tasks | 20 files |
 | Phase 18 P13 | 13m 36s | 3 tasks | 8 files |
 | Phase 18 P14 | 12m | 3 tasks | 11 files |
-| Phase 19-progress-parity P07 | 1h 12m | 2 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -252,9 +251,6 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Phase 18 Garmin entries pass only closed origins; stack history retains source route, scroll, focus, and shared appearance state without return hrefs.
 - [Phase 18]: The Calendar activity-detail producer remains Phase 18-owned and accepts only origin=calendar, an opaque local activity ID, and an optional bounded return token.
 - [Phase 18]: The Phase 18 source audit checks executable tasks for stale topology while allowing explicit out-of-scope documentation.
-- [Phase 19]: Durable immutable recommendation decision receipts are separate source facts, never actionable-evidence JSON.
-- [Phase 19]: Recommendation receipt rows follow their recommendation owner graphs during merge, not an independent source graph.
-- [Phase 19]: Recommendation presentation observes promise failures but never treats a void route callback as committed success.
 
 ### Pending Owner Review
 
@@ -279,7 +275,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-12T17:44:01.284Z
-Stopped at: Completed 19-07-PLAN.md
+Last session: 2026-10-11T12:33:27.904Z
+Stopped at: Phase 18 host gates complete; Phases 16 and 19 ready for parallel execution
 Resume file: None
 Next action: Execute the existing Phase 16 and Phase 19 plans in parallel; all real account/session/device evidence remains deferred to Phase 20.
