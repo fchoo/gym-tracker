@@ -344,8 +344,10 @@ export function CalendarMonthViewport({
       }
     })
     .onEnd((event) => {
+      if (!panEnabled.value) return;
       const width = viewportWidth.value;
       if (width <= 0) return;
+      panEnabled.value = false;
       released.value = true;
       const dx = Math.max(-width, Math.min(width, event.translationX));
       const selectedMonth = (Math.abs(dx) >= width * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);

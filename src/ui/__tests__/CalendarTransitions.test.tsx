@@ -93,6 +93,53 @@ describe("Calendar semantic transitions", () => {
     panSpy.mockRestore();
   });
 
+  it("closes the UI-thread settle latch before a second touch can cancel completion", async () => {
+    const createPan = Gesture.Pan.bind(Gesture);
+    let latestPan: unknown;
+    const panSpy = jest.spyOn(Gesture, "Pan").mockImplementation(() => {
+      latestPan = createPan();
+      return latestPan as ReturnType<typeof Gesture.Pan>;
+    });
+    const onComplete = jest.fn();
+    const onRelease = jest.fn();
+    const common = {
+      command: null,
+      focusedWeek: null,
+      month: "2026-11-01" as LocalDate,
+      onCancel: jest.fn(),
+      onComplete,
+      onPreview: jest.fn(),
+      onRelease,
+      renderMonth: () => <View />,
+      renderWeek: () => <View />,
+    } as const;
+    const rendered = await render(<CalendarMonthViewport {...common} transition={initial()} />);
+    await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", {
+      nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } },
+    });
+    const handlers = (latestPan as { handlers: {
+      onBegin?: () => void;
+      onEnd?: (event: Readonly<{ translationX: number; translationY: number }>, success: boolean) => void;
+    } }).handlers;
+
+    handlers.onBegin?.();
+    handlers.onEnd?.({ translationX: -100, translationY: 0 }, true);
+    handlers.onBegin?.();
+    handlers.onEnd?.({ translationX: -140, translationY: 0 }, true);
+
+    expect(onRelease).toHaveBeenCalledTimes(1);
+    await rendered.rerender(
+      <CalendarMonthViewport
+        {...common}
+        command={{ kind: "settle-month", epoch: 1, fromOffset: -0.25, toOffset: -1, durationMs: 240, easing: [0.22, 0.8, 0.3, 1] }}
+        transition={Object.freeze({ ...initial(), currentMonthId: "2026-12", phase: "settling" as const, epoch: 1 })}
+      />,
+    );
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledWith(1);
+    panSpy.mockRestore();
+  });
+
   it("records one bounded interaction sample only after a committed drag expands and collapses", async () => {
     const createPan = Gesture.Pan.bind(Gesture);
     let latestPan: unknown;
