@@ -10,6 +10,7 @@ import {
   buildPhase19ConfigurationMatrix,
   buildPhase19NativeRows,
   createPhase19NativeRunPlan,
+  executePhase19NativeEvidence,
   parsePhase19NativeEvidenceArgs,
   validatePhase19NativeFlow,
 } from "./run-phase19-native-evidence.mjs";
@@ -156,4 +157,23 @@ test("Phase 19 native execution is fail-closed behind explicit Phase 20 authorit
       /phase19_native_evidence_arguments_invalid|phase19_native_execution_phase20_only/u,
     );
   }
+});
+
+test("Phase 19 orchestration restores device settings after a native driver failure", async () => {
+  let restored = false;
+  await assert.rejects(
+    executePhase19NativeEvidence({
+      manifest: manifest(),
+      flow_sha256: "c".repeat(64),
+      phase20_authorized: true,
+      driver: {
+        captureSettings: async () => ({ token: "synthetic-settings" }),
+        applyConfiguration: async () => undefined,
+        runRow: async () => { throw new Error("synthetic_native_failure"); },
+        restoreSettings: async () => { restored = true; },
+      },
+    }),
+    /synthetic_native_failure/u,
+  );
+  assert.equal(restored, true);
 });
