@@ -47,6 +47,7 @@ function history(
     reps: number;
     completedAtMs: number;
     setKind?: "warmup" | "working";
+    relativeLoad?: number | null;
   }>) => ({
     sessionId: "session-" + input.setId,
     localDate: "2026-08-24",
@@ -69,6 +70,15 @@ function history(
     setId: input.setId,
     setOrdinal: 0,
     completedAtMs: input.completedAtMs,
+    sourceRevision: 2,
+    targetAtDate: target,
+    relativeStrength: input.setKind === "warmup" || input.relativeLoad === null
+      ? null
+      : {
+        loadGrams: input.loadGrams,
+        relativeLoad: input.relativeLoad ?? input.loadGrams / 85_000,
+        basis: { grams: 85_000, localDate: "2026-08-24" },
+      },
   });
   const best = set({
     setId: "working-best",
@@ -202,5 +212,50 @@ describe("ExerciseHistoryScreen", () => {
 
     await waitFor(() => expect(screen.getByTestId("exercise-history-segment-0"))
       .toHaveStyle({ backgroundColor: themes.dark.contentCard }));
+  });
+
+  it("renders one factual load series and discloses the exact dated basis in Relative", async () => {
+    const onOpenSource = jest.fn();
+    await renderHistory({ onOpenSource });
+
+    expect(await screen.findByRole("button", { name: "Load" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Relative" })).toBeOnTheScreen();
+    expect(screen.getByText("Latest")).toBeOnTheScreen();
+    expect(screen.getByText("Target")).toBeOnTheScreen();
+    expect(screen.getByText("Gap")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Relative" }));
+    expect(screen.getAllByText("Using 85 kg from 24 August 2026").length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByText(/bodyweight/u).length).toBeGreaterThan(0);
+    expect(screen.getByText(
+      "Bodyweight-relative strength is a view only and never changes targets.",
+    )).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Open source" })[0]!);
+    expect(onOpenSource).toHaveBeenCalledWith("session-working-best", 2);
+  });
+
+  it("keeps Load available and omits Relative when every observation lacks a valid basis", async () => {
+    const withoutBasis = history();
+    await renderHistory({
+      loadExerciseHistory: jest.fn(async () => ({
+        ...withoutBasis,
+        segments: withoutBasis.segments.map((segment) => ({
+          ...segment,
+          comparableSets: segment.comparableSets.map((set) => ({
+            ...set,
+            relativeStrength: null,
+          })),
+          best: segment.best === null ? null : { ...segment.best, relativeStrength: null },
+          last: segment.last === null ? null : { ...segment.last, relativeStrength: null },
+        })),
+      })),
+    });
+
+    expect(await screen.findByRole("button", { name: "Load" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Relative" })).not.toBeOnTheScreen();
+    expect(screen.getByText("45 kg × 9")).toBeOnTheScreen();
   });
 });
