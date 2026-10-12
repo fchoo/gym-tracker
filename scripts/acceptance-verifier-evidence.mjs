@@ -139,7 +139,7 @@ export function resolvePhase18GarminAcceptanceCurrentIdentity() {
 
 function matchingArtifactIdentity(ownerManifest, acceptanceManifest) {
   for (const key of ["base_head", "source_tree_sha256", "python_lock_sha256", "signature_sha256", "device_identity_sha256", "package", "profile", "abi"]) {
-    if (ownerManifest?.[key] !== acceptanceManifest?.[key]) fail("owner_manifest_invalid");
+    if (ownerManifest[key] !== acceptanceManifest[key]) fail("owner_manifest_invalid");
   }
 }
 

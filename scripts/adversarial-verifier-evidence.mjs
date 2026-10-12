@@ -157,7 +157,6 @@ function validateCase(entry, id, index) {
 
 function validateDigestAndGenerationRelationships(cases) {
   const [first] = cases;
-  if (first === undefined) fail("case_invalid");
   for (const entry of cases) {
     if (
       entry.history_digest !== first.history_digest
