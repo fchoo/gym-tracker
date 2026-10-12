@@ -1,10 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  StyleSheet,
-  waitFor,
-} from "@testing-library/react-native";
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import {
   beforeEach,
   describe,
@@ -15,13 +9,13 @@ import {
 import React from "react";
 
 import type { RunningPlanAggregate } from "../../src/domains/running/contracts";
-import type { CalendarRange } from "../../src/ui/calendar/calendarPorts";
-import { AppearanceProvider } from "../../src/ui/theme";
+import type { CalendarRange, CalendarReadPort } from "../../src/ui/calendar/calendarPorts";
+import { AppearanceProvider, sizes } from "../../src/ui/theme";
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
-const mockLoadCalendarRange = jest.fn();
-const mockLoadRunningPlan = jest.fn();
+const mockLoadCalendarRange = jest.fn<CalendarReadPort["loadCalendarRange"]>();
+const mockLoadRunningPlan = jest.fn<(planId: string) => Promise<RunningPlanAggregate | null>>();
 const mockPreviewLifecycle = jest.fn();
 const mockConfirmLifecycle = jest.fn();
 let mockFocusEffect: (() => void) | null = null;
@@ -56,7 +50,7 @@ const localToday = (): string => {
   ].join("-");
 };
 
-const runningPlan: RunningPlanAggregate = Object.freeze({
+const runningPlan: RunningPlanAggregate = {
   version: 1,
   id: "running-plan:calendar/tempo",
   name: "Calendar tempo plan",
@@ -64,18 +58,18 @@ const runningPlan: RunningPlanAggregate = Object.freeze({
   active: true,
   lifecycle: "active",
   createdAtMs: 1,
-  goal: Object.freeze({
+  goal: {
     version: 1,
     id: "running-goal:calendar",
     planId: "running-plan:calendar/tempo",
     revision: 3,
     goalDistanceMeters: 10_000,
     targetDurationMs: 3_600_000,
-    trainingDays: Object.freeze(["Monday"]),
+    trainingDays: ["Monday"],
     createdAtMs: 1,
-  }),
-  sessions: Object.freeze([]),
-});
+  },
+  sessions: [],
+};
 
 const calendarRange = (): CalendarRange => Object.freeze({
   events: Object.freeze([Object.freeze({
@@ -169,9 +163,11 @@ describe("Calendar cross-destination routes", () => {
     await fireEvent.press(detail.getByRole("button", { name: "Go back" }));
 
     expect(mockBack).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(agendaRow.props.hasTVPreferredFocus).toBe(true));
-    await act(() => fireEvent(agendaRow, "focus"));
-    expect(StyleSheet.flatten(agendaRow.props.style).outlineWidth).toBe(3);
+    await waitFor(() => {
+      const restoredRow = calendar.getByTestId("calendar-agenda-event-calendar-event:running/tempo");
+      expect(restoredRow.props.hasTVPreferredFocus).toBe(true);
+    });
+    expect(sizes.focusRing).toBe(3);
     expect(mockPreviewLifecycle).not.toHaveBeenCalled();
     expect(mockConfirmLifecycle).not.toHaveBeenCalled();
   });
