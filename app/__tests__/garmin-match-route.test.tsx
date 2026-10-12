@@ -193,7 +193,7 @@ describe("ActivityMatchRoute local identity boundary", () => {
     await waitFor(() => expect(mockConfirmActivityMatch).toHaveBeenLastCalledWith(refreshed));
   });
 
-  it("routes explicit unmatch and reassignment through the runtime when the activity is already matched", async () => {
+  it("reloads authoritative match state after unmatching", async () => {
     await renderRoute();
     await settleLoad({
       kind: "already_matched",
@@ -206,12 +206,63 @@ describe("ActivityMatchRoute local identity boundary", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Unmatch activity" }));
     await waitFor(() => expect(mockUnmatchActivityMatch).toHaveBeenCalledWith(candidate(0)));
+    await waitFor(() => expect(mockLoadRunningActivityMatch).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "Unmatch activity" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reassign match" })).toBeDisabled();
+
+    const refreshedCandidate = Object.freeze({
+      ...candidate(0),
+      expectedRelationRevision: 2,
+      targetSummary: "35 min · authoritative Z2",
+    });
+    await settleLoad({
+      kind: "ready",
+      activityId: "activity-local-01",
+      candidates: [refreshedCandidate],
+    });
+
+    expect(await screen.findByText("Match removed")).toBeOnTheScreen();
+    expect(screen.queryByText("Currently matched")).not.toBeOnTheScreen();
+    expect(screen.getByText("35 min · authoritative Z2")).toBeOnTheScreen();
+  });
+
+  it("reloads and renders the authoritative relation after reassignment", async () => {
+    await renderRoute();
+    await settleLoad({
+      kind: "already_matched",
+      activityId: "activity-local-01",
+      currentCandidate: candidate(0),
+      candidates: [candidate(1)],
+      opportunityId: "opportunity-0",
+      relationRevision: 1,
+    });
 
     await fireEvent.press(screen.getByRole("button", { name: "Reassign match" }));
     await waitFor(() => expect(mockReassignActivityMatch).toHaveBeenCalledWith({
       current: candidate(0),
       next: candidate(1),
     }));
+    await waitFor(() => expect(mockLoadRunningActivityMatch).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "Unmatch activity" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reassign match" })).toBeDisabled();
+
+    const refreshedCurrent = Object.freeze({
+      ...candidate(1),
+      expectedRelationRevision: 2,
+      targetSummary: "Authoritative reassigned interval",
+    });
+    await settleLoad({
+      kind: "already_matched",
+      activityId: "activity-local-01",
+      currentCandidate: refreshedCurrent,
+      candidates: [Object.freeze({ ...candidate(0), expectedRelationRevision: 2 })],
+      opportunityId: refreshedCurrent.opportunityId,
+      relationRevision: 2,
+    });
+
+    expect(await screen.findByText("Match reassigned")).toBeOnTheScreen();
+    expect(screen.getByText("Authoritative reassigned interval")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Unmatch activity" })).toBeEnabled();
   });
 });
 

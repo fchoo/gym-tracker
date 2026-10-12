@@ -1,10 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { BackHandler, StyleSheet } from "react-native";
 
 import type {
   RunningActivityMatchCandidate,
+  RunningActivityMatchReadResult,
   RunningActivityMatchResult,
 } from "../../domains/running/activityMatchCommands";
 import { ActivityMatchScreen } from "../screens/ActivityMatchScreen";
@@ -51,6 +52,8 @@ const alternateCandidate: RunningActivityMatchCandidate = Object.freeze({
   targetSummary: "6 × 400 m · recovery 2 min · 4:35 / km",
 });
 
+const noopReloadMatchState = async (): Promise<void> => undefined;
+
 describe("ActivityMatchScreen confirmation boundary", () => {
   it("keeps ranked and alternate selection local until Confirm sends the exact selected envelope", async () => {
     const onConfirm = jest.fn(async () => ({
@@ -65,6 +68,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
           onBack={jest.fn()}
           onConfirm={onConfirm}
           onLeaveUnmatched={jest.fn()}
+          onReloadMatchState={noopReloadMatchState}
           onRetry={jest.fn()}
           state={{
             kind: "ready",
@@ -98,6 +102,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
           onBack={onBack}
           onConfirm={onConfirm}
           onLeaveUnmatched={onLeaveUnmatched}
+          onReloadMatchState={noopReloadMatchState}
           onRetry={jest.fn()}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate, alternateCandidate] }}
         />
@@ -136,6 +141,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
           onBack={jest.fn()}
           onConfirm={onConfirm}
           onLeaveUnmatched={jest.fn()}
+          onReloadMatchState={noopReloadMatchState}
           onRetry={onRetry}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
         />
@@ -170,6 +176,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
             onBack={jest.fn()}
             onConfirm={onConfirm}
             onLeaveUnmatched={jest.fn()}
+            onReloadMatchState={noopReloadMatchState}
             onRetry={onRetry}
             state={{ kind: "ready", activityId: refreshedCandidate.activityId, candidates: [refreshedCandidate] }}
           />
@@ -194,6 +201,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
           onBack={onBack}
           onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
           onLeaveUnmatched={jest.fn()}
+          onReloadMatchState={noopReloadMatchState}
           onRetry={jest.fn()}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate, alternateCandidate] }}
         />
@@ -224,6 +232,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
           onBack={jest.fn()}
           onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
           onLeaveUnmatched={jest.fn()}
+          onReloadMatchState={noopReloadMatchState}
           onRetry={jest.fn()}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
           width={360}
@@ -246,6 +255,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
           onBack={jest.fn()}
           onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 0 }))}
           onLeaveUnmatched={jest.fn()}
+            onReloadMatchState={noopReloadMatchState}
           onRetry={jest.fn()}
           state={{ kind: "ready", activityId: firstCandidate.activityId, candidates: [firstCandidate] }}
           width={840}
@@ -256,51 +266,174 @@ describe("ActivityMatchScreen confirmation boundary", () => {
     expect(screen.getByText(/Time not scheduled/)).toBeOnTheScreen();
   });
 
-  it("offers explicit unmatch and selected-candidate reassignment when the activity is already matched", async () => {
+  it("keeps correction actions disabled until unmatch reloads authoritative candidates", async () => {
+    const refreshedCandidate = Object.freeze({
+      ...firstCandidate,
+      expectedRelationRevision: 2,
+      targetSummary: "35 min · authoritative Z2",
+    });
+    let finishReload: ((state: RunningActivityMatchReadResult) => void) | undefined;
+    const loadMatchState = jest.fn(() => new Promise<RunningActivityMatchReadResult>((resolve) => {
+      finishReload = resolve;
+    }));
     const onUnmatch = jest.fn(async () => ({
       kind: "unmatched" as const,
       activityId: firstCandidate.activityId,
       opportunityId: firstCandidate.opportunityId,
       relationRevision: 2,
     }));
+    const onConfirm = jest.fn(async () => ({
+      kind: "matched" as const,
+      activityId: refreshedCandidate.activityId,
+      opportunityId: refreshedCandidate.opportunityId,
+      relationRevision: 3,
+    }));
+
+    function Harness() {
+      const [state, setState] = React.useState<React.ComponentProps<typeof ActivityMatchScreen>["state"]>({
+        kind: "already_matched",
+        activityId: firstCandidate.activityId,
+        currentCandidate: firstCandidate,
+        candidates: [alternateCandidate],
+        opportunityId: firstCandidate.opportunityId,
+        relationRevision: 1,
+      });
+      return (
+        <ActivityMatchScreen
+          onBack={jest.fn()}
+          onConfirm={onConfirm}
+          onLeaveUnmatched={jest.fn()}
+          onReassign={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: alternateCandidate.opportunityId, relationRevision: 1 }))}
+          onReloadMatchState={async () => setState(await loadMatchState())}
+          onRetry={jest.fn()}
+          onUnmatch={onUnmatch}
+          state={state}
+        />
+      );
+    }
+
+    await render(
+      <AppearanceProvider>
+        <Harness />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Unmatch activity" }));
+    await waitFor(() => expect(loadMatchState).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Unmatch activity" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reassign match" })).toBeDisabled();
+    expect(screen.getByText("30 min · easy Z2")).toBeOnTheScreen();
+
+    await act(async () => finishReload?.({
+      kind: "ready",
+      activityId: refreshedCandidate.activityId,
+      candidates: [refreshedCandidate],
+    }));
+
+    expect(await screen.findByText("Match removed")).toBeOnTheScreen();
+    expect(screen.queryByText("Currently matched")).not.toBeOnTheScreen();
+    expect(screen.getByText("35 min · authoritative Z2")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Confirm match" })).toBeEnabled();
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm match" }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(refreshedCandidate));
+  });
+
+  it("renders and uses the authoritative current relation after reassignment reloads", async () => {
+    const refreshedCurrent = Object.freeze({
+      ...alternateCandidate,
+      expectedRelationRevision: 2,
+      targetSummary: "8 × 400 m · authoritative relation",
+    });
+    const refreshedAlternative = Object.freeze({
+      ...firstCandidate,
+      expectedRelationRevision: 2,
+      targetSummary: "32 min · refreshed alternative",
+    });
+    let finishReload: ((state: RunningActivityMatchReadResult) => void) | undefined;
+    let loadCount = 0;
+    const loadMatchState = jest.fn(() => {
+      loadCount += 1;
+      if (loadCount === 1) {
+        return new Promise<RunningActivityMatchReadResult>((resolve) => {
+          finishReload = resolve;
+        });
+      }
+      return Promise.resolve<RunningActivityMatchReadResult>({
+        kind: "ready",
+        activityId: firstCandidate.activityId,
+        candidates: [refreshedAlternative, refreshedCurrent],
+      });
+    });
     const onReassign = jest.fn(async () => ({
       kind: "reassigned" as const,
       activityId: firstCandidate.activityId,
       opportunityId: alternateCandidate.opportunityId,
       relationRevision: 2,
     }));
-    await render(
-      <AppearanceProvider>
+    const onUnmatch = jest.fn(async () => ({
+      kind: "unmatched" as const,
+      activityId: firstCandidate.activityId,
+      opportunityId: alternateCandidate.opportunityId,
+      relationRevision: 3,
+    }));
+
+    function Harness() {
+      const [state, setState] = React.useState<React.ComponentProps<typeof ActivityMatchScreen>["state"]>({
+        kind: "already_matched",
+        activityId: firstCandidate.activityId,
+        currentCandidate: firstCandidate,
+        candidates: [alternateCandidate],
+        opportunityId: firstCandidate.opportunityId,
+        relationRevision: 1,
+      });
+      return (
         <ActivityMatchScreen
           onBack={jest.fn()}
           onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: firstCandidate.activityId, opportunityId: firstCandidate.opportunityId, relationRevision: 1 }))}
           onLeaveUnmatched={jest.fn()}
           onReassign={onReassign}
+          onReloadMatchState={async () => setState(await loadMatchState())}
           onRetry={jest.fn()}
           onUnmatch={onUnmatch}
-          state={{
-            kind: "already_matched",
-            activityId: firstCandidate.activityId,
-            currentCandidate: firstCandidate,
-            candidates: [alternateCandidate],
-            opportunityId: firstCandidate.opportunityId,
-            relationRevision: 1,
-          }}
+          state={state}
         />
+      );
+    }
+
+    await render(
+      <AppearanceProvider>
+        <Harness />
       </AppearanceProvider>,
     );
 
-    expect(screen.getByText("Currently matched")).toBeOnTheScreen();
-    expect(screen.getByText("30 min · easy Z2")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Unmatch activity" }));
-    await waitFor(() => expect(onUnmatch).toHaveBeenCalledWith(firstCandidate));
-
-    await fireEvent.press(screen.getByRole("radio", { name: /Intervals/ }));
     await fireEvent.press(screen.getByRole("button", { name: "Reassign match" }));
     await waitFor(() => expect(onReassign).toHaveBeenCalledWith({
       current: firstCandidate,
       next: alternateCandidate,
     }));
+    await waitFor(() => expect(loadMatchState).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Unmatch activity" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reassign match" })).toBeDisabled();
+
+    await act(async () => finishReload?.({
+      kind: "already_matched",
+      activityId: firstCandidate.activityId,
+      currentCandidate: refreshedCurrent,
+      candidates: [refreshedAlternative],
+      opportunityId: refreshedCurrent.opportunityId,
+      relationRevision: 2,
+    }));
+
+    expect(await screen.findByText("Match reassigned")).toBeOnTheScreen();
+    const currentRelation = screen.getByText("Currently matched").parent;
+    expect(currentRelation).not.toBeNull();
+    expect(within(currentRelation!).getByText("8 × 400 m · authoritative relation")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Unmatch activity" })).toBeEnabled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Unmatch activity" }));
+    await waitFor(() => expect(onUnmatch).toHaveBeenCalledWith(refreshedCurrent));
   });
 
   it.each([
@@ -323,6 +456,7 @@ describe("ActivityMatchScreen confirmation boundary", () => {
           onBack={jest.fn()}
           onConfirm={jest.fn(async () => ({ kind: "conflict" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 0 }))}
           onLeaveUnmatched={jest.fn()}
+          onReloadMatchState={noopReloadMatchState}
           onReassign={jest.fn(async () => ({ kind: "reassigned" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 1 }))}
           onRetry={jest.fn()}
           onUnmatch={jest.fn(async () => ({ kind: "unmatched" as const, activityId: "activity-local-1", opportunityId: "opportunity-1", relationRevision: 1 }))}

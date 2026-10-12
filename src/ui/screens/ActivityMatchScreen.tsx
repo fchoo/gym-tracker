@@ -26,6 +26,7 @@ export type ActivityMatchScreenProps = Readonly<{
   state: ActivityMatchScreenState;
   onBack(): void;
   onLeaveUnmatched(): void;
+  onReloadMatchState(): Promise<void>;
   onRetry(): void;
   onConfirm(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
   onUnmatch?(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
@@ -139,7 +140,7 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
       : null,
   );
   const [busy, setBusy] = useState<"match" | "unmatch" | "reassign" | null>(null);
-  const [outcome, setOutcome] = useState<"matched" | "unmatched" | "reassigned" | "stale" | "save_failure" | null>(null);
+  const [outcome, setOutcome] = useState<"matched" | "unmatched" | "reassigned" | "stale" | "save_failure" | "reload_failure" | null>(null);
 
   useEffect(() => {
     if (props.state.kind !== "ready" && props.state.kind !== "already_matched") {
@@ -150,11 +151,10 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
     setSelectedOpportunityId((current) => candidates.some((candidate) => candidate.opportunityId === current)
       ? current
       : candidates[0]?.opportunityId ?? null);
-    setOutcome(null);
   }, [props.state]);
 
   useEffect(() => {
-    if (outcome === "stale" || outcome === "save_failure") {
+    if (outcome === "stale" || outcome === "save_failure" || outcome === "reload_failure") {
       focusAccessible(statusRef);
     }
   }, [outcome]);
@@ -178,6 +178,19 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
     ? props.state.candidates
     : [];
   const selected = candidates.find((candidate) => candidate.opportunityId === selectedOpportunityId);
+  const reloadAfterCorrection = async (
+    successOutcome: "unmatched" | "reassigned",
+    announcement: string,
+  ) => {
+    try {
+      await props.onReloadMatchState();
+      setOutcome(successOutcome);
+      AccessibilityInfo.announceForAccessibility(announcement);
+    } catch {
+      setOutcome("reload_failure");
+      AccessibilityInfo.announceForAccessibility("Match changed but could not be reloaded");
+    }
+  };
   const confirm = async () => {
     if (selected === undefined || busyRef.current || outcome === "matched" || outcome === "stale") return;
     busyRef.current = true;
@@ -204,15 +217,15 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
     if (props.state.kind !== "already_matched"
       || props.onUnmatch === undefined
       || busyRef.current
-      || outcome === "stale") return;
+      || outcome === "stale"
+      || outcome === "reload_failure") return;
     busyRef.current = true;
     setBusy("unmatch");
     setOutcome(null);
     try {
       const result = await props.onUnmatch(props.state.currentCandidate);
       if (result.kind === "unmatched" || result.kind === "replayed") {
-        setOutcome("unmatched");
-        AccessibilityInfo.announceForAccessibility("Match removed");
+        await reloadAfterCorrection("unmatched", "Match removed");
       } else {
         setOutcome("stale");
         AccessibilityInfo.announceForAccessibility("Match needs review");
@@ -230,7 +243,8 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
       || props.onReassign === undefined
       || selected === undefined
       || busyRef.current
-      || outcome === "stale") return;
+      || outcome === "stale"
+      || outcome === "reload_failure") return;
     busyRef.current = true;
     setBusy("reassign");
     setOutcome(null);
@@ -240,8 +254,7 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
         next: selected,
       });
       if (result.kind === "reassigned" || result.kind === "replayed") {
-        setOutcome("reassigned");
-        AccessibilityInfo.announceForAccessibility("Match reassigned");
+        await reloadAfterCorrection("reassigned", "Match reassigned");
       } else {
         setOutcome("stale");
         AccessibilityInfo.announceForAccessibility("Match needs review");
@@ -286,6 +299,16 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
         </View>
       ) : null}
       {outcome === "save_failure" ? <View accessible focusable ref={statusRef}><InlineNotice body="Nothing was changed. Try confirming the same selection again." heading="Match could not be saved" tone="error" /></View> : null}
+      {outcome === "reload_failure" ? (
+        <View accessible focusable ref={statusRef}>
+          <InlineNotice
+            action={<SecondaryAction label="Retry scheduled workouts" onPress={retryCandidates} />}
+            body="The correction was saved, but the current match could not be reloaded. Reload before making another correction."
+            heading="Match changed"
+            tone="error"
+          />
+        </View>
+      ) : null}
       {props.state.kind === "already_matched" ? (
         <View style={styles.candidates}>
           <Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>Current scheduled workout</Text>
@@ -305,8 +328,8 @@ export function ActivityMatchScreen(props: ActivityMatchScreenProps) {
       <View style={styles.actions}>
         {props.state.kind === "already_matched" ? (
           <>
-            <PrimaryAction busy={busy === "reassign"} disabled={selected === undefined || props.onReassign === undefined || busy !== null || outcome === "stale"} label="Reassign match" onPress={() => { void reassign(); }} />
-            <SecondaryAction disabled={props.onUnmatch === undefined || busy !== null} label="Unmatch activity" onPress={() => { void unmatch(); }} />
+            <PrimaryAction busy={busy === "reassign"} disabled={selected === undefined || props.onReassign === undefined || busy !== null || outcome === "stale" || outcome === "reload_failure"} label="Reassign match" onPress={() => { void reassign(); }} />
+            <SecondaryAction disabled={props.onUnmatch === undefined || busy !== null || outcome === "stale" || outcome === "reload_failure"} label="Unmatch activity" onPress={() => { void unmatch(); }} />
           </>
         ) : (
           <>

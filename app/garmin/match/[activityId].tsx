@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams, type Href } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import { parseGarminRootOrigin } from "../../../src/bootstrap/garminImportRuntime";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
@@ -50,6 +50,12 @@ export default function ActivityMatchRoute() {
       ? { kind: "missing", activityId: "invalid-local-activity" }
       : { kind: "loading" },
   );
+  const loadMatchState = useCallback(async (): Promise<RunningActivityMatchReadResult> => {
+    if (activityId === null || !validReturnFocusToken) {
+      return { kind: "missing", activityId: "invalid-local-activity" };
+    }
+    return runtime.loadRunningActivityMatch(activityId);
+  }, [activityId, runtime.loadRunningActivityMatch, validReturnFocusToken]);
 
   useEffect(() => {
     if (activityId === null || !validReturnFocusToken) {
@@ -57,7 +63,7 @@ export default function ActivityMatchRoute() {
       return undefined;
     }
     let active = true;
-    void runtime.loadRunningActivityMatch(activityId)
+    void loadMatchState()
       .then((result: RunningActivityMatchReadResult) => {
         if (active) setState(result);
       })
@@ -67,7 +73,7 @@ export default function ActivityMatchRoute() {
     return () => {
       active = false;
     };
-  }, [activityId, attempt, runtime.loadRunningActivityMatch, validReturnFocusToken]);
+  }, [activityId, attempt, loadMatchState, validReturnFocusToken]);
 
   return (
     <GarminRouteShell origin={origin}>
@@ -76,6 +82,14 @@ export default function ActivityMatchRoute() {
         onConfirm={(candidate: RunningActivityMatchCandidate) => runtime.confirmActivityMatch(candidate)}
         onLeaveUnmatched={() => router.back()}
         onReassign={(input) => runtime.reassignActivityMatch(input)}
+        onReloadMatchState={async () => {
+          try {
+            setState(await loadMatchState());
+          } catch (error) {
+            setState({ kind: "projection_error" });
+            throw error;
+          }
+        }}
         onRetry={() => {
           setState({ kind: "loading" });
           setAttempt((current) => current + 1);
