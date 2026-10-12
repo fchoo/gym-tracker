@@ -68,7 +68,7 @@ describe("CalendarScreen", () => {
     expect(onOpenEvent).toHaveBeenCalledWith(range.events[0]!.destination);
     expect(loadCalendarRange).toHaveBeenCalledWith({
       startLocalDate: "2026-07-27",
-      endLocalDateExclusive: "2026-09-07",
+      endLocalDateExclusive: "2026-09-14",
     });
   });
 
@@ -142,7 +142,7 @@ describe("CalendarScreen", () => {
     await waitFor(() => {
       expect(loadCalendarRange).toHaveBeenLastCalledWith({
         startLocalDate: "2026-08-31",
-        endLocalDateExclusive: "2026-10-05",
+        endLocalDateExclusive: "2026-10-12",
       });
     });
   });

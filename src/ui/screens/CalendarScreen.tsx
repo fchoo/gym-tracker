@@ -14,7 +14,7 @@ import {
   startOfLocalMonth,
 } from "../../domains/scheduling/localDate";
 import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
-import { CalendarMonthViewport } from "../calendar/CalendarMonthViewport";
+import { CalendarMonthViewport, type CalendarWeekGeometry } from "../calendar/CalendarMonthViewport";
 import { CalendarWeekRow } from "../calendar/CalendarWeekRow";
 import {
   createCalendarTransitionState,
@@ -102,7 +102,9 @@ export function CalendarScreen({
     reducedMotion: reduceMotion,
   }));
   const [calendarCommand, setCalendarCommand] = useState<CalendarMotionCommand | null>(null);
+  const [weekMeasurements, setWeekMeasurements] = useState<ReadonlyMap<LocalDate, CalendarWeekGeometry>>(() => new Map());
   const requestGeneration = useRef(0);
+  const layoutGeneration = useRef(0);
   const calendarTransitionRef = useRef(calendarTransition);
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
@@ -110,7 +112,7 @@ export function CalendarScreen({
   const grid = useMemo(() => weekRows.flat(), [weekRows]);
   const rangeInput = useMemo(() => ({
     startLocalDate: grid[0]!,
-    endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 1),
+    endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 8),
   }), [grid]);
 
   useEffect(() => {
@@ -160,6 +162,8 @@ export function CalendarScreen({
     if (previousState.currentMonthId !== result.state.currentMonthId) {
       const nextDate = parseLocalDate(result.state.selectedLocalDate);
       pendingMonthRef.current = Object.freeze({ month: startOfLocalMonth(nextDate), selectedDate: nextDate });
+    } else if (previousState.selectedLocalDate !== result.state.selectedLocalDate) {
+      selectDate(parseLocalDate(result.state.selectedLocalDate));
     }
 
     const pending = pendingMonthRef.current;
@@ -216,6 +220,17 @@ export function CalendarScreen({
     selectDate(date);
   };
 
+  const recordWeekGeometry = useCallback((weekStart: LocalDate, geometry: Readonly<{ y: number; height: number }>) => {
+    if (!Number.isFinite(geometry.y) || !Number.isFinite(geometry.height) || geometry.height <= 0) return;
+    setWeekMeasurements((current) => {
+      const existing = current.get(weekStart);
+      if (existing?.y === geometry.y && existing.height === geometry.height) return current;
+      const next = new Map(current);
+      next.set(weekStart, Object.freeze({ ...geometry, generation: layoutGeneration.current }));
+      return next;
+    });
+  }, []);
+
   const visibleMonth = range !== null && (isLoading || error !== null)
     ? lastGoodMonth
     : month;
@@ -225,6 +240,16 @@ export function CalendarScreen({
   const visibleWeekRows = visibleMonth === month
     ? weekRows
     : calendarGridForMonth(visibleMonth);
+  const selectedWeek = visibleWeekRows.find((dates) => dates.includes(visibleSelectedDate));
+  const followingWeek = selectedWeek?.map((date) => addLocalDays(date, 7));
+  const focusedWeek = selectedWeek === undefined || followingWeek === undefined
+    ? null
+    : Object.freeze({
+      selectedDates: selectedWeek,
+      followingDates: followingWeek,
+      selectedGeometry: weekMeasurements.get(selectedWeek[0]!) ?? null,
+      followingGeometry: weekMeasurements.get(followingWeek[0]!) ?? null,
+    });
   const calendarInset = Math.min(18, Math.max(0, (safeWidth - 348) / 2));
   const adaptiveScreenInset = safeWidth < 600 ? space[4] : safeWidth < 840 ? space[6] : space[8];
 
@@ -331,6 +356,7 @@ export function CalendarScreen({
             ) : (
               <CalendarMonthViewport
                 command={calendarCommand}
+                focusedWeek={focusedWeek}
                 month={visibleMonth}
                 onCancel={() => dispatchCalendarTransition({ type: "invalidate" })}
                 onComplete={(epoch) => dispatchCalendarTransition({ type: "settle-complete", epoch })}
@@ -346,12 +372,54 @@ export function CalendarScreen({
                   ),
                   viewportWidth,
                 })}
-                renderMonth={(panelMonth, interactive) => calendarGridForMonth(panelMonth).map((dates) => (
+                renderMonth={(panelMonth, interactive) => {
+                  const panelWeeks = calendarGridForMonth(panelMonth);
+                  const focusedStable = calendarTransition.mode === "focused";
+                  const morphingWeek = calendarCommand?.kind === "settle-week";
+                  const followingStart = focusedWeek?.followingDates[0];
+                  const selectedStart = focusedWeek?.selectedDates[0];
+                  const renderRow = (dates: readonly LocalDate[], hidden: boolean) => (
+                    <CalendarWeekRow
+                      dates={dates}
+                      eventsByDate={eventsByDate}
+                      hidden={hidden}
+                      key={dates[0]}
+                      month={panelMonth}
+                      onLayout={(event) => recordWeekGeometry(dates[0]!, event.nativeEvent.layout)}
+                      onMoveDate={(date) => { if (interactive) moveSelection(date); }}
+                      onPressDate={(date, events) => {
+                        if (!interactive) return;
+                        const weekStart = dates[0]!;
+                        if (calendarTransition.mode === "focused" && weekStart !== selectedStart) {
+                          dispatchCalendarTransition({ type: "select-adjacent", localDate: date, targetMonthId: date.slice(0, 7) });
+                        } else {
+                          moveSelection(date);
+                          dispatchCalendarTransition({ type: "expand" });
+                        }
+                        const first = events[0];
+                        if (first !== undefined) onOpenEvent(first.destination);
+                      }}
+                      selectedDate={visibleSelectedDate}
+                      today={parsedToday}
+                    />
+                  );
+                  return (
+                    <>
+                      {panelWeeks.map((dates) => renderRow(
+                        dates,
+                        interactive && (focusedStable || (morphingWeek && (dates[0] === selectedStart || dates[0] === followingStart))),
+                      ))}
+                      {interactive && (focusedStable || morphingWeek) && followingWeek !== undefined && !panelWeeks.some((dates) => dates[0] === followingWeek[0])
+                        ? renderRow(followingWeek, true)
+                        : null}
+                    </>
+                  );
+                }}
+                renderWeek={(dates, interactive) => (
                   <CalendarWeekRow
                     dates={dates}
                     eventsByDate={eventsByDate}
-                    key={dates[0]}
-                    month={panelMonth}
+                    month={visibleMonth}
                     onMoveDate={(date) => { if (interactive) moveSelection(date); }}
                     onPressDate={(date, events) => {
                       if (!interactive) return;
@@ -362,7 +430,7 @@ export function CalendarScreen({
                     selectedDate={visibleSelectedDate}
                     today={parsedToday}
                   />
-                ))}
+                )}
                 transition={calendarTransition}
               />
             )}

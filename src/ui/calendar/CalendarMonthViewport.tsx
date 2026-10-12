@@ -23,6 +23,8 @@ const HORIZONTAL_INTENT_RATIO = 1.15;
 
 type PanelOffset = -1 | 0 | 1;
 
+export type CalendarWeekGeometry = Readonly<{ y: number; height: number; generation: number }>;
+
 /** The three panels are always separated by one measured viewport width. */
 export function calendarPanelTranslate(offset: PanelOffset, dx: number, viewportWidth: number): number {
   return offset * viewportWidth + clampMonthDrag(dx, viewportWidth);
@@ -47,34 +49,72 @@ function Panel({
   return <Animated.View style={[styles.panel, style]}>{children}</Animated.View>;
 }
 
+function FocusedWeekOverlay({
+  children,
+  edge,
+  geometry,
+  progress,
+  viewportHeight,
+}: Readonly<{
+  children: React.ReactNode;
+  edge: "top" | "bottom";
+  geometry: CalendarWeekGeometry;
+  progress: Readonly<{ value: number }>;
+  viewportHeight: Readonly<{ value: number }>;
+}>) {
+  const style = useAnimatedStyle(() => {
+    const targetY = edge === "top" ? 0 : Math.max(0, viewportHeight.value - geometry.height);
+    return {
+      height: geometry.height,
+      opacity: progress.value,
+      transform: [{ translateY: geometry.y + (targetY - geometry.y) * progress.value }],
+    };
+  });
+
+  return <Animated.View style={[styles.focusedOverlay, style]}>{children}</Animated.View>;
+}
+
 export function CalendarMonthViewport({
   command,
+  focusedWeek,
   month,
   onCancel,
   onComplete,
   onPreview,
   onRelease,
   renderMonth,
+  renderWeek,
   transition,
 }: Readonly<{
   command: CalendarMotionCommand | null;
+  focusedWeek: Readonly<{
+    selectedDates: readonly LocalDate[];
+    followingDates: readonly LocalDate[];
+    selectedGeometry: CalendarWeekGeometry | null;
+    followingGeometry: CalendarWeekGeometry | null;
+  }> | null;
   month: LocalDate;
   onCancel(): void;
   onComplete(epoch: number): void;
   onPreview(dx: number, viewportWidth: number): void;
   onRelease(input: Readonly<{ dx: number; dy: number; targetMonthId: string; viewportWidth: number }>): void;
   renderMonth(month: LocalDate, interactive: boolean): React.ReactNode;
+  renderWeek(dates: readonly LocalDate[], interactive: boolean): React.ReactNode;
   transition: CalendarTransitionState;
 }>) {
   const pointerX = useSharedValue(0);
   const viewportWidth = useSharedValue(0);
+  const viewportHeight = useSharedValue(0);
   const previewPanel = useSharedValue<PanelOffset>(0);
   const completionEpoch = useSharedValue(0);
+  const weekCompletionEpoch = useSharedValue(0);
+  const focusProgress = useSharedValue(0);
   const released = useSharedValue(false);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
   const mounted = useRef(true);
   const lastWidth = useRef(0);
+  const lastHeight = useRef(0);
   const previousMonth = startOfLocalMonth(addLocalMonthsClamped(month, -1));
   const nextMonth = startOfLocalMonth(addLocalMonthsClamped(month, 1));
 
@@ -101,6 +141,32 @@ export function CalendarMonthViewport({
       }
     });
   }, [command, completionEpoch, onCancel, onComplete, pointerX, viewportWidth]);
+
+  useEffect(() => {
+    if (command?.kind !== "settle-week") return;
+    const selectedGeometry = focusedWeek?.selectedGeometry;
+    const followingGeometry = focusedWeek?.followingGeometry;
+    if (selectedGeometry === null || selectedGeometry === undefined || followingGeometry === null || followingGeometry === undefined) {
+      onComplete(command.epoch);
+      return;
+    }
+    weekCompletionEpoch.value = command.epoch;
+    cancelAnimation(focusProgress);
+    focusProgress.value = withTiming(command.phase === "expand" ? 1 : 0, {
+      duration: command.durationMs,
+      easing: Easing.bezier(command.easing[0], command.easing[1], command.easing[2], command.easing[3]),
+    }, (finished) => {
+      if (finished && weekCompletionEpoch.value === command.epoch) {
+        scheduleOnRN(onComplete, command.epoch);
+      }
+    });
+  }, [command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, onComplete, weekCompletionEpoch]);
+
+  useEffect(() => {
+    if (!transition.reducedMotion) return;
+    cancelAnimation(focusProgress);
+    focusProgress.value = transition.mode === "focused" ? 1 : 0;
+  }, [focusProgress, transition.mode, transition.reducedMotion]);
 
   useEffect(() => {
     if (transition.phase !== "idle") return;
@@ -164,9 +230,12 @@ export function CalendarMonthViewport({
 
   const onLayout = (event: LayoutChangeEvent) => {
     const nextWidth = event.nativeEvent.layout.width;
-    if (nextWidth <= 0 || nextWidth === lastWidth.current) return;
-    const hadMeasurement = lastWidth.current > 0;
+    const nextHeight = event.nativeEvent.layout.height;
+    viewportHeight.value = nextHeight;
+    if (nextWidth <= 0 || nextHeight <= 0 || (nextWidth === lastWidth.current && nextHeight === lastHeight.current)) return;
+    const hadMeasurement = lastWidth.current > 0 && lastHeight.current > 0;
     lastWidth.current = nextWidth;
+    lastHeight.current = nextHeight;
     viewportWidth.value = nextWidth;
     cancelAnimation(pointerX);
     pointerX.value = 0;
@@ -190,6 +259,18 @@ export function CalendarMonthViewport({
             {renderMonth(nextMonth, false)}
           </View>
         </Panel>
+        {focusedWeek !== null && focusedWeek.selectedGeometry !== null && focusedWeek.followingGeometry !== null && (
+          command?.kind === "settle-week" || transition.mode === "focused"
+        ) ? (
+          <>
+            <FocusedWeekOverlay edge="top" geometry={focusedWeek.selectedGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
+              {renderWeek(focusedWeek.selectedDates, transition.phase === "idle")}
+            </FocusedWeekOverlay>
+            <FocusedWeekOverlay edge="bottom" geometry={focusedWeek.followingGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
+              {renderWeek(focusedWeek.followingDates, transition.phase === "idle")}
+            </FocusedWeekOverlay>
+          </>
+        ) : null}
       </View>
     </GestureDetector>
   );
@@ -197,5 +278,6 @@ export function CalendarMonthViewport({
 
 const styles = StyleSheet.create({
   panel: { bottom: 0, left: 0, position: "absolute", top: 0 },
+  focusedOverlay: { left: 0, position: "absolute", right: 0, top: 0 },
   viewport: { flex: 1, minHeight: 0, overflow: "hidden" },
 });

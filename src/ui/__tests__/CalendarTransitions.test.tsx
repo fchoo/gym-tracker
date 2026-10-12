@@ -79,6 +79,12 @@ describe("Calendar semantic transitions", () => {
   });
 
   it("leaves vertical releases unowned and cancels stale motion when runtime reduced motion changes", () => {
+    expect(transitionCalendar(initial(), { type: "set-reduced-motion", reducedMotion: false }))
+      .toEqual({ state: initial(), commands: [] });
+    const samePreferenceWhileDragging = Object.freeze({ ...initial(), phase: "dragging" as const });
+    expect(transitionCalendar(samePreferenceWhileDragging, { type: "set-reduced-motion", reducedMotion: false }).state)
+      .toMatchObject({ phase: "idle", reducedMotion: false, epoch: 1 });
+
     const vertical = transitionCalendar(initial(), {
       type: "release", dx: 0, dy: 120, viewportWidth: 400, targetMonthId: "2026-12",
     });
@@ -96,6 +102,35 @@ describe("Calendar semantic transitions", () => {
     });
     expect(transitionCalendar(reconfigured.state, { type: "settle-complete", epoch: 1 }))
       .toEqual({ state: reconfigured.state, commands: [] });
+  });
+
+  it("carries an explicit target date through a month settle and delays adjacent cross-month selection", () => {
+    const moved = transitionCalendar(initial(), {
+      type: "release",
+      dx: -100,
+      dy: 0,
+      viewportWidth: 400,
+      targetMonthId: "2026-12",
+      targetSelectedLocalDate: "2026-12-01",
+    });
+    expect(moved.state).toMatchObject({ currentMonthId: "2026-12", selectedLocalDate: "2026-12-01" });
+    expect(transitionCalendar(initial(), {
+      type: "move", direction: "next", targetMonthId: "2026-12", targetSelectedLocalDate: "2026-12-01",
+    }).state).toMatchObject({ currentMonthId: "2026-12", selectedLocalDate: "2026-12-01" });
+
+    const expanded = transitionCalendar(initial(), { type: "expand" });
+    const focused = transitionCalendar(expanded.state, { type: "settle-complete", epoch: 1 }).state;
+    const adjacent = transitionCalendar(focused, {
+      type: "select-adjacent", localDate: "2026-12-01", targetMonthId: "2026-12",
+    });
+    expect(adjacent.state).toMatchObject({
+      currentMonthId: "2026-11",
+      selectedLocalDate: "2026-11-01",
+      pendingMonthId: "2026-12",
+      pendingSelectedLocalDate: "2026-12-01",
+    });
+    expect(transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 }).state)
+      .toMatchObject({ currentMonthId: "2026-12", selectedLocalDate: "2026-12-01", phase: "adjacent-expanding" });
   });
 
   it("publishes completion only for the current epoch and resolves reduced motion with the same destination but no motion command", () => {
@@ -124,11 +159,11 @@ describe("Calendar semantic transitions", () => {
     })]);
     const adjacent = transitionCalendar(focused, { type: "select-adjacent", localDate: "2026-11-08" });
     expect(adjacent.state).toMatchObject({
-      mode: "month", selectedLocalDate: "2026-11-08", phase: "adjacent-collapsing",
+      mode: "month", selectedLocalDate: "2026-11-01", pendingSelectedLocalDate: "2026-11-08", phase: "adjacent-collapsing",
     });
     expect(adjacent.commands[0]).toMatchObject({ kind: "settle-week", phase: "collapse" });
     const expanding = transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 });
-    expect(expanding.state).toMatchObject({ mode: "focused", phase: "adjacent-expanding" });
+    expect(expanding.state).toMatchObject({ mode: "focused", selectedLocalDate: "2026-11-08", phase: "adjacent-expanding" });
     expect(expanding.commands[0]).toMatchObject({ kind: "settle-week", phase: "expand" });
     const stable = transitionCalendar(expanding.state, { type: "settle-complete", epoch: 3 }).state;
     expect(stable).toMatchObject({ mode: "focused", phase: "idle" });
