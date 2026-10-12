@@ -258,6 +258,15 @@ if [ "$1" = "devices" ]; then
   exit 0
 fi
 if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in
+    ro.product.cpu.abi) printf 'arm64-v8a\n' ;;
+    ro.build.version.sdk) printf '36\n' ;;
+    ro.product.model) printf 'Phase 18 Device\n' ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
   exit 0
 fi
@@ -266,7 +275,12 @@ if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "force-stop" ]; then
 fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
   for argument in "$@"; do
-    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+    case "$argument" in
+      *nonce=*)
+        value="\${argument##*nonce=}"
+        printf '%s' "\${value%%&*}" > "${noncePath}"
+        ;;
+    esac
   done
   exit 0
 fi
@@ -818,13 +832,19 @@ test("adversarial runner writes native, privacy, and raw reports through default
   const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-runner-"));
   const originalPath = process.env.PATH;
   try {
+    const deviceIdentitySha256 = digest(JSON.stringify({
+      serial: "SERIAL",
+      abi: "arm64-v8a",
+      apiLevel: "36",
+      model: "Phase 18 Device",
+    }));
     const manifestIdentity = {
       currentHead: "b".repeat(40),
       currentSourceTreeSha256: HASH,
       currentPythonLockSha256: HASH,
       retainedApkSha256: HASH,
       retainedSignatureSha256: HASH,
-      deviceIdentitySha256: HASH,
+      deviceIdentitySha256,
     };
     writeJson(
       root,

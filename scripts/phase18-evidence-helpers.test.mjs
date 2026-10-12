@@ -1285,7 +1285,20 @@ test("adversarial runner default IO paths and native collector stay bounded", ()
   try {
     const adbPath = path.join(root, "adb");
     const noncePath = path.join(root, "nonce");
-    const collectedWithNonce = { ...collectedReport, run_nonce: "__NONCE__" };
+    const hostDeviceIdentitySha256 = createHash("sha256").update(JSON.stringify({
+      serial: "SERIAL",
+      abi: "arm64-v8a",
+      apiLevel: "36",
+      model: "Phase 18 Device",
+    })).digest("hex");
+    const collectedWithNonce = {
+      ...collectedReport,
+      current_identity: {
+        ...collectedReport.current_identity,
+        deviceIdentitySha256: hostDeviceIdentitySha256,
+      },
+      run_nonce: "__NONCE__",
+    };
     writeFileSync(adbPath, `#!/bin/sh
 set -eu
 if [ "$1" = "devices" ]; then
@@ -1293,10 +1306,24 @@ if [ "$1" = "devices" ]; then
   exit 0
 fi
 if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in
+    ro.product.cpu.abi) printf 'arm64-v8a\n' ;;
+    ro.build.version.sdk) printf '36\n' ;;
+    ro.product.model) printf 'Phase 18 Device\n' ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
   for argument in "$@"; do
-    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+    case "$argument" in
+      *nonce=*)
+        value="\${argument##*nonce=}"
+        printf '%s' "\${value%%&*}" > "${noncePath}"
+        ;;
+    esac
   done
   exit 0
 fi

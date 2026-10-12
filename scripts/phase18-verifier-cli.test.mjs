@@ -636,7 +636,12 @@ if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
 fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
   for argument in "$@"; do
-    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+    case "$argument" in
+      *nonce=*)
+        value="\${argument##*nonce=}"
+        printf '%s' "\${value%%&*}" > "${noncePath}"
+        ;;
+    esac
   done
   exit 0
 fi

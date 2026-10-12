@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   choose,
   cliArgValue,
@@ -178,7 +179,7 @@ function sha256Bytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function nativeReportFromPidLog(logcat, expectedNonce) {
+function nativeReportFromPidLog(logcat, expectedNonce, expectedDeviceIdentitySha256) {
   const lines = logcat
     .split(/\r?\n/u)
     .filter((entry) => entry.includes(NATIVE_REPORT_MARKER));
@@ -196,6 +197,9 @@ function nativeReportFromPidLog(logcat, expectedNonce) {
   if (!RUN_NONCE.test(report?.run_nonce ?? "") || report.run_nonce !== expectedNonce) {
     fail("native_report_nonce_invalid");
   }
+  if (report?.current_identity?.deviceIdentitySha256 !== expectedDeviceIdentitySha256) {
+    fail("native_report_device_identity_invalid");
+  }
   return report;
 }
 
@@ -208,12 +212,19 @@ export function collectInstalledNativeReport() {
   if (devices.length !== 1 || devices[0]?.[0] === undefined) fail("device_selection_invalid");
   const serial = devices[0][0];
   const adb = (args, options) => execFileSync("adb", ["-s", serial, ...args], options);
+  const adbText = (...args) => adb(args, { encoding: "utf8" }).trim();
+  const deviceIdentitySha256 = phase18DeviceIdentitySha256({
+    serial,
+    abi: adbText("shell", "getprop", "ro.product.cpu.abi"),
+    apiLevel: adbText("shell", "getprop", "ro.build.version.sdk"),
+    model: adbText("shell", "getprop", "ro.product.model"),
+  });
   const runNonce = randomBytes(16).toString("hex");
   adb(["logcat", "-c"], { stdio: "ignore" });
   adb(["shell", "am", "force-stop", PACKAGE], { stdio: "ignore" });
   adb([
     "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
-    `gymtracker-devtest://__phase18-garmin-adversarial?confirmation=VERIFY-PHASE18-GARMIN-ADVERSARIAL&nonce=${runNonce}`,
+    `gymtracker-devtest://__phase18-garmin-adversarial?confirmation=VERIFY-PHASE18-GARMIN-ADVERSARIAL&nonce=${runNonce}&device_identity_sha256=${deviceIdentitySha256}`,
     PACKAGE,
   ], { stdio: "ignore" });
   const deadline = Date.now() + 30_000;
@@ -224,9 +235,9 @@ export function collectInstalledNativeReport() {
       continue;
     }
     const logcat = adb(["logcat", "--pid", processId, "-d"], { encoding: "utf8" });
-    const report = nativeReportFromPidLog(logcat, runNonce);
+    const report = nativeReportFromPidLog(logcat, runNonce, deviceIdentitySha256);
     if (report !== null) {
-      return { report, logcat };
+      return { report, logcat, deviceIdentitySha256 };
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
   }

@@ -475,6 +475,13 @@ test("native collector scopes one selected device, package PID, and cryptographi
   const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-scoped-"));
   const callsPath = path.join(root, "calls.txt");
   const noncePath = path.join(root, "nonce.txt");
+  const identityPath = path.join(root, "identity.txt");
+  const hostDeviceIdentitySha256 = createHash("sha256").update(JSON.stringify({
+    serial: "ONLY_DEVICE",
+    abi: "arm64-v8a",
+    apiLevel: "36",
+    model: "Phase 18 Device",
+  })).digest("hex");
   const report = {
     schema_version: 1,
     suite: "phase18-garmin-adversarial",
@@ -486,7 +493,7 @@ test("native collector scopes one selected device, package PID, and cryptographi
       currentPythonLockSha256: HASH,
       retainedApkSha256: HASH,
       retainedSignatureSha256: HASH,
-      deviceIdentitySha256: HASH,
+      deviceIdentitySha256: hostDeviceIdentitySha256,
     },
     run_nonce: "__NONCE__",
   };
@@ -499,12 +506,30 @@ if [ "$1" = "devices" ]; then
   exit 0
 fi
 if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in
+    ro.product.cpu.abi) printf 'arm64-v8a\n' ;;
+    ro.build.version.sdk) printf '36\n' ;;
+    ro.product.model) printf 'Phase 18 Device\n' ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "force-stop" ]; then exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
   for argument in "$@"; do
     case "$argument" in
-      *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;;
+      *nonce=*)
+        value="\${argument##*nonce=}"
+        printf '%s' "\${value%%&*}" > "${noncePath}"
+        ;;
+    esac
+    case "$argument" in
+      *device_identity_sha256=*)
+        value="\${argument##*device_identity_sha256=}"
+        printf '%s' "\${value%%&*}" > "${identityPath}"
+        ;;
     esac
   done
   exit 0
@@ -528,7 +553,13 @@ exit 1
     const launch = calls.find((line) => line.includes(" shell am start "));
     const nonce = launch?.match(/[?&]nonce=([a-f0-9]{32})(?:&|\s|$)/u)?.[1];
     assert.match(nonce ?? "", /^[a-f0-9]{32}$/u);
+    assert.equal(
+      launch?.match(/[?&]device_identity_sha256=([a-f0-9]{64})(?:&|\s|$)/u)?.[1],
+      hostDeviceIdentitySha256,
+    );
+    assert.equal(readFileSync(identityPath, "utf8"), hostDeviceIdentitySha256);
     assert.equal(collected.report.run_nonce, nonce);
+    assert.equal(collected.report.current_identity.deviceIdentitySha256, hostDeviceIdentitySha256);
     assert.ok(calls.includes("-s ONLY_DEVICE shell pidof com.fchoo.gymtracker.devtest"));
     assert.ok(calls.includes("-s ONLY_DEVICE logcat --pid 4242 -d"));
     assert.doesNotMatch(readFileSync("scripts/adversarial-runner-evidence.mjs", "utf8"), /Math\.random/u);
@@ -570,6 +601,10 @@ exit 1
     writeExecutable(adbPath, `#!/bin/sh
 if [ "$1" = "devices" ]; then printf 'List of devices attached\nDEVICE_A\tdevice\n'; exit 0; fi
 if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in ro.product.cpu.abi) printf 'arm64-v8a\n' ;; ro.build.version.sdk) printf '36\n' ;; ro.product.model) printf 'Phase 18 Device\n' ;; esac
+  exit 0
+fi
 if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '4242\n'; exit 0; fi
 if [ "$1" = "logcat" ] && [ "$2" = "--pid" ]; then
   printf 'GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:'
@@ -624,9 +659,18 @@ test("native collector rejects every ambiguous PID-scoped nonce marker set", () 
 set -eu
 if [ "$1" = "devices" ]; then printf 'List of devices attached\nDEVICE_A\tdevice\n'; exit 0; fi
 if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in ro.product.cpu.abi) printf 'arm64-v8a\n' ;; ro.build.version.sdk) printf '36\n' ;; ro.product.model) printf 'Phase 18 Device\n' ;; esac
+  exit 0
+fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
   for argument in "$@"; do
-    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+    case "$argument" in
+      *nonce=*)
+        value="\${argument##*nonce=}"
+        printf '%s' "\${value%%&*}" > "${noncePath}"
+        ;;
+    esac
   done
   exit 0
 fi
@@ -703,6 +747,10 @@ if [ "$1" = "devices" ]; then
   exit 0
 fi
 if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in ro.product.cpu.abi) printf 'arm64-v8a\n' ;; ro.build.version.sdk) printf '36\n' ;; ro.product.model) printf 'Phase 18 Device\n' ;; esac
+  exit 0
+fi
 if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then
   count=0
   [ -f "${pidCountPath}" ] && count=$(cat "${pidCountPath}")
