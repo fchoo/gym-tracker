@@ -199,7 +199,6 @@ import {
 } from "./ownedPlanRuntime";
 import {
   createTrainingFoundationRuntimePort,
-  type TrainingFoundationRuntimePort,
 } from "./trainingFoundationRuntime";
 import type {
   TrainingCalendarRange,
@@ -1320,7 +1319,9 @@ describe("WorkoutAppRuntimeProvider", () => {
         loadCalendarRange,
         loadPlannedStrengthOccurrence: jest.fn(async () => null),
         loadToday: jest.fn(async () => range),
-      }) as TrainingFoundationRuntimePort,
+        loadBodyweightHistory: jest.fn(async () => Object.freeze([])),
+        commitBodyweight: jest.fn(async () => Object.freeze({ kind: "created" as const, entry: undefined })),
+      }),
     );
     const repository = runtimeRepository([noPlanView], [null]);
     let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
@@ -1357,7 +1358,9 @@ describe("WorkoutAppRuntimeProvider", () => {
         loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
         loadPlannedStrengthOccurrence,
         loadToday: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
-      }) as TrainingFoundationRuntimePort,
+        loadBodyweightHistory: jest.fn(async () => Object.freeze([])),
+        commitBodyweight: jest.fn(async () => Object.freeze({ kind: "created" as const, entry: undefined })),
+      }),
     );
     const repository = runtimeRepository([noPlanView], [null]);
     let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;

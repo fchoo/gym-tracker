@@ -1,6 +1,5 @@
 import { describe, expect, it, jest } from "@jest/globals";
 
-import type { TrainingFoundationRuntimePort } from "../../bootstrap/trainingFoundationRuntime";
 import { parseLocalDate } from "../../domains/scheduling/localDate";
 import type { PlannedStrengthOccurrenceDetail } from "../../domains/workout";
 import type { WorkoutPresentationModel } from "../../domains/workout/workoutPresentation";
@@ -19,12 +18,10 @@ describe("Calendar capability ports", () => {
       scheduleVersionId: "version-1", localDate: "2026-11-01", timezone: "Asia/Singapore",
       sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }), exercises: Object.freeze([]),
     });
-    const runtime: TrainingFoundationRuntimePort = Object.freeze({
-      loadToday: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
+    const calendar: CalendarReadPort = Object.freeze({
       loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
       loadPlannedStrengthOccurrence: jest.fn(async (occurrenceId: string) => occurrenceId === occurrence.occurrenceId ? occurrence : null),
     });
-    const calendar: CalendarReadPort = runtime;
 
     await expect(calendar.loadPlannedStrengthOccurrence("strength-occurrence")).resolves.toBe(occurrence);
     await expect(calendar.loadPlannedStrengthOccurrence("stale-occurrence")).resolves.toBeNull();
