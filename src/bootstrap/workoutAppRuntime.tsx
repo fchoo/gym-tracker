@@ -432,6 +432,16 @@ import {
 } from "./runningPlanRuntime";
 import type { RunningPlanAggregate } from "../domains/running/contracts";
 import {
+  createCalendarActivityReadPort,
+  createCalendarRangeReadPort,
+  createCalendarSessionReadPort,
+  createCalendarStrengthOccurrenceReadPort,
+  type CalendarActivityReadPort,
+  type CalendarRangeReadPort,
+  type CalendarSessionReadPort,
+  type CalendarStrengthOccurrenceReadPort,
+} from "./calendarReadPorts";
+import {
   createTrainingFoundationRuntimePort,
   type TrainingFoundationRuntimePort,
 } from "./trainingFoundationRuntime";
@@ -1334,6 +1344,10 @@ export function mapWorkoutMutationFailure(error: unknown): AppError {
 }
 
 const WorkoutAppRuntimeContext = createContext<RuntimeValue | null>(null);
+const CalendarRangeReadContext = createContext<CalendarRangeReadPort | null>(null);
+const CalendarSessionReadContext = createContext<CalendarSessionReadPort | null>(null);
+const CalendarStrengthOccurrenceReadContext = createContext<CalendarStrengthOccurrenceReadPort | null>(null);
+const CalendarActivityReadContext = createContext<CalendarActivityReadPort | null>(null);
 
 export function createWorkoutAppRuntimeDependencies(
   adapters: WorkoutAppRuntimeAdapters,
@@ -5582,9 +5596,34 @@ export function WorkoutAppRuntimeProvider({
     updateWorkoutWarmupDraft,
   ]);
 
+  const calendarRangeRead = useMemo(
+    () => createCalendarRangeReadPort(value),
+    [value.loadCalendarRange],
+  );
+  const calendarSessionRead = useMemo(
+    () => createCalendarSessionReadPort(value),
+    [value.getSessionDetail],
+  );
+  const calendarStrengthOccurrenceRead = useMemo(
+    () => createCalendarStrengthOccurrenceReadPort(value),
+    [value.loadPlannedStrengthOccurrence],
+  );
+  const calendarActivityRead = useMemo(
+    () => createCalendarActivityReadPort(value),
+    [value.loadGarminRevisionReview, value.loadImportedActivityDetail],
+  );
+
   return (
     <WorkoutAppRuntimeContext.Provider value={value}>
-      {children}
+      <CalendarRangeReadContext.Provider value={calendarRangeRead}>
+        <CalendarSessionReadContext.Provider value={calendarSessionRead}>
+          <CalendarStrengthOccurrenceReadContext.Provider value={calendarStrengthOccurrenceRead}>
+            <CalendarActivityReadContext.Provider value={calendarActivityRead}>
+              {children}
+            </CalendarActivityReadContext.Provider>
+          </CalendarStrengthOccurrenceReadContext.Provider>
+        </CalendarSessionReadContext.Provider>
+      </CalendarRangeReadContext.Provider>
     </WorkoutAppRuntimeContext.Provider>
   );
 }
@@ -5596,5 +5635,29 @@ export function useWorkoutAppRuntime(): RuntimeValue {
       "useWorkoutAppRuntime must be used within WorkoutAppRuntimeProvider",
     );
   }
+  return value;
+}
+
+export function useCalendarRangeReadPort(): CalendarRangeReadPort {
+  const value = useContext(CalendarRangeReadContext);
+  if (value === null) throw new Error("calendar_range_read_port_unavailable");
+  return value;
+}
+
+export function useCalendarSessionReadPort(): CalendarSessionReadPort {
+  const value = useContext(CalendarSessionReadContext);
+  if (value === null) throw new Error("calendar_session_read_port_unavailable");
+  return value;
+}
+
+export function useCalendarStrengthOccurrenceReadPort(): CalendarStrengthOccurrenceReadPort {
+  const value = useContext(CalendarStrengthOccurrenceReadContext);
+  if (value === null) throw new Error("calendar_strength_occurrence_read_port_unavailable");
+  return value;
+}
+
+export function useCalendarActivityReadPort(): CalendarActivityReadPort {
+  const value = useContext(CalendarActivityReadContext);
+  if (value === null) throw new Error("calendar_activity_read_port_unavailable");
   return value;
 }

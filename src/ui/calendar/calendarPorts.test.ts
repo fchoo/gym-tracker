@@ -19,7 +19,7 @@ describe("Calendar capability ports", () => {
       sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }), exercises: Object.freeze([]),
     });
     const calendar: CalendarReadPort = Object.freeze({
-      loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
+      loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) })),
       loadPlannedStrengthOccurrence: jest.fn(async (occurrenceId: string) => occurrenceId === occurrence.occurrenceId ? occurrence : null),
     });
 
@@ -27,13 +27,15 @@ describe("Calendar capability ports", () => {
     await expect(calendar.loadPlannedStrengthOccurrence("stale-occurrence")).resolves.toBeNull();
     await expect(calendar.loadCalendarRange({
       startLocalDate: "2026-11-01", endLocalDateExclusive: "2026-11-02",
-    })).resolves.toEqual({ events: [] });
+    })).resolves.toEqual({ events: [], days: [] });
   });
 
   it("retains the immutable source event destination union and the command-free presentation model", () => {
     const event: CalendarEvent = Object.freeze({
       id: "imported-run", source: "imported_activity", sport: "running", status: "imported",
-      title: "Outdoor run", sourceLabel: "garmin_connect_account:owner-a", localDate: parseLocalDate("2026-11-01"),
+      title: "Outdoor run", displaySummary: "5.00 km · 26:00", sourceLabel: "Garmin",
+      sourceIdentity: Object.freeze({ sourceKind: "garmin_connect_account", accountNamespace: "owner-a", externalActivityId: "external-1" }),
+      localDate: parseLocalDate("2026-11-01"),
       timeZone: "Asia/Singapore", scheduleId: null, scheduleVersionId: null, planId: null, slotId: null,
       revision: null, state: "imported", destination: Object.freeze({ kind: "activity", activityId: "imported-run" }),
     });

@@ -9,7 +9,7 @@ import {
   type TextStyle,
 } from "react-native";
 
-import type { CalendarEventDestination, CalendarRange } from "./calendarPorts";
+import type { CalendarDay, CalendarEventDestination, CalendarRange } from "./calendarPorts";
 import { FocusablePressable } from "../components";
 import { space, typeScale, useAppTheme } from "../theme";
 
@@ -23,6 +23,7 @@ export type CalendarAgendaHandle = Readonly<{
 
 type CalendarAgendaProps = Readonly<{
   events: readonly CalendarAgendaEvent[];
+  day?: CalendarDay;
   onActivateEvent(eventId: string): void;
   onOpenEvent(destination: CalendarEventDestination): void;
   onRequestBack(): void;
@@ -41,19 +42,10 @@ function statusLabel(event: CalendarAgendaEvent): string {
   }
 }
 
-function resultOrTargetLabel(event: CalendarAgendaEvent): string {
-  switch (event.status) {
-    case "completed": return "Completed result";
-    case "partial": return "Partial result";
-    case "planned": return "Planned target";
-    case "imported": return "Imported result";
-    case "matched": return "Matched result";
-  }
-}
-
 /** One read-only full-width target per source event. */
 export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaProps>(
   function CalendarAgenda({
+    day,
     events,
     onActivateEvent,
     onOpenEvent,
@@ -77,10 +69,14 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
     }, [resetActivationKey]);
 
     if (events.length === 0) {
+      const rest = day?.kind === "rest" && day.restSummary !== null;
       return (
-        <View accessibilityLabel="No workout. No scheduled or imported activity for this date." style={[styles.empty, { borderColor: colors.line }]}>
+        <View accessibilityLabel={rest ? `No workout. Recovery is the plan. ${day.restSummary}` : "No workout. No scheduled or imported activity for this date."} style={[styles.empty, { borderColor: colors.line }]}>
           <Text accessibilityRole="header" style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>No workout</Text>
-          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>No scheduled or imported activity for this date.</Text>
+          {rest ? <>
+            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Recovery is the plan</Text>
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{day.restSummary}</Text>
+          </> : <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>No scheduled or imported activity for this date.</Text>}
         </View>
       );
     }
@@ -98,7 +94,7 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
         {events.map((event) => {
           const sport = event.sport === "strength" ? "Strength" : "Running";
           const status = statusLabel(event);
-          const label = [event.title, resultOrTargetLabel(event), `${sport} · ${status}`, event.sourceLabel, "Open details"].join(". ");
+          const label = [event.title, event.displaySummary, `${sport} · ${status}`, event.sourceLabel, "Open details"].join(". ");
           const activate = () => {
             if (activeEventIdRef.current !== null) return;
             activeEventIdRef.current = event.id;
@@ -132,7 +128,7 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
               <View style={[styles.rail, { backgroundColor: event.sport === "strength" ? colors.orange : colors.blue }]} />
               <View style={styles.copy}>
                 <Text numberOfLines={undefined} style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{event.title}</Text>
-                <Text numberOfLines={undefined} style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{resultOrTargetLabel(event)}</Text>
+                <Text numberOfLines={undefined} style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{event.displaySummary}</Text>
                 <Text numberOfLines={undefined} style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>{`${sport} · ${status}`}</Text>
                 <Text numberOfLines={undefined} style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>{event.sourceLabel}</Text>
               </View>

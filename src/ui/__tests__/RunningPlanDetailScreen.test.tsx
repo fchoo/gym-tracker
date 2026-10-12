@@ -39,6 +39,16 @@ beforeEach(() => {
 afterEach(() => consoleError.mockRestore());
 
 describe("RunningPlanDetailScreen", () => {
+  it("loads and renders only the exact Calendar-scheduled session revision", async () => {
+    const loadPlan = jest.fn(async () => plan);
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" sessionId="session-2" loadPlan={loadPlan} mode="calendar" onBack={jest.fn()} /></AppearanceProvider>);
+
+    expect(await screen.findByText("Scheduled session")).toBeOnTheScreen();
+    expect(screen.getByText("Monday · Tempo")).toBeOnTheScreen();
+    expect(screen.queryByText("Monday · Recovery")).toBeNull();
+    expect(loadPlan).toHaveBeenCalledWith("running-1", "session-2");
+  });
+
   it("activates the one Garmin handoff without replacing loaded plan facts", async () => {
     const onGarmin = jest.fn();
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={onGarmin} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => plan)} /></AppearanceProvider>);

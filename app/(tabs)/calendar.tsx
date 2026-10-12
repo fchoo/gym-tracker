@@ -7,7 +7,7 @@ import {
 } from "expo-router";
 
 import {
-  useWorkoutAppRuntime,
+  useCalendarRangeReadPort,
 } from "../../src/bootstrap/workoutAppRuntime";
 import {
   CalendarScreen,
@@ -15,6 +15,7 @@ import {
 import type {
   CalendarEventDestination,
 } from "../../src/ui/calendar/calendarPorts";
+import { useCurrentLocalDate } from "../../src/ui/calendar/useCurrentLocalDate";
 import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
 import {
   rootSettingsTriggerNativeID,
@@ -24,7 +25,7 @@ import {
   clearPhase16CalendarTestControls,
   configurePhase16CalendarTestControls,
 } from "../../src/bootstrap/phase16CalendarTestControls";
-import { createImportedActivityDetailHref } from "../garmin/activity/[activityId]";
+import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -43,18 +44,13 @@ export default function CalendarRoute() {
   const headingRef = useRootHeadingRef("calendar");
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
-  const runtime = useWorkoutAppRuntime();
+  const calendarRead = useCalendarRangeReadPort();
   const phase16Stage = (typeof globalThis.location?.search === "string"
     ? new URLSearchParams(globalThis.location.search).get("phase16CalendarStage")
     : undefined) ?? undefined;
   const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
   const hasFocused = React.useRef(false);
-  const now = new Date();
-  const initialDate = [
-    now.getFullYear().toString().padStart(4, "0"),
-    (now.getMonth() + 1).toString().padStart(2, "0"),
-    now.getDate().toString().padStart(2, "0"),
-  ].join("-");
+  const initialDate = useCurrentLocalDate();
   const openEvent = (destination: CalendarEventDestination, returnEventId?: string) => {
     switch (destination.kind) {
       case "session": {
@@ -110,7 +106,7 @@ export default function CalendarRoute() {
   return (
     <CalendarScreen
       initialDate={initialDate}
-      loadCalendarRange={runtime.loadCalendarRange}
+      loadCalendarRange={calendarRead.loadCalendarRange}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "calendar",
         triggerNativeID: settingsActionNativeID,

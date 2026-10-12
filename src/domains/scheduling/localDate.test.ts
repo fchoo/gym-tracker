@@ -28,6 +28,7 @@ describe("Plan 02-03 LocalDate calendar arithmetic", () => {
     expect(startOfLocalMonth(parseLocalDate("2024-02-29"))).toBe("2024-02-01");
     expect(daysInLocalMonth(parseLocalDate("2024-02-01"))).toBe(29);
     expect(startOfLocalWeek(parseLocalDate("2026-08-01"))).toBe("2026-07-27");
+    expect(startOfLocalWeek(parseLocalDate("2026-08-02"))).toBe("2026-07-27");
     expect(calendarGridForMonth(parseLocalDate("2021-02-01"))).toEqual([
       ["2021-02-01", "2021-02-02", "2021-02-03", "2021-02-04", "2021-02-05", "2021-02-06", "2021-02-07"],
       ["2021-02-08", "2021-02-09", "2021-02-10", "2021-02-11", "2021-02-12", "2021-02-13", "2021-02-14"],
@@ -36,6 +37,7 @@ describe("Plan 02-03 LocalDate calendar arithmetic", () => {
     ]);
     expect(calendarGridForMonth(parseLocalDate("2026-08-01"))).toHaveLength(6);
     expect(calendarGridForMonth(parseLocalDate("2026-05-01"))).toHaveLength(5);
+    expect(calendarGridForMonth(parseLocalDate("2026-02-01"))[0]?.[0]).toBe("2026-01-26");
   });
 
   it("clamps local months without crossing UTC or millisecond arithmetic", () => {
@@ -43,6 +45,25 @@ describe("Plan 02-03 LocalDate calendar arithmetic", () => {
     expect(addLocalMonthsClamped(parseLocalDate("2024-01-31"), 1)).toBe("2024-02-29");
     expect(addLocalMonthsClamped(parseLocalDate("2026-03-31"), -1)).toBe("2026-02-28");
   });
+
+  it.each([1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid calendar-month movement %p",
+    (amount) => {
+      expect(() => addLocalMonthsClamped(parseLocalDate("2026-01-01"), amount))
+        .toThrow("local_date_month_count_invalid");
+    },
+  );
+
+  it.each([
+    { input: "0001-01-01", amount: -1 },
+    { input: "9999-12-31", amount: 1 },
+  ] as const)(
+    "rejects month movement beyond the supported LocalDate range from $input",
+    ({ input, amount }) => {
+      expect(() => addLocalMonthsClamped(parseLocalDate(input), amount))
+        .toThrow("local_date_out_of_range");
+    },
+  );
   it.each([
     ["month boundary", "2026-01-31", 1, "2026-02-01"],
     ["leap day", "2024-02-28", 1, "2024-02-29"],

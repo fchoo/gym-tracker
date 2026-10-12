@@ -2,36 +2,29 @@ import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 
 import { useRunningPlanRuntime } from "../../../src/bootstrap/runningPlanRuntime";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
+import { parseCalendarRouteOrigin, parseScalarRouteParam } from "../../../src/navigation/routeOrigin";
+import { CalendarRunningPlanRouteAdapter } from "../../../src/ui/calendar/CalendarRouteAdapters";
+import { EmptyState, ScreenHeader, SecondaryAction } from "../../../src/ui/components";
+import { AdaptiveScreen } from "../../../src/ui/layout/AdaptiveScreen";
 import { RunningPlanDetailScreen } from "../../../src/ui/screens/RunningPlanDetailScreen";
 
 function routeId(value: string | string[] | undefined): string | null {
-  return typeof value === "string" && value.trim() !== "" ? value : null;
+  const parsed = parseScalarRouteParam(value);
+  return parsed.kind === "value" ? parsed.value : null;
 }
 
-export default function RunningPlanDetailRoute() {
+function RunningPlanRouteUnavailable() {
+  return <>
+    <Stack.Screen options={{ gestureEnabled: false }} />
+    <AdaptiveScreen
+      primary={<><ScreenHeader backAction={() => router.back()} density="deep" eyebrow="RUNNING" title="Running plan" /><EmptyState body="This route is invalid or no longer available." heading="Running plan not found" primaryAction={<SecondaryAction label="Go back" onPress={() => router.back()} />} /></>}
+    />
+  </>;
+}
+
+function ManagementRunningPlanDetailRoute({ planId }: Readonly<{ planId: string }>) {
   const runtime = useRunningPlanRuntime();
   const appRuntime = useWorkoutAppRuntime();
-  const {
-    origin: rawOrigin,
-    planId: rawPlanId,
-  } = useLocalSearchParams<{
-    origin?: string | string[];
-    planId?: string | string[];
-  }>();
-  const planId = routeId(rawPlanId);
-  const calendarOrigin = routeId(rawOrigin) === "calendar";
-  if (planId === null) return null;
-  if (calendarOrigin) {
-    return <>
-      <Stack.Screen options={{ gestureEnabled: false }} />
-      <RunningPlanDetailScreen
-        loadPlan={runtime.loadPlan}
-        mode="calendar"
-        onBack={() => router.back()}
-        planId={planId}
-      />
-    </>;
-  }
   return <>
     <Stack.Screen options={{ gestureEnabled: false }} />
     <RunningPlanDetailScreen
@@ -54,4 +47,31 @@ export default function RunningPlanDetailRoute() {
       commitScheduleCollisionChoice={runtime.commitScheduleCollisionChoice}
     />
   </>;
+}
+
+export default function RunningPlanDetailRoute() {
+  const {
+    origin: rawOrigin,
+    planId: rawPlanId,
+    sessionId: rawSessionId,
+  } = useLocalSearchParams<{
+    origin?: string | string[];
+    planId?: string | string[];
+    sessionId?: string | string[];
+  }>();
+  const planId = routeId(rawPlanId);
+  const sessionId = routeId(rawSessionId);
+  const origin = parseCalendarRouteOrigin(rawOrigin, {
+    absentManagementOrigin: "library",
+    managementOrigins: ["library"] as const,
+  });
+  if (planId === null || origin.kind === "invalid") return <RunningPlanRouteUnavailable />;
+  if (origin.kind === "calendar") {
+    if (sessionId === null) return <RunningPlanRouteUnavailable />;
+    return <>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <CalendarRunningPlanRouteAdapter planId={planId} sessionId={sessionId} onBack={() => router.back()} />
+    </>;
+  }
+  return <ManagementRunningPlanDetailRoute planId={planId} />;
 }

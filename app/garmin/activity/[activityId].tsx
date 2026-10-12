@@ -7,7 +7,6 @@ import {
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -18,32 +17,29 @@ import {
 } from "expo-crypto";
 
 import {
-  parseGarminRootOrigin,
+  type GarminRootOrigin,
 } from "../../../src/bootstrap/garminImportRuntime";
 import {
   parseImportedActivityLocalId,
   type ImportedActivityDetailReadResult,
 } from "../../../src/domains/activities/activityDetails";
+import {
+  parseCalendarRouteOrigin,
+  parseScalarRouteParam,
+} from "../../../src/navigation/routeOrigin";
+import {
+  CALENDAR_RETURN_TOKEN,
+  createImportedActivityDetailHref,
+} from "../../../src/navigation/importedActivityRoute";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
+import { CalendarImportedActivityRouteAdapter } from "../../../src/ui/calendar/CalendarRouteAdapters";
 import { GarminRouteShell } from "../../../src/ui/garmin/GarminRouteShell";
 import {
   ImportedActivityDetailScreen,
   type ImportedActivityDetailScreenState,
 } from "../../../src/ui/screens/ImportedActivityDetailScreen";
 
-const CALENDAR_RETURN_TOKEN = /^calendar:[A-Za-z0-9:_-]{1,80}$/u;
 const MATCH_RETURN_FOCUS_TOKEN = /^match:[A-Za-z0-9_-]{1,96}$/u;
-
-type ActivityDetailRouteInput = Readonly<{
-  activityId: string;
-  origin: "workout" | "calendar" | "library" | "progress";
-  returnToken?: string;
-  sourceRevision?: number;
-}>;
-
-function scalar(value: string | readonly string[] | undefined): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
 
 function hasRevisionReview(
   state: ImportedActivityDetailScreenState,
@@ -54,66 +50,18 @@ function hasRevisionReview(
   return state.kind === "revision_review" && "review" in state;
 }
 
-function parsedSourceRevision(value: unknown): number | undefined | null {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !/^\d+$/u.test(value)) return null;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
+export { createImportedActivityDetailHref };
 
-function validRouteContext(origin: unknown, returnToken: unknown, sourceRevision: number | undefined | null): boolean {
-  if (origin !== undefined && origin !== "workout" && origin !== "calendar" && origin !== "library" && origin !== "progress") {
-    return false;
-  }
-  if (sourceRevision === null || (sourceRevision !== undefined && origin !== "progress")) return false;
-  if (returnToken === undefined) return true;
-  return origin === "calendar"
-    && typeof returnToken === "string"
-    && CALENDAR_RETURN_TOKEN.test(returnToken);
-}
-
-export function createImportedActivityDetailHref(input: ActivityDetailRouteInput): Href {
-  const activityId = parseImportedActivityLocalId(input.activityId);
-  if (activityId === null
-    || !["workout", "calendar", "library", "progress"].includes(input.origin)
-    || (input.origin !== "calendar" && input.returnToken !== undefined)
-    || (input.sourceRevision !== undefined && (
-      input.origin !== "progress"
-      || !Number.isSafeInteger(input.sourceRevision)
-      || input.sourceRevision <= 0
-    ))
-    || (input.returnToken !== undefined && !CALENDAR_RETURN_TOKEN.test(input.returnToken))) {
-    throw new Error("imported_activity_route_invalid");
-  }
-  return {
-    pathname: "/garmin/activity/[activityId]",
-    params: {
-      activityId,
-      origin: input.origin,
-      ...(input.returnToken === undefined ? {} : { returnToken: input.returnToken }),
-      ...(input.sourceRevision === undefined ? {} : { sourceRevision: String(input.sourceRevision) }),
-    },
-  } as Href;
-}
-
-export default function ImportedActivityDetailRoute() {
-  const params = useLocalSearchParams() as Readonly<{
-    activityId?: string | readonly string[];
-    origin?: string | readonly string[];
-    returnToken?: string | readonly string[];
-    sourceRevision?: string | readonly string[];
-  }>;
+function ManagementImportedActivityDetailRoute({
+  activityId,
+  origin,
+  sourceRevision,
+}: Readonly<{
+  activityId: string | null;
+  origin: Exclude<GarminRootOrigin, "calendar">;
+  sourceRevision?: number;
+}>) {
   const runtime = useWorkoutAppRuntime();
-  const rawActivityId = scalar(params.activityId);
-  const origin = parseGarminRootOrigin(scalar(params.origin));
-  const returnToken = scalar(params.returnToken);
-  const sourceRevision = parsedSourceRevision(scalar(params.sourceRevision));
-  const activityId = useMemo(
-    () => validRouteContext(origin, returnToken, sourceRevision)
-      ? parseImportedActivityLocalId(rawActivityId)
-      : null,
-    [origin, rawActivityId, returnToken, sourceRevision],
-  );
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<ImportedActivityDetailScreenState>(
     activityId === null ? { kind: "missing" } : { kind: "loading" },
@@ -130,7 +78,7 @@ export default function ImportedActivityDetailRoute() {
     let active = true;
     const load = sourceRevision === undefined
       ? runtime.loadImportedActivityDetail(activityId)
-      : runtime.loadImportedActivityDetail(activityId, sourceRevision ?? undefined);
+      : runtime.loadImportedActivityDetail(activityId, sourceRevision);
     void load.then(async (result: ImportedActivityDetailReadResult) => {
       if (!active) return;
       if (result.kind !== "revision_review") {
@@ -208,18 +156,14 @@ export default function ImportedActivityDetailRoute() {
     <GarminRouteShell origin={origin}>
       <ImportedActivityDetailScreen
         onBack={() => router.back()}
-        mode={origin === "calendar" ? "calendar" : "management"}
+        mode="management"
         onRetry={() => {
           setState({ kind: "loading" });
           setAttempt((current) => current + 1);
         }}
-        {...(origin === "calendar"
-          ? {}
-          : {
-              onAcceptRevision: () => resolveRevision("accept"),
-              onKeepRevision: () => resolveRevision("keep"),
-              onMatch: match,
-            })}
+        onAcceptRevision={() => resolveRevision("accept")}
+        onKeepRevision={() => resolveRevision("keep")}
+        onMatch={match}
         {...(matchReturnFocusToken === undefined
           ? {}
           : {
@@ -230,4 +174,52 @@ export default function ImportedActivityDetailRoute() {
       />
     </GarminRouteShell>
   );
+}
+
+export default function ImportedActivityDetailRoute() {
+  const params = useLocalSearchParams() as Readonly<{
+    activityId?: string | readonly string[];
+    origin?: string | readonly string[];
+    returnToken?: string | readonly string[];
+    sourceRevision?: string | readonly string[];
+  }>;
+  const parsedOrigin = parseCalendarRouteOrigin(params.origin, {
+    absentManagementOrigin: "workout",
+    managementOrigins: ["workout", "library", "progress"] as const,
+  });
+  const parsedActivityId = parseScalarRouteParam(params.activityId);
+  const parsedReturnToken = parseScalarRouteParam(params.returnToken);
+  const parsedSourceRevision = parseScalarRouteParam(params.sourceRevision);
+  const sourceRevision = parsedSourceRevision.kind === "absent"
+    ? undefined
+    : parsedSourceRevision.kind === "value" && /^\d+$/u.test(parsedSourceRevision.value)
+      ? Number(parsedSourceRevision.value)
+      : null;
+  const validReturnToken = parsedReturnToken.kind === "absent"
+    || (parsedOrigin.kind === "calendar"
+      && parsedReturnToken.kind === "value"
+      && CALENDAR_RETURN_TOKEN.test(parsedReturnToken.value));
+  const validSourceRevision = sourceRevision === undefined
+    || (typeof sourceRevision === "number"
+      && parsedOrigin.kind === "management"
+      && parsedOrigin.origin === "progress"
+      && Number.isSafeInteger(sourceRevision)
+      && sourceRevision > 0);
+  const activityId = parsedOrigin.kind === "invalid"
+    || parsedActivityId.kind !== "value"
+    || !validReturnToken
+    || !validSourceRevision
+    ? null
+    : parseImportedActivityLocalId(parsedActivityId.value);
+  if (parsedOrigin.kind === "invalid" || !validReturnToken || !validSourceRevision) {
+    return <CalendarImportedActivityRouteAdapter activityId={null} onBack={() => router.back()} />;
+  }
+  if (parsedOrigin.kind === "calendar") {
+    return <CalendarImportedActivityRouteAdapter activityId={activityId} onBack={() => router.back()} />;
+  }
+  return <ManagementImportedActivityDetailRoute
+    activityId={activityId}
+    origin={parsedOrigin.origin}
+    {...(typeof sourceRevision === "number" ? { sourceRevision } : {})}
+  />;
 }

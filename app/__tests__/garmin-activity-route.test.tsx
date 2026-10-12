@@ -54,6 +54,10 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
+  useCalendarActivityReadPort: () => ({
+    loadGarminRevisionReview: mockLoadGarminRevisionReview,
+    loadImportedActivityDetail: mockLoadImportedActivityDetail,
+  }),
   useWorkoutAppRuntime: () => ({
     loadGarminRevisionReview: mockLoadGarminRevisionReview,
     loadImportedActivityDetail: mockLoadImportedActivityDetail,
@@ -164,6 +168,8 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     { origin: "workout", returnToken: "calendar:day:2026-10-04:agenda-1" },
     { origin: "calendar", returnToken: "https://arbitrary.example" },
     { origin: ["calendar"], returnToken: "calendar:day:2026-10-04:agenda-1" },
+    { origin: "provider" },
+    { origin: ["workout"] },
   ])("rejects invalid Calendar route context %# without loading or redirecting", async ({ origin, returnToken }) => {
     mockParams = {
       activityId: "activity-local-01",
