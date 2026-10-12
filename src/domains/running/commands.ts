@@ -52,6 +52,9 @@ export type SaveRunningSourceGraphInput = Readonly<{
   /** Aggregate editors publish the complete current membership; lower-level
    * authoring callers may append a partial graph without retiring siblings. */
   completeMembership?: boolean;
+  /** Target-only revisions share the source graph receipt table but need a
+   * typed committed/read-back result for UI replay recovery. */
+  targetCommand?: boolean;
 }>;
 
 export type RunningSourceGraphRepository = Readonly<{
@@ -96,6 +99,17 @@ export function canonicalRunningRequestHash(value: unknown): string {
 
 function identifier(value: string): boolean {
   return value.trim() === value && value.length > 0 && value.length <= 128;
+}
+
+function isFutureLocalDate(value: string, savedAtMs: number): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (match === null) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const candidate = new Date(year!, month! - 1, day!);
+  if (candidate.getFullYear() !== year || candidate.getMonth() !== month! - 1 || candidate.getDate() !== day) return false;
+  const now = new Date(savedAtMs);
+  const today = `${now.getFullYear().toString().padStart(4, "0")}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return value > today;
 }
 
 function assertInput(input: SaveRunningSourceGraphInput): void {
@@ -147,6 +161,13 @@ function assertRunningTarget(input: SaveRunningTargetInput): void {
     || input.goal.targetDurationMs < 60_000 || input.goal.targetDurationMs >= 86_400_000) {
     throw new RunningCommandError("running_target_invalid");
   }
+  const orderedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+  if (input.goal.trainingDays.some((day, index) => day !== orderedDays.filter((candidate) => input.goal.trainingDays.includes(candidate))[index])) {
+    throw new RunningCommandError("running_target_invalid");
+  }
+  if (input.goal.targetLocalDate !== undefined) {
+    if (!isFutureLocalDate(input.goal.targetLocalDate, input.savedAtMs)) throw new RunningCommandError("running_target_invalid");
+  }
 }
 
 /**
@@ -170,6 +191,7 @@ export async function saveRunningTarget(
     goal: input.goal,
     sessions: [],
     slots: [],
+    targetCommand: true,
   });
 }
 

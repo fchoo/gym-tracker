@@ -407,7 +407,10 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           if (receipt.request_sha256 !== input.requestSha256 || receipt.operation !== input.operation || receipt.plan_id !== input.planId || receipt.expected_plan_revision !== input.expectedPlanRevision) {
             throw new Error("running_plan_receipt_conflict");
           }
-          return Object.freeze(JSON.parse(receipt.result_json) as Record<string, unknown>);
+          const replay = JSON.parse(receipt.result_json) as Record<string, unknown>;
+          return Object.freeze(input.targetCommand === true
+            ? { ...replay, outcome: "already_committed" }
+            : replay);
         }
         const [plan] = await transaction.queryAll<{ revision: number; plan_kind: string; is_active: number; status: string }>(
           `SELECT plan.revision, plan.plan_kind, plan.is_active, running.status
@@ -497,8 +500,27 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           "INSERT INTO running_goals(id, plan_id, goal_json, revision, created_at_ms) VALUES (?, ?, ?, ?, ?)",
           [input.goal.id, input.planId, JSON.stringify(input.goal), input.goal.revision, input.goal.createdAtMs],
         );
+        const persistedGoal = input.targetCommand !== true ? undefined : await (async () => {
+          const [targetReadBack] = await transaction.queryAll<{ goal_json: string }>(
+            "SELECT goal_json FROM running_goals WHERE id = ? AND plan_id = ? AND revision = ?",
+            [input.goal.id, input.planId, input.goal.revision],
+          );
+          if (targetReadBack === undefined) throw new Error("running_target_readback_missing");
+          return parseRunningGoal(JSON.parse(targetReadBack.goal_json));
+        })();
         const nextRevision = plan.revision + 1;
-        const result = Object.freeze({ planId: input.planId, planRevision: nextRevision, active: plan.is_active === 1, sessionRootIds: input.sessions.map((session) => session.rootId), slotRootIds: input.slots.map((slot) => slot.rootId) });
+        const result = Object.freeze({
+          planId: input.planId,
+          planRevision: nextRevision,
+          active: plan.is_active === 1,
+          sessionRootIds: input.sessions.map((session) => session.rootId),
+          slotRootIds: input.slots.map((slot) => slot.rootId),
+          ...(persistedGoal === undefined ? {} : {
+            outcome: "committed" as const,
+            targetRevision: persistedGoal.revision,
+            target: persistedGoal,
+          }),
+        });
         const changed = await transaction.execute(
           "UPDATE plans SET revision = revision + 1 WHERE id = ? AND revision = ?",
           [input.planId, input.expectedPlanRevision],
