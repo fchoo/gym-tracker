@@ -272,6 +272,42 @@ describe("Calendar semantic transitions", () => {
       .toEqual({ state: reconfigured.state, commands: [] });
   });
 
+  it.each([true, false])(
+    "preserves the adjacent destination when reduced motion changes to %s in every phase",
+    (reducedMotion) => {
+      const expanded = transitionCalendar(initial(), { type: "expand" });
+      const focused = transitionCalendar(expanded.state, { type: "settle-complete", epoch: 1 }).state;
+      const collapsing = transitionCalendar(focused, {
+        type: "select-adjacent",
+        localDate: "2026-12-01",
+        targetMonthId: "2026-12",
+      }).state;
+      const measuring = transitionCalendar(collapsing, {
+        type: "settle-complete",
+        epoch: collapsing.epoch,
+      }).state;
+      const expanding = transitionCalendar(measuring, { type: "layout-ready" }).state;
+
+      for (const state of [collapsing, measuring, expanding]) {
+        expect(transitionCalendar(state, {
+          type: "set-reduced-motion",
+          reducedMotion,
+        })).toEqual({
+          state: expect.objectContaining({
+            currentMonthId: "2026-12",
+            selectedLocalDate: "2026-12-01",
+            reducedMotion,
+            mode: "focused",
+            phase: "idle",
+            pendingMonthId: null,
+            pendingSelectedLocalDate: null,
+          }),
+          commands: [],
+        });
+      }
+    },
+  );
+
   it("carries an explicit target date through a month settle and delays adjacent cross-month selection", () => {
     const moved = transitionCalendar(initial(), {
       type: "release",
