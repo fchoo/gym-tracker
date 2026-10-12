@@ -200,18 +200,17 @@ function segmentFor(group: ComparableGroup): MetricHistorySegment {
     visitOrder(left.set, right.set)
   );
   const candidates = ordered.map(({ candidate }) => candidate);
-  const lastCandidate = selectLastMetricCandidate(candidates);
-  const referenceTarget = lastCandidate === null
-    ? group.reference.set.target
-    : ordered.find(({ candidate }) => candidate === lastCandidate)!.set.target;
+  // Comparable groups are constructed from at least one eligible entry, so
+  // candidate selection cannot be empty at this boundary.
+  const lastCandidate = selectLastMetricCandidate(candidates)!;
+  const referenceTarget = ordered.find(({ candidate }) => candidate === lastCandidate)!.set.target;
   const bestCandidate = selectBestMetricCandidate({
     identity: group.reference.set.identity,
     target: referenceTarget,
     candidates,
-  });
-  const setForCandidate = (candidate: MetricCandidate | null) => candidate === null
-    ? null
-    : ordered.find(({ candidate: current }) => current === candidate)!.set;
+  })!;
+  const setForCandidate = (candidate: MetricCandidate) =>
+    ordered.find(({ candidate: current }) => current === candidate)!.set;
   return Object.freeze({
     identity: group.reference.set.identity,
     referenceTarget,
@@ -304,8 +303,8 @@ export function projectLoadMetricHistorySeries(
     const targetGrams = loadTargetGrams(set.targetAtDate ?? set.target);
     if (targetGrams === null) return [];
     const relative = set.relativeStrength ?? null;
-    if (view === "relative" && relative === null) return [];
-    const basisGrams = relative?.basis.grams ?? null;
+    // The relativeAvailable gate above proves every relative basis exists.
+    const basisGrams = view === "relative" ? relative!.basis.grams : null;
     return [Object.freeze({
       sessionId: set.sessionId,
       sourceRevision: Number.isSafeInteger(set.sourceRevision) && set.sourceRevision! > 0
@@ -324,7 +323,9 @@ export function projectLoadMetricHistorySeries(
         : "Accepted/current",
     })];
   });
-  const latestBasis = ordered.at(-1)?.relativeStrength?.basis.grams ?? null;
+  const latestBasis = view === "relative"
+    ? ordered.at(-1)!.relativeStrength!.basis.grams
+    : null;
   return Object.freeze({
     view,
     points: Object.freeze(points),
@@ -360,10 +361,7 @@ export function projectComparableExerciseTrend(
     seenSessionIds.add(set.sessionId);
     return true;
   }).slice(0, 6);
-  const recent = sessions[0];
-  if (recent === undefined) {
-    return null;
-  }
+  const recent = sessions[0]!;
   const candidates = sessions.map((set) => ({
     observation: set.observation!,
     completedAtMs: set.completedAtMs!,
@@ -375,10 +373,8 @@ export function projectComparableExerciseTrend(
     identity: segment.identity,
     target: segment.referenceTarget,
     candidates,
-  });
-  const best = bestCandidate === null
-    ? recent
-    : sessions.find(({ setId }) => setId === bestCandidate.setId) ?? recent;
+  })!;
+  const best = sessions.find(({ setId }) => setId === bestCandidate.setId)!;
   return Object.freeze({
     identity: segment.identity,
     referenceTarget: segment.referenceTarget,

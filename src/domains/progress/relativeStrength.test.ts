@@ -57,11 +57,27 @@ describe("projectRelativeStrength", () => {
       fact({ factId: "fractional", grams: 80_050 }),
       fact({ factId: "invalid-time", effectiveAtMs: -1 }),
       fact({ factId: "invalid-revision", sourceRevision: 0 }),
+      fact({ factId: "invalid-date", localDate: "2026-02-30" }),
+      fact({ factId: "" }),
+      fact({ factId: "too-large", grams: 400_100 }),
+      fact({ factId: "fractional-time", effectiveAtMs: 1.5 }),
+      fact({ factId: "fractional-revision", sourceRevision: 1.5 }),
     ]);
 
     expect(projectRelativeStrength({ observation, bodyweightFacts: rejected }))
       .toBeNull();
     expect(observation).toEqual({ localDate: "2026-08-24", loadGrams: 50_000 });
+  });
+
+  it("rejects malformed observation dates and non-positive or fractional loads", () => {
+    for (const observation of [
+      { localDate: "2026-02-30", loadGrams: 50_000 },
+      { localDate: "not-a-date", loadGrams: 50_000 },
+      { localDate: "2026-08-24", loadGrams: 0 },
+      { localDate: "2026-08-24", loadGrams: 1.5 },
+    ]) {
+      expect(projectRelativeStrength({ observation, bodyweightFacts: [fact()] })).toBeNull();
+    }
   });
 
   it("changes only the rebuildable relative view when a dated basis is added or removed", () => {

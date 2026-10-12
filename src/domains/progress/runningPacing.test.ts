@@ -17,4 +17,23 @@ describe("deriveRunningPacing", () => {
     expect(deriveRunningPacing({ distanceMeters: 2000, targetDurationSeconds: 1 }).pacePerKm).toBe("0:01/km");
     expect(deriveRunningPacing({ distanceMeters: 1999, targetDurationSeconds: 1 }).pacePerKm).toBe("0:01/km");
   });
+
+  it("fails closed for non-positive and overflowing source values", () => {
+    expect(() => deriveRunningPacing({ distanceMeters: 0, targetDurationSeconds: 1 }))
+      .toThrow("running_pacing_input_invalid");
+    expect(() => deriveRunningPacing({ distanceMeters: 1, targetDurationSeconds: 0 }))
+      .toThrow("running_pacing_input_invalid");
+    expect(() => deriveRunningPacing({
+      distanceMeters: 1_000,
+      targetDurationSeconds: 5_000_000_000_000,
+    })).toThrow("running_pacing_input_invalid");
+    expect(() => deriveRunningPacing({
+      distanceMeters: Number.MAX_SAFE_INTEGER,
+      targetDurationSeconds: 1,
+    })).toThrow("running_pacing_input_invalid");
+    expect(() => deriveRunningPacing({
+      distanceMeters: 1,
+      targetDurationSeconds: Number.MAX_SAFE_INTEGER,
+    })).toThrow("running_pacing_input_invalid");
+  });
 });

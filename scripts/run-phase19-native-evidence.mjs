@@ -295,6 +295,9 @@ export async function executePhase19NativeEvidence(input) {
         evidence_id: row.evidence_id,
         configuration_id: row.configuration.id,
         status: "PASS",
+        configuration_sha256: createHash("sha256")
+          .update(JSON.stringify(row.configuration))
+          .digest("hex"),
         semantic_sha256: result.semantic_sha256,
         focus_sha256: result.focus_sha256,
         viewport_sha256: result.viewport_sha256,

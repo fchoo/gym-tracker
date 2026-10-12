@@ -28,16 +28,19 @@ function exposure(input: Readonly<{
   exerciseId?: string;
   exerciseName?: string;
   loadGrams?: number;
+  identityKey?: string;
+  comparatorKey?: string;
+  setOrdinal?: number;
 }>) {
   return {
     exerciseId: input.exerciseId ?? "bench-press",
     exerciseName: input.exerciseName ?? "Bench Press",
-    identityKey: "load_reps:1:1",
-    comparatorKey: "identity",
+    identityKey: input.identityKey ?? "load_reps:1:1",
+    comparatorKey: input.comparatorKey ?? "identity",
     sessionId: input.sessionId,
     localDate: input.localDate,
     setId: input.setId,
-    setOrdinal: 0,
+    setOrdinal: input.setOrdinal ?? 0,
     completedAtMs: input.completedAtMs,
     targetJson: JSON.stringify(target),
     observationJson: JSON.stringify({
@@ -403,6 +406,153 @@ describe("projectProgressPeriod", () => {
       periodInputs: [...input.periodInputs, input.periodInputs[0]!],
     })).toThrow("progress_period_input_duplicate_date");
   });
+
+  it("fails closed on every malformed source identity, count, and duplicate boundary", () => {
+    const validExposure = exposure({
+      sessionId: "session-1",
+      localDate: "2026-08-20",
+      setId: "set-1",
+      completedAtMs: 1,
+      reps: 8,
+    });
+    const base = {
+      period: "all_time" as const,
+      nowLocalDate: "2026-08-24",
+      periodInputs: [{
+        localDate: "2026-08-20",
+        completedExercises: 1,
+        plannedExercises: 1,
+        completedWorkingSets: 1,
+        plannedWorkingSets: 1,
+        comparableExposureCount: 1,
+      }],
+      comparableExposures: [validExposure],
+      scheduledOpportunities: [{
+        id: "opportunity-1",
+        localDate: "2026-08-20",
+        outcome: "completed" as const,
+        sessionId: "session-1",
+      }],
+      attention: [{
+        id: "attention-1",
+        exerciseId: "bench-press",
+        exerciseName: "Bench Press",
+        sessionId: "session-1",
+      }],
+      sourceSessions: [{
+        sessionId: "session-1",
+        localDate: "2026-08-20",
+        lifecycle: "active" as const,
+        exercises: [{ exerciseId: "bench-press", exerciseName: "Bench Press" }],
+      }],
+    };
+    const rejects = (overrides: Record<string, unknown>, code: string) => {
+      expect(() => projectProgressPeriod({ ...base, ...overrides } as never)).toThrow(code);
+    };
+
+    for (const identityKey of ["load_reps", "load_reps:1", "load_reps:1:1:extra"]) {
+      rejects({ comparableExposures: [{ ...validExposure, identityKey }] }, "progress_metric_identity_key_invalid");
+    }
+    for (const [field, code] of [
+      ["exerciseId", "progress_exercise_id_invalid"],
+      ["exerciseName", "progress_exercise_name_invalid"],
+      ["comparatorKey", "progress_comparator_key_invalid"],
+      ["sessionId", "progress_session_id_invalid"],
+      ["setId", "progress_set_id_invalid"],
+    ] as const) {
+      rejects({ comparableExposures: [{ ...validExposure, [field]: "" }] }, code);
+    }
+    rejects({ comparableExposures: [{ ...validExposure, completedAtMs: -1 }] }, "progress_completed_at_invalid");
+    rejects({ comparableExposures: [{ ...validExposure, setOrdinal: -1 }] }, "progress_set_ordinal_invalid");
+    rejects({ comparableExposures: [validExposure, validExposure] }, "progress_exposure_duplicate_set");
+    for (const field of [
+      "completedExercises", "plannedExercises", "completedWorkingSets",
+      "plannedWorkingSets", "comparableExposureCount",
+    ] as const) {
+      rejects({ periodInputs: [{ ...base.periodInputs[0], [field]: -1 }] }, "invalid");
+    }
+    rejects({ scheduledOpportunities: [base.scheduledOpportunities[0], base.scheduledOpportunities[0]] }, "progress_opportunity_duplicate_id");
+    rejects({ sourceSessions: [base.sourceSessions[0], base.sourceSessions[0]] }, "progress_source_session_duplicate");
+    rejects({ sourceSessions: [{ ...base.sourceSessions[0], sessionId: "" }] }, "progress_source_session_id_invalid");
+    rejects({ sourceSessions: [{ ...base.sourceSessions[0], exercises: [{ exerciseId: "", exerciseName: "Bench Press" }] }] }, "progress_source_exercise_id_invalid");
+    rejects({ sourceSessions: [{ ...base.sourceSessions[0], exercises: [{ exerciseId: "bench", exerciseName: "" }] }] }, "progress_source_exercise_name_invalid");
+    rejects({ attention: [base.attention[0], base.attention[0]] }, "progress_attention_duplicate_id");
+    rejects({ attention: [{ ...base.attention[0], id: "" }] }, "progress_attention_id_invalid");
+    rejects({ attention: [{ ...base.attention[0], exerciseId: "" }] }, "progress_attention_exercise_id_invalid");
+
+    const { sourceSessions: _sourceSessions, ...inputWithoutSources } = base;
+    const withoutSources = projectProgressPeriod(inputWithoutSources);
+    expect(withoutSources.summary.sourceReferences.scheduledOpportunities.sessionIds)
+      .toEqual([]);
+  });
+
+  it("covers holding, equal-tie, and multi-group deterministic ordering", () => {
+    const first = exposure({ sessionId: "session-a", localDate: "2026-08-20", setId: "set-a", completedAtMs: 1, reps: 8 });
+    const equalLater = exposure({ sessionId: "session-b", localDate: "2026-08-20", setId: "set-b", completedAtMs: 2, reps: 8 });
+    const other = exposure({ sessionId: "session-c", localDate: "2026-08-20", setId: "set-c", completedAtMs: 3, reps: 8, exerciseId: "squat", exerciseName: "Back Squat" });
+    const view = projectProgressPeriod({
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+      periodInputs: [],
+      comparableExposures: [other, equalLater, first],
+      scheduledOpportunities: [],
+      attention: [
+        { id: "z-attention", exerciseId: "bench-press", exerciseName: "Bench", sessionId: null },
+        { id: "a-attention", exerciseId: "bench-press", exerciseName: "Bench", sessionId: null },
+      ],
+    });
+    expect(view.state).toBe("hold");
+    expect(view.records.map(({ setId }) => setId)).toEqual(["set-c", "set-b"]);
+    expect(view.attention.map(({ id }) => id)).toEqual(["a-attention", "z-attention"]);
+  });
+
+  it("covers complete exposure and group tie-break ordering without changing facts", () => {
+    const values = [
+      exposure({ sessionId: "same", localDate: "2026-08-20", setId: "set-a", completedAtMs: 5, reps: 10 }),
+      exposure({ sessionId: "same", localDate: "2026-08-20", setId: "set-b", completedAtMs: 5, reps: 8 }),
+      exposure({ sessionId: "same", localDate: "2026-08-20", setId: "set-c", setOrdinal: 1, completedAtMs: 5, reps: 8 }),
+      exposure({ sessionId: "z-session", localDate: "2026-08-20", setId: "set-d", completedAtMs: 5, reps: 8 }),
+      exposure({ sessionId: "same", localDate: "2026-08-20", setId: "set-e", completedAtMs: 5, reps: 8, comparatorKey: "secondary" }),
+      exposure({ sessionId: "same", localDate: "2026-08-20", setId: "set-f", completedAtMs: 5, reps: 8, identityKey: "load_reps:1:2" }),
+      exposure({ sessionId: "same", localDate: "2026-08-20", setId: "set-g", completedAtMs: 5, reps: 8, exerciseId: "squat", exerciseName: "Same Name" }),
+    ];
+    const view = projectProgressPeriod({
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+      periodInputs: [],
+      comparableExposures: values,
+      scheduledOpportunities: [
+        { id: "z-opportunity", localDate: "2026-08-20", outcome: "completed" },
+        { id: "a-opportunity", localDate: "2026-08-20", outcome: "completed" },
+      ],
+      attention: [],
+      sourceSessions: [
+        {
+          sessionId: "same",
+          localDate: "2026-08-20",
+          lifecycle: "active",
+          exercises: [
+            { exerciseId: "z-exercise", exerciseName: "Same Name" },
+            { exerciseId: "a-exercise", exerciseName: "Same Name" },
+          ],
+        },
+        { sessionId: "z-session", localDate: "2026-08-20", lifecycle: "active", exercises: [] },
+      ],
+    } as never);
+    expect(view.records.length).toBe(4);
+    expect(view.summary.scheduledOpportunities.planned).toBe(2);
+  });
+
+  it("uses the current date for an all-time view with no source dates", () => {
+    expect(projectProgressPeriod({
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+      periodInputs: [],
+      comparableExposures: [],
+      scheduledOpportunities: [],
+      attention: [],
+    }).window).toEqual({ start: "2026-08-24", end: "2026-08-24" });
+  });
 });
 
 describe("projectStrengthComparableFacts", () => {
@@ -458,6 +608,15 @@ describe("projectStrengthComparableFacts", () => {
         metricExposure,
         effectiveRevision: 4,
         targetRevision: 0,
+      },
+      {
+        record: { ...record, setId: "z-incompatible-generation" },
+        metricExposure: {
+          ...metricExposure,
+          identity: { ...metricExposure.identity, exerciseMetricGeneration: 2 },
+        },
+        effectiveRevision: 4,
+        targetRevision: 3,
       },
     ])).toEqual([record]);
   });

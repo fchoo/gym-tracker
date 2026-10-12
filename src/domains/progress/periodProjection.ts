@@ -241,12 +241,6 @@ function sourceReferenceForSessionIds(input: Readonly<{
   return sourceReferenceForSessions(sources);
 }
 
-function sessionOnlySourceReference(
-  sessionIds: readonly string[],
-): ProgressSourceReference {
-  return sourceReference({ sessionIds, exercises: [] });
-}
-
 function sourceReferenceForExposures(
   exposures: readonly ProgressComparableExposure[],
 ): ProgressSourceReference {
