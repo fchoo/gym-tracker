@@ -11,6 +11,8 @@ export type CalendarTransitionState = Readonly<{
   dragDx: number;
   epoch: number;
   reducedMotion: boolean;
+  pendingSelectedLocalDate: string | null;
+  pendingMonthId: string | null;
 }>;
 
 export type CalendarMotionCommand =
@@ -25,21 +27,34 @@ export type CalendarMotionCommand =
   | Readonly<{
       kind: "settle-week";
       epoch: number;
-      phase: "expand" | "collapse";
-      durationMs: 240;
+      phase: "expand";
+      durationMs: 260;
       easing: readonly [0.22, 0.8, 0.3, 1];
+      agendaDelayMs: 70;
+      agendaDurationMs: 170;
+    }>
+  | Readonly<{
+      kind: "settle-week";
+      epoch: number;
+      phase: "collapse";
+      durationMs: 240;
+      easing: readonly [0.4, 0, 0.78, 0.2];
+      agendaDelayMs: 0;
+      agendaDurationMs: 140;
     }>
   | Readonly<{ kind: "request-back" }>;
 
 export type CalendarTransitionEvent =
   | Readonly<{ type: "drag"; dx: number; dy: number; viewportWidth: number }>
-  | Readonly<{ type: "release"; dx: number; dy: number; viewportWidth: number; targetMonthId: string; velocityX?: number }>
+  | Readonly<{ type: "release"; dx: number; dy: number; viewportWidth: number; targetMonthId: string; targetSelectedLocalDate?: string; velocityX?: number }>
   | Readonly<{ type: "cancel" }>
-  | Readonly<{ type: "move"; direction: "previous" | "next"; targetMonthId: string }>
+  | Readonly<{ type: "invalidate" }>
+  | Readonly<{ type: "set-reduced-motion"; reducedMotion: boolean }>
+  | Readonly<{ type: "move"; direction: "previous" | "next"; targetMonthId: string; targetSelectedLocalDate?: string }>
   | Readonly<{ type: "settle-complete"; epoch: number }>
   | Readonly<{ type: "expand" }>
   | Readonly<{ type: "collapse" }>
-  | Readonly<{ type: "select-adjacent"; localDate: string }>
+  | Readonly<{ type: "select-adjacent"; localDate: string; targetMonthId?: string }>
   | Readonly<{ type: "back" }>;
 
 export type CalendarTransitionResult = Readonly<{
@@ -48,6 +63,7 @@ export type CalendarTransitionResult = Readonly<{
 }>;
 
 const EASING = Object.freeze([0.22, 0.8, 0.3, 1] as const);
+const COLLAPSE_EASING = Object.freeze([0.4, 0, 0.78, 0.2] as const);
 const SETTLE_DURATION_MS = 240 as const;
 const SLOP_DP = 7;
 const HORIZONTAL_INTENT_RATIO = 1.15;
@@ -93,26 +109,34 @@ function reset(state: CalendarTransitionState, incrementEpoch: boolean): Calenda
     titlePanel: "current",
     dragDx: 0,
     epoch: incrementEpoch ? state.epoch + 1 : state.epoch,
+    pendingSelectedLocalDate: null,
+    pendingMonthId: null,
   });
 }
 
 function settleWeek(state: CalendarTransitionState, phase: "expand" | "collapse", next: CalendarTransitionState): CalendarTransitionResult {
   if (next.reducedMotion) return result(freezeState({ ...next, phase: "idle" }));
-  return result(next, [Object.freeze({ kind: "settle-week", epoch: next.epoch, phase, durationMs: SETTLE_DURATION_MS, easing: EASING })]);
+  return result(next, [phase === "expand"
+    ? Object.freeze({ kind: "settle-week" as const, epoch: next.epoch, phase, durationMs: 260 as const, easing: EASING, agendaDelayMs: 70 as const, agendaDurationMs: 170 as const })
+    : Object.freeze({ kind: "settle-week" as const, epoch: next.epoch, phase, durationMs: SETTLE_DURATION_MS, easing: COLLAPSE_EASING, agendaDelayMs: 0 as const, agendaDurationMs: 140 as const })]);
 }
 
 function settleMonth(
   state: CalendarTransitionState,
-  input: Readonly<{ targetMonthId: string; fromOffset: number; toOffset: -1 | 0 | 1 }>,
+  input: Readonly<{ targetMonthId: string; targetSelectedLocalDate?: string; fromOffset: number; toOffset: -1 | 0 | 1 }>,
 ): CalendarTransitionResult {
   assertIdentifier(input.targetMonthId);
+  if (input.targetSelectedLocalDate !== undefined) assertIdentifier(input.targetSelectedLocalDate);
   const next = freezeState({
     ...state,
     currentMonthId: input.toOffset === 0 ? state.currentMonthId : input.targetMonthId,
+    selectedLocalDate: input.toOffset === 0 ? state.selectedLocalDate : input.targetSelectedLocalDate ?? state.selectedLocalDate,
     phase: state.reducedMotion ? "idle" : "settling",
     titlePanel: "current",
     dragDx: 0,
     epoch: state.epoch + 1,
+    pendingSelectedLocalDate: null,
+    pendingMonthId: null,
   });
   if (next.reducedMotion) return result(next);
   return result(next, [Object.freeze({
@@ -137,6 +161,8 @@ export function createCalendarTransitionState(input: Readonly<{
     dragDx: 0,
     epoch: 0,
     reducedMotion: input.reducedMotion,
+    pendingSelectedLocalDate: null,
+    pendingMonthId: null,
   });
 }
 
@@ -167,27 +193,52 @@ export function transitionCalendar(
     case "release": {
       assertGeometry(event.dx, event.dy, event.viewportWidth);
       if (state.phase !== "idle" && state.phase !== "dragging") return result(state);
+      if (state.phase === "idle" && !horizontalIntent(event.dx, event.dy)) return result(state);
       const dragDx = clampMonthDrag(event.dx, event.viewportWidth);
-      const committed = horizontalIntent(event.dx, event.dy) && crossesMonthBoundary(dragDx, event.viewportWidth);
+      const committed = crossesMonthBoundary(dragDx, event.viewportWidth);
       return settleMonth(state, {
         targetMonthId: event.targetMonthId,
+        ...(event.targetSelectedLocalDate === undefined ? {} : { targetSelectedLocalDate: event.targetSelectedLocalDate }),
         fromOffset: dragDx / event.viewportWidth,
         toOffset: committed ? (dragDx < 0 ? -1 : 1) : 0,
       });
     }
     case "cancel":
+    case "invalidate":
       return result(reset(state, true));
+    case "set-reduced-motion":
+      if (state.reducedMotion === event.reducedMotion && state.phase === "idle") return result(state);
+      return result(freezeState({
+        ...state,
+        reducedMotion: event.reducedMotion,
+        phase: "idle",
+        titlePanel: "current",
+        dragDx: 0,
+        epoch: state.epoch + 1,
+        pendingSelectedLocalDate: null,
+        pendingMonthId: null,
+      }));
     case "move":
       if (state.phase !== "idle") return result(state);
       return settleMonth(state, {
         targetMonthId: event.targetMonthId,
+        ...(event.targetSelectedLocalDate === undefined ? {} : { targetSelectedLocalDate: event.targetSelectedLocalDate }),
         fromOffset: 0,
         toOffset: event.direction === "next" ? -1 : 1,
       });
     case "settle-complete":
       if (event.epoch !== state.epoch) return result(state);
       if (state.phase === "adjacent-collapsing") {
-        const next = freezeState({ ...state, mode: "focused", phase: state.reducedMotion ? "idle" : "adjacent-expanding", epoch: state.epoch + 1 });
+        const next = freezeState({
+          ...state,
+          currentMonthId: state.pendingMonthId ?? state.currentMonthId,
+          selectedLocalDate: state.pendingSelectedLocalDate ?? state.selectedLocalDate,
+          pendingSelectedLocalDate: null,
+          pendingMonthId: null,
+          mode: "focused",
+          phase: state.reducedMotion ? "idle" : "adjacent-expanding",
+          epoch: state.epoch + 1,
+        });
         return settleWeek(state, "expand", next);
       }
       if (state.phase === "settling" || state.phase === "adjacent-expanding") return result(reset(state, false));
@@ -204,13 +255,27 @@ export function transitionCalendar(
     }
     case "select-adjacent": {
       assertIdentifier(event.localDate);
+      if (event.targetMonthId !== undefined) assertIdentifier(event.targetMonthId);
       if (state.phase !== "idle") return result(state);
       if (state.mode === "month") return result(freezeState({ ...state, selectedLocalDate: event.localDate }));
+      if (state.reducedMotion) {
+        return result(freezeState({
+          ...state,
+          currentMonthId: event.targetMonthId ?? state.currentMonthId,
+          selectedLocalDate: event.localDate,
+          pendingSelectedLocalDate: null,
+          pendingMonthId: null,
+          mode: "focused",
+          phase: "idle",
+          epoch: state.epoch + 1,
+        }));
+      }
       const next = freezeState({
         ...state,
-        selectedLocalDate: event.localDate,
-        mode: state.reducedMotion ? "focused" : "month",
-        phase: state.reducedMotion ? "idle" : "adjacent-collapsing",
+        pendingSelectedLocalDate: event.localDate,
+        pendingMonthId: event.targetMonthId === undefined || event.targetMonthId === state.currentMonthId ? null : event.targetMonthId,
+        mode: "month",
+        phase: "adjacent-collapsing",
         epoch: state.epoch + 1,
       });
       return settleWeek(state, "collapse", next);

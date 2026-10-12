@@ -3,6 +3,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
   type TextStyle,
 } from "react-native";
 
@@ -29,6 +30,8 @@ export function CalendarWeekRow({
   dates,
   eventsByDate,
   month,
+  hidden = false,
+  onLayout,
   onMoveDate,
   onPressDate,
   selectedDate,
@@ -37,6 +40,8 @@ export function CalendarWeekRow({
   dates: readonly LocalDate[];
   eventsByDate: ReadonlyMap<LocalDate, readonly CalendarEvent[]>;
   month: LocalDate;
+  hidden?: boolean;
+  onLayout?(event: LayoutChangeEvent): void;
   onMoveDate(date: LocalDate): void;
   onPressDate(date: LocalDate, events: readonly CalendarEvent[]): void;
   selectedDate: LocalDate;
@@ -45,7 +50,13 @@ export function CalendarWeekRow({
   const { colors } = useAppTheme();
 
   return (
-    <View style={styles.row} testID="calendar-week-row">
+    <View
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? "no-hide-descendants" : "yes"}
+      onLayout={onLayout}
+      style={[styles.row, hidden && styles.hidden]}
+      testID="calendar-week-row"
+    >
       {dates.map((date) => {
         const events = orderedCalendarEvents(eventsByDate.get(date) ?? []);
         const presentation = calendarDayPresentation(events);
@@ -144,6 +155,7 @@ const styles = StyleSheet.create({
   dateTrack: { alignItems: "flex-start", borderColor: "transparent", borderRadius: 14, borderWidth: 2, height: 28, justifyContent: "center", paddingHorizontal: 2 },
   eventChip: { borderRadius: 3, fontSize: 11, fontWeight: "800", height: 17, lineHeight: 14, overflow: "hidden", paddingHorizontal: 2 },
   events: { gap: 2, height: 36 },
+  hidden: { opacity: 0 },
   partialChip: { borderStyle: "dotted", borderWidth: 2 },
   plannedChip: { borderStyle: "dashed", borderWidth: 2 },
   row: { flexDirection: "row", gap: 2 },

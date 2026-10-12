@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,7 +14,15 @@ import {
   startOfLocalMonth,
 } from "../../domains/scheduling/localDate";
 import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
+import { CalendarMonthViewport, type CalendarWeekGeometry } from "../calendar/CalendarMonthViewport";
 import { CalendarWeekRow } from "../calendar/CalendarWeekRow";
+import {
+  createCalendarTransitionState,
+  transitionCalendar,
+  type CalendarMotionCommand,
+  type CalendarTransitionEvent,
+  type CalendarTransitionState,
+} from "../calendar/calendarTransitionController";
 import {
   FocusablePressable,
   IconAction,
@@ -61,6 +69,10 @@ function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate | null {
   }
 }
 
+function monthIdDate(monthId: string): LocalDate {
+  return `${monthId}-01` as LocalDate;
+}
+
 export function CalendarScreen({
   initialDate,
   loadCalendarRange,
@@ -71,7 +83,7 @@ export function CalendarScreen({
   settingsActionNativeID,
   settingsActionRef,
 }: CalendarScreenProps) {
-  const { colors } = useAppTheme();
+  const { colors, reduceMotion } = useAppTheme();
   const { width: safeWidth } = useWindowDimensions();
   const parsedToday = parseLocalDate(today);
   const [month, setMonth] = useState(() => startOfLocalMonth(parseLocalDate(initialDate)));
@@ -84,13 +96,23 @@ export function CalendarScreen({
   const [error, setError] = useState<Error | null>(null);
   const [retryGeneration, setRetryGeneration] = useState(0);
   const [isCalendarKeyOpen, setCalendarKeyOpen] = useState(false);
+  const [calendarTransition, setCalendarTransition] = useState<CalendarTransitionState>(() => createCalendarTransitionState({
+    currentMonthId: initialDate.slice(0, 7),
+    selectedLocalDate: initialDate,
+    reducedMotion: reduceMotion,
+  }));
+  const [calendarCommand, setCalendarCommand] = useState<CalendarMotionCommand | null>(null);
+  const [weekMeasurements, setWeekMeasurements] = useState<ReadonlyMap<LocalDate, CalendarWeekGeometry>>(() => new Map());
   const requestGeneration = useRef(0);
+  const layoutGeneration = useRef(0);
+  const calendarTransitionRef = useRef(calendarTransition);
+  const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
   const weekRows = useMemo(() => calendarGridForMonth(month), [month]);
   const grid = useMemo(() => weekRows.flat(), [weekRows]);
   const rangeInput = useMemo(() => ({
     startLocalDate: grid[0]!,
-    endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 1),
+    endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 8),
   }), [grid]);
 
   useEffect(() => {
@@ -130,26 +152,84 @@ export function CalendarScreen({
     setSelectedDate(date);
   };
 
+  const dispatchCalendarTransition = useCallback((event: CalendarTransitionEvent) => {
+    const previousState = calendarTransitionRef.current;
+    const result = transitionCalendar(previousState, event);
+    calendarTransitionRef.current = result.state;
+    setCalendarTransition(result.state);
+    setCalendarCommand(result.commands[0] ?? null);
+
+    if (previousState.currentMonthId !== result.state.currentMonthId) {
+      const nextDate = parseLocalDate(result.state.selectedLocalDate);
+      pendingMonthRef.current = Object.freeze({ month: startOfLocalMonth(nextDate), selectedDate: nextDate });
+    } else if (previousState.selectedLocalDate !== result.state.selectedLocalDate) {
+      selectDate(parseLocalDate(result.state.selectedLocalDate));
+    }
+
+    const pending = pendingMonthRef.current;
+    if (pending !== null && (
+      result.state.reducedMotion
+      || (event.type === "settle-complete" && result.state.phase === "idle")
+    )) {
+      pendingMonthRef.current = null;
+      setMonth(pending.month);
+      selectDate(pending.selectedDate);
+    }
+  }, []);
+
+  useEffect(() => {
+    dispatchCalendarTransition({ type: "set-reduced-motion", reducedMotion: reduceMotion });
+  }, [dispatchCalendarTransition, reduceMotion]);
+
   const navigateMonth = (direction: -1 | 1) => {
     const next = nextMonth(month, direction);
     if (next === null) {
       return;
     }
-    setMonth(next);
-    selectDate(addLocalMonthsClamped(selectedDate, direction));
+    dispatchCalendarTransition({
+      type: "move",
+      direction: direction === 1 ? "next" : "previous",
+      targetMonthId: next.slice(0, 7),
+      targetSelectedLocalDate: addLocalMonthsClamped(selectedDateRef.current, direction),
+    });
   };
 
   const returnToToday = () => {
-    setMonth(startOfLocalMonth(parsedToday));
-    selectDate(parsedToday);
+    if (parsedToday.slice(0, 7) === month.slice(0, 7)) {
+      selectDate(parsedToday);
+      return;
+    }
+    dispatchCalendarTransition({
+      type: "move",
+      direction: parsedToday > selectedDateRef.current ? "next" : "previous",
+      targetMonthId: parsedToday.slice(0, 7),
+      targetSelectedLocalDate: parsedToday,
+    });
   };
 
   const moveSelection = (date: LocalDate) => {
-    selectDate(date);
     if (date.slice(0, 7) !== month.slice(0, 7)) {
-      setMonth(startOfLocalMonth(date));
+      dispatchCalendarTransition({
+        type: "move",
+        direction: date > selectedDateRef.current ? "next" : "previous",
+        targetMonthId: date.slice(0, 7),
+        targetSelectedLocalDate: date,
+      });
+      return;
     }
+    selectDate(date);
   };
+
+  const recordWeekGeometry = useCallback((weekStart: LocalDate, geometry: Readonly<{ y: number; height: number }>) => {
+    if (!Number.isFinite(geometry.y) || !Number.isFinite(geometry.height) || geometry.height <= 0) return;
+    setWeekMeasurements((current) => {
+      const existing = current.get(weekStart);
+      if (existing?.y === geometry.y && existing.height === geometry.height) return current;
+      const next = new Map(current);
+      next.set(weekStart, Object.freeze({ ...geometry, generation: layoutGeneration.current }));
+      return next;
+    });
+  }, []);
 
   const visibleMonth = range !== null && (isLoading || error !== null)
     ? lastGoodMonth
@@ -160,6 +240,16 @@ export function CalendarScreen({
   const visibleWeekRows = visibleMonth === month
     ? weekRows
     : calendarGridForMonth(visibleMonth);
+  const selectedWeek = visibleWeekRows.find((dates) => dates.includes(visibleSelectedDate));
+  const followingWeek = selectedWeek?.map((date) => addLocalDays(date, 7));
+  const focusedWeek = selectedWeek === undefined || followingWeek === undefined
+    ? null
+    : Object.freeze({
+      selectedDates: selectedWeek,
+      followingDates: followingWeek,
+      selectedGeometry: weekMeasurements.get(selectedWeek[0]!) ?? null,
+      followingGeometry: weekMeasurements.get(followingWeek[0]!) ?? null,
+    });
   const calendarInset = Math.min(18, Math.max(0, (safeWidth - 348) / 2));
   const adaptiveScreenInset = safeWidth < 600 ? space[4] : safeWidth < 840 ? space[6] : space[8];
 
@@ -204,6 +294,12 @@ export function CalendarScreen({
   }
   const previous = nextMonth(month, -1);
   const following = nextMonth(month, 1);
+  const titleBaseMonth = calendarTransition.phase === "settling"
+    ? monthIdDate(calendarTransition.currentMonthId)
+    : month;
+  const titleMonth = calendarTransition.titlePanel === "previous" ? nextMonth(titleBaseMonth, -1)
+    : calendarTransition.titlePanel === "next" ? nextMonth(titleBaseMonth, 1)
+      : titleBaseMonth;
 
   return (
     <AdaptiveScreen
@@ -213,7 +309,7 @@ export function CalendarScreen({
           {header}
           <View style={styles.navigation}>
             <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={previous === null} icon="back" onPress={() => navigateMonth(-1)} />
-            <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{monthLabel(month)}</Text>
+            <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{monthLabel(titleMonth ?? month)}</Text>
             <FocusablePressable
               accessibilityHint="Returns the Calendar selection to the current local date"
               accessibilityLabel={`Return to today, ${fullDate(parsedToday)}`}
@@ -257,22 +353,87 @@ export function CalendarScreen({
                 <SkeletonBlock height={52} />
                 <SkeletonBlock height={340} />
               </View>
-            ) : visibleWeekRows.map((dates) => (
-              <CalendarWeekRow
-                dates={dates}
-                eventsByDate={eventsByDate}
-                key={dates[0]}
+            ) : (
+              <CalendarMonthViewport
+                command={calendarCommand}
+                focusedWeek={focusedWeek}
                 month={visibleMonth}
-                onMoveDate={(date) => moveSelection(date)}
-                onPressDate={(date, events) => {
-                  moveSelection(date);
-                  const first = events[0];
-                  if (first !== undefined) onOpenEvent(first.destination);
+                onCancel={() => dispatchCalendarTransition({ type: "invalidate" })}
+                onComplete={(epoch) => dispatchCalendarTransition({ type: "settle-complete", epoch })}
+                onPreview={(dx, viewportWidth) => dispatchCalendarTransition({ type: "drag", dx, dy: 0, viewportWidth })}
+                onRelease={({ dx, dy, targetMonthId, viewportWidth }) => dispatchCalendarTransition({
+                  type: "release",
+                  dx,
+                  dy,
+                  targetMonthId,
+                  targetSelectedLocalDate: addLocalMonthsClamped(
+                    selectedDateRef.current,
+                    targetMonthId > calendarTransitionRef.current.currentMonthId ? 1 : -1,
+                  ),
+                  viewportWidth,
+                })}
+                renderMonth={(panelMonth, interactive) => {
+                  const panelWeeks = calendarGridForMonth(panelMonth);
+                  const focusedStable = calendarTransition.mode === "focused";
+                  const morphingWeek = calendarCommand?.kind === "settle-week";
+                  const followingStart = focusedWeek?.followingDates[0];
+                  const selectedStart = focusedWeek?.selectedDates[0];
+                  const renderRow = (dates: readonly LocalDate[], hidden: boolean) => (
+                    <CalendarWeekRow
+                      dates={dates}
+                      eventsByDate={eventsByDate}
+                      hidden={hidden}
+                      key={dates[0]}
+                      month={panelMonth}
+                      onLayout={(event) => recordWeekGeometry(dates[0]!, event.nativeEvent.layout)}
+                      onMoveDate={(date) => { if (interactive) moveSelection(date); }}
+                      onPressDate={(date, events) => {
+                        if (!interactive) return;
+                        const weekStart = dates[0]!;
+                        if (calendarTransition.mode === "focused" && weekStart !== selectedStart) {
+                          dispatchCalendarTransition({ type: "select-adjacent", localDate: date, targetMonthId: date.slice(0, 7) });
+                        } else {
+                          moveSelection(date);
+                          dispatchCalendarTransition({ type: "expand" });
+                        }
+                        const first = events[0];
+                        if (first !== undefined) onOpenEvent(first.destination);
+                      }}
+                      selectedDate={visibleSelectedDate}
+                      today={parsedToday}
+                    />
+                  );
+                  return (
+                    <>
+                      {panelWeeks.map((dates) => renderRow(
+                        dates,
+                        interactive && (focusedStable || (morphingWeek && (dates[0] === selectedStart || dates[0] === followingStart))),
+                      ))}
+                      {interactive && (focusedStable || morphingWeek) && followingWeek !== undefined && !panelWeeks.some((dates) => dates[0] === followingWeek[0])
+                        ? renderRow(followingWeek, true)
+                        : null}
+                    </>
+                  );
                 }}
-                selectedDate={visibleSelectedDate}
-                today={parsedToday}
+                renderWeek={(dates, interactive) => (
+                  <CalendarWeekRow
+                    dates={dates}
+                    eventsByDate={eventsByDate}
+                    month={visibleMonth}
+                    onMoveDate={(date) => { if (interactive) moveSelection(date); }}
+                    onPressDate={(date, events) => {
+                      if (!interactive) return;
+                      moveSelection(date);
+                      const first = events[0];
+                      if (first !== undefined) onOpenEvent(first.destination);
+                    }}
+                    selectedDate={visibleSelectedDate}
+                    today={parsedToday}
+                  />
+                )}
+                transition={calendarTransition}
               />
-            ))}
+            )}
           </View>
           <BottomSheet
             cancelLabel="Close Calendar key"
