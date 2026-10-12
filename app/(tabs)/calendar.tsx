@@ -15,6 +15,7 @@ import {
 import type {
   CalendarEventDestination,
 } from "../../src/ui/calendar/calendarPorts";
+import { useCurrentLocalDate } from "../../src/ui/calendar/useCurrentLocalDate";
 import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
 import {
   rootSettingsTriggerNativeID,
@@ -49,12 +50,7 @@ export default function CalendarRoute() {
     : undefined) ?? undefined;
   const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
   const hasFocused = React.useRef(false);
-  const now = new Date();
-  const initialDate = [
-    now.getFullYear().toString().padStart(4, "0"),
-    (now.getMonth() + 1).toString().padStart(2, "0"),
-    now.getDate().toString().padStart(2, "0"),
-  ].join("-");
+  const initialDate = useCurrentLocalDate();
   const openEvent = (destination: CalendarEventDestination, returnEventId?: string) => {
     switch (destination.kind) {
       case "session": {
