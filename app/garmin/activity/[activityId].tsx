@@ -38,6 +38,7 @@ type ActivityDetailRouteInput = Readonly<{
   activityId: string;
   origin: "workout" | "calendar" | "library" | "progress";
   returnToken?: string;
+  sourceRevision?: number;
 }>;
 
 function scalar(value: string | readonly string[] | undefined): string | undefined {
@@ -53,10 +54,18 @@ function hasRevisionReview(
   return state.kind === "revision_review" && "review" in state;
 }
 
-function validRouteContext(origin: unknown, returnToken: unknown): boolean {
+function parsedSourceRevision(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^\d+$/u.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function validRouteContext(origin: unknown, returnToken: unknown, sourceRevision: number | undefined | null): boolean {
   if (origin !== undefined && origin !== "workout" && origin !== "calendar" && origin !== "library" && origin !== "progress") {
     return false;
   }
+  if (sourceRevision === null || (sourceRevision !== undefined && origin !== "progress")) return false;
   if (returnToken === undefined) return true;
   return origin === "calendar"
     && typeof returnToken === "string"
@@ -68,6 +77,11 @@ export function createImportedActivityDetailHref(input: ActivityDetailRouteInput
   if (activityId === null
     || !["workout", "calendar", "library", "progress"].includes(input.origin)
     || (input.origin !== "calendar" && input.returnToken !== undefined)
+    || (input.sourceRevision !== undefined && (
+      input.origin !== "progress"
+      || !Number.isSafeInteger(input.sourceRevision)
+      || input.sourceRevision <= 0
+    ))
     || (input.returnToken !== undefined && !CALENDAR_RETURN_TOKEN.test(input.returnToken))) {
     throw new Error("imported_activity_route_invalid");
   }
@@ -77,6 +91,7 @@ export function createImportedActivityDetailHref(input: ActivityDetailRouteInput
       activityId,
       origin: input.origin,
       ...(input.returnToken === undefined ? {} : { returnToken: input.returnToken }),
+      ...(input.sourceRevision === undefined ? {} : { sourceRevision: String(input.sourceRevision) }),
     },
   } as Href;
 }
@@ -86,16 +101,18 @@ export default function ImportedActivityDetailRoute() {
     activityId?: string | readonly string[];
     origin?: string | readonly string[];
     returnToken?: string | readonly string[];
+    sourceRevision?: string | readonly string[];
   }>;
   const runtime = useWorkoutAppRuntime();
   const rawActivityId = scalar(params.activityId);
   const origin = parseGarminRootOrigin(scalar(params.origin));
   const returnToken = scalar(params.returnToken);
+  const sourceRevision = parsedSourceRevision(scalar(params.sourceRevision));
   const activityId = useMemo(
-    () => validRouteContext(origin, returnToken)
+    () => validRouteContext(origin, returnToken, sourceRevision)
       ? parseImportedActivityLocalId(rawActivityId)
       : null,
-    [origin, rawActivityId, returnToken],
+    [origin, rawActivityId, returnToken, sourceRevision],
   );
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<ImportedActivityDetailScreenState>(
@@ -111,7 +128,10 @@ export default function ImportedActivityDetailRoute() {
       return undefined;
     }
     let active = true;
-    void runtime.loadImportedActivityDetail(activityId).then(async (result: ImportedActivityDetailReadResult) => {
+    const load = sourceRevision === undefined
+      ? runtime.loadImportedActivityDetail(activityId)
+      : runtime.loadImportedActivityDetail(activityId, sourceRevision ?? undefined);
+    void load.then(async (result: ImportedActivityDetailReadResult) => {
       if (!active) return;
       if (result.kind !== "revision_review") {
         setState(result);
@@ -128,7 +148,7 @@ export default function ImportedActivityDetailRoute() {
     return () => {
       active = false;
     };
-  }, [activityId, attempt, runtime.loadGarminRevisionReview, runtime.loadImportedActivityDetail]);
+  }, [activityId, attempt, runtime.loadGarminRevisionReview, runtime.loadImportedActivityDetail, sourceRevision]);
 
   useFocusEffect(useCallback(() => {
     const token = pendingMatchReturnFocusTokenRef.current;

@@ -460,6 +460,17 @@ function requestIdFor(input: RecommendationDecisionInput, decision: Recommendati
   return input.requestId;
 }
 
+async function recommendationIdFor(
+  sessionExerciseId: string,
+  sessionRevision: number,
+): Promise<string> {
+  const digest = await runtimeSha256(JSON.stringify({
+    sessionExerciseId,
+    sessionRevision,
+  }));
+  return `recommendation_${digest}`;
+}
+
 async function requestHashFor(
   input: RecommendationDecisionInput,
   decision: RecommendationDecision,
@@ -2834,8 +2845,10 @@ export function createWorkoutOutcomeRepository(
           if (reference === undefined) {
             continue;
           }
-          const recommendationId =
-            `recommendation_${exercise.id}_${expectedSessionRevision}`;
+          const recommendationId = await recommendationIdFor(
+            exercise.id,
+            expectedSessionRevision,
+          );
           const [existing] = await transaction.queryAll<{
             exercise_id: string;
             target_id: string;

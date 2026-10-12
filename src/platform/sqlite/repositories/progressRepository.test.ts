@@ -1,13 +1,32 @@
 import { describe, expect, it, jest } from "@jest/globals";
 
 import { createProgressRepository } from "./progressRepository";
-import type { SqliteKernel } from "../sqliteKernel";
+import type {
+  SqliteReadTransactionExecutor,
+  SqliteSnapshotKernel,
+} from "../sqliteKernel";
 
 jest.mock("./historyRepository", () => ({
   loadEffectiveHistoryProjectionSessions: jest.fn(async () => []),
 }));
 
+function snapshotKernel(
+  queryAll: SqliteReadTransactionExecutor["queryAll"],
+): SqliteSnapshotKernel {
+  return {
+    queryAll,
+    readSnapshot: <Result>(
+      query: (transaction: SqliteReadTransactionExecutor) => Promise<Result>,
+    ) => query({ queryAll }),
+  } as unknown as SqliteSnapshotKernel;
+}
+
 describe("progress repository factual source reads", () => {
+  it("requires the source-coherent snapshot kernel", () => {
+    expect(() => createProgressRepository({ queryAll: jest.fn() } as never))
+      .toThrow("progress_snapshot_kernel_required");
+  });
+
   it("returns source-linked Running, goal, and current bodyweight facts without inventing zeroes", async () => {
     const queryAll = jest.fn(async (sql: string) => {
       if (sql.includes("FROM imported_activities activity")) return [{
@@ -25,7 +44,9 @@ describe("progress repository factual source reads", () => {
       }];
       return [];
     });
-    const kernel = { queryAll } as unknown as SqliteKernel;
+    const kernel = snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    );
 
     const result = await createProgressRepository(kernel).load({
       period: "4_weeks",
@@ -61,6 +82,13 @@ describe("progress repository factual source reads", () => {
         id: "legacy-malformed", started_at_ms: 1, aggregate_json: "not-json",
         opportunity_id: null,
       }];
+      if (sql.includes("FROM running_goals")) return [{
+        id: "malformed-goal",
+        plan_id: "plan-1",
+        revision: 1,
+        goal_json: "not-json",
+        created_at_ms: 1,
+      }];
       if (sql.includes("FROM progression_recommendations recommendation")) return [{
         id: "legacy-malformed-evidence", exercise_id: "exercise", exercise_name: "Exercise",
         status: "pending", evidence_json: JSON.stringify({
@@ -74,7 +102,9 @@ describe("progress repository factual source reads", () => {
       }];
       return [];
     });
-    const kernel = { queryAll } as unknown as SqliteKernel;
+    const kernel = snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    );
 
     await expect(createProgressRepository(kernel).load({
       period: "4_weeks",
@@ -84,7 +114,9 @@ describe("progress repository factual source reads", () => {
     const withoutExposure = jest.fn(async (sql: string) =>
       sql.includes("FROM history_projection_comparable_exposures") ? [] : await queryAll(sql)
     );
-    const result = await createProgressRepository({ queryAll: withoutExposure } as unknown as SqliteKernel).load({
+    const result = await createProgressRepository(snapshotKernel(
+      withoutExposure as unknown as SqliteReadTransactionExecutor["queryAll"],
+    )).load({
       period: "4_weeks",
       nowLocalDate: "2026-11-02",
     });
@@ -111,7 +143,9 @@ describe("progress repository factual source reads", () => {
       return [];
     });
 
-    const result = await createProgressRepository({ queryAll } as unknown as SqliteKernel).load({
+    const result = await createProgressRepository(snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    )).load({
       period: "4_weeks",
       nowLocalDate: "2026-11-02",
     });

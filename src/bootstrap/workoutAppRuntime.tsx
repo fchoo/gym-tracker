@@ -26,6 +26,7 @@ import type {
 import type {
   ProgressPeriod,
   ProgressPeriodProjection,
+  ProgressRecommendationReview,
   ProgressProjectionDiagnostic,
   ProgressProjectionFreshness,
 } from "../domains/progress";
@@ -87,9 +88,16 @@ import {
   acceptRecommendation,
   keepCurrentTarget,
   recordExerciseEffort,
+  type RecommendationDecision,
+  type RecommendationDecisionInput,
   type ExerciseEffort,
   type RecommendationDecisionResult,
 } from "../domains/progression";
+import {
+  canonicalBodyweightRequestPayload,
+  type BodyweightCommand,
+  type BodyweightEntryState,
+} from "../domains/bodyweight/contracts";
 import {
   adjustRest,
   expireRest,
@@ -416,7 +424,13 @@ import {
   assertPhase17FamilyCRegistry,
   createPhase17FamilyCFixtureDriver,
 } from "./phase17FamilyCFixture";
-import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
+import {
+  createRunningPlanRuntimePort,
+  type RunningPlanRuntimePort,
+  type RunningTargetMutationInput,
+  type RunningTargetMutationResult,
+} from "./runningPlanRuntime";
+import type { RunningPlanAggregate } from "../domains/running/contracts";
 import {
   createTrainingFoundationRuntimePort,
   type TrainingFoundationRuntimePort,
@@ -518,6 +532,19 @@ export type LibraryRuntimePlanSummary = Readonly<{
 export type LibraryRuntimeStarterPlanSummary = StarterPlanRuntimeSummary;
 export type RuntimeSecureBackupArchive = SecureBackupArchiveHandle;
 export type RuntimeCsvExport = CsvExportHandle;
+
+export type ProgressBodyweightEntry = Pick<
+  BodyweightEntryState,
+  "entryId" | "revision" | "localDate" | "grams"
+>;
+
+export type ProgressBodyweightSaveInput = Readonly<{
+  requestId: string;
+  entryId: string;
+  expectedRevision: number;
+  localDate: string;
+  grams: number;
+}>;
 export type RuntimeRestorePreflightResult = Awaited<ReturnType<RestoreCommands["preflightSecureRestore"]>>;
 export type RuntimeMergePreflightResult = Awaited<ReturnType<SecureMergeCommands["preflightSecureMerge"]>>;
 export type RuntimeRestoreCommitResult = Readonly<{
@@ -802,7 +829,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
   listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
   resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
-  loadImportedActivityDetail(activityId: string): Promise<ImportedActivityDetailReadResult>;
+  loadImportedActivityDetail(activityId: string, expectedSourceRevision?: number): Promise<ImportedActivityDetailReadResult>;
   loadRunningActivityMatch(activityId: string): Promise<RunningActivityMatchReadResult>;
   confirmActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
   unmatchActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
@@ -850,7 +877,25 @@ type RuntimeValue = RuntimeState & Readonly<{
     dashboard?: ProgressDashboardProjection | null;
     refresh?: ProgressRefreshMetadata;
     diagnostic?: ProgressProjectionDiagnostic;
+    runningTargetSources?: readonly RunningPlanAggregate[];
   }>>;
+  progressRunningTargetRuntime: Readonly<{
+    createId(kind: string): string;
+    loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
+    saveRunningTarget(input: RunningTargetMutationInput): Promise<RunningTargetMutationResult>;
+  }>;
+  progressRecommendationRuntime: Readonly<{
+    decide(
+      recommendation: ProgressRecommendationReview,
+      decision: RecommendationDecision,
+    ): Promise<RecommendationDecisionResult>;
+  }>;
+  progressBodyweightRuntime: Readonly<{
+    createId(kind: string): string;
+    loadHistory(): Promise<readonly ProgressBodyweightEntry[]>;
+    save(input: ProgressBodyweightSaveInput): Promise<readonly ProgressBodyweightEntry[]>;
+    delete(entry: ProgressBodyweightEntry, requestId: string): Promise<readonly ProgressBodyweightEntry[]>;
+  }>;
   openRestNotificationSettings(): Promise<void>;
   readRestAlertPreferences(): RestAlertPreferences;
   setRestAlertPreferences(
@@ -1113,6 +1158,7 @@ type RuntimeServices = Readonly<{
   importedActivities: ReturnType<typeof createImportedActivityRepository>;
   garminSyncSummaries: ReturnType<typeof createGarminSyncSummaryRepository>;
   progressRepository: ReturnType<typeof createProgressRepository>;
+  runningPlans: RunningPlanRuntimePort;
   kernel: SqliteKernel;
   librarySearchRepository: ReturnType<typeof createLibrarySearchRepository>;
   lifecycle: ReturnType<typeof createWorkoutLifecycle>;
@@ -2222,6 +2268,8 @@ export function WorkoutAppRuntimeProvider({
     candidateKey: string;
     input: RunningActivityMatchInput;
   }> | null>(null);
+  const progressBodyweightCommandsRef = useRef(new Map<string, BodyweightCommand>());
+  const progressRecommendationCommandsRef = useRef(new Map<string, RecommendationDecisionInput>());
   const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
   const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
   const phase17RequestId = useCallback(async (label: string, productionRequestId: string) => {
@@ -2256,6 +2304,8 @@ export function WorkoutAppRuntimeProvider({
     const services = servicesRef.current;
     servicesRef.current = null;
     pendingActivityMatchRef.current = null;
+    progressBodyweightCommandsRef.current.clear();
+    progressRecommendationCommandsRef.current.clear();
     await services?.lifecycle.dispose?.().catch(() => undefined);
     services?.automaticBackupRuntime?.dispose();
     await services?.kernel.close().catch(() => undefined);
@@ -2370,6 +2420,17 @@ export function WorkoutAppRuntimeProvider({
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       },
     });
+    const runningPlans = createRunningPlanRuntimePort(kernel, {
+      nowMs: dependencies.nowMs,
+      randomUUID: () => {
+        const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+        return randomUUID();
+      },
+      sha256: (value) => {
+        const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+        return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+      },
+    });
     const schedules = dependencies.createScheduleRuntime?.(kernel, ownedPlans)
       ?? Object.freeze({
         actOnToday: async () => {
@@ -2448,6 +2509,7 @@ export function WorkoutAppRuntimeProvider({
       importedActivities: createImportedActivityRepository(kernel),
       garminSyncSummaries: createGarminSyncSummaryRepository(kernel),
       progressRepository: createProgressRepository(progressSnapshotKernel(kernel)),
+      runningPlans,
       kernel,
       librarySearchRepository,
       lifecycle,
@@ -2910,6 +2972,7 @@ export function WorkoutAppRuntimeProvider({
 
   const loadImportedActivityDetail = useCallback(async (
     activityId: string,
+    expectedSourceRevision?: number,
   ): Promise<ImportedActivityDetailReadResult> => {
     const localActivityId = parseImportedActivityLocalId(activityId);
     if (localActivityId === null) return Object.freeze({ kind: "missing" });
@@ -2943,6 +3006,9 @@ export function WorkoutAppRuntimeProvider({
       return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
     }
     const row = rows[0]!;
+    if (expectedSourceRevision !== undefined && row.aggregate_revision !== expectedSourceRevision) {
+      return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    }
     if (row.pending_revision_count > 0) {
       return Object.freeze({ kind: "revision_review" });
     }
@@ -3147,10 +3213,134 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [requireServices]);
 
-  const loadProgress = useCallback((input: Readonly<{
+  const loadProgress = useCallback(async (input: Readonly<{
+    sport?: ProgressSport;
     period: ProgressPeriod;
     nowLocalDate: string;
-  }>) => requireServices().progressRepository.load(input), [requireServices]);
+  }>) => {
+    const services = requireServices();
+    const snapshot = await services.progressRepository.load(input);
+    if (input.sport !== "Running" || snapshot.freshness !== "current") {
+      return snapshot;
+    }
+    const planRows = await services.kernel.queryAll<{ plan_id: string }>(
+      `SELECT DISTINCT goal.plan_id
+         FROM running_goals goal
+         JOIN plans plan ON plan.id = goal.plan_id
+        WHERE plan.plan_kind = 'running'
+          AND plan.status != 'retired'
+        ORDER BY goal.plan_id`,
+    );
+    const planIds = planRows
+      .map(({ plan_id: planId }) => planId)
+      .filter((planId) => /^[A-Za-z0-9._:-]{1,128}$/u.test(planId));
+    const plans = await Promise.all(planIds.map((planId) => services.runningPlans.loadPlan(planId)));
+    const runningTargetSources = plans.filter(
+      (plan): plan is RunningPlanAggregate => plan !== null && plan.lifecycle !== "archived",
+    );
+    if (runningTargetSources.length === 0) return snapshot;
+    return Object.freeze({
+      ...snapshot,
+      runningTargetSources: Object.freeze(runningTargetSources),
+    });
+  }, [requireServices]);
+
+  const progressRunningTargetRuntime = useMemo(() => Object.freeze({
+    createId: (kind: string) => requireServices().runningPlans.createId(kind),
+    loadPlan: (planId: string) => requireServices().runningPlans.loadPlan(planId),
+    saveRunningTarget: (input: RunningTargetMutationInput) =>
+      requireServices().runningPlans.saveRunningTarget(input),
+  }), [requireServices]);
+
+  const createProgressId = useCallback((kind: string) =>
+    requireServices().runningPlans.createId(kind), [requireServices]);
+
+  const loadProgressBodyweightHistory = useCallback(async (): Promise<readonly ProgressBodyweightEntry[]> => {
+    const services = requireServices();
+    const owners = await services.kernel.queryAll<{ owner_namespace: string }>(
+      "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+    );
+    const ownerId = owners.length === 1 ? owners[0]?.owner_namespace : undefined;
+    if (ownerId === undefined || !/^[A-Za-z0-9._:-]{1,128}$/u.test(ownerId)) {
+      throw new Error("progress_bodyweight_owner_unavailable");
+    }
+    const entries = await services.trainingFoundation.loadBodyweightHistory(ownerId);
+    return Object.freeze(entries
+      .filter(({ lifecycle }) => lifecycle === "active")
+      .map(({ entryId, revision, localDate, grams }) => Object.freeze({
+        entryId,
+        revision,
+        localDate,
+        grams,
+      })));
+  }, [requireServices]);
+
+  const commitProgressBodyweight = useCallback(async (
+    operation: "create" | "edit" | "delete",
+    input: ProgressBodyweightSaveInput | Readonly<{ requestId: string; entryId: string; expectedRevision: number }>,
+  ): Promise<readonly ProgressBodyweightEntry[]> => {
+    const services = requireServices();
+    let command = progressBodyweightCommandsRef.current.get(input.requestId);
+    if (command === undefined) {
+      const owners = await services.kernel.queryAll<{ owner_namespace: string }>(
+        "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+      );
+      const ownerId = owners.length === 1 ? owners[0]?.owner_namespace : undefined;
+      if (ownerId === undefined || !/^[A-Za-z0-9._:-]{1,128}$/u.test(ownerId)) {
+        throw new Error("progress_bodyweight_owner_unavailable");
+      }
+      const context = localContext(dependencies.now());
+      const request = {
+        operation,
+        requestId: input.requestId,
+        entryId: input.entryId,
+        ownerId,
+        expectedRevision: input.expectedRevision,
+        revisionId: createProgressId("bodyweight-revision"),
+        eventId: createProgressId("bodyweight-event"),
+        occurredAtMs: dependencies.nowMs(),
+        ...(operation === "delete" ? {} : {
+          localDate: (input as ProgressBodyweightSaveInput).localDate,
+          timezone: context.timezone,
+          grams: (input as ProgressBodyweightSaveInput).grams,
+        }),
+      } as const;
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      command = Object.freeze({
+        ...request,
+        requestSha256: await digestStringAsync(
+          CryptoDigestAlgorithm.SHA256,
+          canonicalBodyweightRequestPayload(request),
+        ),
+      });
+      progressBodyweightCommandsRef.current.set(input.requestId, command);
+    }
+    const result = await services.trainingFoundation.commitBodyweight(command);
+    if (result.kind === "conflict") throw new Error("bodyweight_revision_conflict");
+    const readBack = await loadProgressBodyweightHistory();
+    const committedEntry = readBack.find(({ entryId }) => entryId === input.entryId);
+    if ((operation === "delete" && committedEntry !== undefined)
+      || (operation !== "delete" && committedEntry === undefined)) {
+      throw new Error("bodyweight_readback_missing");
+    }
+    progressBodyweightCommandsRef.current.delete(input.requestId);
+    return readBack;
+  }, [createProgressId, dependencies, loadProgressBodyweightHistory, requireServices]);
+
+  const progressBodyweightRuntime = useMemo(() => Object.freeze({
+    createId: createProgressId,
+    loadHistory: loadProgressBodyweightHistory,
+    save: (input: ProgressBodyweightSaveInput) => commitProgressBodyweight(
+      input.expectedRevision === 0 ? "create" : "edit",
+      input,
+    ),
+    delete: (entry: ProgressBodyweightEntry, requestId: string) =>
+      commitProgressBodyweight("delete", {
+        requestId,
+        entryId: entry.entryId,
+        expectedRevision: entry.revision,
+      }),
+  }), [commitProgressBodyweight, createProgressId, loadProgressBodyweightHistory]);
 
   const listRemovedHistorySessions = useCallback(() =>
     requireServices().historyRepository.listRemovedSessions(),
@@ -4512,6 +4702,64 @@ export function WorkoutAppRuntimeProvider({
     [dependencies, runOutcomeMutation],
   );
 
+  const decideProgressRecommendation = useCallback(async (
+    recommendation: ProgressRecommendationReview,
+    decision: RecommendationDecision,
+  ): Promise<RecommendationDecisionResult> => {
+    if (recommendation.lifecycle !== "pending") {
+      throw new Error("recommendation_no_longer_actionable");
+    }
+    const key = `${decision}:${recommendation.id}`;
+    let command = progressRecommendationCommandsRef.current.get(key);
+    if (command === undefined) {
+      const fences = await requireServices().kernel.queryAll<{
+        evidence_version: number;
+        source_revision: number;
+        target_revision: number;
+        status: string;
+      }>(
+        `SELECT evidence_version, source_revision, target_revision, status
+           FROM progression_recommendations WHERE id = ?
+         UNION ALL
+         SELECT evidence_version, source_revision, target_revision, status
+           FROM owned_progression_recommendations WHERE id = ?`,
+        [recommendation.id, recommendation.id],
+      );
+      const fence = fences.length === 1 ? fences[0] : undefined;
+      if (fence === undefined
+        || fence.status !== "pending"
+        || !Number.isSafeInteger(fence.evidence_version)
+        || fence.evidence_version < 1
+        || !Number.isSafeInteger(fence.source_revision)
+        || fence.source_revision < 1
+        || !Number.isSafeInteger(fence.target_revision)
+        || fence.target_revision < 1) {
+        throw new Error("recommendation_revision_fence_unavailable");
+      }
+      command = Object.freeze({
+        recommendationId: recommendation.id,
+        requestId: createProgressId(`progress-recommendation-${decision === "use_target" ? "use" : "keep"}`),
+        decision,
+        expectedEvidenceVersion: fence.evidence_version,
+        expectedSourceRevision: fence.source_revision,
+        expectedTargetRevision: fence.target_revision,
+        decidedAtMs: dependencies.nowMs(),
+      });
+      progressRecommendationCommandsRef.current.set(key, command);
+    }
+    const committedCommand = command;
+    if (committedCommand === undefined) throw new Error("recommendation_command_unavailable");
+    const result = await runOutcomeMutation((repository) => decision === "use_target"
+      ? acceptRecommendation({ repository, input: committedCommand })
+      : keepCurrentTarget({ repository, input: committedCommand }));
+    progressRecommendationCommandsRef.current.delete(key);
+    return result;
+  }, [createProgressId, dependencies, requireServices, runOutcomeMutation]);
+
+  const progressRecommendationRuntime = useMemo(() => Object.freeze({
+    decide: decideProgressRecommendation,
+  }), [decideProgressRecommendation]);
+
   const phase17ActionEnvelopeSource = useCallback(() => {
     if (!phase17NativeContractEnabled()) throw new Error("phase17_action_envelope_unavailable");
     if (phase17ActionEnvelopeSourceRef.current !== null) return phase17ActionEnvelopeSourceRef.current;
@@ -5117,6 +5365,9 @@ export function WorkoutAppRuntimeProvider({
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
+    progressRunningTargetRuntime,
+    progressRecommendationRuntime,
+    progressBodyweightRuntime,
     keepCurrentTarget: keepWorkoutTarget,
     keepCompletedWorkoutPlanAsIs: keepCompletedPlanAsIs,
     chooseTimeZone: (choice, detectedDeviceTimeZone) =>
@@ -5273,6 +5524,9 @@ export function WorkoutAppRuntimeProvider({
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
+    progressRunningTargetRuntime,
+    progressRecommendationRuntime,
+    progressBodyweightRuntime,
     initialize,
     keepWorkoutTarget,
     listLibraryRecentExercises,

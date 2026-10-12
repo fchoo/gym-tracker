@@ -998,6 +998,7 @@ describe("accepted starter activation repository", () => {
       status: "pending",
     }));
     const recommendation = detail.recommendations[0]!;
+    expect(recommendation.id).toMatch(/^[A-Za-z0-9._:-]{1,128}$/u);
     const nextSession = await startWorkout({
       repository: createPlansWorkoutRepository(kernel),
       request: {

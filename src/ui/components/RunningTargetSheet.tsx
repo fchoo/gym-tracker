@@ -29,7 +29,7 @@ export type RunningTargetSheetProps = Readonly<{
   sources: readonly RunningPlanAggregate[];
   runtime: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
   onClose(): void;
-  onSaved?(plan: RunningPlanAggregate): void;
+  onSaved?(plan: RunningPlanAggregate): unknown;
   restoreFocusRef?: React.RefObject<View | null> | undefined;
   todayLocalDate: string;
 }>;
@@ -115,6 +115,7 @@ export function RunningTargetSheet({
   const targetRef = useRef<TextInput>(null);
   const dateRef = useRef<TextInput>(null);
   const dayRef = useRef<View>(null);
+  const dayRefs = useRef(WEEKDAYS.map(() => React.createRef<View>()));
   const source = sources.find((candidate) => candidate.id === selectedPlanId) ?? sources[0];
   const draft = source === undefined
     ? undefined
@@ -169,7 +170,7 @@ export function RunningTargetSheet({
         targetLocalDate: draft.targetDate === "" ? undefined : draft.targetDate,
         trainingDays: [...draft.trainingDays],
       });
-      onSaved?.(saved.plan);
+      await onSaved?.(saved.plan);
       requestIdsRef.current.delete(source.id);
       onClose();
     } catch (cause) {
@@ -236,7 +237,32 @@ export function RunningTargetSheet({
             <View style={styles.days}>
               {WEEKDAYS.map((day, index) => {
                 const selected = draft.trainingDays.includes(day);
-                return <FocusablePressable accessibilityLabel={day} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} key={day} onPress={() => update({ trainingDays: WEEKDAYS.filter((value) => selected ? value !== day && draft.trainingDays.includes(value) : value === day || draft.trainingDays.includes(value)) })} ref={index === 0 ? dayRef : undefined} style={[styles.day, { backgroundColor: selected ? colors.contentCardSelected : colors.surface, borderColor: colors.divider }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{day.slice(0, 3)}</Text></FocusablePressable>;
+                const toggle = () => update({ trainingDays: WEEKDAYS.filter((value) => selected ? value !== day && draft.trainingDays.includes(value) : value === day || draft.trainingDays.includes(value)) });
+                return <FocusablePressable
+                  {...({ onKeyDown: (event: { nativeEvent: { key: string; preventDefault?: () => void } }) => {
+                    const key = event.nativeEvent.key;
+                    if (key === "Enter" || key === " ") {
+                      event.nativeEvent.preventDefault?.();
+                      toggle();
+                      return;
+                    }
+                    const nextIndex = key === "Home" ? 0 : key === "End" ? WEEKDAYS.length - 1 : key === "ArrowLeft" ? (index + WEEKDAYS.length - 1) % WEEKDAYS.length : key === "ArrowRight" ? (index + 1) % WEEKDAYS.length : null;
+                    if (nextIndex !== null) {
+                      event.nativeEvent.preventDefault?.();
+                      requestAnimationFrame(() => dayRefs.current[nextIndex]?.current?.focus?.());
+                    }
+                  } } as object)}
+                  accessibilityLabel={day}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
+                  key={day}
+                  onPress={toggle}
+                  ref={(node) => {
+                    dayRefs.current[index]!.current = node;
+                    if (index === 0) dayRef.current = node;
+                  }}
+                  style={[styles.day, { backgroundColor: selected ? colors.contentCardSelected : colors.surface, borderColor: colors.divider }]}
+                ><Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{day.slice(0, 3)}</Text></FocusablePressable>;
               })}
             </View>
           </View>

@@ -21,6 +21,7 @@ export type BodyweightEditorSheetProps = Readonly<{
   onClose(): void;
   onSave(input: BodyweightEditorSave): Promise<void>;
   onSaved?: (() => void) | undefined;
+  restoreFocusRef?: React.RefObject<View | null>;
 }>;
 
 type Draft = Readonly<{ localDate: string; kilograms: string }>;
@@ -98,6 +99,7 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
       contentStyle={styles.content}
       heading={heading}
       onCancel={props.onClose}
+      restoreFocusRef={props.restoreFocusRef}
       scrollTestID="bodyweight-editor-sheet-content"
       visible={props.visible}
     >
