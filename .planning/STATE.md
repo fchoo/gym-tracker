@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
-current_phase: 18
-current_phase_name: Garmin Account Sync
-status: verifying
-stopped_at: Completed 18-14-PLAN.md
-last_updated: "2026-10-11T12:33:28.211Z"
-last_activity: 2026-10-11
-last_activity_desc: Phase 18 Plan 14 completed; ready for targeted phase verification
-state_head: 13d8d920f8c3000e8fde03241ee95d6edaacac46
+current_phase: 16
+current_phase_name: Calendar Parity (parallel with Phase 19 Progress Parity)
+status: executing
+stopped_at: Phase 18 host gates complete; Phases 16 and 19 ready for parallel execution
+last_updated: "2026-10-12T15:02:00.000Z"
+last_activity: 2026-10-12
+last_activity_desc: Phase 18 passed all targeted gates; Phase 16 and Phase 19 are dependency-safe to execute in parallel
+state_head: 312c7bf3207613fee45b27366b69dba75a7af0fa
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 5
   total_plans: 98
   completed_plans: 69
-  percent: 13
+  percent: 63
 ---
 
 # Project State
@@ -25,20 +25,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-06)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 18 — Garmin Account Sync
+**Current focus:** Phases 16 and 19 — Calendar Parity and Progress Parity in parallel
 
 ## Current Position
 
-Phase: 18 (Garmin Account Sync) — EXECUTING
-Plan: 14 of 14
-Status: Phase complete — ready for verification
-Last activity: 2026-10-11 — Phase 18 Plan 14 completed; ready for targeted phase verification
+Phase: 16 and 19 — Calendar Parity and Progress Parity
+Plan: Existing converged plans ready for execution
+Status: Parallel execution authorized
+Last activity: 2026-10-12 — Phase 18 passed all targeted gates
 
-Progress: [█░░░░░░░░░] 13%
+Progress: [██████░░░░] 63%
 
 ## Delivery Model and Planning Gate
 
-Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritative offline workouts. v1.2 is planning-only in the current session: discuss every phase, create UI specifications for UI-heavy phases, create executable plans, run plan checks and review convergence, then stop for owner review before implementation, builds, device mutation, release, or deployment.
+Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritative offline workouts. The owner authorized direct execution of the existing converged plans. Phase checkpoints remain targeted; exact-device, cross-phase, and production artifact acceptance stays deferred to Phase 20.
 
 ## Performance Metrics
 
@@ -47,7 +47,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - Milestones shipped: 2 (v1.0 and v1.1)
 - Phases completed: 12
 - Plans completed: 119 (83 in v1.0; 36 in v1.1)
-- v1.2 phases: 8 planned; 98 baseline plans retained for focused revision; 0 executed
+- v1.2 phases: 8 planned; 98 baseline plans retained; 69 plans executed through the Phase 18 dependency frontier
 
 **Recent trend:** v1.1 closed with 5/5 phases and 36/36 plans complete, all integrity-critical files at 100% coverage, cross-phase integration passing, and the signed APK installed unchanged on the Samsung SM-S916B.
 **Per-Plan Metrics:**
@@ -256,14 +256,14 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 - Product decisions pending: **0**. MAP-01, TIM-01, DEV-01, DEV-02 and the Garmin transport selection are closed.
 - Review the complete reconciled planning set after the final fresh convergence run; technical proof gaps remain implementation evidence, not new product questions.
-- No execute-phase command is authorized before that owner review.
+- Owner review is complete; execute the existing Phase 16 and Phase 19 plans directly without replanning.
 
 ### Blockers/Concerns
 
 - **Garmin native proof:** The selected embedded client is source-supported but has not yet been built or tested with the owner's account. A proof failure records a concrete blocker; it does not silently switch transport.
 - **Garmin data fidelity:** JSON detail samples have chart/polyline limits; verify field presence and sampling before using them for exact best-effort claims. FIT is deferred until this is settled.
 - **Plan freshness:** The transport-focused current-file review converged with 0 HIGH and 0 actionable non-HIGH findings. The older FIT/official-provider result remains historical only.
-- **Owner-review stop:** No phase execution, application edit, build, device mutation, release, or deployment is authorized by this roadmap.
+- **Release boundary:** Phase execution is authorized; production build, install, and release presentation remain blocked until Phase 20 passes.
 
 ## Deferred Items
 
@@ -276,6 +276,6 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 ## Session Continuity
 
 Last session: 2026-10-11T12:33:27.904Z
-Stopped at: Completed 18-14-PLAN.md
+Stopped at: Phase 18 host gates complete; Phases 16 and 19 ready for parallel execution
 Resume file: None
-Next action: Verify Phase 18 host scope; Plan 18-13 real account/session/device evidence remains deferred to Phase 20.
+Next action: Execute the existing Phase 16 and Phase 19 plans in parallel; all real account/session/device evidence remains deferred to Phase 20.
