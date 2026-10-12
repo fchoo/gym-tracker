@@ -219,6 +219,7 @@ async function seedRunningIntent(kernel: SqliteKernel): Promise<void> {
     version: 1, id, rootId: `${kind}-root`, planId: "running-plan", sessionKind: kind,
     revision: 1, createdAtMs: 1,
     phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }],
+    advisoryTarget: kind === "tempo" ? { paceMsPerKm: 300_000 } : { heartRateZone: 2 },
     contextual: kind === "tempo" ? { format: "continuous", work: { durationMs: 60_000 } } : {},
   });
   await kernel.write(async (transaction) => {
@@ -327,8 +328,8 @@ describe("training calendar repository with real SQLite", () => {
 
     expect(result.events.map(({ id }) => id)).toEqual(["running-z-first", "running-a-second"]);
     expect(result.events.map(({ displaySummary }) => displaySummary)).toEqual([
-      "Recovery session planned",
-      "Tempo session planned",
+      "1 min · easy Z2",
+      "continuous 1 min · 5:00 / km",
     ]);
   });
 

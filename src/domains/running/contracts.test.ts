@@ -9,6 +9,7 @@ import {
   evaluateRunningReadiness,
   parseRunningGoal,
   parseRunningSessionRevision,
+  runningSessionRevisionReadback,
 } from "./contracts";
 
 const base = {
@@ -102,5 +103,34 @@ describe("Running source contracts", () => {
       ...base, id: "revision-fartlek-invalid", rootId: "root-fartlek-invalid", sessionKind: "fartlek", phases: [],
       contextual: { format: "unstructured", repetitions: 4, fastCue: "x".repeat(121), easyRecoveryCue: "easy", work: { durationMs: 60_000 } },
     })).toThrow(RunningBoundaryError);
+  });
+
+  test.each([
+    [
+      { ...base, sessionKind: "recovery", advisoryTarget: { paceMsPerKm: 300_000 }, contextual: {} },
+      "5000 m · easy 5:00 / km",
+    ],
+    [
+      { ...base, sessionKind: "long_run", advisoryTarget: { heartRateZone: 2 }, contextual: { finish: "steady_finish" } },
+      "5000 m · Z2 · steady finish",
+    ],
+    [
+      { ...base, sessionKind: "progression", contextual: { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 290_000 } } },
+      "5000 m · 3 stages · RPE 4 → 4:50 / km",
+    ],
+    [
+      { ...base, phases: [], sessionKind: "tempo", advisoryTarget: { rpe: 6 }, contextual: { format: "continuous", work: { durationMs: 1_200_000 } } },
+      "continuous 20 min · RPE 6",
+    ],
+    [
+      { ...base, phases: [], sessionKind: "intervals", advisoryTarget: { heartRateZone: 4 }, contextual: { repetitions: 6, work: { distanceMeters: 400 }, recovery: { durationMs: 60_000 } } },
+      "6 × 400 m · recovery 1 min · Z4",
+    ],
+    [
+      { ...base, phases: [], sessionKind: "fartlek", advisoryTarget: { rpe: 7 }, contextual: { format: "structured", repetitions: 5, work: { distanceMeters: 800 }, recovery: { durationMs: 60_000 } } },
+      "5 × 800 m · easy 1 min · RPE 7",
+    ],
+  ] as const)("formats source-backed Running target facts for %#", (input, expected) => {
+    expect(runningSessionRevisionReadback(parseRunningSessionRevision(input))).toBe(expected);
   });
 });

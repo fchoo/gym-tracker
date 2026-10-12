@@ -1,7 +1,8 @@
 import React from "react";
 import { StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 
-import type { RunningPlanSession, RunningSessionKind } from "../../domains/running/contracts";
+import type { RunningSessionKind } from "../../domains/running/contracts";
+export { runningSessionReadback } from "../../domains/running/contracts";
 import { PrimaryAction, SecondaryAction } from ".";
 import { PlanEditorTextField } from "./PlanEditorFields";
 import { space, typeScale, useAppTheme } from "../theme";
@@ -165,22 +166,6 @@ export function runningSessionPreview(draft: RunningSessionFormDraft): string | 
     ? `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · easy ${quantity(draft.recovery, draft.recoveryUnit)} · ${targetText(draft.target)}`
     : `${draft.repeats} surges · ${draft.fastCue.trim()} / ${draft.easyRecoveryCue.trim()}`;
   return null;
-}
-
-/** User-facing persisted session facts; keep this shared by detail and editable rows. */
-export function runningSessionReadback(entry: RunningPlanSession): string {
-  const quantity = (value: { distanceMeters: number } | { durationMs: number }) => "distanceMeters" in value ? `${value.distanceMeters} m` : `${Math.round(value.durationMs / 60_000)} min`;
-  const target = (value: { paceMsPerKm?: number | undefined; heartRateZone?: number | undefined; rpe?: number | undefined } | undefined) => value?.paceMsPerKm !== undefined ? `${Math.floor(value.paceMsPerKm / 60_000)}:${String(Math.floor((value.paceMsPerKm % 60_000) / 1000)).padStart(2, "0")} / km` : value?.heartRateZone !== undefined ? `Z${value.heartRateZone}` : value?.rpe !== undefined ? `RPE ${value.rpe}` : "No target";
-  const work = entry.session.phases.flatMap((phase) => phase.steps).map((step) => step.kind === "distance" ? `${step.distanceMeters} m` : `${Math.round(step.durationMs / 60_000)} min`).join(" + ");
-  const contextual = entry.session.contextual;
-  if (entry.session.sessionKind === "recovery") return `${work} · easy ${target(entry.session.advisoryTarget)}`;
-  if (entry.session.sessionKind === "long_run") return `${work} · ${target(entry.session.advisoryTarget)} · ${(contextual as { finish: string }).finish.replaceAll("_", " ")}`;
-  if (entry.session.sessionKind === "progression") { const c = contextual as { stages: number; startTarget: Parameters<typeof target>[0]; finishTarget: Parameters<typeof target>[0] }; return `${work} · ${c.stages} stages · ${target(c.startTarget)} → ${target(c.finishTarget)}`; }
-  if (entry.session.sessionKind === "tempo") { const c = contextual as { format: string; repetitions?: number; work: { distanceMeters: number } | { durationMs: number }; recovery?: { distanceMeters: number } | { durationMs: number } }; return `${c.format === "continuous" ? "continuous" : `${c.repetitions} ×`} ${quantity(c.work)}${c.recovery === undefined ? "" : ` · recovery ${quantity(c.recovery)}`} · ${target(entry.session.advisoryTarget)}`; }
-  if (entry.session.sessionKind === "intervals") { const c = contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; recovery: { distanceMeters: number } | { durationMs: number } }; return `${c.repetitions} × ${quantity(c.work)} · recovery ${quantity(c.recovery)} · ${target(entry.session.advisoryTarget)}`; }
-  if (entry.session.sessionKind === "hills") { const c = contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; returnRecovery: { distanceMeters: number } | { durationMs: number } }; return `${c.repetitions} × uphill ${quantity(c.work)} · return recovery ${quantity(c.returnRecovery)} · ${target(entry.session.advisoryTarget)}`; }
-  const c = contextual as { format: string; repetitions: number; work?: { distanceMeters: number } | { durationMs: number }; recovery?: { distanceMeters: number } | { durationMs: number }; fastCue?: string; easyRecoveryCue?: string };
-  return c.format === "structured" ? `${c.repetitions} × ${quantity(c.work!)} · easy ${quantity(c.recovery!)} · ${target(entry.session.advisoryTarget)}` : `${c.repetitions} surges · ${c.fastCue} · recover ${c.easyRecoveryCue} · ${target(entry.session.advisoryTarget)}`;
 }
 
 function QuantityFields(props: Readonly<{

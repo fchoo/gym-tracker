@@ -9,6 +9,10 @@ import {
   type HistoryCorrectionSnapshot,
 } from "../../../domains/history";
 import type { SqliteKernel, SqliteReadTransactionExecutor } from "../sqliteKernel";
+import {
+  parseRunningSessionRevision,
+  runningSessionRevisionReadback,
+} from "../../../domains/running/contracts";
 
 type CalendarDestination =
   | Readonly<{ kind: "session"; sessionId: string }>
@@ -71,7 +75,8 @@ type StrengthRow = Readonly<{
 }>;
 type RunningRow = Readonly<{
   id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
-  slot_id: string; session_revision_id: string; session_kind: string; local_date: string; timezone: string; state: string;
+  slot_id: string; session_revision_id: string; session_kind: string; definition_json: string;
+  local_date: string; timezone: string; state: string;
 }>;
 type ImportedRow = Readonly<{
   id: string; source: string; source_kind: string; account_namespace: string; external_activity_id: string;
@@ -247,9 +252,17 @@ function runningEvent(row: RunningRow): TrainingCalendarEvent | null {
   if (row.state !== "planned" || row.plan_name.trim().length === 0 || row.session_revision_id.trim().length === 0) return null;
   const sourceLabel = displayWords(row.session_kind);
   if (sourceLabel.length === 0) return null;
+  let displaySummary: string;
+  try {
+    const session = parseRunningSessionRevision(JSON.parse(row.definition_json));
+    if (session.id !== row.session_revision_id || session.planId !== row.plan_id) return null;
+    displaySummary = runningSessionRevisionReadback(session);
+  } catch {
+    return null;
+  }
   return Object.freeze({
     id: row.id, source: "running", sport: "running", status: "planned", title: row.plan_name,
-    displaySummary: `${sourceLabel} session planned`, sourceLabel,
+    displaySummary, sourceLabel,
     localDate: parseLocalDate(row.local_date), timeZone: row.timezone, scheduleId: row.schedule_id,
     scheduleVersionId: row.schedule_version_id, planId: row.plan_id, slotId: row.slot_id, revision: null, state: "planned",
     destination: Object.freeze({ kind: "plan", planId: row.plan_id, sessionId: row.session_revision_id }),
@@ -317,7 +330,8 @@ async function queryRange(
     ),
     reader.queryAll<RunningRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              opportunity.plan_id, plan.name AS plan_name, opportunity.slot_id, opportunity.session_revision_id, session.session_kind,
+              opportunity.plan_id, plan.name AS plan_name, opportunity.slot_id,
+              opportunity.session_revision_id, session.session_kind, session.definition_json,
               COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, opportunity.timezone, opportunity.state
          FROM running_opportunities opportunity
          JOIN plans plan ON plan.id = opportunity.plan_id

@@ -217,6 +217,43 @@ export type RunningPlanAggregate = Readonly<{
   sessions: readonly RunningPlanSession[];
 }>;
 
+function runningQuantity(value: { distanceMeters: number } | { durationMs: number }): string {
+  return "distanceMeters" in value
+    ? `${value.distanceMeters} m`
+    : `${Math.round(value.durationMs / 60_000)} min`;
+}
+
+function runningTarget(
+  value: RunningSessionRevision["advisoryTarget"] | undefined,
+): string {
+  if (value?.paceMsPerKm !== undefined) {
+    return `${Math.floor(value.paceMsPerKm / 60_000)}:${String(Math.floor((value.paceMsPerKm % 60_000) / 1000)).padStart(2, "0")} / km`;
+  }
+  if (value?.heartRateZone !== undefined) return `Z${value.heartRateZone}`;
+  return value?.rpe !== undefined ? `RPE ${value.rpe}` : "No target";
+}
+
+/** Bounded factual summary shared by persisted Running detail and Calendar intent. */
+export function runningSessionRevisionReadback(session: RunningSessionRevision): string {
+  const work = session.phases.flatMap((phase) => phase.steps).map((step) =>
+    step.kind === "distance" ? `${step.distanceMeters} m` : `${Math.round(step.durationMs / 60_000)} min`
+  ).join(" + ");
+  const contextual = session.contextual;
+  if (session.sessionKind === "recovery") return `${work} · easy ${runningTarget(session.advisoryTarget)}`;
+  if (session.sessionKind === "long_run") return `${work} · ${runningTarget(session.advisoryTarget)} · ${contextual.finish.replaceAll("_", " ")}`;
+  if (session.sessionKind === "progression") return `${work} · ${contextual.stages} stages · ${runningTarget(contextual.startTarget)} → ${runningTarget(contextual.finishTarget)}`;
+  if (session.sessionKind === "tempo") return `${contextual.format === "continuous" ? "continuous" : `${contextual.repetitions} ×`} ${runningQuantity(contextual.work)}${contextual.recovery === undefined ? "" : ` · recovery ${runningQuantity(contextual.recovery)}`} · ${runningTarget(session.advisoryTarget)}`;
+  if (session.sessionKind === "intervals") return `${contextual.repetitions} × ${runningQuantity(contextual.work)} · recovery ${runningQuantity(contextual.recovery)} · ${runningTarget(session.advisoryTarget)}`;
+  if (session.sessionKind === "hills") return `${contextual.repetitions} × uphill ${runningQuantity(contextual.work)} · return recovery ${runningQuantity(contextual.returnRecovery)} · ${runningTarget(session.advisoryTarget)}`;
+  return contextual.format === "structured"
+    ? `${contextual.repetitions} × ${runningQuantity(contextual.work)} · easy ${runningQuantity(contextual.recovery)} · ${runningTarget(session.advisoryTarget)}`
+    : `${contextual.repetitions} surges · ${contextual.fastCue} · recover ${contextual.easyRecoveryCue} · ${runningTarget(session.advisoryTarget)}`;
+}
+
+export function runningSessionReadback(entry: RunningPlanSession): string {
+  return runningSessionRevisionReadback(entry.session);
+}
+
 export function parseRunningSessionRevision(input: unknown): RunningSessionRevision {
   const result = RunningSessionRevisionV1Schema.safeParse(input);
   if (!result.success) {
