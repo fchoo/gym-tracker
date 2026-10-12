@@ -509,16 +509,6 @@ function assertSourceGraphAggregate(
   for (const row of aggregate.tables.bodyweight_command_receipts ?? []) {
     requireValid(bodyweightEntries.has(textId(row.entry_id)));
   }
-  const recommendations = new Set((aggregate.tables.progression_recommendations ?? [])
-    .map((row) => textId(row.id)));
-  for (const row of aggregate.tables.progression_recommendation_decision_receipts ?? []) {
-    requireValid(recommendations.has(textId(row.recommendation_id)));
-  }
-  const ownedRecommendations = new Set((aggregate.tables.owned_progression_recommendations ?? [])
-    .map((row) => textId(row.id)));
-  for (const row of aggregate.tables.owned_progression_recommendation_decision_receipts ?? []) {
-    requireValid(ownedRecommendations.has(textId(row.recommendation_id)));
-  }
   for (const table of Object.keys(aggregate.tables)) {
     requireValid(sourceGraphTable(table));
   }
