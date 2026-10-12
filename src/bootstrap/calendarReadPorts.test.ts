@@ -49,12 +49,15 @@ describe("production Calendar read capabilities", () => {
         Object.freeze({ session: Object.freeze({ id: "session-revision-2", planId: "plan-1" }) }),
       ]),
     }) as unknown as RunningPlanAggregate;
-    const loadPlan = jest.fn(async (planId: string) => planId === "plan-1" ? plan : null);
-    const port = createCalendarRunningPlanReadPort({ loadPlan });
+    const loadScheduledSessionPlan = jest.fn(async (planId: string, sessionRevisionId: string) =>
+      planId === "plan-1" && sessionRevisionId === "session-revision-2" ? plan : null
+    );
+    const port = createCalendarRunningPlanReadPort({ loadScheduledSessionPlan });
 
     await expect(port.loadScheduledSessionPlan("plan-1", "session-revision-2")).resolves.toBe(plan);
     await expect(port.loadScheduledSessionPlan("plan-1", "stale-revision")).resolves.toBeNull();
     await expect(port.loadScheduledSessionPlan("other-plan", "session-revision-2")).resolves.toBeNull();
+    expect(loadScheduledSessionPlan).toHaveBeenNthCalledWith(1, "plan-1", "session-revision-2");
     expect(Object.keys(port)).toEqual(["loadScheduledSessionPlan"]);
     expect(Object.isFrozen(port)).toBe(true);
   });

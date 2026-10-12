@@ -60,17 +60,9 @@ export function createCalendarActivityReadPort(
 }
 
 export function createCalendarRunningPlanReadPort(
-  source: Readonly<{
-    loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
-  }>,
+  source: CalendarRunningPlanReadPort,
 ): CalendarRunningPlanReadPort {
   return Object.freeze({
-    async loadScheduledSessionPlan(planId, sessionRevisionId) {
-      const plan = await source.loadPlan(planId);
-      if (plan === null || plan.id !== planId) return null;
-      return plan.sessions.some(({ session }) =>
-        session.id === sessionRevisionId && session.planId === planId
-      ) ? plan : null;
-    },
+    loadScheduledSessionPlan: source.loadScheduledSessionPlan,
   });
 }
