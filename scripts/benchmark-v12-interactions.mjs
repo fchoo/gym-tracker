@@ -17,7 +17,8 @@ import {
 } from "./v12-calendar-artifacts.mjs";
 
 const ROOT = process.cwd();
-const RESULT_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:";
+const RESULT_CHUNK_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:";
+const RESULT_CHUNK_SIZE = 1800;
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 
@@ -200,10 +201,44 @@ export function runV12CalendarAdb(serial, args, dependencies = {}) {
   return result.stdout.trim();
 }
 
+export function encodeV12CalendarDiagnosticsResult(result, streamId = "p16diag-host-1") {
+  if (!/^p16diag-[a-z0-9-]{3,63}$/u.test(streamId)) fail("result_stream_invalid");
+  const payload = JSON.stringify(result);
+  const chunks = Array.from({ length: Math.ceil(payload.length / RESULT_CHUNK_SIZE) }, (_, index) => (
+    payload.slice(index * RESULT_CHUNK_SIZE, (index + 1) * RESULT_CHUNK_SIZE)
+  ));
+  return chunks.map((chunk, index) => `${RESULT_CHUNK_MARKER}${JSON.stringify({
+    schema_version: 1,
+    stream_id: streamId,
+    sequence: index + 1,
+    total: chunks.length,
+    payload: chunk,
+  })}`);
+}
+
 export function extractV12CalendarDiagnosticsResult(logs) {
-  const line = logs.split(/\r?\n/u).findLast((entry) => entry.includes(RESULT_MARKER));
-  if (line === undefined) return undefined;
-  try { return JSON.parse(line.slice(line.indexOf(RESULT_MARKER) + RESULT_MARKER.length)); }
+  const encoded = logs.split(/\r?\n/u).filter((entry) => entry.includes(RESULT_CHUNK_MARKER));
+  if (encoded.length === 0) return undefined;
+  let chunks;
+  try {
+    chunks = encoded.map((line) => JSON.parse(line.slice(line.indexOf(RESULT_CHUNK_MARKER) + RESULT_CHUNK_MARKER.length)));
+  } catch { fail("result_json_invalid"); }
+  const streamId = chunks.at(-1)?.stream_id;
+  const stream = chunks.filter((chunk) => chunk.stream_id === streamId);
+  const total = stream[0]?.total;
+  if ([
+    !/^p16diag-[a-z0-9-]{3,63}$/u.test(streamId),
+    !Number.isSafeInteger(total),
+    total < 1,
+    stream.length !== total,
+    stream.some((chunk, index) => !exactKeys(chunk, ["schema_version", "stream_id", "sequence", "total", "payload"])
+      || chunk.schema_version !== 1
+      || chunk.sequence !== index + 1
+      || chunk.total !== total
+      || typeof chunk.payload !== "string"
+      || chunk.payload.length > RESULT_CHUNK_SIZE),
+  ].some(Boolean)) fail("result_chunks_invalid");
+  try { return JSON.parse(stream.map(({ payload }) => payload).join("")); }
   catch { fail("result_json_invalid"); }
 }
 

@@ -18,6 +18,7 @@ import { PNG } from "pngjs";
 
 import {
   createV12CalendarDiagnostics,
+  encodeV12CalendarDiagnosticsResult,
   executeV12CalendarDiagnostics,
   extractV12CalendarDiagnosticsResult,
   parseV12CalendarDiagnosticsArgs,
@@ -50,8 +51,10 @@ import {
 } from "./v12-calendar-artifacts.mjs";
 import {
   V12_CALENDAR_DIAGNOSTIC_STAGES,
+  V12_CALENDAR_TRACE_SAMPLE_MARKER,
   createV12CalendarRunnerPlan,
   executeV12Maestro,
+  extractV12CalendarStageTrace,
   initializeV12CalendarRunnerState,
   readV12CalendarRunnerState,
   recordV12CalendarRunnerStage,
@@ -149,12 +152,16 @@ function comparisonFixture() {
   };
   identity.reference_map_sha256 = v12CalendarReferenceMapSha256(map);
   const trace = {
+    schemaVersion: 1,
+    stage: "drag-forward-25_1",
+    traceNonce: "p16trace-host-coverage",
+    sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
     synthetic: true,
     samples: [
-      { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0 },
-      { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 },
-      { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1 },
-      { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1 },
+      { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
+      { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
+      { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
+      { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
     ],
   };
   return {
@@ -284,8 +291,26 @@ test("diagnostic argument, adb, and marker helpers reject every malformed bounda
   ]) assert.throws(() => parseV12CalendarDiagnosticsArgs(args), /argument_invalid/u);
 
   assert.equal(extractV12CalendarDiagnosticsResult("noise"), undefined);
-  assert.deepEqual(extractV12CalendarDiagnosticsResult("noise\nGYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:{\"ok\":true}"), { ok: true });
-  assert.throws(() => extractV12CalendarDiagnosticsResult("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:{"), /result_json_invalid/u);
+  const encoded = encodeV12CalendarDiagnosticsResult({ ok: true });
+  assert.deepEqual(extractV12CalendarDiagnosticsResult(`noise\n${encoded.join("\n")}`), { ok: true });
+  assert.throws(() => encodeV12CalendarDiagnosticsResult({ ok: true }, "Alice"), /result_stream_invalid/u);
+  assert.throws(() => extractV12CalendarDiagnosticsResult("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:{"), /result_json_invalid/u);
+  const malformedChunk = JSON.parse(encoded[0].split(":").slice(1).join(":"));
+  for (const mutate of [
+    (value) => { value.stream_id = "Alice"; },
+    (value) => { value.total = 0; },
+    (value) => { value.sequence = 2; },
+    (value) => { value.extra = true; },
+    (value) => { value.schema_version = 2; },
+    (value) => { value.payload = 1; },
+    (value) => { value.payload = "x".repeat(1_801); },
+  ]) {
+    const value = structuredClone(malformedChunk);
+    mutate(value);
+    assert.throws(() => extractV12CalendarDiagnosticsResult(`GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:${JSON.stringify(value)}`), /result_chunks_invalid/u);
+  }
+  const invalidPayload = { ...malformedChunk, payload: "{" };
+  assert.throws(() => extractV12CalendarDiagnosticsResult(`GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:${JSON.stringify(invalidPayload)}`), /result_json_invalid/u);
 
   const fakeAdb = "/sdk/platform-tools/adb";
   assert.throws(() => runV12CalendarAdb("serial", [], { environment: {}, exists: () => false }), /adb_unavailable/u);
@@ -369,7 +394,7 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
   try {
     writeFileSync(path.join(root, "build.json"), JSON.stringify(manifest()));
     const raw = rawDiagnostics();
-    const logs = `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(raw)}`;
+    const logs = encodeV12CalendarDiagnosticsResult(raw).join("\n");
     const calls = [];
     const result = await executeV12CalendarDiagnostics(["--manifest", "build.json"], {
       root,
@@ -423,12 +448,12 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--output", "../escape.json"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(rawDiagnostics())}` : "",
+      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
     }), /output_path_invalid/u);
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--query-samples", "101"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(rawDiagnostics())}` : "",
+      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
     }), /requested_sample_count_mismatch/u);
   } finally {
     rmSync(failureRoot, { recursive: true, force: true });
@@ -449,9 +474,9 @@ test("diagnostic execution default adapters read git identity, adb output, clock
     const adbDirectory = path.join(sdkRoot, "platform-tools");
     mkdirSync(adbDirectory, { recursive: true });
     const counterPath = path.join(sdkRoot, "counter");
-    const raw = JSON.stringify(rawDiagnostics()).replaceAll("'", "");
+    const raw = encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\\n").replaceAll("'", "");
     const adbPath = path.join(adbDirectory, "adb");
-    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%s\\n' 'GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
+    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%b\\n' '${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
     chmodSync(adbPath, 0o755);
     process.env.ANDROID_HOME = sdkRoot;
     process.env.ANDROID_SERIAL = "local-test-device";
@@ -499,9 +524,46 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   assert.throws(() => validateV12CalendarFlow(null), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow("PHASE16_CALENDAR_STAGE"), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow("calendar-tracer"), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_FIXTURE_ID == 'synthetic-calendar-v1'", "PHASE16_CALENDAR_FIXTURE_ID != null")), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(`${flow}\n# October 2026`), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(`${flow}\n# phase16CalendarReducedMotion=true`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_STAGE == 'drag-forward-10'", "PHASE16_CALENDAR_STAGE == 'missing'")), /stage_missing/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("takeScreenshot", "capture")), /capture_missing/u);
-  assert.equal(createV12CalendarRunnerPlan(valid).stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);
+  const runnerPlan = createV12CalendarRunnerPlan(valid);
+  assert.equal(runnerPlan.stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);
+  assert.equal(runnerPlan.fixture_id, "synthetic-calendar-v1");
+  assert.equal(runnerPlan.trace_sample_marker, V12_CALENDAR_TRACE_SAMPLE_MARKER);
+
+  const traceRow = {
+    schema_version: 1,
+    trace_nonce: "p16trace-native-1",
+    source_identity: { package_name: "com.fchoo.gymtracker.devtest", build_profile: "development-test", suite: "phase16-calendar" },
+    stage: "drag-cancel",
+    sequence: 1,
+    sample: { kind: "cancel", elapsedMs: 1, synthetic: true },
+  };
+  const traceLine = `${V12_CALENDAR_TRACE_SAMPLE_MARKER}${JSON.stringify(traceRow)}`;
+  assert.equal(extractV12CalendarStageTrace("noise", "drag-cancel"), undefined);
+  assert.deepEqual(extractV12CalendarStageTrace(traceLine, "drag-cancel"), {
+    schemaVersion: 1,
+    stage: "drag-cancel",
+    traceNonce: "p16trace-native-1",
+    sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
+    synthetic: true,
+    samples: [{ kind: "cancel", elapsedMs: 1, synthetic: true }],
+  });
+  assert.throws(() => extractV12CalendarStageTrace(`${V12_CALENDAR_TRACE_SAMPLE_MARKER}{`, "drag-cancel"), /trace_json_invalid/u);
+  for (const mutate of [
+    (value) => { value.trace_nonce = "Alice"; },
+    (value) => { value.sequence = 2; },
+    (value) => { value.source_identity.package_name = "wrong"; },
+    (value) => { value.extra = true; },
+  ]) {
+    const invalid = structuredClone(traceRow);
+    mutate(invalid);
+    assert.throws(() => extractV12CalendarStageTrace(`${V12_CALENDAR_TRACE_SAMPLE_MARKER}${JSON.stringify(invalid)}`, "drag-cancel"), /trace_chunks_invalid/u);
+  }
+  assert.throws(() => extractV12CalendarStageTrace(traceLine, "unknown"), /trace_chunks_invalid/u);
 
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-runner-state-"));
   try {
@@ -970,10 +1032,10 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
     reject(({ run }) => { run.captures[0].differences = null; }, /classification_invalid/u);
     reject(({ run }) => { run.captures[0].trace.synthetic = false; }, /trace_invalid/u);
     reject(({ run }) => { run.captures[0].trace.samples = null; }, /trace_invalid/u);
-    reject(({ run }) => { run.captures[0].trace.samples.push({ kind: "cancel" }); }, /trace_invalid/u);
-    reject(({ run }) => { run.captures[0].trace.samples[0].dx = "bad"; }, /trace_25_percent_missing/u);
-    reject(({ run }) => { run.captures[0].trace.samples[1].viewportWidth = Number.NaN; }, /trace_25_percent_missing/u);
-    reject(({ run }) => { run.captures[0].trace.samples[3].semanticOffset = 0; }, /trace_25_percent_semantic/u);
+    reject(({ run }) => { run.captures[0].trace.samples.push({ kind: "cancel" }); }, /privacy_schema_invalid/u);
+    reject(({ run }) => { run.captures[0].trace.samples[0].dx = "bad"; }, /trace_invalid/u);
+    reject(({ run }) => { run.captures[0].trace.samples[1].viewportWidth = Number.NaN; }, /trace_invalid/u);
+    reject(({ run }) => { run.captures[0].trace.samples[3].semanticOffset = 0; }, /trace_stage_semantic_invalid/u);
     reject(({ run }) => { run.captures[0].semantics.focus_ring_dp = 2; }, /semantic_mismatch/u);
     reject(({ run }) => { run.captures[0].semantics.focus_clearance_dp = 3; }, /semantic_mismatch/u);
     reject(({ run }) => { run.captures[0].semantics.authority = "mutating"; }, /semantic_mismatch/u);
@@ -1021,9 +1083,7 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
 
     const fullTraceRun = structuredClone(value.run);
     fullTraceRun.captures[0].trace = {
-      schemaVersion: 1,
-      stage: "drag-forward-25",
-      synthetic: true,
+      ...fullTraceRun.captures[0].trace,
       samples: fullTraceRun.captures[0].trace.samples.map((sample, index) => ({ ...sample, elapsedMs: index + 1, synthetic: true })),
     };
     assert.equal(compareV12Calendar({ map: value.map, run: fullTraceRun, outputDirectory: path.join(value.directory, "full-trace") }).records.length, 1);

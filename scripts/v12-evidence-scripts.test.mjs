@@ -18,6 +18,7 @@ import test from "node:test";
 import {
   V12_CALENDAR_DIAGNOSTIC_TARGETS,
   createV12CalendarDiagnostics,
+  encodeV12CalendarDiagnosticsResult,
   executeV12CalendarDiagnostics,
   validateV12CalendarDiagnostics,
 } from "./benchmark-v12-interactions.mjs";
@@ -385,7 +386,7 @@ test("Calendar diagnostics and live verification reject symlinked parent directo
     writeFileSync(path.join(root, "build.json"), `${JSON.stringify(currentManifest)}\n`);
     const raw = rawDiagnostics();
     const adb = (...args) => args[0] === "logcat" && args[1] === "-d"
-      ? `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(raw)}`
+      ? encodeV12CalendarDiagnosticsResult(raw).join("\n")
       : "";
     await assert.rejects(
       executeV12CalendarDiagnostics([

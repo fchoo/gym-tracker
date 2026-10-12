@@ -15,6 +15,7 @@ import {
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
 import { exactKeys } from "./node-evidence-utils.mjs";
+import { V12_CALENDAR_DIAGNOSTIC_STAGES } from "./run-v12-maestro.mjs";
 import {
   createExclusiveDirectory,
   ensureV12CalendarDirectory,
@@ -85,33 +86,73 @@ function pngInfo(file) {
   if (bytes.subarray(0, 8).compare(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) !== 0) fail("png_invalid");
   return { bytes, sha256: sha256(bytes), width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
 }
-function assertTrace(trace) {
-  schema(trace, Object.hasOwn(trace, "schemaVersion")
-    ? ["schemaVersion", "stage", "synthetic", "samples"]
-    : ["synthetic", "samples"], "trace");
-  if ([trace.synthetic !== true, !Array.isArray(trace.samples)].some(Boolean)) fail("trace_invalid");
+const TRACE_STAGES = new Set(V12_CALENDAR_DIAGNOSTIC_STAGES);
+const THRESHOLD_STAGES = Object.freeze({
+  "drag-forward-10": Object.freeze({ marker: 0.1, direction: 1, title: 0 }),
+  "drag-forward-24_9": Object.freeze({ marker: 0.249, direction: 1, title: 0 }),
+  "drag-forward-25": Object.freeze({ marker: 0.25, direction: 1, title: 1 }),
+  "drag-forward-25_1": Object.freeze({ marker: 0.251, direction: 1, title: 1 }),
+  "drag-backward-10": Object.freeze({ marker: 0.1, direction: -1, title: 0 }),
+  "drag-backward-24_9": Object.freeze({ marker: 0.249, direction: -1, title: 0 }),
+  "drag-backward-25": Object.freeze({ marker: 0.25, direction: -1, title: -1 }),
+  "drag-backward-25_1": Object.freeze({ marker: 0.251, direction: -1, title: -1 }),
+});
+
+function ratio(sample) {
+  return Math.abs(sample.dx) / sample.viewportWidth;
+}
+
+export function validateV12CalendarStageTrace(trace) {
+  schema(trace, ["schemaVersion", "stage", "traceNonce", "sourceIdentity", "synthetic", "samples"], "trace");
+  schema(trace.sourceIdentity, ["packageName", "buildProfile", "suite"], "trace.sourceIdentity");
+  if ([trace.schemaVersion !== 1, !TRACE_STAGES.has(trace.stage), !/^p16trace-[a-z0-9-]{3,63}$/u.test(trace.traceNonce), trace.sourceIdentity.packageName !== "com.fchoo.gymtracker.devtest", trace.sourceIdentity.buildProfile !== "development-test", trace.sourceIdentity.suite !== "phase16-calendar", trace.synthetic !== true, !Array.isArray(trace.samples)].some(Boolean)) fail("trace_invalid");
+  if (trace.samples.length === 0) fail("trace_invalid");
   for (const sample of trace.samples) {
-    const evidenceKeys = Object.hasOwn(sample, "elapsedMs") ? ["elapsedMs", "synthetic"] : [];
-    if (sample.kind === "drag") schema(sample, ["kind", "dx", "viewportWidth", "transformX", "semanticOffset", "titleOffset", ...evidenceKeys], "trace.drag");
-    else if (sample.kind === "release") schema(sample, ["kind", "dx", "viewportWidth", "semanticOffset", "titleOffset", ...evidenceKeys], "trace.release");
-    else fail("trace_invalid");
+    if (sample.kind === "drag") {
+      schema(sample, ["kind", "dx", "viewportWidth", "transformX", "semanticOffset", "titleOffset", "elapsedMs", "synthetic"], "trace.drag");
+      if (![sample.dx, sample.viewportWidth, sample.transformX].every(finite) || sample.viewportWidth <= 0) fail("trace_invalid");
+    } else if (sample.kind === "release") {
+      schema(sample, ["kind", "dx", "viewportWidth", "semanticOffset", "titleOffset", "elapsedMs", "synthetic"], "trace.release");
+      if (![sample.dx, sample.viewportWidth].every(finite) || sample.viewportWidth <= 0) fail("trace_invalid");
+    }
+    else if (sample.kind === "cancel") schema(sample, ["kind", "elapsedMs", "synthetic"], "trace.cancel");
+    else if (sample.kind === "focus") {
+      schema(sample, ["kind", "selected", "following", "destination", "focusRingWidthDp", "focusClearanceDp", "elapsedMs", "synthetic"], "trace.focus");
+      schema(sample.selected, ["y", "height"], "trace.focus.selected");
+      schema(sample.following, ["y", "height"], "trace.focus.following");
+      schema(sample.destination, ["selectedY", "followingY"], "trace.focus.destination");
+      if ([sample.selected.y, sample.selected.height, sample.following.y, sample.following.height, sample.destination.selectedY, sample.destination.followingY].some((value) => !finite(value)) || sample.focusRingWidthDp !== 3 || sample.focusClearanceDp !== 4) fail("trace_focus_invalid");
+    } else fail("trace_invalid");
+    if ([sample.synthetic !== true, !Number.isFinite(sample.elapsedMs), sample.elapsedMs < 0].some(Boolean)) fail("trace_invalid");
   }
-  const samples = trace.samples.filter((sample) => sample?.kind === "drag");
-  const markers = [0.249, 0.25, 0.251].map((marker) => samples.find((sample) => finite(sample.dx) && finite(sample.viewportWidth) && Math.abs(Math.abs(sample.dx) / sample.viewportWidth - marker) < 0.00001));
-  if (markers.some((sample) => sample === undefined)) fail("trace_25_percent_missing");
-  const [below, exact, above] = markers;
-  const direction = Math.sign(exact.dx) * -1;
-  const release = trace.samples.find((sample) => sample?.kind === "release");
-  if ([
-    below.semanticOffset !== 0,
-    exact.semanticOffset !== 0,
-    above.semanticOffset !== 0,
-    below.titleOffset !== 0,
-    exact.titleOffset !== direction,
-    above.titleOffset !== direction,
-    release?.semanticOffset !== direction,
-    release?.titleOffset !== direction,
-  ].some(Boolean)) fail("trace_25_percent_semantic");
+  if (trace.samples.some((sample, index) => index > 0 && sample.elapsedMs <= trace.samples[index - 1].elapsedMs)) fail("trace_time_invalid");
+  const threshold = THRESHOLD_STAGES[trace.stage];
+  if (threshold !== undefined) {
+    const sample = trace.samples.find((entry) => entry.kind === "drag" && finite(entry.dx) && finite(entry.viewportWidth) && Math.abs(ratio(entry) - threshold.marker) < 0.00001);
+    if (sample === undefined) fail("trace_stage_sample_missing");
+    if ([Math.sign(sample.dx) * -1 !== threshold.direction, sample.semanticOffset !== 0, sample.titleOffset !== threshold.title, sample.transformX !== sample.dx].some(Boolean)) fail("trace_stage_semantic_invalid");
+    const release = trace.samples.find((entry) => entry.kind === "release");
+    if (release === undefined || Math.abs(ratio(release) - threshold.marker) >= 0.00001 || release.semanticOffset !== threshold.title || release.titleOffset !== threshold.title) fail("trace_stage_semantic_invalid");
+    return true;
+  }
+  const releases = trace.samples.filter(({ kind }) => kind === "release");
+  if (trace.stage.includes("release-")) {
+    const expected = trace.stage.endsWith("below") ? 0 : trace.stage.startsWith("drag-forward") ? 1 : -1;
+    const boundary = trace.stage.endsWith("below") ? (value) => value < 0.25 : trace.stage.endsWith("exact") ? (value) => Math.abs(value - 0.25) < 0.00001 : (value) => value > 0.25;
+    if (releases.length !== 1 || !boundary(ratio(releases[0])) || releases[0].semanticOffset !== expected || releases[0].titleOffset !== expected) fail("trace_stage_semantic_invalid");
+  } else if (trace.stage === "drag-fast-subthreshold") {
+    if (releases.length !== 1 || ratio(releases[0]) >= 0.25 || releases[0].semanticOffset !== 0) fail("trace_stage_semantic_invalid");
+  } else if (trace.stage === "drag-retreat") {
+    const crossed = trace.samples.some((sample) => sample.kind === "drag" && ratio(sample) >= 0.25 && sample.titleOffset !== 0);
+    if (!crossed || releases.length !== 1 || ratio(releases[0]) >= 0.25 || releases[0].semanticOffset !== 0 || releases[0].titleOffset !== 0) fail("trace_stage_semantic_invalid");
+  } else if (["drag-cancel", "drag-vertical", "drag-diagonal", "rotation-during-transition", "background-during-transition"].includes(trace.stage)) {
+    if (!trace.samples.some(({ kind }) => kind === "cancel")) fail("trace_stage_sample_missing");
+  } else if (["week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "reduced-motion", "accessibility-keyboard"].includes(trace.stage)) {
+    if (!trace.samples.some(({ kind }) => kind === "focus")) fail("trace_stage_sample_missing");
+  } else if (trace.stage === "adjacent-week") {
+    if (trace.samples.filter(({ kind }) => kind === "focus").length < 2) fail("trace_stage_sample_missing");
+  } else if (["rapid-reverse-input", "second-input-interrupt"].includes(trace.stage) && releases.length < 2) fail("trace_stage_sample_missing");
+  return true;
 }
 function assertSemantics(semantics) {
   schema(semantics, ["focus_ring_dp", "focus_clearance_dp", "authority", "target"], "semantics");
@@ -237,7 +278,7 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
     const mapped = mapById.get(capture.id);
     if (!mapped) fail("capture_unknown");
     if ([capture.classification !== "REVIEW_REQUIRED", !Array.isArray(capture.differences)].some(Boolean)) fail("classification_invalid");
-    assertTrace(capture.trace); assertSemantics(capture.semantics);
+    validateV12CalendarStageTrace(capture.trace); assertSemantics(capture.semantics);
     schema(capture.native, ["path", "sha256", "width", "height"], "native_descriptor");
     const referenceFile = safePath(mapped.reference.path, ROOT, map.host_only_fixture === true);
     const nativeFile = safePath(capture.native?.path, ROOT, map.host_only_fixture === true);
@@ -311,7 +352,7 @@ function fixtureInput(file) {
   const hash = sha256(bytes);
   const map = { schema_version: 1, prototype_revision: 18, source_manifest_sha256: fixture.source_manifest_sha256, host_only_fixture: true, case_registry: V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, captures: [{ id: "calendar-month-light-390", requirement_ids: ["CAL-01"], reference: { path: reference, sha256: hash, width: 1, height: 1 }, configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" } }], case_ledger: V12_CALENDAR_CASE_LEDGER_DESCRIPTOR };
   const identity = { base_head: "a".repeat(40), source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, reference_map_sha256: v12CalendarReferenceMapSha256(map), package: "com.fchoo.gymtracker.devtest", apk_sha256: "c".repeat(64), installed_apk_sha256: "c".repeat(64), device_identity_sha256: "d".repeat(64), report_sha256: "e".repeat(64) };
-  const run = { schema_version: 1, run_id: "phase16-host-deferred", identity, source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, status: "NOT_RUN", captures: [{ id: "calendar-month-light-390", native: { path: native, sha256: hash, width: 1, height: 1 }, trace: { synthetic: true, samples: [{ kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0 }, { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 }, { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1 }, { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1 }] }, semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" }, classification: "REVIEW_REQUIRED", differences: [] }] };
+  const run = { schema_version: 1, run_id: "phase16-host-deferred", identity, source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, status: "NOT_RUN", captures: [{ id: "calendar-month-light-390", native: { path: native, sha256: hash, width: 1, height: 1 }, trace: { schemaVersion: 1, stage: "drag-forward-25_1", traceNonce: "p16trace-host-1", sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" }, synthetic: true, samples: [{ kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true }, { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true }, { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true }, { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true }] }, semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" }, classification: "REVIEW_REQUIRED", differences: [] }] };
   return { directory, map, run };
 }
 
