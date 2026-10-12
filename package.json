@@ -112,7 +112,8 @@
     ,"adversarial:phase18:garmin": "node scripts/run-phase18-garmin-adversarial.mjs --manifest artifacts/native/phase18-garmin-adversarial/build.json --record artifacts/native/phase18-garmin-adversarial/native-record.json"
     ,"verify:phase18:garmin-adversarial": "node scripts/verify-phase18-garmin-adversarial.mjs --manifest artifacts/native/phase18-garmin-adversarial/build.json"
     ,"test:evidence:phase18:garmin-adversarial": "node --test scripts/phase18-garmin-adversarial.test.mjs"
-    ,"test:coverage:phase18:python": "python3 scripts/run-phase18-python-coverage.py"
+    ,"bootstrap:coverage:phase18": "sh scripts/bootstrap-phase18-python-coverage.sh"
+    ,"test:coverage:phase18:python": ".venv/bin/python scripts/run-phase18-python-coverage.py"
     ,"test:coverage:phase18:kotlin": "node scripts/run-phase18-kotlin-coverage.mjs"
     ,"test:coverage:phase18": "npm run test:coverage:phase18:python && npm run test:coverage:phase18:kotlin && node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand"
   },

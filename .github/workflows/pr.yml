@@ -13,6 +13,7 @@ concurrency:
 env:
   NODE_VERSION: 24.19.0
   NPM_VERSION: 11.17.0
+  PYTHON_VERSION: "3.14"
   JAVA_VERSION: 17.0.20+8
   ANDROID_API_LEVEL: 36
   ANDROID_BUILD_TOOLS: 36.0.0
@@ -34,6 +35,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -52,6 +60,11 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Verify pinned Phase 18 Python coverage
+        run: |
+          npm run bootstrap:coverage:phase18
+          npm run test:coverage:phase18:python
 
       - name: Verify Expo compatibility
         env:

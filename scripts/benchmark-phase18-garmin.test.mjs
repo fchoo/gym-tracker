@@ -706,6 +706,7 @@ test("package scripts expose the guarded benchmark and focused coverage gate", {
     scripts["test:coverage:phase18"],
     "npm run test:coverage:phase18:python && npm run test:coverage:phase18:kotlin && node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand",
   );
-  assert.equal(scripts["test:coverage:phase18:python"], "python3 scripts/run-phase18-python-coverage.py");
+  assert.equal(scripts["bootstrap:coverage:phase18"], "sh scripts/bootstrap-phase18-python-coverage.sh");
+  assert.equal(scripts["test:coverage:phase18:python"], ".venv/bin/python scripts/run-phase18-python-coverage.py");
   assert.equal(scripts["test:coverage:phase18:kotlin"], "node scripts/run-phase18-kotlin-coverage.mjs");
 });

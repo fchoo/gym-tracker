@@ -18,6 +18,7 @@ SOURCE_PATH = PROJECT_ROOT / "modules/garmin-connect/android/src/main/python/gar
 TEST_PATH = PROJECT_ROOT / "modules/garmin-connect/android/src/test/python/test_garmin_bridge.py"
 DEFAULT_OUTPUT = PROJECT_ROOT / "coverage/phase18/python-coverage.json"
 TEST_MODULE_NAME = "phase18_test_garmin_bridge"
+REQUIRED_COVERAGE_VERSION = "7.16.2"
 REQUIRED_CASES = (
     "test_account_namespace_is_locally_generated_and_survives_profile_rename",
     "test_login_mfa_and_reads_use_only_the_fixed_operations",
@@ -90,17 +91,26 @@ def _run_with_coverage_py(coverage_lib):
         result = _run_tests()
     finally:
         coverage.stop()
-    analysis = coverage._analyze(str(SOURCE_PATH))  # type: ignore[attr-defined]
-    branch_stats = analysis.branch_stats()
-    missing_branch_arcs = analysis.missing_branch_arcs()
+    _, statements, _excluded, missing_lines, _missing_formatted = coverage.analysis2(
+        str(SOURCE_PATH)
+    )
+    branch_stats = coverage.branch_stats(str(SOURCE_PATH))
     total_branches = sum(total for total, _taken in branch_stats.values())
     covered_branches = sum(taken for _total, taken in branch_stats.values())
     missing_branches = sorted(
-        (line, destination)
-        for line, destinations in missing_branch_arcs.items()
-        for destination in destinations
+        (line, total - taken)
+        for line, (total, taken) in branch_stats.items()
+        if taken != total
     )
-    return result, analysis, covered_branches, total_branches, missing_branches, "coverage.py"
+    return (
+        result,
+        statements,
+        missing_lines,
+        covered_branches,
+        total_branches,
+        missing_branches,
+        "coverage.py",
+    )
 
 
 def _counter(covered: int, total: int) -> dict[str, int | float]:
@@ -123,10 +133,21 @@ def main() -> int:
     if coverage_lib is None:
         print("phase18_python_coverage_dependency_missing", file=sys.stderr)
         return 1
-    result, analysis, covered_branches, total_branches, missing_branches, coverage_engine = _run_with_coverage_py(coverage_lib)
-    covered_lines = len(set(analysis.statements) - set(analysis.missing))
-    total_lines = len(analysis.statements)
-    missing_lines = sorted(analysis.missing)
+    if getattr(coverage_lib, "__version__", None) != REQUIRED_COVERAGE_VERSION:
+        print("phase18_python_coverage_version_mismatch", file=sys.stderr)
+        return 1
+    (
+        result,
+        statements,
+        missing_lines,
+        covered_branches,
+        total_branches,
+        missing_branches,
+        coverage_engine,
+    ) = _run_with_coverage_py(coverage_lib)
+    covered_lines = len(set(statements) - set(missing_lines))
+    total_lines = len(statements)
+    missing_lines = sorted(missing_lines)
     executed_cases = sorted(result.executed)
     missing_cases = sorted(set(REQUIRED_CASES) - set(executed_cases))
     passed = (
