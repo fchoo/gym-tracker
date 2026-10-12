@@ -568,6 +568,51 @@ describe("useGarminConnectionController committed sync semantics", () => {
     expect(current?.state.sync).toEqual({ kind: "idle" });
   });
 
+  it("reports a failed durable summary read and retries it explicitly", async () => {
+    const recovered = Object.freeze({
+      attemptId: "garmin-sync:recovered",
+      completedAtMs: 456_000,
+      counts: { ...emptyCounts, pages: 1, unchangedActivities: 1 },
+    });
+    const loadLastSuccessfulSync = jest.fn<() => Promise<typeof recovered | null>>()
+      .mockRejectedValueOnce(new Error("private durable summary failure"))
+      .mockResolvedValueOnce(recovered);
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => [activity]}
+      loadLastSuccessfulSync={loadLastSuccessfulSync}
+      source={source({
+        restoreSession: async () => ({
+          kind: "connected",
+          account_namespace: "private-account-namespace",
+          generation: 1,
+        }),
+      })}
+    />);
+
+    await waitFor(() => expect(current?.state.lastSuccessfulSyncStatus).toBe("failed"));
+    await act(async () => current?.retryLastSuccessfulSync());
+
+    expect(current?.state).toMatchObject({
+      lastSuccessfulSync: recovered,
+      lastSuccessfulSyncStatus: "ready",
+    });
+    expect(loadLastSuccessfulSync).toHaveBeenCalledTimes(2);
+  });
+
+  it("suppresses the default durable summary retry after unmount", async () => {
+    const view = await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source()}
+    />);
+    await waitFor(() => expect(current?.state.lastSuccessfulSyncStatus).toBe("ready"));
+    const retry = current?.retryLastSuccessfulSync;
+
+    await view.unmount();
+    await act(async () => retry?.());
+  });
+
   it("publishes bounded progress and reloads history only from a committed result", async () => {
     const refreshedActivity = Object.freeze({ ...activity, activityId: "local-activity-2", title: "Evening run" });
     const loadActivities = jest.fn<() => Promise<readonly GarminActivityListItem[]>>()
@@ -793,6 +838,101 @@ describe("useGarminConnectionController committed sync semantics", () => {
       lastSuccessfulSync: prior,
       sync: { kind: "partial", counts: { newActivities: 1, failedActivities: 1 } },
     });
+  });
+
+  it("surfaces a partial date review and keeps it pending after a non-committing decision", async () => {
+    const pendingReview = Object.freeze({
+      activityId: activity.activityId,
+      absoluteStartedAtMs: Date.UTC(2026, 9, 10, 1, 0, 0),
+      sourceLocalDateTime: "2026-10-10T09:00:00",
+      sourceTimeZone: "Asia/Singapore",
+      sourceUtcOffsetMinutes: 480,
+      suggestedLocalDate: "2026-10-10",
+      suggestedLocalTime: "09:00:00",
+      suggestedTimeZone: "Asia/Singapore",
+      suggestedUtcOffsetMinutes: 480,
+    });
+    const confirmPendingDateReview = jest.fn(async () => ({
+      kind: "not_committed" as const,
+      reason: "cancelled" as const,
+    }));
+    let visiblePendingReview: typeof pendingReview | null = pendingReview;
+    const loadActivities = jest.fn(async () => [activity]);
+    await render(<Harness
+      confirmPendingDateReview={confirmPendingDateReview}
+      coordinator={{ syncNow: async () => ({
+        kind: "partial",
+        counts: { ...emptyCounts, pages: 1, newActivities: 1, failedActivities: 1 },
+        failure: { code: "date_confirmation_required", retryable: false },
+      }) }}
+      getPendingDateReview={() => visiblePendingReview}
+      loadActivities={loadActivities}
+      source={source({
+        restoreSession: async () => ({
+          kind: "connected",
+          account_namespace: "private-account-namespace",
+          generation: 1,
+        }),
+      })}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("connected"));
+
+    await act(async () => current?.syncNow());
+    expect(current?.state).toMatchObject({
+      pendingDateReview: pendingReview,
+      sync: {
+        kind: "partial",
+        failure: { code: "date_confirmation_required" },
+      },
+    });
+
+    await act(async () => current?.confirmPendingDateReview({ kind: "cancelled" }));
+    expect(current?.state.pendingDateReview).toEqual(pendingReview);
+    expect(loadActivities).toHaveBeenCalledTimes(2);
+
+    visiblePendingReview = null;
+    await act(async () => current?.syncNow());
+    expect(current?.state.pendingDateReview).toBeNull();
+  });
+
+  it("treats omitted date review callbacks as no pending decision", async () => {
+    await render(<Harness
+      coordinator={coordinator()}
+      loadActivities={async () => []}
+      source={source()}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
+
+    let result: unknown;
+    await act(async () => {
+      result = await current?.confirmPendingDateReview({ kind: "cancelled" });
+    });
+    expect(result).toBeNull();
+    expect(current?.state.pendingDateReview).toBeNull();
+  });
+
+  it("does not publish a date decision that resolves after unmount", async () => {
+    const decision = deferred<{
+      kind: "not_committed";
+      reason: "cancelled";
+    }>();
+    const view = await render(<Harness
+      confirmPendingDateReview={() => decision.promise}
+      coordinator={coordinator()}
+      getPendingDateReview={() => null}
+      loadActivities={async () => []}
+      source={source()}
+    />);
+    await waitFor(() => expect(current?.state.connection).toBe("disconnected"));
+    let pending: Promise<unknown> | undefined;
+    await act(async () => {
+      pending = current?.confirmPendingDateReview({ kind: "cancelled" });
+      await Promise.resolve();
+    });
+
+    await view.unmount();
+    decision.resolve({ kind: "not_committed", reason: "cancelled" });
+    await act(async () => pending);
   });
 
   it("clears a retained history error only after a committed sync reload succeeds", async () => {

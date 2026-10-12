@@ -75,13 +75,19 @@ function envelope(): GarminSourceEnvelope {
 }
 
 function envelopeWithSourceDate(input: Readonly<{
-  sourceLocalDateTime: string;
+  sourceLocalDateTime?: string;
+  sourceTimeZone?: string;
   sourceUtcOffsetMinutes?: number;
 }>): GarminSourceEnvelope {
   const source = envelope();
   const normalized = Object.freeze({
     ...source.normalized,
-    source_local_date_time: input.sourceLocalDateTime,
+    ...(input.sourceLocalDateTime === undefined
+      ? {}
+      : { source_local_date_time: input.sourceLocalDateTime }),
+    ...(input.sourceTimeZone === undefined
+      ? {}
+      : { source_time_zone: input.sourceTimeZone }),
     ...(input.sourceUtcOffsetMinutes === undefined
       ? {}
       : { source_utc_offset_minutes: input.sourceUtcOffsetMinutes }),
@@ -284,11 +290,41 @@ describe("Garmin import runtime", () => {
       source,
     });
 
+    expect(runtime.getPendingDateReview()).toBeNull();
+    await expect(runtime.confirmPendingDateReview({ kind: "cancelled" })).resolves.toBeNull();
     await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
       kind: "failure",
       failure: { code: "date_confirmation_required" },
     });
-    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+    expect(runtime.getPendingDateReview()).toMatchObject({
+      activityId: "date-policy-activity",
+      suggestedTimeZone: "UTC+00:00",
+      suggestedUtcOffsetMinutes: 0,
+    });
+    await expect(runtime.confirmPendingDateReview({ kind: "cancelled" })).resolves.toEqual({
+      kind: "not_committed",
+      reason: "cancelled",
+    });
+    expect(runtime.getPendingDateReview()).not.toBeNull();
+    await expect(runtime.confirmPendingDateReview({ kind: "stale" })).resolves.toEqual({
+      kind: "not_committed",
+      reason: "stale",
+    });
+    expect(runtime.getPendingDateReview()).toBeNull();
+
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      failure: { code: "date_confirmation_required" },
+    });
+    await expect(runtime.confirmPendingDateReview({
+      kind: "confirmed",
+      localDate: "2026-06-20",
+      localTime: "00:30:00",
+      timeZone: "Asia/Singapore",
+      utcOffsetMinutes: 480,
+    })).resolves.toMatchObject({ kind: "imported" });
+    expect(runtime.getPendingDateReview()).toBeNull();
+    expect(repository.confirmGarminImport).toHaveBeenCalledTimes(1);
   });
 
   it.each<readonly [330 | -90, "UTC-01:30" | "UTC+05:30"]>([
@@ -388,6 +424,64 @@ describe("Garmin import runtime", () => {
     await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
       kind: "failure",
       failure: { code: "date_confirmation_required" },
+    });
+    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "named source zone",
+      { sourceTimeZone: "Asia/Singapore", sourceUtcOffsetMinutes: 480 },
+      "Asia/Singapore",
+    ],
+    [
+      "derived source zone",
+      { sourceUtcOffsetMinutes: -90 },
+      "UTC-01:30",
+    ],
+  ] as const)("preserves a %s in pending date review", async (_label, sourceDate, expectedZone) => {
+    const sourceEnvelope = envelopeWithSourceDate(sourceDate);
+    const repository: ImportedActivityCommandRepository = {
+      confirmGarminImport: jest.fn(async () => ({
+        kind: "conflict" as const,
+        activityId: "unused",
+        aggregateRevision: 0,
+      })),
+    };
+    const runtime = createGarminRootRuntime({
+      enforceSourceDatePolicy: true,
+      loadActivities: async () => [],
+      requestFor: async () => ({
+        requestId: `request-${expectedZone}`,
+        requestSha256: "7".repeat(64),
+        activityId: `activity-${expectedZone}`,
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "ignored",
+      }),
+      services: { importedActivities: repository },
+      sha256,
+      source: {
+        connectionState: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        restoreSession: async () => ({ kind: "connected" as const, account_namespace: sourceEnvelope.account_namespace, generation: 1 }),
+        login: async () => ({ kind: "disconnected" as const }),
+        resumeMfa: async () => ({ kind: "disconnected" as const }),
+        logout: async () => undefined,
+        listRunningSummaries: async () => ({ items: [{
+          account_namespace: sourceEnvelope.account_namespace,
+          external_activity_id: sourceEnvelope.external_activity_id,
+        }] }),
+        readActivity: async () => sourceEnvelope,
+      },
+    });
+
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      failure: { code: "date_confirmation_required" },
+    });
+    expect(runtime.getPendingDateReview()).toMatchObject({
+      sourceUtcOffsetMinutes: sourceDate.sourceUtcOffsetMinutes,
+      suggestedTimeZone: expectedZone,
+      suggestedUtcOffsetMinutes: sourceDate.sourceUtcOffsetMinutes,
     });
     expect(repository.confirmGarminImport).not.toHaveBeenCalled();
   });
