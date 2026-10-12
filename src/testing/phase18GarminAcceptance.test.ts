@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 
 import {
   PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION,
   PHASE18_GARMIN_BENCHMARK_METRICS,
   PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES,
   PHASE18_GARMIN_BENCHMARK_MARKER,
+  createInstalledPhase18GarminBenchmarkMeasurementPort,
+  createPhase18GarminBenchmarkBoundedSync,
   createPhase18GarminBenchmarkMarkerReport,
   createPhase18GarminAcceptanceHarness,
   parsePhase18GarminColdStartHandshake,
@@ -13,6 +16,9 @@ import {
   phase18GarminAcceptanceEnabled,
   type Phase18GarminBenchmarkMeasurementPort,
 } from "./phase18GarminAcceptance";
+import type { GarminRuntimeInfo } from "../../modules/garmin-connect/src";
+import type { ConfirmGarminImportInput } from "../domains/activities/importCommands";
+import { GARMIN_SYNC_DEFAULT_LIMITS } from "../platform/garmin/garminSyncContracts";
 import {
   GARMIN_ACCEPTANCE_HOST_CASE_IDS,
   GARMIN_ACCEPTANCE_NATIVE_PREREQUISITE_IDS,
@@ -20,12 +26,35 @@ import {
 
 const HASH = "a".repeat(64);
 
+function runtimeInfo(
+  pythonStartupKind: "cold" | "warm",
+  observedAtMonotonicMs: number,
+): GarminRuntimeInfo {
+  return {
+    schemaVersion: 1,
+    pythonVersion: "3.13",
+    clientVersion: "0.3.17",
+    clientCommit: "218e72ca5459e014435fc2d94fd18bd601fa0c14",
+    abi: "arm64-v8a",
+    capabilities: ["runtimeInfo"],
+    benchmark: {
+      processId: 123,
+      installedApkSizeBytes: 100,
+      garminModuleSizeBytes: 50,
+      memoryRssBytes: 25,
+      pythonStartupKind,
+      pythonStartupDurationMs: 4,
+      observedAtMonotonicMs,
+    },
+  };
+}
+
 const OPERATION_BY_METRIC = Object.freeze({
   apk_size_bytes: "native-runtime:apk-size",
   garmin_module_size_bytes: "native-runtime:garmin-module-size",
   python_cold_start_ms: "native-runtime:python-cold-start",
   python_warm_start_ms: "native-runtime:python-warm-start",
-  bounded_sync_ms: "native-garmin:bounded-sync",
+  bounded_sync_ms: "garmin-import:max-bounded-sqlite",
   route_render_ms: "react-native-layout:route",
   lap_render_ms: "react-native-layout:laps",
   memory_rss_bytes: "native-runtime:memory-rss",
@@ -190,6 +219,78 @@ describe("Phase 18 deterministic acceptance harness", () => {
     })).toBeNull();
   });
 
+  it("drives the source-owned maximum fixture through adapter, normalizer, coordinator, and shared commit", async () => {
+    const committed: ConfirmGarminImportInput[] = [];
+    const runBoundedSync = createPhase18GarminBenchmarkBoundedSync({
+      nonce: "1".repeat(32),
+      repository: {
+        confirmGarminImport: async (input) => {
+          committed.push(input);
+          return {
+            kind: "imported" as const,
+            activityId: input.activityId,
+            aggregateRevision: 1,
+          };
+        },
+      },
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+    });
+
+    await expect(runBoundedSync(1)).resolves.toMatchObject({
+      kind: "success",
+      counts: {
+        discoveredActivities: GARMIN_SYNC_DEFAULT_LIMITS.maxActivities,
+        newActivities: GARMIN_SYNC_DEFAULT_LIMITS.maxActivities,
+      },
+    });
+    expect(committed).toHaveLength(GARMIN_SYNC_DEFAULT_LIMITS.maxActivities);
+    expect(new Set(committed.map(({ activityId }) => activityId)).size).toBe(
+      GARMIN_SYNC_DEFAULT_LIMITS.maxActivities,
+    );
+    expect(committed[0]?.staged.envelope.normalized).toEqual(expect.objectContaining({
+      laps: expect.arrayContaining([expect.objectContaining({ ordinal: 9 })]),
+      route: expect.arrayContaining([expect.objectContaining({ latitude_e6: expect.any(Number) })]),
+    }));
+  });
+
+  it("uses injected production-operation ports and keeps the offline workout probe isolated", async () => {
+    const runBoundedSync = jest.fn<(sampleSequence: number) => Promise<void>>(
+      async () => undefined,
+    );
+    const runOfflineWorkout = jest.fn(async (samples: number) =>
+      Array.from({ length: samples }, (_, index) => index + 0.5));
+    const readRuntimeInfo = jest.fn(async () => runtimeInfo("cold", 60_000));
+    let now = 70_000;
+    const port = createInstalledPhase18GarminBenchmarkMeasurementPort({
+      coldStartHandshake: { sequence: 1, prior_samples: [] },
+      renderProbe: async () => ({ value: 1, observed_at_monotonic_ms: ++now }),
+      runBoundedSync,
+      runtime: {
+        nextAnimationFrame: async () => ++now,
+        now: () => ++now,
+        readRuntimeInfo,
+        runOfflineWorkout,
+      },
+    });
+
+    await expect(port.observe("bounded_sync_ms", 5)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation: "garmin-import:max-bounded-sqlite",
+          process_id: 123,
+        }),
+      ]),
+    );
+    expect(runBoundedSync.mock.calls.map(([sequence]) => sequence)).toEqual([1, 2, 3, 4, 5]);
+
+    const offline = await port.observe("offline_workout_commit_ms", 10);
+    expect(runOfflineWorkout).toHaveBeenCalledTimes(1);
+    expect(runOfflineWorkout).toHaveBeenCalledWith(10);
+    expect(offline).toHaveLength(10);
+    expect(offline.every(({ operation }) => operation === "sqlite:offline-workout-commit")).toBe(true);
+    expect(runBoundedSync).toHaveBeenCalledTimes(5);
+  });
+
   it("fails closed for unavailable metrics and duplicate observation timestamps", async () => {
     const report = await createPhase18GarminBenchmarkMarkerReport({
       nonce: "c".repeat(32),
@@ -338,7 +439,11 @@ describe("Phase 18 deterministic acceptance harness", () => {
     expect(installedProducer).toContain("performance.now");
     expect(installedProducer).toContain("requestAnimationFrame");
     expect(installedProducer).toContain("readGarminRuntimeInfo");
-    expect(installedProducer).toContain("forceRefreshForTest");
+    expect(installedProducer).not.toContain("forceRefreshForTest");
+    expect(producer).toContain("createGarminActivityAdapter");
+    expect(producer).toContain("normalizeGarminActivity");
+    expect(producer).toContain("createGarminSyncCoordinator");
+    expect(producer).toContain("createGarminSharedImportCommitter");
     expect(installedProducer).toContain("performPhase1Benchmark");
     expect(route).toContain("synthetic-redacted-only");
     expect(route).toContain("host-passed-native-deferred");

@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { CryptoDigestAlgorithm, digestStringAsync } from "expo-crypto";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -7,9 +8,11 @@ import {
   GARMIN_ACCEPTANCE_HOST_CASE_IDS,
   GARMIN_ACCEPTANCE_NATIVE_PREREQUISITE_IDS,
 } from "../src/testing/contracts/garminImport.contract";
+import { useWorkoutAppRuntime } from "../src/bootstrap/workoutAppRuntime";
 import {
   PHASE18_GARMIN_BENCHMARK_MARKER,
   createInstalledPhase18GarminBenchmarkMeasurementPort,
+  createPhase18GarminBenchmarkBoundedSync,
   createPhase18GarminBenchmarkMarkerReport,
   parsePhase18GarminColdStartHandshake,
   phase18GarminAcceptanceBenchmarkEnabled,
@@ -27,6 +30,7 @@ function Phase18GarminBenchmarkScreen({
   coldStartSequence?: string;
   nonce: string;
 }>) {
+  const application = useWorkoutAppRuntime().garminImport;
   const [status, setStatus] = React.useState("benchmark-pending");
   const [renderProbeState, setRenderProbeState] = React.useState<Readonly<{
     generation: number;
@@ -55,15 +59,23 @@ function Phase18GarminBenchmarkScreen({
     });
     setRenderProbeState(Object.freeze({ generation, kind }));
   }), []);
+  const runBoundedSync = React.useMemo(() => createPhase18GarminBenchmarkBoundedSync({
+    nonce,
+    repository: Object.freeze({
+      confirmGarminImport: application.confirmGarminImport,
+    }),
+    sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+  }), [application.confirmGarminImport, nonce]);
   const measurementPort = React.useMemo(
-    () => createInstalledPhase18GarminBenchmarkMeasurementPort(
+    () => createInstalledPhase18GarminBenchmarkMeasurementPort({
       renderProbe,
-      parsePhase18GarminColdStartHandshake({
+      runBoundedSync,
+      coldStartHandshake: parsePhase18GarminColdStartHandshake({
         sequence: coldStartSequence,
         samples: coldStartSamples,
       }) ?? Object.freeze({ sequence: 0, prior_samples: Object.freeze([]) }),
-    ),
-    [coldStartSamples, coldStartSequence, renderProbe],
+    }),
+    [coldStartSamples, coldStartSequence, renderProbe, runBoundedSync],
   );
 
   React.useEffect(() => {

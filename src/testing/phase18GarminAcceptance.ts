@@ -7,6 +7,24 @@ import type {
   GarminConnectNativeModule,
   GarminRuntimeInfo,
 } from "../../modules/garmin-connect/src/index.ts";
+import type {
+  GarminSha256,
+  ImportedActivityCommandRepository,
+} from "../domains/activities/importCommands.ts";
+import { canonicalJson } from "../domains/activities/importContracts.ts";
+import {
+  createGarminActivityAdapter,
+  type GarminNativeDriver,
+} from "../platform/garmin/garminActivityAdapter.ts";
+import {
+  createGarminSharedImportCommitter,
+  createGarminSyncCoordinator,
+} from "../platform/garmin/garminSyncCoordinator.ts";
+import {
+  GARMIN_SYNC_DEFAULT_LIMITS,
+  type GarminSyncResult,
+} from "../platform/garmin/garminSyncContracts.ts";
+import { normalizeGarminActivity } from "../platform/garmin/normalizeGarminActivity.ts";
 
 export const PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION =
   "VERIFY-PHASE18-GARMIN-ACCEPTANCE";
@@ -89,6 +107,13 @@ export type Phase18GarminBenchmarkRenderProbe = (
   "value" | "observed_at_monotonic_ms"
 >>;
 
+export type Phase18GarminBenchmarkRuntimePorts = Readonly<{
+  readRuntimeInfo(): Promise<GarminRuntimeInfo>;
+  runOfflineWorkout(samples: number): Promise<readonly number[]>;
+  now(): number;
+  nextAnimationFrame(): Promise<number>;
+}>;
+
 const COLD_START_OPERATION = "native-runtime:python-cold-start";
 
 function validObservationIdentity(value: unknown): value is number {
@@ -168,12 +193,160 @@ function benchmarkObservation(
   });
 }
 
+const BENCHMARK_LAPS = Object.freeze(Array.from({ length: 10 }, (_, index) =>
+  Object.freeze({
+    lapIndex: index + 1,
+    distance: 500,
+    duration: 150,
+    elapsedDuration: 156,
+    movingDuration: 148,
+    averageHR: 150 + (index % 5),
+  })));
+
+const BENCHMARK_ROUTE = Object.freeze(Array.from({ length: 64 }, (_, index) =>
+  Object.freeze({
+    lat: 1.30 + (index / 100_000),
+    lon: 103.80 + (index / 100_000),
+    elapsedDuration: index * 24,
+  })));
+
+function boundedExternalActivityId(
+  nonce: string,
+  sampleSequence: number,
+  activityIndex: number,
+): string {
+  const noncePrefix = String(Number.parseInt(nonce.slice(0, 8), 16) + 1).padStart(10, "0");
+  return `1${noncePrefix}${String(sampleSequence).padStart(2, "0")}${String(activityIndex + 1).padStart(3, "0")}`;
+}
+
+function benchmarkNativeSuccess(data: unknown) {
+  return Object.freeze({ status: "ok" as const, generation: 1, data });
+}
+
+function createBoundedBenchmarkDriver(
+  nonce: string,
+  sampleSequence: number,
+): GarminNativeDriver {
+  const activityIds = Object.freeze(Array.from(
+    { length: GARMIN_SYNC_DEFAULT_LIMITS.maxActivities },
+    (_, index) => boundedExternalActivityId(nonce, sampleSequence, index),
+  ));
+  const activity = (externalActivityId: string) => Object.freeze({
+    activityId: Number(externalActivityId),
+    activityTypeDTO: Object.freeze({ typeKey: "running" }),
+    summaryDTO: Object.freeze({
+      startTimeGMT: "2026-01-01T00:00:00.000Z",
+      startTimeLocal: "2026-01-01T08:00:00",
+      timeZoneId: "Asia/Singapore",
+      distance: 5_000,
+      duration: 1_500,
+      elapsedDuration: 1_560,
+      movingDuration: 1_475,
+      averageHR: 152,
+    }),
+  });
+  return Object.freeze({
+    connectionState: async () => benchmarkNativeSuccess(Object.freeze({
+      kind: "connected",
+      account_namespace: `garmin:${nonce}`,
+    })),
+    restoreSession: async () => benchmarkNativeSuccess(Object.freeze({
+      kind: "connected",
+      account_namespace: `garmin:${nonce}`,
+    })),
+    login: async () => benchmarkNativeSuccess(Object.freeze({ kind: "disconnected" })),
+    resumeMfa: async () => benchmarkNativeSuccess(Object.freeze({ kind: "disconnected" })),
+    logout: async () => benchmarkNativeSuccess(Object.freeze({ kind: "disconnected" })),
+    getActivities: async ({ start, limit }) => {
+      const selected = activityIds.slice(start, start + limit);
+      const nextStart = start + selected.length;
+      return benchmarkNativeSuccess(Object.freeze({
+        items: Object.freeze(selected.map((externalActivityId) => Object.freeze({
+          activityId: Number(externalActivityId),
+          activityType: Object.freeze({ typeKey: "running" }),
+        }))),
+        ...(nextStart >= activityIds.length ? {} : { nextStart }),
+      }));
+    },
+    getActivity: async ({ externalActivityId }) =>
+      benchmarkNativeSuccess(activity(externalActivityId)),
+    getActivitySplits: async () => benchmarkNativeSuccess(Object.freeze({
+      lapDTOs: BENCHMARK_LAPS,
+    })),
+    getActivityDetails: async () => benchmarkNativeSuccess(Object.freeze({
+      metricDescriptors: Object.freeze([]),
+      activityDetailMetrics: Object.freeze([]),
+      geoPolylineDTO: Object.freeze({ polyline: BENCHMARK_ROUTE }),
+    })),
+  });
+}
+
+export function createPhase18GarminBenchmarkBoundedSync(input: Readonly<{
+  nonce: string;
+  repository: ImportedActivityCommandRepository;
+  sha256: GarminSha256;
+}>): (sampleSequence: number) => Promise<GarminSyncResult> {
+  if (!BENCHMARK_NONCE.test(input.nonce)) {
+    throw new Error("phase18_garmin_benchmark_marker_invalid");
+  }
+  return async (sampleSequence) => {
+    if (!Number.isSafeInteger(sampleSequence) || sampleSequence < 1 || sampleSequence > 99) {
+      throw new Error("phase18_bounded_sync_sequence_invalid");
+    }
+    const accountNamespace = `garmin:${input.nonce}`;
+    const source = createGarminActivityAdapter({
+      driver: createBoundedBenchmarkDriver(input.nonce, sampleSequence),
+      mapper: {
+        fromActivity: (activity) => normalizeGarminActivity({
+          account_namespace: accountNamespace,
+          ...activity,
+        }, input.sha256),
+      },
+    });
+    const importActivity = createGarminSharedImportCommitter({
+      repository: input.repository,
+      sha256: input.sha256,
+      requestFor: async (prepared) => {
+        const identitySha256 = await input.sha256(canonicalJson({
+          source_kind: prepared.envelope.source_kind,
+          account_namespace: prepared.envelope.account_namespace,
+          external_activity_id: prepared.envelope.external_activity_id,
+        }));
+        const requestSha256 = await input.sha256(canonicalJson({
+          identity_sha256: identitySha256,
+          normalized_json_sha256: prepared.envelope.normalized_json_sha256,
+          sample_sequence: sampleSequence,
+        }));
+        return Object.freeze({
+          requestId: `garmin-benchmark:${requestSha256.slice(0, 48)}`,
+          requestSha256,
+          activityId: `activity-${identitySha256.slice(0, 48)}`,
+          expectedAggregateRevision: 0,
+          confirmedLocalDate: "2026-01-01",
+        });
+      },
+    });
+    const result = await createGarminSyncCoordinator({
+      source,
+      importActivity,
+      limits: GARMIN_SYNC_DEFAULT_LIMITS,
+    }).syncNow();
+    if (result.kind !== "success"
+      || result.counts.discoveredActivities !== GARMIN_SYNC_DEFAULT_LIMITS.maxActivities
+      || result.counts.newActivities !== GARMIN_SYNC_DEFAULT_LIMITS.maxActivities) {
+      throw new Error("phase18_bounded_sync_incomplete");
+    }
+    return result;
+  };
+}
+
 export function createInstalledPhase18GarminBenchmarkMeasurementPort(
-  renderProbe: Phase18GarminBenchmarkRenderProbe,
-  coldStartHandshake: Phase18GarminColdStartHandshake = Object.freeze({
-    sequence: 1,
-    prior_samples: Object.freeze([]),
-  }),
+  input: Readonly<{
+    renderProbe: Phase18GarminBenchmarkRenderProbe;
+    runBoundedSync(sampleSequence: number): Promise<unknown>;
+    coldStartHandshake?: Phase18GarminColdStartHandshake;
+    runtime?: Phase18GarminBenchmarkRuntimePorts;
+  }>,
 ): Phase18GarminBenchmarkMeasurementPort {
   let nativeModulePromise: Promise<GarminConnectNativeModule> | undefined;
   const nativeModule = () => {
@@ -181,13 +354,31 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
       .then(({ getGarminConnectNativeModule }) => getGarminConnectNativeModule());
     return nativeModulePromise;
   };
+  const defaultRuntime: Phase18GarminBenchmarkRuntimePorts = Object.freeze({
+    async readRuntimeInfo() {
+      const [{ readGarminRuntimeInfo }, module] = await Promise.all([
+        import("../../modules/garmin-connect/src/index.ts"),
+        nativeModule(),
+      ]);
+      return readGarminRuntimeInfo(module);
+    },
+    async runOfflineWorkout(samples) {
+      const { performPhase1Benchmark } = await import("../bootstrap/phase1Benchmark.ts");
+      return (await performPhase1Benchmark(samples)).durationsMs;
+    },
+    now: () => performance.now(),
+    nextAnimationFrame: () => new Promise<number>((resolve) => {
+      requestAnimationFrame(resolve);
+    }),
+  });
+  const runtime = input.runtime ?? defaultRuntime;
+  const coldStartHandshake = input.coldStartHandshake ?? Object.freeze({
+    sequence: 1,
+    prior_samples: Object.freeze([]),
+  });
   const runtimeSamples: GarminRuntimeInfo[] = [];
   const readRuntime = async () => {
-    const [{ readGarminRuntimeInfo }, module] = await Promise.all([
-      import("../../modules/garmin-connect/src/index.ts"),
-      nativeModule(),
-    ]);
-    const sample = await readGarminRuntimeInfo(module);
+    const sample = await runtime.readRuntimeInfo();
     runtimeSamples.push(sample);
     return sample;
   };
@@ -224,14 +415,14 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
   const observeRepeated = async (
     minimumSamples: number,
     operationName: string,
-    performOperation: () => Promise<void>,
+    performOperation: (sampleSequence: number) => Promise<void>,
   ) => {
     const processId = (await firstRuntime()).benchmark.processId;
     const observations: Phase18GarminBenchmarkObservation[] = [];
     for (let index = 0; index < minimumSamples; index += 1) {
-      const startedAt = performance.now();
-      await performOperation();
-      const observedAt = performance.now();
+      const startedAt = runtime.now();
+      await performOperation(index + 1);
+      const observedAt = runtime.now();
       observations.push(benchmarkObservation(
         observedAt - startedAt,
         observedAt,
@@ -296,16 +487,14 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
         case "bounded_sync_ms":
           return observeRepeated(
             minimumSamples,
-            "native-garmin:bounded-sync",
-            async () => {
-              await (await nativeModule()).forceRefreshForTest();
-            },
+            "garmin-import:max-bounded-sqlite",
+            async (sampleSequence) => input.runBoundedSync(sampleSequence).then(() => undefined),
           );
         case "route_render_ms": {
           const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           for (let index = 0; index < minimumSamples; index += 1) {
-            const rendered = await renderProbe("route");
+            const rendered = await input.renderProbe("route");
             observations.push(benchmarkObservation(
               rendered.value,
               rendered.observed_at_monotonic_ms,
@@ -320,7 +509,7 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
           const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           for (let index = 0; index < minimumSamples; index += 1) {
-            const rendered = await renderProbe("laps");
+            const rendered = await input.renderProbe("laps");
             observations.push(benchmarkObservation(
               rendered.value,
               rendered.observed_at_monotonic_ms,
@@ -347,11 +536,11 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
           const observations: Phase18GarminBenchmarkObservation[] = [];
           let checksum = 0;
           for (let index = 0; index < minimumSamples; index += 1) {
-            const startedAt = performance.now();
+            const startedAt = runtime.now();
             for (let step = 0; step < 4_096; step += 1) {
               checksum = Math.imul(checksum ^ step, 2_654_435_761);
             }
-            const observedAt = performance.now();
+            const observedAt = runtime.now();
             observations.push(benchmarkObservation(
               observedAt - startedAt,
               observedAt,
@@ -367,10 +556,8 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
           const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           for (let index = 0; index < minimumSamples; index += 1) {
-            const startedAt = performance.now();
-            const observedAt = await new Promise<number>((resolve) => {
-              requestAnimationFrame(resolve);
-            });
+            const startedAt = runtime.now();
+            const observedAt = await runtime.nextAnimationFrame();
             observations.push(benchmarkObservation(
               observedAt - startedAt,
               observedAt,
@@ -383,21 +570,20 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
         }
         case "offline_workout_commit_ms": {
           const processId = (await firstRuntime()).benchmark.processId;
-          const observations: Phase18GarminBenchmarkObservation[] = [];
-          const { performPhase1Benchmark } = await import("../bootstrap/phase1Benchmark.ts");
-          for (let index = 0; index < minimumSamples; index += 1) {
-            const result = await performPhase1Benchmark(1);
-            const duration = result.durationsMs[0];
-            if (duration === undefined) throw new Error("phase18_offline_probe_invalid");
-            observations.push(benchmarkObservation(
+          const durations = await runtime.runOfflineWorkout(minimumSamples);
+          if (durations.length !== minimumSamples) throw new Error("phase18_offline_probe_invalid");
+          return Object.freeze(durations.map((duration, index) => {
+            if (!Number.isFinite(duration) || duration < 0) {
+              throw new Error("phase18_offline_probe_invalid");
+            }
+            return benchmarkObservation(
               duration,
-              performance.now(),
+              runtime.now(),
               "sqlite:offline-workout-commit",
               processId,
               index + 1,
-            ));
-          }
-          return observations;
+            );
+          }));
         }
       }
     },
