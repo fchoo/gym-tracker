@@ -520,6 +520,48 @@ test("privacy scan rejects credentials, identity, provider data, URLs, filenames
   assert.equal(assertPhase18GarminAdversarialPrivacySafe(evidence()), true);
 });
 
+test("privacy allowlist admits only exact source-owned evidence forms", () => {
+  const nativeReportPath = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`;
+  assert.equal(assertPhase18GarminAdversarialPrivacySafe({
+    evidence_sha256: HASH,
+    history_digest_before: HASH,
+    history_digest_after: HASH,
+    source_pid: 4242,
+    scanned_artifact_count: 4,
+    duration_ms: 1,
+    generation_before: 7,
+    generation_after: 8,
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    code: "data_access_denied",
+    provenance: "native-exact-artifact",
+    producer_context: { kind: "installed-route-log" },
+    native_report: { path: nativeReportPath },
+  }), true);
+
+  for (const forbidden of [
+    { note: "installed-route-log" },
+    { toString: "installed-route-log" },
+    { producer_context: { kind: "installed-route-log-v2" } },
+    { native_report: { path: `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/raw-report.json` } },
+    { accountNamespace: HASH },
+    { external_activity_id: HASH },
+    { heartRate: 151 },
+    { device_serial: HASH },
+    { rawJson: {} },
+    { route: [] },
+    { location: "private" },
+    { secret: "private" },
+    { url: "https://example.invalid" },
+    { filename: "private.fit" },
+    { sql: "SELECT private" },
+  ]) {
+    assert.throws(
+      () => assertPhase18GarminAdversarialPrivacySafe(forbidden),
+      /phase18_garmin_adversarial_evidence_privacy_invalid/u,
+    );
+  }
+});
+
 test("Phase 20 runner rejects an unowned collector payload before writing evidence", () => {
   const exact = evidence();
   const writes = [];

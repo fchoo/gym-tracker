@@ -38,6 +38,13 @@ const NONCE = /^[a-f0-9]{32}$/u;
 const SAFE_TEXT = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
 const NATIVE_REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
 const TEST_FIXTURE_LABEL = "phase18-garmin-adversarial-test-collector/v1";
+const PRIVACY_SAFE_STRINGS_BY_PATH = new Map([
+  ["native_report.path", new Set([NATIVE_REPORT])],
+  ["producer_context.kind", new Set([
+    "installed-route-log",
+    "test-collector-fixture",
+  ])],
+]);
 const CURRENT_IDENTITY_KEYS = Object.freeze([
   "currentHead",
   "currentPythonLockSha256",
@@ -131,7 +138,9 @@ export function assertPhase18GarminAdversarialPrivacySafe(value, context = "") {
   return assertPhase18PrivacySafe(value, {
     prefix: "phase18_garmin_adversarial_evidence_privacy",
     context,
-    allowString: (entry, entryContext) => entryContext === "native_report.path" && entry === NATIVE_REPORT,
+    allowString: (entry, entryContext) => (
+      PRIVACY_SAFE_STRINGS_BY_PATH.get(entryContext)?.has(entry) ?? false
+    ),
   });
 }
 
