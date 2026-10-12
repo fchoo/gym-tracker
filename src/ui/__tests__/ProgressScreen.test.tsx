@@ -420,4 +420,82 @@ describe("ProgressScreen", () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith(entry, "bodyweight-delete:request"));
     expect(screen.getByText("Bodyweight entry deleted.")).toBeOnTheScreen();
   });
+
+  it.each([
+    [360, "compact layout"],
+    [390, "compact layout"],
+    [600, "medium layout"],
+    [840, "expanded layout"],
+  ] as const)("preserves one scroll owner and 48dp controls at %ipx", async (width, layoutLabel) => {
+    await renderProgress(undefined, { width });
+
+    expect(screen.getByLabelText(layoutLabel)).toBeOnTheScreen();
+    expect(screen.getAllByTestId("progress-screen-scroll")).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "All" })).toHaveStyle({ minHeight: 48 });
+    expect(screen.getByRole("button", { name: "4 weeks" })).toHaveStyle({ minHeight: 48 });
+  });
+
+  it("safely dismisses an open target editor before switching roots", async () => {
+    const saveRunningTarget = jest.fn();
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: dashboardFor(input.sport),
+      runningTargetSources: input.sport === "Running" ? [runningTargetSource] : [],
+    }));
+    await renderProgress(loadProgress as never, {
+      runningTargetRuntime: {
+        createId: () => "running-target-save:request",
+        loadPlan: async () => runningTargetSource,
+        saveRunningTarget,
+      },
+    });
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Set target for 2.4 km" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "All", includeHiddenElements: true }));
+
+    expect(screen.queryByRole("header", { name: "Running target" })).not.toBeOnTheScreen();
+    expect(saveRunningTarget).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: "All" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
+  });
+
+  it("restores focus to the exact retained Strength row after a deep-route return", async () => {
+    const props = {
+      loadProgress: jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+        sport: input.sport,
+        period: input.period as "4_weeks" | "12_weeks" | "all_time",
+        freshness: "current" as const,
+        dashboard: input.sport === "Strength" ? {
+          sport: "Strength" as const,
+          state: "ready" as const,
+          facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+        } : dashboardFor(input.sport),
+      })) as never,
+      nowLocalDate: "2026-08-24",
+      onOpenExercise: jest.fn(),
+      onOpenSession: jest.fn(),
+      returnFocusToken: "progress:Strength:4_weeks:exercise:bench-press",
+    };
+    const rendered = await render(
+      <AppearanceProvider reduceMotion store={createMemoryAppearanceStore("Dark")}>
+        <ProgressScreen {...props} returnFocusVersion={0} width={390} />
+      </AppearanceProvider>,
+    );
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    const trigger = await screen.findByRole("button", { name: "Open exercise history for Bench Press" });
+
+    await rendered.rerender(
+      <AppearanceProvider reduceMotion store={createMemoryAppearanceStore("Dark")}>
+        <ProgressScreen {...props} returnFocusVersion={1} width={390} />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(trigger).toHaveProp("hasTVPreferredFocus", true));
+    expect(screen.getByText("Bench Press")).toBeOnTheScreen();
+  });
 });
