@@ -108,6 +108,7 @@ export function RunningTargetSheet({
   const { colors } = useAppTheme();
   const [selectedPlanId, setSelectedPlanId] = useState(() => sources[0]?.id ?? "");
   const draftsRef = useRef(new Map<string, Draft>());
+  const requestIdsRef = useRef(new Map<string, string>());
   const [renderVersion, setRenderVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorState>(null);
@@ -157,9 +158,11 @@ export function RunningTargetSheet({
     setBusy(true);
     setError(null);
     try {
+      const requestId = requestIdsRef.current.get(source.id) ?? runtime.createId("running-target-save");
+      requestIdsRef.current.set(source.id, requestId);
       const saved = await runtime.saveRunningTarget({
         planId: source.id,
-        requestId: runtime.createId("running-target-save"),
+        requestId,
         expectedSourceRevision: draft.expectedSourceRevision,
         goalDistanceMeters: source.goal.goalDistanceMeters,
         targetDurationMs: parsedDuration,
@@ -167,6 +170,7 @@ export function RunningTargetSheet({
         trainingDays: [...draft.trainingDays],
       });
       onSaved?.(saved.plan);
+      requestIdsRef.current.delete(source.id);
       onClose();
     } catch (cause) {
       setError(cause instanceof Error && cause.message.includes("revision_conflict") ? "stale" : "save");

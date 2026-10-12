@@ -120,6 +120,31 @@ describe("RunningTargetSheet", () => {
     expect(view.getByDisplayValue("10:45")).toBeTruthy();
   });
 
+  it("keeps the current target and a stable retry receipt through a storage failure", async () => {
+    const saveRunningTarget = jest.fn(async (_input: Record<string, unknown>): Promise<unknown> => undefined)
+      .mockRejectedValueOnce(new Error("running_target_storage_failed"))
+      .mockResolvedValueOnce({ outcome: "committed", plan: { ...source({ targetDurationMs: 645_000 }), revision: 5 } });
+    const onSaved = jest.fn();
+    const view = await render(
+      <AppearanceProvider reduceMotion><RunningTargetSheet
+        onClose={jest.fn()}
+        onSaved={onSaved}
+        runtime={{ createId: () => "retry-request", saveRunningTarget } as never}
+        sources={[source()]}
+        todayLocalDate="2026-10-12"
+        visible
+      /></AppearanceProvider>,
+    );
+    await fireEvent.changeText(view.getByLabelText("Target time"), "10:45");
+    await fireEvent.press(view.getByText("Save target"));
+    await waitFor(() => expect(view.getByText("Target was not saved")).toBeTruthy());
+    expect(view.getByDisplayValue("10:45")).toBeTruthy();
+    expect(onSaved).not.toHaveBeenCalled();
+    await fireEvent.press(view.getByText("Retry saving target"));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(saveRunningTarget.mock.calls.map((args) => args[0]?.["requestId"])).toEqual(["retry-request", "retry-request"]);
+  });
+
   it("discards on its explicit action without a mutation", async () => {
     const saveRunningTarget = jest.fn();
     const onClose = jest.fn();

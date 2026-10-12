@@ -57,6 +57,17 @@ describe("RunningPlanRuntimePort", () => {
     }));
   });
 
+  it("does not acknowledge a target mutation when its authoritative readback is absent", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2400, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(null);
+    mockSaveRunningTarget.mockResolvedValue({ outcome: "committed", planId: "running", sourceRevision: 5, targetRevision: 3 });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+    await expect(runtime.saveRunningTarget({ planId: "running", requestId: "target-readback", expectedSourceRevision: 4, goalDistanceMeters: 2400, targetDurationMs: 660_000, trainingDays: ["Monday"] })).rejects.toThrow("running_target_readback_missing");
+  });
+
   it("allocates identities only inside an authoritative session commit and returns committed readback", async () => {
     const plan = {
       id: "running", version: 1 as const, name: "Running", revision: 1, active: false as const, createdAtMs: 1,
