@@ -196,4 +196,87 @@ describe("training calendar repository", () => {
     });
     expect(readSnapshot).toHaveBeenCalledTimes(1);
   });
+
+  it("fails the whole projection when an effective history snapshot is malformed", async () => {
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("owned_plan_schedule_opportunities")) return [{
+        id: "bad-overlay", schedule_id: "schedule", schedule_version_id: "version", plan_id: "plan",
+        plan_name: "Plan", plan_day_id: "day", plan_day_name: "Day", schedule_lifecycle: "active",
+        local_date: "2026-11-01", timezone: "UTC", revision: 1, state: "consumed", outcome: "completed",
+        session_id: "session", session_status: "completed", snapshot_json: "not-json",
+        completed_working_sets: 1, planned_working_sets: 1, planned_target_sets: 1,
+      }];
+      return [];
+    });
+
+    await expect(createTrainingCalendarRepository({ queryAll } as unknown as SqliteKernel).loadRange({
+      startLocalDate: "2026-11-01",
+      endLocalDateExclusive: "2026-11-02",
+    })).rejects.toThrow("training_calendar_effective_snapshot_invalid");
+  });
+
+  it("fails closed across malformed source rows while covering factual fallbacks", async () => {
+    const snapshot = (sessionId: string, planName: string | null, dayName: string | null) => JSON.stringify({
+      version: 1,
+      session: {
+        id: sessionId, source: "scheduled_day", status: "completed", planId: "plan", planDayId: "day",
+        planName, dayName, localDate: "2026-11-01", timezone: "UTC", startedAtMs: 1, completedAtMs: 2, ownerNote: null,
+      },
+      exercises: [],
+    });
+    const baseStrength = {
+      schedule_id: "schedule", schedule_version_id: "version", plan_id: "plan", plan_name: "Plan",
+      plan_day_id: "day", plan_day_name: "Day", schedule_lifecycle: "active", local_date: "2026-11-01",
+      timezone: "UTC", revision: 1, state: "pending", outcome: null, session_id: null, session_status: null,
+      snapshot_json: null, completed_working_sets: 0, planned_working_sets: 1, planned_target_sets: 1,
+    } as const;
+    const baseRunning = {
+      schedule_id: "running-schedule", schedule_version_id: "running-version", plan_id: "running-plan",
+      plan_name: "Running", slot_id: "slot", session_revision_id: "revision", session_kind: "recovery",
+      local_date: "2026-11-01", timezone: "UTC", state: "planned",
+    } as const;
+    const imported = (id: string, overrides: Readonly<Record<string, unknown>>) => ({
+      id, source_kind: "garmin_connect_account", account_namespace: "owner", external_activity_id: `external-${id}`,
+      started_at_ms: 1, opportunity_id: null,
+      aggregate_json: JSON.stringify({ confirmed_local_date: "2026-11-01", normalized: { sport: "running", subtype: "outdoor", distance_meters: 999 } }),
+      ...overrides,
+    });
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("owned_plan_schedule_opportunities")) return [
+        { ...baseStrength, id: "blank-plan", plan_name: " " },
+        { ...baseStrength, id: "inactive", schedule_lifecycle: "inactive" },
+        { ...baseStrength, id: "raw-single", plan_day_name: null, state: "consumed", outcome: "completed", session_id: "raw-session", session_status: "completed", completed_working_sets: 1 },
+        { ...baseStrength, id: "mismatch", state: "consumed", outcome: "completed", session_id: "expected-session", session_status: "completed", snapshot_json: snapshot("other-session", "Corrected", "Corrected day") },
+        { ...baseStrength, id: "overlay-plan", state: "consumed", outcome: "completed", session_id: "overlay-plan", session_status: "completed", snapshot_json: snapshot("overlay-plan", "Corrected plan", null) },
+        { ...baseStrength, id: "overlay-source", state: "consumed", outcome: "completed", session_id: "overlay-source", session_status: "completed", snapshot_json: snapshot("overlay-source", null, null) },
+        { ...baseStrength, id: "planned-fallback", plan_day_name: null },
+      ];
+      if (sql.includes("running_opportunities")) return [
+        { ...baseRunning, id: "fulfilled", state: "fulfilled" },
+        { ...baseRunning, id: "blank-running-plan", plan_name: " " },
+        { ...baseRunning, id: "blank-running-revision", session_revision_id: " " },
+        { ...baseRunning, id: "blank-running-kind", session_kind: "__" },
+      ];
+      return [
+        imported("small-distance", {}),
+        imported("blank-subtype", { aggregate_json: JSON.stringify({ confirmed_local_date: "2026-11-01", normalized: { sport: "running", subtype: "__", distance_meters: 5_000 } }) }),
+        imported("bad-source-kind", { source_kind: "manual" }),
+        imported("blank-account", { account_namespace: " " }),
+        imported("blank-external", { external_activity_id: " " }),
+      ];
+    });
+
+    const result = await createTrainingCalendarRepository({ queryAll } as unknown as SqliteKernel).loadRange({
+      startLocalDate: "2026-11-01",
+      endLocalDateExclusive: "2026-11-02",
+    });
+
+    expect(result.events.map(({ id }) => id)).toEqual([
+      "raw-single", "overlay-plan", "overlay-source", "planned-fallback", "small-distance",
+    ]);
+    expect(result.events.map(({ title }) => title)).toEqual([
+      "Plan", "Corrected plan", "Plan", "Plan", "Outdoor run",
+    ]);
+    expect(result.events.at(-1)?.displaySummary).toBe("999 m");
+  });
 });
