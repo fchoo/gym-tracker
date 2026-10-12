@@ -1135,8 +1135,8 @@ test("default identity helpers also cover successful installed evidence collecti
   writeFileSync(installedApk, installedBytes);
   try {
     withWorkspaceFiles({
-      [benchmarkApk]: "benchmark-apk",
-      [acceptanceApk]: "acceptance-apk",
+      [benchmarkApk]: installedBytes,
+      [acceptanceApk]: installedBytes,
       [adversarialApk]: "adversarial-apk",
       [proofApk]: "proof-apk",
       [MAESTRO_SOURCE]: "maestro-source\n",
@@ -1555,6 +1555,7 @@ test("benchmark helper rejects malformed envelopes, budget drift, and malformed 
       status: "passed",
       identity: {
         ...manifest,
+        installed_apk_sha256: HASH,
         fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
         workout_baseline_sha256: createHash("sha256").update(baselineBytes).digest("hex"),
       },
@@ -1618,7 +1619,7 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]
   exit 0
 fi
 if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  printf 'installed-apk'
+  printf 'apk'
   exit 0
 fi
 exit 0
@@ -1644,7 +1645,7 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]
   exit 0
 fi
 if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  printf 'installed-apk'
+  printf 'apk'
   exit 0
 fi
 exit 0
