@@ -40,6 +40,7 @@ function identity(overrides = {}) {
     source_tree_sha256: HASH,
     python_lock_sha256: HASH,
     apk_sha256: HASH,
+    installed_apk_sha256: HASH,
     signature_sha256: HASH,
     device_identity_sha256: HASH,
     package: "com.fchoo.gymtracker.devtest",
@@ -238,6 +239,21 @@ test("benchmark rejects stale identities, missing/non-finite samples, regression
       /phase18_garmin_benchmark_/u,
     );
   }
+});
+
+test("benchmark schema binds installed APK bytes and rejects retained/installed drift", { concurrency: false }, () => {
+  const matching = evidence();
+  assert.equal(matching.identity.installed_apk_sha256, matching.identity.apk_sha256);
+  assert.doesNotThrow(
+    () => validatePhase18GarminBenchmarkEvidence(matching, manifest(), BASELINE, BASELINE_BYTES),
+  );
+
+  const staleInstalled = evidence();
+  staleInstalled.identity.installed_apk_sha256 = "c".repeat(64);
+  assert.throws(
+    () => validatePhase18GarminBenchmarkEvidence(staleInstalled, manifest(), BASELINE, BASELINE_BYTES),
+    /phase18_garmin_benchmark_identity_invalid/u,
+  );
 });
 
 test("benchmark execution requires exact paths and explicit Phase 20 authority", { concurrency: false }, () => {
@@ -460,6 +476,7 @@ printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
         source_tree_sha256: sourceTreeSha256(process.cwd()),
         python_lock_sha256: currentPythonLockSha256,
         apk_sha256: retainedApkSha256,
+        installed_apk_sha256: retainedApkSha256,
         signature_sha256: retainedSignatureSha256,
         device_identity_sha256: deviceIdentitySha256,
         package: "com.fchoo.gymtracker.devtest",

@@ -14,6 +14,7 @@ import {
   collectInstalledMeasurements,
   executePhase18GarminBenchmark,
   parsePhase18GarminBenchmarkArgs,
+  resolvePhase18GarminBenchmarkCurrentIdentity,
   validatePhase18GarminBenchmarkEvidence,
 } from "./benchmark-evidence-runner.mjs";
 
@@ -126,6 +127,7 @@ function validEvidence(baselineBytes, metricValue = 1) {
     skipped: 0,
     identity: {
       ...manifest(),
+      installed_apk_sha256: HASH,
       fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
       workout_baseline_sha256: baselineHash,
     },
@@ -286,6 +288,7 @@ test("benchmark execution covers default manifest, baseline, and evidence file I
         }),
         resolveCurrentIdentity: () => ({
           ...manifest(),
+          installed_apk_sha256: HASH,
           fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
           workout_baseline_sha256: baselineHash,
         }),
@@ -369,7 +372,7 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]
   exit 0
 fi
 if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  printf 'installed-apk'
+  printf 'apk'
   exit 0
 fi
 exit 0
@@ -454,6 +457,42 @@ exit 0
         }),
       })),
       /phase18_garmin_benchmark_device_identity_invalid/u,
+    );
+  });
+});
+
+test("benchmark current identity rejects installed APK bytes that differ from the retained APK", () => {
+  const benchmarkApk = "artifacts/native/phase18-garmin-acceptance/gym-tracker-phase18-garmin-acceptance-devtest.apk";
+  withTempCwd(() => {
+    initializeTempRepo();
+    mkdirSync(path.dirname(benchmarkApk), { recursive: true });
+    writeFileSync(benchmarkApk, "retained-apk");
+
+    assert.throws(
+      () => withFakeSdk({
+        adbScript: `#!/bin/sh
+if [ "$1" = "devices" ]; then printf 'List of devices attached\nSERIAL\tdevice\n'; exit 0; fi
+if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "getprop" ]; then
+  case "$5" in
+    ro.product.cpu.abi) printf 'arm64-v8a\n' ;;
+    ro.build.version.sdk) printf '35\n' ;;
+    ro.product.model) printf 'Pixel 9\n' ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]; then
+  printf 'package:/data/app/com.fchoo.gymtracker.devtest/base.apk\n'
+  exit 0
+fi
+if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
+  printf 'different-installed-apk'
+  exit 0
+fi
+exit 1
+`,
+        apksignerScript: "#!/bin/sh\nprintf 'certificate SHA-256 digest: aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa\\n'\n",
+      }, () => resolvePhase18GarminBenchmarkCurrentIdentity()),
+      /phase18_garmin_benchmark_installed_apk_mismatch/u,
     );
   });
 });

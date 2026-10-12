@@ -78,6 +78,7 @@ function validateIdentity(identity, manifest) {
       "base_head",
       "device_identity_sha256",
       "fixture_manifest_sha256",
+      "installed_apk_sha256",
       "package",
       "profile",
       "python_lock_sha256",
@@ -89,6 +90,7 @@ function validateIdentity(identity, manifest) {
     !regexMatch(HASH, identity.source_tree_sha256),
     !regexMatch(HASH, identity.python_lock_sha256),
     !regexMatch(HASH, identity.apk_sha256),
+    !regexMatch(HASH, identity.installed_apk_sha256),
     !regexMatch(HASH, identity.signature_sha256),
     !regexMatch(HASH, identity.device_identity_sha256),
     !regexMatch(HASH, identity.workout_baseline_sha256),
@@ -100,6 +102,8 @@ function validateIdentity(identity, manifest) {
     identity.source_tree_sha256 !== manifest?.source_tree_sha256,
     identity.python_lock_sha256 !== manifest?.python_lock_sha256,
     identity.apk_sha256 !== manifest?.apk_sha256,
+    identity.installed_apk_sha256 !== identity.apk_sha256,
+    identity.installed_apk_sha256 !== manifest?.apk_sha256,
     identity.signature_sha256 !== manifest?.signature_sha256,
     identity.device_identity_sha256 !== manifest?.device_identity_sha256,
     identity.package !== manifest?.package,
@@ -273,11 +277,15 @@ export function resolvePhase18GarminBenchmarkCurrentIdentity() {
   const installedBytes = command(adb, ["-s", serial, "exec-out", "cat", installedPath]);
   const apkPath = path.join(process.cwd(), "artifacts/native/phase18-garmin-acceptance/gym-tracker-phase18-garmin-acceptance-devtest.apk");
   const retainedBytes = readFileSync(apkPath);
+  const apkSha256 = createHash("sha256").update(retainedBytes).digest("hex");
+  const installedApkSha256 = createHash("sha256").update(installedBytes).digest("hex");
+  if (installedApkSha256 !== apkSha256) fail("installed_apk_mismatch");
   return Object.freeze({
     base_head: commandText("git", ["rev-parse", "HEAD"]),
     source_tree_sha256: sourceTreeSha256(process.cwd()),
     python_lock_sha256: createHash("sha256").update(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")).digest("hex"),
-    apk_sha256: createHash("sha256").update(retainedBytes).digest("hex"),
+    apk_sha256: apkSha256,
+    installed_apk_sha256: installedApkSha256,
     signature_sha256: retainedSignatureSha256(apkPath),
     device_identity_sha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
     package: PACKAGE,
