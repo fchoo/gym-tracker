@@ -20,6 +20,7 @@ import { addLocalMonthsClamped, startOfLocalMonth, type LocalDate } from "../../
 import {
   clampMonthDrag,
   type CalendarMotionCommand,
+  type CalendarTransitionPhase,
   type CalendarTransitionState,
 } from "./calendarTransitionController";
 
@@ -34,6 +35,10 @@ export type CalendarWeekGeometry = Readonly<{ y: number; height: number; generat
 /** The three panels are always separated by one measured viewport width. */
 export function calendarPanelTranslate(offset: PanelOffset, dx: number, viewportWidth: number): number {
   return offset * viewportWidth + clampMonthDrag(dx, viewportWidth);
+}
+
+export function calendarMonthPanEnabled(phase: CalendarTransitionPhase): boolean {
+  return phase === "idle" || phase === "dragging";
 }
 
 function Panel({
@@ -119,6 +124,7 @@ export function CalendarMonthViewport({
   const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
+  const panEnabled = useSharedValue(calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
   const lastWidth = useRef(0);
   const lastHeight = useRef(0);
@@ -190,7 +196,12 @@ export function CalendarMonthViewport({
     previewPanel.value = 0;
   }, [pointerX, previewPanel, transition.epoch, transition.phase]);
 
+  useEffect(() => {
+    panEnabled.value = calendarMonthPanEnabled(transition.phase);
+  }, [panEnabled, transition.phase]);
+
   const pan = Gesture.Pan()
+    .enabled(calendarMonthPanEnabled(transition.phase))
     .manualActivation(true)
     .onTouchesDown((event) => {
       const touch = event.allTouches[0];
@@ -199,6 +210,10 @@ export function CalendarMonthViewport({
       touchStartY.value = touch.absoluteY;
     })
     .onTouchesMove((event, manager) => {
+      if (!panEnabled.value) {
+        manager.fail();
+        return;
+      }
       const touch = event.allTouches[0];
       if (touch === undefined) return;
       const dx = touch.absoluteX - touchStartX.value;
@@ -208,6 +223,7 @@ export function CalendarMonthViewport({
       else manager.fail();
     })
     .onBegin(() => {
+      if (!panEnabled.value) return;
       released.value = false;
       diagnosticThresholdMask.value = 0;
       completionEpoch.value += 1;

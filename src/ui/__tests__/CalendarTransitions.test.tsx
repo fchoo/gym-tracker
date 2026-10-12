@@ -1,4 +1,8 @@
-import { describe, expect, it } from "@jest/globals";
+import { render } from "@testing-library/react-native";
+import { describe, expect, it, jest } from "@jest/globals";
+import React from "react";
+import { View } from "react-native";
+import { Gesture } from "react-native-gesture-handler";
 
 import {
   CalendarTransitionError,
@@ -7,7 +11,11 @@ import {
   crossesMonthBoundary,
   transitionCalendar,
 } from "../calendar/calendarTransitionController";
-import { calendarPanelTranslate } from "../calendar/CalendarMonthViewport";
+import {
+  calendarMonthPanEnabled,
+  calendarPanelTranslate,
+  CalendarMonthViewport,
+} from "../calendar/CalendarMonthViewport";
 
 const initial = (reducedMotion = false) => createCalendarTransitionState({
   currentMonthId: "2026-11",
@@ -16,6 +24,42 @@ const initial = (reducedMotion = false) => createCalendarTransitionState({
 });
 
 describe("Calendar semantic transitions", () => {
+  it("keeps a second pan from invalidating an active settle", () => {
+    expect(calendarMonthPanEnabled("idle")).toBe(true);
+    expect(calendarMonthPanEnabled("dragging")).toBe(true);
+    expect(calendarMonthPanEnabled("settling")).toBe(false);
+    expect(calendarMonthPanEnabled("adjacent-collapsing")).toBe(false);
+    expect(calendarMonthPanEnabled("adjacent-expanding")).toBe(false);
+  });
+
+  it("mounts the viewport with its pan disabled for the full settle lifetime", async () => {
+    const createPan = Gesture.Pan.bind(Gesture);
+    let latestPan: unknown;
+    const panSpy = jest.spyOn(Gesture, "Pan").mockImplementation(() => {
+      latestPan = createPan();
+      return latestPan as ReturnType<typeof Gesture.Pan>;
+    });
+    const settling = Object.freeze({ ...initial(), phase: "settling" as const });
+
+    await render(
+      <CalendarMonthViewport
+        command={null}
+        focusedWeek={null}
+        month="2026-11-01"
+        onCancel={jest.fn()}
+        onComplete={jest.fn()}
+        onPreview={jest.fn()}
+        onRelease={jest.fn()}
+        renderMonth={() => <View />}
+        renderWeek={() => <View />}
+        transition={settling}
+      />,
+    );
+
+    expect((latestPan as { config: { enabled?: boolean } }).config.enabled).toBe(false);
+    panSpy.mockRestore();
+  });
+
   it("maps every panel to measured width plus the clamped pointer displacement", () => {
     const width = 400;
 
