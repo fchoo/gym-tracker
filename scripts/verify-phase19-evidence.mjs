@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -9,6 +10,8 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import {
   PHASE19_REQUIREMENT_EVIDENCE_IDS,
   buildPhase19NativeRows,
+  derivePhase19NativeIdentity,
+  validateAndHashPhase19ObservationArtifacts,
 } from "./run-phase19-native-evidence.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -209,40 +212,124 @@ export function buildPhase19AutomatedOnlyReport(source) {
   });
 }
 
-export function validatePhase19NativeEvidence(evidence, expectedIdentity) {
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right, "en"))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function configurationSha256(configuration) {
+  return createHash("sha256").update(canonicalJson(configuration)).digest("hex");
+}
+
+export async function validatePhase19NativeEvidenceRows(
+  evidence,
+  expectedIdentity,
+  expectedRows,
+  outputRoot,
+) {
   validateSourceRegistry();
   validatePhase19Privacy(evidence);
   const identityKeys = [
-    "source_head", "source_tree_sha256", "apk_sha256", "installed_apk_sha256",
+    "source_head", "source_tree_sha256", "build_manifest_sha256",
+    "build_producer_sha256", "flow_sha256", "apk_sha256", "installed_apk_sha256",
     "device_identity_sha256", "package", "profile",
   ];
-  const rowKeys = [
-    "id", "evidence_id", "configuration_id", "status", "configuration_sha256",
-    "semantic_sha256", "focus_sha256", "viewport_sha256", "target_bounds_sha256",
-    "performance_sha256", "capture_sha256",
+  const rowKeys = ["id", "evidence_id", "configuration_id", "status", "observations"];
+  const observationKeys = [
+    "id", "motion_mode", "input_mode", "status", "configuration_sha256", "artifacts",
   ];
-  const hashKeys = rowKeys.filter((key) => key.endsWith("_sha256"));
-  const expectedRows = buildPhase19NativeRows();
+  const artifactKinds = [
+    "semantic", "focus", "viewport", "target_bounds", "performance", "capture",
+  ];
   if (
     !exactKeys(evidence, ["schema_version", "suite", "producer", "status", "identity", "rows"])
-    || evidence.schema_version !== 1
+    || evidence.schema_version !== 2
     || evidence.suite !== "phase19-progress"
-    || evidence.producer !== "phase19-native-evidence/v1"
+    || evidence.producer !== "phase19-native-evidence/v2"
     || evidence.status !== "PASS"
     || !exactKeys(evidence.identity, identityKeys)
-    || JSON.stringify(evidence.identity) !== JSON.stringify(expectedIdentity)
+    || canonicalJson(evidence.identity) !== canonicalJson(expectedIdentity)
     || evidence.identity.installed_apk_sha256 !== evidence.identity.apk_sha256
     || !Array.isArray(evidence.rows)
     || evidence.rows.length !== expectedRows.length
-    || evidence.rows.some((row, index) =>
-      !exactKeys(row, rowKeys)
-      || row.id !== expectedRows[index].id
-      || row.evidence_id !== expectedRows[index].evidence_id
-      || row.configuration_id !== expectedRows[index].configuration.id
-      || row.status !== "PASS"
-      || hashKeys.some((key) => !SHA256.test(row[key] ?? "")))
   ) fail("phase19_evidence_native_invalid");
+
+  const retainedPaths = new Set();
+  for (let rowIndex = 0; rowIndex < expectedRows.length; rowIndex += 1) {
+    const row = evidence.rows[rowIndex];
+    const expectedRow = expectedRows[rowIndex];
+    if (
+      !exactKeys(row, rowKeys)
+      || row.id !== expectedRow.id
+      || row.evidence_id !== expectedRow.evidence_id
+      || row.configuration_id !== expectedRow.configuration.id
+      || row.status !== "PASS"
+      || !Array.isArray(row.observations)
+      || row.observations.length !== expectedRow.observations.length
+    ) fail("phase19_evidence_native_invalid");
+    for (let index = 0; index < expectedRow.observations.length; index += 1) {
+      const observation = row.observations[index];
+      const expectedObservation = expectedRow.observations[index];
+      const expectedConfiguration = {
+        ...expectedRow.configuration,
+        motion_mode: expectedObservation.motion_mode,
+        input_mode: expectedObservation.input_mode,
+      };
+      if (
+        !exactKeys(observation, observationKeys)
+        || observation.id !== expectedObservation.id
+        || observation.motion_mode !== expectedObservation.motion_mode
+        || observation.input_mode !== expectedObservation.input_mode
+        || observation.status !== "PASS"
+        || observation.configuration_sha256 !== configurationSha256(expectedConfiguration)
+        || !exactKeys(observation.artifacts, artifactKinds)
+      ) fail("phase19_evidence_native_invalid");
+      const artifactPaths = Object.fromEntries(artifactKinds.map((kind) => [
+        kind,
+        observation.artifacts[kind]?.artifact_path,
+      ]));
+      let recomputed;
+      try {
+        recomputed = await validateAndHashPhase19ObservationArtifacts(
+          outputRoot,
+          artifactPaths,
+          {
+            row_id: expectedRow.id,
+            observation_id: expectedObservation.id,
+            configuration: expectedConfiguration,
+          },
+        );
+      } catch {
+        fail("phase19_evidence_native_invalid");
+      }
+      for (const kind of artifactKinds) {
+        const retained = observation.artifacts[kind];
+        if (
+          !exactKeys(retained, ["artifact_path", "sha256", "size_bytes"])
+          || canonicalJson(retained) !== canonicalJson(recomputed[kind])
+          || retainedPaths.has(retained.artifact_path)
+        ) fail("phase19_evidence_native_invalid");
+        retainedPaths.add(retained.artifact_path);
+      }
+    }
+  }
   return true;
+}
+
+export async function validatePhase19NativeEvidence(evidence, context) {
+  const derived = await derivePhase19NativeIdentity(context);
+  return validatePhase19NativeEvidenceRows(
+    evidence,
+    derived.identity,
+    buildPhase19NativeRows(),
+    context.output_root,
+  );
 }
 
 export function parsePhase19EvidenceArgs(args) {

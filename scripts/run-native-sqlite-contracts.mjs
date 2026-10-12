@@ -22,12 +22,16 @@ import {
   parseNativeContractLogOutput,
   parseNativeContractLogProgress,
 } from './native-contract-log-transport.mjs';
+import { validatePhase19NativeManifest } from './run-phase19-native-evidence.mjs';
 
 const PHASE2_AGGREGATE_TIMEOUT_MS = 300_000;
 const PHASE2_CASE_TIMEOUT_MS = 10_000;
 const PHASE2_PROGRESS_STALL_TIMEOUT_MS = 90_000;
 const DEFAULT_NATIVE_TIMEOUT_MS = 90_000;
 export const NATIVE_ADB_LOGCAT_TIMEOUT_MS = 15_000;
+export const NATIVE_ADB_COMMAND_TIMEOUT_MS = 30_000;
+export const NATIVE_MAX_ADB_CALLS = 512;
+export const NATIVE_SUBPROCESS_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const projectRoot = process.cwd();
 const argumentsList = process.argv.slice(2);
 let manifestArgument = '';
@@ -219,37 +223,54 @@ const resultPath = path.join(path.dirname(manifestPath), 'result.json');
 const suiteResultPath = path.join(path.dirname(manifestPath), `${suite}.json`);
 const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'gym-native-contracts-'));
 const installedApkCopy = path.join(temporaryDirectory, 'installed.apk');
+let adbCallCount = 0;
 
 function command(name, args, options = {}) {
+  const {
+    timeoutMs = DEFAULT_NATIVE_TIMEOUT_MS,
+    onOutput,
+    ...spawnOptions
+  } = options;
   const child = spawn(name, args, {
     cwd: projectRoot,
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
-    ...options,
+    ...spawnOptions,
   });
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
+    let outputBytes = 0;
     let settled = false;
-    const timeout = options.timeoutMs === undefined
-      ? undefined
-      : setTimeout(() => {
+    const timeout = setTimeout(() => {
           if (settled) {
             return;
           }
           settled = true;
           child.kill('SIGKILL');
           reject(new Error(
-            `${name} timed out after ${options.timeoutMs} ms: ${args.join(' ')}`,
+            `${name} timed out after ${timeoutMs} ms: ${args.join(' ')}`,
           ));
-        }, options.timeoutMs);
+        }, timeoutMs);
+    const append = (target, chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > NATIVE_SUBPROCESS_MAX_OUTPUT_BYTES) {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout);
+          child.kill('SIGKILL');
+          reject(new Error(`${name} exceeded bounded subprocess output.`));
+        }
+        return target;
+      }
+      onOutput?.(chunk.toString('utf8'));
+      return target + chunk.toString('utf8');
+    };
     child.stdout?.on('data', (chunk) => {
-      stdout += chunk;
-      options.onOutput?.(chunk.toString('utf8'));
+      stdout = append(stdout, chunk);
     });
     child.stderr?.on('data', (chunk) => {
-      stderr += chunk;
-      options.onOutput?.(chunk.toString('utf8'));
+      stderr = append(stderr, chunk);
     });
     child.on('error', (error) => {
       if (settled) {
@@ -283,7 +304,15 @@ async function sha256(filePath) {
 }
 
 function adb(...args) {
-  return command('adb', ['-s', manifest.device.serial, ...args]);
+  adbCallCount += 1;
+  if (adbCallCount > NATIVE_MAX_ADB_CALLS) {
+    return Promise.reject(new Error('native adb command limit exceeded.'));
+  }
+  return command(
+    'adb',
+    ['-s', manifest.device.serial, ...args],
+    { timeoutMs: NATIVE_ADB_COMMAND_TIMEOUT_MS },
+  );
 }
 
 function shellQuote(value) {
@@ -460,6 +489,9 @@ async function dumpResult(runId) {
 }
 
 try {
+  if (manifest.suite === 'phase19') {
+    validatePhase19NativeManifest(manifest);
+  }
   if (
     manifest.schema_version !== 1
     || manifest.profile !== 'development-test'

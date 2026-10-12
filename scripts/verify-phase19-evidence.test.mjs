@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
   PHASE19_REQUIREMENT_EVIDENCE,
   buildPhase19AutomatedOnlyReport,
-  validatePhase19NativeEvidence,
+  validatePhase19NativeEvidenceRows,
   validatePhase19Privacy,
 } from "./verify-phase19-evidence.mjs";
 import {
@@ -20,6 +29,9 @@ function identity(overrides = {}) {
   return {
     source_head: HEAD,
     source_tree_sha256: HASH,
+    build_manifest_sha256: HASH,
+    build_producer_sha256: HASH,
+    flow_sha256: HASH,
     apk_sha256: HASH,
     installed_apk_sha256: HASH,
     device_identity_sha256: HASH,
@@ -29,27 +41,82 @@ function identity(overrides = {}) {
   };
 }
 
-function nativeEvidence(overrides = {}) {
-  const rows = buildPhase19NativeRows().map((source) => ({
-    id: source.id,
-    evidence_id: source.evidence_id,
-    configuration_id: source.configuration.id,
-    status: "PASS",
-    configuration_sha256: HASH,
-    semantic_sha256: HASH,
-    focus_sha256: HASH,
-    viewport_sha256: HASH,
-    target_bounds_sha256: HASH,
-    performance_sha256: HASH,
-    capture_sha256: HASH,
-  }));
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right, "en"))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function nativeEvidence(root, overrides = {}) {
+  const source = buildPhase19NativeRows()[0];
+  const observations = source.observations.map((observation) => {
+    const artifacts = {};
+    for (const kind of [
+      "semantic", "focus", "viewport", "target_bounds", "performance", "capture",
+    ]) {
+      const artifactPath = `${observation.id.replace(":", "-")}-${kind}.${kind === "capture" ? "png" : "json"}`;
+      const common = {
+        schema_version: 1,
+        artifact_kind: kind,
+        row_id: source.id,
+        observation_id: observation.id,
+        status: "PASS",
+        assertions: [{ id: `${kind}-assertion`, status: "PASS" }],
+      };
+      const document = kind === "semantic"
+        ? { ...common, summary: { nodes_checked: 3, violations: 0 } }
+        : kind === "focus"
+        ? { ...common, focus: { expected_return: "progress-root", observed_return: "progress-root", matches: true } }
+        : kind === "viewport"
+        ? { ...common, viewport: {
+          width: source.configuration.width,
+          height: source.configuration.height,
+          orientation: source.configuration.orientation,
+          font_scale: source.configuration.font_scale,
+          clipped_nodes: 0,
+        } }
+        : kind === "target_bounds"
+        ? { ...common, target_bounds: { targets_checked: 4, violations: 0 } }
+        : { ...common, performance: { samples_ms: [1, 2, 3], max_js_task_ms: 3 } };
+      const bytes = kind === "capture"
+        ? Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.from("synthetic")])
+        : Buffer.from(JSON.stringify(document));
+      writeFileSync(join(root, artifactPath), bytes);
+      artifacts[kind] = {
+        artifact_path: artifactPath,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        size_bytes: statSync(join(root, artifactPath)).size,
+      };
+    }
+    return {
+      id: observation.id,
+      motion_mode: observation.motion_mode,
+      input_mode: observation.input_mode,
+      status: "PASS",
+      configuration_sha256: createHash("sha256").update(canonicalJson({
+        ...source.configuration,
+        motion_mode: observation.motion_mode,
+        input_mode: observation.input_mode,
+      })).digest("hex"),
+      artifacts,
+    };
+  });
   return {
-    schema_version: 1,
+    schema_version: 2,
     suite: "phase19-progress",
-    producer: "phase19-native-evidence/v1",
+    producer: "phase19-native-evidence/v2",
     status: "PASS",
     identity: identity(),
-    rows,
+    rows: [{
+      id: source.id,
+      evidence_id: source.evidence_id,
+      configuration_id: source.configuration.id,
+      status: "PASS",
+      observations,
+    }],
     ...overrides,
   };
 }
@@ -90,22 +157,39 @@ test("automated-only report passes source contracts while retaining every native
   assert.doesNotMatch(JSON.stringify(report), /release_approved|attended_approved|aggregate[_-]?score/iu);
 });
 
-test("future native validation binds all 1,152 rows and rejects identity, omission, privacy, and claim drift", () => {
-  const complete = nativeEvidence();
-  assert.equal(validatePhase19NativeEvidence(complete, identity()), true);
+test("future native validation rehashes retained bytes and rejects identity, omission, privacy, and claim drift", async () => {
+  const root = mkdtempSync(join(tmpdir(), "phase19-native-verifier-"));
+  try {
+    const expectedRows = [buildPhase19NativeRows()[0]];
+    const complete = nativeEvidence(root);
+    assert.equal(await validatePhase19NativeEvidenceRows(
+      complete, identity(), expectedRows, root,
+    ), true);
 
-  const missing = nativeEvidence();
-  missing.rows = missing.rows.slice(1);
-  const staleInstalled = nativeEvidence({ identity: identity({ installed_apk_sha256: "c".repeat(64) }) });
-  const score = nativeEvidence({ aggregate_score: 100 });
-  const release = nativeEvidence({ release_approved: true });
-  const privateRoute = nativeEvidence({ route_points: [{ latitude: 1, longitude: 2 }] });
-  const fakeCount = nativeEvidence({ total: 999 });
-  for (const value of [missing, staleInstalled, score, release, privateRoute, fakeCount]) {
-    assert.throws(
-      () => validatePhase19NativeEvidence(value, identity()),
-      /phase19_evidence_/u,
+    const variants = [
+      { ...nativeEvidence(root), rows: [] },
+      nativeEvidence(root, { identity: identity({ installed_apk_sha256: "c".repeat(64) }) }),
+      nativeEvidence(root, { aggregate_score: 100 }),
+      nativeEvidence(root, { release_approved: true }),
+      nativeEvidence(root, { route_points: [{ latitude: 1, longitude: 2 }] }),
+      nativeEvidence(root, { total: 999 }),
+    ];
+    for (const value of variants) {
+      await assert.rejects(
+        validatePhase19NativeEvidenceRows(value, identity(), expectedRows, root),
+        /phase19_evidence_/u,
+      );
+    }
+
+    const tampered = nativeEvidence(root);
+    const capture = tampered.rows[0].observations[0].artifacts.capture.artifact_path;
+    writeFileSync(join(root, capture), "tampered");
+    await assert.rejects(
+      validatePhase19NativeEvidenceRows(tampered, identity(), expectedRows, root),
+      /phase19_evidence_native_invalid/u,
     );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
   }
 });
 
