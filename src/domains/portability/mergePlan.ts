@@ -1793,6 +1793,32 @@ function mappedGraphRows(
       return Object.freeze({ ...mapped, [keyColumn]: mappedId });
     }));
   }
+  for (const reference of LOGICAL_BACKUP_REFERENCE_DEFINITIONS) {
+    if (reference.childColumns.length === 1 || reference.parentColumns.length === 1
+      || !(PHASE13_SOURCE_GRAPH_TABLES as readonly string[]).includes(reference.childTable)
+      || !(PHASE13_SOURCE_GRAPH_TABLES as readonly string[]).includes(reference.parentTable)) continue;
+    const mappedChildren = result[reference.childTable]!;
+    const sourceParents = rowsFor(archive, reference.parentTable);
+    const mappedParents = result[reference.parentTable]!;
+    const mappedParentTuples = new Map(sourceParents.map((row, index) => [
+      tupleKey(reference.parentColumns.map((column) => row[column])),
+      reference.parentColumns.map((column) => mappedParents[index]![column]),
+    ]));
+    const sourceChildren = rowsFor(archive, reference.childTable);
+    result[reference.childTable] = Object.freeze(mappedChildren.map((row, index) => {
+      const sourceTuple = reference.childColumns.map(
+        (column) => sourceChildren[index]![column],
+      );
+      const mappedTuple = mappedParentTuples.get(tupleKey(sourceTuple));
+      if (mappedTuple === undefined) invalid();
+      return Object.freeze({
+        ...row,
+        ...Object.fromEntries(reference.childColumns.map(
+          (column, columnIndex) => [column, mappedTuple[columnIndex]!],
+        )),
+      });
+    }));
+  }
   return Object.freeze(result);
 }
 

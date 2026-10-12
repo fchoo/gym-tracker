@@ -2181,6 +2181,58 @@ describe("portable merge plan", () => {
     expect(graph.tables.imported_activity_events![0]!.id).not.toBe("event");
   });
 
+  it.each(["accept", "keep"] as const)("remaps a colliding %s revision decision onto its proposal tuple", async (action) => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "external-1" }],
+      imported_activity_identities: [{ activity_id: "activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-1" }],
+      imported_activity_revision_proposals: [{ request_id: "proposal", activity_id: "activity", proposed_revision: 2 }],
+      imported_activity_revision_decisions: [{ request_id: "decision", activity_id: "activity", proposed_revision: 2, action }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "other" }],
+      imported_activity_revision_proposals: [{ request_id: "proposal", activity_id: "activity", proposed_revision: 9 }],
+      imported_activity_revision_decisions: [{ request_id: "decision", activity_id: "activity", proposed_revision: 9, action: "keep" }],
+    });
+
+    const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
+    const graph = plan.aggregates.find(({ aggregateClass }) => aggregateClass === "source_graph")!;
+    const activity = graph.tables.imported_activities![0]!;
+    const proposal = graph.tables.imported_activity_revision_proposals![0]!;
+    const decision = graph.tables.imported_activity_revision_decisions![0]!;
+
+    expect(activity.id).not.toBe("activity");
+    expect(proposal).toEqual(expect.objectContaining({
+      request_id: expect.not.stringMatching(/^proposal$/u),
+      activity_id: activity.id,
+      proposed_revision: 2,
+    }));
+    expect(decision).toEqual(expect.objectContaining({
+      request_id: expect.not.stringMatching(/^decision$/u),
+      activity_id: activity.id,
+      proposed_revision: 2,
+      action,
+    }));
+    expect(graph.tables.imported_activity_revision_proposals).toContainEqual(expect.objectContaining({
+      activity_id: decision.activity_id,
+      proposed_revision: decision.proposed_revision,
+    }));
+  });
+
+  it("fails closed when a revision decision has no mapped proposal tuple", () => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      imported_activity_revision_decisions: [{
+        request_id: "decision",
+        activity_id: "missing-activity",
+        proposed_revision: 2,
+        action: "accept",
+      }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
+
+    expect(() => __mergePlanTestOnly.mappedGraphRows(archive, local))
+      .toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
   it("rewrites collision outcomes and immutable receipts through owned-plan ID remaps", () => {
     const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
       schedule_collision_outcomes: [{

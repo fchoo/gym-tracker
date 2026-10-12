@@ -22,9 +22,13 @@ import {
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
+  canonicalMergeValue,
   createMergeCommands,
   createMergePreflightStore,
 } from "../../src/domains/portability/mergeCommands";
+import {
+  buildPortableMergePlan,
+} from "../../src/domains/portability/mergePlan";
 import {
   configureSqliteConnection,
   type SqliteConnection,
@@ -158,6 +162,34 @@ async function seedSession(
     await transaction.execute(
       "INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, source_owned_plan_working_set_target_id, advanced_timing_override_json, advanced_timing_resolved_json, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, status, completed_at_ms, revision) VALUES (?, ?, 'working', 0, NULL, NULL, NULL, '{\"version\":1,\"mode\":\"off\"}', 10000, 8, 10, '{}', '{}', 'load_reps', 1, 'load_reps', 1, 1, 'completed', 2, 1)",
       [`set-${input.id}`, `exercise-${input.id}`],
+    );
+  });
+}
+
+async function seedRevisionDecision(
+  kernel: SqliteKernel,
+  input: Readonly<{
+    action: "accept" | "keep";
+    externalActivityId: string;
+    proposedRevision: number;
+  }>,
+): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      "INSERT INTO imported_activities (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES ('colliding-activity', ?, ?, 1, '{}', 2)",
+      [`garmin_connect_account:${input.externalActivityId}`, input.externalActivityId],
+    );
+    await transaction.execute(
+      "INSERT INTO imported_activity_identities (activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES ('colliding-activity', 'garmin_connect_account', ?, ?, 1, ?, 'active')",
+      [input.externalActivityId, input.externalActivityId, "a".repeat(64)],
+    );
+    await transaction.execute(
+      "INSERT INTO imported_activity_revision_proposals (request_id, request_sha256, activity_id, proposed_revision, normalized_sha256, envelope_json, confirmed_local_date, created_at_ms) VALUES ('colliding-proposal', ?, 'colliding-activity', ?, ?, '{}', '2026-10-12', 3)",
+      ["b".repeat(64), input.proposedRevision, "c".repeat(64)],
+    );
+    await transaction.execute(
+      "INSERT INTO imported_activity_revision_decisions (request_id, request_sha256, activity_id, proposed_revision, action, decided_at_ms) VALUES ('colliding-decision', ?, 'colliding-activity', ?, ?, 4)",
+      ["d".repeat(64), input.proposedRevision, input.action],
     );
   });
 }
@@ -347,5 +379,75 @@ describe("portable merge integration", () => {
       sessions: await relaunched.queryAll("SELECT id, merge_modified_at_ms FROM workout_sessions"),
     }).toEqual(first);
     expect(first.sessions).toEqual([{ id: "local-session", merge_modified_at_ms: 20 }]);
+  });
+
+  it.each(["accept", "keep"])("commits a remapped %s revision decision through real deferred SQLite foreign keys", async (action) => {
+    const archiveRuntime = await createRuntime(`revision-${action}-archive`);
+    await seedRevisionDecision(archiveRuntime.kernel, {
+      action: action as "accept" | "keep",
+      externalActivityId: `archive-${action}`,
+      proposedRevision: 2,
+    });
+    const archiveSnapshot = await createLogicalBackupRepository(archiveRuntime.kernel).collect({
+      createdAtMs: 1,
+      snapshotId: `revision-${action}-archive`,
+    });
+    const localRuntime = await createRuntime(`revision-${action}-local`);
+    await seedRevisionDecision(localRuntime.kernel, {
+      action: "keep",
+      externalActivityId: `local-${action}`,
+      proposedRevision: 9,
+    });
+    const local = await createSqliteMergeLocalFactsPort(localRuntime.kernel).read();
+    const plan = await buildPortableMergePlan({
+      archive: {
+        version: 2,
+        schemaVersion: archiveSnapshot.schemaVersion,
+        tables: {
+          ...archiveSnapshot.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      local: { version: 2, schemaVersion: local.schemaVersion, tables: local.tables },
+      payloadDigest: sha256,
+    });
+
+    await expect(createFullPlanLogicalMergeWriter(localRuntime.kernel, {
+      nowMs: () => 10,
+      sha256,
+    }).commitFullPlan({
+      localFingerprint: await sha256(canonicalMergeValue(local)),
+      plan,
+    })).resolves.toEqual({ state: "rebuild_pending" });
+
+    const imported = await localRuntime.kernel.queryAll<{
+      activity_id: string;
+      action: string;
+      proposed_revision: number;
+      proposal_activity_id: string;
+      proposal_revision: number;
+      source_activity_id: string;
+    }>(
+      `SELECT decision.activity_id, decision.proposed_revision, decision.action,
+              proposal.activity_id AS proposal_activity_id,
+              proposal.proposed_revision AS proposal_revision,
+              activity.source_activity_id
+       FROM imported_activity_revision_decisions decision
+       JOIN imported_activity_revision_proposals proposal
+         ON proposal.activity_id = decision.activity_id
+        AND proposal.proposed_revision = decision.proposed_revision
+       JOIN imported_activities activity ON activity.id = decision.activity_id
+       WHERE decision.proposed_revision = 2`,
+    );
+    expect(imported).toEqual([expect.objectContaining({
+      action,
+      activity_id: expect.not.stringMatching(/^colliding-activity$/u),
+      proposal_activity_id: expect.not.stringMatching(/^colliding-activity$/u),
+      proposed_revision: 2,
+      proposal_revision: 2,
+      source_activity_id: `archive-${action}`,
+    })]);
+    expect(imported[0]!.proposal_activity_id).toBe(imported[0]!.activity_id);
+    await expect(localRuntime.kernel.queryAll("PRAGMA foreign_key_check")).resolves.toEqual([]);
   });
 });
