@@ -100,6 +100,18 @@ describe("dated bodyweight source facts", () => {
     }
   });
 
+  it("fails closed when owner-local date formatting cannot provide a calendar day", () => {
+    const formatter = jest.spyOn(Intl, "DateTimeFormat").mockReturnValue({
+      formatToParts: () => [],
+    } as unknown as Intl.DateTimeFormat);
+    try {
+      expect(() => transitionBodyweight(undefined, command()))
+        .toThrow("bodyweight_command_measurement_invalid");
+    } finally {
+      formatter.mockRestore();
+    }
+  });
+
   it("appends edit, delete, and explicit restore transitions without changing identity", () => {
     const edited = transitionBodyweight(active, command({
       operation: "edit", expectedRevision: 1, revisionId: "bodyweight-revision-2",
