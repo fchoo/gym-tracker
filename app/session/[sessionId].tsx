@@ -26,18 +26,87 @@ import {
 import {
   SessionDetailScreen,
 } from "../../src/ui/screens/SessionDetailScreen";
+import {
+  CalendarReadOnlyWorkout,
+} from "../../src/ui/calendar/CalendarReadOnlyWorkout";
+
+type RouteParam = string | readonly string[] | undefined;
+
+function exactRouteParam(value: RouteParam): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function isCalendarOrigin(value: RouteParam): boolean {
+  return value === "calendar";
+}
+
+function CalendarUnavailable() {
+  return (
+    <AdaptiveScreen
+      primary={
+        <>
+          <ScreenHeader backAction={() => router.back()} title="Workout details" />
+          <EmptyState
+            body="This workout was removed or changed. Return to Calendar to refresh."
+            heading="Workout details unavailable"
+            primaryAction={<PrimaryAction label="Back to Calendar" onPress={() => router.back()} />}
+          />
+        </>
+      }
+    />
+  );
+}
+
+function CalendarSessionDetail({
+  sessionId,
+  readSession,
+}: Readonly<{
+  sessionId: string;
+  readSession: Readonly<{ getSessionDetail(id: string): Promise<SessionDetail> }>;
+}>) {
+  const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [missing, setMissing] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setDetail(null);
+    setMissing(false);
+    void readSession.getSessionDetail(sessionId).then((next) => {
+      if (active) setDetail(next);
+    }).catch(() => {
+      if (active) setMissing(true);
+    });
+    return () => { active = false; };
+  }, [readSession, sessionId]);
+
+  if (missing) return <CalendarUnavailable />;
+  if (detail === null) {
+    return <AdaptiveScreen primary={<><ScreenHeader backAction={() => router.back()} title="Workout details" /><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></>} />;
+  }
+  return <CalendarReadOnlyWorkout detail={detail} onGoBack={() => router.back()} />;
+}
 
 export default function SessionDetailRoute() {
-  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
-  const resolvedSessionId = sessionId ?? "unknown";
+  const { sessionId, origin } = useLocalSearchParams() as Readonly<{
+    sessionId?: RouteParam;
+    origin?: RouteParam;
+  }>;
+  const resolvedSessionId = exactRouteParam(sessionId);
   const runtime = useWorkoutAppRuntime();
+
+  if (isCalendarOrigin(origin)) {
+    if (resolvedSessionId === null) return <CalendarUnavailable />;
+    return <CalendarSessionDetail sessionId={resolvedSessionId} readSession={{ getSessionDetail: runtime.getSessionDetail }} />;
+  }
+
+  const managementSessionId = resolvedSessionId ?? "unknown";
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
     setFailed(false);
-    void runtime.getSessionDetail(resolvedSessionId).then((next) => {
+    void runtime.getSessionDetail(managementSessionId).then((next) => {
       if (active) {
         setDetail(next);
       }
@@ -50,7 +119,7 @@ export default function SessionDetailRoute() {
       active = false;
     };
   }, [
-    resolvedSessionId,
+    managementSessionId,
     runtime,
     runtime.workoutRefreshGeneration,
   ]);

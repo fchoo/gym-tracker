@@ -36,7 +36,10 @@ jest.mock("../../src/ui/screens/SessionDetailScreen", () => ({
     return <><Text>Management details</Text>{onCorrectWorkout ? <Pressable accessibilityLabel="Correct workout" onPress={onCorrectWorkout} /> : null}{onRemoveFromHistory ? <Pressable accessibilityLabel="Remove from history" onPress={onRemoveFromHistory} /> : null}<Pressable accessibilityLabel="Resume workout" onPress={onResume} /></>;
   },
 }));
-jest.mock("../../src/ui/components", () => ({ EmptyState: ({ heading }: { heading: string }) => heading, PrimaryAction: () => null, ScreenHeader: () => null, SkeletonBlock: () => null }));
+jest.mock("../../src/ui/components", () => {
+  const { Text } = require("react-native") as typeof import("react-native");
+  return { EmptyState: ({ heading }: { heading: string }) => <Text>{heading}</Text>, PrimaryAction: () => null, ScreenHeader: () => null, SkeletonBlock: () => null };
+});
 jest.mock("../../src/ui/layout/AdaptiveScreen", () => ({ AdaptiveScreen: ({ primary }: { primary: React.ReactNode }) => primary }));
 
 import SessionDetailRoute from "../session/[sessionId]";
@@ -52,7 +55,7 @@ describe("SessionDetailRoute", () => {
 
   it("opens an exact Calendar session through the query-only facts branch", async () => {
     mockGetSessionDetail.mockResolvedValue(detail);
-    render(<SessionDetailRoute />);
+    await render(<SessionDetailRoute />);
     expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
     expect(mockGetSessionDetail).toHaveBeenCalledWith("calendar-session");
     expect(screen.queryByLabelText("Correct workout")).toBeNull();
@@ -62,7 +65,7 @@ describe("SessionDetailRoute", () => {
 
   it("fails closed for missing or array Calendar identities", async () => {
     mockParams = { sessionId: ["calendar-session", "other"], origin: "calendar" };
-    render(<SessionDetailRoute />);
+    await render(<SessionDetailRoute />);
     await waitFor(() => expect(screen.getByText("Workout details unavailable")).toBeOnTheScreen());
     expect(mockGetSessionDetail).not.toHaveBeenCalled();
   });
@@ -70,7 +73,7 @@ describe("SessionDetailRoute", () => {
   it("retains management commands outside the explicit Calendar origin", async () => {
     mockParams = { sessionId: "calendar-session" };
     mockGetSessionDetail.mockResolvedValue(detail);
-    render(<SessionDetailRoute />);
+    await render(<SessionDetailRoute />);
     expect(await screen.findByText("Management details")).toBeOnTheScreen();
     expect(screen.getByLabelText("Correct workout")).toBeOnTheScreen();
   });

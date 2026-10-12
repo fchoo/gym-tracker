@@ -4,6 +4,7 @@ import React from "react";
 
 import type { SessionDetail } from "../../domains/workout";
 import { CalendarReadOnlyWorkout } from "../calendar/CalendarReadOnlyWorkout";
+import { AppearanceProvider } from "../theme";
 
 const detail = {
   id: "completed-session", status: "completed", statusLabel: "Complete", sourceLabel: "Manual visit", planName: "Foundation", dayName: "Day A", localDate: "2026-10-13", timezone: "Asia/Singapore", startedAtMs: 0, endedAtMs: 1, durationMs: 60_000, revision: 1, modifiedFromPlan: false,
@@ -13,9 +14,9 @@ const detail = {
 } as unknown as SessionDetail;
 
 describe("CalendarReadOnlyWorkout", () => {
-  it("renders immutable completed facts and disclosure without management actions", () => {
+  it("renders immutable completed facts and disclosure without management actions", async () => {
     const onGoBack = jest.fn();
-    render(<CalendarReadOnlyWorkout detail={detail} onGoBack={onGoBack} />);
+    await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={detail} onGoBack={onGoBack} /></AppearanceProvider>);
     expect(screen.getByText("Complete · read only")).toBeOnTheScreen();
     expect(screen.getByText("Not completed")).toBeOnTheScreen();
     expect(screen.queryByText("Correct workout")).toBeNull();
