@@ -687,6 +687,7 @@ function maximalOwnedPlanAggregate() {
       plan_working_set_targets: [{ id: "legacy-target", plan_day_exercise_id: "legacy-occurrence" }],
       progression_policies: [{ id: "legacy-policy", plan_day_exercise_id: "legacy-occurrence" }],
       progression_recommendations: [{ id: "legacy-recommendation", plan_working_set_target_id: "legacy-target" }],
+      progression_recommendation_decision_receipts: [{ request_id: "legacy-decision", recommendation_id: "legacy-recommendation" }],
       owned_plan_aggregate_states: [{ plan_id: "plan" }],
       owned_plan_starter_sources: [{ plan_id: "plan" }],
       owned_plan_day_sources: [{ plan_day_id: "day", plan_id: "plan" }],
@@ -704,6 +705,7 @@ function maximalOwnedPlanAggregate() {
       owned_plan_mutation_requests: [{ request_id: "mutation" }],
       starter_plan_activation_requests: [{ request_id: "activation" }],
       owned_progression_recommendations: [{ id: "owned-recommendation", owned_plan_working_set_target_id: "owned-target" }],
+      owned_progression_recommendation_decision_receipts: [{ request_id: "owned-decision", recommendation_id: "owned-recommendation" }],
     },
   };
   return { aggregate, operation };
@@ -962,6 +964,17 @@ describe("logical merge repository", () => {
     }]), {
       ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: {},
     })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([{
+      aggregateClass: "source_graph",
+      kind: "duplicate",
+      portableId: "a".repeat(32),
+      archiveId: "activity",
+      localId: "activity",
+    }]), {
+      ownerNamespace: "9".repeat(32),
+      schemaVersion: 22,
+      tables: { portable_owner_identity: [{ id: 1 }] },
+    })).not.toThrow();
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([]), {
       ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: { app_settings: [{ key: " " }] },
     })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
@@ -1641,7 +1654,7 @@ describe("logical merge repository", () => {
   it("supplies production secure merge with only the full-plan writer capability", () => {
     const writer = createFullPlanLogicalMergeWriter(
       transactionKernel(transactionStub()),
-      { sha256 },
+      { nowMs: () => 1, sha256 },
     );
 
     expect(writer).toEqual({ commitFullPlan: expect.any(Function) });
@@ -1811,6 +1824,16 @@ describe("logical merge repository", () => {
     ["a legacy target outside its occurrence graph", (plan: PortableMergePlan) => ({
       ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
         ? { ...aggregate, tables: { ...aggregate.tables, plan_working_set_targets: [{ id: "target", plan_day_exercise_id: "missing" }] } }
+        : aggregate),
+    })],
+    ["a legacy recommendation receipt outside its recommendation graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, progression_recommendation_decision_receipts: [{ request_id: "receipt", recommendation_id: "missing" }] } }
+        : aggregate),
+    })],
+    ["an owned recommendation receipt outside its recommendation graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, owned_progression_recommendation_decision_receipts: [{ request_id: "receipt", recommendation_id: "missing" }] } }
         : aggregate),
     })],
     ["an owned schedule version outside its schedule graph", (plan: PortableMergePlan) => ({

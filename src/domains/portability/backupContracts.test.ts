@@ -75,8 +75,8 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("sqlite_master");
   });
 
-  it("freezes prior formats while v9 adds imported-activity revision reviews", () => {
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(9);
+  it("freezes prior formats while v10 adds recommendation decision receipts", () => {
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(10);
     expect(logicalBackupTablesForVersion(5)).not.toContain("imported_activity_identities");
     expect(logicalBackupTablesForVersion(5)).not.toContain("running_activity_match_events");
     expect(logicalBackupTablesForVersion(5)).not.toContain("workout_session_schedule_links");
@@ -113,12 +113,25 @@ describe("logical backup contract", () => {
       "imported_activity_revision_proposals",
       "imported_activity_revision_decisions",
     ]));
+    expect(logicalBackupTablesForVersion(9)).not.toEqual(expect.arrayContaining([
+      "progression_recommendation_decision_receipts",
+      "owned_progression_recommendation_decision_receipts",
+    ]));
+    expect(logicalBackupTablesForVersion(10)).toEqual(expect.arrayContaining([
+      "progression_recommendation_decision_receipts",
+      "owned_progression_recommendation_decision_receipts",
+    ]));
     expect(logicalBackupTablesForVersion(6)).not.toContain("running_activity_current_matches");
     expect(logicalBackupTablesForVersion(6)).not.toContain("imported_activity_current_lifecycle");
   });
 
   it("parses a bounded versioned user-owned snapshot", () => {
     expect(parseLogicalBackupSnapshot(snapshot())).toEqual(snapshot());
+  });
+
+  it("rejects an archive version outside the frozen compatibility registry", () => {
+    expect(() => parseLogicalBackupSnapshot(snapshot({ version: 11 })))
+      .toThrow("backup_snapshot_unsupported_version");
   });
 
   it("requires exactly one opaque owner namespace in a v2 snapshot", () => {

@@ -76,6 +76,7 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "plan_working_set_targets",
   "progression_policies",
   "progression_recommendations",
+  "progression_recommendation_decision_receipts",
   "owned_plan_aggregate_states",
   "owned_plan_starter_sources",
   "owned_plan_day_sources",
@@ -103,6 +104,7 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "owned_plan_mutation_requests",
   "starter_plan_activation_requests",
   "owned_progression_recommendations",
+  "owned_progression_recommendation_decision_receipts",
 ] as const satisfies readonly LogicalBackupTableName[]);
 
 /** Authoritative Phase 13 source graph; current-match projections are rebuilt. */
@@ -413,8 +415,13 @@ function assertOwnedPlanAggregate(
       requireValid(legacyOccurrenceIds.has(textId(row.plan_day_exercise_id)));
     }
   }
+  const recommendationIds = new Set<string>();
   for (const row of aggregate.tables.progression_recommendations ?? []) {
     requireValid(legacyTargetIds.has(textId(row.plan_working_set_target_id)));
+    recommendationIds.add(textId(row.id));
+  }
+  for (const row of aggregate.tables.progression_recommendation_decision_receipts ?? []) {
+    requireValid(recommendationIds.has(textId(row.recommendation_id)));
   }
   const ownedOccurrenceIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_day_exercises ?? []) {
@@ -435,8 +442,13 @@ function assertOwnedPlanAggregate(
       requireValid(ownedOccurrenceIds.has(textId(row.plan_day_exercise_id)));
     }
   }
+  const ownedRecommendationIds = new Set<string>();
   for (const row of aggregate.tables.owned_progression_recommendations ?? []) {
     requireValid(ownedTargetIds.has(textId(row.owned_plan_working_set_target_id)));
+    ownedRecommendationIds.add(textId(row.id));
+  }
+  for (const row of aggregate.tables.owned_progression_recommendation_decision_receipts ?? []) {
+    requireValid(ownedRecommendationIds.has(textId(row.recommendation_id)));
   }
   const ownedScheduleIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_schedules ?? []) {
@@ -1426,6 +1438,7 @@ function createLogicalMergeRepositoryInternal(
     observeTiming?(stage: LogicalMergeTimingStage, elapsedMs: number): void;
   }>,
 ): LogicalMergeRepository {
+  const nowMs = input.nowMs ?? Date.now;
   return Object.freeze({
     async commitFullPlan(fullPlanInput) {
       try {
@@ -1459,7 +1472,7 @@ function createLogicalMergeRepositoryInternal(
             await applyNamespaceAdoption(
               transaction,
               fullPlanInput.adoption,
-              input.nowMs?.() ?? Date.now(),
+              nowMs(),
             );
             await input.faultAfter?.("adoption_consumed");
           }
@@ -1503,7 +1516,7 @@ function createLogicalMergeRepositoryInternal(
           if (sourceGraphs.length > 0) {
             await withSingleSourceGraphGeneration(
               transaction,
-              input.nowMs?.() ?? Date.now(),
+              nowMs(),
               async () => {
                 for (const aggregate of sourceGraphs) {
                   await insertSourceGraphAggregate(transaction, aggregate, input.faultAfter);
@@ -1518,7 +1531,7 @@ function createLogicalMergeRepositoryInternal(
             input.observeTiming,
           );
           await input.faultAfter?.("verified");
-          await markRebuildPending(transaction, input.nowMs?.() ?? Date.now());
+          await markRebuildPending(transaction, nowMs());
           await input.faultAfter?.("state_updated");
           return Object.freeze({ state: "rebuild_pending" as const });
         });
@@ -1574,7 +1587,7 @@ function createLogicalMergeRepositoryInternal(
           const foreignKeyCheck = await transaction.queryAll<Record<string, unknown>>("PRAGMA foreign_key_check");
           if (foreignKeyCheck.length !== 0) fail();
           await input.faultAfter?.("verified");
-          await markRebuildPending(transaction, input.nowMs?.() ?? Date.now());
+          await markRebuildPending(transaction, nowMs());
           await input.faultAfter?.("state_updated");
           return Object.freeze({ state: "rebuild_pending" as const });
         });
