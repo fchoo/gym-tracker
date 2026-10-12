@@ -58,6 +58,7 @@ import type {
   ActiveWorkoutView,
   SessionDetail,
   StartedWorkout,
+  PlannedStrengthOccurrenceDetail,
   TodayView,
   WorkoutOutcomeRepository,
   WorkoutRepository,
@@ -171,6 +172,17 @@ jest.mock("./ownedPlanRuntime", () => {
     createOwnedPlanRuntimePort: jest.fn(actual.createOwnedPlanRuntimePort),
   };
 });
+jest.mock("./trainingFoundationRuntime", () => {
+  const actual = jest.requireActual<typeof import("./trainingFoundationRuntime")>(
+    "./trainingFoundationRuntime",
+  );
+  return {
+    ...actual,
+    createTrainingFoundationRuntimePort: jest.fn(
+      actual.createTrainingFoundationRuntimePort,
+    ),
+  };
+});
 
 import {
   acknowledgeCommittedRuntimeResult,
@@ -185,6 +197,13 @@ import {
 import {
   createOwnedPlanRuntimePort,
 } from "./ownedPlanRuntime";
+import {
+  createTrainingFoundationRuntimePort,
+  type TrainingFoundationRuntimePort,
+} from "./trainingFoundationRuntime";
+import type {
+  TrainingCalendarRange,
+} from "../platform/sqlite/repositories/trainingCalendarRepository";
 import {
   applyWorkoutMutationTestControl,
 } from "./workoutMutationTestControls";
@@ -211,6 +230,9 @@ const expoSqliteMock = jest.requireMock("expo-sqlite") as {
 };
 const mockedCreateOwnedPlanRuntimePort = jest.mocked(
   createOwnedPlanRuntimePort,
+);
+const mockedCreateTrainingFoundationRuntimePort = jest.mocked(
+  createTrainingFoundationRuntimePort,
 );
 
 type Repository = PlansRepository & WorkoutRepository;
@@ -1286,7 +1308,71 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockNativeContractsEnabled = true;
     mockCommittedHaptic.mockClear();
     mockCueHaptic.mockClear();
+    mockedCreateTrainingFoundationRuntimePort.mockClear();
     applyWorkoutMutationTestControl("reset_workout_failures");
+  });
+
+  it("delegates bounded Calendar range reads through the query-only foundation port", async () => {
+    const range = Object.freeze({ events: Object.freeze([]) }) as TrainingCalendarRange;
+    const loadCalendarRange = jest.fn(async () => range);
+    mockedCreateTrainingFoundationRuntimePort.mockImplementationOnce(() =>
+      Object.freeze({
+        loadCalendarRange,
+        loadPlannedStrengthOccurrence: jest.fn(async () => null),
+        loadToday: jest.fn(async () => range),
+      }) as TrainingFoundationRuntimePort,
+    );
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository)}
+        onReady={(runtime) => { captured = runtime; }}
+      />,
+    );
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+
+    await expect(captured!.loadCalendarRange({
+      startLocalDate: "2026-10-01",
+      endLocalDateExclusive: "2026-11-01",
+    })).resolves.toBe(range);
+    expect(loadCalendarRange).toHaveBeenCalledWith({
+      startLocalDate: "2026-10-01",
+      endLocalDateExclusive: "2026-11-01",
+    });
+  });
+
+  it("delegates exact planned Strength occurrence reads without fabricating a session", async () => {
+    const occurrence = Object.freeze({
+      occurrenceId: "occurrence-1", planId: "plan-1", planDayId: "day-1",
+      scheduleId: "schedule-1", scheduleVersionId: "version-1",
+      localDate: "2026-10-13", timezone: "Asia/Singapore",
+      sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }),
+      exercises: Object.freeze([]),
+    }) as PlannedStrengthOccurrenceDetail;
+    const loadPlannedStrengthOccurrence = jest.fn(async () => occurrence);
+    mockedCreateTrainingFoundationRuntimePort.mockImplementationOnce(() =>
+      Object.freeze({
+        loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
+        loadPlannedStrengthOccurrence,
+        loadToday: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
+      }) as TrainingFoundationRuntimePort,
+    );
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository)}
+        onReady={(runtime) => { captured = runtime; }}
+      />,
+    );
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+
+    await expect(captured!.loadPlannedStrengthOccurrence("occurrence-1"))
+      .resolves.toBe(occurrence);
+    expect(loadPlannedStrengthOccurrence).toHaveBeenCalledWith("occurrence-1");
   });
 
   it("keeps legacy runtime dependencies trusted without reading Phase 12 backup state", async () => {
