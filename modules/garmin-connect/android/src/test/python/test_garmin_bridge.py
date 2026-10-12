@@ -508,6 +508,66 @@ class GarminBridgeTests(unittest.TestCase):
         for key in ("history_digest", "source_digest", "match_digest"):
             self.assertRegex(observed[key], r"^[a-f0-9]{64}$")
 
+    def test_adversarial_controlled_client_refresh_rotates_only_the_di_token(self):
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: self.fail("live client factory must not be called"),
+        )
+        confirmation = "VERIFY-PHASE18-GARMIN-ADVERSARIAL"
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "start",
+        })
+        bootstrap_tokens = bridge.take_persistable_tokens()
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "reset",
+        })
+
+        restored = bridge.dispatch("restoreSession", {"tokenPayload": bootstrap_tokens})
+        before = json.loads(bridge.take_persistable_tokens())
+        refreshed = bridge.dispatch("forceRefreshForTest", {})
+        after = json.loads(bridge.take_persistable_tokens())
+
+        connected = {"kind": "connected", "account_namespace": ACCOUNT_NAMESPACE}
+        self.assertEqual(restored["data"], connected)
+        self.assertEqual(refreshed["data"], connected)
+        self.assertNotEqual(before["di_token"], after["di_token"])
+        self.assertEqual(
+            {key: value for key, value in before.items() if key != "di_token"},
+            {key: value for key, value in after.items() if key != "di_token"},
+        )
+        self.assertNotIn("token", json.dumps([restored, refreshed]))
+
+    def test_adversarial_control_rejects_invalid_or_out_of_sequence_actions(self):
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: self.fail("live client factory must not be called"),
+        )
+        confirmation = "VERIFY-PHASE18-GARMIN-ADVERSARIAL"
+        rejected = {"status": "error", "error": {"code": "arguments_rejected"}}
+
+        self.assertEqual(bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "observe",
+        }), rejected)
+        bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "start",
+        })
+
+        for request in (
+            {"confirmation": confirmation, "action": "configure", "caseId": 42},
+            {"confirmation": confirmation, "action": "configure", "caseId": "PH18-ADV-UNKNOWN"},
+            {"confirmation": confirmation, "action": "unknown"},
+        ):
+            with self.subTest(request=request):
+                self.assertEqual(bridge.dispatch("runAdversarialSuite", request), rejected)
+
+        observed = bridge.dispatch("runAdversarialSuite", {
+            "confirmation": confirmation,
+            "action": "observe",
+        })
+        self.assertEqual(observed["data"]["operation_counts"], {})
+
     def test_adversarial_control_injects_every_failure_once_and_fences_late_results(self):
         bridge = garmin_bridge.create_bridge(
             client_factory=lambda **_kwargs: self.fail("live client factory must not be called"),
