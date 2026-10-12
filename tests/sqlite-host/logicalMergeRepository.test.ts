@@ -964,6 +964,17 @@ describe("logical merge repository", () => {
     }]), {
       ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: {},
     })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([{
+      aggregateClass: "source_graph",
+      kind: "duplicate",
+      portableId: "a".repeat(32),
+      archiveId: "activity",
+      localId: "activity",
+    }]), {
+      ownerNamespace: "9".repeat(32),
+      schemaVersion: 22,
+      tables: { portable_owner_identity: [{ id: 1 }] },
+    })).not.toThrow();
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([]), {
       ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: { app_settings: [{ key: " " }] },
     })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
@@ -1643,7 +1654,7 @@ describe("logical merge repository", () => {
   it("supplies production secure merge with only the full-plan writer capability", () => {
     const writer = createFullPlanLogicalMergeWriter(
       transactionKernel(transactionStub()),
-      { sha256 },
+      { nowMs: () => 1, sha256 },
     );
 
     expect(writer).toEqual({ commitFullPlan: expect.any(Function) });

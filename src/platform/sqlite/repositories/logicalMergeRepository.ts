@@ -1438,6 +1438,7 @@ function createLogicalMergeRepositoryInternal(
     observeTiming?(stage: LogicalMergeTimingStage, elapsedMs: number): void;
   }>,
 ): LogicalMergeRepository {
+  const nowMs = input.nowMs ?? Date.now;
   return Object.freeze({
     async commitFullPlan(fullPlanInput) {
       try {
@@ -1471,7 +1472,7 @@ function createLogicalMergeRepositoryInternal(
             await applyNamespaceAdoption(
               transaction,
               fullPlanInput.adoption,
-              input.nowMs?.() ?? Date.now(),
+              nowMs(),
             );
             await input.faultAfter?.("adoption_consumed");
           }
@@ -1515,7 +1516,7 @@ function createLogicalMergeRepositoryInternal(
           if (sourceGraphs.length > 0) {
             await withSingleSourceGraphGeneration(
               transaction,
-              input.nowMs?.() ?? Date.now(),
+              nowMs(),
               async () => {
                 for (const aggregate of sourceGraphs) {
                   await insertSourceGraphAggregate(transaction, aggregate, input.faultAfter);
@@ -1530,7 +1531,7 @@ function createLogicalMergeRepositoryInternal(
             input.observeTiming,
           );
           await input.faultAfter?.("verified");
-          await markRebuildPending(transaction, input.nowMs?.() ?? Date.now());
+          await markRebuildPending(transaction, nowMs());
           await input.faultAfter?.("state_updated");
           return Object.freeze({ state: "rebuild_pending" as const });
         });
@@ -1586,7 +1587,7 @@ function createLogicalMergeRepositoryInternal(
           const foreignKeyCheck = await transaction.queryAll<Record<string, unknown>>("PRAGMA foreign_key_check");
           if (foreignKeyCheck.length !== 0) fail();
           await input.faultAfter?.("verified");
-          await markRebuildPending(transaction, input.nowMs?.() ?? Date.now());
+          await markRebuildPending(transaction, nowMs());
           await input.faultAfter?.("state_updated");
           return Object.freeze({ state: "rebuild_pending" as const });
         });
