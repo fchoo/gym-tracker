@@ -836,6 +836,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   ): Promise<NotificationExpiryExerciseCode>;
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getSessionDetailAtRevision(sessionId: string, sourceRevision: number): Promise<SessionDetail>;
   loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
   listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
   resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
@@ -2842,6 +2843,12 @@ export function WorkoutAppRuntimeProvider({
 
   const getSessionDetail = useCallback((sessionId: string) => {
     return requireServices().outcomeRepository.getSessionDetail(sessionId);
+  }, [requireServices]);
+
+  const getSessionDetailAtRevision = useCallback((sessionId: string, sourceRevision: number) => {
+    const read = requireServices().outcomeRepository.getSessionDetailAtRevision;
+    if (read === undefined) throw new Error("workout_source_revision_reader_unavailable");
+    return read(sessionId, sourceRevision);
   }, [requireServices]);
 
   const confirmGarminImport = useCallback((input: ConfirmGarminImportInput): Promise<GarminImportResult> =>
@@ -5316,6 +5323,7 @@ export function WorkoutAppRuntimeProvider({
     finishStarterSwitchWorkout,
     getActiveWorkout,
     getSessionDetail,
+    getSessionDetailAtRevision,
     loadGarminRevisionReview,
     listGarminRevisionReviews,
     resolveGarminRevision,
@@ -5475,6 +5483,7 @@ export function WorkoutAppRuntimeProvider({
     garminImport,
     getActiveWorkout,
     getSessionDetail,
+    getSessionDetailAtRevision,
     loadGarminRevisionReview,
     listGarminRevisionReviews,
     resolveGarminRevision,

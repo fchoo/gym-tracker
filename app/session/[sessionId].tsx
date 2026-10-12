@@ -48,21 +48,30 @@ function SessionRouteUnavailable() {
   );
 }
 
-function ManagementSessionDetailRoute({ sessionId }: Readonly<{ sessionId: string }>) {
+function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Readonly<{
+  expectedSourceRevision?: number;
+  sessionId: string;
+}>) {
   const runtime = useWorkoutAppRuntime();
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [failed, setFailed] = useState(false);
+  const [sourceUnavailable, setSourceUnavailable] = useState(false);
 
   useEffect(() => {
     let active = true;
     setFailed(false);
-    void runtime.getSessionDetail(sessionId).then((next) => {
+    setSourceUnavailable(false);
+    const read = expectedSourceRevision === undefined
+      ? runtime.getSessionDetail(sessionId)
+      : runtime.getSessionDetailAtRevision(sessionId, expectedSourceRevision);
+    void read.then((next) => {
       if (active) {
         setDetail(next);
       }
     }).catch(() => {
       if (active) {
-        setFailed(true);
+        if (expectedSourceRevision === undefined) setFailed(true);
+        else setSourceUnavailable(true);
       }
     });
     return () => {
@@ -70,9 +79,28 @@ function ManagementSessionDetailRoute({ sessionId }: Readonly<{ sessionId: strin
     };
   }, [
     sessionId,
-    runtime,
+    expectedSourceRevision,
+    runtime.getSessionDetail,
+    runtime.getSessionDetailAtRevision,
     runtime.workoutRefreshGeneration,
   ]);
+
+  if (sourceUnavailable) {
+    return (
+      <AdaptiveScreen
+        primary={
+          <>
+            <ScreenHeader backAction={() => router.back()} title="Workout details" />
+            <EmptyState
+              body="The exact workout revision used by Progress was corrected or removed. Return to Progress to load current saved facts."
+              heading="Workout source unavailable"
+              primaryAction={<PrimaryAction label="Go back" onPress={() => router.back()} />}
+            />
+          </>
+        }
+      />
+    );
+  }
 
   if (failed) {
     return (
@@ -146,17 +174,26 @@ function ManagementSessionDetailRoute({ sessionId }: Readonly<{ sessionId: strin
 }
 
 export default function SessionDetailRoute() {
-  const { sessionId, origin: rawOrigin } = useLocalSearchParams() as Readonly<{
+  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision } = useLocalSearchParams() as Readonly<{
     sessionId?: RouteParam;
     origin?: RouteParam;
+    sourceRevision?: RouteParam;
   }>;
   const resolvedSessionId = exactRouteParam(sessionId);
   const origin = parseCalendarRouteOrigin(rawOrigin, {
     absentManagementOrigin: "direct",
     managementOrigins: ["progress"] as const,
   });
+  const parsedSourceRevision = parseScalarRouteParam(rawSourceRevision);
+  const sourceRevision = parsedSourceRevision.kind === "value" && /^\d+$/u.test(parsedSourceRevision.value)
+    ? Number(parsedSourceRevision.value)
+    : undefined;
+  const progressSourceValid = origin.kind !== "management" || origin.origin !== "progress"
+    || (parsedSourceRevision.kind === "value"
+      && Number.isSafeInteger(sourceRevision)
+      && sourceRevision! > 0);
 
-  if (origin.kind === "invalid") return <SessionRouteUnavailable />;
+  if (origin.kind === "invalid" || !progressSourceValid) return <SessionRouteUnavailable />;
   if (origin.kind === "calendar") {
     return (
       <CalendarSessionDetailRouteAdapter
@@ -167,5 +204,8 @@ export default function SessionDetailRoute() {
   }
   return resolvedSessionId === null
     ? <SessionRouteUnavailable />
-    : <ManagementSessionDetailRoute sessionId={resolvedSessionId} />;
+    : <ManagementSessionDetailRoute
+        {...(sourceRevision === undefined ? {} : { expectedSourceRevision: sourceRevision })}
+        sessionId={resolvedSessionId}
+      />;
 }

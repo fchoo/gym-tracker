@@ -6,8 +6,10 @@ import { WorkoutOutcomeConflictError, type SessionDetail } from "../../src/domai
 
 const mockBack = jest.fn();
 const mockGetSessionDetail = jest.fn<() => Promise<SessionDetail>>();
+const mockGetSessionDetailAtRevision = jest.fn<() => Promise<SessionDetail>>();
 const mockUseWorkoutAppRuntime = jest.fn(() => ({
   getSessionDetail: mockGetSessionDetail,
+  getSessionDetailAtRevision: mockGetSessionDetailAtRevision,
   ...mockMutationCommands,
   workoutRefreshGeneration: 0,
 }));
@@ -18,7 +20,7 @@ const mockMutationCommands = {
   reviseCompletedSet: jest.fn(), saveZeroSetWorkout: jest.fn(), setWorkoutPreferences: jest.fn(), skipExercise: jest.fn(), skipRest: jest.fn(),
   startManualRest: jest.fn(), updateActiveSetDraft: jest.fn(), updateSessionExerciseDefaultRest: jest.fn(), updateWarmupDraft: jest.fn(),
 };
-let mockParams: Readonly<{ sessionId?: string | readonly string[]; origin?: string | readonly string[] }> = {
+let mockParams: Readonly<{ sessionId?: string | readonly string[]; origin?: string | readonly string[]; sourceRevision?: string | readonly string[] }> = {
   sessionId: "calendar-session",
   origin: "calendar",
 };
@@ -60,7 +62,7 @@ const detail = {
 } as unknown as SessionDetail;
 
 describe("SessionDetailRoute", () => {
-  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); mockUseWorkoutAppRuntime.mockClear(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
+  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); mockGetSessionDetailAtRevision.mockReset(); mockUseWorkoutAppRuntime.mockClear(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
 
   it("opens an exact Calendar session through the query-only facts branch", async () => {
     mockGetSessionDetail.mockResolvedValue(detail);
@@ -128,4 +130,43 @@ describe("SessionDetailRoute", () => {
     expect(screen.getByLabelText("Remove from history")).toBeOnTheScreen();
     expect(mockUseWorkoutAppRuntime).toHaveBeenCalled();
   });
+
+  it("loads the exact Progress source revision at the destination", async () => {
+    mockParams = { sessionId: "calendar-session", origin: "progress", sourceRevision: "2" };
+    mockGetSessionDetailAtRevision.mockResolvedValue(detail);
+
+    await render(<SessionDetailRoute />);
+
+    expect(await screen.findByText("Management details")).toBeOnTheScreen();
+    expect(mockGetSessionDetailAtRevision).toHaveBeenCalledWith("calendar-session", 2);
+    expect(mockGetSessionDetail).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "workout_source_revision_mismatch",
+    "workout_source_removed",
+    "workout_session_not_found",
+  ])("fails closed when the exact Progress source is %s", async (code) => {
+    mockParams = { sessionId: "calendar-session", origin: "progress", sourceRevision: "2" };
+    mockGetSessionDetailAtRevision.mockRejectedValue(new WorkoutOutcomeConflictError(code));
+
+    await render(<SessionDetailRoute />);
+
+    expect(await screen.findByText("Workout source unavailable")).toBeOnTheScreen();
+    expect(screen.queryByText("Management details")).toBeNull();
+  });
+
+  it.each([undefined, "0", "-1", "not-a-revision", ["2"]] as const)(
+    "rejects invalid Progress source revision %p before acquiring the runtime",
+    async (sourceRevision) => {
+      mockParams = {
+        sessionId: "calendar-session",
+        origin: "progress",
+        ...(sourceRevision === undefined ? {} : { sourceRevision }),
+      };
+      await render(<SessionDetailRoute />);
+      expect(await screen.findByText("Workout details unavailable")).toBeOnTheScreen();
+      expect(mockGetSessionDetailAtRevision).not.toHaveBeenCalled();
+    },
+  );
 });

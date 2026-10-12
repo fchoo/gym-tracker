@@ -2315,6 +2315,43 @@ export function createWorkoutOutcomeRepository(
 ): WorkoutOutcomeRepository & ProgressionRepository {
   const repository: WorkoutOutcomeRepository & ProgressionRepository = {
     getSessionDetail: (sessionId) => loadSessionDetail(kernel, sessionId),
+    getSessionDetailAtRevision: async (sessionId, sourceRevision) => {
+      if (!Number.isSafeInteger(sourceRevision) || sourceRevision <= 0) {
+        throw new WorkoutOutcomeConflictError("workout_source_revision_invalid");
+      }
+      const load = async (executor: QueryExecutor) => {
+        const [source] = await executor.queryAll<{
+          effective_revision: number;
+          lifecycle: string;
+        }>(
+          `SELECT COALESCE(overlay.effective_revision, session.revision) AS effective_revision,
+                  CASE WHEN overlay.lifecycle IS NOT NULL THEN overlay.lifecycle
+                       WHEN session.status = 'voided' THEN 'voided'
+                       ELSE 'active' END AS lifecycle
+             FROM workout_sessions session
+             LEFT JOIN history_session_overlays overlay ON overlay.session_id = session.id
+            WHERE session.id = ?`,
+          [sessionId],
+        );
+        if (source === undefined) {
+          throw new WorkoutOutcomeConflictError("workout_session_not_found");
+        }
+        if (source.lifecycle !== "active") {
+          throw new WorkoutOutcomeConflictError("workout_source_removed");
+        }
+        if (source.effective_revision !== sourceRevision) {
+          throw new WorkoutOutcomeConflictError("workout_source_revision_mismatch");
+        }
+        const detail = await loadSessionDetail(executor, sessionId);
+        if (detail.revision !== sourceRevision) {
+          throw new WorkoutOutcomeConflictError("workout_source_revision_mismatch");
+        }
+        return detail;
+      };
+      return kernel.readSnapshot === undefined
+        ? load(kernel)
+        : kernel.readSnapshot((executor) => load(executor));
+    },
 
     finishCompleted: (input) =>
       kernel.write((transaction) =>

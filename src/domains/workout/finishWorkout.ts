@@ -56,6 +56,10 @@ export interface WorkoutOutcomeRepository {
     sessionRevision: number;
   }>>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getSessionDetailAtRevision?(
+    sessionId: string,
+    sourceRevision: number,
+  ): Promise<SessionDetail>;
 }
 
 export type CompletedWorkoutPlanWriteBackFailure = Readonly<{
