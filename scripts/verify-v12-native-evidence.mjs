@@ -7,7 +7,10 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { validateV12CalendarComparison } from "./compare-v12-calendar.mjs";
+import {
+  v12CalendarReferenceMapSha256,
+  validateV12CalendarComparison,
+} from "./compare-v12-calendar.mjs";
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
@@ -65,7 +68,7 @@ function monotonic(values) {
 }
 
 function validateIdentity(evidence, fixtureMode) {
-  schema(evidence.manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "apk", "installed_apk", "device", "report_sha256"], "manifest");
+  schema(evidence.manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "apk", "installed_apk", "device", "report_sha256"], "manifest");
   schema(evidence.manifest.js_bundle, ["embedded"], "manifest.js_bundle");
   schema(evidence.manifest.apk, ["path", "sha256", "size_bytes"], "manifest.apk");
   schema(evidence.manifest.installed_apk, ["sha256", "matches_retained_apk"], "manifest.installed_apk");
@@ -76,11 +79,12 @@ function validateIdentity(evidence, fixtureMode) {
   descriptor(manifest.apk, "manifest.apk", [fixtureMode
     ? "artifacts/native/v1.2-calendar/app.apk"
     : `${liveRoot(evidence.run_id)}/app.apk`]);
-  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
+  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
   if ([
     !HEAD.test(identity.base_head),
     !HASH.test(identity.source_tree_sha256),
     !HASH.test(identity.source_manifest_sha256),
+    !HASH.test(identity.reference_map_sha256),
     !HASH.test(identity.apk_sha256),
     !HASH.test(identity.installed_apk_sha256),
     !HASH.test(identity.device_identity_sha256),
@@ -88,6 +92,7 @@ function validateIdentity(evidence, fixtureMode) {
     identity.base_head !== manifest.base_head,
     identity.source_tree_sha256 !== manifest.source_tree_sha256,
     identity.source_manifest_sha256 !== manifest.source_manifest_sha256,
+    identity.reference_map_sha256 !== manifest.reference_map_sha256,
     identity.package !== PACKAGE,
     identity.package !== manifest.package,
     identity.apk_sha256 !== manifest.apk.sha256,
@@ -148,8 +153,11 @@ function validateDeviations(evidence) {
   }
 }
 
-function referenceMap(root) {
-  return JSON.parse(readFileSync(path.join(root, ".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json"), "utf8"));
+function referenceMap(root, expectedSha256) {
+  const mapPath = resolveV12CalendarPath(path.join(root, ".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json"), { root, mustExist: true });
+  const map = JSON.parse(readFileSync(mapPath, "utf8"));
+  if (v12CalendarReferenceMapSha256(map) !== expectedSha256) fail("reference_map_identity_invalid");
+  return map;
 }
 
 function validateComparison(evidence, map) {
@@ -197,7 +205,7 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
   validateFunctionalCases(evidence, fixtureMode);
   validateRouteJourneys(evidence, fixtureMode);
   validateDeviations(evidence);
-  validateComparison(evidence, referenceMap(root));
+  validateComparison(evidence, referenceMap(root, evidence.manifest.reference_map_sha256));
   if (fixtureMode) {
     schema(evidence.diagnostics, ["native_execution", "status", "acceptance_owner"], "diagnostics");
     if ([evidence.diagnostics.native_execution !== "NOT_RUN", evidence.diagnostics.status !== "REVIEW_REQUIRED", evidence.diagnostics.acceptance_owner !== "phase20", Object.hasOwn(evidence.diagnostics, "verdict")].some(Boolean)) fail("fixture_diagnostics_invalid");

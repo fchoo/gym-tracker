@@ -21,7 +21,11 @@ import {
   executeV12CalendarDiagnostics,
   validateV12CalendarDiagnostics,
 } from "./benchmark-v12-interactions.mjs";
-import { V12_CALENDAR_REQUIRED_CASE_IDS } from "./v12-calendar-case-registry.mjs";
+import {
+  V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
+  V12_CALENDAR_REQUIRED_CASES,
+  V12_CALENDAR_REQUIRED_CASE_IDS,
+} from "./v12-calendar-case-registry.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import {
@@ -50,6 +54,7 @@ function manifest() {
     base_head: "a".repeat(40),
     source_tree_sha256: "b".repeat(64),
     source_manifest_sha256: "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
+    reference_map_sha256: "513c8f5798c1010eb370d35d259ea9c5e805c80a2786101a2ed732b588167c33",
     apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 },
     installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true },
     device: { identity_sha256: "d".repeat(64) },
@@ -107,12 +112,14 @@ function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
   evidence.comparison.run_id = evidence.run_id;
   evidence.comparison.phase20_deferred = false;
   evidence.comparison.identity = clone(evidence.identity);
+  evidence.comparison.case_ledger = clone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
   evidence.comparison.status = "PASS";
-  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({
-    id,
+  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
+    id: entry.id,
+    case_sha256: entry.case_sha256,
     status: "PASS",
     native_execution: "EXECUTED",
-    artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) },
+    artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
   }));
   evidence.comparison.records.forEach((entry, index) => {
     entry.classification = "PASS";
@@ -210,6 +217,7 @@ test("Calendar evidence rejects missing, duplicate, stale, mutating, non-monoton
     (value) => { value.route_journeys[0].actual_route = false; },
     (value) => { value.route_journeys[0].actual_loader = false; },
     (value) => { value.identity.source_tree_sha256 = "0".repeat(64); },
+    (value) => { value.manifest.reference_map_sha256 = "0".repeat(64); value.identity.reference_map_sha256 = "0".repeat(64); value.comparison.identity.reference_map_sha256 = "0".repeat(64); },
   ];
   for (const mutate of mutations) {
     const evidence = fixture();
@@ -260,6 +268,10 @@ test("Calendar evidence derives FAIL and REVIEW_REQUIRED and permits accepted de
   const falsePass = fixture();
   falsePass.status = "PASS";
   assert.throws(() => validateV12CalendarEvidence(falsePass), /aggregate_status_mismatch/u);
+
+  const wrongCaseIdentity = completeLiveEvidence();
+  wrongCaseIdentity.comparison.case_results[0].case_sha256 = "0".repeat(64);
+  assert.throws(() => validateV12CalendarEvidence(wrongCaseIdentity), /case_result_invalid/u);
 });
 
 test("the final CLI verifier accepts a complete live comparison on the same run and manifest identity", () => {

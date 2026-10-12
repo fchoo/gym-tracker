@@ -62,7 +62,7 @@ export const V12_CALENDAR_STAGE_CONTRACTS = Object.freeze({
 });
 
 export function validateV12CalendarManifest(manifest, current = {}) {
-  if (!exactKeys(manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "apk", "installed_apk", "device", "report_sha256"])) throw new Error("v12_calendar_manifest_invalid");
+  if (!exactKeys(manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "apk", "installed_apk", "device", "report_sha256"])) throw new Error("v12_calendar_manifest_invalid");
   if ([!exactKeys(manifest.js_bundle, ["embedded"]), !exactKeys(manifest.apk, ["path", "sha256", "size_bytes"]), !exactKeys(manifest.installed_apk, ["sha256", "matches_retained_apk"]), !exactKeys(manifest.device, ["identity_sha256"])].some(Boolean)) throw new Error("v12_calendar_manifest_invalid");
   if ([
     manifest.schema_version !== 1,
@@ -73,6 +73,7 @@ export function validateV12CalendarManifest(manifest, current = {}) {
     !GIT_HEAD.test(manifest.base_head),
     !SHA256.test(manifest.source_tree_sha256),
     !SHA256.test(manifest.source_manifest_sha256),
+    !SHA256.test(manifest.reference_map_sha256),
     !SHA256.test(manifest.apk.sha256),
     manifest.installed_apk.matches_retained_apk !== true,
     manifest.installed_apk.sha256 !== manifest.apk.sha256,
@@ -109,7 +110,7 @@ export function createV12CalendarRunnerPlan(manifest) {
     package: manifest.package,
     stages: V12_CALENDAR_DIAGNOSTIC_STAGES,
     flow_sha256: sha256(readFileSync(path.join(ROOT, FLOW))),
-    identity: { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, apk_sha256: manifest.apk.sha256, device_identity_sha256: manifest.device.identity_sha256 },
+    identity: { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, source_manifest_sha256: manifest.source_manifest_sha256, reference_map_sha256: manifest.reference_map_sha256, apk_sha256: manifest.apk.sha256, device_identity_sha256: manifest.device.identity_sha256 },
     prohibited_verdicts: ["PASS", "FAIL"],
   });
 }

@@ -51,6 +51,7 @@ function identityFromManifest(manifest) {
     base_head: manifest.base_head,
     source_tree_sha256: manifest.source_tree_sha256,
     source_manifest_sha256: manifest.source_manifest_sha256,
+    reference_map_sha256: manifest.reference_map_sha256,
     package: manifest.package,
     apk_sha256: manifest.apk.sha256,
     installed_apk_sha256: manifest.installed_apk.sha256,
@@ -59,17 +60,19 @@ function identityFromManifest(manifest) {
 }
 
 function validateIdentity(identity, manifest) {
-  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256"], "identity");
+  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256"], "identity");
   if ([
     !HEAD.test(identity.base_head),
     !HASH.test(identity.source_tree_sha256),
     !HASH.test(identity.source_manifest_sha256),
+    !HASH.test(identity.reference_map_sha256),
     !HASH.test(identity.apk_sha256),
     !HASH.test(identity.installed_apk_sha256),
     !HASH.test(identity.device_identity_sha256),
     identity.base_head !== manifest.base_head,
     identity.source_tree_sha256 !== manifest.source_tree_sha256,
     identity.source_manifest_sha256 !== manifest.source_manifest_sha256,
+    identity.reference_map_sha256 !== manifest.reference_map_sha256,
     identity.package !== manifest.package,
     identity.apk_sha256 !== manifest.apk.sha256,
     identity.installed_apk_sha256 !== manifest.installed_apk.sha256,

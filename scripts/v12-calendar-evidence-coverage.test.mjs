@@ -28,12 +28,15 @@ import {
 import {
   compareV12Calendar,
   executeV12CalendarComparisonFixture,
+  v12CalendarReferenceMapSha256,
   validateV12CalendarComparison,
   runV12CalendarComparisonCli,
   validateV12CalendarReferenceMap,
 } from "./compare-v12-calendar.mjs";
 import {
+  V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
+  V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
@@ -79,6 +82,7 @@ function manifest() {
     base_head: "a".repeat(40),
     source_tree_sha256: "b".repeat(64),
     source_manifest_sha256: "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
+    reference_map_sha256: "513c8f5798c1010eb370d35d259ea9c5e805c80a2786101a2ed732b588167c33",
     apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 },
     installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true },
     device: { identity_sha256: "d".repeat(64) },
@@ -141,13 +145,9 @@ function comparisonFixture() {
       reference: { path: referencePath, sha256: hash(bytes), width: 1, height: 1 },
       configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" },
     }],
-    case_ledger: [
-      { id: "light", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "touch", viewport: "390x844" },
-      { id: "dark", capture_ids: ["calendar-month-light-390"], theme: "Dark", motion: "normal", input: "touch", viewport: "390x844" },
-      { id: "accessibility", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "dpad", viewport: "390x844" },
-      { id: "reduced", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "reduced", input: "touch", viewport: "390x844" },
-    ],
+    case_ledger: V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   };
+  identity.reference_map_sha256 = v12CalendarReferenceMapSha256(map);
   const trace = {
     synthetic: true,
     samples: [
@@ -207,11 +207,13 @@ function liveEvidence() {
   evidence.comparison.phase20_deferred = false;
   evidence.comparison.status = "PASS";
   evidence.comparison.identity = structuredClone(evidence.identity);
-  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({
-    id,
+  evidence.comparison.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
+  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
+    id: entry.id,
+    case_sha256: entry.case_sha256,
     status: "PASS",
     native_execution: "EXECUTED",
-    artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) },
+    artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
   }));
   evidence.comparison.records.forEach((entry) => {
     entry.classification = "PASS";
@@ -234,10 +236,10 @@ function liveEvidence() {
 }
 
 function mutateAndReject(base, mutations, validate) {
-  for (const mutate of mutations) {
+  for (const [index, mutate] of mutations.entries()) {
     const value = structuredClone(base);
     mutate(value);
-    assert.throws(() => validate(value));
+    assert.throws(() => validate(value), undefined, `mutation ${index} must be rejected`);
   }
 }
 
@@ -936,7 +938,7 @@ test("checked reference map rejects every malformed structural field", () => {
     (value) => { value.captures[0].configuration.motion = "spring"; },
     (value) => { value.captures[0].configuration.input = "voice"; },
     (value) => { value.captures[0].configuration.fixture = null; },
-    (value) => { value.case_ledger[0].capture_ids = []; },
+    (value) => { value.case_ledger.case_ids = []; },
   ], (value) => validateV12CalendarReferenceMap(value));
 });
 
@@ -986,7 +988,7 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
     reject(({ run }) => { run.captures[0].native.sha256 = "0".repeat(64); }, /image_identity_invalid/u);
     reject(({ run }) => { run.captures[0].native.height = 2; }, /image_identity_invalid/u);
     reject(({ map }) => { map.captures[0].reference.sha256 = "0".repeat(64); }, /reference_stale/u);
-    reject(({ map }) => { map.case_ledger[0].capture_ids = null; }, /ledger_capture_set_mismatch/u);
+    reject(({ map }) => { map.case_ledger.case_ids = null; }, /ledger_required_case_missing/u);
     reject(({ map }) => {
       delete map.host_only_fixture;
       map.source_manifest = ".planning/design/v1.2-browser-evidence/source-manifest.json";
@@ -1052,6 +1054,7 @@ test("shared comparison validation rejects malformed host and live envelopes", (
       (entry) => { entry.identity.device_identity_sha256 = "bad"; },
       (entry) => { entry.identity.report_sha256 = "bad"; },
       (entry) => { entry.case_registry.sha256 = "0".repeat(64); },
+      (entry) => { entry.case_ledger.case_ids = []; },
       (entry) => { entry.case_results.status = "PASS"; },
       (entry) => { entry.case_results.native_execution = "EXECUTED"; },
       (entry) => { entry.case_results.required_case_count = 1; },
@@ -1074,7 +1077,8 @@ test("shared comparison validation rejects malformed host and live envelopes", (
     for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
       live.records[0].artifacts[kind].path = `${artifactRoot}/comparison/${live.records[0].id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
     }
-    live.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({ id, status: "PASS", native_execution: "EXECUTED", artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) } }));
+    live.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
+    live.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({ id: entry.id, case_sha256: entry.case_sha256, status: "PASS", native_execution: "EXECUTED", artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) } }));
     assert.equal(validateV12CalendarComparison(live), true);
     const explained = structuredClone(live);
     explained.records[0].differences = [{ kind: "visual", explained: true }];

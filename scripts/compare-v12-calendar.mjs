@@ -7,8 +7,11 @@ import { isDeepStrictEqual } from "node:util";
 import { PNG } from "pngjs";
 
 import {
+  V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
+  V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
+  validateV12CalendarCaseLedgerDescriptor,
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
 import { exactKeys } from "./node-evidence-utils.mjs";
@@ -51,9 +54,6 @@ function schema(value, keys, location) {
 function normalizedPath(value) {
   if ([typeof value !== "string", typeof value === "string" && (value.length === 0 || value.includes("\\") || path.isAbsolute(value) || path.posix.normalize(value) !== value || value.split("/").includes(".."))].some(Boolean)) fail("path_invalid");
   return value;
-}
-function caseArtifactName(id) {
-  return `${id.replaceAll(":", "-")}.json`;
 }
 function comparisonArtifactName(kind) {
   return kind === "record" ? "comparison.json" : `${kind}.png`;
@@ -119,16 +119,8 @@ function assertSemantics(semantics) {
   if ([semantics.focus_ring_dp !== 3, semantics.focus_clearance_dp !== 4, semantics.authority !== "read-only"].some(Boolean)) fail("semantic_mismatch");
 }
 function assertLedger(map) {
-  if (!Array.isArray(map.case_ledger) || map.case_ledger.length === 0) fail("ledger_missing");
-  const hasLight = map.case_ledger.some((entry) => entry.theme === "Light");
-  const hasDark = map.case_ledger.some((entry) => entry.theme === "Dark");
-  const hasAccessibility = map.case_ledger.some((entry) => entry.input === "keyboard" || entry.input === "dpad");
-  const hasReducedMotion = map.case_ledger.some((entry) => entry.motion === "reduced");
-  for (const entry of map.case_ledger) {
-    schema(entry, ["id", "capture_ids", "theme", "motion", "input", "viewport"], "case_ledger");
-    if (!Array.isArray(entry.capture_ids)) fail("ledger_capture_set_mismatch");
-  }
-  if ([!hasLight, !hasDark, !hasAccessibility, !hasReducedMotion].some(Boolean)) fail("ledger_required_case_missing");
+  try { validateV12CalendarCaseLedgerDescriptor(map.case_ledger); }
+  catch { fail("ledger_required_case_missing"); }
 }
 
 function assertCaseResults(entries, nativeExecution, runId) {
@@ -138,28 +130,34 @@ function assertCaseResults(entries, nativeExecution, runId) {
     return ["REVIEW_REQUIRED"];
   }
   if ([!Array.isArray(entries), Array.isArray(entries) && entries.length !== V12_CALENDAR_REQUIRED_CASE_IDS.length, Array.isArray(entries) && entries.some((entry, index) => entry?.id !== V12_CALENDAR_REQUIRED_CASE_IDS[index])].some(Boolean)) fail("case_result_set_invalid");
-  for (const entry of entries) {
-    schema(entry, ["id", "status", "native_execution", "artifact"], "case_result");
-    if ([!CASE_RESULTS.has(entry.status), entry.native_execution !== nativeExecution].some(Boolean)) fail("case_result_invalid");
+  for (const [index, entry] of entries.entries()) {
+    schema(entry, ["id", "case_sha256", "status", "native_execution", "artifact"], "case_result");
+    const requiredCase = V12_CALENDAR_REQUIRED_CASES[index];
+    if ([!CASE_RESULTS.has(entry.status), entry.native_execution !== nativeExecution, entry.case_sha256 !== requiredCase.case_sha256].some(Boolean)) fail("case_result_invalid");
     schema(entry.artifact, entry.artifact.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], "case_result.artifact");
     if (!SHA256.test(entry.artifact.sha256)) fail("case_result_invalid");
-    if (normalizedPath(entry.artifact.path) !== `artifacts/native/v1.2/${runId}/cases/${caseArtifactName(entry.id)}`) fail("path_invalid");
+    if (normalizedPath(entry.artifact.path) !== `artifacts/native/v1.2/${runId}/cases/${entry.case_sha256}.json`) fail("path_invalid");
   }
   return entries.map(({ status }) => status);
 }
 
 function assertIdentity(identity) {
-  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
+  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
   if ([
     !/^[a-f0-9]{40}$/u.test(identity.base_head),
     !SHA256.test(identity.source_tree_sha256),
     !SHA256.test(identity.source_manifest_sha256),
+    !SHA256.test(identity.reference_map_sha256),
     identity.package !== "com.fchoo.gymtracker.devtest",
     !SHA256.test(identity.apk_sha256),
     identity.installed_apk_sha256 !== identity.apk_sha256,
     !SHA256.test(identity.device_identity_sha256),
     !SHA256.test(identity.report_sha256),
   ].some(Boolean)) fail("result_identity_invalid");
+}
+
+export function v12CalendarReferenceMapSha256(map) {
+  return sha256(Buffer.from(stableCanonicalJson(map)));
 }
 
 export function validateV12CalendarReferenceMap(map, options = {}) {
@@ -172,7 +170,7 @@ export function validateV12CalendarReferenceMap(map, options = {}) {
   const ids = new Set();
   for (const capture of map.captures) {
     schema(capture, ["id", "requirement_ids", "reference", "configuration"], "reference_capture");
-    if ([typeof capture.id !== "string", ids.has(capture.id), !Array.isArray(capture.requirement_ids), Array.isArray(capture.requirement_ids) && capture.requirement_ids.length === 0, Array.isArray(capture.requirement_ids) && capture.requirement_ids.some((id) => !/^CAL-\d+$/u.test(id))].some(Boolean)) fail("map_capture_invalid");
+    if ([typeof capture.id !== "string", typeof capture.id === "string" && !/^calendar-[a-z0-9-]{3,63}$/u.test(capture.id), ids.has(capture.id), !Array.isArray(capture.requirement_ids), Array.isArray(capture.requirement_ids) && capture.requirement_ids.length === 0, Array.isArray(capture.requirement_ids) && capture.requirement_ids.some((id) => !/^CAL-\d+$/u.test(id))].some(Boolean)) fail("map_capture_invalid");
     ids.add(capture.id);
     const reference = capture.reference;
     schema(reference, ["path", "sha256", "width", "height"], "reference_descriptor");
@@ -191,8 +189,6 @@ export function validateV12CalendarReferenceMap(map, options = {}) {
     if ([!["Light", "Dark", "System"].includes(configuration.theme), !finite(configuration.viewport.width), !finite(configuration.viewport.height), !["portrait", "landscape"].includes(configuration.orientation), !finite(configuration.font_scale), !["normal", "reduced"].includes(configuration.motion), !["touch", "keyboard", "dpad"].includes(configuration.input), !SYNTHETIC_FIXTURES.has(configuration.fixture)].some(Boolean)) fail("configuration_invalid");
   }
   assertLedger(map);
-  const referenced = new Set(map.case_ledger.flatMap((entry) => entry.capture_ids));
-  if ([referenced.size !== ids.size, [...ids].some((id) => !referenced.has(id)), [...referenced].some((id) => !ids.has(id))].some(Boolean)) fail("ledger_capture_set_mismatch");
   return true;
 }
 
@@ -223,7 +219,7 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
   schema(run, ["schema_version", "run_id", "identity", "source_tree_sha256", "source_manifest_sha256", "status", "captures"], "run");
   if ([run.schema_version !== 1, run.status !== "NOT_RUN", run.run_id !== "phase16-host-deferred", run.source_manifest_sha256 !== map.source_manifest_sha256, !SHA256.test(run.source_tree_sha256), !Array.isArray(run.captures)].some(Boolean)) fail("run_identity_invalid");
   assertIdentity(run.identity);
-  if ([run.identity.source_tree_sha256 !== run.source_tree_sha256, run.identity.source_manifest_sha256 !== run.source_manifest_sha256].some(Boolean)) fail("run_identity_invalid");
+  if ([run.identity.source_tree_sha256 !== run.source_tree_sha256, run.identity.source_manifest_sha256 !== run.source_manifest_sha256, run.identity.reference_map_sha256 !== v12CalendarReferenceMapSha256(map)].some(Boolean)) fail("run_identity_invalid");
   const mapById = new Map(map.captures.map((capture) => [capture.id, capture]));
   if ([run.captures.length !== mapById.size, new Set(run.captures.map((capture) => capture.id)).size !== run.captures.length].some(Boolean)) fail("capture_set_invalid");
   const destination = path.resolve(outputDirectory);
@@ -266,12 +262,12 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
     native_execution: "NOT_RUN",
     required_case_count: V12_CALENDAR_REQUIRED_CASE_IDS.length,
   });
-  const result = { schema_version: 2, suite: "v1.2-calendar-comparison", mode: "host-deferred", run_id: run.run_id, status: "REVIEW_REQUIRED", native_execution: "NOT_RUN", phase20_deferred: true, identity: run.identity, case_registry: V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, case_results: caseResults, records };
+  const result = { schema_version: 2, suite: "v1.2-calendar-comparison", mode: "host-deferred", run_id: run.run_id, status: "REVIEW_REQUIRED", native_execution: "NOT_RUN", phase20_deferred: true, identity: run.identity, case_registry: V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, case_ledger: V12_CALENDAR_CASE_LEDGER_DESCRIPTOR, case_results: caseResults, records };
   return Object.freeze(result);
 }
 
 export function validateV12CalendarComparison(result, options = {}) {
-  schema(result, ["schema_version", "suite", "mode", "run_id", "status", "native_execution", "phase20_deferred", "identity", "case_registry", "case_results", "records"], "comparison");
+  schema(result, ["schema_version", "suite", "mode", "run_id", "status", "native_execution", "phase20_deferred", "identity", "case_registry", "case_ledger", "case_results", "records"], "comparison");
   const host = result.mode === "host-deferred";
   const live = result.mode === "live-executed";
   if ([result.schema_version !== 2, result.suite !== "v1.2-calendar-comparison", !host && !live, result.native_execution !== (host ? "NOT_RUN" : "EXECUTED"), result.phase20_deferred !== host, !Array.isArray(result.records), Array.isArray(result.records) && result.records.length === 0].some(Boolean)) fail("result_invalid");
@@ -280,6 +276,8 @@ export function validateV12CalendarComparison(result, options = {}) {
   if ([options.expectedRunId !== undefined && result.run_id !== options.expectedRunId, options.expectedIdentity !== undefined && !isDeepStrictEqual(result.identity, options.expectedIdentity)].some(Boolean)) fail("result_identity_invalid");
   try { validateV12CalendarCaseRegistryDescriptor(result.case_registry); }
   catch { fail("case_registry_invalid"); }
+  try { validateV12CalendarCaseLedgerDescriptor(result.case_ledger); }
+  catch { fail("case_ledger_invalid"); }
   const statuses = assertCaseResults(result.case_results, result.native_execution, result.run_id);
   for (const record of result.records) {
     schema(record, ["id", "classification", "differences", "artifacts", ...(record.classification === "accepted_deviation" ? ["deviation_id"] : [])], "comparison_record");
@@ -311,8 +309,8 @@ function fixtureInput(file) {
   const reference = path.join(directory, "reference.png"); const native = path.join(directory, "native.png");
   writeFileSync(reference, bytes); writeFileSync(native, bytes);
   const hash = sha256(bytes);
-  const map = { schema_version: 1, prototype_revision: 18, source_manifest_sha256: fixture.source_manifest_sha256, host_only_fixture: true, case_registry: V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, captures: [{ id: "calendar-month-light-390", requirement_ids: ["CAL-01"], reference: { path: reference, sha256: hash, width: 1, height: 1 }, configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" } }], case_ledger: [{ id: "light", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "touch", viewport: "390x844" }, { id: "dark", capture_ids: ["calendar-month-light-390"], theme: "Dark", motion: "normal", input: "touch", viewport: "390x844" }, { id: "accessibility", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "keyboard", viewport: "390x844" }, { id: "reduced-motion", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "reduced", input: "touch", viewport: "390x844" }] };
-  const identity = { base_head: "a".repeat(40), source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, package: "com.fchoo.gymtracker.devtest", apk_sha256: "c".repeat(64), installed_apk_sha256: "c".repeat(64), device_identity_sha256: "d".repeat(64), report_sha256: "e".repeat(64) };
+  const map = { schema_version: 1, prototype_revision: 18, source_manifest_sha256: fixture.source_manifest_sha256, host_only_fixture: true, case_registry: V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, captures: [{ id: "calendar-month-light-390", requirement_ids: ["CAL-01"], reference: { path: reference, sha256: hash, width: 1, height: 1 }, configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" } }], case_ledger: V12_CALENDAR_CASE_LEDGER_DESCRIPTOR };
+  const identity = { base_head: "a".repeat(40), source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, reference_map_sha256: v12CalendarReferenceMapSha256(map), package: "com.fchoo.gymtracker.devtest", apk_sha256: "c".repeat(64), installed_apk_sha256: "c".repeat(64), device_identity_sha256: "d".repeat(64), report_sha256: "e".repeat(64) };
   const run = { schema_version: 1, run_id: "phase16-host-deferred", identity, source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, status: "NOT_RUN", captures: [{ id: "calendar-month-light-390", native: { path: native, sha256: hash, width: 1, height: 1 }, trace: { synthetic: true, samples: [{ kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0 }, { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 }, { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1 }, { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1 }] }, semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" }, classification: "REVIEW_REQUIRED", differences: [] }] };
   return { directory, map, run };
 }

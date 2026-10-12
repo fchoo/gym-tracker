@@ -8,7 +8,9 @@ import test from "node:test";
 import { PNG } from "pngjs";
 
 import {
+  V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
+  V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
   V12_CALENDAR_STATIC_CONFIGURATIONS,
 } from "./v12-calendar-case-registry.mjs";
@@ -21,6 +23,7 @@ import {
 
 import {
   compareV12Calendar,
+  v12CalendarReferenceMapSha256,
   validateV12CalendarComparison,
   validateV12CalendarReferenceMap,
 } from "./compare-v12-calendar.mjs";
@@ -54,17 +57,13 @@ function completeFixture() {
       reference: { path: reference, sha256: sha256(png), width: 1, height: 1 },
       configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" },
     }],
-    case_ledger: [
-      { id: "calendar-light-touch", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "touch", viewport: "390x844" },
-      { id: "calendar-dark-touch", capture_ids: ["calendar-month-light-390"], theme: "Dark", motion: "normal", input: "touch", viewport: "390x844" },
-      { id: "calendar-accessibility", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "keyboard", viewport: "390x844" },
-      { id: "calendar-reduced-motion", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "reduced", input: "touch", viewport: "390x844" },
-    ],
+    case_ledger: V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   };
   const identity = {
     base_head: "a".repeat(40),
     source_tree_sha256: "b".repeat(64),
     source_manifest_sha256: "a".repeat(64),
+    reference_map_sha256: v12CalendarReferenceMapSha256(map),
     package: "com.fchoo.gymtracker.devtest",
     apk_sha256: "c".repeat(64),
     installed_apk_sha256: "c".repeat(64),
@@ -240,11 +239,12 @@ test("the shared comparison schema accepts a complete identity-bound live PASS",
         record.artifacts[kind].path = `${artifactRoot}/comparison/${record.id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
       }
     });
-    result.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({
-      id,
+    result.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
+      id: entry.id,
+      case_sha256: entry.case_sha256,
       status: "PASS",
       native_execution: "EXECUTED",
-      artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "f".repeat(64) },
+      artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "f".repeat(64) },
     }));
     assert.equal(validateV12CalendarComparison(result, {
       expectedRunId: result.run_id,
@@ -306,15 +306,19 @@ test("Calendar comparison keeps committed semantics stable while the title previ
   }
 });
 
-test("Calendar map requires a unique exact Revision 18 reference and Light/Dark/accessibility/reduced-motion ledger", () => {
+test("Calendar map requires the exact source-owned 96-case ledger", () => {
   const fixture = completeFixture();
   try {
-    const requiredLedger = ["Light", "Dark", "accessibility", "reduced-motion"];
-    for (const missing of requiredLedger) {
-      const value = structuredClone(fixture.map);
-      value.case_ledger = missing === "Light" ? [] : [{ id: missing, capture_ids: [value.captures[0].id], theme: missing === "Dark" ? "Dark" : "Light", motion: missing === "reduced-motion" ? "reduced" : "normal", input: missing === "accessibility" ? "keyboard" : "touch", viewport: "390x844" }];
-      assert.throws(() => validateV12CalendarReferenceMap(value));
-    }
+    assert.equal(validateV12CalendarReferenceMap(fixture.map), true);
+    const missing = structuredClone(fixture.map);
+    missing.case_ledger.case_ids.pop();
+    assert.throws(() => validateV12CalendarReferenceMap(missing), /ledger_required_case_missing/u);
+    const reordered = structuredClone(fixture.map);
+    reordered.case_ledger.case_ids.reverse();
+    assert.throws(() => validateV12CalendarReferenceMap(reordered), /ledger_required_case_missing/u);
+    const unknown = structuredClone(fixture.map);
+    unknown.case_ledger.case_ids[0] = "configuration:unknown";
+    assert.throws(() => validateV12CalendarReferenceMap(unknown), /ledger_required_case_missing/u);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }
@@ -372,7 +376,11 @@ test("Calendar comparison rejects personal data in allowed reference and artifac
 
 test("Calendar reference coverage is bound to the exact source-owned 64-configuration and state registry", () => {
   assert.equal(V12_CALENDAR_STATIC_CONFIGURATIONS.length, 64);
+  assert.equal(V12_CALENDAR_REQUIRED_CASES.length, 96);
   assert.equal(new Set(V12_CALENDAR_STATIC_CONFIGURATIONS.map(({ id }) => id)).size, 64);
+  assert.deepEqual(V12_CALENDAR_REQUIRED_CASES.map(({ id }) => id), V12_CALENDAR_REQUIRED_CASE_IDS);
+  assert.equal(V12_CALENDAR_REQUIRED_CASES.every(({ case_sha256 }) => /^[a-f0-9]{64}$/u.test(case_sha256)), true);
+  assert.equal(new Set(V12_CALENDAR_REQUIRED_CASES.map(({ case_sha256 }) => case_sha256)).size, 96);
   assert.deepEqual(
     new Set(V12_CALENDAR_STATIC_CONFIGURATIONS.map(({ viewport }) => viewport.width)),
     new Set([360, 390, 600, 840, 800, 844, 960, 1080]),
@@ -381,6 +389,24 @@ test("Calendar reference coverage is bound to the exact source-owned 64-configur
   assert.ok(V12_CALENDAR_REQUIRED_CASE_IDS.includes("state:calendar-rest-day"));
   assert.ok(V12_CALENDAR_REQUIRED_CASE_IDS.includes("state:calendar-query-error-retry"));
   assert.ok(V12_CALENDAR_REQUIRED_CASE_IDS.includes("input:dpad"));
+  assert.deepEqual(
+    V12_CALENDAR_REQUIRED_CASES.find(({ id }) => id === "input:dpad")?.binding,
+    {
+      configuration_id: "L-C390-P-F100",
+      state_id: "calendar-focused-week",
+      input: "dpad",
+      motion: "normal",
+    },
+  );
+  assert.deepEqual(
+    V12_CALENDAR_REQUIRED_CASES.find(({ id }) => id === "motion:reduced")?.binding,
+    {
+      configuration_id: "L-C390-P-F100",
+      state_id: "calendar-focused-week",
+      input: "touch",
+      motion: "reduced",
+    },
+  );
 
   const fixture = completeFixture();
   try {
@@ -405,11 +431,15 @@ test("the checked-in Calendar map binds every reference byte to the Revision 18 
   const map = JSON.parse(readFileSync(".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json", "utf8"));
   assert.equal(sha256(readFileSync(map.source_manifest)), map.source_manifest_sha256);
   assert.equal(validateV12CalendarReferenceMap(map, { verifyFiles: true }), true);
+  assert.equal(
+    v12CalendarReferenceMapSha256(map),
+    JSON.parse(readFileSync("scripts/fixtures/v12-calendar-evidence/complete.json", "utf8")).manifest.reference_map_sha256,
+  );
   assert.equal(new Set(map.captures.map((capture) => capture.id)).size, map.captures.length);
 });
 
 test("the Phase 16 runner exposes every pre-destination diagnostic stage but cannot award a native verdict", () => {
-  const manifest = { schema_version: 1, suite: "v1.2-calendar", profile: "development-test", package: "com.fchoo.gymtracker.devtest", js_bundle: { embedded: true }, base_head: "a".repeat(40), source_tree_sha256: "b".repeat(64), source_manifest_sha256: "e".repeat(64), apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 }, installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true }, device: { identity_sha256: "d".repeat(64) }, report_sha256: "f".repeat(64) };
+  const manifest = { schema_version: 1, suite: "v1.2-calendar", profile: "development-test", package: "com.fchoo.gymtracker.devtest", js_bundle: { embedded: true }, base_head: "a".repeat(40), source_tree_sha256: "b".repeat(64), source_manifest_sha256: "e".repeat(64), reference_map_sha256: "f".repeat(64), apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 }, installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true }, device: { identity_sha256: "d".repeat(64) }, report_sha256: "f".repeat(64) };
   assert.equal(validateV12CalendarManifest(manifest), true);
   const flow = readFileSync("maestro/v1.2/calendar.yaml", "utf8");
   assert.equal(validateV12CalendarFlow(flow), true);
