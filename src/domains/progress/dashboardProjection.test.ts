@@ -131,6 +131,11 @@ describe("projectProgressDashboard", () => {
       state: "empty",
       facts: [],
     });
+    expect(projectProgressDashboard({ sport: "Strength", strength: {} })).toEqual({
+      sport: "Strength",
+      state: "empty",
+      facts: [],
+    });
     expect(projectProgressDashboard({ sport: "All" })).toEqual({
       sport: "All",
       state: "empty",

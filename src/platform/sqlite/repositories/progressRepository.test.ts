@@ -156,4 +156,62 @@ describe("progress repository factual source reads", () => {
       goals: [],
     }));
   });
+
+  it("drops structurally invalid bodyweight source rows", async () => {
+    const queryAll = jest.fn(async (sql: string) =>
+      sql.includes("FROM bodyweight_entries entry") ? [{
+        id: "invalid-bodyweight", owner_id: "owner", current_revision: 1,
+        local_date: "2026-11-01", timezone: "Asia/Singapore", grams: 1.5,
+      }] : []
+    );
+    const result = await createProgressRepository(snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    )).load({ period: "all_time", nowLocalDate: "2026-11-02" });
+    expect(result.sourceFacts?.bodyweight).toEqual({ kind: "unavailable", entries: [] });
+  });
+
+  it("covers null freshness generations and both bounded refresh terminals", async () => {
+    let rebuildable = false;
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("FROM history_subject_revisions subject")) return [{
+        subject_id: 'history-subject/v1:["period","all"]',
+        revision: 1,
+        applied_revision: null,
+      }];
+      if (sql.includes("FROM history_rebuild_effects")) return rebuildable ? [{
+        subject_id: 'history-subject/v1:["period","all"]',
+      }] : [];
+      return [];
+    });
+    const repository = createProgressRepository(snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    ));
+    await expect(repository.load({
+      period: "all_time", nowLocalDate: "2026-11-02",
+    })).resolves.toMatchObject({ freshness: "unavailable" });
+    rebuildable = true;
+    await expect(repository.load({
+      sport: "Running", period: "all_time", nowLocalDate: "2026-11-02",
+    })).resolves.toMatchObject({
+      freshness: "updating",
+      refresh: { automaticRefresh: { terminal: "updating" } },
+    });
+
+    const missingMetricQuery = jest.fn(async (sql: string) => {
+      if (sql.includes("WHERE subject_id LIKE")) return [{ subject_id: "metric-subject" }];
+      if (sql.includes("FROM history_subject_revisions subject")) return [{
+        subject_id: 'history-subject/v1:["period","all"]', revision: 1, applied_revision: 1,
+      }];
+      return [];
+    });
+    await expect(createProgressRepository(snapshotKernel(
+      missingMetricQuery as unknown as SqliteReadTransactionExecutor["queryAll"],
+    )).load({
+      sport: "Running", period: "all_time", nowLocalDate: "2026-11-02",
+    })).resolves.toMatchObject({
+      freshness: "unavailable",
+      sport: "Running",
+      dashboard: null,
+    });
+  });
 });

@@ -113,6 +113,27 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-artifacts.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
+const phase19IntegrityCriticalFiles = [
+  "src/domains/progress/dashboardProjection.ts",
+  "src/domains/progress/runningPacing.ts",
+  "src/domains/progress/periodProjection.ts",
+  "src/platform/sqlite/repositories/progressRepository.ts",
+  "src/domains/progress/relativeStrength.ts",
+  "src/domains/history/metricHistory.ts",
+  "src/platform/sqlite/repositories/historyRepository.ts",
+  "src/domains/running/commands.ts",
+  "src/platform/sqlite/repositories/runningPlanRepository.ts",
+  "src/domains/progression/recommendationCommands.ts",
+  "src/domains/bodyweight/contracts.ts",
+  "src/domains/bodyweight/commands.ts",
+  "src/domains/portability/backupContracts.ts",
+  "src/domains/portability/mergePlan.ts",
+  "src/domains/portability/restoreCommands.ts",
+  "src/platform/sqlite/migrations/0045_recommendation_decision_receipts.ts",
+  "src/platform/sqlite/repositories/logicalBackupRepository.ts",
+  "src/platform/sqlite/repositories/logicalRestoreRepository.ts",
+  "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+];
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",
   "src/domains/portability/backupContracts.ts",
@@ -138,6 +159,11 @@ const integrityCriticalFiles = [
   "src/domains/progression/loadRepsV1.ts",
   "src/domains/progression/recommendationContracts.ts",
   "src/domains/progression/recommendationCommands.ts",
+  "src/domains/progress/dashboardProjection.ts",
+  "src/domains/progress/runningPacing.ts",
+  "src/domains/progress/periodProjection.ts",
+  "src/domains/progress/relativeStrength.ts",
+  "src/domains/history/metricHistory.ts",
   "src/domains/plans/activateStarterPlan.ts",
   "src/domains/plans/ownedPlanCommands.ts",
   "src/domains/plans/planImpactCommands.ts",
@@ -227,6 +253,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/migrations/0038_running_plan_lifecycle_receipts.ts",
   "src/platform/sqlite/migrations/0039_running_session_slot_membership.ts",
   "src/platform/sqlite/migrations/0040_schedule_collision_outcomes.ts",
+  "src/platform/sqlite/migrations/0045_recommendation_decision_receipts.ts",
   "src/platform/sqlite/migrations/index.ts",
   "src/platform/sqlite/recoveryBackup.ts",
   "src/platform/sqlite/repositories/contentRepository.ts",
@@ -247,6 +274,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/repositories/automaticBackupStateRepository.ts",
   "src/platform/sqlite/repositories/automaticSnapshotCapture.ts",
   "src/platform/sqlite/repositories/bodyweightRepository.ts",
+  "src/platform/sqlite/repositories/historyRepository.ts",
   "src/platform/sqlite/repositories/garminSyncSummaryRepository.ts",
   "src/platform/sqlite/repositories/importedActivityRepository.ts",
   "src/platform/sqlite/repositories/plansWorkoutRepository.ts",
@@ -284,11 +312,14 @@ const focusedProjects = [];
 const jestForwarded = [];
 let focusPhase18 = false;
 let focusPhase16Evidence = false;
+let focusPhase19 = false;
 for (const argument of forwarded) {
   if (argument === "--focus-phase18") {
     focusPhase18 = true;
   } else if (argument === "--focus-phase16-evidence") {
     focusPhase16Evidence = true;
+  } else if (argument === "--focus-phase19") {
+    focusPhase19 = true;
   } else if (argument.startsWith("--focus-integrity=")) {
     focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
   } else if (argument.startsWith("--focus-project=")) {
@@ -306,6 +337,10 @@ if (focusPhase18) {
   focusedIntegrityFiles.push(...phase18IntegrityCriticalFiles);
   focusedProjects.push("unit", "components", "sqlite-host", "integration");
   jestForwarded.push(...phase18TargetedTests);
+}
+if (focusPhase19) {
+  focusedIntegrityFiles.push(...phase19IntegrityCriticalFiles);
+  focusedProjects.push("unit", "components", "sqlite-host", "integration");
 }
 if (focusedIntegrityFiles.length > 0) {
   const invalidFiles = focusedIntegrityFiles.filter((file) => !integrityCriticalFiles.includes(file));
@@ -375,6 +410,8 @@ const outputDirectory = coverageDirectoryArgument(
     ? path.join(coverageDirectory, "phase18-jest")
     : focusPhase16Evidence
       ? path.join(coverageDirectory, "phase16-jest")
+      : focusPhase19
+        ? path.join(coverageDirectory, "phase19-jest")
       : coverageDirectory,
 );
 rmSync(outputDirectory, { force: true, recursive: true });

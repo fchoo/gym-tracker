@@ -102,9 +102,8 @@ function identifier(value: string): boolean {
 }
 
 function isFutureLocalDate(value: string, savedAtMs: number): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
-  if (match === null) return false;
-  const [year, month, day] = match.slice(1).map(Number);
+  // parseRunningGoal has already established the canonical YYYY-MM-DD shape.
+  const [year, month, day] = value.split("-").map(Number) as [number, number, number];
   const candidate = new Date(year!, month! - 1, day!);
   if (candidate.getFullYear() !== year || candidate.getMonth() !== month! - 1 || candidate.getDate() !== day) return false;
   const now = new Date(savedAtMs);

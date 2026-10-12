@@ -33,6 +33,9 @@ import {
 import {
   createWorkoutOutcomeRepository,
 } from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
+import {
+  createRunningPlanRepository,
+} from "../../src/platform/sqlite/repositories/runningPlanRepository";
 import type {
   ProgressPeriod,
 } from "../../src/domains/progress";
@@ -1174,5 +1177,85 @@ describe("progress repository", () => {
         exercises: [],
       }),
     }));
+  });
+
+  it("covers invalid range dates and every accepted/sampled fidelity branch", async () => {
+    const kernel = await open();
+    await expect(createProgressRepository(kernel).load({
+      sport: "Running",
+      period: "4_weeks",
+      nowLocalDate: "invalid-date",
+    })).rejects.toThrow();
+
+    await seedAcceptedRunningActivity(kernel, {
+      id: "fidelity-running-2400",
+      aggregateRevision: 1,
+      lifecycle: "active",
+      localDate: "2026-08-24",
+      startedAtMs: 200,
+    });
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE imported_activities SET aggregate_json = ? WHERE id = 'fidelity-running-2400'",
+      [JSON.stringify({
+        confirmed_local_date: "2026-08-24",
+        fidelity_by_channel: { exact_effort_basis: "source_laps" },
+        normalized: { distance_meters: 2_400, elapsed_ms: 660_000 },
+      })],
+    ));
+    await expect(createProgressRepository(kernel).load({
+      sport: "Running", period: "all_time", nowLocalDate: "2026-08-24",
+    })).resolves.toMatchObject({ dashboard: { goals: [{ latest: { evidence: "source_laps" } }] } });
+
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE imported_activities SET aggregate_json = ? WHERE id = 'fidelity-running-2400'",
+      [JSON.stringify({
+        confirmed_local_date: "2026-08-24",
+        fidelity_by_channel: [],
+        sample_fidelity: "unknown",
+        normalized: { distance_meters: 2_400, elapsed_ms: 660_000 },
+      })],
+    ));
+    await expect(createProgressRepository(kernel).load({
+      sport: "Running", period: "all_time", nowLocalDate: "2026-08-24",
+    })).resolves.toMatchObject({
+      dashboard: { state: "more_data_needed", absenceReason: "exact_effort_evidence_insufficient" },
+    });
+  });
+
+  it("maps unset, exact, and non-second Running goal durations without fabrication", async () => {
+    const kernel = await open();
+    const repository = createRunningPlanRepository(kernel);
+    for (const [id, duration] of [
+      ["unset", undefined],
+      ["exact", 660_000],
+      ["fractional-second", 660_001],
+    ] as const) {
+      await repository.createInactiveAggregate({
+        requestId: `create-${id}`,
+        requestSha256: "a".repeat(64),
+        plan: {
+          version: 1,
+          id: `plan-${id}`,
+          name: id,
+          revision: 1,
+          createdAtMs: 1,
+          goal: {
+            version: 1,
+            id: `goal-${id}`,
+            planId: `plan-${id}`,
+            revision: 1,
+            goalDistanceMeters: id === "exact" ? 2_400 : id === "unset" ? 10_000 : 21_097,
+            ...(duration === undefined ? {} : { targetDurationMs: duration }),
+            trainingDays: ["Monday"],
+            createdAtMs: 1,
+          },
+          sessions: [],
+        },
+      });
+    }
+    const result = await createProgressRepository(kernel).load({
+      sport: "All", period: "all_time", nowLocalDate: "2026-08-24",
+    });
+    expect(result.dashboard).toMatchObject({ sport: "All", state: "ready" });
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 import {
   canonicalRunningRequestHash,
+  createInactiveRunningPlan,
   RunningCommandError,
   saveRunningSourceGraph,
   saveRunningTarget,
@@ -95,6 +96,64 @@ describe("Running source graph commands", () => {
     await expect(saveRunningTarget(repository, {
       ...input, goal: { ...input.goal, trainingDays: ["Thursday", "Monday"] },
     })).rejects.toThrow("running_target_invalid");
-    expect(repository.saveSourceGraph).toHaveBeenCalledTimes(1);
+    await expect(saveRunningTarget(repository, {
+      ...input, requestId: "", requestSha256: "0".repeat(64),
+    })).rejects.toThrow("running_command_identity_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, planId: "", requestSha256: "0".repeat(64),
+    })).rejects.toThrow("running_command_hash_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, expectedPlanRevision: 0,
+    })).rejects.toThrow("running_command_revision_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, planId: "other-plan" },
+    })).rejects.toThrow("running_target_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, revision: 3 },
+    })).rejects.toThrow("running_target_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, targetDurationMs: 59_999 },
+    })).rejects.toThrow("running_target_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, targetLocalDate: "not-a-date" },
+    })).rejects.toThrow("running_goal_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, targetLocalDate: undefined },
+    })).resolves.toEqual({});
+    expect(repository.saveSourceGraph).toHaveBeenCalledTimes(2);
+  });
+
+  it("validates inactive-plan receipt identity before delegation", async () => {
+    const repository = {
+      createInactiveAggregate: jest.fn(async (value: { plan: unknown }) => value.plan as never),
+      readAggregate: jest.fn(async () => null),
+    };
+    const plan = {
+      version: 1 as const,
+      id: "inactive-plan",
+      name: "Inactive",
+      revision: 1,
+      createdAtMs: 1,
+      goal: {
+        version: 1 as const,
+        id: "inactive-goal",
+        planId: "inactive-plan",
+        revision: 1,
+        goalDistanceMeters: 2_400,
+        trainingDays: ["Monday" as const],
+        createdAtMs: 1,
+      },
+      sessions: [],
+    };
+    await expect(createInactiveRunningPlan(repository, {
+      requestId: "",
+      requestSha256: "0".repeat(64),
+      plan,
+    })).rejects.toThrow("running_command_hash_invalid");
+    await expect(createInactiveRunningPlan(repository, {
+      requestId: "inactive-create",
+      requestSha256: "a".repeat(64),
+      plan,
+    })).resolves.toMatchObject({ id: "inactive-plan", active: false, lifecycle: "inactive" });
   });
 });
