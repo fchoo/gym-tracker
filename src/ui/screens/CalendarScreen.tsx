@@ -43,6 +43,7 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ] as const;
 const MONDAY_FIRST = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+const NOOP = () => undefined;
 
 type CalendarScreenProps = Readonly<{
   initialDate: string;
@@ -86,7 +87,7 @@ export function CalendarScreen({
   headingRef,
   settingsActionNativeID,
   settingsActionRef,
-  onRequestRootBack = () => undefined,
+  onRequestRootBack = NOOP,
   returnFocusGeneration = 0,
 }: CalendarScreenProps) {
   const { colors, reduceMotion } = useAppTheme();
@@ -114,6 +115,7 @@ export function CalendarScreen({
   const calendarTransitionRef = useRef(calendarTransition);
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
+  const collapseActionRef = useRef<View>(null);
   const agendaRef = useRef<CalendarAgendaHandle>(null);
   const agendaRowRefs = useRef(new Map<string, CalendarAgendaRowHandle>());
   const agendaOffsetRef = useRef(0);
@@ -255,17 +257,32 @@ export function CalendarScreen({
     const retained = calendarReturnRef.current;
     if (retained === null) return;
 
-    agendaRef.current?.scrollTo(retained.agendaOffset);
-    const row = agendaRowRefs.current.get(retained.eventId);
-    if (row !== undefined) {
-      row.focus?.();
-      AccessibilityInfo.sendAccessibilityEvent(row, "focus");
-      return;
-    }
-    infoActionRef.current?.focus?.();
-    if (infoActionRef.current !== null) {
-      AccessibilityInfo.sendAccessibilityEvent(infoActionRef.current, "focus");
-    }
+    const restoredTransition = Object.freeze({
+      ...calendarTransitionRef.current,
+      currentMonthId: retained.month.slice(0, 7),
+      selectedLocalDate: retained.selectedDate,
+      mode: retained.mode,
+      phase: "idle" as const,
+      titlePanel: "current" as const,
+      dragDx: 0,
+      epoch: calendarTransitionRef.current.epoch + 1,
+      pendingMonthId: null,
+      pendingSelectedLocalDate: null,
+    });
+    calendarTransitionRef.current = restoredTransition;
+    setCalendarTransition(restoredTransition);
+    setCalendarCommand(null);
+    setMonth(retained.month);
+    selectDate(retained.selectedDate);
+
+    const frame = requestAnimationFrame(() => {
+      agendaRef.current?.scrollTo(retained.agendaOffset);
+      const target = agendaRowRefs.current.get(retained.eventId) ?? collapseActionRef.current;
+      if (target === undefined || target === null) return;
+      target.focus?.();
+      AccessibilityInfo.sendAccessibilityEvent(target, "focus");
+    });
+    return () => cancelAnimationFrame(frame);
   }, [returnFocusGeneration]);
 
   const recordWeekGeometry = useCallback((weekStart: LocalDate, geometry: Readonly<{ y: number; height: number }>) => {
@@ -492,6 +509,7 @@ export function CalendarScreen({
                   if (event.nativeEvent.key === "Escape") requestCalendarBack();
                 }}
                 onPress={() => dispatchCalendarTransition({ type: "collapse" })}
+                ref={collapseActionRef}
                 style={({ pressed }) => [
                   styles.collapseAction,
                   { backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderColor: colors.line },
