@@ -1,11 +1,23 @@
 import { describe, expect, it, jest } from "@jest/globals";
 
 import { createProgressRepository } from "./progressRepository";
-import type { SqliteKernel } from "../sqliteKernel";
+import type {
+  SqliteReadTransactionExecutor,
+  SqliteSnapshotKernel,
+} from "../sqliteKernel";
 
 jest.mock("./historyRepository", () => ({
   loadEffectiveHistoryProjectionSessions: jest.fn(async () => []),
 }));
+
+function snapshotKernel(
+  queryAll: SqliteReadTransactionExecutor["queryAll"],
+): SqliteSnapshotKernel {
+  return {
+    queryAll,
+    readSnapshot: (query) => query({ queryAll }),
+  } as unknown as SqliteSnapshotKernel;
+}
 
 describe("progress repository factual source reads", () => {
   it("returns source-linked Running, goal, and current bodyweight facts without inventing zeroes", async () => {
@@ -25,7 +37,9 @@ describe("progress repository factual source reads", () => {
       }];
       return [];
     });
-    const kernel = { queryAll } as unknown as SqliteKernel;
+    const kernel = snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    );
 
     const result = await createProgressRepository(kernel).load({
       period: "4_weeks",
@@ -74,7 +88,9 @@ describe("progress repository factual source reads", () => {
       }];
       return [];
     });
-    const kernel = { queryAll } as unknown as SqliteKernel;
+    const kernel = snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    );
 
     await expect(createProgressRepository(kernel).load({
       period: "4_weeks",
@@ -84,7 +100,9 @@ describe("progress repository factual source reads", () => {
     const withoutExposure = jest.fn(async (sql: string) =>
       sql.includes("FROM history_projection_comparable_exposures") ? [] : await queryAll(sql)
     );
-    const result = await createProgressRepository({ queryAll: withoutExposure } as unknown as SqliteKernel).load({
+    const result = await createProgressRepository(snapshotKernel(
+      withoutExposure as unknown as SqliteReadTransactionExecutor["queryAll"],
+    )).load({
       period: "4_weeks",
       nowLocalDate: "2026-11-02",
     });
@@ -111,7 +129,9 @@ describe("progress repository factual source reads", () => {
       return [];
     });
 
-    const result = await createProgressRepository({ queryAll } as unknown as SqliteKernel).load({
+    const result = await createProgressRepository(snapshotKernel(
+      queryAll as unknown as SqliteReadTransactionExecutor["queryAll"],
+    )).load({
       period: "4_weeks",
       nowLocalDate: "2026-11-02",
     });
