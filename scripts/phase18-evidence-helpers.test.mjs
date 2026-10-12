@@ -307,6 +307,7 @@ function repoCurrentIdentity({ apkSha256, signatureSha256, deviceIdentitySha256 
     installedApkSha256: apkSha256,
     retainedSignatureSha256: signatureSha256,
     deviceIdentitySha256,
+    rawReportSha256: HASH,
   };
 }
 
@@ -379,6 +380,7 @@ function adversarialEvidence(current) {
       device_identity_sha256: current.deviceIdentitySha256,
     },
     case_ids: plan.case_ids,
+    raw_report_sha256: current.rawReportSha256 ?? HASH,
     cases: plan.case_ids.map((id, index) => ({
       id,
       status: "passed",
@@ -737,6 +739,7 @@ test("acceptance helper rejects status drift and honors explicit owner current i
         ...current,
         retainedApkSha256: adversarial.manifest.apk_sha256,
         installedApkSha256: adversarial.manifest.apk_sha256,
+        rawReportSha256: adversarial.raw_report_sha256,
         nativeReportSha256: adversarial.native_report.sha256,
         privacyReportSha256: adversarial.privacy_scan.report_sha256,
       },
@@ -774,6 +777,7 @@ test("acceptance helper rejects status drift and honors explicit owner current i
           ...current,
           retainedApkSha256: adversarial.manifest.apk_sha256,
           installedApkSha256: adversarial.manifest.apk_sha256,
+          rawReportSha256: adversarial.raw_report_sha256,
           nativeReportSha256: adversarial.native_report.sha256,
           privacyReportSha256: adversarial.privacy_scan.report_sha256,
         },
@@ -888,7 +892,7 @@ test("acceptance verifier uses on-disk JSON and default owner verifiers without 
     });
     const nativeReportBytes = Buffer.from('{"status":"passed"}\n');
     const adversarialPrivacyBytes = Buffer.from('{"status":"passed","scanned_artifact_count":4}\n');
-    const adversarialRawReport = adversarialEvidence({
+    const adversarialFinalBase = adversarialEvidence({
       currentHead: current.currentHead,
       currentSourceTreeSha256: current.currentSourceTreeSha256,
       currentPythonLockSha256: current.currentPythonLockSha256,
@@ -899,10 +903,19 @@ test("acceptance verifier uses on-disk JSON and default owner verifiers without 
       nativeReportSha256: HASH,
       privacyReportSha256: HASH,
     });
+    const { raw_report_sha256: ignoredRawHash, ...adversarialRawReport } = structuredClone(
+      adversarialFinalBase,
+    );
+    assert.match(ignoredRawHash, /^[a-f0-9]{64}$/u);
     adversarialRawReport.native_report.sha256 = createHash("sha256").update(nativeReportBytes).digest("hex");
     adversarialRawReport.privacy_scan.report_sha256 = createHash("sha256").update(adversarialPrivacyBytes).digest("hex");
+    const adversarialRawReportBytes = Buffer.from(`${JSON.stringify(adversarialRawReport, null, 2)}\n`);
+    const adversarialFinalEvidence = {
+      ...adversarialRawReport,
+      raw_report_sha256: createHash("sha256").update(adversarialRawReportBytes).digest("hex"),
+    };
     const proofBytes = Buffer.from(JSON.stringify(proofFinalEvidence, null, 2));
-    const adversarialBytes = Buffer.from(JSON.stringify(adversarialRawReport, null, 2));
+    const adversarialBytes = Buffer.from(JSON.stringify(adversarialFinalEvidence, null, 2));
     const maestroSourceBytes = Buffer.from("maestro-source\n");
     const maestroReportBytes = Buffer.from(JSON.stringify({
       status: "passed",
@@ -975,7 +988,7 @@ test("acceptance verifier uses on-disk JSON and default owner verifiers without 
         device: { abi: "arm64-v8a", identity_sha256: deviceIdentitySha256 },
       })],
       ["artifacts/native/phase18-garmin-adversarial/raw-report.json", adversarialRawReport],
-      ["artifacts/native/phase18-garmin-adversarial/final-evidence.json", adversarialRawReport],
+      ["artifacts/native/phase18-garmin-adversarial/final-evidence.json", adversarialFinalEvidence],
       [MAESTRO_REPORT, JSON.parse(maestroReportBytes.toString("utf8"))],
       [PRIVACY_REPORT, JSON.parse(acceptancePrivacyBytes.toString("utf8"))],
     ]);
@@ -991,7 +1004,7 @@ test("acceptance verifier uses on-disk JSON and default owner verifiers without 
       ["artifacts/native/phase18-garmin-proof/final-evidence.json"]: proofBytes,
       ["artifacts/native/phase18-garmin-proof/gym-tracker-phase18-garmin-proof-devtest.apk"]: apkBytes,
       ["artifacts/native/phase18-garmin-adversarial/build.json"]: `${JSON.stringify(jsonByPath.get("artifacts/native/phase18-garmin-adversarial/build.json"), null, 2)}\n`,
-      ["artifacts/native/phase18-garmin-adversarial/raw-report.json"]: `${JSON.stringify(adversarialRawReport, null, 2)}\n`,
+      ["artifacts/native/phase18-garmin-adversarial/raw-report.json"]: adversarialRawReportBytes,
       ["artifacts/native/phase18-garmin-adversarial/final-evidence.json"]: adversarialBytes,
       ["artifacts/native/phase18-garmin-adversarial/gym-tracker-phase18-garmin-adversarial-devtest.apk"]: apkBytes,
       ["artifacts/native/phase18-garmin-adversarial/native-report.json"]: nativeReportBytes,
@@ -1178,7 +1191,7 @@ exit 1
         throw new Error("acceptance_apk_fixture_missing");
       }
       const acceptanceIdentity = resolvePhase18GarminAcceptanceCurrentIdentity();
-      const adversarialIdentity = resolvePhase18GarminAdversarialCurrentIdentity();
+      const adversarialIdentity = resolvePhase18GarminAdversarialCurrentIdentity(Buffer.from("raw-report"));
       const rawReportBytes = Buffer.from('{"status":"passed"}');
       const proofIdentity = resolvePhase18GarminProofCurrentIdentity(rawReportBytes);
 
@@ -1333,7 +1346,7 @@ test("default identity helpers fail closed for missing SDK tools and invalid dev
   }, () => {
     assert.throws(() => withEnv({ ANDROID_HOME: undefined, ANDROID_SDK_ROOT: undefined }, () => resolvePhase18GarminBenchmarkCurrentIdentity()), /phase18_garmin_benchmark_android_sdk_missing/u);
     assert.throws(() => withEnv({ ANDROID_HOME: undefined, ANDROID_SDK_ROOT: undefined }, () => resolvePhase18GarminAcceptanceCurrentIdentity()), /phase18_acceptance_evidence_android_sdk_missing/u);
-    assert.throws(() => withEnv({ ANDROID_HOME: undefined, ANDROID_SDK_ROOT: undefined }, () => resolvePhase18GarminAdversarialCurrentIdentity()), /phase18_garmin_adversarial_evidence_android_sdk_missing/u);
+    assert.throws(() => withEnv({ ANDROID_HOME: undefined, ANDROID_SDK_ROOT: undefined }, () => resolvePhase18GarminAdversarialCurrentIdentity(Buffer.from("raw-report"))), /phase18_garmin_adversarial_evidence_android_sdk_missing/u);
     assert.throws(() => withEnv({ ANDROID_HOME: undefined, ANDROID_SDK_ROOT: undefined }, () => resolvePhase18GarminProofCurrentIdentity(Buffer.from("{}"))), /phase18_evidence_android_sdk_missing/u);
 
     withFakeSdk({ adbScript: "#!/bin/sh\nexit 0\n" }, () => {
@@ -1347,7 +1360,7 @@ test("default identity helpers fail closed for missing SDK tools and invalid dev
       apksignerScript: "#!/bin/sh\nprintf 'certificate SHA-256 digest: aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa:aa\\n'\n",
     }, () => {
       assert.throws(() => resolvePhase18GarminBenchmarkCurrentIdentity(), /phase18_garmin_benchmark_device_identity_invalid/u);
-      assert.throws(() => resolvePhase18GarminAdversarialCurrentIdentity(), /phase18_garmin_adversarial_evidence_device_selection_invalid/u);
+      assert.throws(() => resolvePhase18GarminAdversarialCurrentIdentity(Buffer.from("raw-report")), /phase18_garmin_adversarial_evidence_device_selection_invalid/u);
       assert.throws(() => resolvePhase18GarminProofCurrentIdentity(Buffer.from("{}")), /phase18_evidence_device_selection_invalid/u);
     });
 

@@ -203,6 +203,7 @@ function validAdversarialEvidence(current) {
       device_identity_sha256: current.deviceIdentitySha256,
     },
     case_ids: caseIds,
+    raw_report_sha256: current.rawReportSha256 ?? HASH,
     cases: caseIds.map((id, index) => ({
       id,
       status: "passed",

@@ -17,6 +17,7 @@ import {
 } from "./run-phase18-garmin-adversarial.mjs";
 import {
   assertPhase18GarminAdversarialPrivacySafe,
+  createPhase18GarminAdversarialFinalEvidence,
   executePhase18GarminAdversarialVerifier,
   executePhase18GarminAdversarialVerifierCli,
   validatePhase18GarminAdversarialCurrentIdentity,
@@ -25,6 +26,8 @@ import {
 
 const MANIFEST = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/build.json`;
 const RECORD = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-record.json`;
+const RAW_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/raw-report.json`;
+const FINAL_EVIDENCE = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/final-evidence.json`;
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
 const NATIVE_BYTES = Buffer.from("native report\n");
@@ -159,7 +162,7 @@ function cases() {
   }));
 }
 
-function evidence(overrides = {}) {
+function rawEvidence(overrides = {}) {
   return createPhase18GarminAdversarialRawReport({
     manifest: manifest(),
     status: "passed",
@@ -174,6 +177,13 @@ function evidence(overrides = {}) {
       report_sha256: PRIVACY_HASH,
     },
     ...overrides,
+  });
+}
+
+function evidence(overrides = {}) {
+  return Object.freeze({
+    ...rawEvidence(overrides),
+    raw_report_sha256: HASH,
   });
 }
 
@@ -258,6 +268,7 @@ test("manifest and current identity bind source, lock, APK, signature, package, 
     installedApkSha256: HASH,
     retainedSignatureSha256: HASH,
     deviceIdentitySha256: HASH,
+    rawReportSha256: HASH,
     nativeReportSha256: NATIVE_HASH,
     privacyReportSha256: PRIVACY_HASH,
   };
@@ -326,13 +337,16 @@ test("unexpected real failures remain TECHNICAL_REVIEW_REQUIRED and cannot be re
       code: "temporary_failure",
     }
     : entry);
-  const review = createPhase18GarminAdversarialRawReport({
+  const review = {
+    ...rawEvidence({
     manifest: manifest(),
     status: "TECHNICAL_REVIEW_REQUIRED",
     cases: unexpectedCases,
     native_report: exact.native_report,
     privacy_scan: exact.privacy_scan,
-  });
+    }),
+    raw_report_sha256: HASH,
+  };
   assert.deepEqual(validatePhase18GarminAdversarialEvidence(review), {
     status: "TECHNICAL_REVIEW_REQUIRED",
     cases: 16,
@@ -410,7 +424,10 @@ test("Phase 20 runner validates before writing and never writes final evidence",
   assert.equal(writes.length, 1);
   assert.equal(nativeWrites.length, 1);
   assert.equal(privacyWrites.length, 1);
-  assert.deepEqual(validatePhase18GarminAdversarialEvidence(writes[0]), {
+  assert.deepEqual(validatePhase18GarminAdversarialEvidence({
+    ...writes[0],
+    raw_report_sha256: HASH,
+  }), {
     status: "passed",
     cases: 16,
   });
@@ -651,7 +668,10 @@ exit 0
 });
 
 test("verifier sealing is write-once and requires explicit Phase 20 authority", () => {
-  const exact = evidence();
+  const raw = rawEvidence();
+  const rawBytes = Buffer.from(`${JSON.stringify(raw, null, 2)}\n`);
+  const rawReportSha256 = createHash("sha256").update(rawBytes).digest("hex");
+  const exact = { ...raw, raw_report_sha256: rawReportSha256 };
   const reads = (path) => path === MANIFEST ? retainedManifest() : exact;
   const writes = [];
   const resolveCurrentIdentity = () => ({
@@ -662,6 +682,7 @@ test("verifier sealing is write-once and requires explicit Phase 20 authority", 
     installedApkSha256: HASH,
     retainedSignatureSha256: HASH,
     deviceIdentitySha256: HASH,
+    rawReportSha256,
     nativeReportSha256: NATIVE_HASH,
     privacyReportSha256: PRIVACY_HASH,
   });
@@ -669,7 +690,9 @@ test("verifier sealing is write-once and requires explicit Phase 20 authority", 
     "--manifest", MANIFEST,
   ], {
     readJson: reads,
-    readBytes: (path) => path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES,
+    readBytes: (path) => path === RAW_REPORT
+      ? rawBytes
+      : path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES,
     writeFinalEvidence: (...args) => writes.push(args),
     resolveCurrentIdentity,
   }), {
@@ -691,7 +714,9 @@ test("verifier sealing is write-once and requires explicit Phase 20 authority", 
     "--phase20-native-checkpoint",
   ], {
     readJson: reads,
-    readBytes: (path) => path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES,
+    readBytes: (path) => path === RAW_REPORT
+      ? rawBytes
+      : path.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES,
     writeFinalEvidence: (...args) => writes.push(args),
     resolveCurrentIdentity,
   }), {
@@ -700,6 +725,88 @@ test("verifier sealing is write-once and requires explicit Phase 20 authority", 
     final_evidence_written: true,
   });
   assert.equal(writes.length, 1);
+});
+
+test("independent adversarial verification requires final evidence and detects final-only tampering", () => {
+  const raw = rawEvidence();
+  const rawBytes = Buffer.from(`${JSON.stringify(raw, null, 2)}\n`);
+  const final = {
+    ...raw,
+    raw_report_sha256: createHash("sha256").update(rawBytes).digest("hex"),
+  };
+  const current = {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+    rawReportSha256: final.raw_report_sha256,
+    nativeReportSha256: NATIVE_HASH,
+    privacyReportSha256: PRIVACY_HASH,
+  };
+  const reads = [];
+  const readJson = (filePath) => {
+    reads.push(filePath);
+    if (filePath === MANIFEST) return retainedManifest();
+    if (filePath === FINAL_EVIDENCE) return final;
+    if (filePath === RAW_REPORT) return raw;
+    throw new Error(`unexpected_json:${filePath}`);
+  };
+  const readBytes = (filePath) => {
+    if (filePath === RAW_REPORT) return rawBytes;
+    return filePath.endsWith("native-report.json") ? NATIVE_BYTES : PRIVACY_BYTES;
+  };
+
+  assert.deepEqual(executePhase18GarminAdversarialVerifier([
+    "--manifest", MANIFEST,
+  ], {
+    readJson,
+    readBytes,
+    resolveCurrentIdentity: () => current,
+  }), {
+    status: "passed",
+    cases: 16,
+    final_evidence_written: false,
+  });
+  assert.ok(reads.includes(FINAL_EVIDENCE));
+
+  const tamperedFinal = {
+    ...final,
+    native_report: { ...final.native_report, sha256: "c".repeat(64) },
+  };
+  assert.throws(
+    () => executePhase18GarminAdversarialVerifier([
+      "--manifest", MANIFEST,
+    ], {
+      readJson: (filePath) => filePath === MANIFEST ? retainedManifest() : tamperedFinal,
+      readBytes,
+      resolveCurrentIdentity: () => current,
+    }),
+    /phase18_garmin_adversarial_evidence_(?:current_identity|report_identity)_invalid/u,
+  );
+});
+
+test("adversarial sealing rejects raw report identity and schema drift", () => {
+  const raw = rawEvidence();
+  const rawReportBytes = Buffer.from(`${JSON.stringify(raw, null, 2)}\n`);
+  assert.throws(
+    () => createPhase18GarminAdversarialFinalEvidence({
+      manifest: manifest({ apk_sha256: "c".repeat(64) }),
+      report: raw,
+      rawReportBytes,
+    }),
+    /phase18_garmin_adversarial_evidence_report_identity_invalid/u,
+  );
+  assert.throws(
+    () => createPhase18GarminAdversarialFinalEvidence({
+      manifest: raw.manifest,
+      report: { ...raw, unexpected: true },
+      rawReportBytes,
+    }),
+    /phase18_garmin_adversarial_evidence_report_schema_invalid/u,
+  );
 });
 
 test("adversarial CLI helpers emit bounded stdout and stderr", () => {

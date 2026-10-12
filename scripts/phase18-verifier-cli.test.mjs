@@ -746,6 +746,7 @@ function createAdversarialEvidence(identity) {
       device_identity_sha256: identity.deviceIdentitySha256,
     },
     case_ids: caseIds,
+    raw_report_sha256: identity.rawReportSha256 ?? HASH,
     cases: caseIds.map((id, index) => ({
       id,
       status: "passed",
@@ -861,6 +862,10 @@ function createAcceptanceWorkspace({
   const adversarialPrivacyBytes = Buffer.from('{\n  "status": "passed",\n  "scanned_artifact_count": 4\n}\n');
   validAdversarial.native_report.sha256 = digest(adversarialNativeBytes);
   validAdversarial.privacy_scan.report_sha256 = digest(adversarialPrivacyBytes);
+  const adversarialRawReport = structuredClone(validAdversarial);
+  delete adversarialRawReport.raw_report_sha256;
+  const adversarialRawReportBytes = Buffer.from(`${JSON.stringify(adversarialRawReport, null, 2)}\n`);
+  validAdversarial.raw_report_sha256 = digest(adversarialRawReportBytes);
   const proofFileBytes = Buffer.from(`${JSON.stringify(
     syntheticOwner ? { manifest: validProof.manifest } : validProof,
     null,
@@ -916,7 +921,7 @@ function createAcceptanceWorkspace({
     },
   });
   writeFile(root, `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-adversarial-devtest.apk`, retainedApkBytes);
-  writeJson(root, ADVERSARIAL_RAW_REPORT, validAdversarial);
+  writeFile(root, ADVERSARIAL_RAW_REPORT, adversarialRawReportBytes);
   writeFile(root, PROOF_FINAL_EVIDENCE, proofFileBytes);
   writeFile(root, "artifacts/native/phase18-garmin-adversarial/final-evidence.json", adversarialFileBytes);
   writeFile(root, ADVERSARIAL_NATIVE_REPORT, adversarialNativeBytes);
@@ -1294,6 +1299,12 @@ test("adversarial runner and verifier CLI seal exact native evidence without dev
       "--phase20-native-checkpoint",
     ], workspace.env);
     assert.equal(run.status, 0, run.stderr || run.stdout);
+    const missingFinal = runVerifier(adversarialScript, workspace.root, [
+      "--manifest",
+      ADVERSARIAL_MANIFEST,
+    ], workspace.env);
+    assert.notEqual(missingFinal.status, 0);
+    assert.match(missingFinal.stderr, /ENOENT|no such file|final-evidence/iu);
     const seal = runVerifier(adversarialScript, workspace.root, [
       "--manifest",
       ADVERSARIAL_MANIFEST,

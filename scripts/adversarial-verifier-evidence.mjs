@@ -199,6 +199,7 @@ export function validatePhase18GarminAdversarialEvidence(evidence) {
       "manifest",
       "native_report",
       "privacy_scan",
+      "raw_report_sha256",
       "schema_version",
       "status",
       "suite",
@@ -208,6 +209,7 @@ export function validatePhase18GarminAdversarialEvidence(evidence) {
     !["passed", "TECHNICAL_REVIEW_REQUIRED"].includes(evidence.status),
     !Array.isArray(evidence.case_ids),
     !Array.isArray(evidence.cases),
+    !regexMatch(HASH, evidence.raw_report_sha256),
   ].some(Boolean);
   if (invalidSchema) fail("schema_invalid");
   const plan = createPhase18GarminAdversarialRunnerPlan();
@@ -248,6 +250,7 @@ export function validatePhase18GarminAdversarialCurrentIdentity(evidence, curren
     manifest?.apk_sha256 !== current.installedApkSha256,
     manifest?.signature_sha256 !== current.retainedSignatureSha256,
     manifest?.device_identity_sha256 !== current.deviceIdentitySha256,
+    evidence?.raw_report_sha256 !== current.rawReportSha256,
     evidence?.native_report?.sha256 !== current.nativeReportSha256,
     evidence?.privacy_scan?.report_sha256 !== current.privacyReportSha256,
   ].some(Boolean);
@@ -322,7 +325,9 @@ function installedIdentity() {
   });
 }
 
-export function resolvePhase18GarminAdversarialCurrentIdentity() {
+export function resolvePhase18GarminAdversarialCurrentIdentity(
+  rawReportBytes = readFileSync(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT),
+) {
   const apkPath = path.resolve(process.cwd(), `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-adversarial-devtest.apk`);
   const apkBytes = readFileSync(apkPath);
   return Object.freeze({
@@ -332,6 +337,7 @@ export function resolvePhase18GarminAdversarialCurrentIdentity() {
     retainedApkSha256: createHash("sha256").update(apkBytes).digest("hex"),
     retainedSignatureSha256: retainedSignatureSha256(apkPath),
     ...installedIdentity(),
+    rawReportSha256: createHash("sha256").update(rawReportBytes).digest("hex"),
     nativeReportSha256: createHash("sha256").update(readFileSync(NATIVE_REPORT)).digest("hex"),
     privacyReportSha256: createHash("sha256").update(readFileSync(PRIVACY_REPORT)).digest("hex"),
   });
@@ -361,6 +367,29 @@ function writeFinalEvidence(evidence) {
   writeFileSync(FINAL_EVIDENCE, `${JSON.stringify(evidence, null, 2)}\n`, { flag: "wx" });
 }
 
+export function createPhase18GarminAdversarialFinalEvidence(input) {
+  assertPhase18GarminAdversarialPrivacySafe(input.report);
+  if (!isDeepStrictEqual(input.manifest, input.report?.manifest)) {
+    fail("report_identity_invalid");
+  }
+  if (!exactKeys(input.report, [
+    "case_ids",
+    "cases",
+    "manifest",
+    "native_report",
+    "privacy_scan",
+    "schema_version",
+    "status",
+    "suite",
+  ])) fail("report_schema_invalid");
+  const evidence = Object.freeze({
+    ...input.report,
+    raw_report_sha256: createHash("sha256").update(input.rawReportBytes).digest("hex"),
+  });
+  validatePhase18GarminAdversarialEvidence(evidence);
+  return evidence;
+}
+
 export function executePhase18GarminAdversarialVerifier(
   args = process.argv.slice(2),
   dependencies = {},
@@ -370,13 +399,24 @@ export function executePhase18GarminAdversarialVerifier(
   const bytesReader = choose(dependencies.readBytes, readFileSync);
   const finalWriter = choose(dependencies.writeFinalEvidence, writeFinalEvidence);
   const retainedManifest = jsonReader(MANIFEST);
-  const evidence = jsonReader(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT);
-  const current = choose(dependencies.resolveCurrentIdentity, resolvePhase18GarminAdversarialCurrentIdentity)();
+  const persistedFinalEvidence = options.seal ? undefined : jsonReader(FINAL_EVIDENCE);
+  const rawReportBytes = bytesReader(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT);
+  const current = choose(
+    dependencies.resolveCurrentIdentity,
+    resolvePhase18GarminAdversarialCurrentIdentity,
+  )(rawReportBytes);
   const manifest = sanitizePhase18BuildManifest(retainedManifest, {
     suite: "phase18-garmin-adversarial",
     pythonLockSha256: current.currentPythonLockSha256,
     signatureSha256: current.retainedSignatureSha256,
   });
+  const evidence = options.seal
+    ? createPhase18GarminAdversarialFinalEvidence({
+      manifest,
+      report: JSON.parse(Buffer.from(rawReportBytes).toString("utf8")),
+      rawReportBytes,
+    })
+    : persistedFinalEvidence;
   if (!isDeepStrictEqual(evidence?.manifest, manifest)) fail("report_identity_invalid");
   const nativeReportSha256 = createHash("sha256").update(bytesReader(NATIVE_REPORT)).digest("hex");
   const privacyReportSha256 = createHash("sha256").update(bytesReader(PRIVACY_REPORT)).digest("hex");

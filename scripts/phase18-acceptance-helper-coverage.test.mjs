@@ -394,6 +394,7 @@ function validAdversarialEvidence(current) {
     manifest: adversarialManifest(current),
     case_ids: createPhase18GarminAdversarialRunnerPlan().case_ids,
     cases: adversarialCases(),
+    raw_report_sha256: current.rawReportSha256 ?? HASH,
     native_report: {
       path: ADVERSARIAL_NATIVE_REPORT,
       sha256: HASH,
@@ -764,6 +765,7 @@ test("acceptance verifier hits schema, host, native, status, owner, and default 
           ...current,
           retainedApkSha256: HASH,
           installedApkSha256: HASH,
+          rawReportSha256: HASH,
           nativeReportSha256: HASH,
           privacyReportSha256: HASH,
         },
@@ -799,6 +801,7 @@ test("acceptance verifier hits schema, host, native, status, owner, and default 
         ...current,
         retainedApkSha256: HASH,
         installedApkSha256: HASH,
+        rawReportSha256: HASH,
         nativeReportSha256: HASH,
         privacyReportSha256: HASH,
       },
@@ -903,7 +906,8 @@ test("adversarial runner and verifier hit record and validation error branches",
     /phase18_garmin_adversarial_record_invalid/u,
   );
 
-  const exact = createPhase18GarminAdversarialRawReport({
+  const exact = {
+    ...createPhase18GarminAdversarialRawReport({
     manifest: adversarialManifest(manifestIdentity),
     status: "passed",
     cases: adversarialCases(),
@@ -916,7 +920,9 @@ test("adversarial runner and verifier hit record and validation error branches",
       scanned_artifact_count: 4,
       report_sha256: HASH,
     },
-  });
+    }),
+    raw_report_sha256: HASH,
+  };
   assert.throws(
     () => validatePhase18GarminAdversarialEvidence({
       ...exact,
@@ -997,7 +1003,7 @@ test("adversarial verifier resolves current identity and seals exact evidence th
         ANDROID_HOME: undefined,
         ANDROID_SDK_ROOT: sdkRoot,
       },
-    }, () => resolvePhase18GarminAdversarialCurrentIdentity());
+    }, () => resolvePhase18GarminAdversarialCurrentIdentity(Buffer.from("raw-report")));
 
     writeJson(
       root,
@@ -1133,7 +1139,10 @@ test("adversarial verifier current identity fails closed on missing SDK tools an
 
     for (const { code, env } of failureCases) {
       assert.throws(
-        () => withProcessState({ cwd: root, env }, () => resolvePhase18GarminAdversarialCurrentIdentity()),
+        () => withProcessState(
+          { cwd: root, env },
+          () => resolvePhase18GarminAdversarialCurrentIdentity(Buffer.from("raw-report")),
+        ),
         code,
       );
     }
@@ -1151,10 +1160,12 @@ test("adversarial verifier hits unknown-argument and default report identity bra
     installedApkSha256: HASH,
     retainedSignatureSha256: HASH,
     deviceIdentitySha256: HASH,
+    rawReportSha256: digest(Buffer.from("raw")),
     nativeReportSha256: digest(Buffer.from("native")),
     privacyReportSha256: digest(Buffer.from("privacy")),
   };
-  const exact = createPhase18GarminAdversarialRawReport({
+  const exact = {
+    ...createPhase18GarminAdversarialRawReport({
     manifest: adversarialManifest(current),
     status: "passed",
     cases: adversarialCases(),
@@ -1167,7 +1178,9 @@ test("adversarial verifier hits unknown-argument and default report identity bra
       scanned_artifact_count: 4,
       report_sha256: digest(Buffer.from("privacy")),
     },
-  });
+    }),
+    raw_report_sha256: current.rawReportSha256,
+  };
   assert.throws(
     () => executePhase18GarminAdversarialVerifier([
       "--manifest", ADVERSARIAL_MANIFEST,
@@ -1185,7 +1198,9 @@ test("adversarial verifier hits unknown-argument and default report identity bra
       ? retainedBuildManifest(current, "phase18-garmin-adversarial")
       : exact,
     readBytes: (filePath) => Buffer.from(
-      filePath.endsWith("native-report.json") ? "native" : "privacy",
+      filePath === ADVERSARIAL_RAW_REPORT
+        ? "raw"
+        : filePath.endsWith("native-report.json") ? "native" : "privacy",
     ),
     resolveCurrentIdentity: () => current,
   }), {
@@ -1207,7 +1222,9 @@ test("adversarial verifier hits unknown-argument and default report identity bra
         };
       },
       readBytes: (filePath) => Buffer.from(
-        filePath.endsWith("native-report.json") ? "native" : "privacy",
+        filePath === ADVERSARIAL_RAW_REPORT
+          ? "raw"
+          : filePath.endsWith("native-report.json") ? "native" : "privacy",
       ),
       resolveCurrentIdentity: () => current,
     }),
