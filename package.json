@@ -131,6 +131,12 @@
     ,"test:coverage:phase18:python": ".venv/bin/python scripts/run-phase18-python-coverage.py"
     ,"test:coverage:phase18:kotlin": "node scripts/run-phase18-kotlin-coverage.mjs"
     ,"test:coverage:phase18": "npm run test:coverage:phase18:python && npm run test:coverage:phase18:kotlin && node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand"
+    ,"test:maestro:v12:calendar": "node scripts/run-v12-maestro.mjs --diagnostic"
+    ,"compare:v12:calendar": "node scripts/compare-v12-calendar.mjs"
+    ,"diagnose:v12:calendar": "node scripts/benchmark-v12-interactions.mjs"
+    ,"test:evidence:v12:calendar": "node --test scripts/v12-evidence-scripts.test.mjs scripts/v12-calendar-comparison.test.mjs"
+    ,"verify:v12:calendar": "node scripts/verify-v12-native-evidence.mjs"
+    ,"test:coverage:v12:calendar": "node scripts/run-coverage-gate.mjs --focus-integrity=src/bootstrap/phase16CalendarTestControls.ts --focus-project=unit --runInBand src/bootstrap/phase16CalendarTestControls.test.ts"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",

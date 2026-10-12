@@ -75,6 +75,34 @@ function rawDiagnostics() {
   };
 }
 
+function completeLiveEvidence() {
+  const evidence = fixture();
+  evidence.host_only_fixture = false;
+  evidence.native_execution = "EXECUTED";
+  evidence.functional_cases.forEach((entry) => {
+    entry.status = "PASS";
+    entry.native_execution = "EXECUTED";
+    entry.observations.synthetic = false;
+  });
+  evidence.deviations.forEach((entry) => {
+    entry.technical_status = "PASS";
+    entry.evidence_complete = true;
+    entry.classification = "accepted_deviation";
+    entry.evidence_hashes = ["a".repeat(64)];
+  });
+  evidence.comparison.native_execution = "EXECUTED";
+  evidence.comparison.status = "PASS";
+  evidence.comparison.records.forEach((entry, index) => {
+    entry.classification = index < 2 ? "accepted_deviation" : "PASS";
+    entry.differences = index < 2 ? [{ kind: "approved", explained: true }] : [];
+    if (index < 2) entry.deviation_id = `DEV-0${index + 1}`;
+  });
+  evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
+  evidence.status = "PASS";
+  evidence.all_pass = true;
+  return evidence;
+}
+
 test("Calendar evidence fixture carries the exact native, route, comparison, and owner-gate sets without claiming PASS", () => {
   const evidence = fixture();
   const result = validateV12CalendarEvidence(evidence);
@@ -107,6 +135,15 @@ test("Calendar evidence rejects missing, duplicate, stale, mutating, non-monoton
 });
 
 test("Calendar evidence derives FAIL and REVIEW_REQUIRED and permits accepted deviations only after complete passing proof", () => {
+  const complete = completeLiveEvidence();
+  assert.deepEqual(validateV12CalendarEvidence(complete), {
+    status: "PASS",
+    all_pass: true,
+    native_cases: 9,
+    route_journeys: 8,
+    comparisons: 14,
+  });
+
   const unexplained = fixture();
   unexplained.comparison.records[0].differences = [{ kind: "visual", explained: false }];
   assert.throws(() => validateV12CalendarEvidence(unexplained), /difference_unexplained/u);
@@ -193,8 +230,12 @@ test("Calendar diagnostics reject deferred, fabricated, incomplete, recomputed-s
 test("Calendar manifest, package commands, and focused integrity registration are exact", () => {
   assert.equal(validateV12CalendarManifest(manifest()), true);
   assert.throws(() => validateV12CalendarManifest({ ...manifest(), base_head: "a".repeat(64) }));
-  assert.equal(validateV12CalendarPackageScripts(JSON.parse(readFileSync("package.json", "utf8"))), true);
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+  assert.equal(validateV12CalendarPackageScripts(packageJson), true);
+  assert.equal(
+    packageJson.scripts["test:coverage:v12:calendar"],
+    "node scripts/run-coverage-gate.mjs --focus-integrity=src/bootstrap/phase16CalendarTestControls.ts --focus-project=unit --runInBand src/bootstrap/phase16CalendarTestControls.test.ts",
+  );
   const coverage = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
   assert.match(coverage, /src\/bootstrap\/phase16CalendarTestControls\.ts/u);
-  assert.match(coverage, /test:coverage:v12:calendar/u);
 });
