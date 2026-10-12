@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import {
   router,
   useFocusEffect,
+  useLocalSearchParams,
   type Href,
 } from "expo-router";
 
@@ -24,6 +25,8 @@ import {
 import {
   clearPhase16CalendarTestControls,
   configurePhase16CalendarTestControls,
+  PHASE16_CALENDAR_STAGES,
+  type Phase16CalendarStage,
 } from "../../src/bootstrap/phase16CalendarTestControls";
 import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
 
@@ -31,6 +34,12 @@ function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? encodeURIComponent(value)
     : null;
+}
+
+function phase16CalendarStage(value: string | readonly string[] | undefined): Phase16CalendarStage | undefined {
+  return typeof value === "string" && (PHASE16_CALENDAR_STAGES as readonly string[]).includes(value)
+    ? value as Phase16CalendarStage
+    : undefined;
 }
 
 function calendarQuery(returnEventId: string | undefined, extra: readonly [string, string][] = []): string {
@@ -45,9 +54,10 @@ export default function CalendarRoute() {
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
   const calendarRead = useCalendarRangeReadPort();
-  const phase16Stage = (typeof globalThis.location?.search === "string"
-    ? new URLSearchParams(globalThis.location.search).get("phase16CalendarStage")
-    : undefined) ?? undefined;
+  const routeParams = useLocalSearchParams<{
+    phase16CalendarStage?: string | string[];
+  }>();
+  const phase16Stage = phase16CalendarStage(routeParams.phase16CalendarStage);
   const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
   const hasFocused = React.useRef(false);
   const initialDate = useCurrentLocalDate();
