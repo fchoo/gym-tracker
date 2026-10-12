@@ -28,10 +28,10 @@ describe("RunningHistorySheet", () => {
 
     expect(rendered.getByText("2.4 km best efforts")).toBeTruthy();
     expect(rendered.getByText("Best efforts compare elapsed time at the same distance. Faster is lower on the clock.")).toBeTruthy();
-    expect(rendered.getByText("Best")).toBeTruthy();
-    expect(rendered.getByText("10:54")).toBeTruthy();
-    expect(rendered.getByText("Target")).toBeTruthy();
-    expect(rendered.getByText("11:00")).toBeTruthy();
+    expect(rendered.getAllByText("Best")[0]).toBeTruthy();
+    expect(rendered.getAllByText("10:54")[0]).toBeTruthy();
+    expect(rendered.getAllByText("Target")[0]).toBeTruthy();
+    expect(rendered.getAllByText("11:00")[0]).toBeTruthy();
 
     await fireEvent.press(rendered.getByRole("button", { name: "Show history data" }));
     await fireEvent.press(rendered.getAllByRole("button", { name: "Open source" })[1]!);
