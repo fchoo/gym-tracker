@@ -534,6 +534,36 @@ function rewriteEditReceiptResult(
   return encodeJson(rewritten);
 }
 
+function rewriteRecommendationDecisionReceipt(
+  row: LogicalBackupRow,
+  recommendationIds: ReadonlyMap<string, string>,
+): LogicalBackupRow {
+  const requestSha256 = textId(row.request_sha256);
+  const decision = row.decision;
+  if (!/^[a-f0-9]{64}$/u.test(requestSha256)
+    || (decision !== "use_target" && decision !== "keep_current_target")) {
+    invalid();
+  }
+  const result = parseJsonObject(row.result_json);
+  const mappedRecommendationId = mappedIdentifier(
+    recommendationIds,
+    result.recommendationId,
+  );
+  if (mappedRecommendationId !== row.recommendation_id
+    || (result.status !== "accepted"
+      && result.status !== "rejected"
+      && result.status !== "superseded")) {
+    invalid();
+  }
+  return Object.freeze({
+    ...row,
+    result_json: encodeJson({
+      ...result,
+      recommendationId: mappedRecommendationId,
+    }),
+  });
+}
+
 function rewriteReorderReceipt(
   serialized: unknown,
   exerciseIds: ReadonlyMap<string, string>,
@@ -1535,6 +1565,34 @@ function planAggregate(
   if (mappedOwnedRecommendations.rows.length > 0) {
     tables.owned_progression_recommendations = mappedOwnedRecommendations.rows;
   }
+  const occupiedDecisionRequestIds = new Set([
+    ...rowsFor(local, "progression_recommendation_decision_receipts"),
+    ...rowsFor(local, "owned_progression_recommendation_decision_receipts"),
+  ].map((row) => textId(row.request_id)));
+  const mapDecisionReceipts = (
+    table: "progression_recommendation_decision_receipts" | "owned_progression_recommendation_decision_receipts",
+    recommendationIds: ReadonlyMap<string, string>,
+  ) => {
+    const receipts = rowsFor(snapshot, table)
+      .filter((row) => recommendationIds.has(textId(row.recommendation_id)));
+    const mapped = mappedRows(local, table, receipts, [
+      { column: "recommendation_id", ids: recommendationIds },
+    ], operation.kind === "keep_both", operation.portableId, "request_id", undefined,
+    occupiedDecisionRequestIds);
+    if (mapped.rows.length > 0) {
+      tables[table] = Object.freeze(mapped.rows.map((row) =>
+        rewriteRecommendationDecisionReceipt(row, recommendationIds)
+      ));
+    }
+  };
+  mapDecisionReceipts(
+    "progression_recommendation_decision_receipts",
+    mappedRecommendations.ids,
+  );
+  mapDecisionReceipts(
+    "owned_progression_recommendation_decision_receipts",
+    mappedOwnedRecommendations.ids,
+  );
   return Object.freeze({
     aggregateClass: "owned_plan",
     portableId: operation.portableId,
@@ -2334,6 +2392,7 @@ export const __mergePlanTestOnly = Object.freeze({
   replaceScalar,
   requiredMappedRow,
   rewriteEditReceiptResult,
+  rewriteRecommendationDecisionReceipt,
   rewriteReorderReceipt,
   rewriteReorderReceiptResult,
   rootOperations,

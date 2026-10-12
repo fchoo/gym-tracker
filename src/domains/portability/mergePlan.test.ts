@@ -2385,6 +2385,86 @@ describe("portable merge plan", () => {
     }
   });
 
+  it("retains and remaps both recommendation decision receipt graphs under keep-both collisions", () => {
+    const receipt = (recommendationId: string) => ({
+      request_id: "decision-request",
+      request_sha256: "a".repeat(64),
+      recommendation_id: recommendationId,
+      decision: "use_target",
+      result_json: JSON.stringify({ recommendationId, status: "accepted" }),
+      committed_at_ms: 10,
+    });
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "d".repeat(32) }],
+      plan_days: [{ id: "day", plan_id: "archive-plan" }],
+      plan_day_exercises: [{ id: "legacy-occurrence", plan_day_id: "day" }],
+      plan_working_set_targets: [{ id: "legacy-target", plan_day_exercise_id: "legacy-occurrence" }],
+      progression_recommendations: [{ id: "legacy-recommendation", plan_working_set_target_id: "legacy-target" }],
+      progression_recommendation_decision_receipts: [receipt("legacy-recommendation")],
+      owned_plan_day_exercises: [{ id: "owned-occurrence", plan_day_id: "day" }],
+      owned_plan_working_set_targets: [{ id: "owned-target", plan_day_exercise_id: "owned-occurrence" }],
+      owned_progression_recommendations: [{ id: "owned-recommendation", owned_plan_working_set_target_id: "owned-target" }],
+      owned_progression_recommendation_decision_receipts: [receipt("owned-recommendation")],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
+      plan_days: [{ id: "day" }],
+      plan_day_exercises: [{ id: "legacy-occurrence" }],
+      plan_working_set_targets: [{ id: "legacy-target" }],
+      progression_recommendations: [{ id: "legacy-recommendation" }],
+      progression_recommendation_decision_receipts: [receipt("legacy-recommendation")],
+      owned_plan_day_exercises: [{ id: "owned-occurrence" }],
+      owned_plan_working_set_targets: [{ id: "owned-target" }],
+      owned_progression_recommendations: [{ id: "owned-recommendation" }],
+      owned_progression_recommendation_decision_receipts: [receipt("owned-recommendation")],
+    });
+    const aggregate = __mergePlanTestOnly.planAggregate(
+      archive,
+      local,
+      { aggregateClass: "owned_plan", kind: "keep_both", portableId: "d".repeat(32), archiveId: "archive-plan", localId: "merged-plan" },
+      new Map(),
+      new Map([["archive-plan", "merged-plan"]]),
+      new Map(),
+    );
+    const legacy = aggregate.tables.progression_recommendation_decision_receipts?.[0]!;
+    const owned = aggregate.tables.owned_progression_recommendation_decision_receipts?.[0]!;
+    expect(legacy.request_id).not.toBe("decision-request");
+    expect(owned.request_id).not.toBe("decision-request");
+    expect(legacy.request_id).not.toBe(owned.request_id);
+    expect(JSON.parse(String(legacy.result_json))).toEqual({
+      recommendationId: legacy.recommendation_id,
+      status: "accepted",
+    });
+    expect(JSON.parse(String(owned.result_json))).toEqual({
+      recommendationId: owned.recommendation_id,
+      status: "accepted",
+    });
+  });
+
+  it("fails closed for malformed recommendation receipt hashes, decisions, results, and identities", () => {
+    const ids = new Map([["archive-recommendation", "local-recommendation"]]);
+    const valid = {
+      request_id: "request",
+      request_sha256: "a".repeat(64),
+      recommendation_id: "local-recommendation",
+      decision: "use_target",
+      result_json: JSON.stringify({ recommendationId: "archive-recommendation", status: "accepted" }),
+      committed_at_ms: 1,
+    };
+    expect(__mergePlanTestOnly.rewriteRecommendationDecisionReceipt(valid, ids)).toMatchObject({
+      result_json: JSON.stringify({ recommendationId: "local-recommendation", status: "accepted" }),
+    });
+    for (const row of [
+      { ...valid, request_sha256: "bad" },
+      { ...valid, decision: "dismiss" },
+      { ...valid, result_json: "{}" },
+      { ...valid, result_json: JSON.stringify({ recommendationId: "missing", status: "accepted" }) },
+      { ...valid, result_json: JSON.stringify({ recommendationId: "archive-recommendation", status: "pending" }) },
+    ]) {
+      expect(() => __mergePlanTestOnly.rewriteRecommendationDecisionReceipt(row, ids))
+        .toThrow(new MergePlanError("merge_plan_invalid"));
+    }
+  });
+
   it("fails closed or classifies conflicts for malformed source graph mappings", async () => {
     const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
     const collision = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {

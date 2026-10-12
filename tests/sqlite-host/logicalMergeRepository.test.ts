@@ -267,6 +267,43 @@ async function seedOwnedPlanExerciseGraph(
   });
 }
 
+async function seedRecommendationDecisionReceipts(kernel: SqliteKernel): Promise<void> {
+  await kernel.write(async (transaction) => {
+    const recommendationColumns = `(id, exercise_id, plan_working_set_target_id, rule_type,
+      rule_version, evidence_version, evidence_json, current_target_json,
+      proposed_target_json, metric_profile, metric_contract_version,
+      exercise_metric_generation, status, source_revision, target_revision,
+      created_at_ms, decided_at_ms)`;
+    await transaction.execute(
+      `INSERT INTO progression_recommendations ${recommendationColumns}
+       VALUES ('legacy-recommendation', 'bundled', 'legacy-target', 'load_reps',
+         1, 1, '{}', '{}', '{}', 'load_reps', 1, 1, 'accepted', 1, 1, 1, 2)`,
+    );
+    await transaction.execute(
+      `INSERT INTO owned_progression_recommendations
+        (id, exercise_id, owned_plan_working_set_target_id, rule_type,
+         rule_version, evidence_version, evidence_json, current_target_json,
+         proposed_target_json, metric_profile, metric_contract_version,
+         exercise_metric_generation, status, source_revision, target_revision,
+         created_at_ms, decided_at_ms)
+       VALUES ('owned-recommendation', 'bundled', 'owned-target', 'load_reps',
+         1, 1, '{}', '{}', '{}', 'load_reps', 1, 1, 'rejected', 1, 1, 1, 2)`,
+    );
+    await transaction.execute(
+      `INSERT INTO progression_recommendation_decision_receipts
+        (request_id, request_sha256, recommendation_id, decision, result_json, committed_at_ms)
+       VALUES ('legacy-decision', ?, 'legacy-recommendation', 'use_target', ?, 2)`,
+      ["a".repeat(64), JSON.stringify({ recommendationId: "legacy-recommendation", status: "accepted" })],
+    );
+    await transaction.execute(
+      `INSERT INTO owned_progression_recommendation_decision_receipts
+        (request_id, request_sha256, recommendation_id, decision, result_json, committed_at_ms)
+       VALUES ('owned-decision', ?, 'owned-recommendation', 'keep_current_target', ?, 2)`,
+      ["b".repeat(64), JSON.stringify({ recommendationId: "owned-recommendation", status: "rejected" })],
+    );
+  });
+}
+
 async function snapshot(kernel: SqliteKernel) {
   return createLogicalBackupRepository(kernel).collect({
     createdAtMs: 1,
@@ -476,7 +513,7 @@ async function fullSessionPlanFixture() {
   };
 }
 
-async function fullOwnedPlanFixture() {
+async function fullOwnedPlanFixture(input: Readonly<{ withDecisionReceipts?: boolean }> = {}) {
   const archiveKernel = await open("full-plan-owned-archive");
   await seedOwnedPlan(archiveKernel, {
     id: "archive-plan",
@@ -487,6 +524,9 @@ async function fullOwnedPlanFixture() {
     planId: "archive-plan",
     dayId: "archive-day",
   });
+  if (input.withDecisionReceipts === true) {
+    await seedRecommendationDecisionReceipts(archiveKernel);
+  }
   const archive = await snapshot(archiveKernel);
   const localKernel = await open("full-plan-owned-local");
   await seedBundledExercise(localKernel);
@@ -2287,8 +2327,8 @@ describe("logical merge repository", () => {
     )).resolves.toEqual([{ request_id: archiveReceipt.requestId }]);
   });
 
-  it("applies a precomputed owned-plan root, day, and aggregate state atomically", async () => {
-    const { local, localKernel, plan } = await fullOwnedPlanFixture();
+  it("applies a precomputed owned-plan root, decisions, receipts, day, and aggregate state atomically", async () => {
+    const { local, localKernel, plan } = await fullOwnedPlanFixture({ withDecisionReceipts: true });
 
     await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
       .commitFullPlan({
@@ -2323,6 +2363,22 @@ describe("logical merge repository", () => {
     await expect(localKernel.queryAll(
       "SELECT plan_day_id FROM owned_plan_schedule_bindings WHERE id = 'owned-binding'",
     )).resolves.toEqual([{ plan_day_id: "archive-day" }]);
+    await expect(localKernel.queryAll(
+      "SELECT request_id, recommendation_id, decision, result_json FROM progression_recommendation_decision_receipts",
+    )).resolves.toEqual([{
+      request_id: "legacy-decision",
+      recommendation_id: "legacy-recommendation",
+      decision: "use_target",
+      result_json: JSON.stringify({ recommendationId: "legacy-recommendation", status: "accepted" }),
+    }]);
+    await expect(localKernel.queryAll(
+      "SELECT request_id, recommendation_id, decision, result_json FROM owned_progression_recommendation_decision_receipts",
+    )).resolves.toEqual([{
+      request_id: "owned-decision",
+      recommendation_id: "owned-recommendation",
+      decision: "keep_current_target",
+      result_json: JSON.stringify({ recommendationId: "owned-recommendation", status: "rejected" }),
+    }]);
   });
 
   it("rolls back every admitted owned-plan insertion stage", async () => {
