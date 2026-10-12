@@ -15,7 +15,9 @@ function snapshotKernel(
 ): SqliteSnapshotKernel {
   return {
     queryAll,
-    readSnapshot: (query) => query({ queryAll }),
+    readSnapshot: <Result>(
+      query: (transaction: SqliteReadTransactionExecutor) => Promise<Result>,
+    ) => query({ queryAll }),
   } as unknown as SqliteSnapshotKernel;
 }
 
