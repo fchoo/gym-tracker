@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 16
+open_count: 19
 waived_count: 0
 fixed_count: 88
-total_count: 104
-last_updated: 2026-10-11T12:32:08.977Z
+total_count: 107
+last_updated: 2026-10-12T17:23:47.901Z
 ---
 
 # Broken Windows Ledger
@@ -119,6 +119,9 @@ last_updated: 2026-10-11T12:32:08.977Z
 | 102 | 18 | deviation | .planning/phases/18-garmin-import/18-13-SUMMARY.md |  | Plan 18-13 is host-complete and native-deferred under the owner checkpoint override; no native PASS is claimed. | open |  | 2026-10-11T12:16:23.242Z |  |
 | 103 | 18 | deviation | app/_layout.tsx |  | Added the missing isolated development-test navigator for the guarded Plan 18-13 adversarial route. | open |  | 2026-10-11T12:16:42.968Z |  |
 | 104 | 18 | deviation | app/library/running/[planId].tsx |  | Plan 18-14 omitted the production Running-plan route from Task 2 files; the route was required to replace the inert Garmin callback with the typed library-origin stack handoff. | open |  | 2026-10-11T12:32:08.977Z |  |
+| 105 | 16 | deviation | src/ui/screens/CalendarScreen.tsx |  | Retained the outgoing month panel until its guarded settle completes. | open |  | 2026-10-12T17:23:47.593Z |  |
+| 106 | 16 | deviation | src/ui/calendar/CalendarMonthViewport.tsx |  | Completed no-layout non-gesture controls deterministically without fabricated geometry. | open |  | 2026-10-12T17:23:47.746Z |  |
+| 107 | 16 | deviation | src/ui/calendar/calendarTransitionController.ts |  | Deferred adjacent date/month mutation until collapse completion. | open |  | 2026-10-12T17:23:47.901Z |  |
 
 ````json
 [
@@ -1368,6 +1371,42 @@ last_updated: 2026-10-11T12:32:08.977Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-11T12:32:08.977Z",
+    "resolved_at": null
+  },
+  {
+    "id": 105,
+    "kind": "deviation",
+    "phase": "16",
+    "file": "src/ui/screens/CalendarScreen.tsx",
+    "line": null,
+    "description": "Retained the outgoing month panel until its guarded settle completes.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-12T17:23:47.593Z",
+    "resolved_at": null
+  },
+  {
+    "id": 106,
+    "kind": "deviation",
+    "phase": "16",
+    "file": "src/ui/calendar/CalendarMonthViewport.tsx",
+    "line": null,
+    "description": "Completed no-layout non-gesture controls deterministically without fabricated geometry.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-12T17:23:47.746Z",
+    "resolved_at": null
+  },
+  {
+    "id": 107,
+    "kind": "deviation",
+    "phase": "16",
+    "file": "src/ui/calendar/calendarTransitionController.ts",
+    "line": null,
+    "description": "Deferred adjacent date/month mutation until collapse completion.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-12T17:23:47.901Z",
     "resolved_at": null
   }
 ]

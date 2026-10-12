@@ -102,15 +102,15 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **CAL-04**: Use shared month/focused date/event cells with 28px date and 36px event tracks, stable effective 4px top inset and measured row-height continuity.
 - [ ] **CAL-05**: Show up to two compact titled events per date in selected and adjacent weeks, preserving full names/statuses in day accessibility labels.
 - [ ] **CAL-06**: Distinguish selected date, today, outside-month dates, rest day and empty dates without changing event status semantics.
-- [ ] **CAL-07**: Keep clipped previous/current/next month panels following horizontal pointer movement one-to-one, clamped to one panel, while vertical intent scrolls normally.
-- [ ] **CAL-08**: Change the visible title at 25% width, revert immediately below the threshold or on cancel, and settle only at or beyond 25%; shorter drags snap back even when fast.
-- [ ] **CAL-09**: Preserve the 240ms month-settle motion and cubic-bezier(.22,.8,.3,1), with completion handling that avoids stale selection or duplicate navigation.
-- [ ] **CAL-10**: Keep previous/next/Today controls usable in both month and focused views, preserving/clamping selected day and returning to today's actual local date.
-- [ ] **CAL-11**: Provide visible-focus arrow navigation and activation for date cells plus non-gesture month controls.
-- [ ] **CAL-12**: Animate the selected month row to the top and its following row to the bottom, retain a single Monday-first weekday header, and reveal compact agenda rows.
-- [ ] **CAL-13**: Reverse both focused rows to their measured month positions before showing month mode and restoring selected-day focus.
-- [ ] **CAL-14**: On adjacent-week date selection, collapse to month, select/focus the new date, then expand its week with events preserved.
-- [ ] **CAL-15**: Keep identical selected dates, navigation sequence and agenda content when reduced motion removes row movement and month transitions.
+- [x] **CAL-07**: Keep clipped previous/current/next month panels following horizontal pointer movement one-to-one, clamped to one panel, while vertical intent scrolls normally.
+- [x] **CAL-08**: Change the visible title at 25% width, revert immediately below the threshold or on cancel, and settle only at or beyond 25%; shorter drags snap back even when fast.
+- [x] **CAL-09**: Preserve the 240ms month-settle motion and cubic-bezier(.22,.8,.3,1), with completion handling that avoids stale selection or duplicate navigation.
+- [x] **CAL-10**: Keep previous/next/Today controls usable in both month and focused views, preserving/clamping selected day and returning to today's actual local date.
+- [x] **CAL-11**: Provide visible-focus arrow navigation and activation for date cells plus non-gesture month controls.
+- [x] **CAL-12**: Animate the selected month row to the top and its following row to the bottom, retain a single Monday-first weekday header, and reveal compact agenda rows.
+- [x] **CAL-13**: Reverse both focused rows to their measured month positions before showing month mode and restoring selected-day focus.
+- [x] **CAL-14**: On adjacent-week date selection, collapse to month, select/focus the new date, then expand its week with events preserved.
+- [x] **CAL-15**: Keep identical selected dates, navigation sequence and agenda content when reduced motion removes row movement and month transitions.
 - [ ] **CAL-16**: Use one full-width tap target per event with title, one-line result/target, sport/status, source and chevron; remove nested Resume/View/Match actions.
 - [ ] **CAL-17**: Route Strength to read-only workout detail, planned Running to Running plan, and imported Running to Garmin activity detail using real entity identities.
 - [ ] **CAL-18**: Render Active-shaped full-height completed/partial workout detail with exercise disclosure, all set rows and result/state semantics, but no edit/complete/reorder/settings mutation.
@@ -310,15 +310,15 @@ once and remains Pending until its owning phase is implemented and verified.
 | CAL-04 | 16 | calendar.date-grid | Pending |
 | CAL-05 | 16 | calendar.events-titles | Pending |
 | CAL-06 | 16 | calendar.today-selection | Pending |
-| CAL-07 | 16 | calendar.drag-follow | Pending |
-| CAL-08 | 16 | calendar.threshold | Pending |
-| CAL-09 | 16 | calendar.month-motion | Pending |
-| CAL-10 | 16 | calendar.month-navigation | Pending |
-| CAL-11 | 16 | calendar.keyboard | Pending |
-| CAL-12 | 16 | calendar.expand-week | Pending |
-| CAL-13 | 16 | calendar.collapse-week | Pending |
-| CAL-14 | 16 | calendar.adjacent-week | Pending |
-| CAL-15 | 16 | calendar.reduced-motion | Pending |
+| CAL-07 | 16 | calendar.drag-follow | Complete |
+| CAL-08 | 16 | calendar.threshold | Complete |
+| CAL-09 | 16 | calendar.month-motion | Complete |
+| CAL-10 | 16 | calendar.month-navigation | Complete |
+| CAL-11 | 16 | calendar.keyboard | Complete |
+| CAL-12 | 16 | calendar.expand-week | Complete |
+| CAL-13 | 16 | calendar.collapse-week | Complete |
+| CAL-14 | 16 | calendar.adjacent-week | Complete |
+| CAL-15 | 16 | calendar.reduced-motion | Complete |
 | CAL-16 | 16 | calendar.agenda | Pending |
 | CAL-17 | 16 | calendar.agenda-routing | Pending |
 | CAL-18 | 16 | calendar.readonly-history | Pending |
