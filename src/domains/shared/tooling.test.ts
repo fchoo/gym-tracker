@@ -25,6 +25,7 @@ import {
   dirname,
   resolve,
 } from "node:path";
+import * as ts from "typescript";
 
 type PackageJson = {
   scripts?: Record<string, string>;
@@ -670,9 +671,36 @@ describe("Plan 01-03 test and boundary tooling", () => {
     expect(packageJson.scripts?.["test:coverage"]).toContain(
       "run-coverage-gate.mjs",
     );
-    expect(coverageRunner).toContain(
-      '"unit",\n    "components",\n    "sqlite-host",\n    "integration"',
+    const coverageSource = ts.createSourceFile(
+      "run-coverage-gate.mjs",
+      coverageRunner,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
     );
+    const selectedProjectsDeclaration = coverageSource.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((statement) => statement.declarationList.declarations)
+      .find((declaration) => ts.isIdentifier(declaration.name)
+        && declaration.name.text === "selectedProjects");
+    const selectedProjectsInitializer = selectedProjectsDeclaration?.initializer;
+    if (selectedProjectsInitializer === undefined
+      || !ts.isConditionalExpression(selectedProjectsInitializer)
+      || !ts.isArrayLiteralExpression(selectedProjectsInitializer.whenFalse)) {
+      throw new Error("global coverage project selection is not an explicit array");
+    }
+    const globalCoverageProjects = selectedProjectsInitializer.whenFalse.elements.map((element) => {
+      if (!ts.isStringLiteralLike(element)) {
+        throw new Error("global coverage project selection contains a non-string value");
+      }
+      return element.text;
+    });
+    expect([...globalCoverageProjects].sort()).toEqual([
+      "components",
+      "integration",
+      "sqlite-host",
+      "unit",
+    ]);
     expect(coverageRunner).toContain(
       'for (const metric of ["statements", "branches", "functions", "lines"])',
     );

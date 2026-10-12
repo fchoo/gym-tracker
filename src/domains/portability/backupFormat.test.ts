@@ -12,6 +12,7 @@ import {
 } from "./backupFormat";
 import {
   BACKUP_LIMITS,
+  LOGICAL_BACKUP_FORMAT_VERSION,
   type LogicalBackupSnapshot,
 } from "./backupContracts";
 
@@ -285,21 +286,30 @@ describe("GTBK backup envelope", () => {
     expect(decrypt).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["a wrong compression setting", (header: Record<string, unknown>) => { header.compression = "gzip"; }],
+  it.each<readonly [
+    label: string,
+    mutateHeader: (header: Record<string, unknown>) => void,
+    expectedCode: "backup_archive_invalid" | "backup_archive_unsupported_version",
+  ]>([
+    ["a wrong compression setting", (header: Record<string, unknown>) => { header.compression = "gzip"; }, "backup_archive_invalid"],
     ["a mismatched cipher descriptor", (header: Record<string, unknown>) => {
       header.cipher = { algorithm: "aes-128-gcm", tagBytes: 16 };
-    }],
+    }, "backup_archive_invalid"],
     ["a wrong KDF parameter", (header: Record<string, unknown>) => {
       header.kdf = { ...(header.kdf as Record<string, unknown>), iterations: 1 };
-    }],
+    }, "backup_archive_invalid"],
     ["malformed base64 salt padding", (header: Record<string, unknown>) => {
       header.kdf = { ...(header.kdf as Record<string, unknown>), salt: "AA=A" };
-    }],
-    ["a short nonce", (header: Record<string, unknown>) => { header.nonce = "AA=="; }],
-    ["a negative payload size", (header: Record<string, unknown>) => { header.payloadBytes = -1; }],
-    ["an unsupported header version", (header: Record<string, unknown>) => { header.version = 9; }],
-  ])("rejects %s before key derivation", async (_label, mutateHeader) => {
+    }, "backup_archive_invalid"],
+    ["a short nonce", (header: Record<string, unknown>) => { header.nonce = "AA=="; }, "backup_archive_invalid"],
+    ["a negative payload size", (header: Record<string, unknown>) => { header.payloadBytes = -1; }, "backup_archive_invalid"],
+    ["a current v9 header that disagrees with the archive prefix", (header: Record<string, unknown>) => {
+      header.version = LOGICAL_BACKUP_FORMAT_VERSION;
+    }, "backup_archive_invalid"],
+    ["an unsupported future header version", (header: Record<string, unknown>) => {
+      header.version = LOGICAL_BACKUP_FORMAT_VERSION + 1;
+    }, "backup_archive_unsupported_version"],
+  ])("rejects %s before key derivation", async (_label, mutateHeader, expectedCode) => {
     const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({ snapshot, password, salt, nonce });
     const header = headerFrom(archive);
     mutateHeader(header);
@@ -308,9 +318,7 @@ describe("GTBK backup envelope", () => {
 
     await expect(codec.open({ archive: archiveWithHeader(archive, header), password })).rejects.toEqual(
       expect.objectContaining({
-        code: header.version === 9
-          ? "backup_archive_unsupported_version"
-          : "backup_archive_invalid",
+        code: expectedCode,
       }),
     );
     expect(deriveKey).not.toHaveBeenCalled();
