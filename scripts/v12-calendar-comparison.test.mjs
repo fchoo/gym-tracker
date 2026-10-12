@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+
+import { PNG } from "pngjs";
 
 import {
   compareV12Calendar,
@@ -12,7 +14,9 @@ import {
 } from "./compare-v12-calendar.mjs";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAF/gJ+0wsE0QAAAABJRU5ErkJggg==", "base64");
+const image = new PNG({ width: 1, height: 1 });
+image.data.set([1, 2, 3, 255]);
+const png = PNG.sync.write(image);
 
 function completeFixture() {
   const directory = mkdtempSync(path.join(tmpdir(), "v12-calendar-"));
@@ -24,13 +28,19 @@ function completeFixture() {
     schema_version: 1,
     prototype_revision: 18,
     source_manifest_sha256: "a".repeat(64),
+    host_only_fixture: true,
     captures: [{
       id: "calendar-month-light-390",
       requirement_ids: ["CAL-01"],
       reference: { path: reference, sha256: sha256(png), width: 1, height: 1 },
       configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" },
     }],
-    case_ledger: [{ id: "calendar-light-touch", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "touch", viewport: "390x844" }],
+    case_ledger: [
+      { id: "calendar-light-touch", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "touch", viewport: "390x844" },
+      { id: "calendar-dark-touch", capture_ids: ["calendar-month-light-390"], theme: "Dark", motion: "normal", input: "touch", viewport: "390x844" },
+      { id: "calendar-accessibility", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "keyboard", viewport: "390x844" },
+      { id: "calendar-reduced-motion", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "reduced", input: "touch", viewport: "390x844" },
+    ],
   };
   return {
     directory,
@@ -106,4 +116,11 @@ test("Calendar map requires a unique exact Revision 18 reference and Light/Dark/
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }
+});
+
+test("the checked-in Calendar map binds every reference byte to the Revision 18 source manifest", () => {
+  const map = JSON.parse(readFileSync(".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json", "utf8"));
+  assert.equal(sha256(readFileSync(map.source_manifest)), map.source_manifest_sha256);
+  assert.equal(validateV12CalendarReferenceMap(map, { verifyFiles: true }), true);
+  assert.equal(new Set(map.captures.map((capture) => capture.id)).size, map.captures.length);
 });
