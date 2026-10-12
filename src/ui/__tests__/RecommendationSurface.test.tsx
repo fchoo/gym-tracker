@@ -2,6 +2,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -101,19 +102,27 @@ async function renderReview(
 }
 
 describe("RecommendationSurface actionable review", () => {
-  it("renders target evidence, a named rule, lifecycle, and source navigation without treating the proposal as current", async () => {
+  it("opens a named Review target sheet with target evidence, source navigation, and no automatic change", async () => {
     const props = await renderReview();
 
-    expect(screen.getByRole("header", { name: "Review next target for Bench Press" }))
+    expect(screen.getByRole("button", { name: "Review target for Bench Press" }))
       .toBeOnTheScreen();
-    expect(screen.getByText("Pending review")).toBeOnTheScreen();
+    expect(props.onAccept).not.toHaveBeenCalled();
+    expect(props.onKeepCurrent).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Review target for Bench Press",
+    }));
+
+    expect(screen.getByRole("header", { name: "Review target" }))
+      .toBeOnTheScreen();
     expect(screen.getByText("Current target · 60 kg × 8")).toBeOnTheScreen();
     expect(screen.getByText("Proposed target · 62.5 kg × 6")).toBeOnTheScreen();
     expect(screen.getByText("Rule · load_reps.double_progression.v1 v1"))
       .toBeOnTheScreen();
     expect(screen.getByText("Confidence · high")).toBeOnTheScreen();
-    expect(screen.getByText(pendingReview.reason)).toBeOnTheScreen();
-    expect(screen.getByText(/current target remains unchanged/iu)).toBeOnTheScreen();
+    expect(screen.getAllByText(pendingReview.reason)).not.toHaveLength(0);
+    expect(screen.getByText("No automatic change without confirmation.")).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", {
       name: "Open source workout for Bench Press",
@@ -121,15 +130,72 @@ describe("RecommendationSurface actionable review", () => {
     expect(props.onOpenSource).toHaveBeenCalledWith("session-42");
   });
 
-  it("disables only committed decision actions while their command is in flight", async () => {
-    await renderReview(pendingReview, { busy: true });
+  it("never dispatches a decision when the review sheet is dismissed by close, Back, Escape, scrim, or unmount", async () => {
+    const props = await renderReview();
+    const openReview = async () => fireEvent.press(screen.getByRole("button", {
+      name: "Review target for Bench Press",
+    }));
 
-    expect(screen.getByRole("button", { name: "Use proposed target for Bench Press" }))
+    await openReview();
+    await fireEvent.press(screen.getByRole("button", { name: "Close review target" }));
+    await openReview();
+    await fireEvent(screen.getByTestId("bottom-sheet-modal"), "requestClose");
+    await openReview();
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+    await openReview();
+    await fireEvent.press(screen.getByLabelText("Dismiss sheet", {
+      includeHiddenElements: true,
+    }));
+
+    expect(props.onAccept).not.toHaveBeenCalled();
+    expect(props.onKeepCurrent).not.toHaveBeenCalled();
+  });
+
+  it("keeps both decision actions visible and disabled while exposing the selected busy command", async () => {
+    let resolveDecision: (() => void) | undefined;
+    const decision = new Promise<void>((resolve) => {
+      resolveDecision = resolve;
+    });
+    const onAccept = jest.fn(() => decision);
+    await renderReview(pendingReview, { onAccept });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Review target for Bench Press",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Use target" }));
+
+    expect(screen.getByRole("button", { name: "Saving use target" }))
       .toHaveProp("accessibilityState", expect.objectContaining({ disabled: true }));
-    expect(screen.getByRole("button", { name: "Keep current target for Bench Press" }))
+    expect(screen.getByRole("button", { name: "Keep target unchanged" }))
       .toHaveProp("accessibilityState", expect.objectContaining({ disabled: true }));
     expect(screen.getByRole("button", { name: "Open source workout for Bench Press" }))
       .toHaveProp("accessibilityState", expect.objectContaining({ disabled: false }));
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    resolveDecision?.();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Use target" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({ disabled: false })));
+  });
+
+  it("retains evidence and exposes a persistent retry after a decision command fails", async () => {
+    const onAccept = jest.fn(async () => {
+      throw new Error("commit failed");
+    });
+    const props = await renderReview(pendingReview, { onAccept });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Review target for Bench Press",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Use target" }));
+
+    await waitFor(() => expect(screen.getByText("Target decision was not saved"))
+      .toBeOnTheScreen());
+    expect(screen.getByText(/Your current target is unchanged/iu)).toBeOnTheScreen();
+    expect(screen.getAllByText(pendingReview.reason)).not.toHaveLength(0);
+    await fireEvent.press(screen.getByRole("button", { name: "Retry target decision" }));
+    await waitFor(() => expect(onAccept).toHaveBeenCalledTimes(2));
+    expect(props.onKeepCurrent).not.toHaveBeenCalled();
   });
 
   it.each(["superseded", "invalidated"] as const)(
@@ -142,6 +208,8 @@ describe("RecommendationSurface actionable review", () => {
       expect(screen.getByText(/current target was not changed by this recommendation/iu))
         .toBeOnTheScreen();
       expect(screen.queryByRole("button", { name: /Use proposed target/u }))
+        .not.toBeOnTheScreen();
+      expect(screen.queryByRole("button", { name: /Review target/u }))
         .not.toBeOnTheScreen();
     },
   );
@@ -162,9 +230,9 @@ describe("RecommendationSurface actionable review", () => {
       expect(screen.getByText(label)).toBeOnTheScreen();
       expect(screen.queryByRole("button", { name: /Open source workout/u }))
         .not.toBeOnTheScreen();
-      expect(screen.queryByRole("button", { name: /Use proposed target/u }))
+      expect(screen.queryByRole("button", { name: /Use target/u }))
         .not.toBeOnTheScreen();
-      expect(screen.queryByRole("button", { name: /Keep current target/u }))
+      expect(screen.queryByRole("button", { name: /Keep target unchanged/u }))
         .not.toBeOnTheScreen();
     },
   );
@@ -212,6 +280,10 @@ describe("RecommendationSurface actionable review", () => {
         currentTarget: target,
         proposedTarget: target,
       });
+
+      await fireEvent.press(screen.getByRole("button", {
+        name: "Review target for Bench Press",
+      }));
 
       expect(screen.getByText("Current target · " + expected)).toBeOnTheScreen();
       expect(screen.getByText("Proposed target · " + expected)).toBeOnTheScreen();
