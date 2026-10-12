@@ -3,6 +3,16 @@
   "prototype_revision": 18,
   "source_manifest": ".planning/design/v1.2-browser-evidence/source-manifest.json",
   "source_manifest_sha256": "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
+  "case_registry": {
+    "schema_version": 1,
+    "id": "v12-calendar-reference-cases/v1",
+    "sha256": "b39f245595519123f3001f16c773b44bd670321f9bae4d32a899fae690a051b4",
+    "static_configuration_count": 64,
+    "state_count": 18,
+    "route_count": 8,
+    "input_count": 4,
+    "motion_count": 2
+  },
   "captures": [
     { "id": "calendar-month-light-390", "requirement_ids": ["CAL-01", "CAL-04", "CAL-06", "CAL-10"], "reference": { "path": ".planning/design/v1.2-browser-evidence/light-calendar-month.png", "sha256": "e88428e656746d083c139fb71ba44e665d798936912d21b5ae094088478ee0eb", "width": 390, "height": 844 }, "configuration": { "theme": "Light", "viewport": { "width": 390, "height": 844 }, "orientation": "portrait", "font_scale": 1, "motion": "normal", "input": "touch", "fixture": "synthetic-calendar-month-v1" } },
     { "id": "calendar-month-dark-390", "requirement_ids": ["CAL-01", "CAL-03", "CAL-04", "CAL-06"], "reference": { "path": ".planning/design/v1.2-browser-evidence/dark-calendar-month.png", "sha256": "c41e97f31cbdcf00161c6a4070909072edbddeca70930697d61f096e676e4ed9", "width": 390, "height": 844 }, "configuration": { "theme": "Dark", "viewport": { "width": 390, "height": 844 }, "orientation": "portrait", "font_scale": 1, "motion": "normal", "input": "touch", "fixture": "synthetic-calendar-month-v1" } },

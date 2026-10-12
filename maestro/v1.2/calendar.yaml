@@ -2,33 +2,165 @@ appId: com.fchoo.gymtracker.devtest
 name: Phase 16 Calendar diagnostic trace contract
 tags: [calendar-tracer, native-only, development-test, phase-16]
 ---
-- assertTrue: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10' || PHASE16_CALENDAR_STAGE == 'drag-forward-24_9' || PHASE16_CALENDAR_STAGE == 'drag-forward-25' || PHASE16_CALENDAR_STAGE == 'drag-forward-25_1' || PHASE16_CALENDAR_STAGE == 'drag-forward-release-below' || PHASE16_CALENDAR_STAGE == 'drag-forward-release-exact' || PHASE16_CALENDAR_STAGE == 'drag-forward-release-above' || PHASE16_CALENDAR_STAGE == 'drag-backward-10' || PHASE16_CALENDAR_STAGE == 'drag-backward-24_9' || PHASE16_CALENDAR_STAGE == 'drag-backward-25' || PHASE16_CALENDAR_STAGE == 'drag-backward-25_1' || PHASE16_CALENDAR_STAGE == 'drag-backward-release-below' || PHASE16_CALENDAR_STAGE == 'drag-backward-release-exact' || PHASE16_CALENDAR_STAGE == 'drag-backward-release-above' || PHASE16_CALENDAR_STAGE == 'drag-fast-subthreshold' || PHASE16_CALENDAR_STAGE == 'drag-retreat' || PHASE16_CALENDAR_STAGE == 'drag-cancel' || PHASE16_CALENDAR_STAGE == 'drag-vertical' || PHASE16_CALENDAR_STAGE == 'drag-diagonal' || PHASE16_CALENDAR_STAGE == 'week-expand-first-row' || PHASE16_CALENDAR_STAGE == 'week-expand-middle-row' || PHASE16_CALENDAR_STAGE == 'week-expand-last-row' || PHASE16_CALENDAR_STAGE == 'adjacent-week' || PHASE16_CALENDAR_STAGE == 'rapid-reverse-input' || PHASE16_CALENDAR_STAGE == 'second-input-interrupt' || PHASE16_CALENDAR_STAGE == 'rotation-during-transition' || PHASE16_CALENDAR_STAGE == 'background-during-transition' || PHASE16_CALENDAR_STAGE == 'reduced-motion' || PHASE16_CALENDAR_STAGE == 'accessibility-keyboard'}
+- assertTrue: ${PHASE16_CALENDAR_STAGE != null}
 - launchApp: { clearState: false, stopApp: true }
 - openLink: "gymtracker-devtest://calendar?phase16CalendarStage=${PHASE16_CALENDAR_STAGE}"
 - extendedWaitUntil: { visible: "Calendar", timeout: 30000 }
 - runFlow:
-    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10' || PHASE16_CALENDAR_STAGE == 'drag-forward-24_9' || PHASE16_CALENDAR_STAGE == 'drag-forward-25' || PHASE16_CALENDAR_STAGE == 'drag-forward-25_1' || PHASE16_CALENDAR_STAGE == 'drag-forward-release-below' || PHASE16_CALENDAR_STAGE == 'drag-forward-release-exact' || PHASE16_CALENDAR_STAGE == 'drag-forward-release-above' || PHASE16_CALENDAR_STAGE == 'drag-fast-subthreshold' || PHASE16_CALENDAR_STAGE == 'drag-retreat' || PHASE16_CALENDAR_STAGE == 'rapid-reverse-input' || PHASE16_CALENDAR_STAGE == 'second-input-interrupt' || PHASE16_CALENDAR_STAGE == 'rotation-during-transition' || PHASE16_CALENDAR_STAGE == 'background-during-transition'} }
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10'} }
     commands:
-      - swipe: { start: 50%, 45%, end: 25%, 45%, duration: 400 }
+      - swipe: { start: "70%, 45%", end: "60%, 45%", duration: 160 }
+      - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-10' || PHASE16_CALENDAR_STAGE == 'drag-backward-24_9' || PHASE16_CALENDAR_STAGE == 'drag-backward-25' || PHASE16_CALENDAR_STAGE == 'drag-backward-25_1' || PHASE16_CALENDAR_STAGE == 'drag-backward-release-below' || PHASE16_CALENDAR_STAGE == 'drag-backward-release-exact' || PHASE16_CALENDAR_STAGE == 'drag-backward-release-above'} }
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-24_9'} }
     commands:
-      - swipe: { start: 50%, 45%, end: 75%, 45%, duration: 400 }
+      - swipe: { start: "70%, 45%", end: "45.1%, 45%", duration: 400 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-25'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "45%, 45%", duration: 400 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-25_1'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "44.9%, 45%", duration: 400 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-release-below'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "45.1%, 45%", duration: 320 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-release-exact'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "45%, 45%", duration: 320 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-release-above'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "44.9%, 45%", duration: 320 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-10'} }
+    commands:
+      - swipe: { start: "30%, 45%", end: "40%, 45%", duration: 160 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-24_9'} }
+    commands:
+      - swipe: { start: "30%, 45%", end: "54.9%, 45%", duration: 400 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-25'} }
+    commands:
+      - swipe: { start: "30%, 45%", end: "55%, 45%", duration: 400 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-25_1'} }
+    commands:
+      - swipe: { start: "30%, 45%", end: "55.1%, 45%", duration: 400 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-release-below'} }
+    commands:
+      - swipe: { start: "30%, 45%", end: "54.9%, 45%", duration: 320 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-release-exact'} }
+    commands:
+      - swipe: { start: "30%, 45%", end: "55%, 45%", duration: 320 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-release-above'} }
+    commands:
+      - swipe: { start: "30%, 45%", end: "55.1%, 45%", duration: 320 }
+      - assertVisible: "September 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-fast-subthreshold'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "60%, 45%", duration: 40 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "40%, 45%", duration: 240 }
+      - swipe: { start: "40%, 45%", end: "60%, 45%", duration: 120 }
+      - assertVisible: "October 2026"
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }
     commands:
-      - swipe: { start: 50%, 45%, end: 58%, 45%, duration: 80 }
+      - swipe: { start: "70%, 45%", end: "52%, 45%", duration: 220 }
+      - pressKey: BACK
+      - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-vertical' || PHASE16_CALENDAR_STAGE == 'drag-diagonal'} }
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-vertical'} }
     commands:
-      - swipe: { start: 50%, 70%, end: 50%, 30%, duration: 300 }
+      - swipe: { start: "50%, 70%", end: "50%, 30%", duration: 300 }
+      - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${PHASE16_CALENDAR_STAGE == 'week-expand-first-row' || PHASE16_CALENDAR_STAGE == 'week-expand-middle-row' || PHASE16_CALENDAR_STAGE == 'week-expand-last-row' || PHASE16_CALENDAR_STAGE == 'adjacent-week' || PHASE16_CALENDAR_STAGE == 'reduced-motion'} }
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-diagonal'} }
     commands:
-      - tapOn: { id: "calendar-month-viewport", optional: true }
+      - swipe: { start: "50%, 70%", end: "58%, 30%", duration: 300 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'week-expand-first-row'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-09-29" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'week-expand-middle-row'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-14" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'week-expand-last-row'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-11-07" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'adjacent-week'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-31" }
+      - tapOn: { id: "calendar-day-2026-11-01" }
+      - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'rapid-reverse-input'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "44.9%, 45%", duration: 100 }
+      - swipe: { start: "30%, 45%", end: "55.1%, 45%", duration: 100 }
+      - assertVisible: "October 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'second-input-interrupt'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "44.9%, 45%", duration: 80 }
+      - swipe: { start: "70%, 45%", end: "44.9%, 45%", duration: 80 }
+      - assertVisible: "November 2026"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'rotation-during-transition'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "44.9%, 45%", duration: 80 }
+      - setOrientation: LANDSCAPE
+      - assertVisible: "Calendar"
+      - setOrientation: PORTRAIT
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'background-during-transition'} }
+    commands:
+      - swipe: { start: "70%, 45%", end: "44.9%, 45%", duration: 80 }
+      - pressKey: HOME
+      - openLink: "gymtracker-devtest://calendar?phase16CalendarStage=background-during-transition"
+      - extendedWaitUntil: { visible: "Calendar", timeout: 30000 }
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'reduced-motion'} }
+    commands:
+      - openLink: "gymtracker-devtest://calendar?phase16CalendarStage=reduced-motion&phase16CalendarReducedMotion=true"
+      - tapOn: { id: "calendar-day-2026-10-14" }
+      - assertVisible: "Collapse day and return to month"
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'accessibility-keyboard'} }
     commands:
       - pressKey: TAB
+      - pressKey: DPAD_RIGHT
       - pressKey: ENTER
+      - assertVisible: "Collapse day and return to month"
 - takeScreenshot: "calendar-${PHASE16_CALENDAR_STAGE}"

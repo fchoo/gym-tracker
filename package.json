@@ -134,9 +134,9 @@
     ,"test:maestro:v12:calendar": "node scripts/run-v12-maestro.mjs --diagnostic"
     ,"compare:v12:calendar": "node scripts/compare-v12-calendar.mjs"
     ,"diagnose:v12:calendar": "node scripts/benchmark-v12-interactions.mjs"
-    ,"test:evidence:v12:calendar": "node --test scripts/v12-evidence-scripts.test.mjs scripts/v12-calendar-comparison.test.mjs"
+    ,"test:evidence:v12:calendar": "node --test scripts/v12-evidence-scripts.test.mjs scripts/v12-calendar-comparison.test.mjs scripts/v12-calendar-evidence-coverage.test.mjs"
     ,"verify:v12:calendar": "node scripts/verify-v12-native-evidence.mjs"
-    ,"test:coverage:v12:calendar": "node scripts/run-coverage-gate.mjs --focus-integrity=src/bootstrap/phase16CalendarTestControls.ts --focus-project=unit --runInBand src/bootstrap/phase16CalendarTestControls.test.ts"
+    ,"test:coverage:v12:calendar": "node scripts/run-coverage-gate.mjs --focus-phase16-evidence --runInBand"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",
