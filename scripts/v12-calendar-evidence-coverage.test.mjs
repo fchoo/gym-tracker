@@ -183,6 +183,7 @@ function comparisonFixture() {
 function liveEvidence() {
   const evidence = fixture();
   evidence.run_id = "phase20-20261013T080808Z-abcdef123456";
+  const artifactRoot = `artifacts/native/v1.2/${evidence.run_id}`;
   evidence.host_only_fixture = false;
   evidence.native_execution = "EXECUTED";
   evidence.functional_cases.forEach((entry) => {
@@ -210,12 +211,22 @@ function liveEvidence() {
     id,
     status: "PASS",
     native_execution: "EXECUTED",
-    artifact: { path: `fixtures/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) },
+    artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) },
   }));
   evidence.comparison.records.forEach((entry) => {
     entry.classification = "PASS";
     entry.differences = [];
+    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      entry.artifacts[kind].path = `${artifactRoot}/comparison/${entry.id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+    }
   });
+  evidence.manifest.apk.path = `${artifactRoot}/app.apk`;
+  evidence.functional_cases.forEach((entry) => { entry.artifact.path = `${artifactRoot}/cases/${entry.id}.json`; });
+  evidence.route_journeys.forEach((entry) => { entry.artifact.path = `${artifactRoot}/routes/${entry.id}.json`; });
+  evidence.artifacts.manifest.path = `${artifactRoot}/build.json`;
+  evidence.artifacts.report.path = `${artifactRoot}/evidence/native-report.json`;
+  evidence.artifacts.comparison.path = `${artifactRoot}/comparison/calendar.json`;
+  evidence.artifacts.diagnostics.path = `${artifactRoot}/diagnostics/calendar.json`;
   evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
   evidence.status = "PASS";
   evidence.all_pass = true;
@@ -967,6 +978,7 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
     reject(({ run }) => { run.captures[0].semantics.target = null; }, /privacy_schema_invalid/u);
     reject(({ run }) => { run.captures[0].semantics.target = "employee-session"; }, /privacy_schema_invalid/u);
     reject(({ run }) => { run.captures[0].native.path = ""; }, /path_invalid/u);
+    reject(({ run }) => { run.captures[0].native.path = "/etc/passwd"; }, /path_escape/u);
     reject(({ run }) => { run.captures[0].native.path = path.join(value.directory, "missing.png"); }, /path_unsafe/u);
     const linkedPath = path.join(value.directory, "linked.png");
     symlinkSync(path.join(value.directory, "native.png"), linkedPath);
@@ -978,7 +990,12 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
     reject(({ map }) => {
       delete map.host_only_fixture;
       map.source_manifest = ".planning/design/v1.2-browser-evidence/source-manifest.json";
-    }, /path_escape/u);
+    }, /path_invalid/u);
+    reject(({ map }) => {
+      delete map.host_only_fixture;
+      map.source_manifest = ".planning/design/v1.2-browser-evidence/source-manifest.json";
+      map.captures[0].reference.path = ".planning/design/v1.2-browser-evidence/alice-private-reference.png";
+    }, /path_invalid/u);
 
     const invalidPng = path.join(value.directory, "invalid.png");
     writeFileSync(invalidPng, "not-png");
@@ -1053,7 +1070,11 @@ test("shared comparison validation rejects malformed host and live envelopes", (
     live.phase20_deferred = false;
     live.status = "PASS";
     live.records[0].classification = "PASS";
-    live.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({ id, status: "PASS", native_execution: "EXECUTED", artifact: { path: `fixtures/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) } }));
+    const artifactRoot = `artifacts/native/v1.2/${live.run_id}`;
+    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      live.records[0].artifacts[kind].path = `${artifactRoot}/comparison/${live.records[0].id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+    }
+    live.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({ id, status: "PASS", native_execution: "EXECUTED", artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) } }));
     assert.equal(validateV12CalendarComparison(live), true);
     const explained = structuredClone(live);
     explained.records[0].differences = [{ kind: "visual", explained: true }];

@@ -38,10 +38,20 @@ function schema(value, keys, location) {
   if (!exactKeys(value, keys)) fail(`privacy_schema_invalid:${location}`);
 }
 
-function descriptor(value, code) {
+function normalizedPath(value, code) {
+  if ([typeof value !== "string", typeof value === "string" && (value.length === 0 || value.includes("\\") || path.isAbsolute(value) || path.posix.normalize(value) !== value || value.split("/").includes(".."))].some(Boolean)) fail(`${code}_path_invalid`);
+  return value;
+}
+
+function descriptor(value, code, expectedPaths) {
   schema(value, value?.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], code);
-  if ([typeof value.path !== "string", typeof value.path === "string" && value.path.length === 0, typeof value.path === "string" && path.isAbsolute(value.path), typeof value.path === "string" && value.path.split(/[\\/]+/u).includes("..")].some(Boolean)) fail(`${code}_path_invalid`);
+  const artifactPath = normalizedPath(value.path, code);
+  if (expectedPaths !== undefined && !new Set(expectedPaths).has(artifactPath)) fail(`${code}_path_invalid`);
   if ([!HASH.test(value.sha256), value.size_bytes !== undefined && [!Number.isSafeInteger(value.size_bytes), value.size_bytes < 1].some(Boolean)].some(Boolean)) fail(`${code}_descriptor_invalid`);
+}
+
+function liveRoot(runId) {
+  return `artifacts/native/v1.2/${runId}`;
 }
 
 function exactIds(label, entries, expected) {
@@ -54,7 +64,7 @@ function monotonic(values) {
     && values.every((value, index) => Number.isFinite(value) && (index === 0 || value > values[index - 1]));
 }
 
-function validateIdentity(evidence) {
+function validateIdentity(evidence, fixtureMode) {
   schema(evidence.manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "apk", "installed_apk", "device", "report_sha256"], "manifest");
   schema(evidence.manifest.js_bundle, ["embedded"], "manifest.js_bundle");
   schema(evidence.manifest.apk, ["path", "sha256", "size_bytes"], "manifest.apk");
@@ -63,6 +73,9 @@ function validateIdentity(evidence) {
   validateV12CalendarManifest(evidence.manifest);
   const identity = evidence.identity;
   const manifest = evidence.manifest;
+  descriptor(manifest.apk, "manifest.apk", [fixtureMode
+    ? "artifacts/native/v1.2-calendar/app.apk"
+    : `${liveRoot(evidence.run_id)}/app.apk`]);
   schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
   if ([
     !HEAD.test(identity.base_head),
@@ -90,7 +103,9 @@ function validateFunctionalCases(evidence, fixtureMode) {
     schema(entry, ["id", "status", "native_execution", "artifact", "observations"], "functional_case");
     schema(entry.observations, ["synthetic", "timestamps_ms", "geometry_monotonic", "semantics_monotonic", "focus_ring_dp", "focus_clearance_dp"], "functional_case.observations");
     if ([!ALLOWED_RESULTS.has(entry.status), entry.native_execution !== evidence.native_execution, !monotonic(entry.observations.timestamps_ms), entry.observations.geometry_monotonic !== true, entry.observations.semantics_monotonic !== true, entry.observations.focus_ring_dp !== 3, entry.observations.focus_clearance_dp !== 4].some(Boolean)) fail("functional_case_invalid");
-    descriptor(entry.artifact, "functional_case_artifact");
+    descriptor(entry.artifact, "functional_case_artifact", [fixtureMode
+      ? `fixtures/${entry.id}.json`
+      : `${liveRoot(evidence.run_id)}/cases/${entry.id}.json`]);
     if (fixtureMode) {
       if ([entry.status === "PASS", entry.native_execution !== "NOT_RUN", entry.observations.synthetic !== true].some(Boolean)) fail("fixture_case_invalid");
     } else if (entry.observations.synthetic === true) fail("live_case_synthetic");
@@ -108,7 +123,9 @@ function validateRouteJourneys(evidence, fixtureMode) {
       : entry.focus.clearance_dp !== 4 || entry.focus.measurement_status !== "EXECUTED";
     if ([entry.status !== "PASS", entry.execution !== "host-component", entry.actual_route !== true, entry.actual_loader !== true, entry.back_restored !== true, entry.focus.ring_dp !== 3, focusInvalid, !HASH.test(entry.durable_identity_sha256), !HASH.test(entry.source_digest_before), entry.source_digest_after !== entry.source_digest_before, !Array.isArray(entry.command_ledger), Array.isArray(entry.command_ledger) && entry.command_ledger.length !== 0, !["touch", "keyboard"].includes(entry.activation)].some(Boolean)) fail("route_journey_invalid");
     activationKinds.add(entry.activation);
-    descriptor(entry.artifact, "route_journey_artifact");
+    descriptor(entry.artifact, "route_journey_artifact", [fixtureMode
+      ? `fixtures/routes/${entry.id.replace(/^calendar-/u, "")}.json`
+      : `${liveRoot(evidence.run_id)}/routes/${entry.id}.json`]);
   }
   if ([!activationKinds.has("touch"), !activationKinds.has("keyboard")].some(Boolean)) fail("route_activation_matrix_invalid");
 }
@@ -148,8 +165,6 @@ function validateComparison(evidence, map) {
   }
   exactIds("comparison", evidence.comparison?.records, expected);
   for (const record of evidence.comparison.records) {
-    const artifacts = record.artifacts;
-    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) descriptor(artifacts[kind], `comparison_${kind}`);
     if (record.classification === "accepted_deviation") {
       const deviation = evidence.deviations.find(({ id }) => id === record.deviation_id);
       if ([deviation?.evidence_complete !== true, deviation?.technical_status !== "PASS", deviation?.classification !== "accepted_deviation"].some(Boolean)) fail("accepted_deviation_incomplete");
@@ -178,7 +193,7 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
   if ([evidence.schema_version !== 1, evidence.suite !== "v1.2-calendar", evidence.host_only_fixture === true ? evidence.run_id !== "phase16-host-deferred" : !/^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u.test(evidence.run_id), !["NOT_RUN", "EXECUTED"].includes(evidence.native_execution), evidence.acceptance_owner !== "phase20"].some(Boolean)) fail("envelope_invalid");
   const fixtureMode = evidence.host_only_fixture === true;
   if (fixtureMode !== (evidence.native_execution === "NOT_RUN")) fail("fixture_mode_invalid");
-  validateIdentity(evidence);
+  validateIdentity(evidence, fixtureMode);
   validateFunctionalCases(evidence, fixtureMode);
   validateRouteJourneys(evidence, fixtureMode);
   validateDeviations(evidence);
@@ -190,7 +205,18 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
     validateV12CalendarDiagnostics(evidence.diagnostics, evidence.manifest);
   }
   schema(evidence.artifacts, ["manifest", "report", "comparison", "diagnostics"], "artifacts");
-  for (const [name, artifact] of Object.entries(evidence.artifacts)) descriptor(artifact, `artifacts.${name}`);
+  const artifactPaths = fixtureMode ? {
+    manifest: "fixtures/build.json",
+    report: "fixtures/report.json",
+    comparison: "fixtures/comparison.json",
+    diagnostics: "fixtures/diagnostics.json",
+  } : {
+    manifest: `${liveRoot(evidence.run_id)}/build.json`,
+    report: `${liveRoot(evidence.run_id)}/evidence/native-report.json`,
+    comparison: `${liveRoot(evidence.run_id)}/comparison/calendar.json`,
+    diagnostics: `${liveRoot(evidence.run_id)}/diagnostics/calendar.json`,
+  };
+  for (const [name, artifact] of Object.entries(evidence.artifacts)) descriptor(artifact, `artifacts.${name}`, [artifactPaths[name]]);
   const status = derivedStatus(evidence);
   if ([evidence.status !== status, evidence.all_pass !== (status === "PASS")].some(Boolean)) fail("aggregate_status_mismatch");
   return Object.freeze({

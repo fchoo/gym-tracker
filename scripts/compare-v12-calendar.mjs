@@ -27,6 +27,19 @@ const RECORD_CLASSIFICATIONS = new Set(["PASS", "FAIL", "REVIEW_REQUIRED", "acce
 const SEMANTIC_TARGETS = new Set(["calendar-month", "calendar-key", "calendar-agenda", "calendar-strength-detail"]);
 const SYNTHETIC_FIXTURES = new Set(["synthetic-calendar-month-v1", "synthetic-calendar-key-v1", "synthetic-calendar-agenda-v1", "synthetic-calendar-focus-v1", "synthetic-calendar-planned-detail-v1", "synthetic-calendar-accessibility-v1", "synthetic-calendar-system-light-v1", "synthetic-calendar-system-dark-v1"]);
 const DIFFERENCE_KINDS = new Set(["approved", "visual", "antialias_only", "platform_chrome_masked", "native_metric_within_tolerance", "product_mismatch"]);
+const REFERENCE_PATHS = new Set([
+  ".planning/design/v1.2-browser-evidence/light-calendar-month.png",
+  ".planning/design/v1.2-browser-evidence/dark-calendar-month.png",
+  ".planning/design/v1.2-browser-evidence/light-calendar-key.png",
+  ".planning/design/v1.2-browser-evidence/dark-calendar-key.png",
+  ".planning/design/v1.2-browser-evidence/light-calendar-agenda-2026-10-07.png",
+  ".planning/design/v1.2-browser-evidence/dark-calendar-agenda-2026-10-07.png",
+  ".planning/design/v1.2-browser-evidence/light-calendar-focus-rest.png",
+  ".planning/design/v1.2-browser-evidence/light-calendar-planned-strength-detail.png",
+  ".planning/design/v1.2-browser-evidence/dark-calendar-planned-strength-detail.png",
+  ".planning/design/v1.2-browser-evidence/calendar-360-prototype.png",
+  ".planning/design/v1.2-browser-evidence/calendar-360-accessibility-proposal.png",
+]);
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -34,6 +47,23 @@ function fail(code) { throw new Error(`v12_calendar_${code}`); }
 function finite(value) { return typeof value === "number" && Number.isFinite(value); }
 function schema(value, keys, location) {
   if (!exactKeys(value, keys)) fail(`privacy_schema_invalid:${location}`);
+}
+function normalizedPath(value) {
+  if ([typeof value !== "string", typeof value === "string" && (value.length === 0 || value.includes("\\") || path.isAbsolute(value) || path.posix.normalize(value) !== value || value.split("/").includes(".."))].some(Boolean)) fail("path_invalid");
+  return value;
+}
+function caseArtifactName(id) {
+  return `${id.replaceAll(":", "-")}.json`;
+}
+function comparisonArtifactName(kind) {
+  return kind === "record" ? "comparison.json" : `${kind}.png`;
+}
+function assertComparisonArtifactPath(value, { host, runId, recordId, kind }) {
+  const actual = normalizedPath(value);
+  const suffix = `comparison/${recordId}/${comparisonArtifactName(kind)}`;
+  const legacyHostName = `fixtures/comparison/${recordId}-${kind}.${kind === "record" ? "json" : "png"}`;
+  const expected = host ? new Set([suffix, `fixtures/${suffix}`, legacyHostName]) : new Set([`artifacts/native/v1.2/${runId}/${suffix}`]);
+  if (!expected.has(actual)) fail("path_invalid");
 }
 function safePath(value, root = ROOT, allowExternal = false) {
   if ([typeof value !== "string", typeof value === "string" && value.length === 0].some(Boolean)) fail("path_invalid");
@@ -101,7 +131,7 @@ function assertLedger(map) {
   if ([!hasLight, !hasDark, !hasAccessibility, !hasReducedMotion].some(Boolean)) fail("ledger_required_case_missing");
 }
 
-function assertCaseResults(entries, nativeExecution) {
+function assertCaseResults(entries, nativeExecution, runId) {
   if (nativeExecution === "NOT_RUN") {
     schema(entries, ["status", "native_execution", "required_case_count"], "case_results");
     if ([entries.status !== "REVIEW_REQUIRED", entries.native_execution !== "NOT_RUN", entries.required_case_count !== V12_CALENDAR_REQUIRED_CASE_IDS.length].some(Boolean)) fail("case_result_invalid");
@@ -113,6 +143,7 @@ function assertCaseResults(entries, nativeExecution) {
     if ([!CASE_RESULTS.has(entry.status), entry.native_execution !== nativeExecution].some(Boolean)) fail("case_result_invalid");
     schema(entry.artifact, entry.artifact.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], "case_result.artifact");
     if (!SHA256.test(entry.artifact.sha256)) fail("case_result_invalid");
+    if (normalizedPath(entry.artifact.path) !== `artifacts/native/v1.2/${runId}/cases/${caseArtifactName(entry.id)}`) fail("path_invalid");
   }
   return entries.map(({ status }) => status);
 }
@@ -146,6 +177,10 @@ export function validateV12CalendarReferenceMap(map, options = {}) {
     const reference = capture.reference;
     schema(reference, ["path", "sha256", "width", "height"], "reference_descriptor");
     if ([!SHA256.test(reference.sha256), !Number.isInteger(reference.width), !Number.isInteger(reference.height), reference.width < 1, reference.height < 1].some(Boolean)) fail("map_reference_invalid");
+    if (map.host_only_fixture === true) {
+      const relative = path.relative(tmpdir(), path.resolve(reference.path)).split(path.sep).join("/");
+      if (!/^v12-calendar-[a-zA-Z0-9_-]+\/(?:reference|native)\.png$/u.test(relative)) fail("path_invalid");
+    } else if (!REFERENCE_PATHS.has(normalizedPath(reference.path))) fail("path_invalid");
     if (options.verifyFiles) {
       const info = pngInfo(safePath(reference.path, ROOT, options.allowExternal === true));
       if ([info.sha256 !== reference.sha256, info.width !== reference.width, info.height !== reference.height].some(Boolean)) fail("reference_stale");
@@ -161,11 +196,11 @@ export function validateV12CalendarReferenceMap(map, options = {}) {
   return true;
 }
 
-function artifact(file, bytes, root) {
+function artifact(file, bytes, root, descriptorRoot) {
   writeExclusiveArtifact(file, bytes, { root });
-  return { path: path.relative(ROOT, file), sha256: sha256(bytes) };
+  return { path: path.relative(descriptorRoot, file).split(path.sep).join("/"), sha256: sha256(bytes) };
 }
-function imageArtifacts(referenceBytes, nativeBytes, output) {
+function imageArtifacts(referenceBytes, nativeBytes, output, descriptorRoot) {
   const reference = PNG.sync.read(referenceBytes);
   const native = PNG.sync.read(nativeBytes);
   const overlay = new PNG({ width: reference.width, height: reference.height });
@@ -180,7 +215,7 @@ function imageArtifacts(referenceBytes, nativeBytes, output) {
     }
     overlay.data[index + 3] = 255; difference.data[index + 3] = 255; mask.data[index + 3] = 255;
   }
-  return { overlay: artifact(path.join(output, "overlay.png"), PNG.sync.write(overlay), output), difference: artifact(path.join(output, "difference.png"), PNG.sync.write(difference), output), mask: artifact(path.join(output, "mask.png"), PNG.sync.write(mask), output) };
+  return { overlay: artifact(path.join(output, "overlay.png"), PNG.sync.write(overlay), output, descriptorRoot), difference: artifact(path.join(output, "difference.png"), PNG.sync.write(difference), output, descriptorRoot), mask: artifact(path.join(output, "mask.png"), PNG.sync.write(mask), output, descriptorRoot) };
 }
 
 export function compareV12Calendar({ map, run, outputDirectory }) {
@@ -199,6 +234,7 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
   if (outputRoot === undefined) fail("output_escape");
   ensureV12CalendarDirectory(path.dirname(destination), { root: outputRoot, allowRoot: true });
   createExclusiveDirectory(destination, "output_exists", { root: outputRoot });
+  const descriptorRoot = path.resolve(outputRoot) === path.resolve(ROOT) ? ROOT : path.dirname(destination);
   const records = [];
   for (const capture of run.captures) {
     schema(capture, ["id", "native", "trace", "semantics", "classification", "differences"], "run_capture");
@@ -213,11 +249,11 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
     if ([referenceInfo.sha256 !== mapped.reference.sha256, nativeInfo.sha256 !== capture.native.sha256, nativeInfo.width !== capture.native.width, nativeInfo.height !== capture.native.height, referenceInfo.width !== nativeInfo.width, referenceInfo.height !== nativeInfo.height].some(Boolean)) fail("image_identity_invalid");
     const output = path.join(destination, capture.id);
     createExclusiveDirectory(output, "output_exists", { root: destination });
-    const referenceArtifact = artifact(path.join(output, "reference.png"), referenceInfo.bytes, output);
-    const nativeArtifact = artifact(path.join(output, "native.png"), nativeInfo.bytes, output);
-    const generated = imageArtifacts(referenceInfo.bytes, nativeInfo.bytes, output);
+    const referenceArtifact = artifact(path.join(output, "reference.png"), referenceInfo.bytes, output, descriptorRoot);
+    const nativeArtifact = artifact(path.join(output, "native.png"), nativeInfo.bytes, output, descriptorRoot);
+    const generated = imageArtifacts(referenceInfo.bytes, nativeInfo.bytes, output, descriptorRoot);
     const record = { schema_version: 2, id: capture.id, requirement_ids: mapped.requirement_ids, classification: "REVIEW_REQUIRED", differences: capture.differences, reference: referenceArtifact, native: nativeArtifact, ...generated, source_manifest_sha256: map.source_manifest_sha256, source_tree_sha256: run.source_tree_sha256 };
-    const recordArtifact = artifact(path.join(output, "comparison.json"), Buffer.from(stableCanonicalJson(record)), output);
+    const recordArtifact = artifact(path.join(output, "comparison.json"), Buffer.from(stableCanonicalJson(record)), output, descriptorRoot);
     records.push({
       id: capture.id,
       classification: "REVIEW_REQUIRED",
@@ -244,7 +280,7 @@ export function validateV12CalendarComparison(result, options = {}) {
   if ([options.expectedRunId !== undefined && result.run_id !== options.expectedRunId, options.expectedIdentity !== undefined && !isDeepStrictEqual(result.identity, options.expectedIdentity)].some(Boolean)) fail("result_identity_invalid");
   try { validateV12CalendarCaseRegistryDescriptor(result.case_registry); }
   catch { fail("case_registry_invalid"); }
-  const statuses = assertCaseResults(result.case_results, result.native_execution);
+  const statuses = assertCaseResults(result.case_results, result.native_execution, result.run_id);
   for (const record of result.records) {
     schema(record, ["id", "classification", "differences", "artifacts", ...(record.classification === "accepted_deviation" ? ["deviation_id"] : [])], "comparison_record");
     if ([!RECORD_CLASSIFICATIONS.has(record.classification), !Array.isArray(record.differences)].some(Boolean)) fail("classification_invalid");
@@ -258,6 +294,7 @@ export function validateV12CalendarComparison(result, options = {}) {
     for (const field of ["reference", "native", "overlay", "difference", "mask", "record"]) {
       schema(artifacts[field], artifacts[field].size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], `comparison_${field}`);
       if (!SHA256.test(artifacts[field].sha256)) fail("artifact_hash_invalid");
+      assertComparisonArtifactPath(artifacts[field].path, { host, runId: result.run_id, recordId: record.id, kind: field });
     }
     statuses.push(record.classification === "accepted_deviation" ? "REVIEW_REQUIRED" : record.classification);
   }

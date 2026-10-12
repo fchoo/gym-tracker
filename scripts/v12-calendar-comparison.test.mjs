@@ -129,14 +129,22 @@ test("Calendar comparison creates individually hashed artifacts while keeping na
 test("Calendar comparison directories and every artifact are immutable", () => {
   const fixture = completeFixture();
   const outputDirectory = path.join(fixture.directory, "immutable-comparison");
+  const repositoryOutputRoot = mkdtempSync(path.join(process.cwd(), "artifacts/v12-calendar-output-"));
   try {
     compareV12Calendar({ map: fixture.map, run: fixture.run, outputDirectory });
     assert.throws(
       () => compareV12Calendar({ map: fixture.map, run: fixture.run, outputDirectory }),
       /output_exists/u,
     );
+    const repositoryResult = compareV12Calendar({
+      map: fixture.map,
+      run: fixture.run,
+      outputDirectory: path.join(repositoryOutputRoot, "comparison"),
+    });
+    assert.match(repositoryResult.records[0].artifacts.reference.path, /^artifacts\/v12-calendar-output-/u);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
+    rmSync(repositoryOutputRoot, { recursive: true, force: true });
   }
 });
 
@@ -224,15 +232,19 @@ test("the shared comparison schema accepts a complete identity-bound live PASS",
     result.native_execution = "EXECUTED";
     result.phase20_deferred = false;
     result.status = "PASS";
+    const artifactRoot = `artifacts/native/v1.2/${result.run_id}`;
     result.records.forEach((record) => {
       record.classification = "PASS";
       record.differences = [];
+      for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+        record.artifacts[kind].path = `${artifactRoot}/comparison/${record.id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+      }
     });
     result.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({
       id,
       status: "PASS",
       native_execution: "EXECUTED",
-      artifact: { path: `artifacts/${id.replaceAll(":", "-")}.json`, sha256: "f".repeat(64) },
+      artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "f".repeat(64) },
     }));
     assert.equal(validateV12CalendarComparison(result, {
       expectedRunId: result.run_id,
@@ -324,6 +336,35 @@ test("Calendar comparison rejects unknown privacy-bearing fields in maps, traces
         outputDirectory: path.join(fixture.directory, `privacy-${location}`),
       }), /privacy_schema_invalid/u);
     }
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test("Calendar comparison rejects personal data in allowed reference and artifact path fields", () => {
+  const fixture = completeFixture();
+  try {
+    const privateReference = structuredClone(fixture.map);
+    privateReference.captures[0].reference.path = path.join(fixture.directory, "Alice-private-reference.png");
+    writeFileSync(privateReference.captures[0].reference.path, png);
+    assert.throws(
+      () => validateV12CalendarReferenceMap(privateReference, { verifyFiles: true, allowExternal: true }),
+      /path_invalid/u,
+    );
+
+    const result = structuredClone(compareV12Calendar({
+      map: fixture.map,
+      run: fixture.run,
+      outputDirectory: path.join(fixture.directory, "private-result"),
+    }));
+    result.records[0].artifacts.report = result.records[0].artifacts.record;
+    assert.throws(() => validateV12CalendarComparison(result), /privacy_schema_invalid/u);
+    result.records[0].artifacts = {
+      ...result.records[0].artifacts,
+      record: { ...result.records[0].artifacts.record, path: "comparison/Alice-private-record.json" },
+    };
+    delete result.records[0].artifacts.report;
+    assert.throws(() => validateV12CalendarComparison(result), /path_invalid/u);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }

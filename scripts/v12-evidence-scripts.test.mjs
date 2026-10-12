@@ -83,6 +83,7 @@ function rawDiagnostics() {
 
 function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
   const evidence = fixture();
+  const artifactRoot = `artifacts/native/v1.2/${runId}`;
   evidence.run_id = runId;
   evidence.host_only_fixture = false;
   evidence.native_execution = "EXECUTED";
@@ -111,13 +112,23 @@ function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
     id,
     status: "PASS",
     native_execution: "EXECUTED",
-    artifact: { path: `fixtures/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) },
+    artifact: { path: `${artifactRoot}/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) },
   }));
   evidence.comparison.records.forEach((entry, index) => {
     entry.classification = "PASS";
     entry.differences = [];
+    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      entry.artifacts[kind].path = `${artifactRoot}/comparison/${entry.id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+    }
   });
   evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
+  evidence.manifest.apk.path = `${artifactRoot}/app.apk`;
+  evidence.functional_cases.forEach((entry) => { entry.artifact.path = `${artifactRoot}/cases/${entry.id}.json`; });
+  evidence.route_journeys.forEach((entry) => { entry.artifact.path = `${artifactRoot}/routes/${entry.id}.json`; });
+  evidence.artifacts.manifest.path = `${artifactRoot}/build.json`;
+  evidence.artifacts.report.path = `${artifactRoot}/evidence/native-report.json`;
+  evidence.artifacts.comparison.path = `${artifactRoot}/comparison/calendar.json`;
+  evidence.artifacts.diagnostics.path = `${artifactRoot}/diagnostics/calendar.json`;
   evidence.status = "PASS";
   evidence.all_pass = true;
   return evidence;
@@ -152,7 +163,6 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
   const sourceMap = path.resolve(".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json");
   if (path.resolve(destinationMap) !== sourceMap) writeFileSync(destinationMap, readFileSync(sourceMap));
 
-  evidence.artifacts.manifest.path = path.relative(root, manifestPath);
   const descriptors = [
     evidence.artifacts.report,
     evidence.artifacts.diagnostics,
@@ -161,16 +171,12 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
     ...evidence.comparison.case_results.map(({ artifact }) => artifact),
     ...evidence.comparison.records.flatMap(({ artifacts }) => Object.values(artifacts)),
   ];
-  for (const descriptor of descriptors) {
-    descriptor.path = path.join(path.relative(root, runDirectory), "payload", descriptor.path);
-  }
   descriptors.forEach((descriptor) => writeDescriptor(root, descriptor));
   const manifestBytes = Buffer.from(`${JSON.stringify(evidence.manifest, null, 2)}\n`);
   writeFileSync(manifestPath, manifestBytes);
   evidence.artifacts.manifest.sha256 = hash(manifestBytes);
   evidence.artifacts.manifest.size_bytes = manifestBytes.length;
 
-  evidence.artifacts.comparison.path = path.relative(root, path.join(runDirectory, "comparison/calendar.json"));
   const comparisonBytes = Buffer.from(`${JSON.stringify(evidence.comparison, null, 2)}\n`);
   mkdirSync(path.dirname(path.join(root, evidence.artifacts.comparison.path)), { recursive: true });
   writeFileSync(path.join(root, evidence.artifacts.comparison.path), comparisonBytes);
@@ -334,6 +340,23 @@ test("Calendar evidence rejects unsafe paths, symlinks, replaced bytes, and priv
       privateEvidence.route_journeys[0][key] = value;
       assert.throws(() => validateV12CalendarEvidence(privateEvidence), /privacy_schema_invalid/u);
     }
+
+    const privatePathMutations = [
+      (value) => { value.manifest.apk.path = "artifacts/native/v1.2-calendar/Alice-private.apk"; },
+      (value) => { value.functional_cases[0].artifact.path = "fixtures/Alice-private-rehab-session.json"; },
+      (value) => { value.route_journeys[0].artifact.path = "fixtures/routes/Alice-private-route.json"; },
+      (value) => { value.comparison.records[0].artifacts.native.path = "fixtures/comparison/Alice-private-native.png"; },
+      (value) => { value.artifacts.report.path = "fixtures/Alice-private-rehab-session.json"; },
+    ];
+    for (const mutate of privatePathMutations) {
+      const privateEvidence = fixture();
+      mutate(privateEvidence);
+      assert.throws(() => validateV12CalendarEvidence(privateEvidence), /path_invalid/u);
+    }
+
+    const privateLiveCase = completeLiveEvidence();
+    privateLiveCase.comparison.case_results[0].artifact.path = "fixtures/cases/Alice-private-case.json";
+    assert.throws(() => validateV12CalendarEvidence(privateLiveCase), /path_invalid/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(external, { recursive: true, force: true });
