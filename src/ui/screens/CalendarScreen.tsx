@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,7 +14,15 @@ import {
   startOfLocalMonth,
 } from "../../domains/scheduling/localDate";
 import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
+import { CalendarMonthViewport } from "../calendar/CalendarMonthViewport";
 import { CalendarWeekRow } from "../calendar/CalendarWeekRow";
+import {
+  createCalendarTransitionState,
+  transitionCalendar,
+  type CalendarMotionCommand,
+  type CalendarTransitionEvent,
+  type CalendarTransitionState,
+} from "../calendar/calendarTransitionController";
 import {
   FocusablePressable,
   IconAction,
@@ -71,7 +79,7 @@ export function CalendarScreen({
   settingsActionNativeID,
   settingsActionRef,
 }: CalendarScreenProps) {
-  const { colors } = useAppTheme();
+  const { colors, reduceMotion } = useAppTheme();
   const { width: safeWidth } = useWindowDimensions();
   const parsedToday = parseLocalDate(today);
   const [month, setMonth] = useState(() => startOfLocalMonth(parseLocalDate(initialDate)));
@@ -84,7 +92,14 @@ export function CalendarScreen({
   const [error, setError] = useState<Error | null>(null);
   const [retryGeneration, setRetryGeneration] = useState(0);
   const [isCalendarKeyOpen, setCalendarKeyOpen] = useState(false);
+  const [calendarTransition, setCalendarTransition] = useState<CalendarTransitionState>(() => createCalendarTransitionState({
+    currentMonthId: initialDate.slice(0, 7),
+    selectedLocalDate: initialDate,
+    reducedMotion: reduceMotion,
+  }));
+  const [calendarCommand, setCalendarCommand] = useState<CalendarMotionCommand | null>(null);
   const requestGeneration = useRef(0);
+  const calendarTransitionRef = useRef(calendarTransition);
   const infoActionRef = useRef<View>(null);
   const weekRows = useMemo(() => calendarGridForMonth(month), [month]);
   const grid = useMemo(() => weekRows.flat(), [weekRows]);
@@ -130,13 +145,31 @@ export function CalendarScreen({
     setSelectedDate(date);
   };
 
+  const dispatchCalendarTransition = useCallback((event: CalendarTransitionEvent) => {
+    const previousState = calendarTransitionRef.current;
+    const result = transitionCalendar(previousState, event);
+    calendarTransitionRef.current = result.state;
+    setCalendarTransition(result.state);
+    setCalendarCommand(result.commands[0] ?? null);
+
+    if (previousState.currentMonthId !== result.state.currentMonthId) {
+      const direction = result.state.currentMonthId > previousState.currentMonthId ? 1 : -1;
+      const nextDate = addLocalMonthsClamped(selectedDateRef.current, direction);
+      setMonth(startOfLocalMonth(nextDate));
+      selectDate(nextDate);
+    }
+  }, []);
+
   const navigateMonth = (direction: -1 | 1) => {
     const next = nextMonth(month, direction);
     if (next === null) {
       return;
     }
-    setMonth(next);
-    selectDate(addLocalMonthsClamped(selectedDate, direction));
+    dispatchCalendarTransition({
+      type: "move",
+      direction: direction === 1 ? "next" : "previous",
+      targetMonthId: next.slice(0, 7),
+    });
   };
 
   const returnToToday = () => {
@@ -204,6 +237,9 @@ export function CalendarScreen({
   }
   const previous = nextMonth(month, -1);
   const following = nextMonth(month, 1);
+  const titleMonth = calendarTransition.titlePanel === "previous" ? previous
+    : calendarTransition.titlePanel === "next" ? following
+      : month;
 
   return (
     <AdaptiveScreen
@@ -213,7 +249,7 @@ export function CalendarScreen({
           {header}
           <View style={styles.navigation}>
             <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={previous === null} icon="back" onPress={() => navigateMonth(-1)} />
-            <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{monthLabel(month)}</Text>
+            <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{monthLabel(titleMonth ?? month)}</Text>
             <FocusablePressable
               accessibilityHint="Returns the Calendar selection to the current local date"
               accessibilityLabel={`Return to today, ${fullDate(parsedToday)}`}
@@ -257,22 +293,36 @@ export function CalendarScreen({
                 <SkeletonBlock height={52} />
                 <SkeletonBlock height={340} />
               </View>
-            ) : visibleWeekRows.map((dates) => (
-              <CalendarWeekRow
-                dates={dates}
-                eventsByDate={eventsByDate}
-                key={dates[0]}
+            ) : (
+              <CalendarMonthViewport
+                command={calendarCommand}
                 month={visibleMonth}
-                onMoveDate={(date) => moveSelection(date)}
-                onPressDate={(date, events) => {
-                  moveSelection(date);
-                  const first = events[0];
-                  if (first !== undefined) onOpenEvent(first.destination);
-                }}
-                selectedDate={visibleSelectedDate}
-                today={parsedToday}
+                onCancel={() => dispatchCalendarTransition({ type: "cancel" })}
+                onComplete={(epoch) => dispatchCalendarTransition({ type: "settle-complete", epoch })}
+                onPreview={(dx, viewportWidth) => dispatchCalendarTransition({ type: "drag", dx, dy: 0, viewportWidth })}
+                onRelease={({ dx, dy, targetMonthId, viewportWidth }) => dispatchCalendarTransition({
+                  type: "release", dx, dy, targetMonthId, viewportWidth,
+                })}
+                renderMonth={(panelMonth, interactive) => calendarGridForMonth(panelMonth).map((dates) => (
+                  <CalendarWeekRow
+                    dates={dates}
+                    eventsByDate={eventsByDate}
+                    key={dates[0]}
+                    month={panelMonth}
+                    onMoveDate={(date) => { if (interactive) moveSelection(date); }}
+                    onPressDate={(date, events) => {
+                      if (!interactive) return;
+                      moveSelection(date);
+                      const first = events[0];
+                      if (first !== undefined) onOpenEvent(first.destination);
+                    }}
+                    selectedDate={visibleSelectedDate}
+                    today={parsedToday}
+                  />
+                ))}
+                transition={calendarTransition}
               />
-            ))}
+            )}
           </View>
           <BottomSheet
             cancelLabel="Close Calendar key"
