@@ -6,6 +6,7 @@ import { WorkoutOutcomeConflictError, type SessionDetail } from "../../src/domai
 
 const mockBack = jest.fn();
 const mockGetSessionDetail = jest.fn<() => Promise<SessionDetail>>();
+const mockLoadCalendarSessionDetail = jest.fn<() => Promise<SessionDetail | null>>();
 const mockUseWorkoutAppRuntime = jest.fn(() => ({
   getSessionDetail: mockGetSessionDetail,
   ...mockMutationCommands,
@@ -29,7 +30,7 @@ jest.mock("expo-router", () => ({
 }));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useCalendarSessionReadPort: () => ({
-    getSessionDetail: mockGetSessionDetail,
+    loadCalendarSessionDetail: mockLoadCalendarSessionDetail,
   }),
   useWorkoutAppRuntime: () => mockUseWorkoutAppRuntime(),
 }));
@@ -60,14 +61,14 @@ const detail = {
 } as unknown as SessionDetail;
 
 describe("SessionDetailRoute", () => {
-  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); mockUseWorkoutAppRuntime.mockClear(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
+  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); mockLoadCalendarSessionDetail.mockReset(); mockUseWorkoutAppRuntime.mockClear(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
 
   it("opens an exact Calendar session through the query-only facts branch", async () => {
-    mockGetSessionDetail.mockResolvedValue(detail);
+    mockLoadCalendarSessionDetail.mockResolvedValue(detail);
     const sourceDigest = JSON.stringify(detail);
     const rendered = await render(<SessionDetailRoute />);
     expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
-    expect(mockGetSessionDetail).toHaveBeenCalledWith("calendar-session");
+    expect(mockLoadCalendarSessionDetail).toHaveBeenCalledWith("calendar-session");
     expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("Correct workout")).toBeNull();
     expect(screen.queryByLabelText("Remove from history")).toBeNull();
@@ -81,7 +82,7 @@ describe("SessionDetailRoute", () => {
     mockParams = { sessionId: ["calendar-session", "other"], origin: "calendar" };
     await render(<SessionDetailRoute />);
     await waitFor(() => expect(screen.getByText("Workout details unavailable")).toBeOnTheScreen());
-    expect(mockGetSessionDetail).not.toHaveBeenCalled();
+    expect(mockLoadCalendarSessionDetail).not.toHaveBeenCalled();
   });
 
   it.each(["unknown", ["calendar"]] as const)(
@@ -90,13 +91,13 @@ describe("SessionDetailRoute", () => {
       mockParams = { sessionId: "calendar-session", origin };
       await render(<SessionDetailRoute />);
       expect(await screen.findByText("Workout details unavailable")).toBeOnTheScreen();
-      expect(mockGetSessionDetail).not.toHaveBeenCalled();
+      expect(mockLoadCalendarSessionDetail).not.toHaveBeenCalled();
       expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
     },
   );
 
   it("keeps retryable Calendar read failures distinct from a missing session", async () => {
-    mockGetSessionDetail
+    mockLoadCalendarSessionDetail
       .mockRejectedValueOnce(new Error("sqlite unavailable"))
       .mockResolvedValueOnce(detail);
     await render(<SessionDetailRoute />);
@@ -105,12 +106,12 @@ describe("SessionDetailRoute", () => {
     expect(screen.queryByText("Workout details unavailable")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Retry workout details" }));
     expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
-    expect(mockGetSessionDetail).toHaveBeenNthCalledWith(1, "calendar-session");
-    expect(mockGetSessionDetail).toHaveBeenNthCalledWith(2, "calendar-session");
+    expect(mockLoadCalendarSessionDetail).toHaveBeenNthCalledWith(1, "calendar-session");
+    expect(mockLoadCalendarSessionDetail).toHaveBeenNthCalledWith(2, "calendar-session");
   });
 
   it("maps only the typed not-found result to the unavailable state", async () => {
-    mockGetSessionDetail.mockRejectedValueOnce(
+    mockLoadCalendarSessionDetail.mockRejectedValueOnce(
       new WorkoutOutcomeConflictError("workout_session_not_found"),
     );
     await render(<SessionDetailRoute />);
@@ -118,6 +119,18 @@ describe("SessionDetailRoute", () => {
     expect(await screen.findByText("Workout details unavailable")).toBeOnTheScreen();
     expect(screen.queryByText("Workout details could not be loaded")).toBeNull();
   });
+
+  it.each(["in_progress", "voided", "discarded", "manual_visit", "zero_sets"] as const)(
+    "renders %s Calendar deep links as unavailable history",
+    async () => {
+      mockLoadCalendarSessionDetail.mockResolvedValue(null);
+      await render(<SessionDetailRoute />);
+
+      expect(await screen.findByText("Workout details unavailable")).toBeOnTheScreen();
+      expect(screen.queryByText("Calendar facts calendar-session")).toBeNull();
+      expect(mockLoadCalendarSessionDetail).toHaveBeenCalledWith("calendar-session");
+    },
+  );
 
   it("retains management commands outside the explicit Calendar origin", async () => {
     mockParams = { sessionId: "calendar-session" };

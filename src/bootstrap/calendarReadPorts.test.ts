@@ -16,7 +16,7 @@ describe("production Calendar read capabilities", () => {
   it("freezes one-purpose ports without forwarding mutation authority", () => {
     const source = {
       loadCalendarRange: jest.fn<() => Promise<TrainingCalendarRange>>(),
-      getSessionDetail: jest.fn<() => Promise<SessionDetail>>(),
+      getCalendarSessionDetail: jest.fn<() => Promise<SessionDetail | null>>(),
       loadPlannedStrengthOccurrence: jest.fn<() => Promise<PlannedStrengthOccurrenceDetail | null>>(),
       loadImportedActivityDetail: jest.fn<() => Promise<ImportedActivityDetailReadResult>>(),
       loadGarminRevisionReview: jest.fn(async () => null),
@@ -34,7 +34,7 @@ describe("production Calendar read capabilities", () => {
 
     expect(ports.map((port) => Object.keys(port))).toEqual([
       ["loadCalendarRange"],
-      ["getSessionDetail"],
+      ["loadCalendarSessionDetail"],
       ["loadPlannedStrengthOccurrence"],
       ["loadImportedActivityDetail", "loadGarminRevisionReview"],
     ]);

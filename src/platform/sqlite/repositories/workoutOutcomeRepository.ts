@@ -1906,6 +1906,29 @@ async function loadSessionDetail(
   };
 }
 
+async function loadCalendarSessionDetail(
+  executor: QueryExecutor,
+  sessionId: string,
+): Promise<SessionDetail | null> {
+  const [history] = await executor.queryAll<{
+    status: string;
+    lifecycle: string;
+  }>(
+    `SELECT session.status, COALESCE(overlay.lifecycle, 'active') AS lifecycle
+       FROM workout_sessions session
+       LEFT JOIN history_session_overlays overlay ON overlay.session_id = session.id
+      WHERE session.id = ?`,
+    [sessionId],
+  );
+  if (history === undefined
+    || history.lifecycle !== "active"
+    || (history.status !== "completed" && history.status !== "partial")) {
+    return null;
+  }
+  const detail = await loadSessionDetail(executor, sessionId);
+  return detail.status === "completed" || detail.status === "partial" ? detail : null;
+}
+
 async function idleRest(
   transaction: SqliteTransactionExecutor,
   sessionId: string,
@@ -2252,9 +2275,16 @@ async function copiedLegacyPolicy(
 
 export function createWorkoutOutcomeRepository(
   kernel: SqliteKernel,
-): WorkoutOutcomeRepository & ProgressionRepository {
-  const repository: WorkoutOutcomeRepository & ProgressionRepository = {
+): WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
+  getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+}> {
+  const repository: WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
+    getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+  }> = {
     getSessionDetail: (sessionId) => loadSessionDetail(kernel, sessionId),
+    getCalendarSessionDetail: (sessionId) => kernel.readSnapshot === undefined
+      ? loadCalendarSessionDetail(kernel, sessionId)
+      : kernel.readSnapshot((transaction) => loadCalendarSessionDetail(transaction, sessionId)),
 
     finishCompleted: (input) =>
       kernel.write((transaction) =>

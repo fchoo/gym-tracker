@@ -836,6 +836,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   ): Promise<NotificationExpiryExerciseCode>;
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
   loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
   listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
   resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
@@ -2844,6 +2845,10 @@ export function WorkoutAppRuntimeProvider({
 
   const getSessionDetail = useCallback((sessionId: string) => {
     return requireServices().outcomeRepository.getSessionDetail(sessionId);
+  }, [requireServices]);
+
+  const getCalendarSessionDetail = useCallback((sessionId: string) => {
+    return requireServices().outcomeRepository.getCalendarSessionDetail(sessionId);
   }, [requireServices]);
 
   const confirmGarminImport = useCallback((input: ConfirmGarminImportInput): Promise<GarminImportResult> =>
@@ -5360,6 +5365,7 @@ export function WorkoutAppRuntimeProvider({
     finishStarterSwitchWorkout,
     getActiveWorkout,
     getSessionDetail,
+    getCalendarSessionDetail,
     loadGarminRevisionReview,
     listGarminRevisionReviews,
     resolveGarminRevision,
@@ -5519,6 +5525,7 @@ export function WorkoutAppRuntimeProvider({
     garminImport,
     getActiveWorkout,
     getSessionDetail,
+    getCalendarSessionDetail,
     loadGarminRevisionReview,
     listGarminRevisionReviews,
     resolveGarminRevision,
@@ -5602,7 +5609,7 @@ export function WorkoutAppRuntimeProvider({
   );
   const calendarSessionRead = useMemo(
     () => createCalendarSessionReadPort(value),
-    [value.getSessionDetail],
+    [value.getCalendarSessionDetail],
   );
   const calendarStrengthOccurrenceRead = useMemo(
     () => createCalendarStrengthOccurrenceReadPort(value),

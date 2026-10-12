@@ -263,6 +263,43 @@ function snapshot(
 }
 
 describe("history command repository corrections", () => {
+  it("admits only active completed or partial sessions to Calendar history detail", async () => {
+    const kernel = await open();
+    await seed(kernel);
+    await kernel.write(async (transaction) => {
+      for (const status of ["in_progress", "discarded", "manual_visit", "zero_sets"] as const) {
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES (?, NULL, NULL, 'manual', ?, '2026-08-25', 'Asia/Singapore',
+                   1724515200000, ?, 1)`,
+          [`session-${status}`, status, status === "in_progress" ? null : 1724515560000],
+        );
+      }
+    });
+    const repository = createWorkoutOutcomeRepository(kernel);
+
+    await expect(repository.getCalendarSessionDetail("session-1")).resolves.toMatchObject({
+      id: "session-1",
+      status: "completed",
+    });
+    for (const status of ["in_progress", "discarded", "manual_visit", "zero_sets"] as const) {
+      await expect(repository.getCalendarSessionDetail(`session-${status}`)).resolves.toBeNull();
+    }
+
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO history_session_overlays
+        (session_id, effective_revision, lifecycle, snapshot_json,
+         effective_local_date, effective_timezone, effective_started_at_ms,
+         effective_completed_at_ms, created_at_ms, updated_at_ms)
+       VALUES ('session-1', 8, 'voided', '{}', '2026-08-24',
+               'Asia/Singapore', 1724428800000, 1724429160000,
+               1724429200000, 1724429200000)`,
+    ));
+    await expect(repository.getCalendarSessionDetail("session-1")).resolves.toBeNull();
+  });
+
   it("writes the full overlay, immutable audit, scoped invalidation, revisions, and rebuild effects atomically", async () => {
     const kernel = await open();
     await seed(kernel);
