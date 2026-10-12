@@ -85,4 +85,33 @@ describe("Plan 01-10 recommendation commands", () => {
       input: { recommendationId: "recommendation-1", decidedAtMs: -1 },
     })).toThrow("recommendation_decision_input_invalid");
   });
+
+  it("requires a complete, explicit replay envelope when a caller supplies request identity", () => {
+    const port = repository();
+
+    expect(() => acceptRecommendation({
+      repository: port,
+      input: {
+        recommendationId: "recommendation-1",
+        requestId: "",
+        decision: "use_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 1,
+        decidedAtMs: 3_000,
+      },
+    })).toThrow("recommendation_decision_input_invalid");
+    expect(() => keepCurrentTarget({
+      repository: port,
+      input: {
+        recommendationId: "recommendation-1",
+        requestId: "review-1",
+        decision: "use_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 1,
+        decidedAtMs: 3_000,
+      },
+    })).toThrow("recommendation_decision_input_invalid");
+  });
 });

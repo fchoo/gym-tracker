@@ -1221,6 +1221,68 @@ describe("Plan 01-10 recommendation lifecycle", () => {
     );
   });
 
+  it("commits a named use-target decision once and replays the durable receipt after acknowledgement loss", async () => {
+    const { kernel, repository, targetId } = await setupRecommendation();
+    const input = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-use-1",
+      decision: "use_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+
+    await expect(acceptRecommendation({ repository, input })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "accepted",
+    });
+    await expect(acceptRecommendation({ repository, input })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "already_committed",
+    });
+    await expect(kernel.queryAll<{ revision: number }>(
+      "SELECT revision FROM plan_working_set_targets WHERE id = ?",
+      [targetId],
+    )).resolves.toEqual([{ revision: 2 }]);
+    await expect(kernel.queryAll<{
+      request_id: string;
+      request_sha256: string;
+      result_json: string;
+    }>(
+      `SELECT request_id, request_sha256, result_json
+       FROM progression_recommendation_decision_receipts
+       WHERE request_id = ?`,
+      [input.requestId],
+    )).resolves.toEqual([expect.objectContaining({
+      request_id: input.requestId,
+      request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      result_json: expect.stringContaining('"accepted"'),
+    })]);
+  });
+
+  it("rejects a changed decision under an already committed request identity", async () => {
+    const { repository } = await setupRecommendation();
+    const input = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-conflict-1",
+      decision: "use_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+
+    await acceptRecommendation({ repository, input });
+    await expect(keepCurrentTarget({
+      repository,
+      input: {
+        ...input,
+        decision: "keep_current_target",
+      },
+    })).rejects.toThrow("recommendation_request_identity_conflict");
+  });
+
   it("keeps historical empty target payloads readable while retaining source observations", async () => {
     const { kernel, repository } = await setupRecommendation();
     await kernel.write((transaction) => transaction.execute(
