@@ -1,4 +1,13 @@
-import { parseLocalDate, type LocalDate } from "../../../domains/scheduling/localDate";
+import {
+  addLocalDays,
+  differenceInLocalDays,
+  parseLocalDate,
+  type LocalDate,
+} from "../../../domains/scheduling/localDate";
+import {
+  assertValidHistoryCorrectionSnapshot,
+  type HistoryCorrectionSnapshot,
+} from "../../../domains/history";
 import type { SqliteKernel, SqliteReadTransactionExecutor } from "../sqliteKernel";
 
 type CalendarDestination =
@@ -13,6 +22,7 @@ type CalendarEventFacts = Readonly<{
   sport: "strength" | "running";
   status: "planned" | "completed" | "partial" | "imported" | "matched";
   title: string;
+  displaySummary: string;
   sourceLabel: string;
   localDate: LocalDate;
   timeZone: string | null;
@@ -33,12 +43,21 @@ export type TrainingCalendarEvent =
 
 export type TrainingCalendarRange = Readonly<{
   events: readonly TrainingCalendarEvent[];
+  days: readonly TrainingCalendarDay[];
+}>;
+
+export type TrainingCalendarDay = Readonly<{
+  localDate: LocalDate;
+  kind: "events" | "rest" | "empty";
+  restSummary: string | null;
 }>;
 
 type StrengthRow = Readonly<{
   id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
+  plan_day_id: string | null; plan_day_name: string | null; schedule_lifecycle: "active" | "inactive";
   local_date: string; timezone: string; revision: number; state: string; outcome: string | null;
-  session_id: string | null; session_status: string | null;
+  session_id: string | null; session_status: string | null; snapshot_json: string | null;
+  completed_working_sets: number; planned_working_sets: number; planned_target_sets: number;
 }>;
 type RunningRow = Readonly<{
   id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
@@ -55,57 +74,156 @@ function range(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: 
   return Object.freeze({ start, end });
 }
 
-type ImportedFacts = Readonly<{ localDate: LocalDate; timeZone: string | null; title: string }>;
+type ImportedFacts = Readonly<{
+  localDate: LocalDate;
+  timeZone: string | null;
+  title: string;
+  displaySummary: string;
+}>;
 
 function displayWords(value: string): string {
   const words = value.replaceAll("_", " ").replaceAll("-", " ").trim();
   return words.length === 0 ? "" : `${words[0]!.toUpperCase()}${words.slice(1)}`;
 }
 
+function durationLabel(milliseconds: number): string {
+  const totalSeconds = Math.round(milliseconds / 1_000);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60);
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function distanceLabel(meters: number): string {
+  return meters >= 1_000 ? `${(meters / 1_000).toFixed(2)} km` : `${meters} m`;
+}
+
 function importedFacts(row: ImportedRow): ImportedFacts | null {
   try {
     const aggregate = JSON.parse(row.aggregate_json) as {
       confirmed_local_date?: unknown;
-      normalized?: { sport?: unknown; subtype?: unknown; source_time_zone?: unknown };
+      normalized?: {
+        sport?: unknown;
+        subtype?: unknown;
+        source_time_zone?: unknown;
+        distance_meters?: unknown;
+        elapsed_ms?: unknown;
+      };
     };
     if (typeof aggregate.confirmed_local_date !== "string"
       || aggregate.normalized?.sport !== "running"
-      || typeof aggregate.normalized.subtype !== "string") return null;
+      || typeof aggregate.normalized.subtype !== "string"
+      || typeof aggregate.normalized.distance_meters !== "number"
+      || !Number.isFinite(aggregate.normalized.distance_meters)
+      || aggregate.normalized.distance_meters < 0
+      || (aggregate.normalized.elapsed_ms !== undefined
+        && (typeof aggregate.normalized.elapsed_ms !== "number"
+          || !Number.isFinite(aggregate.normalized.elapsed_ms)
+          || aggregate.normalized.elapsed_ms < 0))) return null;
     const subtype = displayWords(aggregate.normalized.subtype);
     if (subtype.length === 0 || row.source.trim().length === 0) return null;
+    const distance = distanceLabel(aggregate.normalized.distance_meters);
     return Object.freeze({
       localDate: parseLocalDate(aggregate.confirmed_local_date),
       timeZone: typeof aggregate.normalized.source_time_zone === "string" ? aggregate.normalized.source_time_zone : null,
       title: `${subtype} run`,
+      displaySummary: aggregate.normalized.elapsed_ms === undefined
+        ? distance
+        : `${distance} · ${durationLabel(aggregate.normalized.elapsed_ms)}`,
     });
   } catch {
     return null;
   }
 }
 
-function strengthEvent(row: StrengthRow): TrainingCalendarEvent | null {
-  if (row.plan_name.trim().length === 0) return null;
-  const base = {
-    id: row.id, source: "strength" as const, sport: "strength" as const,
-    title: row.plan_name, sourceLabel: "Strength", localDate: parseLocalDate(row.local_date), timeZone: row.timezone,
-    scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
-    slotId: null, revision: row.revision,
-  };
-  if ((row.session_status === "completed" || row.session_status === "partial") && row.session_id !== null) {
+function workingSetSummary(completed: number, planned: number): string {
+  return `${completed} of ${planned} ${planned === 1 ? "working set" : "working sets"} completed`;
+}
+
+function effectiveStrengthSnapshot(row: StrengthRow): Readonly<{
+  localDate: LocalDate;
+  status: "completed" | "partial";
+  title: string;
+  displaySummary: string;
+}> | null {
+  if (row.snapshot_json === null) {
+    if ((row.session_status !== "completed" && row.session_status !== "partial") || row.session_id === null) return null;
     return Object.freeze({
-      ...base, status: row.session_status, state: row.session_status,
-      destination: Object.freeze({ kind: "session" as const, sessionId: row.session_id }),
+      localDate: parseLocalDate(row.local_date),
+      status: row.session_status,
+      title: row.plan_day_name?.trim() || row.plan_name,
+      displaySummary: workingSetSummary(row.completed_working_sets, row.planned_working_sets),
     });
   }
-  if (row.session_id !== null
-    || row.session_status !== null
-    || row.outcome === "completed"
-    || row.outcome === "partial"
-    || row.state === "completed"
-    || row.state === "partial") return null;
+  let snapshot: HistoryCorrectionSnapshot;
+  try {
+    const decoded = JSON.parse(row.snapshot_json) as HistoryCorrectionSnapshot;
+    assertValidHistoryCorrectionSnapshot(decoded);
+    snapshot = decoded;
+  } catch {
+    throw new Error("training_calendar_effective_snapshot_invalid");
+  }
+  if (snapshot.session.id !== row.session_id
+    || (snapshot.session.status !== "completed" && snapshot.session.status !== "partial")) return null;
+  const workingSets = snapshot.exercises.flatMap(({ sets }) => sets).filter(({ kind }) => kind === "working");
   return Object.freeze({
-    ...base, status: "planned" as const, state: "planned",
-    destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: row.id }),
+    localDate: parseLocalDate(snapshot.session.localDate),
+    status: snapshot.session.status,
+    title: snapshot.session.dayName?.trim() || snapshot.session.planName?.trim() || row.plan_name,
+    displaySummary: workingSetSummary(
+      workingSets.filter(({ status }) => status === "completed").length,
+      workingSets.length,
+    ),
+  });
+}
+
+type StrengthProjection = Readonly<{
+  event: TrainingCalendarEvent | null;
+  rest: Readonly<{ localDate: LocalDate; summary: string }> | null;
+}>;
+
+function strengthProjection(row: StrengthRow): StrengthProjection {
+  if (row.plan_name.trim().length === 0) return Object.freeze({ event: null, rest: null });
+  const history = effectiveStrengthSnapshot(row);
+  if (history !== null) {
+    return Object.freeze({
+      event: Object.freeze({
+        id: row.id, source: "strength", sport: "strength", status: history.status,
+        title: history.title, displaySummary: history.displaySummary, sourceLabel: "Strength",
+        localDate: history.localDate, timeZone: row.timezone,
+        scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
+        slotId: null, revision: row.revision, state: history.status,
+        destination: Object.freeze({ kind: "session", sessionId: row.session_id! }),
+      }),
+      rest: null,
+    });
+  }
+  if (row.schedule_lifecycle !== "active") return Object.freeze({ event: null, rest: null });
+  if (row.state === "consumed" && row.outcome === "rest_day" && row.session_id === null) {
+    return Object.freeze({
+      event: null,
+      rest: Object.freeze({
+        localDate: parseLocalDate(row.local_date),
+        summary: `${row.plan_name}. Nothing to resume or review.`,
+      }),
+    });
+  }
+  if (row.state !== "pending"
+    || row.outcome !== null
+    || row.session_id !== null
+    || row.session_status !== null
+    || row.plan_day_id === null
+    || row.planned_target_sets < 1) return Object.freeze({ event: null, rest: null });
+  const title = row.plan_day_name?.trim() || row.plan_name;
+  return Object.freeze({
+    event: Object.freeze({
+      id: row.id, source: "strength", sport: "strength", status: "planned",
+      title, displaySummary: `${title} · ${row.planned_target_sets} working set${row.planned_target_sets === 1 ? "" : "s"} planned`,
+      sourceLabel: "Strength", localDate: parseLocalDate(row.local_date), timeZone: row.timezone,
+      scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
+      slotId: null, revision: row.revision, state: "planned",
+      destination: Object.freeze({ kind: "occurrence", occurrenceId: row.id }),
+    }),
+    rest: null,
   });
 }
 
@@ -114,7 +232,8 @@ function runningEvent(row: RunningRow): TrainingCalendarEvent | null {
   const sourceLabel = displayWords(row.session_kind);
   if (sourceLabel.length === 0) return null;
   return Object.freeze({
-    id: row.id, source: "running", sport: "running", status: "planned", title: row.plan_name, sourceLabel,
+    id: row.id, source: "running", sport: "running", status: "planned", title: row.plan_name,
+    displaySummary: `${sourceLabel} session planned`, sourceLabel,
     localDate: parseLocalDate(row.local_date), timeZone: row.timezone, scheduleId: row.schedule_id,
     scheduleVersionId: row.schedule_version_id, planId: row.plan_id, slotId: row.slot_id, revision: null, state: "planned",
     destination: Object.freeze({ kind: "plan", planId: row.plan_id, sessionId: row.session_revision_id }),
@@ -128,14 +247,38 @@ async function queryRange(
   const [strengthRows, runningRows, importedRows] = await Promise.all([
     reader.queryAll<StrengthRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              schedule.plan_id, plan.name AS plan_name, COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, version.timezone,
-              opportunity.revision, opportunity.state, opportunity.outcome, session.id AS session_id, session.status AS session_status
+              schedule.plan_id, plan.name AS plan_name, opportunity.plan_day_id,
+              day.name AS plan_day_name, schedule.lifecycle AS schedule_lifecycle,
+              COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) AS local_date,
+              COALESCE(overlay.effective_timezone, session.timezone, version.timezone) AS timezone,
+              opportunity.revision, opportunity.state, opportunity.outcome,
+              session.id AS session_id, session.status AS session_status,
+              overlay.snapshot_json,
+              (SELECT COUNT(*) FROM session_sets completed_set
+                JOIN session_exercises completed_exercise
+                  ON completed_exercise.id = completed_set.session_exercise_id
+               WHERE completed_exercise.session_id = session.id
+                 AND completed_set.set_kind = 'working'
+                 AND completed_set.status = 'completed') AS completed_working_sets,
+              (SELECT COUNT(*) FROM session_sets planned_set
+                JOIN session_exercises planned_exercise
+                  ON planned_exercise.id = planned_set.session_exercise_id
+               WHERE planned_exercise.session_id = session.id
+                 AND planned_set.set_kind = 'working') AS planned_working_sets,
+              (SELECT COUNT(*) FROM owned_plan_working_set_targets target
+                JOIN owned_plan_day_exercises exercise
+                  ON exercise.id = target.plan_day_exercise_id
+               WHERE exercise.plan_day_id = opportunity.plan_day_id) AS planned_target_sets
          FROM owned_plan_schedule_opportunities opportunity
          JOIN owned_plan_schedules schedule ON schedule.id = opportunity.schedule_id
-         JOIN owned_plan_schedule_versions version ON version.id = opportunity.schedule_version_id
+         JOIN owned_plan_schedule_versions version
+           ON version.id = opportunity.schedule_version_id
+          AND version.schedule_id = schedule.id
          JOIN plans plan ON plan.id = schedule.plan_id
+         LEFT JOIN plan_days day ON day.id = opportunity.plan_day_id AND day.plan_id = plan.id
          LEFT JOIN workout_session_schedule_links link ON link.opportunity_id = opportunity.id
-         LEFT JOIN workout_sessions session ON session.id = link.workout_session_id
+         LEFT JOIN workout_sessions session ON session.id = COALESCE(link.workout_session_id, opportunity.session_id)
+         LEFT JOIN history_session_overlays overlay ON overlay.session_id = session.id
          LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'strength' AND projection.selected_opportunity_id = opportunity.id
           AND NOT EXISTS (
             SELECT 1
@@ -150,7 +293,10 @@ async function queryRange(
               AND (later.committed_at_ms > current.committed_at_ms
                 OR (later.committed_at_ms = current.committed_at_ms AND later.id > current.id))
           )
-        WHERE COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
+        WHERE COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) >= ?
+          AND COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) < ?
+          AND (session.id IS NOT NULL OR schedule.lifecycle = 'active')
+          AND (overlay.lifecycle IS NULL OR overlay.lifecycle = 'active')
         ORDER BY local_date, opportunity.id`, [input.start, input.end],
     ),
     reader.queryAll<RunningRow>(
@@ -159,6 +305,10 @@ async function queryRange(
               COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, opportunity.timezone, opportunity.state
          FROM running_opportunities opportunity
          JOIN plans plan ON plan.id = opportunity.plan_id
+         JOIN owned_plan_schedules schedule
+           ON schedule.id = opportunity.schedule_id
+          AND schedule.plan_id = opportunity.plan_id
+          AND schedule.lifecycle = 'active'
          JOIN running_session_revisions session ON session.id = opportunity.session_revision_id AND session.plan_id = opportunity.plan_id
          LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'running' AND projection.selected_opportunity_id = opportunity.id
           AND NOT EXISTS (
@@ -174,7 +324,8 @@ async function queryRange(
               AND (later.committed_at_ms > current.committed_at_ms
                 OR (later.committed_at_ms = current.committed_at_ms AND later.id > current.id))
           )
-        WHERE COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
+        WHERE schedule.lifecycle = 'active'
+          AND COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
         ORDER BY local_date, opportunity.slot_id, opportunity.id`, [input.start, input.end],
     ),
     reader.queryAll<ImportedRow>(
@@ -192,9 +343,12 @@ async function queryRange(
   const matchedOpportunityIds = new Set(
     importedRows.flatMap(({ opportunity_id }) => opportunity_id === null ? [] : [opportunity_id]),
   );
+  const strength = strengthRows.map(strengthProjection);
+  const restByDate = new Map(
+    strength.flatMap(({ rest }) => rest === null ? [] : [[rest.localDate, rest.summary] as const]),
+  );
   const events: TrainingCalendarEvent[] = [
-    ...strengthRows.flatMap((row) => {
-      const event = strengthEvent(row);
+    ...strength.flatMap(({ event }) => {
       return event === null ? [] : [event];
     }),
     ...runningRows.filter((row) => !matchedOpportunityIds.has(row.id)).flatMap((row) => {
@@ -209,7 +363,8 @@ async function queryRange(
       if (facts === null || (row.opportunity_id !== null && matched === null)) return [];
       return [Object.freeze({
         id: row.id, source: "imported_activity" as const, sport: "running" as const,
-        status: matched === null ? "imported" as const : "matched" as const, title: facts.title, sourceLabel: row.source,
+        status: matched === null ? "imported" as const : "matched" as const, title: facts.title,
+        displaySummary: facts.displaySummary, sourceLabel: row.source,
         localDate: facts.localDate, timeZone: facts.timeZone,
         scheduleId: matched?.schedule_id ?? null, scheduleVersionId: matched?.schedule_version_id ?? null,
         planId: matched?.plan_id ?? null, slotId: matched?.slot_id ?? null, revision: null,
@@ -217,13 +372,27 @@ async function queryRange(
       })];
     }),
   ];
-  return Object.freeze({
-    events: Object.freeze(events.sort((left, right) => {
+  const orderedEvents = Object.freeze(events.sort((left, right) => {
       const sourceOrder = { strength: 0, running: 1, imported_activity: 2 } as const;
       return left.localDate.localeCompare(right.localDate)
-        || sourceOrder[left.source] - sourceOrder[right.source]
-        || left.id.localeCompare(right.id);
-    })),
+        || sourceOrder[left.source] - sourceOrder[right.source];
+    }));
+  const eventDates = new Set(orderedEvents.map(({ localDate }) => localDate));
+  const dayCount = differenceInLocalDays(input.start, input.end);
+  const days = Object.freeze(Array.from({ length: dayCount }, (_, index): TrainingCalendarDay => {
+    const localDate = addLocalDays(input.start, index);
+    const restSummary = restByDate.get(localDate) ?? null;
+    return Object.freeze({
+      localDate,
+      kind: eventDates.has(localDate)
+        ? "events"
+        : restSummary === null ? "empty" : "rest",
+      restSummary,
+    });
+  }));
+  return Object.freeze({
+    events: orderedEvents,
+    days,
   });
 }
 

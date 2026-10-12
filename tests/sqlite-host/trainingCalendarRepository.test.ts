@@ -11,19 +11,25 @@ describe("training calendar repository", () => {
           id: "strength-planned", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
           plan_id: "strength-plan", plan_name: "Full body progression, week 12", local_date: "2026-11-01",
           timezone: "America/New_York", revision: 2, state: "pending", outcome: null,
-          session_id: null, session_status: null,
+          plan_day_id: "strength-day", plan_day_name: "Full body A", schedule_lifecycle: "active",
+          session_id: null, session_status: null, snapshot_json: null,
+          completed_working_sets: 0, planned_working_sets: 0, planned_target_sets: 3,
         },
         {
           id: "strength-completed", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
           plan_id: "strength-plan", plan_name: "Full body progression, week 12", local_date: "2026-11-01",
-          timezone: "America/New_York", revision: 3, state: "completed", outcome: "completed",
-          session_id: "completed-session", session_status: "completed",
+          timezone: "America/New_York", revision: 3, state: "consumed", outcome: "completed",
+          plan_day_id: "strength-day", plan_day_name: "Full body A", schedule_lifecycle: "active",
+          session_id: "completed-session", session_status: "completed", snapshot_json: null,
+          completed_working_sets: 3, planned_working_sets: 3, planned_target_sets: 3,
         },
         {
           id: "strength-partial", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
           plan_id: "strength-plan", plan_name: "Full body progression, week 12", local_date: "2026-11-01",
-          timezone: "America/New_York", revision: 4, state: "partial", outcome: "partial",
-          session_id: "partial-session", session_status: "partial",
+          timezone: "America/New_York", revision: 4, state: "consumed", outcome: "completed",
+          plan_day_id: "strength-day", plan_day_name: "Full body A", schedule_lifecycle: "active",
+          session_id: "partial-session", session_status: "partial", snapshot_json: null,
+          completed_working_sets: 2, planned_working_sets: 3, planned_target_sets: 3,
         },
       ];
       if (sql.includes("running_opportunities")) return [{
@@ -36,7 +42,7 @@ describe("training calendar repository", () => {
         id: "imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1_793_491_200_000,
         aggregate_json: JSON.stringify({
           confirmed_local_date: "2026-11-01",
-          normalized: { sport: "running", subtype: "outdoor", source_time_zone: "Europe/London" },
+          normalized: { sport: "running", subtype: "outdoor", source_time_zone: "Europe/London", distance_meters: 5_000, elapsed_ms: 1_560_000 },
         }),
         opportunity_id: null,
       }];
@@ -50,16 +56,16 @@ describe("training calendar repository", () => {
 
     expect(result.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: "strength-planned", title: "Full body progression, week 12", sourceLabel: "Strength",
+        id: "strength-planned", title: "Full body A", displaySummary: "Full body A · 3 working sets planned", sourceLabel: "Strength",
         sport: "strength", status: "planned", localDate: "2026-11-01", timeZone: "America/New_York",
         destination: { kind: "occurrence", occurrenceId: "strength-planned" },
       }),
       expect.objectContaining({
-        id: "strength-completed", title: "Full body progression, week 12", sport: "strength", status: "completed",
+        id: "strength-completed", title: "Full body A", displaySummary: "3 of 3 working sets completed", sport: "strength", status: "completed",
         destination: { kind: "session", sessionId: "completed-session" },
       }),
       expect.objectContaining({
-        id: "strength-partial", title: "Full body progression, week 12", sport: "strength", status: "partial",
+        id: "strength-partial", title: "Full body A", displaySummary: "2 of 3 working sets completed", sport: "strength", status: "partial",
         destination: { kind: "session", sessionId: "partial-session" },
       }),
       expect.objectContaining({
@@ -100,7 +106,7 @@ describe("training calendar repository", () => {
         id: "imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1_793_491_200_000,
         aggregate_json: JSON.stringify({
           confirmed_local_date: "2026-11-01",
-          normalized: { sport: "running", subtype: "treadmill", source_time_zone: "Australia/Sydney" },
+          normalized: { sport: "running", subtype: "treadmill", source_time_zone: "Australia/Sydney", distance_meters: 5_000, elapsed_ms: 1_560_000 },
         }),
         opportunity_id: "running-slot-a",
       }];
@@ -129,14 +135,16 @@ describe("training calendar repository", () => {
       if (sql.includes("owned_plan_schedule_opportunities")) return [{
         id: "stale-completed-strength", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
         plan_id: "strength-plan", plan_name: "Strength plan", local_date: "2026-11-01", timezone: "America/New_York",
-        revision: 2, state: "completed", outcome: "completed", session_id: null, session_status: null,
+        plan_day_id: "strength-day", plan_day_name: "Strength day", schedule_lifecycle: "active",
+        revision: 2, state: "consumed", outcome: "completed", session_id: null, session_status: null,
+        snapshot_json: null, completed_working_sets: 0, planned_working_sets: 0, planned_target_sets: 1,
       }];
       if (sql.includes("running_opportunities")) return [];
       return [{
         id: "stale-imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1,
         aggregate_json: JSON.stringify({
           confirmed_local_date: "2026-11-01",
-          normalized: { sport: "running", subtype: "outdoor", source_time_zone: "America/New_York" },
+          normalized: { sport: "running", subtype: "outdoor", source_time_zone: "America/New_York", distance_meters: 5_000 },
         }),
         opportunity_id: "missing-running-opportunity",
       }];
@@ -146,7 +154,10 @@ describe("training calendar repository", () => {
     await expect(createTrainingCalendarRepository(kernel).loadRange({
       startLocalDate: "2026-11-01",
       endLocalDateExclusive: "2026-11-02",
-    })).resolves.toEqual({ events: [] });
+    })).resolves.toEqual({
+      events: [],
+      days: [{ localDate: "2026-11-01", kind: "empty", restSummary: null }],
+    });
   });
 
   it("uses snapshot reads, rejects inverted bounds, and refuses malformed imported dates", async () => {
@@ -172,7 +183,10 @@ describe("training calendar repository", () => {
     await expect(repository.loadRange({
       startLocalDate: "2026-11-01",
       endLocalDateExclusive: "2026-11-02",
-    })).resolves.toEqual({ events: [] });
+    })).resolves.toEqual({
+      events: [],
+      days: [{ localDate: "2026-11-01", kind: "empty", restSummary: null }],
+    });
     expect(readSnapshot).toHaveBeenCalledTimes(1);
   });
 });

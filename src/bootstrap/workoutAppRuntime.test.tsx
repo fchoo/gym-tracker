@@ -1312,7 +1312,7 @@ describe("WorkoutAppRuntimeProvider", () => {
   });
 
   it("delegates bounded Calendar range reads through the query-only foundation port", async () => {
-    const range = Object.freeze({ events: Object.freeze([]) }) as TrainingCalendarRange;
+    const range = Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) }) as TrainingCalendarRange;
     const loadCalendarRange = jest.fn(async () => range);
     mockedCreateTrainingFoundationRuntimePort.mockImplementationOnce(() =>
       Object.freeze({
@@ -1355,9 +1355,9 @@ describe("WorkoutAppRuntimeProvider", () => {
     const loadPlannedStrengthOccurrence = jest.fn(async () => occurrence);
     mockedCreateTrainingFoundationRuntimePort.mockImplementationOnce(() =>
       Object.freeze({
-        loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
+        loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) })),
         loadPlannedStrengthOccurrence,
-        loadToday: jest.fn(async () => Object.freeze({ events: Object.freeze([]) })),
+        loadToday: jest.fn(async () => Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) })),
         loadBodyweightHistory: jest.fn(async () => Object.freeze([])),
         commitBodyweight: jest.fn(async () => Object.freeze({ kind: "created" as const, entry: undefined })),
       }),

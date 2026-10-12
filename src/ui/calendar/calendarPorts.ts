@@ -11,6 +11,7 @@ export type CalendarReadPort = Pick<
 
 export type CalendarRange = Awaited<ReturnType<CalendarReadPort["loadCalendarRange"]>>;
 export type CalendarEvent = CalendarRange["events"][number];
+export type CalendarDay = CalendarRange["days"][number];
 export type CalendarEventDestination = CalendarEvent["destination"];
 
 /** The Phase 15 factual model remains presentation-only in Calendar. */
