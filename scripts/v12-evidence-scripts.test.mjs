@@ -18,6 +18,7 @@ import test from "node:test";
 import {
   V12_CALENDAR_DIAGNOSTIC_TARGETS,
   createV12CalendarDiagnostics,
+  executeV12CalendarDiagnostics,
   validateV12CalendarDiagnostics,
 } from "./benchmark-v12-interactions.mjs";
 import { V12_CALENDAR_REQUIRED_CASE_IDS } from "./v12-calendar-case-registry.mjs";
@@ -336,6 +337,47 @@ test("Calendar evidence rejects unsafe paths, symlinks, replaced bytes, and priv
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(external, { recursive: true, force: true });
+  }
+});
+
+test("Calendar diagnostics and live verification reject symlinked parent directories", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-parent-link-"));
+  const outside = mkdtempSync(path.join(tmpdir(), "v12-calendar-parent-target-"));
+  const linked = path.join(root, "linked");
+  symlinkSync(outside, linked, "dir");
+  try {
+    const currentManifest = manifest();
+    writeFileSync(path.join(root, "build.json"), `${JSON.stringify(currentManifest)}\n`);
+    const raw = rawDiagnostics();
+    const adb = (...args) => args[0] === "logcat" && args[1] === "-d"
+      ? `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(raw)}`
+      : "";
+    await assert.rejects(
+      executeV12CalendarDiagnostics([
+        "--manifest", "build.json",
+        "--output", "linked/calendar.json",
+      ], {
+        root,
+        head: currentManifest.base_head,
+        source: currentManifest.source_tree_sha256,
+        serial: "synthetic-device",
+        adb,
+      }),
+      /path_unsafe/u,
+    );
+    assert.equal(existsSync(path.join(outside, "calendar.json")), false);
+
+    writeFileSync(path.join(outside, "build.json"), "not-json");
+    assert.throws(
+      () => executeV12CalendarEvidenceVerifier({
+        args: ["--manifest", "linked/build.json", "--automated-only"],
+        root,
+      }),
+      /manifest_missing/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });
 

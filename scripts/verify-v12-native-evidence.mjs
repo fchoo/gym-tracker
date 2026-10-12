@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -13,6 +13,7 @@ import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { V12_CALENDAR_ROUTE_JOURNEY_IDS } from "./v12-calendar-case-registry.mjs";
 import { errorMessage, exactKeys } from "./node-evidence-utils.mjs";
+import { resolveV12CalendarPath } from "./v12-calendar-artifacts.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -203,22 +204,18 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
 
 export function verifyV12CalendarArtifactSet(artifacts, { root = ROOT } = {}) {
   if ([!Array.isArray(artifacts), Array.isArray(artifacts) && artifacts.length === 0].some(Boolean)) fail("artifact_set_invalid");
-  const rootReal = realpathSync(root);
   const seen = new Set();
   for (const artifact of artifacts) {
     descriptor(artifact, "artifact");
     if (seen.has(artifact.path)) fail("artifact_duplicate");
     seen.add(artifact.path);
-    const absolute = path.resolve(rootReal, artifact.path);
-    const relative = path.relative(rootReal, absolute);
-    if ([relative.length === 0, relative.startsWith(`..${path.sep}`), path.isAbsolute(relative), !existsSync(absolute)].some(Boolean)) fail("artifact_path_invalid");
-    let current = rootReal;
-    for (const segment of relative.split(path.sep)) {
-      current = path.join(current, segment);
-      if (lstatSync(current).isSymbolicLink()) fail("artifact_path_invalid");
+    let absolute;
+    try {
+      absolute = resolveV12CalendarPath(path.resolve(root, artifact.path), { root, mustExist: true });
+    } catch {
+      fail("artifact_path_invalid");
     }
-    const real = realpathSync(absolute);
-    const bytes = readFileSync(real);
+    const bytes = readFileSync(absolute);
     if ([bytes.length === 0, sha256(bytes) !== artifact.sha256, artifact.size_bytes !== undefined && artifact.size_bytes !== bytes.length].some(Boolean)) fail("artifact_hash_invalid");
   }
   return true;
@@ -266,19 +263,29 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
     if (evidence.host_only_fixture !== true) fail("fixture_invalid");
     return validateV12CalendarEvidence(evidence, { root });
   }
-  const manifestPath = path.resolve(root, options.manifestPath);
-  if ([!existsSync(manifestPath), existsSync(manifestPath) && lstatSync(manifestPath).isSymbolicLink()].some(Boolean)) fail("manifest_missing");
+  let manifestPath;
+  try {
+    manifestPath = resolveV12CalendarPath(path.resolve(root, options.manifestPath), { root, mustExist: true });
+  } catch {
+    fail("manifest_missing");
+  }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const head = currentIdentity?.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const source = currentIdentity?.source ?? sourceTreeSha256(root);
   validateV12CalendarManifest(manifest, { head, source });
   const evidencePath = path.join(path.dirname(manifestPath), "evidence", "calendar-evidence.json");
-  if ([!existsSync(evidencePath), existsSync(evidencePath) && lstatSync(evidencePath).isSymbolicLink()].some(Boolean)) fail("evidence_missing");
-  const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+  let safeEvidencePath;
+  try {
+    safeEvidencePath = resolveV12CalendarPath(evidencePath, { root, mustExist: true });
+  } catch {
+    fail("evidence_missing");
+  }
+  const evidence = JSON.parse(readFileSync(safeEvidencePath, "utf8"));
   if ([evidence.host_only_fixture === true, evidence.manifest?.source_tree_sha256 !== manifest.source_tree_sha256].some(Boolean)) fail("live_evidence_identity_invalid");
   const result = validateV12CalendarEvidence(evidence, { root });
   verifyV12CalendarArtifactSet(evidenceArtifactDescriptors(evidence), { root });
-  const comparison = JSON.parse(readFileSync(path.resolve(root, evidence.artifacts.comparison.path), "utf8"));
+  const comparisonPath = resolveV12CalendarPath(path.resolve(root, evidence.artifacts.comparison.path), { root, mustExist: true });
+  const comparison = JSON.parse(readFileSync(comparisonPath, "utf8"));
   validateV12CalendarComparison(comparison, {
     expectedRunId: evidence.run_id,
     expectedIdentity: evidence.identity,

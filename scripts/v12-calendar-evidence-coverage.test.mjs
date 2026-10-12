@@ -39,9 +39,11 @@ import {
 } from "./v12-calendar-case-registry.mjs";
 import {
   createExclusiveDirectory,
+  ensureV12CalendarDirectory,
   initializeV12CalendarRun,
   readV12CalendarRunState,
   recordV12CalendarStageResult,
+  resolveV12CalendarPath,
 } from "./v12-calendar-artifacts.mjs";
 import {
   V12_CALENDAR_DIAGNOSTIC_STAGES,
@@ -381,6 +383,7 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       now: () => 0,
       wait: async () => undefined,
       adb: (...args) => args[1] === "-d" ? logs : "",
+      write: writeFileSync,
     }), 0);
     assert.match(cli.stdout[0], /"acceptance_owner":"phase20"/u);
     const failedCli = captureIo();
@@ -527,12 +530,38 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
 });
 
 test("artifact journals validate registry, corruption, terminal completion, and filesystem failures", () => {
-  assert.throws(() => createExclusiveDirectory("/definitely/missing/parent/output"), /ENOENT/u);
+  assert.throws(() => createExclusiveDirectory("/definitely/missing/parent/output"), /path_escape/u);
   assert.throws(() => validateV12CalendarCaseRegistryDescriptor({ ...V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, route_count: 7 }), /case_registry_invalid/u);
   for (const stageIds of [null, [], ["a", "a"], ["bad stage"]]) {
     assert.throws(() => initializeV12CalendarRun({ root: "/tmp", runId: "phase20-20261013T020202Z-abcdef123456", stageIds }));
   }
   assert.throws(() => initializeV12CalendarRun({ root: "/tmp", runId: "bad", stageIds: ["stage-one"] }), /run_id_invalid/u);
+
+  const pathRoot = mkdtempSync(path.join(tmpdir(), "v12-calendar-path-branches-"));
+  const outsideRoot = mkdtempSync(path.join(tmpdir(), "v12-calendar-path-outside-"));
+  try {
+    const existing = path.join(pathRoot, "existing");
+    mkdirSync(existing);
+    assert.equal(resolveV12CalendarPath(existing), existing);
+    assert.throws(() => resolveV12CalendarPath(path.join(pathRoot, "missing"), { root: path.join(pathRoot, "absent-root"), mustExist: true }), /path_unsafe/u);
+    const linkedRoot = path.join(pathRoot, "linked-root");
+    symlinkSync(outsideRoot, linkedRoot, "dir");
+    assert.throws(() => resolveV12CalendarPath(path.join(linkedRoot, "missing"), { root: linkedRoot }), /path_unsafe/u);
+    const rootFile = path.join(pathRoot, "root-file");
+    writeFileSync(rootFile, "file");
+    assert.throws(() => resolveV12CalendarPath(path.join(rootFile, "child"), { root: rootFile }), /path_unsafe/u);
+    assert.throws(() => resolveV12CalendarPath(path.join(pathRoot, "missing", "child"), { root: pathRoot }), /path_missing/u);
+    assert.throws(() => resolveV12CalendarPath(path.join(pathRoot, "missing"), { root: pathRoot, mustExist: true }), /path_missing/u);
+    const blockingFile = path.join(pathRoot, "blocking-file");
+    writeFileSync(blockingFile, "file");
+    assert.throws(() => resolveV12CalendarPath(path.join(blockingFile, "child"), { root: pathRoot }), /path_unsafe/u);
+    assert.throws(() => ensureV12CalendarDirectory(blockingFile, { root: pathRoot }), /path_unsafe/u);
+    assert.throws(() => ensureV12CalendarDirectory(outsideRoot, { root: pathRoot }), /path_escape/u);
+    assert.throws(() => ensureV12CalendarDirectory(existing, { root: pathRoot, exclusive: true }), /output_exists/u);
+  } finally {
+    rmSync(pathRoot, { recursive: true, force: true });
+    rmSync(outsideRoot, { recursive: true, force: true });
+  }
 
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-terminal-"));
   const runId = "phase20-20261013T020202Z-abcdef123456";

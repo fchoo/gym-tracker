@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -9,7 +9,12 @@ import { pathToFileURL } from "node:url";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { exactKeys } from "./node-evidence-utils.mjs";
-import { stableCanonicalJson, writeExclusiveArtifact } from "./v12-calendar-artifacts.mjs";
+import {
+  ensureV12CalendarDirectory,
+  resolveV12CalendarPath,
+  stableCanonicalJson,
+  writeExclusiveArtifact,
+} from "./v12-calendar-artifacts.mjs";
 
 const ROOT = process.cwd();
 const RESULT_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:";
@@ -206,7 +211,7 @@ export async function executeV12CalendarDiagnostics(args = process.argv.slice(2)
   const fileExists = dependencies.exists ?? existsSync;
   if (!fileExists(manifestPath)) fail("manifest_missing");
   const readText = dependencies.readText ?? ((file) => readFileSync(file, "utf8"));
-  const manifest = JSON.parse(readText(manifestPath));
+  const manifest = JSON.parse(readText(resolveV12CalendarPath(manifestPath, { root, mustExist: true })));
   const head = dependencies.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const source = dependencies.source ?? sourceTreeSha256(root);
   validateV12CalendarManifest(manifest, { head, source });
@@ -229,9 +234,10 @@ export async function executeV12CalendarDiagnostics(args = process.argv.slice(2)
   validateV12CalendarDiagnostics(evidence, manifest);
   const outputPath = path.resolve(root, options.outputPath ?? path.join(path.dirname(options.manifestPath), "diagnostics", "calendar.json"));
   if (outputPath !== root && !outputPath.startsWith(`${root}${path.sep}`)) fail("output_path_invalid");
-  mkdirSync(path.dirname(outputPath), { recursive: true });
+  ensureV12CalendarDirectory(path.dirname(outputPath), { root, allowRoot: true });
   const write = dependencies.write ?? writeExclusiveArtifact;
-  write(outputPath, stableCanonicalJson(evidence));
+  if (dependencies.write === undefined) write(outputPath, stableCanonicalJson(evidence), { root });
+  else write(outputPath, stableCanonicalJson(evidence));
   return Object.freeze({ output: path.relative(root, outputPath), query_samples: options.querySamples, interaction_samples: options.interactionSamples, acceptance_owner: "phase20" });
 }
 

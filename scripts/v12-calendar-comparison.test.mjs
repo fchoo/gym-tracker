@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -137,6 +137,37 @@ test("Calendar comparison directories and every artifact are immutable", () => {
     );
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test("Calendar comparison and run journals reject symlinked parent directories", () => {
+  const fixture = completeFixture();
+  const outside = mkdtempSync(path.join(tmpdir(), "v12-calendar-outside-"));
+  const linked = path.join(fixture.directory, "linked");
+  symlinkSync(outside, linked, "dir");
+  try {
+    assert.throws(
+      () => compareV12Calendar({
+        map: fixture.map,
+        run: fixture.run,
+        outputDirectory: path.join(linked, "comparison"),
+      }),
+      /path_unsafe/u,
+    );
+    assert.equal(existsSync(path.join(outside, "comparison")), false);
+
+    assert.throws(
+      () => initializeV12CalendarRun({
+        root: linked,
+        runId: "phase20-20261013T000000Z-abcdef123456",
+        stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES,
+      }),
+      /path_unsafe/u,
+    );
+    assert.equal(existsSync(path.join(outside, "phase20-20261013T000000Z-abcdef123456")), false);
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });
 
