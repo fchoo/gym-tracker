@@ -39,7 +39,17 @@ export type TrainingCalendarEvent =
   | Readonly<CalendarEventFacts & { source: "strength"; sport: "strength"; status: "planned"; destination: Readonly<{ kind: "occurrence"; occurrenceId: string }> }>
   | Readonly<CalendarEventFacts & { source: "strength"; sport: "strength"; status: "completed" | "partial"; destination: Readonly<{ kind: "session"; sessionId: string }> }>
   | Readonly<CalendarEventFacts & { source: "running"; sport: "running"; status: "planned"; destination: Readonly<{ kind: "plan"; planId: string; sessionId: string }> }>
-  | Readonly<CalendarEventFacts & { source: "imported_activity"; sport: "running"; status: "imported" | "matched"; destination: Readonly<{ kind: "activity"; activityId: string }> }>;
+  | Readonly<CalendarEventFacts & {
+    source: "imported_activity";
+    sport: "running";
+    status: "imported" | "matched";
+    sourceIdentity: Readonly<{
+      sourceKind: "garmin_connect_account";
+      accountNamespace: string;
+      externalActivityId: string;
+    }>;
+    destination: Readonly<{ kind: "activity"; activityId: string }>;
+  }>;
 
 export type TrainingCalendarRange = Readonly<{
   events: readonly TrainingCalendarEvent[];
@@ -64,7 +74,8 @@ type RunningRow = Readonly<{
   slot_id: string; session_revision_id: string; session_kind: string; local_date: string; timezone: string; state: string;
 }>;
 type ImportedRow = Readonly<{
-  id: string; source: string; started_at_ms: number; aggregate_json: string; opportunity_id: string | null;
+  id: string; source: string; source_kind: string; account_namespace: string; external_activity_id: string;
+  started_at_ms: number; aggregate_json: string; opportunity_id: string | null;
 }>;
 
 function range(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: string }>): Readonly<{ start: LocalDate; end: LocalDate }> {
@@ -120,7 +131,10 @@ function importedFacts(row: ImportedRow): ImportedFacts | null {
           || !Number.isFinite(aggregate.normalized.elapsed_ms)
           || aggregate.normalized.elapsed_ms < 0))) return null;
     const subtype = displayWords(aggregate.normalized.subtype);
-    if (subtype.length === 0 || row.source.trim().length === 0) return null;
+    if (subtype.length === 0
+      || row.source_kind !== "garmin_connect_account"
+      || row.account_namespace.trim().length === 0
+      || row.external_activity_id.trim().length === 0) return null;
     const distance = distanceLabel(aggregate.normalized.distance_meters);
     return Object.freeze({
       localDate: parseLocalDate(aggregate.confirmed_local_date),
@@ -329,9 +343,11 @@ async function queryRange(
         ORDER BY local_date, opportunity.slot_id, opportunity.id`, [input.start, input.end],
     ),
     reader.queryAll<ImportedRow>(
-      `SELECT activity.id, activity.source, activity.started_at_ms, activity.aggregate_json,
+      `SELECT activity.id, activity.source, identity.source_kind, identity.account_namespace,
+              identity.external_activity_id, activity.started_at_ms, activity.aggregate_json,
               match.opportunity_id
          FROM imported_activities activity
+         JOIN imported_activity_identities identity ON identity.activity_id = activity.id
          JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
          LEFT JOIN running_activity_current_matches match ON match.activity_id = activity.id
         WHERE lifecycle.removal_state = 'active'
@@ -364,7 +380,12 @@ async function queryRange(
       return [Object.freeze({
         id: row.id, source: "imported_activity" as const, sport: "running" as const,
         status: matched === null ? "imported" as const : "matched" as const, title: facts.title,
-        displaySummary: facts.displaySummary, sourceLabel: row.source,
+        displaySummary: facts.displaySummary, sourceLabel: "Garmin",
+        sourceIdentity: Object.freeze({
+          sourceKind: "garmin_connect_account" as const,
+          accountNamespace: row.account_namespace,
+          externalActivityId: row.external_activity_id,
+        }),
         localDate: facts.localDate, timeZone: facts.timeZone,
         scheduleId: matched?.schedule_id ?? null, scheduleVersionId: matched?.schedule_version_id ?? null,
         planId: matched?.plan_id ?? null, slotId: matched?.slot_id ?? null, revision: null,

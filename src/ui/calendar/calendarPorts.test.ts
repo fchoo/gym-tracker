@@ -33,7 +33,9 @@ describe("Calendar capability ports", () => {
   it("retains the immutable source event destination union and the command-free presentation model", () => {
     const event: CalendarEvent = Object.freeze({
       id: "imported-run", source: "imported_activity", sport: "running", status: "imported",
-      title: "Outdoor run", displaySummary: "5.00 km · 26:00", sourceLabel: "garmin_connect_account:owner-a", localDate: parseLocalDate("2026-11-01"),
+      title: "Outdoor run", displaySummary: "5.00 km · 26:00", sourceLabel: "Garmin",
+      sourceIdentity: Object.freeze({ sourceKind: "garmin_connect_account", accountNamespace: "owner-a", externalActivityId: "external-1" }),
+      localDate: parseLocalDate("2026-11-01"),
       timeZone: "Asia/Singapore", scheduleId: null, scheduleVersionId: null, planId: null, slotId: null,
       revision: null, state: "imported", destination: Object.freeze({ kind: "activity", activityId: "imported-run" }),
     });

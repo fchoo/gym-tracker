@@ -180,17 +180,52 @@ async function seedStrengthHistory(kernel: SqliteKernel): Promise<void> {
   });
 }
 
+async function seedImportedActivity(kernel: SqliteKernel): Promise<void> {
+  const sha256 = "a".repeat(64);
+  const aggregate = JSON.stringify({
+    normalized_json_sha256: sha256,
+    sample_fidelity: "source_summary",
+    confirmed_local_date: "2026-11-01",
+    normalized: {
+      version: 1,
+      started_at_ms: 100,
+      source_time_zone: "Asia/Singapore",
+      sport: "running",
+      subtype: "outdoor",
+      distance_meters: 5_000,
+      elapsed_ms: 1_560_000,
+      laps: [],
+    },
+  });
+  await kernel.write(async (transaction) => {
+    await transaction.execute(`INSERT INTO imported_activities
+      (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms)
+      VALUES ('activity-local-1', 'garmin_connect_account:private-owner', 'external-private-1', 100, ?, 101)`, [aggregate]);
+    await transaction.execute(`INSERT INTO imported_activity_identities
+      (activity_id, source_kind, account_namespace, external_activity_id,
+       aggregate_revision, accepted_normalized_sha256, removal_state)
+      VALUES ('activity-local-1', 'garmin_connect_account', 'private-owner', 'external-private-1', 1, ?, 'active')`, [sha256]);
+    await transaction.execute(`INSERT INTO imported_activity_events
+      (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms)
+      VALUES ('activity-event-1', 'activity-local-1', 1, 'imported', '{}', 101)`);
+    await transaction.execute(`INSERT INTO imported_activity_current_lifecycle
+      (activity_id, aggregate_revision, removal_state, lifecycle_event_id)
+      VALUES ('activity-local-1', 1, 'active', 'activity-event-1')`);
+  });
+}
+
 describe("training calendar repository with real SQLite", () => {
   it("projects active intent, distinguishes rest from empty, and rejects consumed non-events", async () => {
     const kernel = await open();
     await seedStrengthIntent(kernel);
+    await seedImportedActivity(kernel);
 
     const result = await createTrainingCalendarRepository(kernel).loadRange({
       startLocalDate: "2026-11-01",
       endLocalDateExclusive: "2026-11-06",
     });
 
-    expect(result.events.map(({ id }) => id)).toEqual(["strength-planned"]);
+    expect(result.events.map(({ id }) => id)).toEqual(["strength-planned", "activity-local-1"]);
     expect(result.events[0]).toMatchObject({
       displaySummary: "Full body A · 1 working set planned",
       destination: { kind: "occurrence", occurrenceId: "strength-planned" },
@@ -202,6 +237,15 @@ describe("training calendar repository with real SQLite", () => {
       { localDate: "2026-11-04", kind: "empty", restSummary: null },
       { localDate: "2026-11-05", kind: "empty", restSummary: null },
     ]);
+    expect(result.events[1]).toMatchObject({
+      sourceLabel: "Garmin",
+      displaySummary: "5.00 km · 26:00",
+      sourceIdentity: {
+        sourceKind: "garmin_connect_account",
+        accountNamespace: "private-owner",
+        externalActivityId: "external-private-1",
+      },
+    });
   });
 
   it("uses corrected effective history dates and summaries while excluding voided history", async () => {

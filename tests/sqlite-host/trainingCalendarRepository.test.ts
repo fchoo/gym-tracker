@@ -39,7 +39,8 @@ describe("training calendar repository", () => {
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }];
       return [{
-        id: "imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1_793_491_200_000,
+        id: "imported-run", source: "garmin_connect_account:owner-a", source_kind: "garmin_connect_account",
+        account_namespace: "owner-a", external_activity_id: "external-1", started_at_ms: 1_793_491_200_000,
         aggregate_json: JSON.stringify({
           confirmed_local_date: "2026-11-01",
           normalized: { sport: "running", subtype: "outdoor", source_time_zone: "Europe/London", distance_meters: 5_000, elapsed_ms: 1_560_000 },
@@ -74,7 +75,8 @@ describe("training calendar repository", () => {
         destination: { kind: "plan", planId: "running-plan", sessionId: "running-session-revision" },
       }),
       expect.objectContaining({
-        id: "imported-run", title: "Outdoor run", sourceLabel: "garmin_connect_account:owner-a",
+        id: "imported-run", title: "Outdoor run", sourceLabel: "Garmin",
+        sourceIdentity: { sourceKind: "garmin_connect_account", accountNamespace: "owner-a", externalActivityId: "external-1" },
         sport: "running", status: "imported", localDate: "2026-11-01", timeZone: "Europe/London",
         destination: { kind: "activity", activityId: "imported-run" },
       }),
@@ -103,7 +105,8 @@ describe("training calendar repository", () => {
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }];
       return [{
-        id: "imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1_793_491_200_000,
+        id: "imported-run", source: "garmin_connect_account:owner-a", source_kind: "garmin_connect_account",
+        account_namespace: "owner-a", external_activity_id: "external-1", started_at_ms: 1_793_491_200_000,
         aggregate_json: JSON.stringify({
           confirmed_local_date: "2026-11-01",
           normalized: { sport: "running", subtype: "treadmill", source_time_zone: "Australia/Sydney", distance_meters: 5_000, elapsed_ms: 1_560_000 },
@@ -120,7 +123,8 @@ describe("training calendar repository", () => {
 
     expect(result.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: "imported-run", title: "Treadmill run", sourceLabel: "garmin_connect_account:owner-a",
+        id: "imported-run", title: "Treadmill run", sourceLabel: "Garmin",
+        sourceIdentity: { sourceKind: "garmin_connect_account", accountNamespace: "owner-a", externalActivityId: "external-1" },
         status: "matched", scheduleId: "running-schedule", scheduleVersionId: "running-v2",
         planId: "running-plan", slotId: "slot-a", destination: { kind: "activity", activityId: "imported-run" },
       }),
@@ -141,7 +145,8 @@ describe("training calendar repository", () => {
       }];
       if (sql.includes("running_opportunities")) return [];
       return [{
-        id: "stale-imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1,
+        id: "stale-imported-run", source: "garmin_connect_account:owner-a", source_kind: "garmin_connect_account",
+        account_namespace: "owner-a", external_activity_id: "external-stale", started_at_ms: 1,
         aggregate_json: JSON.stringify({
           confirmed_local_date: "2026-11-01",
           normalized: { sport: "running", subtype: "outdoor", source_time_zone: "America/New_York", distance_meters: 5_000 },
@@ -165,10 +170,12 @@ describe("training calendar repository", () => {
       if (sql.includes("owned_plan_schedule_opportunities")) return [];
       if (sql.includes("running_opportunities")) return [];
       return [{
-        id: "malformed-import", source: "garmin", started_at_ms: 1,
+        id: "malformed-import", source: "garmin", source_kind: "garmin_connect_account",
+        account_namespace: "owner-a", external_activity_id: "external-malformed", started_at_ms: 1,
         aggregate_json: "not-json", opportunity_id: "missing-opportunity",
       }, {
-        id: "non-date-import", source: "garmin", started_at_ms: 2,
+        id: "non-date-import", source: "garmin", source_kind: "garmin_connect_account",
+        account_namespace: "owner-a", external_activity_id: "external-non-date", started_at_ms: 2,
         aggregate_json: JSON.stringify({ confirmed_local_date: 3 }), opportunity_id: null,
       }];
     });

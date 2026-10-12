@@ -18,7 +18,7 @@ const common = {
 
 describe("CalendarAgenda factual copy", () => {
   it("renders the source-backed result summary verbatim", async () => {
-    await render(
+    const rendered = await render(
       <AppearanceProvider>
         <CalendarAgenda
           {...common}
@@ -34,6 +34,7 @@ describe("CalendarAgenda factual copy", () => {
     );
     expect(screen.getByText("3 of 4 working sets completed")).toBeOnTheScreen();
     expect(screen.queryByText("Completed result")).toBeNull();
+    expect(JSON.stringify(rendered.toJSON())).not.toMatch(/garmin_connect_account|owner-a/u);
   });
 
   it("distinguishes a source-backed rest day from an empty date", async () => {
@@ -60,5 +61,26 @@ describe("CalendarAgenda factual copy", () => {
     );
     expect(screen.getByText("No scheduled or imported activity for this date.")).toBeOnTheScreen();
     expect(screen.queryByText("Recovery is the plan")).toBeNull();
+  });
+
+  it("never renders or announces private Garmin source identity", async () => {
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarAgenda
+          {...common}
+          events={[{
+            id: "activity-local-1", source: "imported_activity", sport: "running", status: "imported",
+            title: "Outdoor run", displaySummary: "5.00 km · 26:00", sourceLabel: "Garmin",
+            sourceIdentity: { sourceKind: "garmin_connect_account", accountNamespace: "private-owner", externalActivityId: "external-private-1" },
+            localDate: parseLocalDate("2026-11-01"), timeZone: "Asia/Singapore", scheduleId: null,
+            scheduleVersionId: null, planId: null, slotId: null, revision: null, state: "imported",
+            destination: { kind: "activity", activityId: "activity-local-1" },
+          }]}
+        />
+      </AppearanceProvider>,
+    );
+    const renderedText = JSON.stringify(rendered.toJSON());
+    expect(screen.getByText("Garmin")).toBeOnTheScreen();
+    expect(renderedText).not.toMatch(/garmin_connect_account|private-owner|external-private-1/u);
   });
 });
