@@ -6,10 +6,16 @@ import Phase18GarminAdversarialRoute from "../__phase18-garmin-adversarial";
 
 const CONFIRMATION = "VERIFY-PHASE18-GARMIN-ADVERSARIAL";
 const NONCE = "0123456789abcdef0123456789abcdef";
+const DEVICE_IDENTITY_SHA256 = "f".repeat(64);
 type CollectAdversarialReport = typeof import("../../src/testing/phase18GarminAdversarial")["runPhase18GarminAdversarialNativeSuite"];
-let mockParams: Readonly<{ confirmation?: unknown; nonce?: unknown }> = {
+let mockParams: Readonly<{
+  confirmation?: unknown;
+  nonce?: unknown;
+  device_identity_sha256?: unknown;
+}> = {
   confirmation: CONFIRMATION,
   nonce: NONCE,
+  device_identity_sha256: DEVICE_IDENTITY_SHA256,
 };
 const mockCollect = jest.fn<CollectAdversarialReport>();
 
@@ -51,7 +57,11 @@ jest.mock("../../src/testing/phase18GarminAdversarial", () => {
 
 describe("Phase18GarminAdversarialRoute", () => {
   beforeEach(() => {
-    mockParams = { confirmation: CONFIRMATION, nonce: NONCE };
+    mockParams = {
+      confirmation: CONFIRMATION,
+      nonce: NONCE,
+      device_identity_sha256: DEVICE_IDENTITY_SHA256,
+    };
     mockCollect.mockReset();
     mockCollect.mockResolvedValue({
       status: "passed",
@@ -97,7 +107,12 @@ describe("Phase18GarminAdversarialRoute", () => {
     render(<Phase18GarminAdversarialRoute />);
 
     await waitFor(() => expect(screen.getByText("passed")).toBeOnTheScreen());
-    expect(mockCollect).toHaveBeenCalledWith(undefined, expect.any(Object), NONCE);
+    expect(mockCollect).toHaveBeenCalledWith(
+      undefined,
+      expect.any(Object),
+      NONCE,
+      DEVICE_IDENTITY_SHA256,
+    );
     const emitted = log.mock.calls.map(([line]) => String(line));
     expect(emitted).toHaveLength(2);
     expect(emitted[0]).not.toContain(NONCE);
@@ -115,10 +130,25 @@ describe("Phase18GarminAdversarialRoute", () => {
     "A".repeat(32),
     [NONCE],
   ])("redirects without invoking native code for invalid nonce %p", async (nonce) => {
-    mockParams = { confirmation: CONFIRMATION, nonce };
+    mockParams = { confirmation: CONFIRMATION, nonce, device_identity_sha256: DEVICE_IDENTITY_SHA256 };
     const rendered = await render(<Phase18GarminAdversarialRoute />);
 
     expect(rendered.getByTestId("redirect-_")) .toBeOnTheScreen();
     expect(mockCollect).not.toHaveBeenCalled();
   });
+
+  it.each([undefined, "short", "F".repeat(64), [DEVICE_IDENTITY_SHA256]])(
+    "redirects without invoking native code for invalid device identity %p",
+    async (deviceIdentitySha256) => {
+      mockParams = {
+        confirmation: CONFIRMATION,
+        nonce: NONCE,
+        device_identity_sha256: deviceIdentitySha256,
+      };
+      const rendered = await render(<Phase18GarminAdversarialRoute />);
+
+      expect(rendered.getByTestId("redirect-_")) .toBeOnTheScreen();
+      expect(mockCollect).not.toHaveBeenCalled();
+    },
+  );
 });

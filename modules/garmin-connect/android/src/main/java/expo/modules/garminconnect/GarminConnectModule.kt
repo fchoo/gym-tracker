@@ -46,8 +46,49 @@ private data class GarminActivityDetailsInput(
 ) : Record
 
 private data class GarminAdversarialSuiteInput(
-  @Field val confirmation: String = ""
+  @Field val confirmation: String = "",
+  @Field val deviceIdentitySha256: String = ""
 ) : Record
+
+internal fun phase18DeviceIdentitySha256(
+  serial: String,
+  abi: String,
+  apiLevel: String,
+  model: String,
+): String {
+  val safeFact = Regex("^[^\\u0000\\r\\n]{1,512}$")
+  require(safeFact.matches(serial) && safeFact.matches(abi) && safeFact.matches(model)) {
+    "phase18_device_identity_invalid"
+  }
+  require(Regex("^\\d{2,3}$").matches(apiLevel)) { "phase18_device_identity_invalid" }
+  fun jsonString(value: String): String = buildString {
+    append('"')
+    value.forEach { character ->
+      when (character) {
+        '"' -> append("\\\"")
+        '\\' -> append("\\\\")
+        '\b' -> append("\\b")
+        '\u000C' -> append("\\f")
+        '\t' -> append("\\t")
+        else -> if (character.code < 0x20) {
+          append("\\u%04x".format(character.code))
+        } else {
+          append(character)
+        }
+      }
+    }
+    append('"')
+  }
+  val canonicalJson = "{" +
+    "\"serial\":" + jsonString(serial) +
+    ",\"abi\":" + jsonString(abi) +
+    ",\"apiLevel\":" + jsonString(apiLevel) +
+    ",\"model\":" + jsonString(model) +
+    "}"
+  return MessageDigest.getInstance("SHA-256")
+    .digest(canonicalJson.toByteArray(Charsets.UTF_8))
+    .joinToString("") { byte -> "%02x".format(byte) }
+}
 
 private class GarminAdversarialRotationGate {
   @Volatile
@@ -211,7 +252,7 @@ class GarminConnectModule : Module() {
         "garmin_operation_rejected"
       }
       adversarialRunner().run(input.confirmation) + mapOf(
-        "runtime_identity" to installedRuntimeIdentity(context),
+        "runtime_identity" to installedRuntimeIdentity(context, input.deviceIdentitySha256),
       )
     }).runOnQueue(appContext.backgroundCoroutineScope)
   }
@@ -312,7 +353,10 @@ class GarminConnectModule : Module() {
     }
   }
 
-  private fun installedRuntimeIdentity(context: Context): Map<String, String> {
+  private fun installedRuntimeIdentity(
+    context: Context,
+    deviceIdentitySha256: String,
+  ): Map<String, String> {
     val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       context.packageManager.getPackageInfo(
         context.packageName,
@@ -329,18 +373,13 @@ class GarminConnectModule : Module() {
       packageInfo.signatures
     } ?: throw IllegalStateException("garmin_runtime_identity_invalid")
     if (signatures.size != 1) throw IllegalStateException("garmin_runtime_identity_invalid")
-    val deviceIdentity = listOf(
-      Build.FINGERPRINT,
-      Build.SUPPORTED_ABIS.firstOrNull()
-        ?: throw IllegalStateException("garmin_runtime_identity_invalid"),
-      Build.MODEL,
-      Build.VERSION.SDK_INT.toString(),
-      Build.VERSION.RELEASE,
-    ).joinToString(separator = "\n", postfix = "\n")
+    if (!deviceIdentitySha256.matches(Regex("^[a-f0-9]{64}$"))) {
+      throw IllegalStateException("garmin_runtime_identity_invalid")
+    }
     return mapOf(
       "retainedApkSha256" to FileInputStream(context.applicationInfo.sourceDir).use(::sha256),
       "retainedSignatureSha256" to sha256(signatures.single().toByteArray()),
-      "deviceIdentitySha256" to sha256(deviceIdentity.toByteArray(Charsets.UTF_8)),
+      "deviceIdentitySha256" to deviceIdentitySha256,
     )
   }
 

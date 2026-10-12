@@ -82,13 +82,16 @@ export function phase18GarminAdversarialEnabled(input: Readonly<{
   suite?: unknown;
   confirmation?: unknown;
   nonce?: unknown;
+  deviceIdentitySha256?: unknown;
 }>): boolean {
   return input.buildProfile === "development-test"
     && input.nativeContractsEnabled === true
     && input.suite === "phase18-garmin-adversarial"
     && input.confirmation === PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION
     && typeof input.nonce === "string"
-    && PHASE18_GARMIN_ADVERSARIAL_NONCE.test(input.nonce);
+    && PHASE18_GARMIN_ADVERSARIAL_NONCE.test(input.nonce)
+    && typeof input.deviceIdentitySha256 === "string"
+    && NATIVE_HASH.test(input.deviceIdentitySha256);
 }
 
 const defaultSha256: Sha256 = (value) =>
@@ -813,6 +816,7 @@ export async function runPhase18GarminAdversarialNativeSuite(
   nativeModule = getGarminConnectNativeModule(),
   buildIdentity?: Phase18GarminAdversarialBuildIdentity,
   runNonce?: string,
+  deviceIdentitySha256?: string,
 ): Promise<Readonly<{
   status: "passed" | "TECHNICAL_REVIEW_REQUIRED";
   run_nonce: string;
@@ -822,8 +826,12 @@ export async function runPhase18GarminAdversarialNativeSuite(
   if (typeof runNonce !== "string" || !PHASE18_GARMIN_ADVERSARIAL_NONCE.test(runNonce)) {
     throw new Error("phase18_garmin_adversarial_nonce_invalid");
   }
+  if (typeof deviceIdentitySha256 !== "string" || !NATIVE_HASH.test(deviceIdentitySha256)) {
+    throw new Error("phase18_garmin_adversarial_device_identity_invalid");
+  }
   const raw = await nativeModule.runAdversarialSuite({
     confirmation: PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
+    deviceIdentitySha256,
   });
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("phase18_garmin_native_report_invalid");
@@ -835,6 +843,7 @@ export async function runPhase18GarminAdversarialNativeSuite(
     || (report.status !== "passed" && report.status !== "TECHNICAL_REVIEW_REQUIRED")
     || !validBuildIdentity(buildIdentity)
     || !validRuntimeIdentity(report.runtime_identity)
+    || report.runtime_identity.deviceIdentitySha256 !== deviceIdentitySha256
     || !Array.isArray(report.cases)
     || report.cases.length !== PHASE18_GARMIN_ADVERSARIAL_CASE_IDS.length
     || report.cases.some((entry, index) => !validNativeCase(entry, index))) {
