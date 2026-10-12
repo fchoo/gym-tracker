@@ -180,6 +180,7 @@ const mockRuntime = {
     month: input.month,
     selectedDate: input.selectedDate,
   })),
+  loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) })),
   loadLibrary: jest.fn(async () => librarySnapshot),
   listLibraryRecentExercises: jest.fn(async () => []),
   searchLibraryExercises: jest.fn(async () => ({
@@ -298,6 +299,7 @@ jest.mock("expo-router", () => {
       NativeReact.useEffect(() => effect(), [effect]);
     },
     usePathname: () => mockPathname,
+    useLocalSearchParams: () => ({}),
     useRouter: () => ({
       push: (...args: [string]) => mockPush(...args),
     }),
@@ -305,6 +307,7 @@ jest.mock("expo-router", () => {
 });
 
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
+  useCalendarRangeReadPort: () => ({ loadCalendarRange: mockRuntime.loadCalendarRange }),
   useWorkoutAppRuntime: () => mockRuntime,
 }));
 
