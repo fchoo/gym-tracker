@@ -158,8 +158,7 @@ export function CalendarScreen({
     setCalendarCommand(result.commands[0] ?? null);
 
     if (previousState.currentMonthId !== result.state.currentMonthId) {
-      const direction = result.state.currentMonthId > previousState.currentMonthId ? 1 : -1;
-      const nextDate = addLocalMonthsClamped(selectedDateRef.current, direction);
+      const nextDate = parseLocalDate(result.state.selectedLocalDate);
       pendingMonthRef.current = Object.freeze({ month: startOfLocalMonth(nextDate), selectedDate: nextDate });
     }
 
@@ -174,6 +173,10 @@ export function CalendarScreen({
     }
   }, []);
 
+  useEffect(() => {
+    dispatchCalendarTransition({ type: "set-reduced-motion", reducedMotion: reduceMotion });
+  }, [dispatchCalendarTransition, reduceMotion]);
+
   const navigateMonth = (direction: -1 | 1) => {
     const next = nextMonth(month, direction);
     if (next === null) {
@@ -183,19 +186,34 @@ export function CalendarScreen({
       type: "move",
       direction: direction === 1 ? "next" : "previous",
       targetMonthId: next.slice(0, 7),
+      targetSelectedLocalDate: addLocalMonthsClamped(selectedDateRef.current, direction),
     });
   };
 
   const returnToToday = () => {
-    setMonth(startOfLocalMonth(parsedToday));
-    selectDate(parsedToday);
+    if (parsedToday.slice(0, 7) === month.slice(0, 7)) {
+      selectDate(parsedToday);
+      return;
+    }
+    dispatchCalendarTransition({
+      type: "move",
+      direction: parsedToday > selectedDateRef.current ? "next" : "previous",
+      targetMonthId: parsedToday.slice(0, 7),
+      targetSelectedLocalDate: parsedToday,
+    });
   };
 
   const moveSelection = (date: LocalDate) => {
-    selectDate(date);
     if (date.slice(0, 7) !== month.slice(0, 7)) {
-      setMonth(startOfLocalMonth(date));
+      dispatchCalendarTransition({
+        type: "move",
+        direction: date > selectedDateRef.current ? "next" : "previous",
+        targetMonthId: date.slice(0, 7),
+        targetSelectedLocalDate: date,
+      });
+      return;
     }
+    selectDate(date);
   };
 
   const visibleMonth = range !== null && (isLoading || error !== null)
@@ -314,11 +332,19 @@ export function CalendarScreen({
               <CalendarMonthViewport
                 command={calendarCommand}
                 month={visibleMonth}
-                onCancel={() => dispatchCalendarTransition({ type: "cancel" })}
+                onCancel={() => dispatchCalendarTransition({ type: "invalidate" })}
                 onComplete={(epoch) => dispatchCalendarTransition({ type: "settle-complete", epoch })}
                 onPreview={(dx, viewportWidth) => dispatchCalendarTransition({ type: "drag", dx, dy: 0, viewportWidth })}
                 onRelease={({ dx, dy, targetMonthId, viewportWidth }) => dispatchCalendarTransition({
-                  type: "release", dx, dy, targetMonthId, viewportWidth,
+                  type: "release",
+                  dx,
+                  dy,
+                  targetMonthId,
+                  targetSelectedLocalDate: addLocalMonthsClamped(
+                    selectedDateRef.current,
+                    targetMonthId > calendarTransitionRef.current.currentMonthId ? 1 : -1,
+                  ),
+                  viewportWidth,
                 })}
                 renderMonth={(panelMonth, interactive) => calendarGridForMonth(panelMonth).map((dates) => (
                   <CalendarWeekRow

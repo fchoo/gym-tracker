@@ -33,9 +33,11 @@ export type CalendarMotionCommand =
 
 export type CalendarTransitionEvent =
   | Readonly<{ type: "drag"; dx: number; dy: number; viewportWidth: number }>
-  | Readonly<{ type: "release"; dx: number; dy: number; viewportWidth: number; targetMonthId: string; velocityX?: number }>
+  | Readonly<{ type: "release"; dx: number; dy: number; viewportWidth: number; targetMonthId: string; targetSelectedLocalDate?: string; velocityX?: number }>
   | Readonly<{ type: "cancel" }>
-  | Readonly<{ type: "move"; direction: "previous" | "next"; targetMonthId: string }>
+  | Readonly<{ type: "invalidate" }>
+  | Readonly<{ type: "set-reduced-motion"; reducedMotion: boolean }>
+  | Readonly<{ type: "move"; direction: "previous" | "next"; targetMonthId: string; targetSelectedLocalDate?: string }>
   | Readonly<{ type: "settle-complete"; epoch: number }>
   | Readonly<{ type: "expand" }>
   | Readonly<{ type: "collapse" }>
@@ -103,12 +105,14 @@ function settleWeek(state: CalendarTransitionState, phase: "expand" | "collapse"
 
 function settleMonth(
   state: CalendarTransitionState,
-  input: Readonly<{ targetMonthId: string; fromOffset: number; toOffset: -1 | 0 | 1 }>,
+  input: Readonly<{ targetMonthId: string; targetSelectedLocalDate?: string; fromOffset: number; toOffset: -1 | 0 | 1 }>,
 ): CalendarTransitionResult {
   assertIdentifier(input.targetMonthId);
+  if (input.targetSelectedLocalDate !== undefined) assertIdentifier(input.targetSelectedLocalDate);
   const next = freezeState({
     ...state,
     currentMonthId: input.toOffset === 0 ? state.currentMonthId : input.targetMonthId,
+    selectedLocalDate: input.toOffset === 0 ? state.selectedLocalDate : input.targetSelectedLocalDate ?? state.selectedLocalDate,
     phase: state.reducedMotion ? "idle" : "settling",
     titlePanel: "current",
     dragDx: 0,
@@ -167,20 +171,34 @@ export function transitionCalendar(
     case "release": {
       assertGeometry(event.dx, event.dy, event.viewportWidth);
       if (state.phase !== "idle" && state.phase !== "dragging") return result(state);
+      if (state.phase === "idle" && !horizontalIntent(event.dx, event.dy)) return result(state);
       const dragDx = clampMonthDrag(event.dx, event.viewportWidth);
-      const committed = horizontalIntent(event.dx, event.dy) && crossesMonthBoundary(dragDx, event.viewportWidth);
+      const committed = crossesMonthBoundary(dragDx, event.viewportWidth);
       return settleMonth(state, {
         targetMonthId: event.targetMonthId,
+        ...(event.targetSelectedLocalDate === undefined ? {} : { targetSelectedLocalDate: event.targetSelectedLocalDate }),
         fromOffset: dragDx / event.viewportWidth,
         toOffset: committed ? (dragDx < 0 ? -1 : 1) : 0,
       });
     }
     case "cancel":
+    case "invalidate":
       return result(reset(state, true));
+    case "set-reduced-motion":
+      if (state.reducedMotion === event.reducedMotion && state.phase === "idle") return result(state);
+      return result(freezeState({
+        ...state,
+        reducedMotion: event.reducedMotion,
+        phase: "idle",
+        titlePanel: "current",
+        dragDx: 0,
+        epoch: state.epoch + 1,
+      }));
     case "move":
       if (state.phase !== "idle") return result(state);
       return settleMonth(state, {
         targetMonthId: event.targetMonthId,
+        ...(event.targetSelectedLocalDate === undefined ? {} : { targetSelectedLocalDate: event.targetSelectedLocalDate }),
         fromOffset: 0,
         toOffset: event.direction === "next" ? -1 : 1,
       });

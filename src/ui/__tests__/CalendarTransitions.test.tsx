@@ -149,7 +149,7 @@ describe("Calendar semantic transitions", () => {
     const verticalRelease = transitionCalendar(initial(), {
       type: "release", dx: 0, dy: 100, viewportWidth: 400, targetMonthId: "2026-12",
     });
-    expect(verticalRelease.commands[0]).toMatchObject({ fromOffset: 0, toOffset: 0 });
+    expect(verticalRelease).toEqual({ state: initial(), commands: [] });
 
     const settling = transitionCalendar(initial(), { type: "move", direction: "previous", targetMonthId: "2026-10" });
     expect(transitionCalendar(settling.state, { type: "drag", dx: -100, dy: 0, viewportWidth: 400 })).toEqual({ state: settling.state, commands: [] });
