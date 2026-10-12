@@ -635,19 +635,23 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
     expect(screen.getByText("August 2026")).toBeOnTheScreen();
     expect(screen.queryByText("September 2026")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show July 2026" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Show September 2026" })).toBeDisabled();
 
     rejectNextRange?.(new Error("offline"));
 
     expect(await screen.findByText("Calendar could not be loaded")).toBeOnTheScreen();
     expect(screen.getByText("Your saved workouts were not changed. Try loading Calendar again."))
       .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Show July 2026" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Show September 2026" })).toBeEnabled();
 
     await fireEvent.press(screen.getByRole("button", { name: "Retry Calendar" }));
 
     await waitFor(() => {
       expect(loadCalendarRange).toHaveBeenLastCalledWith({
-        startLocalDate: "2026-07-27",
-        endLocalDateExclusive: "2026-11-09",
+        startLocalDate: "2026-06-29",
+        endLocalDateExclusive: "2026-10-12",
       });
     });
   });

@@ -168,6 +168,8 @@ export function CalendarScreen({
     retained: NonNullable<typeof calendarReturnRef.current>;
     requestGeneration: number;
   }> | null>(null);
+  const suppressNextRangeRequestRef = useRef(false);
+  const lastGoodTransitionRef = useRef(calendarTransitionRef.current);
   const weekRows = useMemo(() => calendarGridForMonth(month), [month]);
   const grid = useMemo(() => weekRows.flat(), [weekRows]);
   const rangeInput = useMemo(() => {
@@ -283,6 +285,10 @@ export function CalendarScreen({
   useEffect(() => cancelDiagnosticInteraction, [cancelDiagnosticInteraction]);
 
   useEffect(() => {
+    if (suppressNextRangeRequestRef.current) {
+      suppressNextRangeRequestRef.current = false;
+      return undefined;
+    }
     const request = requestGeneration.current + 1;
     requestGeneration.current = request;
     const queryStartedAt = globalThis.performance?.now() ?? Date.now();
@@ -299,6 +305,7 @@ export function CalendarScreen({
         setRange(next);
         setLastGoodMonth(month);
         setLastGoodSelectedDate(selectedDateRef.current);
+        lastGoodTransitionRef.current = calendarTransitionRef.current;
         setRefreshCompletion(Object.freeze({ generation: request, range: next }));
         if (diagnostics !== undefined) {
           const current = currentDiagnosticState();
@@ -319,6 +326,26 @@ export function CalendarScreen({
           return;
         }
         setError(nextError instanceof Error ? nextError : new Error("Calendar query failed"));
+        const rollback = Object.freeze({
+          ...lastGoodTransitionRef.current,
+          currentMonthId: lastGoodMonth.slice(0, 7),
+          selectedLocalDate: lastGoodSelectedDate,
+          phase: "idle" as const,
+          titlePanel: "current" as const,
+          dragDx: 0,
+          pendingMonthId: null,
+          pendingSelectedLocalDate: null,
+          epoch: calendarTransitionRef.current.epoch + 1,
+        });
+        calendarTransitionRef.current = rollback;
+        setCalendarTransition(rollback);
+        setCalendarCommand(null);
+        if (month !== lastGoodMonth) {
+          suppressNextRangeRequestRef.current = true;
+          setMonth(lastGoodMonth);
+        }
+        selectedDateRef.current = lastGoodSelectedDate;
+        setSelectedDate(lastGoodSelectedDate);
         setRefreshCompletion(Object.freeze({ generation: request, range: null }));
       })
       .finally(() => {
@@ -548,6 +575,7 @@ export function CalendarScreen({
   const visibleSelectedDate = range !== null && (isLoading || error !== null)
     ? lastGoodSelectedDate
     : selectedDate;
+  const interactionDisabled = range !== null && isLoading;
   const visibleWeekRows = visibleMonth === month
     ? weekRows
     : calendarGridForMonth(visibleMonth);
@@ -603,8 +631,8 @@ export function CalendarScreen({
     eventsByDate.set(event.localDate, [...(eventsByDate.get(event.localDate) ?? []), event]);
   }
   const daysByDate = new Map((range?.days ?? []).map((day) => [day.localDate, day] as const));
-  const previous = nextMonth(month, -1);
-  const following = nextMonth(month, 1);
+  const previous = nextMonth(visibleMonth, -1);
+  const following = nextMonth(visibleMonth, 1);
   const titleBaseMonth = calendarTransition.phase === "settling"
     ? monthIdDate(calendarTransition.currentMonthId)
     : visibleMonth;
@@ -634,6 +662,7 @@ export function CalendarScreen({
       <FocusablePressable
         accessibilityLabel="Collapse day and return to month"
         accessibilityRole="button"
+        disabled={interactionDisabled}
         onKeyDown={(event) => {
           if (event.nativeEvent.key === "Escape") requestCalendarBack();
           else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " " || event.nativeEvent.key === "Select") collapseCalendar();
@@ -678,12 +707,13 @@ export function CalendarScreen({
         <View style={styles.screen}>
           {header}
           <View style={styles.navigation}>
-            <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={previous === null} icon="back" onPress={() => navigateMonth(-1)} />
+            <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={interactionDisabled || previous === null} icon="back" onPress={() => navigateMonth(-1)} />
             <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]} testID="calendar-month-title">{monthLabel(titleMonth ?? month)}</Text>
             <FocusablePressable
               accessibilityHint="Returns the Calendar selection to the current local date"
               accessibilityLabel={`Return to today, ${fullDate(parsedToday)}`}
               accessibilityRole="button"
+              disabled={interactionDisabled}
               onPress={returnToToday}
               style={({ pressed }) => [
                 styles.todayAction,
@@ -692,7 +722,7 @@ export function CalendarScreen({
             >
               <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.onAction }]}>Today</Text>
             </FocusablePressable>
-            <IconAction accessibilityLabel={following === null ? "Next month unavailable" : `Show ${monthLabel(following)}`} disabled={following === null} icon="forward" onPress={() => navigateMonth(1)} />
+            <IconAction accessibilityLabel={following === null ? "Next month unavailable" : `Show ${monthLabel(following)}`} disabled={interactionDisabled || following === null} icon="forward" onPress={() => navigateMonth(1)} />
           </View>
           {isLoading && range !== null ? <Text accessibilityLiveRegion="polite" style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>Updating Calendar</Text> : null}
           {error === null ? null : (
@@ -727,6 +757,7 @@ export function CalendarScreen({
               <CalendarMonthViewport
                 agenda={agendaRegion}
                 command={calendarCommand}
+                disabled={interactionDisabled}
                 fontScale={fontScale}
                 focusedWeek={focusedWeek}
                 layoutGeneration={layoutGeneration}
@@ -759,6 +790,7 @@ export function CalendarScreen({
                     <CalendarWeekRow
                       dates={dates}
                       daysByDate={daysByDate}
+                      disabled={interactionDisabled}
                       eventsByDate={eventsByDate}
                       fontScale={fontScale}
                       hidden={hidden}
@@ -799,6 +831,7 @@ export function CalendarScreen({
                   <CalendarWeekRow
                     dates={dates}
                     daysByDate={daysByDate}
+                    disabled={interactionDisabled}
                     eventsByDate={eventsByDate}
                     fontScale={fontScale}
                     month={visibleMonth}

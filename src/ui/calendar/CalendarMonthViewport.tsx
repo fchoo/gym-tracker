@@ -146,6 +146,7 @@ function FocusedAgenda({
 export function CalendarMonthViewport({
   agenda,
   command,
+  disabled = false,
   fontScale = 1,
   focusedWeek,
   layoutGeneration = 0,
@@ -163,6 +164,7 @@ export function CalendarMonthViewport({
 }: Readonly<{
   agenda?: React.ReactNode;
   command: CalendarMotionCommand | null;
+  disabled?: boolean;
   fontScale?: number;
   layoutGeneration?: number;
   focusedWeek: Readonly<{
@@ -195,7 +197,7 @@ export function CalendarMonthViewport({
   const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
-  const panEnabled = useSharedValue(calendarMonthPanEnabled(transition.phase));
+  const panEnabled = useSharedValue(!disabled && calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
   const diagnosticSequenceStarted = useRef(false);
   const diagnosticSequenceExpanded = useRef(false);
@@ -287,11 +289,11 @@ export function CalendarMonthViewport({
   }, [pointerX, previewPanel, transition.epoch, transition.phase]);
 
   useEffect(() => {
-    panEnabled.value = calendarMonthPanEnabled(transition.phase);
-  }, [panEnabled, transition.phase]);
+    panEnabled.value = !disabled && calendarMonthPanEnabled(transition.phase);
+  }, [disabled, panEnabled, transition.phase]);
 
   const pan = Gesture.Pan()
-    .enabled(calendarMonthPanEnabled(transition.phase))
+    .enabled(!disabled && calendarMonthPanEnabled(transition.phase))
     .manualActivation(true)
     .onTouchesDown((event) => {
       const touch = event.allTouches[0];
