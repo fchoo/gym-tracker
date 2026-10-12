@@ -461,6 +461,45 @@ describe("ProgressScreen", () => {
     );
   });
 
+  it("opens each available Running goal row in its distance-bound target editor", async () => {
+    const tenKilometreSource: RunningPlanAggregate = Object.freeze({
+      ...runningTargetSource,
+      id: "running-plan-10000",
+      name: "10 km plan",
+      goal: Object.freeze({
+        ...runningTargetSource.goal,
+        id: "running-goal-10000",
+        planId: "running-plan-10000",
+        goalDistanceMeters: 10_000,
+        targetDurationMs: undefined,
+      }),
+    });
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: dashboardFor(input.sport),
+      runningTargetSources: input.sport === "Running" ? [runningTargetSource, tenKilometreSource] : [],
+    }));
+    await renderProgress(loadProgress as never, {
+      runningTargetRuntime: {
+        createId: () => "running-target-save:request",
+        loadPlan: async () => tenKilometreSource,
+        saveRunningTarget: jest.fn(async () => ({ outcome: "committed" as const, plan: tenKilometreSource })),
+      },
+    });
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Set target for 10 km" }));
+
+    expect(screen.getByRole("header", { name: "Running target" })).toBeOnTheScreen();
+    expect(screen.getByRole("tab", { name: "10 km" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
+    expect(screen.getByText("No benchmark yet")).toBeOnTheScreen();
+  });
+
   it("restores focus to the exact retained Strength row after a deep-route return", async () => {
     const props = {
       loadProgress: jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
