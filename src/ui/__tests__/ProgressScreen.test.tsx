@@ -126,4 +126,68 @@ describe("ProgressScreen", () => {
     await waitFor(() => expect(screen.getByRole("header", { name: "2.4 km goal" })).toBeOnTheScreen());
     expect(screen.queryByRole("header", { name: "Nearest active goal" })).not.toBeOnTheScreen();
   });
+
+  it("opens the factual All nearest active goal in its sport without changing the selected range", async () => {
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "All"
+        ? {
+          sport: "All" as const,
+          state: "ready" as const,
+          primaryGoal: {
+            targetId: "running-2400", sport: "Running" as const, distanceMeters: 2400,
+            targetDurationSeconds: 660, effectiveAtMs: 1, revision: 2, sourceOrder: 0,
+          },
+        }
+        : runningDashboard(),
+    }));
+    await renderProgress(loadProgress as never);
+
+    expect(await screen.findByRole("header", { name: "Nearest active goal" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Open Running goal" }));
+
+    await waitFor(() => expect(loadProgress).toHaveBeenLastCalledWith({
+      sport: "Running", period: "4_weeks", nowLocalDate: "2026-08-24",
+    }));
+    expect(screen.getByRole("button", { name: "4 weeks" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
+  });
+
+  it("renders Strength facts and target-only Running absence without fixture values", async () => {
+    const strengthFact = {
+      exerciseId: "back-squat", exerciseName: "Back Squat", identityKey: "load_reps:1:1",
+      comparatorKey: "identity", sessionId: "session-1", setId: "set-1", localDate: "2026-08-24",
+      targetJson: "opaque-source-target", observationJson: "opaque-source-observation",
+    };
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "Strength"
+        ? { sport: "Strength" as const, state: "ready" as const, facts: [strengthFact] }
+        : { sport: "Running" as const, state: "empty" as const, goals: [] },
+    }));
+    await renderProgress(loadProgress as never);
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    expect(await screen.findByText("Back Squat")).toBeOnTheScreen();
+    expect(screen.getByText("Target unavailable")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    expect(await screen.findByText("10 km · Target unset · No effort recorded · Set target")).toBeOnTheScreen();
+    expect(screen.getByText("Half Marathon · Target unset · No effort recorded · Set target")).toBeOnTheScreen();
+    expect(screen.queryByText("0:00")).not.toBeOnTheScreen();
+  });
+
+  it("keeps rebuild values suppressed and leaves an explicit manual retry", async () => {
+    const loadProgress = jest.fn<React.ComponentProps<typeof ProgressScreen>["loadProgress"]>()
+      .mockResolvedValue({ sport: "All", period: "4_weeks", freshness: "updating", dashboard: null });
+    await renderProgress(loadProgress);
+
+    expect(await screen.findByText("Updating progress")).toBeOnTheScreen();
+    expect(screen.queryByText(/Latest ·|Best ·/u)).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Refresh progress" }));
+    await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+  });
 });
