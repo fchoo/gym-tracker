@@ -4,6 +4,8 @@ import React from "react";
 
 import {
   FactualHistoryChart,
+  factualChartY,
+  formatFactualDuration,
   projectFactualVisualSeries,
   type ProgressFactualSeries,
 } from "../components/FactualHistoryChart";
@@ -98,6 +100,68 @@ describe("FactualHistoryChart", () => {
     expect(sampled[0]?.point.activityId).toBe("activity-0");
     expect(sampled.at(-1)?.point.activityId).toBe("activity-399");
     expect(sampled.some((entry) => entry.point.valueSeconds === 601)).toBe(true);
+
+    const semanticOverflow: ProgressFactualSeries = Object.freeze({
+      ...twoEffortSeries,
+      points: Object.freeze(Array.from({ length: 241 }, (_, index) => Object.freeze({
+        ...twoEffortSeries.points[0]!,
+        activityId: `extremum-${index}`,
+        sourceRevision: index + 1,
+        valueSeconds: index % 2 === 0 ? 600 : 900,
+        targetAtDateSeconds: 750,
+      }))),
+    });
+    const retainedSemantic = projectFactualVisualSeries(semanticOverflow).actualSegments.flat();
+    expect(retainedSemantic).toHaveLength(241);
+    expect(retainedSemantic.map(({ point }) => point.activityId)).toEqual(
+      semanticOverflow.points.map(({ activityId }) => activityId),
+    );
+  });
+
+  it("draws higher-is-better improvements upward and labels exact equality as At target", async () => {
+    expect(factualChartY(50, 40, 50, false)).toBeLessThan(factualChartY(40, 40, 50, false));
+    expect(factualChartY(40, 40, 50, true)).toBeLessThan(factualChartY(50, 40, 50, true));
+    const strength = Object.freeze({
+      ...twoEffortSeries,
+      fasterIsLower: false,
+      metricLabel: "Bench Press load",
+      directionLabel: "Higher comparable load is better.",
+      currentTargetSeconds: 50,
+      unitLabel: "kg",
+      points: Object.freeze([
+        Object.freeze({ ...twoEffortSeries.points[0]!, valueSeconds: 40, targetAtDateSeconds: 45 }),
+        Object.freeze({ ...twoEffortSeries.points[1]!, valueSeconds: 50, targetAtDateSeconds: 50 }),
+      ]),
+    });
+    const rendered = await render(<AppearanceProvider><FactualHistoryChart formatValue={(value) => value === null ? "—" : `${value} kg`} series={strength} /></AppearanceProvider>);
+    expect(rendered.getByText("At target")).toBeTruthy();
+    expect(rendered.getByLabelText(/Higher comparable load is better/u)).toBeTruthy();
+  });
+
+  it("formats shared durations consistently across minute and hour boundaries", () => {
+    expect(formatFactualDuration(3_599)).toBe("59:59");
+    expect(formatFactualDuration(3_600)).toBe("1:00:00");
+    expect(formatFactualDuration(86_399)).toBe("23:59:59");
+  });
+
+  it("pages the complete factual data equivalent without truncating source actions", async () => {
+    const series: ProgressFactualSeries = Object.freeze({
+      ...twoEffortSeries,
+      points: Object.freeze(Array.from({ length: 205 }, (_, index) => Object.freeze({
+        ...twoEffortSeries.points[0]!,
+        activityId: `page-${index}`,
+        sourceRevision: index + 1,
+        valueSeconds: 700 - index,
+      }))),
+    });
+    const rendered = await render(<AppearanceProvider><FactualHistoryChart onOpenSource={jest.fn()} series={series} /></AppearanceProvider>);
+    await fireEvent.press(rendered.getByRole("button", { name: "Show history data" }));
+    expect(rendered.getAllByRole("button", { name: "Open source" })).toHaveLength(100);
+    await fireEvent.press(rendered.getByRole("button", { name: "Show more history data" }));
+    expect(rendered.getAllByRole("button", { name: "Open source" })).toHaveLength(200);
+    await fireEvent.press(rendered.getByRole("button", { name: "Show more history data" }));
+    expect(rendered.getAllByRole("button", { name: "Open source" })).toHaveLength(205);
+    expect(rendered.queryByRole("button", { name: "Show more history data" })).toBeNull();
   });
 
   it("suppresses old or incompatible source actions and stacks facts at 200 percent text", async () => {
