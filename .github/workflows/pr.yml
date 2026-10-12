@@ -61,6 +61,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Enforce dependency advisory policy
+        run: npm run audit:dependencies
+
       - name: Verify pinned Phase 18 Python coverage
         run: |
           npm run bootstrap:coverage:phase18

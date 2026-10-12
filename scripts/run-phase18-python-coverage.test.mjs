@@ -82,3 +82,12 @@ test("Python coverage uses one checked-in pin across bootstrap, npm, CI, and doc
   assert.match(documentation, /npm run bootstrap:coverage:phase18/u);
   assert.match(documentation, /npm run test:coverage:phase18:python/u);
 });
+
+test("PR bootstrap runs the dependency audit immediately after locked installation", () => {
+  const workflow = readFileSync(".github/workflows/pr.yml", "utf8");
+
+  assert.match(
+    workflow,
+    /- name: Install locked dependencies\n        run: npm ci\n\n      - name: Enforce dependency advisory policy\n        run: npm run audit:dependencies/u,
+  );
+});
