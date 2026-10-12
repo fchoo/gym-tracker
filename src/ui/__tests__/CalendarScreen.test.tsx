@@ -52,6 +52,43 @@ const completedStrengthRange = Object.freeze({
   })]),
 }) as CalendarRange;
 
+const agendaRange = Object.freeze({
+  events: Object.freeze([
+    Object.freeze({
+      ...completedStrengthRange.events[0],
+      id: "partial-strength-1",
+      state: "partial",
+      status: "partial",
+      destination: Object.freeze({ kind: "session" as const, sessionId: "partial-strength-1" }),
+    }),
+    Object.freeze({
+      ...range.events[0],
+      id: "planned-strength-1",
+      destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: "planned-strength-1" }),
+    }),
+    Object.freeze({
+      ...range.events[0],
+      id: "planned-running-1",
+      source: "running" as const,
+      sport: "running" as const,
+      sourceLabel: "Tempo",
+      title: "Tempo progression",
+      destination: Object.freeze({ kind: "plan" as const, planId: "running-plan-1", sessionId: "session-revision-1" }),
+    }),
+    Object.freeze({
+      ...range.events[0],
+      id: "imported-running-1",
+      source: "imported_activity" as const,
+      sport: "running" as const,
+      sourceLabel: "Garmin",
+      status: "imported" as const,
+      state: "imported",
+      title: "Outdoor run",
+      destination: Object.freeze({ kind: "activity" as const, activityId: "activity-1" }),
+    }),
+  ]),
+}) as CalendarRange;
+
 describe("CalendarScreen", () => {
   it("opens one completed Strength agenda target without giving the date cell a nested event action", async () => {
     const onOpenEvent = jest.fn();
@@ -122,6 +159,30 @@ describe("CalendarScreen", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Close Calendar key" }));
     expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
+  });
+
+  it("keeps all selected-date agenda identities in source order and exposes no management command", async () => {
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => agendaRange)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*4 scheduled or imported events/u }));
+
+    expect(await screen.findByLabelText("4 scheduled or imported events")).toBeOnTheScreen();
+    expect(screen.getAllByTestId(/calendar-agenda-event/u).map((node) => node.props.testID)).toEqual([
+      "calendar-agenda-event-partial-strength-1",
+      "calendar-agenda-event-planned-strength-1",
+      "calendar-agenda-event-planned-running-1",
+      "calendar-agenda-event-imported-running-1",
+    ]);
+    expect(screen.queryByText(/resume|correct|remove|match workout/u)).toBeNull();
   });
 
   it("retains the last good month during refresh and retries the exact failed range", async () => {
