@@ -78,6 +78,26 @@ describe("Calendar semantic transitions", () => {
     expect(() => clampMonthDrag(1, 0)).toThrow("calendar_transition_invalid_geometry");
   });
 
+  it("leaves vertical releases unowned and cancels stale motion when runtime reduced motion changes", () => {
+    const vertical = transitionCalendar(initial(), {
+      type: "release", dx: 0, dy: 120, viewportWidth: 400, targetMonthId: "2026-12",
+    });
+    expect(vertical).toEqual({ state: initial(), commands: [] });
+
+    const settling = transitionCalendar(initial(), {
+      type: "move", direction: "next", targetMonthId: "2026-12",
+    });
+    const reconfigured = transitionCalendar(settling.state, {
+      type: "set-reduced-motion", reducedMotion: true,
+    });
+    expect(reconfigured).toEqual({
+      state: expect.objectContaining({ currentMonthId: "2026-12", phase: "idle", reducedMotion: true, epoch: 2 }),
+      commands: [],
+    });
+    expect(transitionCalendar(reconfigured.state, { type: "settle-complete", epoch: 1 }))
+      .toEqual({ state: reconfigured.state, commands: [] });
+  });
+
   it("publishes completion only for the current epoch and resolves reduced motion with the same destination but no motion command", () => {
     const settling = transitionCalendar(initial(), {
       type: "move", direction: "next", targetMonthId: "2026-12",
