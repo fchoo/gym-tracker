@@ -4,7 +4,9 @@ import {
   canonicalRunningRequestHash,
   RunningCommandError,
   saveRunningSourceGraph,
+  saveRunningTarget,
   type SaveRunningSourceGraphInput,
+  type SaveRunningTargetInput,
 } from "./commands";
 
 function input(overrides: Partial<SaveRunningSourceGraphInput> = {}): SaveRunningSourceGraphInput {
@@ -68,5 +70,31 @@ describe("Running source graph commands", () => {
       slots: valid.slots.map((slot) => ({ ...slot, revision: 0 })),
     })).rejects.toThrow("running_command_order_invalid");
     expect(repository.saveSourceGraph).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed, nonfuture, or noncanonical target drafts before any source write", async () => {
+    const repository = { saveSourceGraph: jest.fn(async () => ({})) };
+    const base = {
+      requestId: "target-request", planId: "plan-1", expectedPlanRevision: 2,
+      expectedGoalRevision: 1, savedAtMs: new Date(2026, 0, 2, 12).getTime(),
+      goal: {
+        version: 1 as const, id: "goal-2", planId: "plan-1", revision: 2,
+        goalDistanceMeters: 2400, targetDurationMs: 660_000,
+        targetLocalDate: "2026-01-03", trainingDays: ["Monday" as const, "Thursday" as const],
+        createdAtMs: new Date(2026, 0, 2, 12).getTime(),
+      },
+    };
+    const input: SaveRunningTargetInput = { ...base, requestSha256: canonicalRunningRequestHash(base) };
+    await expect(saveRunningTarget(repository, input)).resolves.toEqual({});
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, targetLocalDate: "2026-02-31" },
+    })).rejects.toThrow("running_target_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, targetLocalDate: "2026-01-02" },
+    })).rejects.toThrow("running_target_invalid");
+    await expect(saveRunningTarget(repository, {
+      ...input, goal: { ...input.goal, trainingDays: ["Thursday", "Monday"] },
+    })).rejects.toThrow("running_target_invalid");
+    expect(repository.saveSourceGraph).toHaveBeenCalledTimes(1);
   });
 });

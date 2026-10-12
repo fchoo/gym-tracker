@@ -15,7 +15,8 @@ export type RunningCommandErrorCode =
   | "running_command_hash_invalid"
   | "running_command_identity_invalid"
   | "running_command_order_invalid"
-  | "running_command_revision_invalid";
+  | "running_command_revision_invalid"
+  | "running_target_invalid";
 
 export class RunningCommandError extends Error {
   readonly kind = "validation" as const;
@@ -51,10 +52,26 @@ export type SaveRunningSourceGraphInput = Readonly<{
   /** Aggregate editors publish the complete current membership; lower-level
    * authoring callers may append a partial graph without retiring siblings. */
   completeMembership?: boolean;
+  /** Target-only revisions share the source graph receipt table but need a
+   * typed committed/read-back result for UI replay recovery. */
+  targetCommand?: boolean;
 }>;
 
 export type RunningSourceGraphRepository = Readonly<{
   saveSourceGraph(input: SaveRunningSourceGraphInput): Promise<Readonly<Record<string, unknown>>>;
+}>;
+
+/** A target is a revision of the existing Running goal, never a Progress-owned
+ * projection.  Keeping the full goal in the envelope makes the request
+ * canonical and permits the repository receipt to replay it exactly. */
+export type SaveRunningTargetInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  planId: string;
+  expectedPlanRevision: number;
+  expectedGoalRevision: number;
+  savedAtMs: number;
+  goal: RunningGoal;
 }>;
 
 export type CreateInactiveRunningPlanInput = Readonly<{
@@ -82,6 +99,17 @@ export function canonicalRunningRequestHash(value: unknown): string {
 
 function identifier(value: string): boolean {
   return value.trim() === value && value.length > 0 && value.length <= 128;
+}
+
+function isFutureLocalDate(value: string, savedAtMs: number): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (match === null) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const candidate = new Date(year!, month! - 1, day!);
+  if (candidate.getFullYear() !== year || candidate.getMonth() !== month! - 1 || candidate.getDate() !== day) return false;
+  const now = new Date(savedAtMs);
+  const today = `${now.getFullYear().toString().padStart(4, "0")}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return value > today;
 }
 
 function assertInput(input: SaveRunningSourceGraphInput): void {
@@ -115,6 +143,56 @@ export async function saveRunningSourceGraph(
 ): Promise<Readonly<Record<string, unknown>>> {
   assertInput(input);
   return repository.saveSourceGraph(input);
+}
+
+function assertRunningTarget(input: SaveRunningTargetInput): void {
+  if (!identifier(input.requestId) || !identifier(input.planId) || !SHA256.test(input.requestSha256)) {
+    throw new RunningCommandError(input.requestId ? "running_command_hash_invalid" : "running_command_identity_invalid");
+  }
+  if (!Number.isSafeInteger(input.expectedPlanRevision) || input.expectedPlanRevision < 1
+    || !Number.isSafeInteger(input.expectedGoalRevision) || input.expectedGoalRevision < 1
+    || !Number.isSafeInteger(input.savedAtMs) || input.savedAtMs < 0) {
+    throw new RunningCommandError("running_command_revision_invalid");
+  }
+  parseRunningGoal(input.goal);
+  if (input.goal.planId !== input.planId || input.goal.revision !== input.expectedGoalRevision + 1
+    || input.goal.createdAtMs !== input.savedAtMs
+    || input.goal.targetDurationMs === undefined
+    || input.goal.targetDurationMs < 60_000 || input.goal.targetDurationMs >= 86_400_000) {
+    throw new RunningCommandError("running_target_invalid");
+  }
+  const orderedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+  if (input.goal.trainingDays.some((day, index) => day !== orderedDays.filter((candidate) => input.goal.trainingDays.includes(candidate))[index])) {
+    throw new RunningCommandError("running_target_invalid");
+  }
+  if (input.goal.targetLocalDate !== undefined) {
+    if (!isFutureLocalDate(input.goal.targetLocalDate, input.savedAtMs)) throw new RunningCommandError("running_target_invalid");
+  }
+}
+
+/**
+ * Stages one goal-only source revision.  It deliberately reuses the Running
+ * graph writer: the generic writer already owns the exclusive plan revision,
+ * immutable receipt and source-history transaction.  No UI or Progress table
+ * receives an independent target mutation.
+ */
+export async function saveRunningTarget(
+  repository: RunningSourceGraphRepository,
+  input: SaveRunningTargetInput,
+): Promise<Readonly<Record<string, unknown>>> {
+  assertRunningTarget(input);
+  return repository.saveSourceGraph({
+    requestId: input.requestId,
+    requestSha256: input.requestSha256,
+    operation: "edit",
+    planId: input.planId,
+    expectedPlanRevision: input.expectedPlanRevision,
+    createdAtMs: input.savedAtMs,
+    goal: input.goal,
+    sessions: [],
+    slots: [],
+    targetCommand: true,
+  });
 }
 
 export async function createInactiveRunningPlan(

@@ -1,10 +1,11 @@
-import { describe, expect, it, jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const mockReadAggregate = jest.fn<any>();
 const mockCreateInactiveRunningPlan = jest.fn<any>();
 const mockSaveRunningSourceGraph = jest.fn<any>();
 const mockPreviewLifecycle = jest.fn<any>();
 const mockConfirmLifecycle = jest.fn<any>();
+const mockSaveRunningTarget = jest.fn<any>();
 
 jest.mock("../platform/sqlite/repositories/runningPlanRepository", () => ({
   createRunningPlanRepository: () => ({ readAggregate: mockReadAggregate, saveSourceGraph: mockSaveRunningSourceGraph, previewLifecycle: mockPreviewLifecycle, confirmLifecycle: mockConfirmLifecycle }),
@@ -12,12 +13,22 @@ jest.mock("../platform/sqlite/repositories/runningPlanRepository", () => ({
 jest.mock("../domains/running/commands", () => ({
   createInactiveRunningPlan: (...arguments_: unknown[]) => mockCreateInactiveRunningPlan(...arguments_),
   saveRunningSourceGraph: (...arguments_: unknown[]) => mockSaveRunningSourceGraph(...arguments_),
+  saveRunningTarget: (...arguments_: unknown[]) => mockSaveRunningTarget(...arguments_),
   canonicalRunningRequestHash: () => "b".repeat(64),
 }));
 
 import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
 
 describe("RunningPlanRuntimePort", () => {
+  beforeEach(() => {
+    mockReadAggregate.mockReset();
+    mockCreateInactiveRunningPlan.mockReset();
+    mockSaveRunningSourceGraph.mockReset();
+    mockSaveRunningTarget.mockReset();
+    mockPreviewLifecycle.mockReset();
+    mockConfirmLifecycle.mockReset();
+  });
+
   it("returns only the authoritative aggregate read after a successful create command", async () => {
     const committed = { id: "running", version: 1 as const, name: "Running", revision: 1, active: false as const, createdAtMs: 1, goal: {}, sessions: [] };
     const authoritative = { ...committed, name: "Authoritative Running" };
@@ -25,6 +36,36 @@ describe("RunningPlanRuntimePort", () => {
     const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 1, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
     await expect(runtime.createInactivePlan({ plan: committed as never })).resolves.toEqual(authoritative);
     expect(mockReadAggregate).toHaveBeenCalledWith("running");
+  });
+
+  it("keeps one target request envelope, then acknowledges only a committed target readback", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2400, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const readBack = { ...plan, revision: 5, goal: { ...plan.goal, id: "goal-3", revision: 3, targetDurationMs: 660_000 } };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(readBack);
+    mockSaveRunningTarget.mockResolvedValue({ outcome: "committed", planId: "running", sourceRevision: 5, targetRevision: 3, target: readBack.goal });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "target-request", expectedSourceRevision: 4,
+      goalDistanceMeters: 2400, targetDurationMs: 660_000, trainingDays: ["Monday"],
+    })).resolves.toEqual({ outcome: "committed", plan: readBack });
+    expect(mockSaveRunningTarget).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      requestId: "target-request", expectedPlanRevision: 4, expectedGoalRevision: 2,
+      goal: expect.objectContaining({ id: "running-goal-revision:uuid", revision: 3, targetDurationMs: 660_000 }),
+    }));
+  });
+
+  it("does not acknowledge a target mutation when its authoritative readback is absent", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2400, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(null);
+    mockSaveRunningTarget.mockResolvedValue({ outcome: "committed", planId: "running", sourceRevision: 5, targetRevision: 3 });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+    await expect(runtime.saveRunningTarget({ planId: "running", requestId: "target-readback", expectedSourceRevision: 4, goalDistanceMeters: 2400, targetDurationMs: 660_000, trainingDays: ["Monday"] })).rejects.toThrow("running_target_readback_missing");
   });
 
   it("allocates identities only inside an authoritative session commit and returns committed readback", async () => {
