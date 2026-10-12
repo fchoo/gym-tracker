@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 
 import { BottomSheet } from "./BottomSheet";
@@ -56,6 +56,8 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
   const [draft, setDraft] = useState<Draft>(() => initialDraft(props));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const dateInputRef = useRef<TextInput>(null);
+  const kilogramsInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (props.visible && !saving) {
@@ -69,6 +71,10 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
     if (saving) return;
     if (grams === null || !isValidLocalDate(draft.localDate, props.todayLocalDate)) {
       setFailure("Enter a valid date and bodyweight from 20.0 to 400.0 kg.");
+      requestAnimationFrame(() => {
+        if (!isValidLocalDate(draft.localDate, props.todayLocalDate)) dateInputRef.current?.focus();
+        else kilogramsInputRef.current?.focus();
+      });
       return;
     }
     setSaving(true);
@@ -78,6 +84,7 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
       props.onSaved?.();
     } catch {
       setFailure("Bodyweight entry was not saved.");
+      requestAnimationFrame(() => kilogramsInputRef.current?.focus());
     } finally {
       setSaving(false);
     }
@@ -104,6 +111,7 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
           autoCapitalize="none"
           keyboardType="numbers-and-punctuation"
           onChangeText={(localDate) => setDraft((current) => ({ ...current, localDate }))}
+          ref={dateInputRef}
           style={[styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
           value={draft.localDate}
         />
@@ -112,12 +120,14 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
           accessibilityLabel="Bodyweight, kg"
           keyboardType="decimal-pad"
           onChangeText={(kilograms) => setDraft((current) => ({ ...current, kilograms }))}
+          ref={kilogramsInputRef}
           style={[styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
           value={draft.kilograms}
         />
       </View>
       {failure === null ? null : <Text accessibilityRole="alert" style={[typeScale.body as TextStyle, { color: colors.destructive }]}>{failure}</Text>}
       <PrimaryAction busy={saving} disabled={saving} label="Save entry" onPress={() => { void submit(); }} />
+      {failure === "Bodyweight entry was not saved." ? <SecondaryAction disabled={saving} label="Retry saving entry" onPress={() => { void submit(); }} /> : null}
       <SecondaryAction disabled={saving} label="Discard bodyweight changes" onPress={props.onClose} />
     </BottomSheet>
   );
