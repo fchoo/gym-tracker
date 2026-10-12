@@ -12,6 +12,12 @@ import {
   validateV12CalendarComparison,
   validateV12CalendarReferenceMap,
 } from "./compare-v12-calendar.mjs";
+import {
+  V12_CALENDAR_DIAGNOSTIC_STAGES,
+  createV12CalendarRunnerPlan,
+  validateV12CalendarFlow,
+  validateV12CalendarManifest,
+} from "./run-v12-maestro.mjs";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const image = new PNG({ width: 1, height: 1 });
@@ -123,4 +129,18 @@ test("the checked-in Calendar map binds every reference byte to the Revision 18 
   assert.equal(sha256(readFileSync(map.source_manifest)), map.source_manifest_sha256);
   assert.equal(validateV12CalendarReferenceMap(map, { verifyFiles: true }), true);
   assert.equal(new Set(map.captures.map((capture) => capture.id)).size, map.captures.length);
+});
+
+test("the Phase 16 runner exposes every pre-destination diagnostic stage but cannot award a native verdict", () => {
+  const manifest = { schema_version: 1, suite: "v1.2-calendar", profile: "development-test", package: "com.fchoo.gymtracker.devtest", js_bundle: { embedded: true }, base_head: "a".repeat(64), source_tree_sha256: "b".repeat(64), apk: { sha256: "c".repeat(64) }, installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true }, device: { identity_sha256: "d".repeat(64) } };
+  assert.equal(validateV12CalendarManifest(manifest), true);
+  const flow = readFileSync("maestro/v1.2/calendar.yaml", "utf8");
+  assert.equal(validateV12CalendarFlow(flow), true);
+  const plan = createV12CalendarRunnerPlan(manifest);
+  assert.equal(plan.native_execution, "NOT_RUN");
+  assert.equal(plan.phase20_deferred, true);
+  assert.deepEqual(plan.stages, V12_CALENDAR_DIAGNOSTIC_STAGES);
+  assert.equal(new Set(plan.stages).size, plan.stages.length);
+  const controls = readFileSync("src/bootstrap/phase16CalendarTestControls.ts", "utf8");
+  for (const stage of plan.stages) assert.match(controls, new RegExp(`"${stage}"`, "u"));
 });
