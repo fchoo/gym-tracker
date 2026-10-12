@@ -265,6 +265,28 @@ describe("Running activity match commands", () => {
     }, async () => "f".repeat(64))).rejects.toThrow("running_activity_match_invalid");
   });
 
+  it("fails closed when an already-matched projection contains any malformed candidate", async () => {
+    const alreadyMatched = (currentCandidate: RunningActivityMatchCandidate, candidates: readonly RunningActivityMatchCandidate[]) => ({
+      readCandidates: async () => ({
+        kind: "already_matched" as const,
+        activityId: candidate.activityId,
+        currentCandidate,
+        candidates,
+        opportunityId: candidate.opportunityId,
+        relationRevision: 1,
+      }),
+    });
+
+    await expect(queryRunningActivityMatchCandidates(
+      alreadyMatched({ ...candidate, state: "fulfilled" as never }, [candidate]),
+      candidate.activityId,
+    )).rejects.toThrow("running_activity_match_invalid");
+    await expect(queryRunningActivityMatchCandidates(
+      alreadyMatched(candidate, [{ ...candidate, expectedActivityRevision: 0 }]),
+      candidate.activityId,
+    )).rejects.toThrow("running_activity_match_invalid");
+  });
+
   it("prepares a valid timed unmatch with the explicit current relation", async () => {
     const prepared = await prepareRunningActivityMatchInput({
       action: "unmatch",

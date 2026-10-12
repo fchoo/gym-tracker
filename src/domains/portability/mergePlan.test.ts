@@ -2,6 +2,7 @@ import {
   describe,
   expect,
   it,
+  jest,
 } from "@jest/globals";
 
 import {
@@ -2280,12 +2281,33 @@ describe("portable merge plan", () => {
     }
   });
 
-  it("retains running plan ledger families while materializing an owned plan", () => {
+  it("retains the complete running graph while materializing an owned plan", () => {
     const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
       plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32), plan_kind: "running" }],
+      owned_plan_schedules: [{ id: "schedule", plan_id: "archive-plan", lifecycle: "inactive" }],
+      owned_plan_schedule_versions: [{ id: "schedule-version", schedule_id: "schedule" }],
+      running_plans: [{ plan_id: "archive-plan" }],
+      running_session_revisions: [{ id: "session-revision", plan_id: "archive-plan" }],
+      running_session_roots: [{ id: "session-root", plan_id: "archive-plan" }],
+      running_session_slot_roots: [{ id: "slot-root", plan_id: "archive-plan" }],
+      running_session_slot_revisions: [{
+        id: "slot-revision",
+        slot_root_id: "slot-root",
+        session_root_id: "session-root",
+        session_revision_id: "session-revision",
+      }],
       running_plan_receipts: [{ request_id: "request", plan_id: "archive-plan" }],
       running_plan_events: [{ id: "event", plan_id: "archive-plan" }],
       running_goals: [{ id: "goal", plan_id: "archive-plan" }],
+      running_session_slots: [{ id: "slot", plan_id: "archive-plan", session_revision_id: "session-revision" }],
+      running_opportunities: [{
+        id: "opportunity",
+        plan_id: "archive-plan",
+        schedule_id: "schedule",
+        schedule_version_id: "schedule-version",
+        slot_id: "slot",
+        session_revision_id: "session-revision",
+      }],
     });
     const aggregate = __mergePlanTestOnly.planAggregate(
       archive,
@@ -2295,9 +2317,20 @@ describe("portable merge plan", () => {
       new Map([["archive-plan", "archive-plan"]]),
       new Map(),
     );
-    expect(aggregate.tables.running_plan_receipts).toHaveLength(1);
-    expect(aggregate.tables.running_plan_events).toHaveLength(1);
-    expect(aggregate.tables.running_goals).toHaveLength(1);
+    for (const table of [
+      "running_plans",
+      "running_session_revisions",
+      "running_session_roots",
+      "running_session_slot_roots",
+      "running_session_slot_revisions",
+      "running_plan_receipts",
+      "running_plan_events",
+      "running_goals",
+      "running_session_slots",
+      "running_opportunities",
+    ]) {
+      expect(aggregate.tables[table]).toHaveLength(1);
+    }
   });
 
   it("fails closed or classifies conflicts for malformed source graph mappings", async () => {
@@ -2326,14 +2359,159 @@ describe("portable merge plan", () => {
       .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
   });
 
-  it("classifies an identical residual source graph as duplicate", async () => {
+  it("groups residual children by owner and ignores children without an aggregate key", async () => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      bodyweight_entries: [{ id: "weight", owner_id: "owner-a" }],
+      bodyweight_entry_events: [
+        { id: "weight-event-1", entry_id: "weight", operation: "update", event_id: "event-1" },
+        { id: "weight-event-2", entry_id: "weight", operation: "update", event_id: "event-2" },
+        { id: "orphan-weight-event", operation: "update", event_id: "orphan-event" },
+      ],
+      bodyweight_command_receipts: [
+        { request_id: "weight-request-1", entry_id: "weight" },
+        { request_id: "weight-request-2", entry_id: "weight" },
+        { request_id: "orphan-weight-request" },
+      ],
+      schedule_collision_outcomes: [{ id: "outcome" }],
+      schedule_collision_receipts: [
+        { request_id: "collision-request-1", outcome_id: "outcome" },
+        { request_id: "collision-request-2", outcome_id: "outcome" },
+        { request_id: "orphan-collision-request" },
+      ],
+      schedule_collision_projections: [
+        { outcome_id: "outcome", projection: 1 },
+        { outcome_id: "outcome", projection: 2 },
+        { projection: "orphan" },
+      ],
+    });
+
+    const result = await __mergePlanTestOnly.sourceGraphPlan(
+      archive,
+      snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }),
+      payloadDigest,
+    );
+
+    expect(result.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "insert", portableId: "bodyweight-entry:weight" }),
+      expect.objectContaining({ kind: "insert", portableId: "schedule-collision-outcome:outcome" }),
+    ]));
+  });
+
+  it("classifies changed and malformed bodyweight residual aggregates as conflicts", async () => {
+    const bodyweight = (eventId: string, requestId: string) => ({
+      bodyweight_entries: [{ id: "weight", owner_id: "owner-a" }],
+      bodyweight_entry_events: [
+        { id: `${eventId}-shared`, entry_id: "weight", operation: "update", event_id: "shared-event" },
+        { id: `${eventId}-only`, entry_id: "weight", operation: "update", event_id: `${eventId}-only` },
+        { id: `${eventId}-unidentified`, entry_id: "weight", operation: "update", event_id: null },
+      ],
+      bodyweight_command_receipts: [
+        { request_id: "shared-request", entry_id: "weight" },
+        { request_id: requestId, entry_id: "weight" },
+      ],
+    });
+    const archive = snapshot(
+      { id: "archive", marker: "archive", modifiedAtMs: 2 },
+      bodyweight("archive-event", "archive-request"),
+    );
+    const local = snapshot(
+      { id: "local", marker: "local", modifiedAtMs: 1 },
+      bodyweight("local-event", "local-request"),
+    );
+
+    await expect(__mergePlanTestOnly.sourceGraphPlan(archive, local, payloadDigest))
+      .resolves.toEqual(expect.objectContaining({
+        operations: [expect.objectContaining({ kind: "conflict", portableId: "bodyweight-entry:weight" })],
+      }));
+
+    const malformed = snapshot({ id: "malformed", marker: "archive", modifiedAtMs: 2 }, {
+      bodyweight_entries: [{ id: "weight", owner_id: "owner-a" }],
+      bodyweight_entry_events: [{ id: null, entry_id: "weight", operation: "create", event_id: "create-event" }],
+    });
+    await expect(__mergePlanTestOnly.sourceGraphPlan(
+      malformed,
+      snapshot({ id: "empty", marker: "local", modifiedAtMs: 1 }),
+      payloadDigest,
+    )).resolves.toEqual(expect.objectContaining({
+      operations: [expect.objectContaining({ kind: "conflict", portableId: "bodyweight:owner-a:create-event" })],
+    }));
+  });
+
+  it("omits empty residual child maps when no event or receipt identity overlaps", async () => {
+    const residual = (side: string) => ({
+      bodyweight_entries: [{ id: "weight", owner_id: "owner-a" }],
+      bodyweight_entry_events: [{ id: `${side}-event`, entry_id: "weight", operation: "update", event_id: `${side}-event` }],
+      bodyweight_command_receipts: [{ request_id: `${side}-request`, entry_id: "weight" }],
+    });
+
+    await expect(__mergePlanTestOnly.sourceGraphPlan(
+      snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, residual("archive")),
+      snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, residual("local")),
+      payloadDigest,
+    )).resolves.toEqual(expect.objectContaining({
+      operations: [expect.objectContaining({ kind: "conflict", portableId: "bodyweight-entry:weight" })],
+    }));
+  });
+
+  it("deduplicates a collision outcome without optional receipt or projection rows", async () => {
     const residual = {
       schedule_collision_outcomes: [{ id: "outcome" }],
+    };
+
+    await expect(__mergePlanTestOnly.sourceGraphPlan(
+      snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, residual),
+      snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, residual),
+      payloadDigest,
+    )).resolves.toEqual(expect.objectContaining({
+      operations: [expect.objectContaining({
+        kind: "duplicate",
+        portableId: "schedule-collision-outcome:outcome",
+      })],
+      aggregates: [],
+    }));
+  });
+
+  it("treats omitted bodyweight child collections as empty during residual comparison", async () => {
+    const originalFreeze = Object.freeze;
+    let strippedRows = 0;
+    Object.freeze = ((value: object) => {
+      const record = value as Record<string, unknown>;
+      if (strippedRows < 2
+        && Array.isArray(record.bodyweight_entries)
+        && Object.hasOwn(record, "bodyweight_entry_events")
+        && Object.hasOwn(record, "bodyweight_command_receipts")) {
+        strippedRows += 1;
+        const withoutOptionalChildren = { ...record };
+        delete withoutOptionalChildren.bodyweight_entry_events;
+        delete withoutOptionalChildren.bodyweight_command_receipts;
+        return originalFreeze(withoutOptionalChildren);
+      }
+      return originalFreeze(value);
+    }) as typeof Object.freeze;
+
+    try {
+      const residual = { bodyweight_entries: [{ id: "weight", owner_id: "owner-a" }] };
+      await expect(__mergePlanTestOnly.sourceGraphPlan(
+        snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, residual),
+        snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, residual),
+        payloadDigest,
+      )).resolves.toEqual(expect.objectContaining({
+        operations: [expect.objectContaining({ kind: "duplicate", portableId: "bodyweight-entry:weight" })],
+      }));
+      expect(strippedRows).toBe(2);
+    } finally {
+      Object.freeze = originalFreeze;
+    }
+  });
+
+  it("classifies an identical residual source graph as duplicate", async () => {
+    const residual = {
+      bodyweight_revisions: [{ id: "revision" }],
     };
     const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, residual);
     const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, residual);
     await expect(__mergePlanTestOnly.sourceGraphPlan(archive, local, payloadDigest, new Map([
-      ["schedule_collision_outcomes", new Map([["outcome", "outcome"]])],
+      ["bodyweight_revisions", new Map([["revision", "revision"]])],
     ])))
       .resolves.toEqual(expect.objectContaining({
         operations: [expect.objectContaining({ kind: "duplicate" })],
@@ -2341,9 +2519,69 @@ describe("portable merge plan", () => {
       }));
   });
 
+  it("imports a new unsplit residual source graph and rejects either invalid digest", async () => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      bodyweight_revisions: [{ id: "revision" }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
+
+    await expect(__mergePlanTestOnly.sourceGraphPlan(archive, local, payloadDigest))
+      .resolves.toEqual(expect.objectContaining({
+        operations: [expect.objectContaining({ kind: "insert" })],
+        aggregates: [expect.objectContaining({
+          aggregateClass: "source_graph",
+          tables: expect.objectContaining({ bodyweight_revisions: [{ id: "revision" }] }),
+        })],
+      }));
+
+    for (const invalidDigestCall of [1, 2]) {
+      let calls = 0;
+      await expect(__mergePlanTestOnly.sourceGraphPlan(archive, local, async () => (
+        ++calls === invalidDigestCall ? "invalid" : "0".repeat(64)
+      ))).rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+    }
+  });
+
   it("requires a matching source graph aggregate during lazy materialization", () => {
     expect(() => __mergePlanTestOnly.requiredSourceGraphAggregate([], "missing"))
       .toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
+  it("ignores non-plan operations during the owned-plan reference-map preflight", async () => {
+    const originalFreeze = Object.freeze;
+    let injected = false;
+    Object.freeze = ((value: object) => {
+      const operation = value as Record<string, unknown>;
+      if (!injected
+        && operation.aggregateClass === "owned_plan"
+        && operation.kind === "insert"
+        && typeof operation.archiveId === "string") {
+        injected = true;
+        return originalFreeze({
+          ...operation,
+          aggregateClass: "app_setting",
+          key: "adversarial-operation",
+        });
+      }
+      return originalFreeze(value);
+    }) as typeof Object.freeze;
+
+    try {
+      const plan = await buildPortableMergePlan({
+        archive: snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+          plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32) }],
+        }),
+        local: snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }),
+        payloadDigest,
+      });
+      expect(injected).toBe(true);
+      expect(plan.operations).toContainEqual(expect.objectContaining({
+        aggregateClass: "app_setting",
+        key: "adversarial-operation",
+      }));
+    } finally {
+      Object.freeze = originalFreeze;
+    }
   });
 
   it.each([
