@@ -20,6 +20,7 @@ import {
   CalendarMonthViewport,
   calendarAgendaMotion,
   calendarDragDiagnosticMonths,
+  calendarFocusedAgendaMinimumHeight,
 } from "../calendar/CalendarMonthViewport";
 import { calendarTrackMetrics } from "../calendar/CalendarWeekRow";
 
@@ -33,6 +34,8 @@ describe("Calendar semantic transitions", () => {
   it("grows fixed-top Calendar tracks at 200 percent text without shrinking the target", () => {
     expect(calendarTrackMetrics(1)).toEqual({ chipMinHeight: 17, dateTrackMinHeight: 28, eventTrackMinHeight: 36, rowMinHeight: 70 });
     expect(calendarTrackMetrics(2)).toEqual({ chipMinHeight: 32, dateTrackMinHeight: 50, eventTrackMinHeight: 66, rowMinHeight: 122 });
+    expect(calendarFocusedAgendaMinimumHeight(1)).toBe(234);
+    expect(calendarFocusedAgendaMinimumHeight(2)).toBe(374);
   });
 
   it("keeps week rows opaque and applies the contract timing only to the agenda", () => {

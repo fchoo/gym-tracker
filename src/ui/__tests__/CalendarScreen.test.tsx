@@ -684,4 +684,37 @@ describe("CalendarScreen", () => {
       dimensions.mockRestore();
     }
   });
+
+  it("reserves a reachable focused agenda row at 200 percent text in compact height", async () => {
+    const dimensions = jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
+      fontScale: 2,
+      height: 360,
+      scale: 1,
+      width: 800,
+    });
+    const onOpenEvent = jest.fn();
+    try {
+      await render(
+        <AppearanceProvider>
+          <CalendarScreen
+            initialDate="2026-08-24"
+            loadCalendarRange={jest.fn(async () => range)}
+            onOpenEvent={onOpenEvent}
+            today="2026-08-24"
+          />
+        </AppearanceProvider>,
+      );
+      await measureAugustFocusedRows();
+      await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Full body progression/u }));
+
+      const scroll = screen.getByTestId("calendar-vertical-scroll");
+      expect(StyleSheet.flatten(scroll.props.contentContainerStyle).minHeight).toBe(618);
+      const agendaRow = await screen.findByTestId("calendar-agenda-event-strength-opportunity-1");
+      expect(agendaRow).toBeOnTheScreen();
+      await fireEvent.press(agendaRow);
+      expect(onOpenEvent).toHaveBeenCalledWith(range.events[0]!.destination, "strength-opportunity-1");
+    } finally {
+      dimensions.mockRestore();
+    }
+  });
 });

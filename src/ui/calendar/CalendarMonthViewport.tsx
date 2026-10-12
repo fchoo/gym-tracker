@@ -50,6 +50,14 @@ export function calendarMonthPanEnabled(phase: CalendarTransitionPhase): boolean
   return phase === "idle" || phase === "dragging";
 }
 
+export function calendarFocusedAgendaMinimumHeight(fontScale: number): number {
+  const scale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
+  const heading = Math.max(62, Math.ceil((26 + 20) * scale + 10));
+  const collapse = Math.max(48, Math.ceil(22 * scale + 20));
+  const agendaRow = Math.max(82, Math.ceil((22 + 22 + 20 + 20) * scale + 20));
+  return heading + collapse + agendaRow + 20;
+}
+
 export function calendarAgendaMotion(command: Readonly<{
   phase: "expand" | "collapse";
   agendaDelayMs: number;
@@ -388,7 +396,7 @@ export function CalendarMonthViewport({
   const trackMetrics = calendarTrackMetrics(fontScale);
   const minimumHeight = trackMetrics.rowMinHeight
     * (transition.mode === "focused" ? 2 : weekCount)
-    + (transition.mode === "focused" ? 110 : 0);
+    + (transition.mode === "focused" ? calendarFocusedAgendaMinimumHeight(fontScale) : 0);
   const fallbackSelectedGeometry = Object.freeze({ y: 0, height: trackMetrics.rowMinHeight, generation: layoutGeneration });
   const fallbackFollowingGeometry = Object.freeze({
     y: Math.max(0, (weekCount - 1) * trackMetrics.rowMinHeight),
