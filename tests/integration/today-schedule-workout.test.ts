@@ -1073,7 +1073,9 @@ describe("Today schedule workout integration", () => {
     )).resolves.toEqual(expect.objectContaining({
       occurrenceId: 'planned-strength-occurrence',
       planId: 'plan-copy',
+      planName: 'Full Body Foundation',
       planDayId: 'plan-day-copy',
+      dayName: 'Full Body A',
       scheduleId: ownedSchedule.id,
       scheduleVersionId: 'owned-schedule-version-copy',
       localDate: '2026-08-17',
@@ -1081,6 +1083,7 @@ describe("Today schedule workout integration", () => {
       sourceRevisions: { plan: 8, day: 2, schedule: ownedSchedule.revision },
       exercises: [expect.objectContaining({
         id: 'owned-day-exercise-squat-a', exerciseId: 'exercise-squat',
+        exerciseName: 'Squat',
         ordinal: 0,
         targets: [expect.objectContaining({
           id: 'owned-working-target-a', ordinal: 0,

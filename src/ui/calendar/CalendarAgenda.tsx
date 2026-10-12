@@ -11,7 +11,7 @@ import {
 
 import type { CalendarDay, CalendarEventDestination, CalendarRange } from "./calendarPorts";
 import { FocusablePressable } from "../components";
-import { space, typeScale, useAppTheme } from "../theme";
+import { calendarTypeScale, space, typeScale, useAppTheme } from "../theme";
 
 type CalendarAgendaEvent = CalendarRange["events"][number];
 
@@ -37,8 +37,8 @@ function statusLabel(event: CalendarAgendaEvent): string {
     case "completed": return "Complete";
     case "partial": return "Partial";
     case "planned": return "Planned";
-    case "imported": return "Imported";
-    case "matched": return "Matched";
+    case "imported":
+    case "matched": return "Complete";
   }
 }
 
@@ -127,10 +127,10 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
             >
               <View style={[styles.rail, { backgroundColor: event.sport === "strength" ? colors.orange : colors.blue }]} />
               <View style={styles.copy}>
-                <Text numberOfLines={undefined} style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{event.title}</Text>
-                <Text numberOfLines={undefined} style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{event.displaySummary}</Text>
-                <Text numberOfLines={undefined} style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>{`${sport} · ${status}`}</Text>
-                <Text numberOfLines={undefined} style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>{event.sourceLabel}</Text>
+                <Text numberOfLines={undefined} style={[calendarTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{event.title}</Text>
+                <Text numberOfLines={undefined} style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>{event.displaySummary}</Text>
+                <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{`${sport} · ${status}`}</Text>
+                <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{event.sourceLabel}</Text>
               </View>
               <Text accessible={false} style={[typeScale.sectionTitle as TextStyle, styles.chevron, { color: colors.textSecondary }]}>›</Text>
             </FocusablePressable>

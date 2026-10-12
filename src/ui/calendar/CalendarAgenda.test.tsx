@@ -81,6 +81,7 @@ describe("CalendarAgenda factual copy", () => {
     );
     const renderedText = JSON.stringify(rendered.toJSON());
     expect(screen.getByText("Garmin")).toBeOnTheScreen();
+    expect(screen.getByText("Running · Complete")).toBeOnTheScreen();
     expect(renderedText).not.toMatch(/garmin_connect_account|private-owner|external-private-1/u);
   });
 });

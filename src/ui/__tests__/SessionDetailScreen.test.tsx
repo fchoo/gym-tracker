@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 import type { SessionDetail } from "../../domains/workout";
 import { CalendarReadOnlyWorkout } from "../calendar/CalendarReadOnlyWorkout";
@@ -18,7 +19,10 @@ describe("CalendarReadOnlyWorkout", () => {
     const onGoBack = jest.fn();
     await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={detail} onGoBack={onGoBack} /></AppearanceProvider>);
     expect(screen.getByText("Complete · read only")).toBeOnTheScreen();
-    expect(screen.getByText("Not completed")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Day A" })).toBeOnTheScreen();
+    expect(await screen.findByRole("button", { name: "Back to Calendar agenda" })).toHaveProp("hasTVPreferredFocus", true);
+    expect(screen.getByText(/Not completed/u)).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-read-only-set-set-1").props.style).flexDirection).toBe("row");
     expect(screen.queryByText("Correct workout")).toBeNull();
     expect(screen.queryByText("Resume workout")).toBeNull();
     fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
@@ -30,10 +34,10 @@ describe("CalendarReadOnlyWorkout", () => {
     await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={partial} onGoBack={jest.fn()} /></AppearanceProvider>);
 
     expect(screen.getByText("Partial · read only")).toBeOnTheScreen();
-    expect(screen.getByText("Not completed")).toBeOnTheScreen();
+    expect(screen.getByText(/Not completed/u)).toBeOnTheScreen();
     const disclosure = screen.getByRole("button", { name: /Bench press/u });
     await fireEvent.press(disclosure);
-    expect(screen.queryByText("Not completed")).toBeNull();
+    expect(screen.queryByText(/Not completed/u)).toBeNull();
     expect(disclosure).toHaveProp("accessibilityState", expect.objectContaining({ expanded: false }));
     expect(screen.queryByText("Resume workout")).toBeNull();
     expect(screen.queryByText("Correct workout")).toBeNull();

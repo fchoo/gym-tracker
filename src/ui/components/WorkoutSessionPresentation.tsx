@@ -18,6 +18,7 @@ export type WorkoutSessionPresentationProps = Readonly<{
   isExerciseExpanded?: (exercise: WorkoutPresentationExercise, index: number) => boolean;
   onExerciseToggle?: (exercise: WorkoutPresentationExercise, expanded: boolean, index: number) => void;
   renderExerciseAccessory?: (exercise: WorkoutPresentationExercise, index: number) => React.ReactNode;
+  showGrip?: boolean;
 }>;
 
 /** Command-free exercise disclosure and facts surface reusable by read-only consumers. */
@@ -29,6 +30,7 @@ export function WorkoutSessionPresentation({
   isExerciseExpanded,
   onExerciseToggle,
   renderExerciseAccessory,
+  showGrip = true,
 }: WorkoutSessionPresentationProps) {
   const { colors } = useAppTheme();
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
@@ -60,9 +62,9 @@ export function WorkoutSessionPresentation({
               testID={`exercise-divider-${exercise.id}`}
             />}
             <View style={styles.header} testID={`exercise-header-${exercise.id}`}>
-              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.grip}>
+              {showGrip ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.grip}>
                 <GripVertical color={colors.textSecondary} size={24} />
-              </View>
+              </View> : null}
               <FocusablePressable
                 accessibilityLabel={exerciseAccessibilityLabel?.(exercise, expanded, index)
                   ?? `${exercise.name}. ${status}. ${completed} of ${total} working sets. ${expanded ? "Collapse" : "Expand"} exercise`}

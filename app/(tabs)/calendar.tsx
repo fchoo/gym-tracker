@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import {
   router,
   useFocusEffect,
+  useLocalSearchParams,
   type Href,
 } from "expo-router";
 
@@ -24,6 +25,10 @@ import {
 import {
   clearPhase16CalendarTestControls,
   configurePhase16CalendarTestControls,
+  createPhase16CalendarDiagnosticsProducer,
+  PHASE16_CALENDAR_STAGES,
+  phase16CalendarDiagnosticsRequestFromNativeContract,
+  type Phase16CalendarStage,
 } from "../../src/bootstrap/phase16CalendarTestControls";
 import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
 
@@ -31,6 +36,16 @@ function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? encodeURIComponent(value)
     : null;
+}
+
+function phase16CalendarStage(value: string | readonly string[] | undefined): Phase16CalendarStage | undefined {
+  return typeof value === "string" && (PHASE16_CALENDAR_STAGES as readonly string[]).includes(value)
+    ? value as Phase16CalendarStage
+    : undefined;
+}
+
+function scalarRouteParam(value: string | readonly string[] | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function calendarQuery(returnEventId: string | undefined, extra: readonly [string, string][] = []): string {
@@ -45,9 +60,37 @@ export default function CalendarRoute() {
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
   const calendarRead = useCalendarRangeReadPort();
-  const phase16Stage = (typeof globalThis.location?.search === "string"
-    ? new URLSearchParams(globalThis.location.search).get("phase16CalendarStage")
-    : undefined) ?? undefined;
+  const routeParams = useLocalSearchParams<{
+    phase16CalendarStage?: string | string[];
+    phase16CalendarDiagnostics?: string | string[];
+    querySamples?: string | string[];
+    interactionSamples?: string | string[];
+  }>();
+  const phase16Stage = phase16CalendarStage(routeParams.phase16CalendarStage);
+  const extra = Constants.expoConfig?.extra;
+  const nativeIdentity = {
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: typeof extra?.buildProfile === "string" ? extra.buildProfile : undefined,
+    nativeContractsEnabled: extra?.nativeContractsEnabled === true,
+    suite: typeof extra?.nativeContractSuite === "string" ? extra.nativeContractSuite : undefined,
+  } as const;
+  const diagnosticsEnabled = scalarRouteParam(routeParams.phase16CalendarDiagnostics);
+  const diagnosticsQuerySamples = scalarRouteParam(routeParams.querySamples);
+  const diagnosticsInteractionSamples = scalarRouteParam(routeParams.interactionSamples);
+  const diagnosticsRequest = React.useMemo(() => phase16CalendarDiagnosticsRequestFromNativeContract({
+    ...nativeIdentity,
+    enabled: diagnosticsEnabled,
+    querySamples: diagnosticsQuerySamples,
+    interactionSamples: diagnosticsInteractionSamples,
+  }), [diagnosticsEnabled, diagnosticsInteractionSamples, diagnosticsQuerySamples, nativeIdentity.buildProfile, nativeIdentity.nativeContractsEnabled, nativeIdentity.packageName, nativeIdentity.suite]);
+  const diagnosticsProducer = React.useMemo(() => createPhase16CalendarDiagnosticsProducer({
+    ...nativeIdentity,
+    request: diagnosticsRequest,
+    emitLine: (line) => console.info(line),
+  }), [diagnosticsRequest, nativeIdentity.buildProfile, nativeIdentity.nativeContractsEnabled, nativeIdentity.packageName, nativeIdentity.suite]);
+  const diagnosticsRuntime = React.useMemo(() => diagnosticsProducer === null || diagnosticsRequest === null
+    ? undefined
+    : Object.freeze({ producer: diagnosticsProducer, request: diagnosticsRequest }), [diagnosticsProducer, diagnosticsRequest]);
   const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
   const hasFocused = React.useRef(false);
   const initialDate = useCurrentLocalDate();
@@ -92,12 +135,8 @@ export default function CalendarRoute() {
   }, []));
 
   React.useEffect(() => {
-    const extra = Constants.expoConfig?.extra;
     configurePhase16CalendarTestControls({
-      packageName: Constants.expoConfig?.android?.package,
-      buildProfile: typeof extra?.buildProfile === "string" ? extra.buildProfile : undefined,
-      nativeContractsEnabled: extra?.nativeContractsEnabled === true,
-      suite: typeof extra?.nativeContractSuite === "string" ? extra.nativeContractSuite : undefined,
+      ...nativeIdentity,
       stage: phase16Stage,
     });
     return clearPhase16CalendarTestControls;
@@ -106,6 +145,7 @@ export default function CalendarRoute() {
   return (
     <CalendarScreen
       initialDate={initialDate}
+      {...(diagnosticsRuntime === undefined ? {} : { diagnostics: diagnosticsRuntime })}
       loadCalendarRange={calendarRead.loadCalendarRange}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "calendar",

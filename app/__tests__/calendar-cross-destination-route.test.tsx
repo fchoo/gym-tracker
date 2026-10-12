@@ -204,7 +204,9 @@ const sessionDetail = (id: string, status: "completed" | "partial"): SessionDeta
 const plannedOccurrence = (occurrenceId: string): PlannedStrengthOccurrenceDetail => Object.freeze({
   occurrenceId,
   planId: "strength-plan:calendar",
+  planName: "Strength plan",
   planDayId: "strength-day:calendar",
+  dayName: "Day A",
   scheduleId: "strength-schedule:calendar",
   scheduleVersionId: "strength-schedule-version:calendar",
   localDate: localToday(),
@@ -213,6 +215,7 @@ const plannedOccurrence = (occurrenceId: string): PlannedStrengthOccurrenceDetai
   exercises: Object.freeze([Object.freeze({
     id: "strength-exercise:calendar",
     exerciseId: "squat",
+    exerciseName: "Back squat",
     ordinal: 0,
     targets: Object.freeze([Object.freeze({
       id: "strength-target:calendar",

@@ -1366,7 +1366,8 @@ describe("WorkoutAppRuntimeProvider", () => {
 
   it("delegates exact planned Strength occurrence reads without fabricating a session", async () => {
     const occurrence = Object.freeze({
-      occurrenceId: "occurrence-1", planId: "plan-1", planDayId: "day-1",
+      occurrenceId: "occurrence-1", planId: "plan-1", planName: "Full Body Foundation",
+      planDayId: "day-1", dayName: "Full Body A",
       scheduleId: "schedule-1", scheduleVersionId: "version-1",
       localDate: "2026-10-13", timezone: "Asia/Singapore",
       sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }),

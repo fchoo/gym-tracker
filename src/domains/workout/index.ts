@@ -70,7 +70,9 @@ export type StartedWorkout = Readonly<{
 export type PlannedStrengthOccurrenceDetail = Readonly<{
   occurrenceId: string;
   planId: string;
+  planName: string;
   planDayId: string;
+  dayName: string;
   scheduleId: string;
   scheduleVersionId: string;
   localDate: string;
@@ -79,6 +81,7 @@ export type PlannedStrengthOccurrenceDetail = Readonly<{
   exercises: readonly Readonly<{
     id: string;
     exerciseId: string;
+    exerciseName: string;
     ordinal: number;
     targets: readonly Readonly<{ id: string; ordinal: number; targetJson: string; unitJson: string }> [];
   }>[];

@@ -1,4 +1,10 @@
-import { describe, expect, it } from "@jest/globals";
+import { fireEvent, render, screen } from "@testing-library/react-native";
+import { describe, expect, it, jest } from "@jest/globals";
+import React from "react";
+import { View } from "react-native";
+import { Gesture } from "react-native-gesture-handler";
+
+import type { LocalDate } from "../../domains/scheduling";
 
 import {
   CalendarTransitionError,
@@ -7,7 +13,15 @@ import {
   crossesMonthBoundary,
   transitionCalendar,
 } from "../calendar/calendarTransitionController";
-import { calendarPanelTranslate } from "../calendar/CalendarMonthViewport";
+import {
+  calendarMonthPanEnabled,
+  calendarPanelTranslate,
+  calendarWeekGeometryForGeneration,
+  CalendarMonthViewport,
+  calendarAgendaMotion,
+  calendarDragDiagnosticMonths,
+} from "../calendar/CalendarMonthViewport";
+import { calendarTrackMetrics } from "../calendar/CalendarWeekRow";
 
 const initial = (reducedMotion = false) => createCalendarTransitionState({
   currentMonthId: "2026-11",
@@ -16,6 +30,113 @@ const initial = (reducedMotion = false) => createCalendarTransitionState({
 });
 
 describe("Calendar semantic transitions", () => {
+  it("grows fixed-top Calendar tracks at 200 percent text without shrinking the target", () => {
+    expect(calendarTrackMetrics(1)).toEqual({ chipMinHeight: 17, dateTrackMinHeight: 28, eventTrackMinHeight: 36, rowMinHeight: 70 });
+    expect(calendarTrackMetrics(2)).toEqual({ chipMinHeight: 32, dateTrackMinHeight: 50, eventTrackMinHeight: 66, rowMinHeight: 122 });
+  });
+
+  it("keeps week rows opaque and applies the contract timing only to the agenda", () => {
+    expect(calendarAgendaMotion({ phase: "expand", agendaDelayMs: 70, agendaDurationMs: 170 })).toEqual({ delayMs: 70, durationMs: 170, opacity: 1 });
+    expect(calendarAgendaMotion({ phase: "collapse", agendaDelayMs: 0, agendaDurationMs: 140 })).toEqual({ delayMs: 0, durationMs: 140, opacity: 0 });
+  });
+
+  it("previews only the title month while drag semantics remain committed", () => {
+    const current = "2026-11-01" as LocalDate;
+    const previous = "2026-10-01" as LocalDate;
+    const next = "2026-12-01" as LocalDate;
+    expect(calendarDragDiagnosticMonths(current, previous, next, 1)).toEqual({ semanticMonth: "2026-11", titleMonth: "2026-12" });
+    expect(calendarDragDiagnosticMonths(current, previous, next, -1)).toEqual({ semanticMonth: "2026-11", titleMonth: "2026-10" });
+    expect(calendarDragDiagnosticMonths(current, previous, next, 0)).toEqual({ semanticMonth: "2026-11", titleMonth: "2026-11" });
+  });
+
+  it("keeps a second pan from invalidating an active settle", () => {
+    expect(calendarMonthPanEnabled("idle")).toBe(true);
+    expect(calendarMonthPanEnabled("dragging")).toBe(true);
+    expect(calendarMonthPanEnabled("settling")).toBe(false);
+    expect(calendarMonthPanEnabled("adjacent-collapsing")).toBe(false);
+    expect(calendarMonthPanEnabled("adjacent-measuring")).toBe(false);
+    expect(calendarMonthPanEnabled("adjacent-expanding")).toBe(false);
+  });
+
+  it("accepts only row geometry measured for the current layout generation", () => {
+    const current = Object.freeze({ y: 96, height: 72, generation: 4 });
+    expect(calendarWeekGeometryForGeneration(current, 4)).toBe(current);
+    expect(calendarWeekGeometryForGeneration(current, 5)).toBeNull();
+    expect(calendarWeekGeometryForGeneration(null, 4)).toBeNull();
+  });
+
+  it("mounts the viewport with its pan disabled for the full settle lifetime", async () => {
+    const createPan = Gesture.Pan.bind(Gesture);
+    let latestPan: unknown;
+    const panSpy = jest.spyOn(Gesture, "Pan").mockImplementation(() => {
+      latestPan = createPan();
+      return latestPan as ReturnType<typeof Gesture.Pan>;
+    });
+    const settling = Object.freeze({ ...initial(), phase: "settling" as const });
+
+    await render(
+      <CalendarMonthViewport
+        command={null}
+        focusedWeek={null}
+        month={"2026-11-01" as LocalDate}
+        onCancel={jest.fn()}
+        onComplete={jest.fn()}
+        onPreview={jest.fn()}
+        onRelease={jest.fn()}
+        renderMonth={() => <View />}
+        renderWeek={() => <View />}
+        transition={settling}
+      />,
+    );
+
+    expect((latestPan as { config: { enabled?: boolean } }).config.enabled).toBe(false);
+    panSpy.mockRestore();
+  });
+
+  it("records one bounded interaction sample only after a committed drag expands and collapses", async () => {
+    const createPan = Gesture.Pan.bind(Gesture);
+    let latestPan: unknown;
+    const panSpy = jest.spyOn(Gesture, "Pan").mockImplementation(() => {
+      latestPan = createPan();
+      return latestPan as ReturnType<typeof Gesture.Pan>;
+    });
+    const onInteractionDiagnosticComplete = jest.fn();
+    const onInteractionDiagnosticStart = jest.fn();
+    const common = {
+      agenda: <View />,
+      focusedWeek: {
+        selectedDates: ["2026-11-02" as LocalDate],
+        followingDates: ["2026-11-09" as LocalDate],
+        selectedGeometry: { y: 70, height: 70, generation: 0 },
+        followingGeometry: { y: 140, height: 70, generation: 0 },
+      },
+      month: "2026-11-01" as LocalDate,
+      onCancel: jest.fn(),
+      onComplete: jest.fn(),
+      onInteractionDiagnosticComplete,
+      onInteractionDiagnosticStart,
+      onPreview: jest.fn(),
+      onRelease: jest.fn(),
+      renderMonth: () => <View />,
+      renderWeek: () => <View />,
+      weekCount: 5,
+    } as const;
+    const rendered = await render(<CalendarMonthViewport {...common} command={null} transition={initial()} />);
+    await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", { nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } } });
+    const handlers = (latestPan as { handlers: { onBegin?: () => void; onEnd?: (event: Readonly<{ translationX: number; translationY: number }>, success: boolean) => void } }).handlers;
+    handlers.onBegin?.();
+    handlers.onEnd?.({ translationX: -100, translationY: 0 }, true);
+
+    const expanding = Object.freeze({ ...initial(), mode: "focused" as const, phase: "settling" as const, epoch: 1 });
+    await rendered.rerender(<CalendarMonthViewport {...common} command={{ kind: "settle-week", epoch: 1, phase: "expand", durationMs: 260, easing: [0.22, 0.8, 0.3, 1], agendaDelayMs: 70, agendaDurationMs: 170 }} transition={expanding} />);
+    const collapsing = Object.freeze({ ...expanding, mode: "month" as const, epoch: 2 });
+    await rendered.rerender(<CalendarMonthViewport {...common} command={{ kind: "settle-week", epoch: 2, phase: "collapse", durationMs: 240, easing: [0.4, 0, 0.78, 0.2], agendaDelayMs: 0, agendaDurationMs: 140 }} transition={collapsing} />);
+
+    expect(onInteractionDiagnosticStart).toHaveBeenCalledTimes(1);
+    expect(onInteractionDiagnosticComplete).toHaveBeenCalledTimes(1);
+    panSpy.mockRestore();
+  });
+
   it("maps every panel to measured width plus the clamped pointer displacement", () => {
     const width = 400;
 
@@ -129,7 +250,17 @@ describe("Calendar semantic transitions", () => {
       pendingMonthId: "2026-12",
       pendingSelectedLocalDate: "2026-12-01",
     });
-    expect(transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 }).state)
+    const measuring = transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 });
+    expect(measuring).toEqual({
+      state: expect.objectContaining({
+        currentMonthId: "2026-12",
+        selectedLocalDate: "2026-12-01",
+        mode: "month",
+        phase: "adjacent-measuring",
+      }),
+      commands: [],
+    });
+    expect(transitionCalendar(measuring.state, { type: "layout-ready" }).state)
       .toMatchObject({ currentMonthId: "2026-12", selectedLocalDate: "2026-12-01", phase: "adjacent-expanding" });
   });
 
@@ -162,10 +293,13 @@ describe("Calendar semantic transitions", () => {
       mode: "month", selectedLocalDate: "2026-11-01", pendingSelectedLocalDate: "2026-11-08", phase: "adjacent-collapsing",
     });
     expect(adjacent.commands[0]).toMatchObject({ kind: "settle-week", phase: "collapse" });
-    const expanding = transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 });
+    const measuring = transitionCalendar(adjacent.state, { type: "settle-complete", epoch: 2 });
+    expect(measuring.state).toMatchObject({ mode: "month", selectedLocalDate: "2026-11-08", phase: "adjacent-measuring" });
+    expect(measuring.commands).toEqual([]);
+    const expanding = transitionCalendar(measuring.state, { type: "layout-ready" });
     expect(expanding.state).toMatchObject({ mode: "focused", selectedLocalDate: "2026-11-08", phase: "adjacent-expanding" });
     expect(expanding.commands[0]).toMatchObject({ kind: "settle-week", phase: "expand" });
-    const stable = transitionCalendar(expanding.state, { type: "settle-complete", epoch: 3 }).state;
+    const stable = transitionCalendar(expanding.state, { type: "settle-complete", epoch: expanding.state.epoch }).state;
     expect(stable).toMatchObject({ mode: "focused", phase: "idle" });
     expect(transitionCalendar(stable, { type: "back" }).state).toMatchObject({ mode: "month", phase: "settling" });
 
@@ -209,6 +343,7 @@ describe("Calendar semantic transitions", () => {
       .toMatchObject({ mode: "month", selectedLocalDate: "2026-11-02" });
     expect(transitionCalendar(expanded.state, { type: "select-adjacent", localDate: "2026-11-02" }))
       .toEqual({ state: expanded.state, commands: [] });
+    expect(transitionCalendar(initial(), { type: "layout-ready" })).toEqual({ state: initial(), commands: [] });
 
     const reducedExpanded = transitionCalendar(initial(true), { type: "expand" });
     expect(reducedExpanded).toEqual({ state: expect.objectContaining({ mode: "focused", phase: "idle" }), commands: [] });

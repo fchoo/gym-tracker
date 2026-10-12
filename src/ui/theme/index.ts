@@ -10,6 +10,7 @@ import {
   AccessibilityInfo,
   Appearance,
   type ColorSchemeName,
+  type TextStyle,
 } from "react-native";
 
 import { PHASE14_FONT_PROOF } from "../../testing/phase14FontProof";
@@ -58,6 +59,7 @@ export const sizes = {
   icon: 24,
   inlineIcon: 20,
   focusRing: 3,
+  focusClearance: 4,
 } as const;
 
 const revision18EditorialWorkoutTitleLetterSpacing =
@@ -72,7 +74,7 @@ export const typeScale = {
     fontSize: 30,
     lineHeight: 41,
     fontWeight: "400",
-    fontVariant: ["tabular-nums"],
+    fontVariant: ["tabular-nums"] as TextStyle["fontVariant"],
   },
   targetValue: {
     fontFamily: fontFamilies.numericRegular,
@@ -126,6 +128,54 @@ export const typeScale = {
     letterSpacing: revision18EditorialWorkoutTitleLetterSpacing,
   },
 };
+
+export const calendarTypeScale = {
+  event: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: -0.44,
+  },
+  metadata: {
+    fontFamily: fontFamilies.interfaceRegular,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "400",
+  },
+  body: {
+    fontFamily: fontFamilies.interfaceRegular,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "400",
+  },
+  bodyStrong: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
+  },
+  numeric: {
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "400",
+    fontVariant: ["tabular-nums"] as TextStyle["fontVariant"],
+  },
+  heading: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: "800",
+    letterSpacing: -0.55,
+  },
+} as const;
+
+export function colorWithAlpha(hex: string, opacity: number): string {
+  if (!/^#[0-9a-f]{6}$/iu.test(hex) || !Number.isFinite(opacity)) return hex;
+  const alpha = Math.max(0, Math.min(255, Math.round(opacity * 255)));
+  return `${hex}${alpha.toString(16).padStart(2, "0").toUpperCase()}`;
+}
 
 /**
  * Phase 15 Workout semantics intentionally differ from the shared Phase 14

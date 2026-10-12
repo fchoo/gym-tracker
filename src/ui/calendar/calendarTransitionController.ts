@@ -1,6 +1,6 @@
 export type CalendarTitlePanel = "previous" | "current" | "next";
 export type CalendarDisplayMode = "month" | "focused";
-export type CalendarTransitionPhase = "idle" | "dragging" | "settling" | "adjacent-collapsing" | "adjacent-expanding";
+export type CalendarTransitionPhase = "idle" | "dragging" | "settling" | "adjacent-collapsing" | "adjacent-measuring" | "adjacent-expanding";
 
 export type CalendarTransitionState = Readonly<{
   currentMonthId: string;
@@ -55,6 +55,7 @@ export type CalendarTransitionEvent =
   | Readonly<{ type: "expand" }>
   | Readonly<{ type: "collapse" }>
   | Readonly<{ type: "select-adjacent"; localDate: string; targetMonthId?: string }>
+  | Readonly<{ type: "layout-ready" }>
   | Readonly<{ type: "back" }>;
 
 export type CalendarTransitionResult = Readonly<{
@@ -235,14 +236,24 @@ export function transitionCalendar(
           selectedLocalDate: state.pendingSelectedLocalDate ?? state.selectedLocalDate,
           pendingSelectedLocalDate: null,
           pendingMonthId: null,
-          mode: "focused",
-          phase: state.reducedMotion ? "idle" : "adjacent-expanding",
+          mode: state.reducedMotion ? "focused" : "month",
+          phase: state.reducedMotion ? "idle" : "adjacent-measuring",
           epoch: state.epoch + 1,
         });
-        return settleWeek(state, "expand", next);
+        return result(next);
       }
       if (state.phase === "settling" || state.phase === "adjacent-expanding") return result(reset(state, false));
       return result(state);
+    case "layout-ready": {
+      if (state.phase !== "adjacent-measuring") return result(state);
+      const next = freezeState({
+        ...state,
+        mode: "focused",
+        phase: "adjacent-expanding",
+        epoch: state.epoch + 1,
+      });
+      return settleWeek(state, "expand", next);
+    }
     case "expand": {
       if (state.phase !== "idle" || state.mode === "focused") return result(state);
       const next = freezeState({ ...state, mode: "focused", phase: state.reducedMotion ? "idle" : "settling", epoch: state.epoch + 1 });

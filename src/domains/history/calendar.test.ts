@@ -30,7 +30,15 @@ describe("history calendar presentation", () => {
       isOutsideMonth: false,
       isSelected: true,
       isToday: true,
-    })).toBe("24 August 2026. today. 3 scheduled or imported events. Full Body A. Strength. Complete. Strength. Easy run. Running. Planned. Recovery. Outdoor run. Running. Imported. Garmin. selected");
+    })).toBe("24 August 2026. today. 3 scheduled or imported events. Full Body A. Strength. Complete. Strength. Easy run. Running. Planned. Recovery. Outdoor run. Running. Complete. Garmin. selected");
+    expect(calendarDayAccessibilityLabel({
+      date: "25 August 2026",
+      events: [],
+      isOutsideMonth: false,
+      isRest: true,
+      isSelected: false,
+      isToday: false,
+    })).toBe("25 August 2026. Rest day. No workout");
   });
   it("labels every source and preserves manual precedence over completed or partial status", () => {
     expect(historySourceLabel("scheduled_day")).toBe("Planned day");

@@ -302,6 +302,7 @@ jest.mock("expo-router", () => {
       NativeReact.useEffect(() => effect(), [effect]);
     },
     usePathname: () => mockPathname,
+    useLocalSearchParams: () => ({}),
     useRouter: () => ({
       push: (...args: [string]) => mockPush(...args),
     }),
