@@ -7,6 +7,15 @@ export type GarminRuntimeInfo = Readonly<{
   clientCommit: "218e72ca5459e014435fc2d94fd18bd601fa0c14";
   abi: "arm64-v8a";
   capabilities: readonly ["runtimeInfo"];
+  benchmark: Readonly<{
+    processId: number;
+    installedApkSizeBytes: number;
+    garminModuleSizeBytes: number;
+    memoryRssBytes?: number;
+    pythonStartupKind: "cold" | "warm";
+    pythonStartupDurationMs: number;
+    observedAtMonotonicMs: number;
+  }>;
 }>;
 
 export type GarminConnectNativeModule = Readonly<{
@@ -36,6 +45,40 @@ export function getGarminConnectNativeModule(): GarminConnectNativeModule {
 function isRuntimeInfo(value: unknown): value is GarminRuntimeInfo {
   if (value === null || typeof value !== "object") return false;
   const info = value as Record<string, unknown>;
+  const benchmark = info.benchmark;
+  if (benchmark === null || typeof benchmark !== "object" || Array.isArray(benchmark)) {
+    return false;
+  }
+  const facts = benchmark as Record<string, unknown>;
+  const benchmarkKeys = Object.keys(facts);
+  const allowedBenchmarkKeys = new Set([
+    "processId",
+    "installedApkSizeBytes",
+    "garminModuleSizeBytes",
+    "memoryRssBytes",
+    "pythonStartupKind",
+    "pythonStartupDurationMs",
+    "observedAtMonotonicMs",
+  ]);
+  const memoryRssBytes = facts.memoryRssBytes;
+  const benchmarkValid = benchmarkKeys.length >= 6
+    && benchmarkKeys.length <= allowedBenchmarkKeys.size
+    && benchmarkKeys.every((key) => allowedBenchmarkKeys.has(key))
+    && Number.isSafeInteger(facts.processId)
+    && (facts.processId as number) > 0
+    && Number.isSafeInteger(facts.installedApkSizeBytes)
+    && (facts.installedApkSizeBytes as number) > 0
+    && Number.isSafeInteger(facts.garminModuleSizeBytes)
+    && (facts.garminModuleSizeBytes as number) > 0
+    && (
+      memoryRssBytes === undefined
+      || (Number.isSafeInteger(memoryRssBytes) && (memoryRssBytes as number) > 0)
+    )
+    && (facts.pythonStartupKind === "cold" || facts.pythonStartupKind === "warm")
+    && Number.isFinite(facts.pythonStartupDurationMs)
+    && (facts.pythonStartupDurationMs as number) >= 0
+    && Number.isFinite(facts.observedAtMonotonicMs)
+    && (facts.observedAtMonotonicMs as number) >= 0;
   return info.schemaVersion === 1
     && info.pythonVersion === "3.13"
     && info.clientVersion === "0.3.17"
@@ -43,7 +86,8 @@ function isRuntimeInfo(value: unknown): value is GarminRuntimeInfo {
     && info.abi === "arm64-v8a"
     && Array.isArray(info.capabilities)
     && info.capabilities.length === 1
-    && info.capabilities[0] === "runtimeInfo";
+    && info.capabilities[0] === "runtimeInfo"
+    && benchmarkValid;
 }
 
 export async function readGarminRuntimeInfo(

@@ -1,5 +1,7 @@
 package expo.modules.garminconnect
 
+import android.os.Process
+import android.os.SystemClock
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import expo.modules.kotlin.functions.Coroutine
@@ -7,6 +9,8 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import java.io.File
+import java.util.zip.ZipFile
 
 private const val RUNTIME_INFO_OPERATION = "runtimeInfo"
 
@@ -48,13 +52,14 @@ private data class GarminRuntimeInfo(
   val abi: String,
   val capabilities: List<String>,
 ) {
-  fun toDto(): Map<String, Any> = mapOf(
+  fun toDto(benchmark: GarminBenchmarkRuntimeInfo): Map<String, Any> = mapOf(
     "schemaVersion" to schemaVersion,
     "pythonVersion" to pythonVersion,
     "clientVersion" to clientVersion,
     "clientCommit" to clientCommit,
     "abi" to abi,
     "capabilities" to capabilities,
+    "benchmark" to benchmark.toDto(),
   )
 
   companion object {
@@ -89,6 +94,26 @@ private data class GarminRuntimeInfo(
         capabilities = capabilities,
       )
     }
+  }
+}
+
+private data class GarminBenchmarkRuntimeInfo(
+  val processId: Int,
+  val installedApkSizeBytes: Long,
+  val garminModuleSizeBytes: Long,
+  val memoryRssBytes: Long?,
+  val pythonStartupKind: String,
+  val pythonStartupDurationMs: Double,
+  val observedAtMonotonicMs: Double,
+) {
+  fun toDto(): Map<String, Any> = buildMap {
+    put("processId", processId)
+    put("installedApkSizeBytes", installedApkSizeBytes)
+    put("garminModuleSizeBytes", garminModuleSizeBytes)
+    memoryRssBytes?.let { put("memoryRssBytes", it) }
+    put("pythonStartupKind", pythonStartupKind)
+    put("pythonStartupDurationMs", pythonStartupDurationMs)
+    put("observedAtMonotonicMs", observedAtMonotonicMs)
   }
 }
 
@@ -180,10 +205,13 @@ class GarminConnectModule : Module() {
 
   private fun runtimeInfo(): Map<String, Any> {
     val context = appContext.reactContext ?: throw IllegalStateException("garmin_runtime_unavailable")
-    synchronized(Python::class.java) {
+    val startedAtNanos = SystemClock.elapsedRealtimeNanos()
+    val pythonStartupKind = synchronized(Python::class.java) {
+      val kind = if (Python.isStarted()) "warm" else "cold"
       if (!Python.isStarted()) {
         Python.start(AndroidPlatform(context.applicationContext))
       }
+      kind
     }
 
     val result = Python.getInstance()
@@ -191,6 +219,50 @@ class GarminConnectModule : Module() {
       .callAttr("dispatch", RUNTIME_INFO_OPERATION, emptyMap<String, Any>())
       .toJava(Map::class.java)
 
-    return GarminRuntimeInfo.fromPython(result).toDto()
+    val observedAtNanos = SystemClock.elapsedRealtimeNanos()
+    val apk = File(context.applicationInfo.sourceDir)
+    val installedApkSizeBytes = apk.length()
+    val garminModuleSizeBytes = garminModuleSizeBytes(apk)
+    if (installedApkSizeBytes <= 0L || garminModuleSizeBytes <= 0L) {
+      throw IllegalStateException("garmin_runtime_schema_invalid")
+    }
+    return GarminRuntimeInfo.fromPython(result).toDto(
+      GarminBenchmarkRuntimeInfo(
+        processId = Process.myPid(),
+        installedApkSizeBytes = installedApkSizeBytes,
+        garminModuleSizeBytes = garminModuleSizeBytes,
+        memoryRssBytes = memoryRssBytes(),
+        pythonStartupKind = pythonStartupKind,
+        pythonStartupDurationMs = (observedAtNanos - startedAtNanos) / 1_000_000.0,
+        observedAtMonotonicMs = observedAtNanos / 1_000_000.0,
+      )
+    )
   }
+
+  private fun garminModuleSizeBytes(apk: File): Long = ZipFile(apk).use { zip ->
+    zip.entries().asSequence()
+      .filter { entry ->
+        !entry.isDirectory && (
+          entry.name.startsWith("assets/chaquopy/")
+          || (
+            entry.name.startsWith("lib/arm64-v8a/")
+            && (entry.name.contains("chaquopy") || entry.name.contains("python"))
+          )
+        )
+      }
+      .sumOf { entry ->
+        if (entry.compressedSize >= 0L) entry.compressedSize else entry.size.coerceAtLeast(0L)
+      }
+  }
+
+  private fun memoryRssBytes(): Long? = runCatching {
+    File("/proc/self/status").useLines { lines ->
+      lines.firstOrNull { it.startsWith("VmRSS:") }
+        ?.trim()
+        ?.split(Regex("\\s+"))
+        ?.getOrNull(1)
+        ?.toLongOrNull()
+        ?.times(1_024L)
+    }
+  }.getOrNull()
 }

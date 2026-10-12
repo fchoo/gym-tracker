@@ -3,11 +3,14 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION,
+  PHASE18_GARMIN_BENCHMARK_METRICS,
+  PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES,
   PHASE18_GARMIN_BENCHMARK_MARKER,
   createPhase18GarminBenchmarkMarkerReport,
   createPhase18GarminAcceptanceHarness,
   phase18GarminAcceptanceBenchmarkEnabled,
   phase18GarminAcceptanceEnabled,
+  type Phase18GarminBenchmarkMeasurementPort,
 } from "./phase18GarminAcceptance";
 import {
   GARMIN_ACCEPTANCE_HOST_CASE_IDS,
@@ -15,6 +18,38 @@ import {
 } from "./contracts/garminImport.contract";
 
 const HASH = "a".repeat(64);
+
+const OPERATION_BY_METRIC = Object.freeze({
+  apk_size_bytes: "native-runtime:apk-size",
+  garmin_module_size_bytes: "native-runtime:garmin-module-size",
+  python_cold_start_ms: "native-runtime:python-cold-start",
+  python_warm_start_ms: "native-runtime:python-warm-start",
+  bounded_sync_ms: "native-garmin:bounded-sync",
+  route_render_ms: "react-native-layout:route",
+  lap_render_ms: "react-native-layout:laps",
+  memory_rss_bytes: "native-runtime:memory-rss",
+  js_task_ms: "react-native:bounded-js-task",
+  frame_time_ms: "react-native:animation-frame",
+  offline_workout_commit_ms: "sqlite:offline-workout-commit",
+} as const);
+
+function observationPort(
+  override: Partial<Phase18GarminBenchmarkMeasurementPort> = {},
+): Phase18GarminBenchmarkMeasurementPort {
+  return {
+    kind: "installed-observation-port",
+    processId: async () => 123,
+    observe: async (metric, minimumSamples) => Array.from(
+      { length: minimumSamples },
+      (_, index) => ({
+        value: index + 1,
+        observed_at_monotonic_ms: 10_000 + (index * 2) + PHASE18_GARMIN_BENCHMARK_METRICS.indexOf(metric) / 10,
+        operation: OPERATION_BY_METRIC[metric],
+      }),
+    ),
+    ...override,
+  };
+}
 
 describe("Phase 18 deterministic acceptance harness", () => {
   it("opens only for the exact non-production profile, suite, and confirmation", () => {
@@ -37,7 +72,7 @@ describe("Phase 18 deterministic acceptance harness", () => {
     }
   });
 
-  it("opens benchmark mode only for the guarded benchmark nonce path", () => {
+  it("opens benchmark mode only for the guarded benchmark nonce path", async () => {
     const exact = {
       buildProfile: "development-test",
       nativeContractsEnabled: true,
@@ -54,14 +89,83 @@ describe("Phase 18 deterministic acceptance harness", () => {
     ]) {
       expect(phase18GarminAcceptanceBenchmarkEnabled(rejected)).toBe(false);
     }
-    expect(createPhase18GarminBenchmarkMarkerReport({
+    await expect(createPhase18GarminBenchmarkMarkerReport({
       nonce: "a".repeat(32),
-      pid: 123,
-    })).toEqual(expect.objectContaining({
+      measurementPort: observationPort(),
+    })).resolves.toEqual(expect.objectContaining({
       run_nonce: "a".repeat(32),
       process_id: 123,
       source: "installed-route-log",
+      status: "passed",
     }));
+  });
+
+  it("builds minimum counts only from distinct timestamped raw observations", async () => {
+    const report = await createPhase18GarminBenchmarkMarkerReport({
+      nonce: "b".repeat(32),
+      measurementPort: observationPort(),
+    });
+
+    expect(report.status).toBe("passed");
+    expect(report.review_required).toEqual([]);
+    for (const metric of PHASE18_GARMIN_BENCHMARK_METRICS) {
+      const minimum = PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES[metric];
+      expect(report.measurements[metric]).toHaveLength(minimum);
+      expect(report.measurement_context.sample_labels[metric]).toHaveLength(minimum);
+      expect(new Set(report.measurement_context.sample_labels[metric]).size).toBe(minimum);
+      expect(report.measurement_context.commands[metric]).toBe(OPERATION_BY_METRIC[metric]);
+    }
+  });
+
+  it("fails closed for unavailable metrics and duplicate observation timestamps", async () => {
+    const report = await createPhase18GarminBenchmarkMarkerReport({
+      nonce: "c".repeat(32),
+      measurementPort: observationPort({
+        observe: async (metric, minimumSamples) => {
+          if (metric === "bounded_sync_ms") throw new Error("provider payload");
+          return Array.from({ length: minimumSamples }, (_, index) => ({
+            value: index + 1,
+            observed_at_monotonic_ms: metric === "frame_time_ms" ? 20_000 : 20_000 + index,
+            operation: OPERATION_BY_METRIC[metric],
+          }));
+        },
+      }),
+    });
+
+    expect(report.status).toBe("REVIEW_REQUIRED");
+    expect(report.review_required).toEqual([
+      "bounded_sync_ms:measurement_unavailable",
+      "frame_time_ms:observation_invalid",
+    ]);
+    expect(report.measurements.bounded_sync_ms).toEqual([]);
+    expect(report.measurements.frame_time_ms).toHaveLength(1);
+    expect(JSON.stringify(report)).not.toContain("provider payload");
+  });
+
+  it("rejects demo or constant producers instead of relabeling them installed", async () => {
+    await expect(createPhase18GarminBenchmarkMarkerReport({
+      nonce: "d".repeat(32),
+      measurementPort: {
+        ...observationPort(),
+        kind: "demo-constant-port",
+      } as unknown as Phase18GarminBenchmarkMeasurementPort,
+    })).rejects.toThrow("phase18_garmin_benchmark_producer_invalid");
+
+    const report = await createPhase18GarminBenchmarkMarkerReport({
+      nonce: "e".repeat(32),
+      measurementPort: observationPort({
+        observe: async (metric, minimumSamples) => Array.from(
+          { length: minimumSamples },
+          (_, index) => ({
+            value: 1,
+            observed_at_monotonic_ms: 30_000 + index,
+            operation: `constant:${metric}`,
+          }),
+        ),
+      }),
+    });
+    expect(report.status).toBe("REVIEW_REQUIRED");
+    expect(report.review_required).toContain("apk_size_bytes:observation_invalid");
   });
 
   it("runs every host case in ledger order and leaves native proof explicitly deferred", async () => {
@@ -146,15 +250,48 @@ describe("Phase 18 deterministic acceptance harness", () => {
     }
   });
 
-  it("keeps the route source-owned, guarded, synthetic-only, and free of proof relabeling", () => {
+  it("keeps the route source-owned, guarded, observed, and free of proof relabeling", () => {
     const route = readFileSync("app/__phase18-garmin-acceptance.tsx", "utf8");
+    const producer = readFileSync("src/testing/phase18GarminAcceptance.ts", "utf8");
+    const installedProducer = `${route}\n${producer}`;
     expect(route).toContain("phase18GarminAcceptanceEnabled");
     expect(route).toContain("phase18GarminAcceptanceBenchmarkEnabled");
     expect(route).toContain("createPhase18GarminBenchmarkMarkerReport");
-    expect(route).toContain(PHASE18_GARMIN_BENCHMARK_MARKER);
+    expect(route).toContain("PHASE18_GARMIN_BENCHMARK_MARKER");
+    expect(installedProducer).toContain("performance.now");
+    expect(installedProducer).toContain("requestAnimationFrame");
+    expect(installedProducer).toContain("readGarminRuntimeInfo");
+    expect(installedProducer).toContain("forceRefreshForTest");
+    expect(installedProducer).toContain("performPhase1Benchmark");
     expect(route).toContain("synthetic-redacted-only");
     expect(route).toContain("host-passed-native-deferred");
     expect(route).not.toMatch(/status:\s*["']passed["']/u);
     expect(route).not.toMatch(/private-account|owner@|123456789/u);
+    expect(producer).not.toContain("apk_size_bytes: [1]");
+    expect(producer).not.toContain("installed:${metric}");
+  });
+
+  it("sources process, artifact, Python, and memory facts from native runtime identity", () => {
+    const bridge = readFileSync("modules/garmin-connect/src/index.ts", "utf8");
+    const native = readFileSync(
+      "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectModule.kt",
+      "utf8",
+    );
+
+    for (const field of [
+      "processId",
+      "installedApkSizeBytes",
+      "garminModuleSizeBytes",
+      "memoryRssBytes",
+      "pythonStartupKind",
+      "pythonStartupDurationMs",
+      "observedAtMonotonicMs",
+    ]) {
+      expect(bridge).toContain(field);
+      expect(native).toContain(field);
+    }
+    expect(native).toContain("SystemClock.elapsedRealtimeNanos");
+    expect(native).toContain("/proc/self/status");
+    expect(native).toContain("ZipFile");
   });
 });
