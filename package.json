@@ -9,7 +9,21 @@
     "npm": "11.17.0"
   },
   "overrides": {
-    "react-dom": "$react"
+    "react-dom": "$react",
+    "shell-quote": "1.12.0",
+    "node-forge": "https://github.com/digitalbazaar/forge/archive/ceba34402e329f0365134f23fe19898756527d65.tar.gz",
+    "source-map-js": "1.2.2",
+    "micromatch": "4.0.8",
+    "braces": "npm:@dieub/braces-depth-guard@3.0.3-pn.3",
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.21"
+    },
+    "minimatch@10.2.6": {
+      "brace-expansion": "5.0.12"
+    },
+    "decode-uri-component": "0.5.0",
+    "js-yaml": "4.3.2",
+    "uuid": "11.1.1"
   },
   "scripts": {
     "start": "expo start",
@@ -121,20 +135,20 @@
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",
     "@tanstack/react-query": "5.101.4",
-    "expo": "~57.0.25",
-    "expo-asset": "~57.0.18",
+    "expo": "~57.0.27",
+    "expo-asset": "~57.0.19",
     "expo-audio": "~57.0.5",
-    "expo-constants": "~57.0.19",
+    "expo-constants": "~57.0.21",
     "expo-crypto": "~57.0.3",
     "expo-file-system": "~57.0.7",
     "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
-    "expo-linking": "~57.0.11",
-    "expo-notifications": "~57.0.21",
-    "expo-router": "~57.0.23",
+    "expo-linking": "~57.0.12",
+    "expo-notifications": "~57.0.22",
+    "expo-router": "~57.0.25",
     "expo-sharing": "~57.0.22",
     "expo-splash-screen": "~57.0.9",
-    "expo-sqlite": "~57.0.3",
+    "expo-sqlite": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
     "lucide-react-native": "1.31.0",
