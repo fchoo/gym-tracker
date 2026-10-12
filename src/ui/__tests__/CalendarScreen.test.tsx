@@ -2,6 +2,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -68,6 +69,80 @@ describe("CalendarScreen", () => {
     expect(loadCalendarRange).toHaveBeenCalledWith({
       startLocalDate: "2026-07-27",
       endLocalDateExclusive: "2026-09-07",
+    });
+  });
+
+  it("keeps Previous, Today, Next, and the modal-only Calendar key reachable", async () => {
+    const loadCalendarRange = jest.fn(async () => range);
+
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(await screen.findByRole("button", { name: "Return to today, 24 August 2026" }))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Show July 2026" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Show September 2026" })).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open Calendar key" }));
+
+    expect(screen.getByRole("header", { name: "Calendar key" })).toBeOnTheScreen();
+    expect(screen.getByText("Color identifies the activity. Fill and border style identify its status."))
+      .toBeOnTheScreen();
+    expect(screen.getByText("ACTIVITY")).toBeOnTheScreen();
+    expect(screen.getByText("STATUS")).toBeOnTheScreen();
+    expect(screen.queryByText("Complete", { exact: true })).not.toBeNull();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Close Calendar key" }));
+    expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
+  });
+
+  it("retains the last good month during refresh and retries the exact failed range", async () => {
+    let rejectNextRange: ((error: Error) => void) | undefined;
+    const loadCalendarRange = jest.fn()
+      .mockResolvedValueOnce(range)
+      .mockImplementationOnce(() => new Promise<CalendarRange>((_resolve, reject) => {
+        rejectNextRange = reject;
+      }))
+      .mockResolvedValueOnce(range);
+
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(await screen.findByText("Full body progression, week 12")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+
+    expect(screen.getByText("Updating Calendar")).toBeOnTheScreen();
+    expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
+
+    rejectNextRange?.(new Error("offline"));
+
+    expect(await screen.findByText("Calendar could not be loaded")).toBeOnTheScreen();
+    expect(screen.getByText("Your saved workouts were not changed. Try loading Calendar again."))
+      .toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Retry Calendar" }));
+
+    await waitFor(() => {
+      expect(loadCalendarRange).toHaveBeenLastCalledWith({
+        startLocalDate: "2026-08-31",
+        endLocalDateExclusive: "2026-10-05",
+      });
     });
   });
 });
