@@ -76,6 +76,8 @@ type RunningRow = Readonly<{
 type ImportedRow = Readonly<{
   id: string; source: string; source_kind: string; account_namespace: string; external_activity_id: string;
   started_at_ms: number; aggregate_json: string; opportunity_id: string | null;
+  matched_schedule_id: string | null; matched_schedule_version_id: string | null;
+  matched_plan_id: string | null; matched_slot_id: string | null;
 }>;
 
 function range(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: string }>): Readonly<{ start: LocalDate; end: LocalDate }> {
@@ -349,23 +351,61 @@ async function queryRange(
     reader.queryAll<ImportedRow>(
       `SELECT activity.id, activity.source, identity.source_kind, identity.account_namespace,
               identity.external_activity_id, activity.started_at_ms, activity.aggregate_json,
-              match.opportunity_id
+              match.opportunity_id,
+              matched_opportunity.schedule_id AS matched_schedule_id,
+              matched_opportunity.schedule_version_id AS matched_schedule_version_id,
+              matched_opportunity.plan_id AS matched_plan_id,
+              matched_opportunity.slot_id AS matched_slot_id
          FROM imported_activities activity
          JOIN imported_activity_identities identity ON identity.activity_id = activity.id
          JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
          LEFT JOIN running_activity_current_matches match ON match.activity_id = activity.id
+         LEFT JOIN running_opportunities matched_opportunity
+           ON matched_opportunity.id = match.opportunity_id
         WHERE lifecycle.removal_state = 'active'
           AND json_extract(activity.aggregate_json, '$.confirmed_local_date') >= ?
           AND json_extract(activity.aggregate_json, '$.confirmed_local_date') < ?
         ORDER BY json_extract(activity.aggregate_json, '$.confirmed_local_date'), activity.started_at_ms, activity.id`, [input.start, input.end],
     ),
   ]);
-  const matchedOpportunityIds = new Set(
-    importedRows.flatMap(({ opportunity_id }) => opportunity_id === null ? [] : [opportunity_id]),
-  );
   const strength = strengthRows.map(strengthProjection);
   const restByDate = new Map(
     strength.flatMap(({ rest }) => rest === null ? [] : [[rest.localDate, rest.summary] as const]),
+  );
+  const imported = importedRows.flatMap((row) => {
+    const facts = importedFacts(row);
+    if (facts === null) return [];
+    const matched = row.opportunity_id !== null
+      && row.matched_schedule_id !== null && row.matched_schedule_id.trim().length > 0
+      && row.matched_schedule_version_id !== null && row.matched_schedule_version_id.trim().length > 0
+      && row.matched_plan_id !== null && row.matched_plan_id.trim().length > 0
+      && row.matched_slot_id !== null && row.matched_slot_id.trim().length > 0;
+    return [{
+      matchedOpportunityId: matched ? row.opportunity_id : null,
+      event: Object.freeze({
+        id: row.id, source: "imported_activity" as const, sport: "running" as const,
+        status: matched ? "matched" as const : "imported" as const, title: facts.title,
+        displaySummary: facts.displaySummary, sourceLabel: "Garmin",
+        sourceIdentity: Object.freeze({
+          sourceKind: "garmin_connect_account" as const,
+          accountNamespace: row.account_namespace,
+          externalActivityId: row.external_activity_id,
+        }),
+        localDate: facts.localDate, timeZone: facts.timeZone,
+        scheduleId: matched ? row.matched_schedule_id : null,
+        scheduleVersionId: matched ? row.matched_schedule_version_id : null,
+        planId: matched ? row.matched_plan_id : null,
+        slotId: matched ? row.matched_slot_id : null,
+        revision: null,
+        state: matched ? "matched" : "imported",
+        destination: Object.freeze({ kind: "activity" as const, activityId: row.id }),
+      }),
+    }];
+  });
+  const matchedOpportunityIds = new Set(
+    imported.flatMap(({ matchedOpportunityId }) =>
+      matchedOpportunityId === null ? [] : [matchedOpportunityId]
+    ),
   );
   const events: TrainingCalendarEvent[] = [
     ...strength.flatMap(({ event }) => {
@@ -375,27 +415,7 @@ async function queryRange(
       const event = runningEvent(row);
       return event === null ? [] : [event];
     }),
-    ...importedRows.flatMap((row) => {
-      const facts = importedFacts(row);
-      const matched = row.opportunity_id === null
-        ? null
-        : runningRows.find(({ id }) => id === row.opportunity_id) ?? null;
-      if (facts === null || (row.opportunity_id !== null && matched === null)) return [];
-      return [Object.freeze({
-        id: row.id, source: "imported_activity" as const, sport: "running" as const,
-        status: matched === null ? "imported" as const : "matched" as const, title: facts.title,
-        displaySummary: facts.displaySummary, sourceLabel: "Garmin",
-        sourceIdentity: Object.freeze({
-          sourceKind: "garmin_connect_account" as const,
-          accountNamespace: row.account_namespace,
-          externalActivityId: row.external_activity_id,
-        }),
-        localDate: facts.localDate, timeZone: facts.timeZone,
-        scheduleId: matched?.schedule_id ?? null, scheduleVersionId: matched?.schedule_version_id ?? null,
-        planId: matched?.plan_id ?? null, slotId: matched?.slot_id ?? null, revision: null,
-        state: matched === null ? "imported" : "matched", destination: Object.freeze({ kind: "activity" as const, activityId: row.id }),
-      })];
-    }),
+    ...imported.map(({ event }) => event),
   ];
   const orderedEvents = Object.freeze(events.sort((left, right) => {
       const sourceOrder = { strength: 0, running: 1, imported_activity: 2 } as const;
