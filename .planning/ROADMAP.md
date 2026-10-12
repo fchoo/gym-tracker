@@ -304,7 +304,19 @@ Plans:
   4. Target editing and recommendation review preserve draft values on validation/save failure and persist Keep current or Use target exactly once with revision checks and no fixture-driven reappearance.
   5. Optional dated bodyweight can be added, edited, and explicitly deleted for disclosed relative-load views only; it never collects gender/height, creates a fitness score, or changes workout targets.
 
-**Plans**: 10 plans
+**Plans**: 3/10 plans executed
+
+- [x] 19-01-PLAN.md
+- [x] 19-02-PLAN.md
+- [ ] 19-03-PLAN.md
+- [ ] 19-04-PLAN.md
+- [ ] 19-05-PLAN.md
+- [ ] 19-06-PLAN.md
+- [x] 19-07-PLAN.md
+- [ ] 19-08-PLAN.md
+- [ ] 19-09-PLAN.md
+- [ ] 19-10-PLAN.md
+
 **UI hint**: yes
 **Plan flags**: focused metrics research; UI specification required; plan check required; review convergence required
 
@@ -340,7 +352,7 @@ Plans:
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
 | 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; native deferred | 2026-10-12 |
 | 18. Garmin Account Sync | 18-garmin-import | 14/14 | Complete    | 2026-10-12 |
-| 19. Progress Parity | 19-progress-parity | 0/10 | Not started | - |
+| 19. Progress Parity | 19-progress-parity | 3/10 | In Progress|  |
 | 20. Native Acceptance | 20-native-acceptance | 0/12 | Not started | - |
 
 ## Backlog
