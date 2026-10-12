@@ -9,12 +9,14 @@ import {
   GARMIN_ACCEPTANCE_NATIVE_PREREQUISITE_IDS,
 } from "../src/testing/contracts/garminImport.contract";
 import { useWorkoutAppRuntime } from "../src/bootstrap/workoutAppRuntime";
+import { ImportedActivityDetailScreen } from "../src/ui/screens/ImportedActivityDetailScreen";
 import {
   PHASE18_GARMIN_BENCHMARK_MARKER,
   createInstalledPhase18GarminBenchmarkMeasurementPort,
   createPhase18GarminBenchmarkBoundedSync,
   createPhase18GarminBenchmarkMarkerReport,
   parsePhase18GarminColdStartHandshake,
+  phase18GarminBenchmarkDetailFixture,
   phase18GarminAcceptanceBenchmarkEnabled,
   phase18GarminAcceptanceEnabled,
   type Phase18GarminBenchmarkRenderProbe,
@@ -113,31 +115,32 @@ function Phase18GarminBenchmarkScreen({
     }));
   }, [renderProbeState?.generation]);
 
+  if (renderProbeState !== null) {
+    return (
+      <View
+        key={`${renderProbeState.kind}:${renderProbeState.generation}`}
+        onLayout={finishRenderProbe}
+        style={styles.probe}
+        testID="phase18-benchmark-layout-probe"
+      >
+        <ImportedActivityDetailScreen
+          onBack={() => undefined}
+          onMatch={() => undefined}
+          onRetry={() => undefined}
+          state={{
+            kind: "ready",
+            detail: phase18GarminBenchmarkDetailFixture(renderProbeState.kind),
+          }}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root} accessibilityLabel="Phase 18 Garmin benchmark">
       <Text style={styles.title}>Phase 18 Garmin benchmark</Text>
       <Text style={styles.status}>{status}</Text>
       <Text style={styles.detail}>installed-observation-port</Text>
-      {renderProbeState === null ? null : (
-        <View
-          key={`${renderProbeState.kind}:${renderProbeState.generation}`}
-          onLayout={finishRenderProbe}
-          style={styles.probe}
-        >
-          {renderProbeState.kind === "route" ? (
-            <>
-              <Text style={styles.probeHeading}>Observed activity detail</Text>
-              <Text style={styles.detail}>5.00 km · 26:00 · 4:55/km</Text>
-            </>
-          ) : Array.from({ length: 10 }, (_, index) => (
-            <View key={index} style={styles.lapRow}>
-              <Text style={styles.detail}>{`Lap ${index + 1}`}</Text>
-              <Text style={styles.detail}>4:55</Text>
-              <Text style={styles.detail}>4:55/km</Text>
-            </View>
-          ))}
-        </View>
-      )}
     </View>
   );
 }
@@ -199,7 +202,5 @@ const styles = StyleSheet.create({
   title: { color: "#171A1C", fontSize: 28, fontWeight: "700" },
   status: { color: "#22543D", fontSize: 18, marginTop: 12 },
   detail: { color: "#4F5B66", fontSize: 16, marginTop: 8 },
-  probe: { marginTop: 16, width: "100%" },
-  probeHeading: { color: "#171A1C", fontSize: 18, fontWeight: "700" },
-  lapRow: { flexDirection: "row", justifyContent: "space-between" },
+  probe: { flex: 1, width: "100%" },
 });

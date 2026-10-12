@@ -55,8 +55,8 @@ const OPERATION_BY_METRIC = Object.freeze({
   python_cold_start_ms: "native-runtime:python-cold-start",
   python_warm_start_ms: "native-runtime:python-warm-start",
   bounded_sync_ms: "garmin-import:max-bounded-sqlite",
-  route_render_ms: "react-native-layout:route",
-  lap_render_ms: "react-native-layout:laps",
+  route_render_ms: "react-native-layout:imported-activity-route",
+  lap_render_ms: "react-native-layout:imported-activity-laps",
   memory_rss_bytes: "native-runtime:memory-rss",
   js_task_ms: "react-native:bounded-js-task",
   frame_time_ms: "react-native:animation-frame",
@@ -262,7 +262,16 @@ describe("Phase 18 deterministic acceptance harness", () => {
     const readRuntimeInfo = jest.fn(async () => runtimeInfo("cold", 60_000));
     let now = 70_000;
     const port = createInstalledPhase18GarminBenchmarkMeasurementPort({
-      coldStartHandshake: { sequence: 1, prior_samples: [] },
+      coldStartHandshake: {
+        sequence: 5,
+        prior_samples: Array.from({ length: 4 }, (_, index) => ({
+          value: index + 1,
+          observed_at_monotonic_ms: 59_000 + index,
+          operation: "native-runtime:python-cold-start",
+          process_id: 119 + index,
+          sequence: index + 1,
+        })),
+      },
       renderProbe: async () => ({ value: 1, observed_at_monotonic_ms: ++now }),
       runBoundedSync,
       runtime: {
@@ -273,6 +282,12 @@ describe("Phase 18 deterministic acceptance harness", () => {
       },
     });
 
+    await expect(port.observe("python_cold_start_ms", 5)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ process_id: 119, sequence: 1 }),
+        expect.objectContaining({ process_id: 123, sequence: 5 }),
+      ]),
+    );
     await expect(port.observe("bounded_sync_ms", 5)).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -436,6 +451,10 @@ describe("Phase 18 deterministic acceptance harness", () => {
     expect(route).toContain("phase18GarminAcceptanceBenchmarkEnabled");
     expect(route).toContain("createPhase18GarminBenchmarkMarkerReport");
     expect(route).toContain("PHASE18_GARMIN_BENCHMARK_MARKER");
+    expect(route).toContain("ImportedActivityDetailScreen");
+    expect(route).toContain("phase18GarminBenchmarkDetailFixture");
+    expect(route).toContain("phase18-benchmark-layout-probe");
+    expect(route).not.toContain("Observed activity detail");
     expect(installedProducer).toContain("performance.now");
     expect(installedProducer).toContain("requestAnimationFrame");
     expect(installedProducer).toContain("readGarminRuntimeInfo");

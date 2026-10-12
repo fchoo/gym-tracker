@@ -12,6 +12,7 @@ import type {
   ImportedActivityCommandRepository,
 } from "../domains/activities/importCommands.ts";
 import { canonicalJson } from "../domains/activities/importContracts.ts";
+import type { ImportedActivityDetail } from "../domains/activities/activityDetails.ts";
 import {
   createGarminActivityAdapter,
   type GarminNativeDriver,
@@ -209,6 +210,45 @@ const BENCHMARK_ROUTE = Object.freeze(Array.from({ length: 64 }, (_, index) =>
     lon: 103.80 + (index / 100_000),
     elapsedDuration: index * 24,
   })));
+
+const BENCHMARK_DETAIL_ROUTE_POINTS = Object.freeze(BENCHMARK_ROUTE.map((point) =>
+  Object.freeze({
+    latitudeE6: Math.round(point.lat * 1_000_000),
+    longitudeE6: Math.round(point.lon * 1_000_000),
+  })));
+
+const BENCHMARK_DETAIL_LAPS = Object.freeze(BENCHMARK_LAPS.map((lap) =>
+  Object.freeze({
+    lap: String(lap.lapIndex),
+    time: Object.freeze({ basis: "Moving time", value: "2:28" }),
+    pace: Object.freeze({ basis: "Moving time", value: "4:56/km" }),
+  })));
+
+export function phase18GarminBenchmarkDetailFixture(
+  kind: Phase18GarminBenchmarkRenderProbeKind,
+): ImportedActivityDetail {
+  return Object.freeze({
+    activityType: "Outdoor run",
+    confirmedLocalDate: "2026-01-01",
+    distance: "5.00 km",
+    elapsed: "26:00",
+    secondaryDuration: Object.freeze({ label: "Moving", value: "24:35" }),
+    averagePace: Object.freeze({ basis: "Moving time", value: "4:55/km" }),
+    route: kind === "route"
+      ? Object.freeze({
+        kind: "available" as const,
+        segments: Object.freeze([BENCHMARK_DETAIL_ROUTE_POINTS]),
+      })
+      : Object.freeze({ kind: "unavailable" as const }),
+    averageHeartRate: "152 bpm",
+    laps: kind === "laps" ? BENCHMARK_DETAIL_LAPS : Object.freeze([]),
+    fidelity: Object.freeze({
+      kind: "source_laps" as const,
+      heading: "Source laps",
+      body: "Lap and summary facts come from accepted source fields.",
+    }),
+  });
+}
 
 function boundedExternalActivityId(
   nonce: string,
@@ -410,7 +450,10 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
       await readRuntime();
       attempts += 1;
     }
-    return selected().slice(-minimumSamples);
+    return selected().slice(-minimumSamples).map((observation, index) => Object.freeze({
+      ...observation,
+      sequence: index + 1,
+    }));
   };
   const observeRepeated = async (
     minimumSamples: number,
@@ -498,7 +541,7 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
             observations.push(benchmarkObservation(
               rendered.value,
               rendered.observed_at_monotonic_ms,
-              "react-native-layout:route",
+              "react-native-layout:imported-activity-route",
               processId,
               index + 1,
             ));
@@ -513,7 +556,7 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
             observations.push(benchmarkObservation(
               rendered.value,
               rendered.observed_at_monotonic_ms,
-              "react-native-layout:laps",
+              "react-native-layout:imported-activity-laps",
               processId,
               index + 1,
             ));
@@ -572,18 +615,26 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
           const processId = (await firstRuntime()).benchmark.processId;
           const durations = await runtime.runOfflineWorkout(minimumSamples);
           if (durations.length !== minimumSamples) throw new Error("phase18_offline_probe_invalid");
-          return Object.freeze(durations.map((duration, index) => {
+          const observations: Phase18GarminBenchmarkObservation[] = [];
+          let previousObservedAtMicros = -1;
+          for (const [index, duration] of durations.entries()) {
             if (!Number.isFinite(duration) || duration < 0) {
               throw new Error("phase18_offline_probe_invalid");
             }
-            return benchmarkObservation(
+            let observedAt = runtime.now();
+            if (Math.round(observedAt * 1_000) === previousObservedAtMicros) {
+              observedAt = await runtime.nextAnimationFrame();
+            }
+            previousObservedAtMicros = Math.round(observedAt * 1_000);
+            observations.push(benchmarkObservation(
               duration,
-              runtime.now(),
+              observedAt,
               "sqlite:offline-workout-commit",
               processId,
               index + 1,
-            );
-          }));
+            ));
+          }
+          return Object.freeze(observations);
         }
       }
     },
