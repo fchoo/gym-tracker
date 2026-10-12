@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -12,6 +12,11 @@ import {
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
 import { exactKeys } from "./node-evidence-utils.mjs";
+import {
+  createExclusiveDirectory,
+  stableCanonicalJson,
+  writeExclusiveArtifact,
+} from "./v12-calendar-artifacts.mjs";
 
 const ROOT = process.cwd();
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -20,7 +25,6 @@ const CASE_RESULTS = new Set(["PASS", "FAIL", "REVIEW_REQUIRED"]);
 const RECORD_CLASSIFICATIONS = new Set(["PASS", "FAIL", "REVIEW_REQUIRED", "accepted_deviation"]);
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const canonical = (value) => JSON.stringify(value, Object.keys(value ?? {}).sort(), 2);
 
 function fail(code) { throw new Error(`v12_calendar_${code}`); }
 function finite(value) { return typeof value === "number" && Number.isFinite(value); }
@@ -148,7 +152,7 @@ export function validateV12CalendarReferenceMap(map, options = {}) {
 }
 
 function artifact(file, bytes) {
-  writeFileSync(file, bytes);
+  writeExclusiveArtifact(file, bytes);
   return { path: path.relative(ROOT, file), sha256: sha256(bytes) };
 }
 function imageArtifacts(referenceBytes, nativeBytes, output) {
@@ -181,7 +185,8 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
   if (run.captures.length !== mapById.size || new Set(run.captures.map((capture) => capture.id)).size !== run.captures.length) fail("capture_set_invalid");
   const destination = path.resolve(outputDirectory);
   if (destination !== ROOT && !destination.startsWith(`${ROOT}${path.sep}`) && !destination.startsWith(`${tmpdir()}${path.sep}`)) fail("output_escape");
-  mkdirSync(destination, { recursive: true });
+  mkdirSync(path.dirname(destination), { recursive: true });
+  createExclusiveDirectory(destination);
   const records = [];
   for (const capture of run.captures) {
     schema(capture, ["id", "native", "trace", "semantics", "classification", "differences"], "run_capture");
@@ -195,12 +200,12 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
     const referenceInfo = pngInfo(referenceFile); const nativeInfo = pngInfo(nativeFile);
     if (referenceInfo.sha256 !== mapped.reference.sha256 || nativeInfo.sha256 !== capture.native.sha256 || nativeInfo.width !== capture.native.width || nativeInfo.height !== capture.native.height || referenceInfo.width !== nativeInfo.width || referenceInfo.height !== nativeInfo.height) fail("image_identity_invalid");
     const output = path.join(destination, capture.id);
-    mkdirSync(output, { recursive: true });
+    createExclusiveDirectory(output);
     const referenceArtifact = artifact(path.join(output, "reference.png"), referenceInfo.bytes);
     const nativeArtifact = artifact(path.join(output, "native.png"), nativeInfo.bytes);
     const generated = imageArtifacts(referenceInfo.bytes, nativeInfo.bytes, output);
     const record = { schema_version: 2, id: capture.id, requirement_ids: mapped.requirement_ids, classification: "REVIEW_REQUIRED", differences: capture.differences, reference: referenceArtifact, native: nativeArtifact, ...generated, source_manifest_sha256: map.source_manifest_sha256, source_tree_sha256: run.source_tree_sha256 };
-    const recordArtifact = artifact(path.join(output, "comparison.json"), Buffer.from(`${canonical(record)}\n`));
+    const recordArtifact = artifact(path.join(output, "comparison.json"), Buffer.from(stableCanonicalJson(record)));
     records.push({ ...record, record: recordArtifact });
   }
   const caseResults = Object.freeze({

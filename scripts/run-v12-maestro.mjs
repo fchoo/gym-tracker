@@ -4,6 +4,11 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import {
+  initializeV12CalendarRun,
+  readV12CalendarRunState,
+  recordV12CalendarStageResult,
+} from "./v12-calendar-artifacts.mjs";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -89,6 +94,25 @@ export function createV12CalendarRunnerPlan(manifest) {
     flow_sha256: sha256(readFileSync(path.join(ROOT, FLOW))),
     identity: { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, apk_sha256: manifest.apk.sha256, device_identity_sha256: manifest.device.identity_sha256 },
     prohibited_verdicts: ["PASS", "FAIL"],
+  });
+}
+
+export function initializeV12CalendarRunnerState({ root, runId }) {
+  return initializeV12CalendarRun({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES });
+}
+
+export function readV12CalendarRunnerState({ root, runId }) {
+  return readV12CalendarRunState({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES });
+}
+
+export function recordV12CalendarRunnerStage({ root, runId, stageId, status, artifactSha256 }) {
+  return recordV12CalendarStageResult({
+    root,
+    runId,
+    stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES,
+    stageId,
+    status,
+    artifactSha256,
   });
 }
 

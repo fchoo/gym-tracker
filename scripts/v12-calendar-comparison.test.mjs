@@ -12,6 +12,12 @@ import {
   V12_CALENDAR_REQUIRED_CASE_IDS,
   V12_CALENDAR_STATIC_CONFIGURATIONS,
 } from "./v12-calendar-case-registry.mjs";
+import {
+  initializeV12CalendarRun,
+  readV12CalendarRunState,
+  recordV12CalendarStageResult,
+  stableCanonicalJson,
+} from "./v12-calendar-artifacts.mjs";
 
 import {
   compareV12Calendar,
@@ -108,11 +114,70 @@ test("Calendar comparison creates individually hashed artifacts while keeping na
       required_case_count: V12_CALENDAR_REQUIRED_CASE_IDS.length,
     });
     assert.match(result.records[0].overlay.sha256, /^[a-f0-9]{64}$/u);
+    const recordBytes = readFileSync(path.join(fixture.directory, "comparison/calendar-month-light-390/comparison.json"));
+    const persisted = JSON.parse(recordBytes);
+    assert.deepEqual(persisted.reference, result.records[0].reference);
+    assert.deepEqual(persisted.native, result.records[0].native);
+    assert.equal(sha256(recordBytes), result.records[0].record.sha256);
     assert.doesNotMatch(JSON.stringify(result), /PASS|serial|token|email/u);
     assert.equal(validateV12CalendarComparison(result), true);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }
+});
+
+test("Calendar comparison directories and every artifact are immutable", () => {
+  const fixture = completeFixture();
+  const outputDirectory = path.join(fixture.directory, "immutable-comparison");
+  try {
+    compareV12Calendar({ map: fixture.map, run: fixture.run, outputDirectory });
+    assert.throws(
+      () => compareV12Calendar({ map: fixture.map, run: fixture.run, outputDirectory }),
+      /output_exists/u,
+    );
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test("Calendar run journals resume pending stages and refuse completed or failed run overwrite", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-run-state-"));
+  const runId = "phase20-20261013T000000Z-abcdef123456";
+  try {
+    const initialized = initializeV12CalendarRun({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES });
+    assert.equal(initialized.status, "IN_PROGRESS");
+    assert.deepEqual(initialized.pending_stage_ids, V12_CALENDAR_DIAGNOSTIC_STAGES);
+    assert.throws(
+      () => initializeV12CalendarRun({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES }),
+      /run_exists/u,
+    );
+
+    recordV12CalendarStageResult({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES, stageId: V12_CALENDAR_DIAGNOSTIC_STAGES[0], status: "COMPLETE", artifactSha256: "a".repeat(64) });
+    const resumed = readV12CalendarRunState({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES });
+    assert.deepEqual(resumed.completed_stage_ids, [V12_CALENDAR_DIAGNOSTIC_STAGES[0]]);
+    assert.equal(resumed.pending_stage_ids.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length - 1);
+    assert.throws(
+      () => recordV12CalendarStageResult({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES, stageId: V12_CALENDAR_DIAGNOSTIC_STAGES[0], status: "COMPLETE", artifactSha256: "a".repeat(64) }),
+      /stage_exists/u,
+    );
+
+    recordV12CalendarStageResult({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES, stageId: V12_CALENDAR_DIAGNOSTIC_STAGES[1], status: "FAILED", artifactSha256: "b".repeat(64) });
+    assert.equal(readV12CalendarRunState({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES }).status, "FAILED");
+    assert.throws(
+      () => recordV12CalendarStageResult({ root, runId, stageIds: V12_CALENDAR_DIAGNOSTIC_STAGES, stageId: V12_CALENDAR_DIAGNOSTIC_STAGES[2], status: "COMPLETE", artifactSha256: "c".repeat(64) }),
+      /run_terminal/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("recursive canonical JSON preserves and sorts nested evidence descriptors", () => {
+  const value = { z: 1, reference: { sha256: "a".repeat(64), path: "fixtures/reference.png" }, list: [{ b: 2, a: 1 }] };
+  assert.equal(
+    stableCanonicalJson(value),
+    `${JSON.stringify({ list: [{ a: 1, b: 2 }], reference: { path: "fixtures/reference.png", sha256: "a".repeat(64) }, z: 1 }, null, 2)}\n`,
+  );
 });
 
 test("the shared comparison schema accepts a complete identity-bound live PASS", () => {
