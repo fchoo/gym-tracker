@@ -87,7 +87,7 @@ export function CalendarMonthViewport({
     if (command?.kind !== "settle-month") return;
     const width = viewportWidth.value;
     if (width <= 0) {
-      onCancel();
+      onComplete(command.epoch);
       return;
     }
     completionEpoch.value = command.epoch;

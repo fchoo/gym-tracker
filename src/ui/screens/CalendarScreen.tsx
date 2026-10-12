@@ -69,6 +69,10 @@ function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate | null {
   }
 }
 
+function monthIdDate(monthId: string): LocalDate {
+  return `${monthId}-01` as LocalDate;
+}
+
 export function CalendarScreen({
   initialDate,
   loadCalendarRange,
@@ -100,6 +104,7 @@ export function CalendarScreen({
   const [calendarCommand, setCalendarCommand] = useState<CalendarMotionCommand | null>(null);
   const requestGeneration = useRef(0);
   const calendarTransitionRef = useRef(calendarTransition);
+  const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
   const weekRows = useMemo(() => calendarGridForMonth(month), [month]);
   const grid = useMemo(() => weekRows.flat(), [weekRows]);
@@ -155,8 +160,17 @@ export function CalendarScreen({
     if (previousState.currentMonthId !== result.state.currentMonthId) {
       const direction = result.state.currentMonthId > previousState.currentMonthId ? 1 : -1;
       const nextDate = addLocalMonthsClamped(selectedDateRef.current, direction);
-      setMonth(startOfLocalMonth(nextDate));
-      selectDate(nextDate);
+      pendingMonthRef.current = Object.freeze({ month: startOfLocalMonth(nextDate), selectedDate: nextDate });
+    }
+
+    const pending = pendingMonthRef.current;
+    if (pending !== null && (
+      result.state.reducedMotion
+      || (event.type === "settle-complete" && result.state.phase === "idle")
+    )) {
+      pendingMonthRef.current = null;
+      setMonth(pending.month);
+      selectDate(pending.selectedDate);
     }
   }, []);
 
@@ -237,9 +251,12 @@ export function CalendarScreen({
   }
   const previous = nextMonth(month, -1);
   const following = nextMonth(month, 1);
-  const titleMonth = calendarTransition.titlePanel === "previous" ? previous
-    : calendarTransition.titlePanel === "next" ? following
-      : month;
+  const titleBaseMonth = calendarTransition.phase === "settling"
+    ? monthIdDate(calendarTransition.currentMonthId)
+    : month;
+  const titleMonth = calendarTransition.titlePanel === "previous" ? nextMonth(titleBaseMonth, -1)
+    : calendarTransition.titlePanel === "next" ? nextMonth(titleBaseMonth, 1)
+      : titleBaseMonth;
 
   return (
     <AdaptiveScreen
