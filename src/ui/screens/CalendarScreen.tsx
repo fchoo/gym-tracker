@@ -42,7 +42,7 @@ import {
 import { BottomSheet } from "../components/BottomSheet";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import type { RootFocusTarget } from "../shell/rootFocus";
-import { space, typeScale, useAppTheme } from "../theme";
+import { calendarTypeScale, colorWithAlpha, space, typeScale, useAppTheme } from "../theme";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -425,24 +425,14 @@ export function CalendarScreen({
     <ScreenHeader
       {...(headingRef === undefined ? {} : { ref: headingRef as React.Ref<View> })}
       actions={[
-        (
-          <FocusablePressable
-            accessibilityLabel="Open Calendar key"
-            accessibilityRole="button"
-            key="calendar-key"
-            onPress={() => setCalendarKeyOpen(true)}
-            ref={infoActionRef}
-            style={({ pressed }) => [
-              styles.infoAction,
-              {
-                backgroundColor: pressed ? colors.surface : "transparent",
-                borderColor: colors.line,
-              },
-            ]}
-          >
-            <Text accessible={false} style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>i</Text>
-          </FocusablePressable>
-        ),
+        <IconAction
+          accessibilityLabel="Open Calendar key"
+          icon="info"
+          key="calendar-key"
+          onPress={() => setCalendarKeyOpen(true)}
+          ref={infoActionRef}
+          testID="calendar-info-action"
+        />,
         <IconAction
           accessibilityLabel="Open App Settings"
           icon="settings"
@@ -453,6 +443,7 @@ export function CalendarScreen({
         />,
       ]}
       title="Calendar"
+      titleStyle={calendarTypeScale.heading as TextStyle}
     />
   );
 
@@ -460,6 +451,7 @@ export function CalendarScreen({
   for (const event of range?.events ?? []) {
     eventsByDate.set(event.localDate, [...(eventsByDate.get(event.localDate) ?? []), event]);
   }
+  const daysByDate = new Map((range?.days ?? []).map((day) => [day.localDate, day] as const));
   const previous = nextMonth(month, -1);
   const following = nextMonth(month, 1);
   const titleBaseMonth = calendarTransition.phase === "settling"
@@ -480,6 +472,14 @@ export function CalendarScreen({
   };
   const agendaRegion = (
     <View style={styles.agendaRegion} testID="calendar-agenda-region">
+      <View style={[styles.agendaHeading, { borderColor: colors.textPrimary }]}>
+        <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{fullDate(visibleSelectedDate)}</Text>
+        <Text style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>
+          {selectedEvents.length === 0
+            ? "No workout"
+            : `${selectedEvents.length} scheduled or imported event${selectedEvents.length === 1 ? "" : "s"}`}
+        </Text>
+      </View>
       <FocusablePressable
         accessibilityLabel="Collapse day and return to month"
         accessibilityRole="button"
@@ -527,7 +527,7 @@ export function CalendarScreen({
           {header}
           <View style={styles.navigation}>
             <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={previous === null} icon="back" onPress={() => navigateMonth(-1)} />
-            <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{monthLabel(titleMonth ?? month)}</Text>
+            <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]} testID="calendar-month-title">{monthLabel(titleMonth ?? month)}</Text>
             <FocusablePressable
               accessibilityHint="Returns the Calendar selection to the current local date"
               accessibilityLabel={`Return to today, ${fullDate(parsedToday)}`}
@@ -564,7 +564,7 @@ export function CalendarScreen({
               },
             ]}
           >
-            <View style={styles.weekdayRow}>{MONDAY_FIRST.map((day) => <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>{day}</Text>)}</View>
+            <View style={styles.weekdayRow}>{MONDAY_FIRST.map((day) => <Text key={day} style={[calendarTypeScale.numeric as TextStyle, styles.weekday, { color: colors.textSecondary }]}>{day}</Text>)}</View>
             {range === null ? (
               <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.skeletonMonth}>
                 <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>Loading Calendar</Text>
@@ -602,6 +602,7 @@ export function CalendarScreen({
                   const renderRow = (dates: readonly LocalDate[], hidden: boolean) => (
                     <CalendarWeekRow
                       dates={dates}
+                      daysByDate={daysByDate}
                       eventsByDate={eventsByDate}
                       fontScale={fontScale}
                       hidden={hidden}
@@ -641,6 +642,7 @@ export function CalendarScreen({
                 renderWeek={(dates, interactive) => (
                   <CalendarWeekRow
                     dates={dates}
+                    daysByDate={daysByDate}
                     eventsByDate={eventsByDate}
                     fontScale={fontScale}
                     month={visibleMonth}
@@ -682,9 +684,16 @@ export function CalendarScreen({
             <View style={styles.keyGroup}>
               <Text style={[typeScale.label as TextStyle, styles.keyGroupTitle, { color: colors.textSecondary }]}>STATUS</Text>
               <View style={styles.keyItems}>
-                <Text style={[typeScale.body as TextStyle, styles.completeKey, { borderColor: colors.textPrimary, color: colors.textPrimary }]}>Complete</Text>
-                <Text style={[typeScale.body as TextStyle, styles.partialKey, { borderColor: colors.textPrimary, color: colors.textPrimary }]}>Partial</Text>
-                <Text style={[typeScale.body as TextStyle, styles.plannedKey, { borderColor: colors.textPrimary, color: colors.textPrimary }]}>Planned</Text>
+                <View style={[styles.statusKey, styles.completeKey, { backgroundColor: colorWithAlpha(colors.textPrimary, 0.14), borderColor: colors.textPrimary }]} testID="calendar-key-complete">
+                  <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textPrimary }]}>Complete</Text>
+                </View>
+                <View style={[styles.statusKey, styles.partialKey, { borderColor: colors.textPrimary }]} testID="calendar-key-partial">
+                  <View style={[styles.keyPartialFill, { backgroundColor: colorWithAlpha(colors.textPrimary, 0.18) }]} testID="calendar-key-partial-fill" />
+                  <Text style={[calendarTypeScale.body as TextStyle, styles.keyText, { color: colors.textPrimary }]}>Partial</Text>
+                </View>
+                <View style={[styles.statusKey, styles.plannedKey, { borderColor: colors.textPrimary }]} testID="calendar-key-planned">
+                  <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textPrimary }]}>Planned</Text>
+                </View>
               </View>
             </View>
           </BottomSheet>
@@ -696,18 +705,21 @@ export function CalendarScreen({
 
 const styles = StyleSheet.create({
   agendaRegion: { flex: 1, gap: 10, minHeight: 0 },
+  agendaHeading: { borderBottomWidth: 2, gap: 4, minHeight: 62, paddingBottom: 8 },
   collapseAction: { alignItems: "flex-start", borderWidth: 1, justifyContent: "center", minHeight: 48, paddingHorizontal: 10 },
-  completeKey: { backgroundColor: "rgba(22, 107, 76, 0.12)", borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4 },
+  completeKey: { borderWidth: 1, paddingVertical: 4 },
   gridRegion: { flex: 1, gap: 2, minHeight: 0 },
-  infoAction: { alignItems: "center", borderRadius: 24, borderWidth: 1, height: 48, justifyContent: "center", width: 48 },
+  keyPartialFill: { bottom: 0, left: 0, position: "absolute", top: 0, width: "50%" },
+  keyText: { zIndex: 1 },
   keyGroup: { gap: 8 },
   keyGroupTitle: { fontWeight: "800", letterSpacing: 0.6 },
   keyItems: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   navigation: { alignItems: "center", flexDirection: "row", gap: 3, justifyContent: "space-between", minHeight: 52 },
-  partialKey: { backgroundColor: "rgba(141, 93, 0, 0.12)", borderStyle: "dotted", borderWidth: 2, paddingHorizontal: 8, paddingVertical: 3 },
-  plannedKey: { backgroundColor: "transparent", borderStyle: "dashed", borderWidth: 2, paddingHorizontal: 8, paddingVertical: 3 },
+  partialKey: { borderStyle: "dotted", borderWidth: 2, paddingVertical: 3 },
+  plannedKey: { backgroundColor: "transparent", borderStyle: "dashed", borderWidth: 2, paddingVertical: 3 },
   screen: { flex: 1, gap: 10 },
   skeletonMonth: { gap: 8 },
+  statusKey: { overflow: "hidden", paddingHorizontal: 8, position: "relative" },
   todayAction: { alignItems: "center", borderRadius: 8, height: 48, justifyContent: "center", minWidth: 76, paddingHorizontal: 8 },
   weekday: { flex: 1, textAlign: "center" },
   weekdayRow: { flexDirection: "row", gap: 2 },

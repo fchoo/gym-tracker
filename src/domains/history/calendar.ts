@@ -17,8 +17,8 @@ function eventStatusLabel(status: CalendarEventLike["status"]): string {
     case "completed": return "Complete";
     case "partial": return "Partial";
     case "planned": return "Planned";
-    case "imported": return "Imported";
-    case "matched": return "Matched";
+    case "imported":
+    case "matched": return "Complete";
   }
 }
 
@@ -42,12 +42,14 @@ export function calendarDayAccessibilityLabel<Event extends CalendarEventLike>({
   date,
   events,
   isOutsideMonth,
+  isRest = false,
   isSelected,
   isToday,
 }: Readonly<{
   date: string;
   events: readonly Event[];
   isOutsideMonth: boolean;
+  isRest?: boolean;
   isSelected: boolean;
   isToday: boolean;
 }>): string {
@@ -56,7 +58,7 @@ export function calendarDayAccessibilityLabel<Event extends CalendarEventLike>({
     isToday ? "today" : null,
     isOutsideMonth ? "outside month" : null,
     events.length === 0
-      ? "No workout"
+      ? isRest ? "Rest day. No workout" : "No workout"
       : `${events.length} scheduled or imported event${events.length === 1 ? "" : "s"}`,
     ...events.flatMap((event) => [
       event.title,

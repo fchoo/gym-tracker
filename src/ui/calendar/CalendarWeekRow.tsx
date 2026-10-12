@@ -14,9 +14,9 @@ import {
   calendarDayPresentation,
   orderedCalendarEvents,
 } from "../../domains/history/calendar";
-import type { CalendarEvent } from "./calendarPorts";
+import type { CalendarDay, CalendarEvent } from "./calendarPorts";
 import { FocusablePressable } from "../components";
-import { radius, sizes, typeScale, useAppTheme } from "../theme";
+import { calendarTypeScale, colorWithAlpha, radius, sizes, useAppTheme } from "../theme";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -51,6 +51,7 @@ export function calendarTrackMetrics(fontScale: number): CalendarTrackMetrics {
 
 export function CalendarWeekRow({
   dates,
+  daysByDate,
   eventsByDate,
   fontScale = 1,
   month,
@@ -63,6 +64,7 @@ export function CalendarWeekRow({
   today,
 }: Readonly<{
   dates: readonly LocalDate[];
+  daysByDate?: ReadonlyMap<LocalDate, CalendarDay>;
   eventsByDate: ReadonlyMap<LocalDate, readonly CalendarEvent[]>;
   fontScale?: number;
   month: LocalDate;
@@ -88,12 +90,15 @@ export function CalendarWeekRow({
       {dates.map((date) => {
         const events = orderedCalendarEvents(eventsByDate.get(date) ?? []);
         const presentation = calendarDayPresentation(events);
+        const day = daysByDate?.get(date);
+        const isRest = events.length === 0 && day?.kind === "rest";
         const outsideMonth = date.slice(0, 7) !== month.slice(0, 7);
         const selected = date === selectedDate;
         const label = calendarDayAccessibilityLabel({
           date: fullDate(date),
           events,
           isOutsideMonth: outsideMonth,
+          isRest,
           isSelected: selected,
           isToday: date === today,
         });
@@ -135,37 +140,55 @@ export function CalendarWeekRow({
               style={[styles.dateTrack, { minHeight: metrics.dateTrackMinHeight }, date === today && { borderColor: colors.blue }]}
               testID={`calendar-date-track-${date}`}
             >
-              <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{Number(date.slice(8, 10))}</Text>
+              <Text
+                style={[calendarTypeScale.numeric as TextStyle, { color: colors.textPrimary }]}
+                testID={`calendar-date-number-${date}`}
+              >
+                {Number(date.slice(8, 10))}
+              </Text>
             </View>
             <View style={[styles.events, { minHeight: metrics.eventTrackMinHeight }]} testID={`calendar-event-track-${date}`}>
-              {presentation.visualEvents.map((event, index) => (
-                <Text
+              {presentation.visualEvents.map((event, index) => {
+                const visualStatus = event.status === "partial" || event.status === "planned" ? event.status : "completed";
+                const sportColor = event.sport === "strength" ? colors.orange : colors.blue;
+                return (
+                <View
                   accessible={false}
                   key={event.id}
-                  numberOfLines={1}
                   style={[
-                    typeScale.secondary as TextStyle,
                     styles.eventChip,
                     { minHeight: metrics.chipMinHeight },
-                    event.status === "planned"
+                    visualStatus === "planned"
                       ? styles.plannedChip
-                      : event.status === "partial"
+                      : visualStatus === "partial"
                         ? styles.partialChip
                         : styles.completeChip,
                     {
-                      backgroundColor: event.status === "planned"
-                        ? "transparent"
-                        : event.status === "partial"
-                          ? colors.yellowBg
-                          : colors.greenBg,
-                      borderColor: event.sport === "strength" ? colors.orange : colors.blue,
-                      color: event.sport === "strength" ? colors.calendarStrengthTextLight : colors.blue,
+                      backgroundColor: visualStatus === "completed" ? colorWithAlpha(sportColor, 0.14) : "transparent",
+                      borderColor: sportColor,
                     },
                   ]}
+                  testID={`calendar-event-chip-${event.id}`}
                 >
-                  {event.title}{index === 1 && presentation.overflowCount > 0 ? ` +${presentation.overflowCount}` : ""}
-                </Text>
-              ))}
+                  {visualStatus === "partial" ? (
+                    <View
+                      style={[styles.partialFill, { backgroundColor: colorWithAlpha(sportColor, 0.18) }]}
+                      testID={`calendar-event-partial-fill-${event.id}`}
+                    />
+                  ) : null}
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      calendarTypeScale.event as TextStyle,
+                      styles.eventChipText,
+                      { color: event.sport === "strength" ? colors.calendarStrengthTextLight : colors.blue },
+                    ]}
+                  >
+                    {event.title}{index === 1 && presentation.overflowCount > 0 ? ` +${presentation.overflowCount}` : ""}
+                  </Text>
+                </View>
+              );})}
+              {isRest ? <Text accessible={false} style={[calendarTypeScale.body as TextStyle, styles.restDash, { color: colors.textSecondary }]} testID={`calendar-rest-${date}`}>—</Text> : null}
             </View>
           </FocusablePressable>
         );
@@ -186,10 +209,13 @@ const styles = StyleSheet.create({
   },
   completeChip: { borderStyle: "solid", borderWidth: 1 },
   dateTrack: { alignItems: "flex-start", borderColor: "transparent", borderRadius: 14, borderWidth: 2, justifyContent: "center", paddingHorizontal: 2 },
-  eventChip: { borderRadius: 3, fontSize: 11, fontWeight: "800", lineHeight: 14, overflow: "hidden", paddingHorizontal: 2 },
-  events: { gap: 2 },
+  eventChip: { borderRadius: 3, justifyContent: "center", overflow: "hidden", paddingHorizontal: 2, position: "relative" },
+  eventChipText: { zIndex: 1 },
+  events: { gap: 2, position: "relative" },
   hidden: { opacity: 0 },
   partialChip: { borderStyle: "dotted", borderWidth: 2 },
+  partialFill: { bottom: 0, left: 0, position: "absolute", top: 0, width: "50%" },
   plannedChip: { borderStyle: "dashed", borderWidth: 2 },
+  restDash: { textAlign: "center" },
   row: { flex: 1, flexDirection: "row", gap: 2 },
 });

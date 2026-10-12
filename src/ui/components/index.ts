@@ -12,6 +12,7 @@ import {
   Ellipsis,
   Eye,
   EyeOff,
+  Info,
   LibraryBig,
   RotateCcw,
   Settings,
@@ -195,6 +196,7 @@ export function ContentCard({
           borderColor,
           opacity: disabled ? 0.62 : 1,
           outlineColor: colors.focusRing,
+          outlineOffset: focused ? sizes.focusClearance : 0,
           outlineStyle: "solid",
           outlineWidth: focused ? sizes.focusRing : 0,
         },
@@ -316,6 +318,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
         typeof style === "function" ? style(state) : style,
         {
           outlineColor: colors.focusRing,
+          outlineOffset: focused ? sizes.focusClearance : 0,
           outlineStyle: "solid",
           outlineWidth: focused ? sizes.focusRing : 0,
         },
@@ -509,6 +512,7 @@ const actionIcons = {
   clear: X,
   favorite: Star,
   hide: EyeOff,
+  info: Info,
   more: Ellipsis,
   moveDown: ArrowDown,
   moveUp: ArrowUp,
@@ -598,6 +602,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
   action?: React.ReactNode;
   actions?: readonly React.ReactNode[];
   backAction?: () => void;
+  titleStyle?: StyleProp<TextStyle>;
   /** Deep Library routes opt into the Phase 17 64dp header track. */
   density?: "standard" | "deep";
 }>>(function ScreenHeader({
@@ -607,6 +612,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
   actions,
   backAction,
   density = "standard",
+  titleStyle,
 }, ref) {
   const { colors } = useAppTheme();
   const copy = [
@@ -638,6 +644,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
         {
           style: [
             typeScale.screenTitle as TextStyle,
+            titleStyle,
             { color: colors.textPrimary },
           ],
         },
@@ -659,7 +666,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
     h(View, { style: styles.headerCopy }, ...copy),
     action === undefined && actions === undefined
       ? null
-      : h(View, { style: styles.headerAction }, ...(actions ?? [action])),
+      : h(View, { style: styles.headerAction, testID: "screen-header-actions" }, ...(actions ?? [action])),
   );
 });
 
@@ -1394,6 +1401,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   headerAction: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 2,
     marginLeft: "auto",
   },
   sectionHeader: {

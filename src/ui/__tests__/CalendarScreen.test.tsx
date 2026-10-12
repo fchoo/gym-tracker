@@ -25,6 +25,7 @@ const range = Object.freeze({
     sport: "strength",
     status: "planned",
     title: "Full body progression, week 12",
+    displaySummary: "Full body progression · 3 working sets planned",
     sourceLabel: "Strength",
     localDate: "2026-08-24",
     timeZone: "Asia/Singapore",
@@ -125,6 +126,12 @@ describe("CalendarScreen", () => {
       .toBeOnTheScreen();
     expect(screen.getByText("Mon")).toBeOnTheScreen();
     expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-event-chip-strength-session-1").props.style)).toMatchObject({
+      backgroundColor: "#D9782024",
+      borderColor: "#D97820",
+      borderStyle: "solid",
+      borderWidth: 1,
+    });
 
     const day = screen.getByRole("button", {
       name: /24 August 2026.*Full body progression, week 12.*Strength.*Complete/u,
@@ -174,6 +181,10 @@ describe("CalendarScreen", () => {
       .toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Show July 2026" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Show September 2026" })).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByTestId("screen-header-actions").props.style)).toMatchObject({ flexDirection: "row", gap: 2 });
+    expect(screen.queryByText("i", { exact: true })).toBeNull();
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-month-title").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22 });
+    expect(StyleSheet.flatten(screen.getAllByTestId("calendar-date-number-2026-08-24")[0]!.props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16 });
 
     await fireEvent.press(screen.getByRole("button", { name: "Open Calendar key" }));
 
@@ -183,6 +194,9 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("ACTIVITY")).toBeOnTheScreen();
     expect(screen.getByText("STATUS")).toBeOnTheScreen();
     expect(screen.queryByText("Complete", { exact: true })).not.toBeNull();
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-key-complete").props.style).backgroundColor).toBe("#0D0C0A24");
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-key-partial-fill").props.style).backgroundColor).toBe("#0D0C0A2E");
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-key-planned").props.style).backgroundColor).toBe("transparent");
 
     await fireEvent.press(screen.getByRole("button", { name: "Close Calendar key" }));
     expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
@@ -203,6 +217,9 @@ describe("CalendarScreen", () => {
 
     await fireEvent(screen.getByTestId("calendar-day-2026-08-24"), "keyDown", { nativeEvent: { key: "ArrowRight" } });
     await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-08-25").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
+    const focusedDate = screen.getAllByTestId("calendar-day-2026-08-25").find((node) => node.props.hasTVPreferredFocus === true)!;
+    await fireEvent(focusedDate, "focus");
+    expect(focusedDate).toHaveStyle({ outlineOffset: 4, outlineWidth: 3 });
 
     await measureAugustFocusedRows();
     await fireEvent.press(screen.getByTestId("calendar-day-2026-08-25"));
@@ -211,6 +228,53 @@ describe("CalendarScreen", () => {
 
     await fireEvent(collapse, "keyDown", { nativeEvent: { key: "Enter" } });
     await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-08-25").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
+  });
+
+  it("renders sport-tinted status geometry and source-backed rest facts independently", async () => {
+    const visual = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => agendaRange)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-event-chip-partial-strength-1").props.style)).toMatchObject({
+      backgroundColor: "transparent",
+      borderColor: "#D97820",
+      borderStyle: "dotted",
+      borderWidth: 2,
+    });
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-event-partial-fill-partial-strength-1").props.style).backgroundColor).toBe("#D978202E");
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-event-chip-planned-strength-1").props.style)).toMatchObject({
+      backgroundColor: "transparent",
+      borderStyle: "dashed",
+      borderWidth: 2,
+    });
+
+    const restRange = Object.freeze({
+      events: Object.freeze([]),
+      days: Object.freeze([{ localDate: "2026-08-24", kind: "rest", restSummary: "Full body plan. Nothing to resume or review." }]),
+    }) as unknown as CalendarRange;
+    await visual.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => restRange)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    expect(await screen.findByTestId("calendar-rest-2026-08-24")).toHaveTextContent("—");
+    expect(screen.getByRole("button", { name: /24 August 2026.*Rest day.*No workout/u })).toBeOnTheScreen();
+    await measureAugustFocusedRows();
+    await fireEvent.press(screen.getByTestId("calendar-day-2026-08-24"));
+    expect(await screen.findByText("Recovery is the plan")).toBeOnTheScreen();
+    expect(screen.getByText("Full body plan. Nothing to resume or review.")).toBeOnTheScreen();
   });
 
   it("waits for the authoritative return refresh before focusing a surviving row or selected-date fallback", async () => {
