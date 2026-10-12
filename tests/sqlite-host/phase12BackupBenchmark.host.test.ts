@@ -171,7 +171,7 @@ it("seeds a maximum fixture accepted by the fully migrated schema", async () => 
     snapshotId: "phase12-writer-00",
     createdAtMs: 100,
   });
-  expect(snapshot.schemaVersion).toBe(44);
+  expect(snapshot.schemaVersion).toBe(45);
   expect({
     rows: snapshot.manifest.totalRows,
     bytes: phase12EncodedDriveObjectBytes(snapshot),
