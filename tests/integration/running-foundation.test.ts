@@ -2,8 +2,18 @@
 // Re-export its suite here under the stable Phase 13 Running foundation name.
 import "./multi-plan-foundation-tracer.test";
 
-import { describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it } from "@jest/globals";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { canonicalRunningRequestHash, saveRunningTarget, type SaveRunningTargetInput } from "../../src/domains/running/commands";
+import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedStatement, configureSqliteConnection } from "../../src/platform/sqlite/connection";
+import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
+import { migrations } from "../../src/platform/sqlite/migrations";
+import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
+import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { createCollisionDecisionCommand } from "../../src/domains/scheduling/scheduleCommands";
 import {
   appendScheduleCollisionDecision,
@@ -11,6 +21,73 @@ import {
 } from "../../src/domains/scheduling/scheduleState";
 import { parseLocalDate } from "../../src/domains/scheduling/localDate";
 import { parseStoredTimeZone } from "../../src/domains/scheduling/timeZone";
+
+class TargetResult<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
+  constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {}
+  async getAllAsync(): Promise<readonly Row[]> { return this.rows; }
+}
+class TargetStatement implements SqlitePreparedStatement {
+  constructor(private readonly statement: ReturnType<DatabaseSync["prepare"]>) {}
+  async executeAsync<Row extends Record<string, unknown>>(parameters: readonly SQLInputValue[] = []): Promise<SqlitePreparedResult<Row>> {
+    if (this.statement.columns().length > 0) return new TargetResult(0, 0, this.statement.all(...parameters) as Row[]);
+    const result = this.statement.run(...parameters);
+    return new TargetResult(Number(result.changes), Number(result.lastInsertRowid), []);
+  }
+  async finalizeAsync(): Promise<void> {}
+}
+class TargetConnection implements SqliteConnection {
+  constructor(private readonly database: DatabaseSync) {}
+  async execAsync(sql: string): Promise<void> { this.database.exec(sql); }
+  async prepareAsync(sql: string): Promise<SqlitePreparedStatement> { return new TargetStatement(this.database.prepare(sql)); }
+  async isInTransactionAsync(): Promise<boolean> { return this.database.isTransaction; }
+  async closeAsync(): Promise<void> { this.database.close(); }
+}
+const targetDirectories = new Set<string>();
+const targetKernels: SqliteKernel[] = [];
+afterEach(async () => {
+  await Promise.all(targetKernels.splice(0).map((kernel) => kernel.close()));
+  for (const directory of targetDirectories) rmSync(directory, { force: true, recursive: true });
+  targetDirectories.clear();
+});
+async function targetKernel(): Promise<SqliteKernel> {
+  const directory = mkdtempSync(join(tmpdir(), "gym-running-target-"));
+  targetDirectories.add(directory);
+  const databasePath = join(directory, "gym-tracker.db");
+  const fixture = new DatabaseSync(databasePath);
+  fixture.exec(readFileSync(join(__dirname, "../migrations/fixtures/v6-metric-profiles.sql"), "utf8"));
+  fixture.close();
+  const writer = new TargetConnection(new DatabaseSync(databasePath));
+  const reader = new TargetConnection(new DatabaseSync(databasePath));
+  await configureSqliteConnection(writer, { enableWal: true });
+  await configureSqliteConnection(reader, { enableWal: false });
+  const kernel = createSqliteKernel({ writer, reader });
+  targetKernels.push(kernel);
+  await createMigrationRunner({ databaseName: databasePath, kernel, migrations, recoveryBackup: { async createAndValidate(request) { return { backupId: "running-target", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const }; } } }).run();
+  return kernel;
+}
+
+describe("Running target source receipts", () => {
+  it("persists one target source revision, replays the same receipt, and rejects changed or stale input", async () => {
+    const kernel = await targetKernel();
+    const repository = createRunningPlanRepository(kernel);
+    const source = {
+      version: 1 as const, id: "target-running", name: "Target Running", revision: 1, active: false as const, lifecycle: "inactive" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "target-goal-1", planId: "target-running", revision: 1, goalDistanceMeters: 2400, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    await repository.createInactiveAggregate({ requestId: "target-create", requestSha256: "a".repeat(64), plan: source });
+    const base = {
+      requestId: "target-save", planId: source.id, expectedPlanRevision: 1, expectedGoalRevision: 1, savedAtMs: 2,
+      goal: { ...source.goal, id: "target-goal-2", revision: 2, targetDurationMs: 660_000, trainingDays: ["Monday" as const, "Thursday" as const], createdAtMs: 2 },
+    };
+    const input: SaveRunningTargetInput = { ...base, requestSha256: canonicalRunningRequestHash(base) };
+    await expect(saveRunningTarget(repository, input)).resolves.toMatchObject({ outcome: "committed", targetRevision: 2 });
+    await expect(saveRunningTarget(repository, input)).resolves.toMatchObject({ outcome: "already_committed", targetRevision: 2 });
+    await expect(saveRunningTarget(repository, { ...input, requestSha256: canonicalRunningRequestHash({ ...base, goal: { ...base.goal, targetDurationMs: 645_000 } }) })).rejects.toThrow("sqlite_transaction_failed");
+    await expect(saveRunningTarget(repository, { ...input, requestId: "target-stale", requestSha256: "b".repeat(64) })).rejects.toThrow("sqlite_transaction_failed");
+    await expect(repository.readAggregate(source.id)).resolves.toMatchObject({ revision: 2, goal: { revision: 2, targetDurationMs: 660_000, trainingDays: ["Monday", "Thursday"] } });
+    await expect(kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_goals WHERE plan_id = ?", [source.id])).resolves.toEqual([{ count: 2 }]);
+  });
+});
 
 describe("Phase 13 independent schedule collision semantics", () => {
   const strength = Object.freeze({
