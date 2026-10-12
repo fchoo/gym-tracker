@@ -39,10 +39,23 @@ const range = Object.freeze({
   })]),
 }) as CalendarRange;
 
+const completedStrengthRange = Object.freeze({
+  events: Object.freeze([Object.freeze({
+    ...range.events[0],
+    id: "strength-session-1",
+    state: "completed",
+    status: "completed",
+    destination: Object.freeze({
+      kind: "session" as const,
+      sessionId: "strength-session-1",
+    }),
+  })]),
+}) as CalendarRange;
+
 describe("CalendarScreen", () => {
-  it("renders a full source-backed event in its shared Monday-first day cell", async () => {
+  it("opens one completed Strength agenda target without giving the date cell a nested event action", async () => {
     const onOpenEvent = jest.fn();
-    const loadCalendarRange = jest.fn(async () => range);
+    const loadCalendarRange = jest.fn(async () => completedStrengthRange);
 
     await render(
       <AppearanceProvider>
@@ -61,11 +74,18 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
 
     const day = screen.getByRole("button", {
-      name: /24 August 2026.*Full body progression, week 12.*Strength.*Planned/u,
+      name: /24 August 2026.*Full body progression, week 12.*Strength.*Complete/u,
     });
     await fireEvent.press(day);
 
-    expect(onOpenEvent).toHaveBeenCalledWith(range.events[0]!.destination);
+    expect(onOpenEvent).not.toHaveBeenCalled();
+    const agendaTarget = await screen.findByRole("button", {
+      name: /Full body progression, week 12.*Strength.*Complete.*Strength/u,
+    });
+    await fireEvent.press(agendaTarget);
+
+    expect(onOpenEvent).toHaveBeenCalledTimes(1);
+    expect(onOpenEvent).toHaveBeenCalledWith(completedStrengthRange.events[0]!.destination);
     expect(loadCalendarRange).toHaveBeenCalledWith({
       startLocalDate: "2026-07-27",
       endLocalDateExclusive: "2026-09-14",
