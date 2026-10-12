@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 import type { SQLInputValue } from "node:sqlite";
 
 import type { GarminRevisionDecisionInput } from "../../../domains/activities/importCommands";
 import { prepareGarminImport } from "../../../domains/activities/importCommands";
-import { canonicalJson } from "../../../domains/activities/importContracts";
+import * as importContracts from "../../../domains/activities/importContracts";
 import type { SqliteKernel, SqliteTransactionExecutor } from "../sqliteKernel";
 import { createImportedActivityRepository } from "./importedActivityRepository";
+
+const { canonicalJson } = importContracts;
 
 function queryKernel(rows: readonly Record<string, unknown>[]): SqliteKernel {
   return {
@@ -134,6 +136,20 @@ describe("imported activity repository defensive branches", () => {
     await expect(repository.resolveGarminRevision(decision)).resolves.toMatchObject({ kind });
   });
 
+  it("uses the expected revision when a replay receipt outlives its identity row", async () => {
+    const repository = createImportedActivityRepository(writeKernel([
+      [{ request_sha256: decision.requestSha256, activity_id: decision.activityId }],
+      [],
+      [],
+    ]));
+
+    await expect(repository.resolveGarminRevision(decision)).resolves.toEqual({
+      kind: "replayed",
+      activityId: decision.activityId,
+      aggregateRevision: decision.expectedAggregateRevision,
+    });
+  });
+
   it.each(staleCases)("fails closed for $label during revision resolution", async ({ responses }) => {
     const repository = createImportedActivityRepository(writeKernel([[], ...responses]));
     await expect(repository.resolveGarminRevision(decision)).resolves.toMatchObject({ kind: "conflict" });
@@ -144,6 +160,28 @@ describe("imported activity repository defensive branches", () => {
     const repository = createImportedActivityRepository(writeKernel([
       [{ request_sha256: "d".repeat(64), activity_id: "activity-1" }],
       [{ aggregate_revision: 1 }],
+      [{ proposed_revision: 3 }],
+    ]));
+
+    await expect(repository.confirmGarminImport({
+      requestId: "request-1",
+      requestSha256: "d".repeat(64),
+      activityId: "activity-1",
+      expectedAggregateRevision: 1,
+      confirmedLocalDate: "2026-10-07",
+      staged,
+    })).resolves.toEqual({
+      kind: "revision_review",
+      activityId: "activity-1",
+      aggregateRevision: 1,
+    });
+  });
+
+  it("uses the expected revision when an open proposal outlives its identity row", async () => {
+    const staged = await prepareGarminImport(envelope, sha256);
+    const repository = createImportedActivityRepository(writeKernel([
+      [{ request_sha256: "d".repeat(64), activity_id: "activity-1" }],
+      [],
       [{ proposed_revision: 3 }],
     ]));
 
@@ -205,6 +243,27 @@ describe("imported activity repository defensive branches", () => {
         },
       }),
     },
+    {
+      label: "canonical envelope digest mutation",
+      mutate: (staged: Awaited<ReturnType<typeof prepareGarminImport>>) => ({
+        ...staged,
+        canonical_envelope_sha256: "0".repeat(64),
+      }),
+    },
+    {
+      label: "canonical payload mutation",
+      mutate: (staged: Awaited<ReturnType<typeof prepareGarminImport>>) => ({
+        ...staged,
+        canonical_payload_json: `${staged.canonical_payload_json} `,
+      }),
+    },
+    {
+      label: "canonical payload digest mutation",
+      mutate: (staged: Awaited<ReturnType<typeof prepareGarminImport>>) => ({
+        ...staged,
+        canonical_payload_sha256: "0".repeat(64),
+      }),
+    },
   ])("rejects $label before any repository query or write occurs", async ({ mutate }) => {
     const staged = await prepareGarminImport(envelope, sha256);
     const mutated = mutate(staged);
@@ -224,5 +283,36 @@ describe("imported activity repository defensive branches", () => {
       aggregateRevision: 0,
     });
     expect(operations).toEqual([]);
+  });
+
+  it("fails closed if canonical envelope verification changes between passes", async () => {
+    const staged = await prepareGarminImport(envelope, sha256);
+    const originalCanonicalJson = importContracts.canonicalJson;
+    let matchingEnvelopeCalls = 0;
+    const canonicalJsonSpy = jest.spyOn(importContracts, "canonicalJson").mockImplementation((value) => {
+      const serialized = originalCanonicalJson(value);
+      if (serialized !== staged.canonical_envelope_json) return serialized;
+      matchingEnvelopeCalls += 1;
+      return matchingEnvelopeCalls === 2 ? `${serialized} ` : serialized;
+    });
+    const { kernel, operations } = trackingKernel([]);
+
+    try {
+      await expect(createImportedActivityRepository(kernel).confirmGarminImport({
+        requestId: "request-changing-canonical-envelope",
+        requestSha256: "f".repeat(64),
+        activityId: "activity-3",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-10-07",
+        staged,
+      })).resolves.toEqual({
+        kind: "conflict",
+        activityId: "activity-3",
+        aggregateRevision: 0,
+      });
+      expect(operations).toEqual([]);
+    } finally {
+      canonicalJsonSpy.mockRestore();
+    }
   });
 });

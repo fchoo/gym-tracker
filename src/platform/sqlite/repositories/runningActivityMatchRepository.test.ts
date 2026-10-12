@@ -70,7 +70,11 @@ describe("running activity match repository projections", () => {
         opportunity_id: "opportunity-1",
         relation_revision: 3,
       }],
-      [],
+      [{
+        ...candidate,
+        opportunity_id: "opportunity-2",
+        relation_revision: 3,
+      }],
     ])).readCandidates("activity-1")).resolves.toEqual({
       kind: "already_matched",
       activityId: "activity-1",
@@ -101,9 +105,25 @@ describe("running activity match repository projections", () => {
         state: "planned",
         expectedRelationRevision: 3,
       },
-      candidates: [],
+      candidates: [expect.objectContaining({
+        opportunityId: "opportunity-2",
+        expectedRelationRevision: 3,
+        targetSummary: "Recovery session",
+      })],
       opportunityId: "opportunity-1",
       relationRevision: 3,
+    });
+    await expect(createRunningActivityMatchRepository(readKernel([
+      [{
+        ...activity,
+        matched_opportunity_id: "opportunity-1",
+        current_relation_revision: 3,
+      }],
+      [],
+      [],
+    ])).readCandidates("activity-1")).resolves.toEqual({
+      kind: "activity_unavailable",
+      activityId: "activity-1",
     });
     await expect(createRunningActivityMatchRepository(readKernel([[activity], []])).readCandidates("activity-1"))
       .resolves.toEqual({ kind: "no_candidates", activityId: "activity-1" });
