@@ -608,6 +608,10 @@ test("focused coverage gate registers every Phase 18 integrity-critical module",
   assert.match(source, /--test-coverage-branches=100/u);
   assert.match(source, /--test-coverage-functions=100/u);
   assert.match(source, /--focus-phase18/u);
+  assert.match(source, /delete evidenceEnvironment\.ANDROID_HOME/u);
+  assert.match(source, /delete evidenceEnvironment\.ANDROID_SDK_ROOT/u);
+  assert.match(source, /delete evidenceEnvironment\.ANDROID_SERIAL/u);
+  assert.match(source, /env: evidenceEnvironment/u);
 });
 
 test("package scripts expose the guarded benchmark and focused coverage gate", { concurrency: false }, () => {

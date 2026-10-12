@@ -297,6 +297,10 @@ if (focusPhase18) {
     }, null, 2));
     process.exit(1);
   }
+  const evidenceEnvironment = { ...process.env };
+  delete evidenceEnvironment.ANDROID_HOME;
+  delete evidenceEnvironment.ANDROID_SDK_ROOT;
+  delete evidenceEnvironment.ANDROID_SERIAL;
   const evidence = spawnSync(
     process.execPath,
     [
@@ -309,7 +313,7 @@ if (focusPhase18) {
       "--test",
       ...phase18EvidenceTests,
     ],
-    { cwd: projectRoot, encoding: "utf8", stdio: "inherit" },
+    { cwd: projectRoot, encoding: "utf8", env: evidenceEnvironment, stdio: "inherit" },
   );
   if (evidence.error !== undefined) throw evidence.error;
   if (evidence.status !== 0) process.exit(evidence.status ?? 1);
