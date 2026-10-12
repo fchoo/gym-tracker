@@ -2,12 +2,13 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react-native"
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
+import { PHASE18_GARMIN_ADVERSARIAL_CASE_IDS } from "../../src/testing/phase18GarminAdversarial";
 import Phase18GarminAdversarialRoute from "../__phase18-garmin-adversarial";
 
 const CONFIRMATION = "VERIFY-PHASE18-GARMIN-ADVERSARIAL";
 const NONCE = "0123456789abcdef0123456789abcdef";
 const DEVICE_IDENTITY_SHA256 = "f".repeat(64);
-type CollectAdversarialReport = typeof import("../../src/testing/phase18GarminAdversarial")["runPhase18GarminAdversarialNativeSuite"];
+type CollectAdversarialReport = typeof import("../../src/bootstrap/phase18GarminAdversarial")["runPhase18GarminAdversarialNativeSuite"];
 let mockParams: Readonly<{
   confirmation?: unknown;
   nonce?: unknown;
@@ -45,15 +46,9 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => mockParams,
 }));
 
-jest.mock("../../src/testing/phase18GarminAdversarial", () => {
-  const actual = jest.requireActual<typeof import("../../src/testing/phase18GarminAdversarial")>(
-    "../../src/testing/phase18GarminAdversarial",
-  );
-  return {
-    ...actual,
+jest.mock("../../src/bootstrap/phase18GarminAdversarial", () => ({
     runPhase18GarminAdversarialNativeSuite: (...args: Parameters<CollectAdversarialReport>) => mockCollect(...args),
-  };
-});
+}));
 
 describe("Phase18GarminAdversarialRoute", () => {
   beforeEach(() => {
@@ -66,11 +61,11 @@ describe("Phase18GarminAdversarialRoute", () => {
     mockCollect.mockResolvedValue({
       status: "passed",
       run_nonce: NONCE,
-      cases: [{
-        id: "PH18-ADV-RESTORE",
+      cases: PHASE18_GARMIN_ADVERSARIAL_CASE_IDS.map((id) => ({
+        id,
         status: "passed",
         provenance: "native-exact-artifact",
-        stage: "restore",
+        stage: id.toLowerCase().replaceAll("ph18-adv-", "").replaceAll("-", "_"),
         code: "completed",
         duration_ms: 1,
         call_count: 1,
@@ -80,12 +75,15 @@ describe("Phase18GarminAdversarialRoute", () => {
         connection_state: "connected",
         sync_state: "idle",
         session_digest: "1".repeat(64),
-        history_digest: "2".repeat(64),
-        source_digest: "3".repeat(64),
-        match_digest: "4".repeat(64),
+        history_digest_before: "2".repeat(64),
+        history_digest_after: "2".repeat(64),
+        source_digest_before: "3".repeat(64),
+        source_digest_after: "3".repeat(64),
+        match_digest_before: "4".repeat(64),
+        match_digest_after: "4".repeat(64),
         generation_before: 1,
         generation_after: 1,
-      }],
+      })),
       current_identity: {
         currentHead: "a".repeat(40),
         currentSourceTreeSha256: "b".repeat(64),
@@ -114,9 +112,9 @@ describe("Phase18GarminAdversarialRoute", () => {
       DEVICE_IDENTITY_SHA256,
     );
     const emitted = log.mock.calls.map(([line]) => String(line));
-    expect(emitted).toHaveLength(2);
-    expect(emitted[0]).not.toContain(NONCE);
-    const reportLine = emitted[1];
+    expect(emitted).toHaveLength(17);
+    expect(emitted.slice(0, 16).every((line) => !line.includes(NONCE))).toBe(true);
+    const reportLine = emitted[16];
     expect(reportLine).toBeDefined();
     expect(reportLine?.match(new RegExp(NONCE, "gu"))).toHaveLength(1);
     expect(JSON.parse(reportLine!.split("REPORT:")[1]!)).toEqual(

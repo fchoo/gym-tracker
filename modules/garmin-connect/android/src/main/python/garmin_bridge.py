@@ -69,19 +69,20 @@ _ADVERSARIAL_CASE_IDS = frozenset(
         "PH18-ADV-ROTATION",
     }
 )
-_ADVERSARIAL_RETAINED_FACTS = {
-    "history": {"aggregate_revision": 1, "import_outcome": "replayed"},
-    "source": {
-        "activity_type": "running",
-        "distance_metres": 5_000,
-        "duration_seconds": 1_500,
-        "elapsed_seconds": 1_560,
-        "moving_seconds": 1_475,
-        "lap_count": 0,
-        "metric_descriptor_count": 0,
-        "metric_sample_count": 0,
+_ADVERSARIAL_SOURCE_COMPONENTS = {
+    "activity": {
+        "activityId": 424242,
+        "activityTypeDTO": {"typeKey": "running"},
+        "summaryDTO": {
+            "startTimeGMT": "2026-10-05T23:30:00.000Z",
+            "distance": 5_000,
+            "duration": 1_500,
+            "elapsedDuration": 1_560,
+            "movingDuration": 1_475,
+        },
     },
-    "match": {"decision": "retained", "source_revision": 1},
+    "splits": {"lapDTOs": []},
+    "details": {"metricDescriptors": [], "activityDetailMetrics": []},
 }
 
 
@@ -181,11 +182,6 @@ def _safe_namespace(value: Any) -> str:
     return value
 
 
-def _canonical_digest(value: Any) -> str:
-    payload = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
 def _adversarial_provider_error(name: str, status: int, retry_after: str | None = None) -> Exception:
     error = type(name, (Exception,), {})("injected_failure")
     response = type("AdversarialResponse", (), {})()
@@ -202,9 +198,6 @@ class _AdversarialController:
         self.operation_counts: dict[str, int] = {}
         self.late_started = threading.Event()
         self.late_release = threading.Event()
-        self.history_digest = _canonical_digest(_ADVERSARIAL_RETAINED_FACTS["history"])
-        self.source_digest = _canonical_digest(_ADVERSARIAL_RETAINED_FACTS["source"])
-        self.match_digest = _canonical_digest(_ADVERSARIAL_RETAINED_FACTS["match"])
 
     def configure(self, case_id: str) -> None:
         if case_id not in _ADVERSARIAL_CASE_IDS:
@@ -233,10 +226,7 @@ class _AdversarialController:
         return {
             "operation_counts": dict(self.operation_counts),
             "automatic_retry_count": 0,
-            "source_write_count": 0,
-            "history_digest": self.history_digest,
-            "source_digest": self.source_digest,
-            "match_digest": self.match_digest,
+            "source_components": _bounded_json(_ADVERSARIAL_SOURCE_COMPONENTS),
         }
 
     def rotate(self) -> None:

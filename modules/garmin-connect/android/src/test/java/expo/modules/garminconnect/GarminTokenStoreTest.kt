@@ -32,7 +32,7 @@ class GarminTokenStoreTest {
 
   @Test
   fun `Kotlin device identity equals the source-owned JavaScript canonical vectors`() {
-    val script = generateSequence(File(System.getProperty("user.dir"))) { it.parentFile }
+    val script = generateSequence(File(System.getProperty("user.dir") ?: ".")) { it.parentFile }
       .map { File(it, "scripts/phase18-device-identity.mjs") }
       .firstOrNull(File::isFile)
       ?: throw AssertionError("phase18-device-identity.mjs not found")
@@ -473,7 +473,9 @@ class GarminTokenStoreTest {
     assertTrue(rows.all { it["status"] == "passed" })
     assertTrue(rows.all { it["provenance"] == "native-exact-artifact" })
     assertTrue(rows.all { it["automatic_retry_count"] == 0 })
-    assertTrue(rows.all { it["source_write_count"] == 0 })
+    assertTrue(rows.all { "source_write_count" !in it })
+    assertTrue(rows.all { "history_digest" !in it && "source_digest" !in it && "match_digest" !in it })
+    assertEquals(setOf("activity", "splits", "details"), (report["source_components"] as Map<*, *>).keys)
     assertEquals(900_000L, rows[7]["retry_after_ms"])
     assertTrue(rows.filterIndexed { index, _ -> index != 7 }.all { it["retry_after_ms"] == 0L })
 
@@ -483,10 +485,6 @@ class GarminTokenStoreTest {
     assertEquals(rows[4]["session_digest"], rows[5]["session_digest"])
     assertFalse(rows[2]["session_digest"] == rows[3]["session_digest"])
     assertTrue(rows.drop(7).all { it["session_digest"] == rows[6]["session_digest"] })
-    assertTrue(rows.all { (it["history_digest"] as String).matches(Regex("^[a-f0-9]{64}$")) })
-    assertTrue(rows.all { it["history_digest"] == rows[0]["history_digest"] })
-    assertTrue(rows.all { it["source_digest"] == rows[0]["source_digest"] })
-    assertTrue(rows.all { it["match_digest"] == rows[0]["match_digest"] })
     assertTrue((rows[3]["generation_after"] as Long) > (rows[3]["generation_before"] as Long))
     assertTrue((rows[5]["generation_after"] as Long) > (rows[5]["generation_before"] as Long))
     assertFalse(store.failNextReplace)
@@ -545,17 +543,17 @@ class GarminTokenStoreTest {
       },
       { operation, arguments, _, result ->
         if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
-          result.withoutData("source_write_count")
+          result.withoutData("source_components")
         } else result
       },
       { operation, arguments, _, result ->
         if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
-          result.withData("history_digest", 1)
+          result.withData("source_components", "invalid")
         } else result
       },
       { operation, arguments, _, result ->
         if (operation == "runAdversarialSuite" && arguments["action"] == "observe") {
-          result.withData("history_digest", "short")
+          result.withData("source_components", mapOf("activity" to emptyMap<String, Any>()))
         } else result
       },
       { operation, arguments, _, result ->
@@ -628,12 +626,17 @@ class GarminTokenStoreTest {
       },
       { operation, arguments, caseId, result ->
         if (operation == "runAdversarialSuite" && arguments["action"] == "observe" && caseId == "PH18-ADV-REFRESH") {
-          result.withData("source_write_count", 1)
+          result.withData("source_components", mapOf("activity" to emptyMap<String, Any>()))
         } else result
       },
       { operation, arguments, caseId, result ->
         if (operation == "runAdversarialSuite" && arguments["action"] == "observe" && caseId == "PH18-ADV-REFRESH") {
-          result.withData("history_digest", "8".repeat(64))
+          result.withData("source_components", mapOf(
+            "activity" to emptyMap<String, Any>(),
+            "splits" to emptyMap<String, Any>(),
+            "details" to emptyMap<String, Any>(),
+            "extra" to emptyMap<String, Any>(),
+          ))
         } else result
       },
     )
@@ -673,9 +676,6 @@ class GarminTokenStoreTest {
     assertTrue(valid(baseRows))
     assertFalse(valid(baseRows.dropLast(1)))
     val mutations = listOf<(MutableList<MutableMap<String, Any?>>) -> Unit>(
-      { it[1]["history_digest"] = "8".repeat(64) },
-      { it[1]["source_digest"] = "8".repeat(64) },
-      { it[1]["match_digest"] = "8".repeat(64) },
       { it[0]["session_digest"] = it[1]["session_digest"] },
       { it[2]["session_digest"] = "8".repeat(64) },
       { it[3]["session_digest"] = "8".repeat(64) },
@@ -903,10 +903,25 @@ private class ProtocolAdversarialDispatcher : GarminPythonDispatcher {
   private var lateStarted = CountDownLatch(1)
   private var releaseLate = CountDownLatch(1)
   private val operationCounts = linkedMapOf<String, Int>()
-  private val facts = mapOf(
-    "history_digest" to "5".repeat(64),
-    "source_digest" to "6".repeat(64),
-    "match_digest" to "7".repeat(64),
+  private val sourceComponents = mapOf(
+    "source_components" to mapOf(
+      "activity" to mapOf(
+        "activityId" to 424242,
+        "activityTypeDTO" to mapOf("typeKey" to "running"),
+        "summaryDTO" to mapOf(
+          "startTimeGMT" to "2026-10-05T23:30:00.000Z",
+          "distance" to 5_000,
+          "duration" to 1_500,
+          "elapsedDuration" to 1_560,
+          "movingDuration" to 1_475,
+        ),
+      ),
+      "splits" to mapOf("lapDTOs" to emptyList<Any>()),
+      "details" to mapOf(
+        "metricDescriptors" to emptyList<Any>(),
+        "activityDetailMetrics" to emptyList<Any>(),
+      ),
+    ),
   )
 
   override fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?> {
@@ -949,7 +964,7 @@ private class ProtocolAdversarialDispatcher : GarminPythonDispatcher {
       tokenGeneration = 1
       pendingTokens = tokenBytes()
       operationCounts.clear()
-      success(mapOf("kind" to "prepared") + facts)
+      success(mapOf("kind" to "prepared") + sourceComponents)
     }
     "reset" -> {
       generation = 0
@@ -965,8 +980,7 @@ private class ProtocolAdversarialDispatcher : GarminPythonDispatcher {
     "observe" -> success(mapOf(
       "operation_counts" to operationCounts.toMap(),
       "automatic_retry_count" to 0,
-      "source_write_count" to 0,
-    ) + facts)
+    ) + sourceComponents)
     "awaitLateStart" -> success(mapOf("started" to lateStarted.await(2, TimeUnit.SECONDS)))
     "releaseLate" -> {
       releaseLate.countDown()

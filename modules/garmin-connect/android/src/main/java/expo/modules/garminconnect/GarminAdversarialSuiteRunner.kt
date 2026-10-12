@@ -56,10 +56,10 @@ internal class GarminAdversarialSuiteRunner(
   fun run(confirmation: String): Map<String, Any?> {
     require(confirmation == ADVERSARIAL_CONFIRMATION) { "garmin_arguments_rejected" }
     val rows = mutableListOf<Map<String, Any?>>()
-    var retainedFacts = fallbackFacts()
+    var sourceComponents: Map<String, Any?> = emptyMap()
     try {
       val lifecycle = seedAndRestore()
-      retainedFacts = lifecycle.observation.facts
+      sourceComponents = lifecycle.observation.sourceComponents
       val restoreGeneration = lifecycle.worker.generationForTest()
       rows += row(
         id = "PH18-ADV-RESTORE",
@@ -73,7 +73,6 @@ internal class GarminAdversarialSuiteRunner(
         generationBefore = restoreGeneration,
         generationAfter = restoreGeneration,
         observation = lifecycle.observation,
-        retainedFacts = retainedFacts,
         startedAt = lifecycle.startedAt,
       )
 
@@ -94,7 +93,6 @@ internal class GarminAdversarialSuiteRunner(
         generationBefore = refreshGeneration,
         generationAfter = lifecycle.worker.generationForTest(),
         observation = refreshObservation,
-        retainedFacts = retainedFacts,
         startedAt = refreshStarted,
       )
 
@@ -115,7 +113,6 @@ internal class GarminAdversarialSuiteRunner(
         generationBefore = readGeneration,
         generationAfter = lifecycle.worker.generationForTest(),
         observation = readObservation,
-        retainedFacts = retainedFacts,
         startedAt = readStarted,
       )
 
@@ -137,7 +134,6 @@ internal class GarminAdversarialSuiteRunner(
         generationBefore = generationBeforeLogout,
         generationAfter = lifecycle.worker.generationForTest(),
         observation = logoutObservation,
-        retainedFacts = retainedFacts,
         startedAt = logoutStarted,
       )
 
@@ -159,7 +155,6 @@ internal class GarminAdversarialSuiteRunner(
         generationBefore = restartGeneration,
         generationAfter = restartGeneration,
         observation = restartObservation,
-        retainedFacts = retainedFacts,
         startedAt = restartStarted,
       )
 
@@ -188,7 +183,6 @@ internal class GarminAdversarialSuiteRunner(
           generationBefore = generationBeforeLateLogout,
           generationAfter = late.worker.generationForTest(),
           observation = lateObservation,
-          retainedFacts = retainedFacts,
           startedAt = lateStarted,
         )
       } finally {
@@ -217,14 +211,13 @@ internal class GarminAdversarialSuiteRunner(
           generationBefore = generationBefore,
           generationAfter = injected.worker.generationForTest(),
           observation = injectedObservation,
-          retainedFacts = retainedFacts,
           startedAt = startedAt,
           retryAfterMs = outcome.retryAfterMs,
         )
       }
     } catch (_: Throwable) {
       while (rows.size < ADVERSARIAL_CASE_IDS.size) {
-        rows += unexpectedRow(ADVERSARIAL_CASE_IDS[rows.size], retainedFacts)
+        rows += unexpectedRow(ADVERSARIAL_CASE_IDS[rows.size])
       }
     } finally {
       runCatching { control("finish") }
@@ -237,6 +230,7 @@ internal class GarminAdversarialSuiteRunner(
       "suite" to "phase18-garmin-adversarial",
       "status" to if (finalRows.all { it["status"] == "passed" }) "passed" else "TECHNICAL_REVIEW_REQUIRED",
       "cases" to finalRows,
+      "source_components" to sourceComponents,
     )
   }
 
@@ -281,17 +275,18 @@ internal class GarminAdversarialSuiteRunner(
       val count = (value as? Number)?.toInt() ?: throw GarminWorkerException("malformed_response")
       name to count
     }
+    val rawSourceComponents = data["source_components"] as? Map<*, *>
+      ?: throw GarminWorkerException("malformed_response")
+    if (rawSourceComponents.keys != setOf("activity", "splits", "details")) {
+      throw GarminWorkerException("malformed_response")
+    }
+    @Suppress("UNCHECKED_CAST")
+    val sourceComponents = rawSourceComponents as Map<String, Any?>
     return Observation(
       counts = counts,
       automaticRetryCount = (data["automatic_retry_count"] as? Number)?.toInt()
         ?: throw GarminWorkerException("malformed_response"),
-      sourceWriteCount = (data["source_write_count"] as? Number)?.toInt()
-        ?: throw GarminWorkerException("malformed_response"),
-      facts = Facts(
-        history = digest(data["history_digest"]),
-        source = digest(data["source_digest"]),
-        match = digest(data["match_digest"]),
-      ),
+      sourceComponents = sourceComponents,
     )
   }
 
@@ -366,7 +361,6 @@ internal class GarminAdversarialSuiteRunner(
     generationBefore: Long,
     generationAfter: Long,
     observation: Observation,
-    retainedFacts: Facts,
     startedAt: Long,
     retryAfterMs: Long = 0L,
   ): Map<String, Any?> {
@@ -374,8 +368,6 @@ internal class GarminAdversarialSuiteRunner(
     val passed = actualCode == expectedCode
       && callCount == expectedCalls
       && observation.automaticRetryCount == 0
-      && observation.sourceWriteCount == 0
-      && observation.facts == retainedFacts
     return mapOf(
       "id" to id,
       "status" to if (passed) "passed" else "TECHNICAL_REVIEW_REQUIRED",
@@ -386,19 +378,15 @@ internal class GarminAdversarialSuiteRunner(
       "call_count" to callCount,
       "automatic_retry_count" to observation.automaticRetryCount,
       "retry_after_ms" to retryAfterMs,
-      "source_write_count" to observation.sourceWriteCount,
       "connection_state" to connectionState,
       "sync_state" to syncState,
       "session_digest" to sessionDigest,
-      "history_digest" to observation.facts.history,
-      "source_digest" to observation.facts.source,
-      "match_digest" to observation.facts.match,
       "generation_before" to generationBefore,
       "generation_after" to generationAfter,
     )
   }
 
-  private fun unexpectedRow(id: String, facts: Facts): Map<String, Any?> = mapOf(
+  private fun unexpectedRow(id: String): Map<String, Any?> = mapOf(
     "id" to id,
     "status" to "TECHNICAL_REVIEW_REQUIRED",
     "provenance" to "unexpected",
@@ -408,13 +396,9 @@ internal class GarminAdversarialSuiteRunner(
     "call_count" to 0,
     "automatic_retry_count" to 0,
     "retry_after_ms" to 0L,
-    "source_write_count" to 0,
     "connection_state" to "disconnected",
     "sync_state" to "failure-temporary-failure",
     "session_digest" to sha256("garmin-session-record-unavailable-v1"),
-    "history_digest" to facts.history,
-    "source_digest" to facts.source,
-    "match_digest" to facts.match,
     "generation_before" to 0L,
     "generation_after" to 0L,
   )
@@ -426,12 +410,6 @@ internal class GarminAdversarialSuiteRunner(
 
   private fun digestAndGenerationRelationshipsValid(rows: List<Map<String, Any?>>): Boolean {
     if (rows.size != ADVERSARIAL_CASE_IDS.size) return false
-    val first = rows.first()
-    if (rows.any {
-      it["history_digest"] != first["history_digest"]
-        || it["source_digest"] != first["source_digest"]
-        || it["match_digest"] != first["match_digest"]
-    }) return false
     return rows[0]["session_digest"] != rows[1]["session_digest"]
       && rows[1]["session_digest"] == rows[2]["session_digest"]
       && rows[3]["session_digest"] == rows[4]["session_digest"]
@@ -445,22 +423,14 @@ internal class GarminAdversarialSuiteRunner(
       }
   }
 
-  private fun fallbackFacts() = Facts(
-    history = sha256("history-unavailable-v1"),
-    source = sha256("source-unavailable-v1"),
-    match = sha256("match-unavailable-v1"),
-  )
-
   private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(Charsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }
 
-  private data class Facts(val history: String, val source: String, val match: String)
   private data class Observation(
     val counts: Map<String, Int>,
     val automaticRetryCount: Int,
-    val sourceWriteCount: Int,
-    val facts: Facts,
+    val sourceComponents: Map<String, Any?>,
   )
   private data class RestoredSession(
     val worker: GarminClientWorker,

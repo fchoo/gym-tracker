@@ -504,9 +504,20 @@ class GarminBridgeTests(unittest.TestCase):
             "getActivityDetails": 1,
         })
         self.assertEqual(observed["automatic_retry_count"], 0)
-        self.assertEqual(observed["source_write_count"], 0)
-        for key in ("history_digest", "source_digest", "match_digest"):
-            self.assertRegex(observed[key], r"^[a-f0-9]{64}$")
+        self.assertEqual(set(observed), {
+            "automatic_retry_count",
+            "operation_counts",
+            "source_components",
+        })
+        self.assertEqual(set(observed["source_components"]), {
+            "activity",
+            "splits",
+            "details",
+        })
+        self.assertNotIn("source_write_count", observed)
+        self.assertNotIn("history_digest", observed)
+        self.assertNotIn("source_digest", observed)
+        self.assertNotIn("match_digest", observed)
 
     def test_adversarial_controlled_client_refresh_rotates_only_the_di_token(self):
         bridge = garmin_bridge.create_bridge(

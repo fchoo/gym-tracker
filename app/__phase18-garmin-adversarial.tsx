@@ -7,8 +7,10 @@ import {
   PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
   PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER,
   phase18GarminAdversarialEnabled,
-  runPhase18GarminAdversarialNativeSuite as collectAdversarialReport,
 } from "../src/testing/phase18GarminAdversarial";
+import {
+  runPhase18GarminAdversarialNativeSuite as collectAdversarialReport,
+} from "../src/bootstrap/phase18GarminAdversarial";
 
 const INITIAL_STATUS = "native-proof-running";
 const REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
