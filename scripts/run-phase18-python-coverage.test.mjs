@@ -25,6 +25,10 @@ test("Python coverage fails closed without coverage.py and writes no passed repo
 
 test("Python coverage keeps measurement in memory and never writes .coverage", () => {
   const source = readFileSync("scripts/run-phase18-python-coverage.py", "utf8");
+  const coverageContract = readFileSync("scripts/phase18-language-coverage.mjs", "utf8");
   assert.match(source, /data_file=None/u);
   assert.doesNotMatch(source, /coverage\.save\(\)/u);
+  assert.match(coverageContract, /coverage\.py is mandatory/u);
+  assert.match(coverageContract, /missing dependency hard-fails/u);
+  assert.doesNotMatch(coverageContract, /falls back/u);
 });
