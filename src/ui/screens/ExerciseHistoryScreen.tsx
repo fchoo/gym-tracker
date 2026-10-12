@@ -10,9 +10,10 @@ import {
   type TextStyle,
 } from "react-native";
 
-import type {
-  EffectiveMetricHistorySet,
-  ExerciseMetricHistory,
+import {
+  projectLoadMetricHistorySeries,
+  type EffectiveMetricHistorySet,
+  type ExerciseMetricHistory,
 } from "../../domains/history";
 import {
   formatMetricDuration,
@@ -29,12 +30,17 @@ import {
 import {
   ContentCard,
   EmptyState,
+  FocusablePressable,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
   SectionHeader,
   SkeletonBlock,
 } from "../components";
+import {
+  FactualHistoryChart,
+  type ProgressFactualSeries,
+} from "../components/FactualHistoryChart";
 import {
   space,
   typeScale,
@@ -46,6 +52,7 @@ export type ExerciseHistoryScreenProps = Readonly<{
   exerciseName: string;
   loadExerciseHistory(exerciseId: string): Promise<ExerciseMetricHistory>;
   onBack(): void;
+  onOpenSource?(sessionId: string, sourceRevision: number): void;
   width?: number;
 }>;
 
@@ -137,11 +144,92 @@ function MetricSummary({
   );
 }
 
+function formatRelative(value: number | null): string {
+  return value === null || !Number.isFinite(value) || value <= 0
+    ? "—"
+    : `${Number(value.toFixed(3))}× bodyweight`;
+}
+
+function LoadHistory({
+  exerciseName,
+  onOpenSource,
+  segment,
+}: Readonly<{
+  exerciseName: string;
+  onOpenSource?: ExerciseHistoryScreenProps["onOpenSource"];
+  segment: ExerciseMetricHistory["segments"][number];
+}>) {
+  const { colors } = useAppTheme();
+  const load = projectLoadMetricHistorySeries(segment, "load");
+  const [view, setView] = useState<"load" | "relative">("load");
+  if (load === null) return null;
+  const selected = view === "relative"
+    ? projectLoadMetricHistorySeries(segment, "relative") ?? load
+    : load;
+  const series: ProgressFactualSeries = Object.freeze({
+    distanceMeters: 0,
+    fasterIsLower: false,
+    metricLabel: `${exerciseName} ${view === "relative" ? "relative strength" : "load"}`,
+    directionLabel: "Higher comparable load is better.",
+    rangeLabel: "All time",
+    unitLabel: view === "relative" ? "bodyweight ratio" : "kg",
+    currentTargetSeconds: selected.currentTarget,
+    points: Object.freeze(selected.points.map((point) => Object.freeze({
+      activityId: null,
+      workoutSessionId: point.sessionId,
+      evidence: point.sourceRevision === null ? null : "workout_session" as const,
+      localDate: point.localDate,
+      sourceRevision: point.sourceRevision,
+      status: point.sourceRevision === null ? "unavailable" as const : "accepted_current" as const,
+      statusLabel: point.statusLabel,
+      targetAtDateSeconds: point.targetAtDate,
+      timeBasis: "elapsed" as const,
+      valueSeconds: point.value,
+      basisLabel: view === "relative" ? point.basisDisclosure : null,
+    }))),
+  });
+  return <View style={styles.loadHistory}>
+    <View accessibilityLabel="History view" style={styles.historyViewControls}>
+      <FocusablePressable
+        accessibilityLabel="Load"
+        accessibilityRole="button"
+        accessibilityState={{ selected: view === "load" }}
+        onPress={() => setView("load")}
+        style={[styles.historyViewControl, { borderColor: colors.focusRing }]}
+      >
+        <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Load</Text>
+      </FocusablePressable>
+      {load.relativeAvailable ? <FocusablePressable
+        accessibilityLabel="Relative"
+        accessibilityRole="button"
+        accessibilityState={{ selected: view === "relative" }}
+        onPress={() => setView("relative")}
+        style={[styles.historyViewControl, { borderColor: colors.focusRing }]}
+      >
+        <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Relative</Text>
+      </FocusablePressable> : null}
+    </View>
+    <FactualHistoryChart
+      formatValue={view === "relative"
+        ? formatRelative
+        : (value) => value === null ? "—" : `${Number(value.toFixed(3))} kg`}
+      {...(onOpenSource === undefined ? {} : {
+        onOpenSource: (source: Parameters<NonNullable<React.ComponentProps<typeof FactualHistoryChart>["onOpenSource"]>>[0]) => {
+          if ("sessionId" in source) onOpenSource(source.sessionId, source.sourceRevision);
+        },
+      })}
+      series={series}
+    />
+    {view === "relative" ? <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Bodyweight-relative strength is a view only and never changes targets.</Text> : null}
+  </View>;
+}
+
 export function ExerciseHistoryScreen({
   exerciseId,
   exerciseName,
   loadExerciseHistory,
   onBack,
+  onOpenSource,
   width,
 }: ExerciseHistoryScreenProps) {
   const { colors } = useAppTheme();
@@ -234,6 +322,7 @@ export function ExerciseHistoryScreen({
   }
 
   const warmupLabel = `${warmupsVisible ? "Hide" : "Show"} ${history.warmupVisits.length} warm-up ${history.warmupVisits.length === 1 ? "visit" : "visits"}`;
+  const resolvedExerciseName = history.exerciseName ?? exerciseName;
   return (
     <AdaptiveScreen
       {...adaptiveWidth}
@@ -245,7 +334,7 @@ export function ExerciseHistoryScreen({
             <Text style={[typeScale.sectionTitle as TextStyle, {
               color: colors.textPrimary,
             }]}>
-              {exerciseName}
+              {resolvedExerciseName}
             </Text>
             <Text style={[typeScale.body as TextStyle, {
               color: colors.textSecondary,
@@ -274,6 +363,11 @@ export function ExerciseHistoryScreen({
                   value={observationText(segment.last?.observation ?? null)}
                 />
               </View>
+              <LoadHistory
+                exerciseName={resolvedExerciseName}
+                onOpenSource={onOpenSource}
+                segment={segment}
+              />
               <View style={styles.visitList}>
                 {segment.comparableSets.map((set) => (
                   <Text
@@ -322,8 +416,24 @@ export function ExerciseHistoryScreen({
 }
 
 const styles = StyleSheet.create({
+  historyViewControl: {
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: space[2],
+  },
+  historyViewControls: {
+    flexDirection: "row",
+    gap: space[2],
+  },
   introduction: {
     gap: space[1],
+  },
+  loadHistory: {
+    gap: space[2],
   },
   screen: {
     gap: space[4],

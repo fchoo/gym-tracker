@@ -149,7 +149,7 @@ describe("ExerciseHistoryScreen", () => {
     expect(screen.getByText("load_reps · contract 1 · generation 1"))
       .toBeOnTheScreen();
     expect(screen.getByText("Working sets only")).toBeOnTheScreen();
-    expect(screen.getByText("Best")).toBeOnTheScreen();
+    expect(screen.getAllByText("Best").length).toBeGreaterThan(0);
     expect(screen.getByText("Average")).toBeOnTheScreen();
     expect(screen.getByText("Last")).toBeOnTheScreen();
     expect(screen.getByText("45 kg × 9")).toBeOnTheScreen();

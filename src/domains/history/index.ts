@@ -20,11 +20,15 @@ export {
 } from "./contracts";
 export {
   buildExerciseMetricHistory,
+  projectLoadMetricHistorySeries,
   projectComparableExerciseTrend,
   type EffectiveMetricHistorySet,
   type ExerciseMetricHistory,
   type ExerciseMetricTrend,
   type MetricHistorySegment,
+  type LoadMetricHistoryPoint,
+  type LoadMetricHistorySeries,
+  type LoadMetricHistoryView,
 } from "./metricHistory";
 export {
   collectHistoryImpact,
