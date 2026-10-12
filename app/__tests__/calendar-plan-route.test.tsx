@@ -18,7 +18,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
 jest.mock("../../src/ui/screens/PlannedWorkoutDetailScreen", () => ({
   PlannedWorkoutDetailScreen: ({ occurrenceId, loadOccurrence }: { occurrenceId: string; loadOccurrence(id: string): Promise<PlannedStrengthOccurrenceDetail | null> }) => {
     const { Text } = require("react-native") as typeof import("react-native");
-    void loadOccurrence(occurrenceId);
+    if (occurrenceId.length > 0) void loadOccurrence(occurrenceId);
     return <Text>{`Preview ${occurrenceId}`}</Text>;
   },
 }));
