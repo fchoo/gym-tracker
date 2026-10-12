@@ -10,6 +10,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 
+import {
+  recordPhase16CalendarCancel,
+  recordPhase16CalendarDrag,
+  recordPhase16CalendarFocus,
+  recordPhase16CalendarRelease,
+} from "../../bootstrap/phase16CalendarTestControls";
 import { addLocalMonthsClamped, startOfLocalMonth, type LocalDate } from "../../domains/scheduling/localDate";
 import {
   clampMonthDrag,
@@ -110,6 +116,7 @@ export function CalendarMonthViewport({
   const weekCompletionEpoch = useSharedValue(0);
   const focusProgress = useSharedValue(0);
   const released = useSharedValue(false);
+  const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
   const mounted = useRef(true);
@@ -151,6 +158,14 @@ export function CalendarMonthViewport({
       return;
     }
     weekCompletionEpoch.value = command.epoch;
+    recordPhase16CalendarFocus({
+      selected: selectedGeometry,
+      following: followingGeometry,
+      destination: {
+        selectedY: 0,
+        followingY: Math.max(0, viewportHeight.value - followingGeometry.height),
+      },
+    });
     cancelAnimation(focusProgress);
     focusProgress.value = withTiming(command.phase === "expand" ? 1 : 0, {
       duration: command.durationMs,
@@ -194,6 +209,7 @@ export function CalendarMonthViewport({
     })
     .onBegin(() => {
       released.value = false;
+      diagnosticThresholdMask.value = 0;
       completionEpoch.value += 1;
       cancelAnimation(pointerX);
     })
@@ -203,6 +219,18 @@ export function CalendarMonthViewport({
       const dx = Math.max(-width, Math.min(width, event.translationX));
       pointerX.value = dx;
       const nextPanel: PanelOffset = Math.abs(dx) >= width * 0.25 ? (dx < 0 ? 1 : -1) : 0;
+      const progress = Math.abs(dx) / width;
+      const markers = [0.1, 0.249, 0.25, 0.251];
+      for (let index = 0; index < markers.length; index += 1) {
+        const marker = markers[index]!;
+        const bit = 1 << index;
+        if (progress >= marker && (diagnosticThresholdMask.value & bit) === 0) {
+          diagnosticThresholdMask.value |= bit;
+          const semanticMonth = (nextPanel === 1 ? nextMonth : nextPanel === -1 ? previousMonth : month).slice(0, 7);
+          const titleMonth = (nextPanel === 1 ? nextMonth : nextPanel === -1 ? previousMonth : month).slice(0, 7);
+          scheduleOnRN(recordPhase16CalendarDrag, { dx, viewportWidth: width, transformX: dx, semanticMonth, titleMonth });
+        }
+      }
       if (nextPanel !== previewPanel.value) {
         previewPanel.value = nextPanel;
         scheduleOnRN(onPreview, dx, width);
@@ -212,8 +240,11 @@ export function CalendarMonthViewport({
       const width = viewportWidth.value;
       if (width <= 0) return;
       released.value = true;
+      const dx = Math.max(-width, Math.min(width, event.translationX));
+      const selectedMonth = (Math.abs(dx) >= width * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);
+      scheduleOnRN(recordPhase16CalendarRelease, { dx, viewportWidth: width, semanticMonth: selectedMonth, titleMonth: selectedMonth });
       scheduleOnRN(onRelease, {
-        dx: Math.max(-width, Math.min(width, event.translationX)),
+        dx,
         dy: event.translationY,
         targetMonthId: event.translationX < 0 ? nextMonth.slice(0, 7) : previousMonth.slice(0, 7),
         viewportWidth: width,
@@ -224,6 +255,7 @@ export function CalendarMonthViewport({
         completionEpoch.value += 1;
         cancelAnimation(pointerX);
         pointerX.value = 0;
+        scheduleOnRN(recordPhase16CalendarCancel);
         scheduleOnRN(onCancel);
       }
     });

@@ -1,4 +1,5 @@
 import React from "react";
+import Constants from "expo-constants";
 import {
   router,
   useFocusEffect,
@@ -19,6 +20,10 @@ import {
   rootSettingsTriggerNativeID,
   useRootHeadingRef,
 } from "../../src/ui/shell/rootFocus";
+import {
+  clearPhase16CalendarTestControls,
+  configurePhase16CalendarTestControls,
+} from "../../src/bootstrap/phase16CalendarTestControls";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -38,6 +43,9 @@ export default function CalendarRoute() {
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
   const runtime = useWorkoutAppRuntime();
+  const phase16Stage = (typeof globalThis.location?.search === "string"
+    ? new URLSearchParams(globalThis.location.search).get("phase16CalendarStage")
+    : undefined) ?? undefined;
   const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
   const hasFocused = React.useRef(false);
   const now = new Date();
@@ -85,6 +93,18 @@ export default function CalendarRoute() {
       hasFocused.current = true;
     }
   }, []));
+
+  React.useEffect(() => {
+    const extra = Constants.expoConfig?.extra;
+    configurePhase16CalendarTestControls({
+      packageName: Constants.expoConfig?.android?.package,
+      buildProfile: typeof extra?.buildProfile === "string" ? extra.buildProfile : undefined,
+      nativeContractsEnabled: extra?.nativeContractsEnabled === true,
+      suite: typeof extra?.nativeContractSuite === "string" ? extra.nativeContractSuite : undefined,
+      stage: phase16Stage,
+    });
+    return clearPhase16CalendarTestControls;
+  }, [phase16Stage]);
 
   return (
     <CalendarScreen
