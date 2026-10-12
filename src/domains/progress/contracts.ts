@@ -4,6 +4,7 @@ import type {
 } from "../history";
 import type {
   MetricIdentity,
+  MetricExposure,
   MetricTarget,
 } from "../metrics";
 
@@ -170,4 +171,126 @@ export type ProgressPeriodProjection = Readonly<{
   attention: readonly ProgressAttentionItem[];
   recommendations: readonly ProgressRecommendationReview[];
   stateSourceReferences: ProgressSourceReference;
+}>;
+
+/** Phase 19's factual dashboard is deliberately separate from the legacy
+ * period summary above.  It is a discriminated union so consumers cannot
+ * probe a bag of optional Strength and Running fields. */
+export type ProgressSport = "All" | "Strength" | "Running";
+
+export type ProgressReadState = "ready" | "empty" | "sparse" | "more_data_needed" | "unavailable";
+
+export type ProgressAbsenceReason =
+  | "exact_effort_evidence_insufficient"
+  | "no_factual_points"
+  | "incompatible_facts";
+
+export type ProgressEvidenceSufficiency = "source_summary" | "source_laps" | "sampled";
+
+export type ProgressRunningTimeBasis = "elapsed" | "timer" | "moving";
+
+/** A normalized, accepted source fact; screen and projector code never parse a
+ * provider payload or infer an arbitrary effort from chart samples. */
+export type ProgressRunningActivityFact = Readonly<{
+  activityId: string;
+  sourceIdentity: string;
+  sourceRevision: number;
+  startedAtMs: number;
+  localDate: string;
+  lifecycle: "active" | "removed";
+  accepted: boolean;
+  fixture: boolean;
+  distanceMeters: number;
+  durationSeconds: number;
+  timeBasis: ProgressRunningTimeBasis;
+  evidence: ProgressEvidenceSufficiency;
+  /** null means the payload has no source-reported exact effort basis. */
+  exactDistanceMeters: number | null;
+}>;
+
+export type ProgressGoalRevision = Readonly<{
+  targetId: string;
+  sport: "Strength" | "Running";
+  distanceMeters?: number;
+  targetDurationSeconds: number | null;
+  targetLocalDate?: string;
+  effectiveAtMs: number;
+  revision: number;
+  /** Owner/source ordering is the first deterministic All-goal tie break. */
+  sourceOrder: number;
+}>;
+
+export type ProgressRunningEffort = Readonly<{
+  activityId: string;
+  sourceIdentity: string;
+  sourceRevision: number;
+  localDate: string;
+  durationSeconds: number;
+  timeBasis: ProgressRunningTimeBasis;
+  evidence: Exclude<ProgressEvidenceSufficiency, "sampled">;
+}>;
+
+export type ProgressRunningGoal = Readonly<{
+  distanceMeters: number;
+  timeBasis: ProgressRunningTimeBasis;
+  latest: ProgressRunningEffort;
+  best: ProgressRunningEffort;
+  target: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  history: readonly Readonly<{
+    effort: ProgressRunningEffort;
+    targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  }>[];
+  evidenceCount: number;
+}>;
+
+export type ProgressRunningDashboardProjection = Readonly<{
+  sport: "Running";
+  state: ProgressReadState;
+  goals: readonly ProgressRunningGoal[];
+  absenceReason?: ProgressAbsenceReason;
+}>;
+
+export type ProgressAllDashboardProjection = Readonly<{
+  sport: "All";
+  state: ProgressReadState;
+  primaryGoal: ProgressGoalRevision | null;
+}>;
+
+export type ProgressStrengthDashboardProjection = Readonly<{
+  sport: "Strength";
+  state: ProgressReadState;
+  facts: readonly ProgressRecord[];
+}>;
+
+/** Effective Strength facts retain the metric boundary and revision fence used
+ * to decide whether a pending recommendation is still actionable. */
+export type ProgressStrengthFactInput = Readonly<{
+  record: ProgressRecord;
+  metricExposure: MetricExposure;
+  effectiveRevision: number;
+  targetRevision: number;
+  recommendation?: Readonly<{
+    status: "pending" | "accepted" | "rejected" | "invalidated" | "superseded";
+    sourceRevision: number;
+    targetRevision: number;
+  }>;
+}>;
+
+export type ProgressDashboardProjection =
+  | ProgressAllDashboardProjection
+  | ProgressStrengthDashboardProjection
+  | ProgressRunningDashboardProjection;
+
+export type ProgressDashboardInput = Readonly<{
+  sport: ProgressSport;
+  running?: Readonly<{
+    activities: readonly ProgressRunningActivityFact[];
+    targets: readonly ProgressGoalRevision[];
+  }>;
+  strength?: Readonly<{
+    facts?: readonly ProgressRecord[];
+    candidates?: readonly ProgressStrengthFactInput[];
+  }>;
+  goals?: readonly ProgressGoalRevision[];
 }>;

@@ -6,6 +6,7 @@ import {
 
 import {
   projectProgressPeriod,
+  projectStrengthComparableFacts,
 } from "./periodProjection";
 
 const target = {
@@ -16,7 +17,7 @@ const target = {
   maxReps: 10,
   incrementGrams: 2_500,
   perSide: false,
-};
+} as const;
 
 function exposure(input: Readonly<{
   sessionId: string;
@@ -401,5 +402,63 @@ describe("projectProgressPeriod", () => {
       ...input,
       periodInputs: [...input.periodInputs, input.periodInputs[0]!],
     })).toThrow("progress_period_input_duplicate_date");
+  });
+});
+
+describe("projectStrengthComparableFacts", () => {
+  it("keeps only effective completed comparable working sets and fences stale recommendations", () => {
+    const record = exposure({
+      sessionId: "strength-session",
+      localDate: "2026-10-12",
+      setId: "working-set",
+      completedAtMs: 12,
+      reps: 10,
+    });
+    const metricExposure = {
+      exerciseId: "bench-press",
+      identity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+      target,
+      observation: { version: 1, profile: "load_reps", loadGrams: 40_000, reps: 10, source: "manual" },
+      sessionStatus: "completed" as const,
+      setKind: "working" as const,
+      setStatus: "completed" as const,
+      plannedWorkingSets: 1,
+      completedWorkingSets: 1,
+    } as const;
+
+    expect(projectStrengthComparableFacts([
+      {
+        record,
+        metricExposure,
+        effectiveRevision: 4,
+        targetRevision: 3,
+        recommendation: { status: "pending", sourceRevision: 4, targetRevision: 3 },
+      },
+      {
+        record: { ...record, setId: "warmup-set" },
+        metricExposure: { ...metricExposure, setKind: "warmup" },
+        effectiveRevision: 4,
+        targetRevision: 3,
+      },
+      {
+        record: { ...record, setId: "stale-recommendation" },
+        metricExposure,
+        effectiveRevision: 5,
+        targetRevision: 3,
+        recommendation: { status: "pending", sourceRevision: 4, targetRevision: 3 },
+      },
+      {
+        record: { ...record, setId: "invalid-revision" },
+        metricExposure,
+        effectiveRevision: 0,
+        targetRevision: 3,
+      },
+      {
+        record: { ...record, setId: "invalid-target-revision" },
+        metricExposure,
+        effectiveRevision: 4,
+        targetRevision: 0,
+      },
+    ])).toEqual([record]);
   });
 });
