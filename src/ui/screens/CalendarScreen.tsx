@@ -53,6 +53,7 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ] as const;
 const MONDAY_FIRST = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+const MAX_DIAGNOSTIC_FRAMES = 10_000;
 const NOOP = () => undefined;
 
 type CalendarScreenProps = Readonly<{
@@ -207,14 +208,24 @@ export function CalendarScreen({
   const diagnosticFrameTick = useCallback((timestamp: number) => {
     const probe = diagnosticFrameProbe.current;
     if (probe === null) return;
+    if (probe.frameIntervals.length >= MAX_DIAGNOSTIC_FRAMES) {
+      cancelAnimationFrame(probe.raf);
+      diagnosticFrameProbe.current = null;
+      return;
+    }
     if (probe.lastTimestamp !== null) probe.frameIntervals.push(Math.max(0, timestamp - probe.lastTimestamp));
     probe.lastTimestamp = timestamp;
     probe.raf = requestAnimationFrame(diagnosticFrameTick);
   }, []);
 
+  const cancelDiagnosticInteraction = useCallback(() => {
+    if (diagnosticFrameProbe.current !== null) cancelAnimationFrame(diagnosticFrameProbe.current.raf);
+    diagnosticFrameProbe.current = null;
+  }, []);
+
   const startDiagnosticInteraction = useCallback(() => {
     if (diagnostics === undefined) return;
-    if (diagnosticFrameProbe.current !== null) cancelAnimationFrame(diagnosticFrameProbe.current.raf);
+    cancelDiagnosticInteraction();
     const probe = {
       frameIntervals: [] as number[],
       frameWorkMs: [] as number[],
@@ -224,7 +235,7 @@ export function CalendarScreen({
     };
     diagnosticFrameProbe.current = probe;
     probe.raf = requestAnimationFrame(diagnosticFrameTick);
-  }, [diagnosticFrameTick, diagnostics]);
+  }, [cancelDiagnosticInteraction, diagnosticFrameTick, diagnostics]);
 
   const finishDiagnosticInteraction = useCallback(() => {
     const probe = diagnosticFrameProbe.current;
@@ -254,17 +265,18 @@ export function CalendarScreen({
     const callbackStartedAt = globalThis.performance?.now() ?? Date.now();
     const probe = diagnosticFrameProbe.current;
     if (probe === null) return;
+    if (probe.frameWorkMs.length >= MAX_DIAGNOSTIC_FRAMES) {
+      cancelDiagnosticInteraction();
+      return;
+    }
     probe.frameWorkMs.push(Math.max(0, actualDuration));
     probe.maxProfilerOverheadMs = Math.max(
       probe.maxProfilerOverheadMs,
       (globalThis.performance?.now() ?? Date.now()) - callbackStartedAt,
     );
-  }, []);
+  }, [cancelDiagnosticInteraction]);
 
-  useEffect(() => () => {
-    if (diagnosticFrameProbe.current !== null) cancelAnimationFrame(diagnosticFrameProbe.current.raf);
-    diagnosticFrameProbe.current = null;
-  }, []);
+  useEffect(() => cancelDiagnosticInteraction, [cancelDiagnosticInteraction]);
 
   useEffect(() => {
     const request = requestGeneration.current + 1;
@@ -363,10 +375,11 @@ export function CalendarScreen({
   }, [dispatchCalendarTransition, reduceMotion]);
 
   const invalidateLayout = useCallback(() => {
+    cancelDiagnosticInteraction();
     setWeekMeasurements(new Map());
     setLayoutGeneration((generation) => generation + 1);
     dispatchCalendarTransition({ type: "invalidate" });
-  }, [dispatchCalendarTransition]);
+  }, [cancelDiagnosticInteraction, dispatchCalendarTransition]);
 
   useEffect(() => {
     invalidateLayout();
