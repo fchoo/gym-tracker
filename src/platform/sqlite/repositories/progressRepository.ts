@@ -334,11 +334,15 @@ async function loadSourceFacts(
          JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
          LEFT JOIN running_activity_current_matches match ON match.activity_id = activity.id
         WHERE lifecycle.removal_state = 'active'
-        ORDER BY activity.started_at_ms, activity.id`,
+        ORDER BY activity.started_at_ms, activity.id
+        LIMIT ?`,
+      [ALL_TIME_PAGE_SIZE],
     ),
     executor.queryAll<RunningGoalFactRow>(
       `SELECT id, plan_id, revision, goal_json, created_at_ms
-         FROM running_goals ORDER BY plan_id, revision, id`,
+         FROM running_goals ORDER BY plan_id, revision, id
+         LIMIT ?`,
+      [ALL_TIME_PAGE_SIZE],
     ),
     executor.queryAll<BodyweightFactRow>(
       `SELECT entry.id, entry.owner_id, entry.current_revision, measurement.local_date, measurement.timezone, measurement.grams
@@ -346,7 +350,9 @@ async function loadSourceFacts(
          JOIN bodyweight_entry_events measurement ON measurement.entry_id = entry.id
           AND measurement.revision = entry.current_revision
         WHERE entry.lifecycle = 'active' AND measurement.local_date IS NOT NULL
-        ORDER BY measurement.local_date DESC, entry.id`,
+        ORDER BY measurement.local_date DESC, entry.id
+        LIMIT ?`,
+      [ALL_TIME_PAGE_SIZE],
     ),
   ]);
   const activities = activityRows.flatMap((row) => {
