@@ -7,6 +7,7 @@ import {
 
 import {
   acceptRecommendation,
+  canonicalRecommendationDecisionRequest,
   keepCurrentTarget,
   recordExerciseEffort,
   type ProgressionRepository,
@@ -113,5 +114,17 @@ describe("Plan 01-10 recommendation commands", () => {
         decidedAtMs: 3_000,
       },
     })).toThrow("recommendation_decision_input_invalid");
+  });
+
+  it("canonicalizes the complete scalar receipt envelope in a fixed order", () => {
+    expect(canonicalRecommendationDecisionRequest({
+      recommendationId: "recommendation-1",
+      requestId: "request-1",
+      decision: "use_target",
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 3,
+      expectedTargetRevision: 4,
+      decidedAtMs: 5_000,
+    })).toBe("{\"decision\":\"use_target\",\"decidedAtMs\":5000,\"expectedEvidenceVersion\":2,\"expectedSourceRevision\":3,\"expectedTargetRevision\":4,\"recommendationId\":\"recommendation-1\",\"requestId\":\"request-1\"}");
   });
 });

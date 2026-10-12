@@ -129,6 +129,11 @@ describe("logical backup contract", () => {
     expect(parseLogicalBackupSnapshot(snapshot())).toEqual(snapshot());
   });
 
+  it("rejects an archive version outside the frozen compatibility registry", () => {
+    expect(() => parseLogicalBackupSnapshot(snapshot({ version: 11 })))
+      .toThrow("backup_snapshot_unsupported_version");
+  });
+
   it("requires exactly one opaque owner namespace in a v2 snapshot", () => {
     const v2 = snapshot({
       version: 2,

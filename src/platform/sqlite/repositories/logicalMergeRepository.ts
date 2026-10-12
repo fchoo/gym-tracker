@@ -76,6 +76,7 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "plan_working_set_targets",
   "progression_policies",
   "progression_recommendations",
+  "progression_recommendation_decision_receipts",
   "owned_plan_aggregate_states",
   "owned_plan_starter_sources",
   "owned_plan_day_sources",
@@ -103,6 +104,7 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "owned_plan_mutation_requests",
   "starter_plan_activation_requests",
   "owned_progression_recommendations",
+  "owned_progression_recommendation_decision_receipts",
 ] as const satisfies readonly LogicalBackupTableName[]);
 
 /** Authoritative Phase 13 source graph; current-match projections are rebuilt. */
@@ -115,8 +117,6 @@ const FULL_PLAN_SOURCE_GRAPH_TABLES = Object.freeze([
   "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   "bodyweight_revisions", "bodyweight_entries", "bodyweight_tombstones",
   "bodyweight_entry_events", "bodyweight_command_receipts",
-  "progression_recommendation_decision_receipts",
-  "owned_progression_recommendation_decision_receipts",
   "running_match_events", "running_activity_match_events",
   "running_activity_match_receipts",
   "schedule_collision_outcomes", "schedule_collision_receipts",
@@ -415,8 +415,13 @@ function assertOwnedPlanAggregate(
       requireValid(legacyOccurrenceIds.has(textId(row.plan_day_exercise_id)));
     }
   }
+  const recommendationIds = new Set<string>();
   for (const row of aggregate.tables.progression_recommendations ?? []) {
     requireValid(legacyTargetIds.has(textId(row.plan_working_set_target_id)));
+    recommendationIds.add(textId(row.id));
+  }
+  for (const row of aggregate.tables.progression_recommendation_decision_receipts ?? []) {
+    requireValid(recommendationIds.has(textId(row.recommendation_id)));
   }
   const ownedOccurrenceIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_day_exercises ?? []) {
@@ -437,8 +442,13 @@ function assertOwnedPlanAggregate(
       requireValid(ownedOccurrenceIds.has(textId(row.plan_day_exercise_id)));
     }
   }
+  const ownedRecommendationIds = new Set<string>();
   for (const row of aggregate.tables.owned_progression_recommendations ?? []) {
     requireValid(ownedTargetIds.has(textId(row.owned_plan_working_set_target_id)));
+    ownedRecommendationIds.add(textId(row.id));
+  }
+  for (const row of aggregate.tables.owned_progression_recommendation_decision_receipts ?? []) {
+    requireValid(ownedRecommendationIds.has(textId(row.recommendation_id)));
   }
   const ownedScheduleIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_schedules ?? []) {

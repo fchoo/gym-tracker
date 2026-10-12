@@ -78,17 +78,6 @@ function validRevision(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
 }
 
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (typeof value === "object" && value !== null) {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right, "en"))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
 export function canonicalRecommendationDecisionRequest(input: Readonly<{
   recommendationId: string;
   requestId: string;
@@ -98,7 +87,17 @@ export function canonicalRecommendationDecisionRequest(input: Readonly<{
   expectedTargetRevision: number;
   decidedAtMs: number;
 }>): string {
-  return stableJson(input);
+  // The envelope has only scalar fields. Construct it in a fixed key order so
+  // the request hash remains stable without accepting arbitrary evidence JSON.
+  return JSON.stringify({
+    decision: input.decision,
+    decidedAtMs: input.decidedAtMs,
+    expectedEvidenceVersion: input.expectedEvidenceVersion,
+    expectedSourceRevision: input.expectedSourceRevision,
+    expectedTargetRevision: input.expectedTargetRevision,
+    recommendationId: input.recommendationId,
+    requestId: input.requestId,
+  });
 }
 
 export function validateRecommendationDecisionInput(
