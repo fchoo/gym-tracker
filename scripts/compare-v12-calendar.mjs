@@ -38,7 +38,16 @@ function assertTrace(trace) {
   const markers = [0.249, 0.25, 0.251].map((marker) => samples.find((sample) => finite(sample.dx) && finite(sample.viewportWidth) && Math.abs(Math.abs(sample.dx) / sample.viewportWidth - marker) < 0.00001));
   if (markers.some((sample) => sample === undefined)) fail("trace_25_percent_missing");
   const [below, exact, above] = markers;
-  if (below.titleMonth !== below.semanticMonth || exact.titleMonth !== exact.semanticMonth || above.titleMonth !== above.semanticMonth || below.titleMonth === exact.titleMonth || exact.titleMonth !== above.titleMonth) fail("trace_25_percent_semantic");
+  const direction = Math.sign(exact.dx) * -1;
+  const release = trace.samples.find((sample) => sample?.kind === "release");
+  if (below.semanticOffset !== 0
+    || exact.semanticOffset !== 0
+    || above.semanticOffset !== 0
+    || below.titleOffset !== 0
+    || exact.titleOffset !== direction
+    || above.titleOffset !== direction
+    || release?.semanticOffset !== direction
+    || release.titleOffset !== direction) fail("trace_25_percent_semantic");
 }
 function assertSemantics(semantics) {
   if (semantics?.focus_ring_dp !== 3 || semantics?.focus_clearance_dp !== 4 || semantics?.authority !== "read-only" || typeof semantics?.target !== "string") fail("semantic_mismatch");
@@ -145,7 +154,7 @@ function fixtureInput(file) {
   writeFileSync(reference, bytes); writeFileSync(native, bytes);
   const hash = sha256(bytes);
   const map = { schema_version: 1, prototype_revision: 18, source_manifest_sha256: fixture.source_manifest_sha256, host_only_fixture: true, captures: [{ id: "calendar-month-light-390", requirement_ids: ["CAL-01"], reference: { path: reference, sha256: hash, width: 1, height: 1 }, configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" } }], case_ledger: [{ id: "light", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "touch", viewport: "390x844" }, { id: "dark", capture_ids: ["calendar-month-light-390"], theme: "Dark", motion: "normal", input: "touch", viewport: "390x844" }, { id: "accessibility", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "keyboard", viewport: "390x844" }, { id: "reduced-motion", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "reduced", input: "touch", viewport: "390x844" }] };
-  const run = { schema_version: 1, run_id: "host-fixture", source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, status: "NOT_RUN", captures: [{ id: "calendar-month-light-390", native: { path: native, sha256: hash, width: 1, height: 1 }, trace: { synthetic: true, samples: [{ kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticMonth: "2026-10", titleMonth: "2026-10" }, { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticMonth: "2026-11", titleMonth: "2026-11" }, { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticMonth: "2026-11", titleMonth: "2026-11" }] }, semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" }, classification: "REVIEW_REQUIRED", differences: [] }] };
+  const run = { schema_version: 1, run_id: "host-fixture", source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, status: "NOT_RUN", captures: [{ id: "calendar-month-light-390", native: { path: native, sha256: hash, width: 1, height: 1 }, trace: { synthetic: true, samples: [{ kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0 }, { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 }, { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1 }, { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1 }] }, semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" }, classification: "REVIEW_REQUIRED", differences: [] }] };
   return { directory, map, run };
 }
 

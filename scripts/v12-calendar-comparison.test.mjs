@@ -63,9 +63,10 @@ function completeFixture() {
         trace: {
           synthetic: true,
           samples: [
-            { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticMonth: "2026-10", titleMonth: "2026-10" },
-            { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticMonth: "2026-11", titleMonth: "2026-11" },
-            { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticMonth: "2026-11", titleMonth: "2026-11" },
+            { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0 },
+            { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 },
+            { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1 },
+            { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1 },
           ],
         },
         semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" },
@@ -110,6 +111,32 @@ test("Calendar comparison rejects stale hashes, geometry mismatches, bad 25 perc
   }
 });
 
+test("Calendar comparison keeps committed semantics stable while the title previews at the inclusive threshold", () => {
+  const fixture = completeFixture();
+  try {
+    fixture.run.captures[0].trace.samples = [
+      { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0 },
+      { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 },
+      { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1 },
+      { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1 },
+    ];
+    assert.doesNotThrow(() => compareV12Calendar({
+      map: fixture.map,
+      run: fixture.run,
+      outputDirectory: path.join(fixture.directory, "truthful-preview"),
+    }));
+
+    fixture.run.captures[0].trace.samples[1].semanticOffset = 1;
+    assert.throws(() => compareV12Calendar({
+      map: fixture.map,
+      run: fixture.run,
+      outputDirectory: path.join(fixture.directory, "false-preview"),
+    }), /trace_25_percent_semantic/u);
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
 test("Calendar map requires a unique exact Revision 18 reference and Light/Dark/accessibility/reduced-motion ledger", () => {
   const fixture = completeFixture();
   try {
@@ -136,6 +163,10 @@ test("the Phase 16 runner exposes every pre-destination diagnostic stage but can
   assert.equal(validateV12CalendarManifest(manifest), true);
   const flow = readFileSync("maestro/v1.2/calendar.yaml", "utf8");
   assert.equal(validateV12CalendarFlow(flow), true);
+  assert.throws(
+    () => validateV12CalendarFlow(flow.replace("end: \"60%, 45%\"", "end: \"45%, 45%\"")),
+    /v12_calendar_flow_stage_invalid:drag-forward-10/u,
+  );
   const plan = createV12CalendarRunnerPlan(manifest);
   assert.equal(plan.native_execution, "NOT_RUN");
   assert.equal(plan.phase20_deferred, true);
