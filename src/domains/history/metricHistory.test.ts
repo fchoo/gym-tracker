@@ -10,6 +10,7 @@ import type {
 import {
   buildExerciseMetricHistory,
   projectComparableExerciseTrend,
+  projectLoadMetricHistorySeries,
   type EffectiveMetricHistorySet,
 } from "./metricHistory";
 
@@ -204,5 +205,77 @@ describe("effective metric history", () => {
         expect.objectContaining({ plannedDistanceMeters: 2_000 }),
         expect.objectContaining({ plannedDistanceMeters: 5_000 }),
       ]));
+  });
+
+  it("projects target-at-date, immutable source revision, and dated relative basis from the same comparable sets", () => {
+    const first = loadSet({
+      sessionId: "session-first",
+      setId: "set-first",
+      localDate: "2026-08-23",
+      completedAtMs: 1_724_428_800_000,
+      sourceRevision: 1,
+      targetAtDate: {
+        version: 1,
+        profile: "load_reps",
+        loadGrams: 37_500,
+        minReps: 8,
+        maxReps: 10,
+        incrementGrams: 2_500,
+        perSide: false,
+      },
+      relativeStrength: {
+        loadGrams: 40_000,
+        relativeLoad: 0.5,
+        basis: { grams: 80_000, localDate: "2026-08-20" },
+      },
+    });
+    const corrected = loadSet({
+      sessionId: "session-corrected",
+      setId: "set-corrected",
+      localDate: "2026-08-24",
+      completedAtMs: 1_724_515_200_000,
+      sourceRevision: 3,
+      historyStatus: "corrected_effective",
+      observation: {
+        version: 1,
+        profile: "load_reps",
+        loadGrams: 45_000,
+        reps: 8,
+        source: "manual",
+      },
+      relativeStrength: {
+        loadGrams: 45_000,
+        relativeLoad: 0.5,
+        basis: { grams: 90_000, localDate: "2026-08-24" },
+      },
+    });
+    const segment = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: [corrected, first],
+    }).segments[0]!;
+
+    expect(projectLoadMetricHistorySeries(segment, "load")?.points).toEqual([
+      expect.objectContaining({
+        sessionId: "session-first",
+        sourceRevision: 1,
+        targetAtDate: 37.5,
+        value: 40,
+      }),
+      expect.objectContaining({
+        sessionId: "session-corrected",
+        sourceRevision: 3,
+        statusLabel: "Corrected effective fact",
+        targetAtDate: 40,
+        value: 45,
+      }),
+    ]);
+    expect(projectLoadMetricHistorySeries(segment, "relative")?.points).toEqual([
+      expect.objectContaining({ value: 0.5, targetAtDate: 0.46875 }),
+      expect.objectContaining({
+        value: 0.5,
+        targetAtDate: 40_000 / 90_000,
+        basisDisclosure: "Using 90 kg from 24 August 2026",
+      }),
+    ]);
   });
 });

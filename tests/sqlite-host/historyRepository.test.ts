@@ -41,6 +41,7 @@ import {
 } from "../../src/platform/sqlite/repositories/plansWorkoutRepository";
 import {
   createSqliteKernel,
+  type SqliteReadTransactionExecutor,
   type SqliteKernel,
 } from "../../src/platform/sqlite/sqliteKernel";
 
@@ -251,6 +252,56 @@ async function insertSession(
           ],
         );
       }
+    }
+  });
+}
+
+async function ownerNamespace(kernel: SqliteKernel): Promise<string> {
+  const [owner] = await kernel.queryAll<{ owner_namespace: string }>(
+    "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+  );
+  if (owner === undefined) throw new Error("owner_missing");
+  return owner.owner_namespace;
+}
+
+async function insertBodyweightEntry(
+  kernel: SqliteKernel,
+  input: Readonly<{
+    id: string;
+    localDate: string;
+    grams: number;
+    occurredAtMs: number;
+    revision?: number;
+    lifecycle?: "active" | "deleted";
+  }>,
+): Promise<void> {
+  const ownerId = await ownerNamespace(kernel);
+  const revision = input.revision ?? 1;
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      "INSERT INTO bodyweight_entries(id, owner_id, current_revision, lifecycle, created_at_ms) VALUES (?, ?, ?, ?, ?)",
+      [input.id, ownerId, revision, input.lifecycle ?? "active", input.occurredAtMs],
+    );
+    for (let current = 1; current <= revision; current += 1) {
+      const deleted = input.lifecycle === "deleted" && current === revision;
+      await transaction.execute(
+        `INSERT INTO bodyweight_entry_events
+          (id, entry_id, owner_id, revision, event_id, operation, local_date,
+           timezone, grams, occurred_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `${input.id}-revision-${current}`,
+          input.id,
+          ownerId,
+          current,
+          `${input.id}-event-${current}`,
+          deleted ? "delete" : current === 1 ? "create" : "edit",
+          deleted ? null : input.localDate,
+          deleted ? null : "Asia/Singapore",
+          deleted ? null : input.grams,
+          input.occurredAtMs - (revision - current),
+        ],
+      );
     }
   });
 }
@@ -1175,5 +1226,131 @@ describe("history repository Calendar reads", () => {
       sampleSize: 5,
     });
     expect(result.warmupVisits.map(({ setId }) => setId)).toEqual(["warmup-set"]);
+  });
+
+  it("loads source revisions, target-at-date, and private bodyweight bases through exactly one snapshot", async () => {
+    const kernel = await open();
+    await insertSession(kernel, {
+      id: "relative-source",
+      source: "scheduled_day",
+      status: "completed",
+      localDate: "2026-08-24",
+      timezone: "Asia/Singapore",
+      startedAtMs: 1_724_515_200_000,
+      completedAtMs: 1_724_515_560_000,
+      exercises: [{
+        id: "relative-exercise",
+        exerciseId: "bench-press",
+        status: "completed",
+        sets: [{
+          id: "relative-working",
+          status: "completed",
+          observation: { loadGrams: 45_000, reps: 8 },
+        }],
+      }],
+    });
+    await insertBodyweightEntry(kernel, {
+      id: "basis-earlier-commit",
+      localDate: "2026-08-24",
+      grams: 80_000,
+      occurredAtMs: 10,
+      revision: 9,
+    });
+    await insertBodyweightEntry(kernel, {
+      id: "basis-selected-z",
+      localDate: "2026-08-24",
+      grams: 90_000,
+      occurredAtMs: 20,
+      revision: 2,
+    });
+    await insertBodyweightEntry(kernel, {
+      id: "basis-future",
+      localDate: "2026-08-25",
+      grams: 100_000,
+      occurredAtMs: 30,
+    });
+    await insertBodyweightEntry(kernel, {
+      id: "basis-deleted",
+      localDate: "2026-08-24",
+      grams: 120_000,
+      occurredAtMs: 40,
+      revision: 2,
+      lifecycle: "deleted",
+    });
+
+    let snapshotCount = 0;
+    let topLevelQueryCount = 0;
+    const guardedKernel: SqliteKernel = {
+      write: kernel.write.bind(kernel),
+      async queryAll<Row extends Record<string, unknown>>() {
+        topLevelQueryCount += 1;
+        throw new Error("exercise_history_top_level_query_forbidden");
+      },
+      async readSnapshot<Result>(
+        query: (transaction: SqliteReadTransactionExecutor) => Promise<Result>,
+      ) {
+        snapshotCount += 1;
+        return kernel.readSnapshot!(query);
+      },
+      connectionConfiguration: kernel.connectionConfiguration.bind(kernel),
+      close: kernel.close.bind(kernel),
+    };
+
+    const result = await createHistoryRepository(guardedKernel)
+      .loadExerciseMetricHistory({ exerciseId: "bench-press" });
+
+    expect(snapshotCount).toBe(1);
+    expect(topLevelQueryCount).toBe(0);
+    expect(result.freshness).toBe("current");
+    expect(result.segments[0]?.comparableSets[0]).toMatchObject({
+      sessionId: "relative-source",
+      sourceRevision: 1,
+      targetAtDate: { profile: "load_reps", loadGrams: 40_000 },
+      relativeStrength: {
+        loadGrams: 45_000,
+        relativeLoad: 0.5,
+        basis: { grams: 90_000, localDate: "2026-08-24" },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("basis-selected-z");
+    expect(JSON.stringify(result)).not.toContain(await ownerNamespace(kernel));
+  });
+
+  it("returns a coarse unavailable projection instead of mixing stale history facts", async () => {
+    const kernel = await open();
+    await insertSession(kernel, {
+      id: "stale-source",
+      source: "scheduled_day",
+      status: "completed",
+      localDate: "2026-08-24",
+      timezone: "Asia/Singapore",
+      startedAtMs: 1_724_515_200_000,
+      completedAtMs: 1_724_515_560_000,
+      exercises: [{
+        id: "stale-exercise",
+        exerciseId: "bench-press",
+        status: "completed",
+        sets: [{
+          id: "stale-working",
+          status: "completed",
+          observation: { loadGrams: 45_000, reps: 8 },
+        }],
+      }],
+    });
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO history_subject_revisions(subject_id, revision, updated_at_ms)
+       VALUES (?, 2, 1)`,
+      ['history-subject/v1:["exercise_metric","bench-press","load_reps:1:1","identity"]'],
+    ));
+
+    await expect(createHistoryRepository(kernel).loadExerciseMetricHistory({
+      exerciseId: "bench-press",
+    })).resolves.toEqual({
+      exerciseId: "bench-press",
+      exerciseName: null,
+      freshness: "unavailable",
+      segments: [],
+      warmupVisits: [],
+    });
   });
 });
