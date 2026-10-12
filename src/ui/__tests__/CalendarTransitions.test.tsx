@@ -114,7 +114,14 @@ describe("Calendar semantic transitions", () => {
   it("orders adjacent focus as collapse, month selection, then expansion, and gives Back cancellation priority", () => {
     const expanded = transitionCalendar(initial(), { type: "expand" });
     expect(expanded.state).toMatchObject({ mode: "focused", phase: "settling" });
+    expect(expanded.commands).toEqual([expect.objectContaining({
+      kind: "settle-week", phase: "expand", durationMs: 260, easing: [0.22, 0.8, 0.3, 1],
+    })]);
     const focused = transitionCalendar(expanded.state, { type: "settle-complete", epoch: 1 }).state;
+    const collapsed = transitionCalendar(focused, { type: "collapse" });
+    expect(collapsed.commands).toEqual([expect.objectContaining({
+      kind: "settle-week", phase: "collapse", durationMs: 240, easing: [0.4, 0, 0.78, 0.2],
+    })]);
     const adjacent = transitionCalendar(focused, { type: "select-adjacent", localDate: "2026-11-08" });
     expect(adjacent.state).toMatchObject({
       mode: "month", selectedLocalDate: "2026-11-08", phase: "adjacent-collapsing",
