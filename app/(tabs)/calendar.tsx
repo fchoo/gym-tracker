@@ -20,6 +20,18 @@ import {
   useRootHeadingRef,
 } from "../../src/ui/shell/rootFocus";
 
+function routeId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? encodeURIComponent(value)
+    : null;
+}
+
+function calendarQuery(returnEventId: string | undefined, extra: readonly [string, string][] = []): string {
+  const entries: [string, string][] = [["origin", "calendar"], ...extra];
+  if (returnEventId !== undefined) entries.push(["returnEventId", returnEventId]);
+  return entries.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+}
+
 export default function CalendarRoute() {
   const settingsActionNativeID = rootSettingsTriggerNativeID("calendar");
   const headingRef = useRootHeadingRef("calendar");
@@ -34,20 +46,35 @@ export default function CalendarRoute() {
     (now.getMonth() + 1).toString().padStart(2, "0"),
     now.getDate().toString().padStart(2, "0"),
   ].join("-");
-  const openEvent = (destination: CalendarEventDestination) => {
+  const openEvent = (destination: CalendarEventDestination, returnEventId?: string) => {
     switch (destination.kind) {
-      case "session":
-        router.push((`/session/${destination.sessionId}?origin=calendar`) as Href);
+      case "session": {
+        const sessionId = routeId(destination.sessionId);
+        if (sessionId === null) return;
+        router.push((`/session/${sessionId}?${calendarQuery(returnEventId)}`) as Href);
         return;
-      case "occurrence":
-        router.push((`/calendar/plan/${destination.occurrenceId}`) as Href);
+      }
+      case "occurrence": {
+        const occurrenceId = routeId(destination.occurrenceId);
+        if (occurrenceId === null) return;
+        router.push((`/calendar/plan/${occurrenceId}?${calendarQuery(returnEventId)}`) as Href);
         return;
-      case "plan":
-        router.push((`/library/running/${destination.planId}`) as Href);
+      }
+      case "plan": {
+        const planId = routeId(destination.planId);
+        const sessionId = routeId(destination.sessionId);
+        if (planId === null || sessionId === null) return;
+        // This preserves the typed handoff only; Plan 16-07 owns real Running integration.
+        router.push((`/library/running/${planId}?${calendarQuery(returnEventId, [["sessionId", destination.sessionId]])}`) as Href);
         return;
-      case "activity":
-        router.push((`/garmin/activity/${destination.activityId}?origin=calendar`) as Href);
+      }
+      case "activity": {
+        const activityId = routeId(destination.activityId);
+        if (activityId === null) return;
+        // This preserves the typed handoff only; Plan 16-07 owns real Garmin integration.
+        router.push((`/garmin/activity/${activityId}?${calendarQuery(returnEventId)}`) as Href);
         return;
+      }
     }
   };
 

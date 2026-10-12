@@ -35,7 +35,7 @@ jest.mock("../../../src/ui/shell/rootFocus", () => ({
 jest.mock("../../../src/ui/screens/CalendarScreen", () => {
   const { Pressable } = require("react-native") as typeof import("react-native");
   return {
-    CalendarScreen: ({ onOpenEvent }: Readonly<{ onOpenEvent(destination: unknown): void }>) => (
+    CalendarScreen: ({ onOpenEvent }: Readonly<{ onOpenEvent(destination: unknown, returnEventId?: string): void }>) => (
       <>
         <Pressable
           accessibilityLabel="Open completed Strength event"

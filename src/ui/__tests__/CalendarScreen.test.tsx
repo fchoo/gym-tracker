@@ -122,7 +122,10 @@ describe("CalendarScreen", () => {
     await fireEvent.press(agendaTarget);
 
     expect(onOpenEvent).toHaveBeenCalledTimes(1);
-    expect(onOpenEvent).toHaveBeenCalledWith(completedStrengthRange.events[0]!.destination);
+    expect(onOpenEvent).toHaveBeenCalledWith(
+      completedStrengthRange.events[0]!.destination,
+      "strength-session-1",
+    );
     expect(loadCalendarRange).toHaveBeenCalledWith({
       startLocalDate: "2026-07-27",
       endLocalDateExclusive: "2026-09-14",

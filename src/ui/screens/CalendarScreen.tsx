@@ -47,7 +47,7 @@ const MONDAY_FIRST = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 type CalendarScreenProps = Readonly<{
   initialDate: string;
   loadCalendarRange: CalendarReadPort["loadCalendarRange"];
-  onOpenEvent(destination: CalendarEventDestination): void;
+  onOpenEvent(destination: CalendarEventDestination, returnEventId?: string): void;
   onOpenSettings?(): void;
   today?: string;
   headingRef?: React.RefObject<RootFocusTarget | null>;
@@ -510,7 +510,7 @@ export function CalendarScreen({
                     eventId,
                   });
                 }}
-                onOpenEvent={onOpenEvent}
+                onOpenEvent={(destination) => onOpenEvent(destination, calendarReturnRef.current?.eventId)}
                 onRequestBack={requestCalendarBack}
                 onScrollOffsetChange={(offset) => { agendaOffsetRef.current = offset; }}
                 ref={agendaRef}
