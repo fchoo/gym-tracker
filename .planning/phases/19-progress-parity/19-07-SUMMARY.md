@@ -18,7 +18,7 @@ affects: [progression, logical-backup, logical-restore, logical-merge, ProgressS
 actuals:
   tokens: 18680
   tasks: 2
-  commits: 8
+  commits: 9
 
 tech-stack:
   added: []
@@ -112,6 +112,7 @@ Each task was committed atomically:
 
 1. **Task 1: Review and Use one fresh target recommendation exactly once** - `efb69fe3` (test), `384e9ad6` (feat), `23952006` (fix)
 2. **Task 2: Complete Keep, dismiss, busy, stale, failure, retry, and historical states** - `11b546ef` (feat), `d406afcb` (fix), `dfe088c3` (fix), `4abef7a4` (fix), `b0d27529` (test)
+3. **Post-integration compatibility repair: Bind the Phase 12 maximum-history fixture to schema 45 / logical format v10** - `051979c5` (fix)
 
 ## Files Created/Modified
 
@@ -140,6 +141,7 @@ Each task was committed atomically:
 - Migration effects, clean-install restore, logical restore, logical merge, backup repository, and current-format portability suites — passed.
 - `npm run typecheck`, `npm run check:boundaries`, `npm run lint`, and `git diff --check` — passed.
 - Focused integrity gate — 11 suites / 425 tests passed; `backupContracts.ts`, `mergePlan.ts`, `restoreCommands.ts`, `recommendationCommands.ts`, `logicalBackupRepository.ts`, `logicalMergeRepository.ts`, and `logicalRestoreRepository.ts` each reached 100% statements, branches, functions, and lines.
+- Post-integration SQLite compatibility matrix — 5 suites / 341 tests passed after refreshing the exact schema-45 pre-padding byte guard and snapshot schema assertion.
 
 ## Deviations from Plan
 
@@ -163,6 +165,7 @@ Each task was committed atomically:
 - Clean current-schema restore initially rejected logical format v10. The restore command now accepts v10 only with schema v45, and the clean-install round trip passes.
 - Initial merge classification treated receipt rows as source graph facts. Receipts are now owner-plan facts, with receipt-to-recommendation closure validation inside the owning aggregate.
 - The strict integrity gate exposed uncovered legacy branches. Focused tests and a clock normalization refactor achieved 100% coverage without lowering the threshold.
+- The merged branch exposed a stale Phase 12 maximum-history baseline: the two new empty receipt-table keys add 210 serialized bytes across `rowCounts` and `tables`, and format version `9` to `10` adds one byte. Commit `051979c5` updates the fail-closed guard from 23,242,527 to 23,242,738 bytes and the expected snapshot schema from 44 to 45; the original failing test and fresh 341-test SQLite matrix prove the repair.
 - The state helper could not parse this parallel-execution `STATE.md`; its progress result was therefore restored to the existing authoritative aggregate, and its generated decision labels were corrected from Phase 16 to Phase 19.
 
 ## User Setup Required
