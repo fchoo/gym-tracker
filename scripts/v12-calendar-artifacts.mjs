@@ -33,7 +33,7 @@ export function createExclusiveDirectory(directory, code = "output_exists") {
   try {
     mkdirSync(directory);
   } catch (error) {
-    if (error?.code === "EEXIST") fail(code);
+    if (error.code === "EEXIST") fail(code);
     throw error;
   }
 }
@@ -48,10 +48,7 @@ function runDirectory(root, runId) {
 }
 
 function validateStageIds(stageIds) {
-  if (!Array.isArray(stageIds)
-    || stageIds.length === 0
-    || new Set(stageIds).size !== stageIds.length
-    || stageIds.some((stageId) => !STAGE_ID.test(stageId))) fail("stage_registry_invalid");
+  if ([!Array.isArray(stageIds), Array.isArray(stageIds) && stageIds.length === 0, Array.isArray(stageIds) && new Set(stageIds).size !== stageIds.length, Array.isArray(stageIds) && stageIds.some((stageId) => !STAGE_ID.test(stageId))].some(Boolean)) fail("stage_registry_invalid");
 }
 
 export function initializeV12CalendarRun({ root, runId, stageIds }) {
@@ -80,12 +77,14 @@ function readStageResults(directory, stageIds) {
   if (names.some((name) => !/^\d{3}-[a-z][a-z0-9_-]{2,63}\.json$/u.test(name))) fail("stage_file_invalid");
   return names.map((name) => {
     const result = JSON.parse(readFileSync(path.join(stageDirectory, name), "utf8"));
-    if (!exactKeys(result, ["schema_version", "stage_id", "status", "artifact_sha256"])
-      || result.schema_version !== 1
-      || !stageIds.includes(result.stage_id)
-      || !["COMPLETE", "FAILED"].includes(result.status)
-      || !HASH.test(result.artifact_sha256 ?? "")
-      || path.basename(stageResultPath(directory, stageIds, result.stage_id)) !== name) fail("stage_result_invalid");
+    if ([
+      !exactKeys(result, ["schema_version", "stage_id", "status", "artifact_sha256"]),
+      result.schema_version !== 1,
+      !stageIds.includes(result.stage_id),
+      !["COMPLETE", "FAILED"].includes(result.status),
+      !HASH.test(result.artifact_sha256),
+      stageIds.includes(result.stage_id) && path.basename(stageResultPath(directory, stageIds, result.stage_id)) !== name,
+    ].some(Boolean)) fail("stage_result_invalid");
     return result;
   });
 }
@@ -94,10 +93,7 @@ export function readV12CalendarRunState({ root, runId, stageIds }) {
   validateStageIds(stageIds);
   const directory = runDirectory(root, runId);
   const run = JSON.parse(readFileSync(path.join(directory, "run.json"), "utf8"));
-  if (!exactKeys(run, ["schema_version", "run_id", "stage_ids"])
-    || run.schema_version !== 1
-    || run.run_id !== runId
-    || JSON.stringify(run.stage_ids) !== JSON.stringify(stageIds)) fail("run_state_invalid");
+  if ([!exactKeys(run, ["schema_version", "run_id", "stage_ids"]), run.schema_version !== 1, run.run_id !== runId, JSON.stringify(run.stage_ids) !== JSON.stringify(stageIds)].some(Boolean)) fail("run_state_invalid");
   const results = readStageResults(directory, stageIds);
   const completed = results.filter(({ status }) => status === "COMPLETE").map(({ stage_id }) => stage_id);
   const failed = results.filter(({ status }) => status === "FAILED").map(({ stage_id }) => stage_id);
@@ -107,13 +103,7 @@ export function readV12CalendarRunState({ root, runId, stageIds }) {
   const terminalPath = path.join(directory, "terminal.json");
   if (existsSync(terminalPath)) {
     const terminal = JSON.parse(readFileSync(terminalPath, "utf8"));
-    if (!exactKeys(terminal, ["schema_version", "run_id", "status", "completed_stage_count", "failed_stage_count"])
-      || terminal.schema_version !== 1
-      || terminal.run_id !== runId
-      || terminal.status !== status
-      || terminal.completed_stage_count !== completed.length
-      || terminal.failed_stage_count !== failed.length
-      || status === "IN_PROGRESS") fail("terminal_state_invalid");
+    if ([!exactKeys(terminal, ["schema_version", "run_id", "status", "completed_stage_count", "failed_stage_count"]), terminal.schema_version !== 1, terminal.run_id !== runId, terminal.status !== status, terminal.completed_stage_count !== completed.length, terminal.failed_stage_count !== failed.length, status === "IN_PROGRESS"].some(Boolean)) fail("terminal_state_invalid");
   }
   return Object.freeze({
     status,
@@ -129,7 +119,7 @@ export function recordV12CalendarStageResult({ root, runId, stageIds, stageId, s
   const directory = runDirectory(root, runId);
   const resultPath = stageResultPath(directory, stageIds, stageId);
   if (existsSync(resultPath)) fail("stage_exists");
-  if (!["COMPLETE", "FAILED"].includes(status) || !HASH.test(artifactSha256 ?? "")) fail("stage_result_invalid");
+  if ([!["COMPLETE", "FAILED"].includes(status), !HASH.test(artifactSha256)].some(Boolean)) fail("stage_result_invalid");
   writeExclusiveArtifact(resultPath, stableCanonicalJson({
     schema_version: 1,
     stage_id: stageId,

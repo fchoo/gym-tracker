@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -20,6 +22,7 @@ import {
 } from "./benchmark-v12-interactions.mjs";
 import { V12_CALENDAR_REQUIRED_CASE_IDS } from "./v12-calendar-case-registry.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import {
   CALENDAR_NATIVE_CASE_IDS,
   CALENDAR_ROUTE_JOURNEY_IDS,
@@ -77,9 +80,9 @@ function rawDiagnostics() {
   };
 }
 
-function completeLiveEvidence() {
+function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
   const evidence = fixture();
-  evidence.run_id = "phase20-20261013T000000Z-abcdef123456";
+  evidence.run_id = runId;
   evidence.host_only_fixture = false;
   evidence.native_execution = "EXECUTED";
   evidence.functional_cases.forEach((entry) => {
@@ -124,17 +127,25 @@ function writeDescriptor(root, descriptor) {
   descriptor.size_bytes = bytes.length;
 }
 
-function materializeLiveEvidence(root) {
-  const evidence = completeLiveEvidence();
+function materializeLiveEvidence(root, currentIdentity, runId) {
+  const evidence = completeLiveEvidence(runId);
+  if (currentIdentity !== undefined) {
+    evidence.manifest.base_head = currentIdentity.head;
+    evidence.manifest.source_tree_sha256 = currentIdentity.source;
+    evidence.identity.base_head = currentIdentity.head;
+    evidence.identity.source_tree_sha256 = currentIdentity.source;
+    evidence.comparison.identity.base_head = currentIdentity.head;
+    evidence.comparison.identity.source_tree_sha256 = currentIdentity.source;
+    evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
+  }
   const runDirectory = path.join(root, "artifacts/native/v1.2", evidence.run_id);
   const manifestPath = path.join(runDirectory, "build.json");
   const evidencePath = path.join(runDirectory, "evidence/calendar-evidence.json");
   mkdirSync(path.dirname(evidencePath), { recursive: true });
   mkdirSync(path.join(root, ".planning/phases/16-calendar-parity"), { recursive: true });
-  writeFileSync(
-    path.join(root, ".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json"),
-    readFileSync(".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json"),
-  );
+  const destinationMap = path.join(root, ".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json");
+  const sourceMap = path.resolve(".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json");
+  if (path.resolve(destinationMap) !== sourceMap) writeFileSync(destinationMap, readFileSync(sourceMap));
 
   evidence.artifacts.manifest.path = path.relative(root, manifestPath);
   const descriptors = [
@@ -145,6 +156,9 @@ function materializeLiveEvidence(root) {
     ...evidence.comparison.case_results.map(({ artifact }) => artifact),
     ...evidence.comparison.records.flatMap(({ artifacts }) => Object.values(artifacts)),
   ];
+  for (const descriptor of descriptors) {
+    descriptor.path = path.join(path.relative(root, runDirectory), "payload", descriptor.path);
+  }
   descriptors.forEach((descriptor) => writeDescriptor(root, descriptor));
   const manifestBytes = Buffer.from(`${JSON.stringify(evidence.manifest, null, 2)}\n`);
   writeFileSync(manifestPath, manifestBytes);
@@ -259,6 +273,26 @@ test("the final CLI verifier accepts a complete live comparison on the same run 
   }
 });
 
+test("the live verifier resolves current git and source identity when no test override is supplied", () => {
+  const root = process.cwd();
+  const runId = "phase20-20261013T090909Z-fedcba654321";
+  const runDirectory = path.join(root, "artifacts/native/v1.2", runId);
+  try {
+    assert.equal(existsSync(runDirectory), false);
+    const currentIdentity = {
+      head: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+      source: sourceTreeSha256(root),
+    };
+    const { manifestPath } = materializeLiveEvidence(root, currentIdentity, runId);
+    assert.equal(executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", manifestPath, "--automated-only"],
+      root,
+    }).status, "PASS");
+  } finally {
+    rmSync(runDirectory, { recursive: true, force: true });
+  }
+});
+
 test("Calendar evidence rejects unsafe paths, symlinks, replaced bytes, and privacy-bearing payloads", () => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-evidence-"));
   const external = mkdtempSync(path.join(tmpdir(), "v12-calendar-external-"));
@@ -357,8 +391,16 @@ test("Calendar manifest, package commands, and focused integrity registration ar
   assert.equal(validateV12CalendarPackageScripts(packageJson), true);
   assert.equal(
     packageJson.scripts["test:coverage:v12:calendar"],
-    "node scripts/run-coverage-gate.mjs --focus-integrity=src/bootstrap/phase16CalendarTestControls.ts --focus-project=unit --runInBand src/bootstrap/phase16CalendarTestControls.test.ts",
+    "node scripts/run-coverage-gate.mjs --focus-phase16-evidence --runInBand",
   );
   const coverage = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
   assert.match(coverage, /src\/bootstrap\/phase16CalendarTestControls\.ts/u);
+  for (const file of [
+    "benchmark-v12-interactions.mjs",
+    "compare-v12-calendar.mjs",
+    "run-v12-maestro.mjs",
+    "verify-v12-native-evidence.mjs",
+    "v12-calendar-case-registry.mjs",
+    "v12-calendar-artifacts.mjs",
+  ]) assert.match(coverage, new RegExp(file.replaceAll(".", "\\."), "u"));
 });

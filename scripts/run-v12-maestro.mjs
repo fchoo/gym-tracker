@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { exactKeys } from "./node-evidence-utils.mjs";
 import {
   initializeV12CalendarRun,
   readV12CalendarRunState,
@@ -61,14 +62,30 @@ export const V12_CALENDAR_STAGE_CONTRACTS = Object.freeze({
 });
 
 export function validateV12CalendarManifest(manifest, current = {}) {
-  if (manifest?.schema_version !== 1 || manifest.suite !== "v1.2-calendar" || manifest.profile !== "development-test" || manifest.package !== PACKAGE || manifest.js_bundle?.embedded !== true || !GIT_HEAD.test(manifest.base_head ?? "") || !SHA256.test(manifest.source_tree_sha256 ?? "") || !SHA256.test(manifest.source_manifest_sha256 ?? "") || !SHA256.test(manifest.apk?.sha256 ?? "") || manifest.installed_apk?.matches_retained_apk !== true || manifest.installed_apk?.sha256 !== manifest.apk.sha256 || !SHA256.test(manifest.device?.identity_sha256 ?? "") || !SHA256.test(manifest.report_sha256 ?? "")) throw new Error("v12_calendar_manifest_invalid");
+  if (!exactKeys(manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "apk", "installed_apk", "device", "report_sha256"])) throw new Error("v12_calendar_manifest_invalid");
+  if ([!exactKeys(manifest.js_bundle, ["embedded"]), !exactKeys(manifest.apk, ["path", "sha256", "size_bytes"]), !exactKeys(manifest.installed_apk, ["sha256", "matches_retained_apk"]), !exactKeys(manifest.device, ["identity_sha256"])].some(Boolean)) throw new Error("v12_calendar_manifest_invalid");
+  if ([
+    manifest.schema_version !== 1,
+    manifest.suite !== "v1.2-calendar",
+    manifest.profile !== "development-test",
+    manifest.package !== PACKAGE,
+    manifest.js_bundle.embedded !== true,
+    !GIT_HEAD.test(manifest.base_head),
+    !SHA256.test(manifest.source_tree_sha256),
+    !SHA256.test(manifest.source_manifest_sha256),
+    !SHA256.test(manifest.apk.sha256),
+    manifest.installed_apk.matches_retained_apk !== true,
+    manifest.installed_apk.sha256 !== manifest.apk.sha256,
+    !SHA256.test(manifest.device.identity_sha256),
+    !SHA256.test(manifest.report_sha256),
+  ].some(Boolean)) throw new Error("v12_calendar_manifest_invalid");
   if (current.head !== undefined && manifest.base_head !== current.head) throw new Error("v12_calendar_manifest_stale_head");
   if (current.source !== undefined && manifest.source_tree_sha256 !== current.source) throw new Error("v12_calendar_manifest_stale_source");
   return true;
 }
 
 export function validateV12CalendarFlow(flow) {
-  if (typeof flow !== "string" || !flow.includes("calendar-tracer") || !flow.includes("PHASE16_CALENDAR_STAGE")) throw new Error("v12_calendar_flow_invalid");
+  if ([typeof flow !== "string", typeof flow === "string" && !flow.includes("calendar-tracer"), typeof flow === "string" && !flow.includes("PHASE16_CALENDAR_STAGE")].some(Boolean)) throw new Error("v12_calendar_flow_invalid");
   for (const stage of V12_CALENDAR_DIAGNOSTIC_STAGES) {
     const marker = `PHASE16_CALENDAR_STAGE == '${stage}'`;
     const start = flow.indexOf(marker);
@@ -116,20 +133,34 @@ export function recordV12CalendarRunnerStage({ root, runId, stageId, status, art
   });
 }
 
-export function executeV12Maestro(args = process.argv.slice(2)) {
+export function executeV12Maestro(args = process.argv.slice(2), dependencies = {}) {
   if (!args.includes("--diagnostic")) throw new Error("v12_calendar_diagnostic_flag_required");
   const manifestIndex = args.indexOf("--manifest");
-  if (manifestIndex < 0 || args[manifestIndex + 1] === undefined) throw new Error("v12_calendar_manifest_required");
-  const manifestPath = path.resolve(ROOT, args[manifestIndex + 1]);
-  if (!existsSync(manifestPath)) throw new Error("v12_calendar_manifest_missing");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
-  validateV12CalendarManifest(manifest, { head, source: sourceTreeSha256(ROOT) });
-  validateV12CalendarFlow(readFileSync(path.join(ROOT, FLOW), "utf8"));
+  if ([manifestIndex < 0, manifestIndex >= 0 && args[manifestIndex + 1] === undefined].some(Boolean)) throw new Error("v12_calendar_manifest_required");
+  const root = dependencies.root ?? ROOT;
+  const manifestPath = path.resolve(root, args[manifestIndex + 1]);
+  const fileExists = dependencies.exists ?? existsSync;
+  if (!fileExists(manifestPath)) throw new Error("v12_calendar_manifest_missing");
+  const readText = dependencies.readText ?? ((file) => readFileSync(file, "utf8"));
+  const manifest = JSON.parse(readText(manifestPath));
+  const head = dependencies.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const source = dependencies.source ?? sourceTreeSha256(root);
+  validateV12CalendarManifest(manifest, { head, source });
+  validateV12CalendarFlow(readText(path.join(root, FLOW)));
   throw new Error("v12_calendar_native_execution_phase20_only");
 }
 
+export function runV12MaestroCli(args = process.argv.slice(2), io = process) {
+  try {
+    io.stdout.write(`${JSON.stringify(executeV12Maestro(args))}\n`);
+    return 0;
+  } catch (error) {
+    io.stderr.write(`${error.message}\n`);
+    return 1;
+  }
+}
+
+/* node:coverage ignore next 4 */
 if (process.argv[1]?.endsWith("run-v12-maestro.mjs")) {
-  try { process.stdout.write(`${JSON.stringify(executeV12Maestro())}\n`); }
-  catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
+  process.exitCode = runV12MaestroCli();
 }

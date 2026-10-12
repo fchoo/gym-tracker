@@ -100,6 +100,19 @@ const phase18EvidenceFiles = [
   "scripts/verify-phase18-garmin-adversarial.mjs",
   "scripts/verify-phase18-garmin-proof.mjs",
 ];
+const phase16EvidenceTests = [
+  "scripts/v12-calendar-comparison.test.mjs",
+  "scripts/v12-evidence-scripts.test.mjs",
+  "scripts/v12-calendar-evidence-coverage.test.mjs",
+];
+const phase16EvidenceFiles = [
+  "scripts/benchmark-v12-interactions.mjs",
+  "scripts/compare-v12-calendar.mjs",
+  "scripts/run-v12-maestro.mjs",
+  "scripts/verify-v12-native-evidence.mjs",
+  "scripts/v12-calendar-artifacts.mjs",
+  "scripts/v12-calendar-case-registry.mjs",
+];
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",
   "src/domains/portability/backupContracts.ts",
@@ -270,9 +283,12 @@ const focusedIntegrityFiles = [];
 const focusedProjects = [];
 const jestForwarded = [];
 let focusPhase18 = false;
+let focusPhase16Evidence = false;
 for (const argument of forwarded) {
   if (argument === "--focus-phase18") {
     focusPhase18 = true;
+  } else if (argument === "--focus-phase16-evidence") {
+    focusPhase16Evidence = true;
   } else if (argument.startsWith("--focus-integrity=")) {
     focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
   } else if (argument.startsWith("--focus-project=")) {
@@ -280,6 +296,11 @@ for (const argument of forwarded) {
   } else {
     jestForwarded.push(argument);
   }
+}
+if (focusPhase16Evidence) {
+  focusedIntegrityFiles.push("src/bootstrap/phase16CalendarTestControls.ts");
+  focusedProjects.push("unit");
+  jestForwarded.push("src/bootstrap/phase16CalendarTestControls.test.ts");
 }
 if (focusPhase18) {
   focusedIntegrityFiles.push(...phase18IntegrityCriticalFiles);
@@ -299,6 +320,24 @@ if (focusedIntegrityFiles.length > 0) {
   }
 }
 let languageReports;
+if (focusPhase16Evidence) {
+  const evidence = spawnSync(
+    process.execPath,
+    [
+      "--experimental-test-coverage",
+      "--test-concurrency=1",
+      ...phase16EvidenceFiles.map((file) => `--test-coverage-include=${file}`),
+      "--test-coverage-lines=100",
+      "--test-coverage-branches=100",
+      "--test-coverage-functions=100",
+      "--test",
+      ...phase16EvidenceTests,
+    ],
+    { cwd: projectRoot, encoding: "utf8", stdio: "inherit" },
+  );
+  if (evidence.error !== undefined) throw evidence.error;
+  if (evidence.status !== 0) process.exit(evidence.status ?? 1);
+}
 if (focusPhase18) {
   try {
     languageReports = loadPhase18LanguageCoverageReports({ projectRoot });
@@ -332,7 +371,11 @@ if (focusPhase18) {
 }
 const outputDirectory = coverageDirectoryArgument(
   forwarded,
-  focusPhase18 ? path.join(coverageDirectory, "phase18-jest") : coverageDirectory,
+  focusPhase18
+    ? path.join(coverageDirectory, "phase18-jest")
+    : focusPhase16Evidence
+      ? path.join(coverageDirectory, "phase16-jest")
+      : coverageDirectory,
 );
 rmSync(outputDirectory, { force: true, recursive: true });
 

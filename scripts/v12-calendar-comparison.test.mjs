@@ -113,12 +113,12 @@ test("Calendar comparison creates individually hashed artifacts while keeping na
       native_execution: "NOT_RUN",
       required_case_count: V12_CALENDAR_REQUIRED_CASE_IDS.length,
     });
-    assert.match(result.records[0].overlay.sha256, /^[a-f0-9]{64}$/u);
+    assert.match(result.records[0].artifacts.overlay.sha256, /^[a-f0-9]{64}$/u);
     const recordBytes = readFileSync(path.join(fixture.directory, "comparison/calendar-month-light-390/comparison.json"));
     const persisted = JSON.parse(recordBytes);
-    assert.deepEqual(persisted.reference, result.records[0].reference);
-    assert.deepEqual(persisted.native, result.records[0].native);
-    assert.equal(sha256(recordBytes), result.records[0].record.sha256);
+    assert.deepEqual(persisted.reference, result.records[0].artifacts.reference);
+    assert.deepEqual(persisted.native, result.records[0].artifacts.native);
+    assert.equal(sha256(recordBytes), result.records[0].artifacts.record.sha256);
     assert.doesNotMatch(JSON.stringify(result), /PASS|serial|token|email/u);
     assert.equal(validateV12CalendarComparison(result), true);
   } finally {
@@ -337,7 +337,7 @@ test("the checked-in Calendar map binds every reference byte to the Revision 18 
 });
 
 test("the Phase 16 runner exposes every pre-destination diagnostic stage but cannot award a native verdict", () => {
-  const manifest = { schema_version: 1, suite: "v1.2-calendar", profile: "development-test", package: "com.fchoo.gymtracker.devtest", js_bundle: { embedded: true }, base_head: "a".repeat(40), source_tree_sha256: "b".repeat(64), source_manifest_sha256: "e".repeat(64), apk: { sha256: "c".repeat(64) }, installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true }, device: { identity_sha256: "d".repeat(64) }, report_sha256: "f".repeat(64) };
+  const manifest = { schema_version: 1, suite: "v1.2-calendar", profile: "development-test", package: "com.fchoo.gymtracker.devtest", js_bundle: { embedded: true }, base_head: "a".repeat(40), source_tree_sha256: "b".repeat(64), source_manifest_sha256: "e".repeat(64), apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 }, installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true }, device: { identity_sha256: "d".repeat(64) }, report_sha256: "f".repeat(64) };
   assert.equal(validateV12CalendarManifest(manifest), true);
   const flow = readFileSync("maestro/v1.2/calendar.yaml", "utf8");
   assert.equal(validateV12CalendarFlow(flow), true);
