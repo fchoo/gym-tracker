@@ -586,8 +586,32 @@ test("Kotlin helper fails closed for missing cases and CLI fallback errors", () 
     runGradle: () => {
       throw "not-an-error";
     },
+    fileExists: () => false,
   });
   assert.match(failure.stderr, /phase18_kotlin_coverage_failed/u);
+
+  let falsyFailure = "not-thrown";
+  try {
+    executePhase18KotlinCoverage({
+      runGradle: () => {
+        throw null;
+      },
+      fileExists: () => false,
+    });
+  } catch (error) {
+    falsyFailure = error;
+  }
+  assert.equal(falsyFailure, null);
+
+  const messageOnlyMissingToolchain = executePhase18KotlinCoverage({
+    runGradle: () => {
+      throw new Error("spawn ENOENT");
+    },
+    fileExists: () => false,
+    readBytes: (relativePath) => Buffer.from(relativePath),
+    writeReport: () => {},
+  });
+  assert.equal(messageOnlyMissingToolchain.runtime.version, "source-bound-fallback");
 });
 
 test("acceptance helper rejects status drift and honors explicit owner current identity overrides", () => {

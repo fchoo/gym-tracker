@@ -54,6 +54,8 @@ const phase18TargetedTests = [
   "tests/sqlite-host/logicalMergeRepository.test.ts",
 ];
 const phase18EvidenceTests = [
+  "scripts/phase18-acceptance-helper-coverage.test.mjs",
+  "scripts/phase18-benchmark-helper-coverage.test.mjs",
   "scripts/benchmark-phase18-garmin.test.mjs",
   "scripts/phase18-evidence-helpers.test.mjs",
   "scripts/phase18-build-manifest.test.mjs",
@@ -62,6 +64,7 @@ const phase18EvidenceTests = [
   "scripts/phase18-garmin-proof.test.mjs",
   "scripts/phase18-language-coverage.test.mjs",
   "scripts/phase18-privacy-scan.test.mjs",
+  "scripts/phase18-proof-helper-coverage.test.mjs",
   "scripts/phase18-verifier-cli.test.mjs",
   "scripts/run-phase18-kotlin-coverage.test.mjs",
 ];
