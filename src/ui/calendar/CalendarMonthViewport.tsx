@@ -1,11 +1,12 @@
 import React, { useEffect, useRef } from "react";
-import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
@@ -23,6 +24,7 @@ import {
   type CalendarTransitionPhase,
   type CalendarTransitionState,
 } from "./calendarTransitionController";
+import { calendarTrackMetrics } from "./CalendarWeekRow";
 
 const EASING = Easing.bezier(0.22, 0.8, 0.3, 1);
 const SLOP_DP = 7;
@@ -46,6 +48,18 @@ export function calendarPanelTranslate(offset: PanelOffset, dx: number, viewport
 
 export function calendarMonthPanEnabled(phase: CalendarTransitionPhase): boolean {
   return phase === "idle" || phase === "dragging";
+}
+
+export function calendarAgendaMotion(command: Readonly<{
+  phase: "expand" | "collapse";
+  agendaDelayMs: number;
+  agendaDurationMs: number;
+}>): Readonly<{ delayMs: number; durationMs: number; opacity: 0 | 1 }> {
+  return Object.freeze({
+    delayMs: command.agendaDelayMs,
+    durationMs: command.agendaDurationMs,
+    opacity: command.phase === "expand" ? 1 : 0,
+  });
 }
 
 function Panel({
@@ -84,16 +98,43 @@ function FocusedWeekOverlay({
     const targetY = edge === "top" ? 0 : Math.max(0, viewportHeight.value - geometry.height);
     return {
       height: geometry.height,
-      opacity: progress.value,
       transform: [{ translateY: geometry.y + (targetY - geometry.y) * progress.value }],
     };
   });
 
-  return <Animated.View style={[styles.focusedOverlay, style]}>{children}</Animated.View>;
+  return (
+    <Animated.View
+      style={[styles.focusedOverlay, style]}
+      testID={edge === "top" ? "calendar-focused-selected-week" : "calendar-focused-following-week"}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+function FocusedAgenda({
+  children,
+  followingGeometry,
+  opacity,
+  selectedGeometry,
+}: Readonly<{
+  children: React.ReactNode;
+  followingGeometry: CalendarWeekGeometry;
+  opacity: Readonly<{ value: number }>;
+  selectedGeometry: CalendarWeekGeometry;
+}>) {
+  const style = useAnimatedStyle(() => ({
+    bottom: followingGeometry.height,
+    opacity: opacity.value,
+    top: selectedGeometry.height,
+  }));
+  return <Animated.View style={[styles.focusedAgenda, style]} testID="calendar-focused-agenda">{children}</Animated.View>;
 }
 
 export function CalendarMonthViewport({
+  agenda,
   command,
+  fontScale = 1,
   focusedWeek,
   layoutGeneration = 0,
   month,
@@ -104,8 +145,11 @@ export function CalendarMonthViewport({
   renderMonth,
   renderWeek,
   transition,
+  weekCount = 6,
 }: Readonly<{
+  agenda?: React.ReactNode;
   command: CalendarMotionCommand | null;
+  fontScale?: number;
   layoutGeneration?: number;
   focusedWeek: Readonly<{
     selectedDates: readonly LocalDate[];
@@ -121,6 +165,7 @@ export function CalendarMonthViewport({
   renderMonth(month: LocalDate, interactive: boolean): React.ReactNode;
   renderWeek(dates: readonly LocalDate[], interactive: boolean): React.ReactNode;
   transition: CalendarTransitionState;
+  weekCount?: number;
 }>) {
   const pointerX = useSharedValue(0);
   const viewportWidth = useSharedValue(0);
@@ -129,6 +174,7 @@ export function CalendarMonthViewport({
   const completionEpoch = useSharedValue(0);
   const weekCompletionEpoch = useSharedValue(0);
   const focusProgress = useSharedValue(0);
+  const agendaOpacity = useSharedValue(transition.mode === "focused" ? 1 : 0);
   const released = useSharedValue(false);
   const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
@@ -166,10 +212,14 @@ export function CalendarMonthViewport({
 
   useEffect(() => {
     if (command?.kind !== "settle-week") return;
+    const agendaMotion = calendarAgendaMotion(command);
+    cancelAnimation(agendaOpacity);
+    agendaOpacity.value = agendaMotion.delayMs > 0
+      ? withDelay(agendaMotion.delayMs, withTiming(agendaMotion.opacity, { duration: agendaMotion.durationMs }))
+      : withTiming(agendaMotion.opacity, { duration: agendaMotion.durationMs });
     const selectedGeometry = calendarWeekGeometryForGeneration(focusedWeek?.selectedGeometry, layoutGeneration);
     const followingGeometry = calendarWeekGeometryForGeneration(focusedWeek?.followingGeometry, layoutGeneration);
     if (selectedGeometry === null || followingGeometry === null) {
-      onCancel();
       return;
     }
     weekCompletionEpoch.value = command.epoch;
@@ -190,13 +240,15 @@ export function CalendarMonthViewport({
         scheduleOnRN(onComplete, command.epoch);
       }
     });
-  }, [command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, onCancel, onComplete, viewportHeight, weekCompletionEpoch]);
+  }, [agendaOpacity, command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, onCancel, onComplete, viewportHeight, weekCompletionEpoch]);
 
   useEffect(() => {
     if (!transition.reducedMotion) return;
     cancelAnimation(focusProgress);
     focusProgress.value = transition.mode === "focused" ? 1 : 0;
-  }, [focusProgress, transition.mode, transition.reducedMotion]);
+    cancelAnimation(agendaOpacity);
+    agendaOpacity.value = transition.mode === "focused" ? 1 : 0;
+  }, [agendaOpacity, focusProgress, transition.mode, transition.reducedMotion]);
 
   useEffect(() => {
     if (transition.phase !== "idle") return;
@@ -300,9 +352,31 @@ export function CalendarMonthViewport({
     if (hadMeasurement && mounted.current) onCancel();
   };
 
+  const trackMetrics = calendarTrackMetrics(fontScale);
+  const minimumHeight = trackMetrics.rowMinHeight
+    * (transition.mode === "focused" ? 2 : weekCount)
+    + (transition.mode === "focused" ? 110 : 0);
+  const fallbackSelectedGeometry = Object.freeze({ y: 0, height: trackMetrics.rowMinHeight, generation: layoutGeneration });
+  const fallbackFollowingGeometry = Object.freeze({
+    y: Math.max(0, (weekCount - 1) * trackMetrics.rowMinHeight),
+    height: trackMetrics.rowMinHeight,
+    generation: layoutGeneration,
+  });
+  const selectedGeometry = focusedWeek?.selectedGeometry ?? fallbackSelectedGeometry;
+  const followingGeometry = focusedWeek?.followingGeometry ?? fallbackFollowingGeometry;
+  const hasFocusedComposition = focusedWeek !== null
+    && (command?.kind === "settle-week" || transition.mode === "focused");
+
   return (
-    <GestureDetector gesture={pan}>
-      <View accessibilityLabel="Calendar month panels" onLayout={onLayout} style={styles.viewport} testID="calendar-month-viewport">
+    <ScrollView
+      contentContainerStyle={[styles.verticalContent, { minHeight: minimumHeight }]}
+      nestedScrollEnabled
+      scrollEnabled
+      style={styles.verticalScroll}
+      testID="calendar-vertical-scroll"
+    >
+      <GestureDetector gesture={pan}>
+        <View accessibilityLabel="Calendar month panels" onLayout={onLayout} style={styles.viewport} testID="calendar-month-viewport">
         <Panel offset={-1} pointerX={pointerX} viewportWidth={viewportWidth}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
             {renderMonth(previousMonth, false)}
@@ -316,25 +390,34 @@ export function CalendarMonthViewport({
             {renderMonth(nextMonth, false)}
           </View>
         </Panel>
-        {focusedWeek !== null && focusedWeek.selectedGeometry !== null && focusedWeek.followingGeometry !== null && (
-          command?.kind === "settle-week" || transition.mode === "focused"
-        ) ? (
+        {hasFocusedComposition ? (
           <>
-            <FocusedWeekOverlay edge="top" geometry={focusedWeek.selectedGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
+            <FocusedWeekOverlay edge="top" geometry={selectedGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
               {renderWeek(focusedWeek.selectedDates, transition.phase === "idle")}
             </FocusedWeekOverlay>
-            <FocusedWeekOverlay edge="bottom" geometry={focusedWeek.followingGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
+            <FocusedAgenda
+              followingGeometry={followingGeometry}
+              opacity={agendaOpacity}
+              selectedGeometry={selectedGeometry}
+            >
+              {agenda}
+            </FocusedAgenda>
+            <FocusedWeekOverlay edge="bottom" geometry={followingGeometry} progress={focusProgress} viewportHeight={viewportHeight}>
               {renderWeek(focusedWeek.followingDates, transition.phase === "idle")}
             </FocusedWeekOverlay>
           </>
         ) : null}
-      </View>
-    </GestureDetector>
+        </View>
+      </GestureDetector>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   panel: { bottom: 0, left: 0, position: "absolute", top: 0 },
   focusedOverlay: { left: 0, position: "absolute", right: 0, top: 0 },
+  focusedAgenda: { left: 0, minHeight: 0, position: "absolute", right: 0 },
+  verticalContent: { flexGrow: 1 },
+  verticalScroll: { flex: 1, minHeight: 0 },
   viewport: { flex: 1, minHeight: 0, overflow: "hidden" },
 });

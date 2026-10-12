@@ -26,9 +26,30 @@ function fullDate(value: LocalDate): string {
   return `${Number(value.slice(8, 10))} ${MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? ""} ${value.slice(0, 4)}`;
 }
 
+export type CalendarTrackMetrics = Readonly<{
+  chipMinHeight: number;
+  dateTrackMinHeight: number;
+  eventTrackMinHeight: number;
+  rowMinHeight: number;
+}>;
+
+export function calendarTrackMetrics(fontScale: number): CalendarTrackMetrics {
+  const scale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
+  const chipMinHeight = scale === 1 ? 17 : Math.ceil(14 * scale + 4);
+  const dateTrackMinHeight = Math.max(28, Math.ceil(22 * scale + 6));
+  const eventTrackMinHeight = Math.max(36, chipMinHeight * 2 + 2);
+  return Object.freeze({
+    chipMinHeight,
+    dateTrackMinHeight,
+    eventTrackMinHeight,
+    rowMinHeight: Math.max(70, dateTrackMinHeight + eventTrackMinHeight + 6),
+  });
+}
+
 export function CalendarWeekRow({
   dates,
   eventsByDate,
+  fontScale = 1,
   month,
   hidden = false,
   onLayout,
@@ -39,6 +60,7 @@ export function CalendarWeekRow({
 }: Readonly<{
   dates: readonly LocalDate[];
   eventsByDate: ReadonlyMap<LocalDate, readonly CalendarEvent[]>;
+  fontScale?: number;
   month: LocalDate;
   hidden?: boolean;
   onLayout?(event: LayoutChangeEvent): void;
@@ -48,14 +70,15 @@ export function CalendarWeekRow({
   today: LocalDate;
 }>) {
   const { colors } = useAppTheme();
+  const metrics = calendarTrackMetrics(fontScale);
 
   return (
     <View
       accessibilityElementsHidden={hidden}
       importantForAccessibility={hidden ? "no-hide-descendants" : "yes"}
       onLayout={onLayout}
-      style={[styles.row, hidden && styles.hidden]}
-      testID="calendar-week-row"
+      style={[styles.row, { minHeight: metrics.rowMinHeight }, hidden && styles.hidden]}
+      testID={`calendar-week-row-${dates[0]}`}
     >
       {dates.map((date) => {
         const events = orderedCalendarEvents(eventsByDate.get(date) ?? []);
@@ -102,10 +125,13 @@ export function CalendarWeekRow({
             ]}
             testID={`calendar-day-${date}`}
           >
-            <View style={[styles.dateTrack, date === today && { borderColor: colors.blue }]}>
+            <View
+              style={[styles.dateTrack, { minHeight: metrics.dateTrackMinHeight }, date === today && { borderColor: colors.blue }]}
+              testID={`calendar-date-track-${date}`}
+            >
               <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{Number(date.slice(8, 10))}</Text>
             </View>
-            <View style={styles.events}>
+            <View style={[styles.events, { minHeight: metrics.eventTrackMinHeight }]} testID={`calendar-event-track-${date}`}>
               {presentation.visualEvents.map((event, index) => (
                 <Text
                   accessible={false}
@@ -114,6 +140,7 @@ export function CalendarWeekRow({
                   style={[
                     typeScale.secondary as TextStyle,
                     styles.eventChip,
+                    { minHeight: metrics.chipMinHeight },
                     event.status === "planned"
                       ? styles.plannedChip
                       : event.status === "partial"
@@ -152,11 +179,11 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   completeChip: { borderStyle: "solid", borderWidth: 1 },
-  dateTrack: { alignItems: "flex-start", borderColor: "transparent", borderRadius: 14, borderWidth: 2, height: 28, justifyContent: "center", paddingHorizontal: 2 },
-  eventChip: { borderRadius: 3, fontSize: 11, fontWeight: "800", height: 17, lineHeight: 14, overflow: "hidden", paddingHorizontal: 2 },
-  events: { gap: 2, height: 36 },
+  dateTrack: { alignItems: "flex-start", borderColor: "transparent", borderRadius: 14, borderWidth: 2, justifyContent: "center", paddingHorizontal: 2 },
+  eventChip: { borderRadius: 3, fontSize: 11, fontWeight: "800", lineHeight: 14, overflow: "hidden", paddingHorizontal: 2 },
+  events: { gap: 2 },
   hidden: { opacity: 0 },
   partialChip: { borderStyle: "dotted", borderWidth: 2 },
   plannedChip: { borderStyle: "dashed", borderWidth: 2 },
-  row: { flexDirection: "row", gap: 2 },
+  row: { flex: 1, flexDirection: "row", gap: 2 },
 });

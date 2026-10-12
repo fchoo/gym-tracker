@@ -11,6 +11,8 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import * as ReactNative from "react-native";
+import { StyleSheet } from "react-native";
 
 import type { CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
 import { CalendarScreen } from "../screens/CalendarScreen";
@@ -89,6 +91,16 @@ const agendaRange = Object.freeze({
   ]),
 }) as CalendarRange;
 
+async function measureAugustFocusedRows(): Promise<void> {
+  const measure = async (testID: string, y: number) => {
+    const row = screen.getAllByTestId(testID).find((candidate) => typeof candidate.props.onLayout === "function");
+    if (row === undefined) throw new Error(`missing interactive row ${testID}`);
+    await fireEvent(row, "layout", { nativeEvent: { layout: { height: 70, width: 360, x: 0, y } } });
+  };
+  await measure("calendar-week-row-2026-08-24", 280);
+  await measure("calendar-week-row-2026-08-31", 350);
+}
+
 describe("CalendarScreen", () => {
   it("opens one completed Strength agenda target without giving the date cell a nested event action", async () => {
     const onOpenEvent = jest.fn();
@@ -113,12 +125,20 @@ describe("CalendarScreen", () => {
     const day = screen.getByRole("button", {
       name: /24 August 2026.*Full body progression, week 12.*Strength.*Complete/u,
     });
+    await measureAugustFocusedRows();
     await fireEvent.press(day);
 
     expect(onOpenEvent).not.toHaveBeenCalled();
-    const agendaTarget = await screen.findByRole("button", {
-      name: /Full body progression, week 12.*Strength.*Complete.*Strength/u,
-    });
+    expect(screen.getByTestId("calendar-month-viewport").children.flatMap((child) => {
+      if (typeof child !== "object" || child === null || !("props" in child)) return [];
+      const testID = (child as { props: Readonly<{ testID?: unknown }> }).props.testID;
+      return typeof testID === "string" && testID.startsWith("calendar-focused-") ? [testID] : [];
+    })).toEqual([
+      "calendar-focused-selected-week",
+      "calendar-focused-agenda",
+      "calendar-focused-following-week",
+    ]);
+    const agendaTarget = await screen.findByTestId("calendar-agenda-event-strength-session-1");
     await fireEvent.press(agendaTarget);
 
     expect(onOpenEvent).toHaveBeenCalledTimes(1);
@@ -176,6 +196,7 @@ describe("CalendarScreen", () => {
       </AppearanceProvider>,
     );
 
+    await measureAugustFocusedRows();
     await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*4 scheduled or imported events/u }));
 
     expect(await screen.findByLabelText("4 scheduled or imported events")).toBeOnTheScreen();
@@ -203,6 +224,7 @@ describe("CalendarScreen", () => {
       </AppearanceProvider>,
     );
 
+    await measureAugustFocusedRows();
     await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
     await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
     await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
@@ -245,6 +267,7 @@ describe("CalendarScreen", () => {
       </AppearanceProvider>,
     );
 
+    await measureAugustFocusedRows();
     await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
     await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
     const callsBeforeReturn = loadCalendarRange.mock.calls.length;
@@ -305,5 +328,34 @@ describe("CalendarScreen", () => {
         endLocalDateExclusive: "2026-10-12",
       });
     });
+  });
+
+  it("mounts a vertically scrollable full-height month with scaled tracks in compact landscape", async () => {
+    const dimensions = jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
+      fontScale: 2,
+      height: 360,
+      scale: 1,
+      width: 800,
+    });
+    try {
+      await render(
+        <AppearanceProvider>
+          <CalendarScreen
+            initialDate="2026-08-24"
+            loadCalendarRange={jest.fn(async () => range)}
+            onOpenEvent={jest.fn()}
+            today="2026-08-24"
+          />
+        </AppearanceProvider>,
+      );
+
+      expect(await screen.findByTestId("calendar-vertical-scroll")).toHaveProp("scrollEnabled", true);
+      expect(StyleSheet.flatten(screen.getAllByTestId("calendar-date-track-2026-08-24")[0]!.props.style).minHeight).toBe(50);
+      expect(StyleSheet.flatten(screen.getAllByTestId("calendar-event-track-2026-08-24")[0]!.props.style).minHeight).toBe(66);
+      expect(screen.getByRole("button", { name: /24 August 2026.*Full body progression/u })).toBeOnTheScreen();
+      expect(screen.getByRole("button", { name: "Return to today, 24 August 2026" })).toBeOnTheScreen();
+    } finally {
+      dimensions.mockRestore();
+    }
   });
 });

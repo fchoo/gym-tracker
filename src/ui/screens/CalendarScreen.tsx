@@ -6,6 +6,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type TextStyle,
 } from "react-native";
 
@@ -406,6 +407,45 @@ export function CalendarScreen({
     : calendarTransition.titlePanel === "next" ? nextMonth(titleBaseMonth, 1)
       : titleBaseMonth;
   const selectedEvents = (range?.events ?? []).filter((event) => event.localDate === visibleSelectedDate);
+  const selectedDay = range?.days?.find((day) => day.localDate === visibleSelectedDate);
+  const agendaRegion = (
+    <View style={styles.agendaRegion} testID="calendar-agenda-region">
+      <FocusablePressable
+        accessibilityLabel="Collapse day and return to month"
+        accessibilityRole="button"
+        onKeyDown={(event) => {
+          if (event.nativeEvent.key === "Escape") requestCalendarBack();
+        }}
+        onPress={() => dispatchCalendarTransition({ type: "collapse" })}
+        ref={collapseActionRef}
+        style={({ pressed }) => [
+          styles.collapseAction,
+          { backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderColor: colors.line },
+        ]}
+      >
+        <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Collapse day and return to month</Text>
+      </FocusablePressable>
+      <CalendarAgenda
+        {...(selectedDay === undefined ? {} : { day: selectedDay })}
+        events={selectedEvents}
+        onActivateEvent={(eventId) => {
+          calendarReturnRef.current = Object.freeze({
+            month,
+            selectedDate: selectedDateRef.current,
+            mode: calendarTransitionRef.current.mode,
+            agendaOffset: agendaOffsetRef.current,
+            eventId,
+          });
+        }}
+        onOpenEvent={(destination) => onOpenEvent(destination, calendarReturnRef.current?.eventId)}
+        onRequestBack={requestCalendarBack}
+        onScrollOffsetChange={(offset) => { agendaOffsetRef.current = offset; }}
+        ref={agendaRef}
+        resetActivationKey={returnFocusGeneration}
+        rowRefs={agendaRowRefs}
+      />
+    </View>
+  );
 
   return (
     <AdaptiveScreen
@@ -447,7 +487,6 @@ export function CalendarScreen({
             pointerEvents={isCalendarKeyOpen ? "none" : "auto"}
             style={[
               styles.gridRegion,
-              calendarTransition.mode === "focused" && styles.focusedGridRegion,
               {
                 marginHorizontal: -adaptiveScreenInset,
                 paddingHorizontal: calendarInset,
@@ -463,7 +502,9 @@ export function CalendarScreen({
               </View>
             ) : (
               <CalendarMonthViewport
+                agenda={agendaRegion}
                 command={calendarCommand}
+                fontScale={fontScale}
                 focusedWeek={focusedWeek}
                 layoutGeneration={layoutGeneration}
                 month={visibleMonth}
@@ -491,10 +532,11 @@ export function CalendarScreen({
                     <CalendarWeekRow
                       dates={dates}
                       eventsByDate={eventsByDate}
+                      fontScale={fontScale}
                       hidden={hidden}
                       key={dates[0]}
                       month={panelMonth}
-                      onLayout={(event) => recordWeekGeometry(dates[0]!, event.nativeEvent.layout)}
+                      {...(interactive ? { onLayout: (event: LayoutChangeEvent) => recordWeekGeometry(dates[0]!, event.nativeEvent.layout) } : {})}
                       onMoveDate={(date) => { if (interactive) moveSelection(date); }}
                       onPressDate={(date) => {
                         if (!interactive) return;
@@ -526,6 +568,7 @@ export function CalendarScreen({
                   <CalendarWeekRow
                     dates={dates}
                     eventsByDate={eventsByDate}
+                    fontScale={fontScale}
                     month={visibleMonth}
                     onMoveDate={(date) => { if (interactive) moveSelection(date); }}
                     onPressDate={(date) => {
@@ -538,46 +581,10 @@ export function CalendarScreen({
                   />
                 )}
                 transition={calendarTransition}
+                weekCount={visibleWeekRows.length}
               />
             )}
           </View>
-          {calendarTransition.mode !== "focused" ? null : (
-            <View style={styles.agendaRegion}>
-              <FocusablePressable
-                accessibilityLabel="Collapse day and return to month"
-                accessibilityRole="button"
-                onKeyDown={(event) => {
-                  if (event.nativeEvent.key === "Escape") requestCalendarBack();
-                }}
-                onPress={() => dispatchCalendarTransition({ type: "collapse" })}
-                ref={collapseActionRef}
-                style={({ pressed }) => [
-                  styles.collapseAction,
-                  { backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderColor: colors.line },
-                ]}
-              >
-                <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Collapse day and return to month</Text>
-              </FocusablePressable>
-              <CalendarAgenda
-                events={selectedEvents}
-                onActivateEvent={(eventId) => {
-                  calendarReturnRef.current = Object.freeze({
-                    month,
-                    selectedDate: selectedDateRef.current,
-                    mode: calendarTransitionRef.current.mode,
-                    agendaOffset: agendaOffsetRef.current,
-                    eventId,
-                  });
-                }}
-                onOpenEvent={(destination) => onOpenEvent(destination, calendarReturnRef.current?.eventId)}
-                onRequestBack={requestCalendarBack}
-                onScrollOffsetChange={(offset) => { agendaOffsetRef.current = offset; }}
-                ref={agendaRef}
-                resetActivationKey={returnFocusGeneration}
-                rowRefs={agendaRowRefs}
-              />
-            </View>
-          )}
           <BottomSheet
             cancelLabel="Close Calendar key"
             heading="Calendar key"
@@ -612,7 +619,6 @@ const styles = StyleSheet.create({
   agendaRegion: { flex: 1, gap: 10, minHeight: 0 },
   collapseAction: { alignItems: "flex-start", borderWidth: 1, justifyContent: "center", minHeight: 48, paddingHorizontal: 10 },
   completeKey: { backgroundColor: "rgba(22, 107, 76, 0.12)", borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4 },
-  focusedGridRegion: { flex: 0, maxHeight: 260 },
   gridRegion: { flex: 1, gap: 2, minHeight: 0 },
   infoAction: { alignItems: "center", borderRadius: 24, borderWidth: 1, height: 48, justifyContent: "center", width: 48 },
   keyGroup: { gap: 8 },

@@ -18,7 +18,9 @@ import {
   calendarPanelTranslate,
   calendarWeekGeometryForGeneration,
   CalendarMonthViewport,
+  calendarAgendaMotion,
 } from "../calendar/CalendarMonthViewport";
+import { calendarTrackMetrics } from "../calendar/CalendarWeekRow";
 
 const initial = (reducedMotion = false) => createCalendarTransitionState({
   currentMonthId: "2026-11",
@@ -27,6 +29,16 @@ const initial = (reducedMotion = false) => createCalendarTransitionState({
 });
 
 describe("Calendar semantic transitions", () => {
+  it("grows fixed-top Calendar tracks at 200 percent text without shrinking the target", () => {
+    expect(calendarTrackMetrics(1)).toEqual({ chipMinHeight: 17, dateTrackMinHeight: 28, eventTrackMinHeight: 36, rowMinHeight: 70 });
+    expect(calendarTrackMetrics(2)).toEqual({ chipMinHeight: 32, dateTrackMinHeight: 50, eventTrackMinHeight: 66, rowMinHeight: 122 });
+  });
+
+  it("keeps week rows opaque and applies the contract timing only to the agenda", () => {
+    expect(calendarAgendaMotion({ phase: "expand", agendaDelayMs: 70, agendaDurationMs: 170 })).toEqual({ delayMs: 70, durationMs: 170, opacity: 1 });
+    expect(calendarAgendaMotion({ phase: "collapse", agendaDelayMs: 0, agendaDurationMs: 140 })).toEqual({ delayMs: 0, durationMs: 140, opacity: 0 });
+  });
+
   it("keeps a second pan from invalidating an active settle", () => {
     expect(calendarMonthPanEnabled("idle")).toBe(true);
     expect(calendarMonthPanEnabled("dragging")).toBe(true);
