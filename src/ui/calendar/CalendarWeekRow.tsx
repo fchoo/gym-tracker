@@ -6,7 +6,7 @@ import {
   type TextStyle,
 } from "react-native";
 
-import type { LocalDate } from "../../domains/scheduling";
+import { addLocalDays, type LocalDate } from "../../domains/scheduling";
 import {
   calendarDayAccessibilityLabel,
   calendarDayPresentation,
@@ -29,6 +29,7 @@ export function CalendarWeekRow({
   dates,
   eventsByDate,
   month,
+  onMoveDate,
   onPressDate,
   selectedDate,
   today,
@@ -36,6 +37,7 @@ export function CalendarWeekRow({
   dates: readonly LocalDate[];
   eventsByDate: ReadonlyMap<LocalDate, readonly CalendarEvent[]>;
   month: LocalDate;
+  onMoveDate(date: LocalDate): void;
   onPressDate(date: LocalDate, events: readonly CalendarEvent[]): void;
   selectedDate: LocalDate;
   today: LocalDate;
@@ -63,6 +65,21 @@ export function CalendarWeekRow({
             accessibilityRole="button"
             accessibilityState={{ selected }}
             key={date}
+            onKeyDown={(event) => {
+              const key = event.nativeEvent.key;
+              const days = key === "ArrowLeft" ? -1
+                : key === "ArrowRight" ? 1
+                  : key === "ArrowUp" ? -7
+                    : key === "ArrowDown" ? 7
+                      : null;
+              if (days !== null) {
+                onMoveDate(addLocalDays(date, days));
+                return;
+              }
+              if (key === "Enter" || key === " " || key === "Select") {
+                onPressDate(date, events);
+              }
+            }}
             onPress={() => onPressDate(date, events)}
             style={({ pressed }: { pressed: boolean }) => [
               styles.cell,
@@ -74,9 +91,11 @@ export function CalendarWeekRow({
             ]}
             testID={`calendar-day-${date}`}
           >
-            <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{Number(date.slice(8, 10))}</Text>
+            <View style={[styles.dateTrack, date === today && { borderColor: colors.blue }]}>
+              <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{Number(date.slice(8, 10))}</Text>
+            </View>
             <View style={styles.events}>
-              {presentation.visualEvents.map((event) => (
+              {presentation.visualEvents.map((event, index) => (
                 <Text
                   accessible={false}
                   key={event.id}
@@ -84,10 +103,23 @@ export function CalendarWeekRow({
                   style={[
                     typeScale.secondary as TextStyle,
                     styles.eventChip,
-                    { color: event.sport === "strength" ? colors.calendarStrengthTextLight : colors.blue },
+                    event.status === "planned"
+                      ? styles.plannedChip
+                      : event.status === "partial"
+                        ? styles.partialChip
+                        : styles.completeChip,
+                    {
+                      backgroundColor: event.status === "planned"
+                        ? "transparent"
+                        : event.status === "partial"
+                          ? colors.yellowBg
+                          : colors.greenBg,
+                      borderColor: event.sport === "strength" ? colors.orange : colors.blue,
+                      color: event.sport === "strength" ? colors.calendarStrengthTextLight : colors.blue,
+                    },
                   ]}
                 >
-                  {event.title}
+                  {event.title}{index === 1 && presentation.overflowCount > 0 ? ` +${presentation.overflowCount}` : ""}
                 </Text>
               ))}
             </View>
@@ -103,12 +135,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.standard,
     borderWidth: 1,
     flex: 1,
-    gap: 2,
+    gap: 0,
     minHeight: sizes.minimumTarget,
     paddingHorizontal: 2,
     paddingVertical: 3,
   },
-  eventChip: { fontSize: 11, lineHeight: 14, fontWeight: "800" },
-  events: { gap: 2, minHeight: 36 },
+  completeChip: { borderStyle: "solid", borderWidth: 1 },
+  dateTrack: { alignItems: "flex-start", borderColor: "transparent", borderRadius: 14, borderWidth: 2, height: 28, justifyContent: "center", paddingHorizontal: 2 },
+  eventChip: { borderRadius: 3, fontSize: 11, fontWeight: "800", height: 17, lineHeight: 14, overflow: "hidden", paddingHorizontal: 2 },
+  events: { gap: 2, height: 36 },
+  partialChip: { borderStyle: "dotted", borderWidth: 2 },
+  plannedChip: { borderStyle: "dashed", borderWidth: 2 },
   row: { flexDirection: "row", gap: 2 },
 });

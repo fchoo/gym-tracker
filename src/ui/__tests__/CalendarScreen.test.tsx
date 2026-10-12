@@ -12,7 +12,7 @@ import {
 } from "@jest/globals";
 import React from "react";
 
-import type { CalendarRange } from "../calendar/calendarPorts";
+import type { CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { AppearanceProvider } from "../theme";
 
@@ -106,7 +106,8 @@ describe("CalendarScreen", () => {
 
   it("retains the last good month during refresh and retries the exact failed range", async () => {
     let rejectNextRange: ((error: Error) => void) | undefined;
-    const loadCalendarRange = jest.fn()
+    const loadCalendarRange = jest.fn() as jest.MockedFunction<CalendarReadPort["loadCalendarRange"]>;
+    loadCalendarRange
       .mockResolvedValueOnce(range)
       .mockImplementationOnce(() => new Promise<CalendarRange>((_resolve, reject) => {
         rejectNextRange = reject;
