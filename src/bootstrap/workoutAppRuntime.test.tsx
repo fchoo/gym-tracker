@@ -98,6 +98,9 @@ import {
   AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
 } from "../platform/sqlite/migrations/0023_automatic_drive_backup";
 import {
+  CURRENT_SCHEMA_VERSION,
+} from "../platform/sqlite/migrations";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -3345,16 +3348,32 @@ describe("WorkoutAppRuntimeProvider", () => {
   it("executes the production migration and clock adapters against a fake kernel", async () => {
     recoveryBackupMock.createExpoRecoveryBackupPort.mockClear();
     expoSqliteMock.openDatabaseAsync.mockReset();
-    const execute = jest.fn(async (_sql: string, _parameters?: readonly unknown[]) => ({
-      changes: 0,
-      lastInsertRowId: 0,
-    }));
+    let userVersion = 10;
+    const createdTableNames = new Set<string>();
+    const execute = jest.fn(async (sql: string, _parameters?: readonly unknown[]) => {
+      const createdTableName = /^CREATE TABLE\s+([a-z0-9_]+)/iu.exec(
+        sql.trim(),
+      )?.[1];
+      if (createdTableName !== undefined) {
+        createdTableNames.add(createdTableName);
+      }
+      const appliedVersion = /^PRAGMA user_version = (\d+)$/u.exec(
+        sql.trim(),
+      )?.[1];
+      if (appliedVersion !== undefined) {
+        userVersion = Number(appliedVersion);
+      }
+      return {
+        changes: 0,
+        lastInsertRowId: 0,
+      };
+    });
     const queryAllMock = jest.fn(async (
       sql: string,
       parameters: readonly unknown[] = [],
     ) => {
       if (sql === "PRAGMA user_version") {
-        return [{ user_version: 10 }];
+        return [{ user_version: userVersion }];
       }
       if (sql === "PRAGMA table_info(workout_remove_receipts)") {
         return [
@@ -3513,6 +3532,16 @@ describe("WorkoutAppRuntimeProvider", () => {
       }
       if (sql === "SELECT account_display_label FROM automatic_backup_state WHERE id = 1") {
         return [{ account_display_label: null }];
+      }
+      const phase18MigrationTableNames = [
+        "imported_activity_revision_proposals",
+        "imported_activity_revision_decisions",
+        "garmin_sync_summary",
+      ].filter((name) => sql.includes(`'${name}'`));
+      if (phase18MigrationTableNames.length > 0) {
+        return phase18MigrationTableNames
+          .filter((name) => createdTableNames.has(name))
+          .map((name) => ({ name }));
       }
       if (sql.startsWith("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (")) {
         return parameters.map((name) => ({ name }));
@@ -3740,6 +3769,31 @@ describe("WorkoutAppRuntimeProvider", () => {
     await expect(
       productionWorkoutAppRuntimeDependencies.migrate(kernel),
     ).resolves.toBeUndefined();
+    expect(execute).toHaveBeenCalledWith(
+      expect.stringContaining("CREATE TABLE imported_activity_revision_proposals"),
+      [],
+    );
+    expect(execute).toHaveBeenCalledWith(
+      expect.stringContaining("CREATE TABLE imported_activity_revision_decisions"),
+      [],
+    );
+    expect(execute).toHaveBeenCalledWith(
+      expect.stringContaining("CREATE TABLE garmin_sync_summary"),
+      [],
+    );
+    expect(queryAllMock).toHaveBeenCalledWith(
+      expect.stringContaining("imported_activity_revision_proposals"),
+      [],
+    );
+    expect(queryAllMock).toHaveBeenCalledWith(
+      expect.stringContaining("garmin_sync_summary"),
+      [],
+    );
+    expect(execute).toHaveBeenCalledWith("PRAGMA user_version = 43");
+    expect(execute).toHaveBeenCalledWith(
+      `PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`,
+    );
+    expect(userVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(execute).toHaveBeenCalledWith(
       expect.stringContaining("UPDATE pending_effects"),
       expect.any(Array),
