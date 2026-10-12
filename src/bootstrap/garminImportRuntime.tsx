@@ -305,9 +305,7 @@ export function createGarminRootRuntime(input: Readonly<{
           envelope,
           sourceDate: {
             sourceLocalDateTime,
-            ...(envelope.normalized.source_time_zone === undefined
-              ? {}
-              : { sourceTimeZone: envelope.normalized.source_time_zone }),
+            sourceTimeZone: envelope.normalized.source_time_zone,
             sourceUtcOffsetMinutes,
           },
         });
