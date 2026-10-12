@@ -12,9 +12,36 @@ import {
 import type { GarminActivityLifecycleInput } from "../../../domains/activities/importCommands";
 import { classifyGarminActivityIdentity } from "../../../domains/activities/activityIdentity";
 import { runtimeSha256 } from "../../crypto/runtimeSha256";
-import type { SqliteKernel } from "../sqliteKernel";
+import type {
+  SqliteKernel,
+  SqliteTransactionExecutor,
+} from "../sqliteKernel";
 
 type Receipt = Readonly<{ request_sha256: string; activity_id: string }>;
+
+async function writeWithGenerationFence<Result>(
+  kernel: SqliteKernel,
+  assertCurrentGeneration: ConfirmGarminImportInput["assertCurrentGeneration"],
+  command: (transaction: SqliteTransactionExecutor) => Promise<Result>,
+): Promise<Result> {
+  let fenceFailed = false;
+  let fenceError: unknown;
+  try {
+    return await kernel.write(async (transaction) => {
+      try {
+        await assertCurrentGeneration?.();
+      } catch (error) {
+        fenceFailed = true;
+        fenceError = error;
+        throw error;
+      }
+      return command(transaction);
+    });
+  } catch (error) {
+    if (fenceFailed) throw fenceError;
+    throw error;
+  }
+}
 
 function aggregateJson(envelope: ReturnType<typeof parseGarminSourceEnvelope>, input: ConfirmGarminImportInput): string {
   const dateProvenance = input.dateProvenance;
@@ -228,7 +255,7 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
       });
     },
     async confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult> {
-      return kernel.write(async (transaction) => {
+      return writeWithGenerationFence(kernel, input.assertCurrentGeneration, async (transaction) => {
         let verified: Awaited<ReturnType<typeof verifyPreparedImport>>;
         try {
           verified = await verifyPreparedImport(input, sha256);

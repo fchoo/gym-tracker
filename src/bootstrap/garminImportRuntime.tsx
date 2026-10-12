@@ -64,7 +64,7 @@ export type GarminImportApplicationPort = Readonly<{
 
 export type GarminImportConfirmation = Omit<
   ConfirmGarminImportInput,
-  "staged"
+  "assertCurrentGeneration" | "staged"
 >;
 
 export type GarminImportRuntimeServices = Readonly<{
@@ -152,7 +152,7 @@ export function createGarminImportRuntime(input: Readonly<{
     await assertCurrentGeneration();
     const result = await confirmGarminImportDate(
       input.services.importedActivities,
-      { ...confirmation, staged },
+      { ...confirmation, staged, assertCurrentGeneration },
     );
     if (result.kind === "imported") {
       await input.invalidateReads();

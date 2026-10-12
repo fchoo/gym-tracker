@@ -28,6 +28,7 @@ export type ConfirmGarminImportInput = Readonly<{
   confirmedLocalDate: string;
   staged: PreparedGarminImport;
   dateProvenance?: GarminImportDateProvenance;
+  assertCurrentGeneration?: () => Promise<void>;
 }>;
 export type ImportedActivityCommandRepository = Readonly<{ confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult> }>;
 export type GarminRevisionDecisionInput = Readonly<{

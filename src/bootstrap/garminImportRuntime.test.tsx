@@ -428,7 +428,18 @@ describe("Garmin import runtime", () => {
     expect(repository.confirmGarminImport).not.toHaveBeenCalled();
   });
 
-  it.each([
+  const pendingDateReviewCases: Array<
+    | [
+      "named source zone",
+      { sourceTimeZone: "Asia/Singapore"; sourceUtcOffsetMinutes: 480 },
+      "Asia/Singapore",
+    ]
+    | [
+      "derived source zone",
+      { sourceUtcOffsetMinutes: -90 },
+      "UTC-01:30",
+    ]
+  > = [
     [
       "named source zone",
       { sourceTimeZone: "Asia/Singapore", sourceUtcOffsetMinutes: 480 },
@@ -439,7 +450,9 @@ describe("Garmin import runtime", () => {
       { sourceUtcOffsetMinutes: -90 },
       "UTC-01:30",
     ],
-  ] as const)("preserves a %s in pending date review", async (_label, sourceDate, expectedZone) => {
+  ];
+
+  it.each(pendingDateReviewCases)("preserves a %s in pending date review", async (_label, sourceDate, expectedZone) => {
     const sourceEnvelope = envelopeWithSourceDate(sourceDate);
     const repository: ImportedActivityCommandRepository = {
       confirmGarminImport: jest.fn(async () => ({
@@ -700,6 +713,7 @@ describe("Garmin import runtime", () => {
       expectedAggregateRevision: 0,
       confirmedLocalDate: "2026-06-20",
       staged: proposal.staged,
+      assertCurrentGeneration: expect.any(Function),
       dateProvenance: {
         absoluteStartedAtMs: source.normalized.started_at_ms,
         sourceLocalDateTime: "2026-06-20T00:30:00",

@@ -450,6 +450,66 @@ describe("Garmin envelope import boundary", () => {
     )).resolves.toEqual([{ activities: 1, payloads: 1, receipts: 1 }]);
   });
 
+  it("revalidates the connection generation after a queued import acquires the writer", async () => {
+    const { kernel, repository } = await applicationRuntime();
+    let releaseWriter!: () => void;
+    let writerAcquired!: () => void;
+    let repositoryEntered!: () => void;
+    const writerGate = new Promise<void>((resolve) => {
+      releaseWriter = resolve;
+    });
+    const writerAcquiredGate = new Promise<void>((resolve) => {
+      writerAcquired = resolve;
+    });
+    const repositoryEnteredGate = new Promise<void>((resolve) => {
+      repositoryEntered = resolve;
+    });
+    const heldWrite = kernel.write(async () => {
+      writerAcquired();
+      await writerGate;
+    });
+    await writerAcquiredGate;
+
+    let connectionGeneration = 1;
+    const runtime = createGarminImportRuntime({
+      services: {
+        importedActivities: {
+          confirmGarminImport(input) {
+            const pending = repository.confirmGarminImport(input);
+            repositoryEntered();
+            return pending;
+          },
+        },
+      },
+      sha256,
+      assertCurrentGeneration: async () => {
+        if (connectionGeneration !== 1) throw new Error("stale_generation");
+      },
+      invalidateReads: async () => undefined,
+    });
+    const queuedImport = runtime.commitEnvelope({
+      envelope: await envelope(),
+      confirmation: {
+        requestId: "request-queued-generation",
+        requestSha256: "4".repeat(64),
+        activityId: "activity-queued-generation",
+        expectedAggregateRevision: 0,
+        confirmedLocalDate: "2026-10-06",
+      },
+    });
+    await repositoryEnteredGate;
+
+    connectionGeneration = 2;
+    releaseWriter();
+    await heldWrite;
+
+    await expect(queuedImport).rejects.toThrow("stale_generation");
+    await expect(kernel.queryAll<{ activities: number; receipts: number }>(
+      `SELECT (SELECT count(*) FROM imported_activities) AS activities,
+              (SELECT count(*) FROM imported_activity_receipts) AS receipts`,
+    )).resolves.toEqual([{ activities: 0, receipts: 0 }]);
+  });
+
   it("keeps accepted facts and the current match pinned when the same source identity changes", async () => {
     const { kernel, repository, runtime } = await applicationRuntime();
     const accepted = await envelope();

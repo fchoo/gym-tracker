@@ -235,7 +235,11 @@ export function createGarminSharedImportCommitter(input: Readonly<{
     const staged = await prepareGarminImport(envelope, input.sha256);
     const request = await input.requestFor(staged);
     await assertCurrentGeneration();
-    return confirmGarminImportDate(input.repository, { ...request, staged });
+    return confirmGarminImportDate(input.repository, {
+      ...request,
+      staged,
+      assertCurrentGeneration,
+    });
   };
 }
 
