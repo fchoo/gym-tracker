@@ -49,6 +49,38 @@ function result(kind: RunningActivityMatchResult["kind"], activityId: string, op
   return Object.freeze({ kind, activityId, opportunityId, relationRevision });
 }
 
+function acceptedActivityMatches(activity: ActivityRow | undefined, input: RunningActivityMatchInput): boolean {
+  return activity !== undefined
+    && activity.aggregate_revision === input.expectedActivityRevision
+    && activity.accepted_normalized_sha256 === input.expectedAcceptedPayloadSha256
+    && activity.removal_state === "active";
+}
+
+function eligibleTargetMatches(opportunity: OpportunityRow | undefined, input: RunningActivityMatchInput): boolean {
+  return opportunity !== undefined
+    && input.expectedOpportunityRevision === 1
+    && opportunity.plan_id === input.planId
+    && opportunity.state === "planned"
+    && opportunity.plan_active === 1
+    && opportunity.schedule_lifecycle === "active"
+    && opportunity.schedule_id === input.scheduleId
+    && opportunity.schedule_version_id === input.scheduleVersionId
+    && opportunity.schedule_revision === input.expectedScheduleRevision
+    && opportunity.plan_day_id === input.planDayId
+    && opportunity.plan_day_revision === input.expectedPlanDayRevision
+    && opportunity.slot_id === input.slotId
+    && opportunity.slot_revision_id === input.slotRevisionId
+    && opportunity.slot_revision === input.expectedSlotRevision
+    && opportunity.session_revision_id === input.sessionRevisionId
+    && opportunity.session_revision === input.expectedSessionRevision;
+}
+
+function currentRelationMatches(current: MatchRow | undefined, input: RunningActivityMatchInput): boolean {
+  return current !== undefined
+    && current.opportunity_id === input.expectedCurrentOpportunityId
+    && current.relation_revision === input.expectedRelationRevision;
+}
+
 async function assertOneToOne(transaction: SqliteTransactionExecutor): Promise<void> {
   const [row] = await transaction.queryAll<{ invalid: number }>(`SELECT EXISTS (
     SELECT activity_id FROM running_activity_current_matches GROUP BY activity_id HAVING count(*) > 1
@@ -298,40 +330,34 @@ export function createRunningActivityMatchRepository(kernel: SqliteKernel) {
           FROM imported_activity_identities identity
           LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = identity.activity_id
           WHERE identity.activity_id = ?`, [input.activityId]);
-        const [opportunity] = await transaction.queryAll<OpportunityRow>(`${opportunityFactsSql} WHERE opportunity.id = ?`, [input.opportunityId]);
-        if (activity === undefined || opportunity === undefined
-          || activity.aggregate_revision !== input.expectedActivityRevision
-          || activity.accepted_normalized_sha256 !== input.expectedAcceptedPayloadSha256
-          || activity.removal_state !== "active"
-          || input.expectedOpportunityRevision !== 1
-          || opportunity.plan_id !== input.planId
-          || opportunity.state !== "planned"
-          || opportunity.plan_active !== 1
-          || opportunity.schedule_lifecycle !== "active"
-          || opportunity.schedule_id !== input.scheduleId
-          || opportunity.schedule_version_id !== input.scheduleVersionId
-          || opportunity.schedule_revision !== input.expectedScheduleRevision
-          || opportunity.plan_day_id !== input.planDayId
-          || opportunity.plan_day_revision !== input.expectedPlanDayRevision
-          || opportunity.slot_id !== input.slotId
-          || opportunity.slot_revision_id !== input.slotRevisionId
-          || opportunity.slot_revision !== input.expectedSlotRevision
-          || opportunity.session_revision_id !== input.sessionRevisionId
-          || opportunity.session_revision !== input.expectedSessionRevision) {
+        if (!acceptedActivityMatches(activity, input)) {
           return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
         }
         const [currentByActivity] = await transaction.queryAll<MatchRow>("SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches WHERE activity_id = ?", [input.activityId]);
-        const [currentByOpportunity] = await transaction.queryAll<MatchRow>("SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches WHERE opportunity_id = ?", [input.opportunityId]);
         const [latest] = await transaction.queryAll<{ relation_revision: number }>("SELECT relation_revision FROM running_activity_match_events WHERE activity_id = ? ORDER BY relation_revision DESC, id DESC LIMIT 1", [input.activityId]);
         const actualRelationRevision = latest?.relation_revision ?? 0;
         if (actualRelationRevision !== input.expectedRelationRevision) return result("conflict", input.activityId, input.opportunityId, actualRelationRevision);
-        if (
-          (input.action === "unmatch" && input.expectedCurrentOpportunityId !== input.opportunityId)
-          || (input.action === "reassign" && input.expectedCurrentOpportunityId === input.opportunityId)
-        ) return result("conflict", input.activityId, input.opportunityId, actualRelationRevision);
-        if (input.action === "match" && (currentByActivity !== undefined || currentByOpportunity !== undefined)) return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
-        if (input.action !== "match" && (currentByActivity === undefined || currentByActivity.opportunity_id !== input.expectedCurrentOpportunityId)) return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
-        if (input.action === "reassign" && currentByOpportunity !== undefined && currentByOpportunity.activity_id !== input.activityId) return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
+        if (input.action === "unmatch") {
+          if (input.expectedCurrentOpportunityId !== input.opportunityId
+            || !currentRelationMatches(currentByActivity, input)) {
+            return result("conflict", input.activityId, input.opportunityId, actualRelationRevision);
+          }
+        } else {
+          const [opportunity] = await transaction.queryAll<OpportunityRow>(`${opportunityFactsSql} WHERE opportunity.id = ?`, [input.opportunityId]);
+          if (!eligibleTargetMatches(opportunity, input)) {
+            return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
+          }
+          const [currentByOpportunity] = await transaction.queryAll<MatchRow>("SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches WHERE opportunity_id = ?", [input.opportunityId]);
+          if (input.action === "match") {
+            if (currentByActivity !== undefined || currentByOpportunity !== undefined) {
+              return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
+            }
+          } else if (input.expectedCurrentOpportunityId === input.opportunityId
+            || !currentRelationMatches(currentByActivity, input)
+            || (currentByOpportunity !== undefined && currentByOpportunity.activity_id !== input.activityId)) {
+            return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
+          }
+        }
 
         const relationRevision = input.expectedRelationRevision + 1;
         const eventId = `${input.requestId}:event`;

@@ -57,6 +57,74 @@ function matchInput(overrides: Partial<RunningActivityMatchInput> = {}): Running
   };
 }
 
+async function archiveMatchedRunningPlan(kernel: SqliteKernel): Promise<void> {
+  const plans = createRunningPlanRepository(kernel);
+  const preview = await plans.previewLifecycle("running-plan", "archive");
+  await plans.confirmLifecycle({
+    action: "archive",
+    requestId: "archive-matched-plan",
+    requestSha256: "7".repeat(64),
+    confirmationToken: preview.confirmationToken,
+    preview,
+    committedAtMs: 4_500,
+  });
+}
+
+async function supersedeMatchedScheduleVersion(kernel: SqliteKernel): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO owned_plan_schedule_versions
+        (id, schedule_id, version_number, effective_local_date, mode, timezone,
+         rotation_pointer, created_at_ms)
+       VALUES ('running-version-2', 'running-schedule', 2, '2026-10-12',
+         'weekday', 'Asia/Singapore', NULL, 4500)`,
+    );
+    await transaction.execute(
+      "UPDATE owned_plan_schedules SET revision = revision + 1 WHERE id = 'running-schedule'",
+    );
+  });
+}
+
+async function activateReplacementRunningPlan(kernel: SqliteKernel): Promise<void> {
+  const plans = createRunningPlanRepository(kernel);
+  await plans.createInactiveMinimum({
+    planId: "replacement-running-plan",
+    planName: "Replacement Running",
+    anchorDayId: "replacement-running-anchor",
+    scheduleId: "replacement-running-schedule",
+    scheduleVersionId: "replacement-running-version",
+    scheduleBindingId: "replacement-running-binding",
+    createdAtMs: 5_000,
+    effectiveLocalDate: "2026-10-12",
+    timezone: "Asia/Singapore",
+    recoveryRevisionId: "replacement-running-session-v1",
+    slots: [{
+      id: "replacement-running-slot",
+      weekday: "Monday",
+      ordinal: 0,
+      sessionRevisionId: "replacement-running-session-v1",
+    }],
+  });
+  const preview = await plans.previewLifecycle("replacement-running-plan", "activate");
+  await plans.confirmLifecycle({
+    action: "activate",
+    requestId: "activate-replacement-plan",
+    requestSha256: "6".repeat(64),
+    confirmationToken: preview.confirmationToken,
+    preview,
+    committedAtMs: 6_000,
+  });
+  await plans.materializeOccurrences({
+    planId: "replacement-running-plan",
+    scheduleId: "replacement-running-schedule",
+    scheduleVersionId: "replacement-running-version",
+    localDate: "2026-10-12",
+    timezone: "Asia/Singapore",
+    createdAtMs: 7_000,
+    occurrenceIds: ["replacement-running-opportunity"],
+  });
+}
+
 describe("Running activity matching", () => {
   it("reads stable same-day candidates in slot order without writing and confirms only the selected occurrence", async () => {
     const { kernel } = await runtime();
@@ -214,6 +282,110 @@ describe("Running activity matching", () => {
     await expect(kernel.queryAll(`SELECT
       (SELECT COUNT(*) FROM running_activity_match_events) AS events,
       (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts`)).resolves.toEqual(before);
+  });
+
+  it.each([
+    ["deactivated", archiveMatchedRunningPlan],
+    ["superseded", supersedeMatchedScheduleVersion],
+  ] as Array<[string, (kernel: SqliteKernel) => Promise<void>]>) (
+    "unmatches a relation from a %s schedule while preserving replay and stale fences",
+    async (_label, changeSchedule) => {
+      const { kernel } = await runtime();
+      await seed(kernel);
+      const repository = createRunningActivityMatchRepository(kernel);
+      const matched = matchInput({
+        requestId: `match-before-${_label}`,
+        requestSha256: "5".repeat(64),
+      });
+      await expect(repository.confirm(matched)).resolves.toMatchObject({
+        kind: "matched",
+        relationRevision: 1,
+      });
+      await changeSchedule(kernel);
+      const unmatch = matchInput({
+        requestId: `unmatch-after-${_label}`,
+        requestSha256: "4".repeat(64),
+        action: "unmatch",
+        expectedRelationRevision: 1,
+        expectedCurrentOpportunityId: "running-opportunity",
+      });
+
+      await expect(repository.confirm(unmatch)).resolves.toMatchObject({
+        kind: "unmatched",
+        relationRevision: 2,
+      });
+      await expect(repository.confirm(unmatch)).resolves.toMatchObject({
+        kind: "replayed",
+        relationRevision: 2,
+      });
+      await expect(repository.confirm({
+        ...unmatch,
+        requestId: `stale-unmatch-after-${_label}`,
+        requestSha256: "3".repeat(64),
+      })).resolves.toMatchObject({ kind: "conflict", relationRevision: 2 });
+      await expect(repository.confirm({
+        ...unmatch,
+        requestSha256: "2".repeat(64),
+      })).resolves.toMatchObject({ kind: "conflict" });
+      await expect(kernel.queryAll<{ events: number; receipts: number; relations: number }>(`SELECT
+        (SELECT COUNT(*) FROM running_activity_match_events) AS events,
+        (SELECT COUNT(*) FROM running_activity_match_receipts) AS receipts,
+        (SELECT COUNT(*) FROM running_activity_current_matches) AS relations`))
+        .resolves.toEqual([{ events: 2, receipts: 2, relations: 0 }]);
+    },
+  );
+
+  it("reassigns from a superseded relation by validating eligibility only on the new target", async () => {
+    const { kernel } = await runtime();
+    await seed(kernel);
+    const repository = createRunningActivityMatchRepository(kernel);
+    const matched = matchInput({
+      requestId: "match-before-replacement",
+      requestSha256: "5".repeat(64),
+    });
+    await expect(repository.confirm(matched)).resolves.toMatchObject({
+      kind: "matched",
+      relationRevision: 1,
+    });
+    await activateReplacementRunningPlan(kernel);
+    const reassign = matchInput({
+      requestId: "reassign-to-replacement",
+      requestSha256: "4".repeat(64),
+      action: "reassign",
+      opportunityId: "replacement-running-opportunity",
+      expectedRelationRevision: 1,
+      expectedCurrentOpportunityId: "running-opportunity",
+      planId: "replacement-running-plan",
+      scheduleId: "replacement-running-schedule",
+      scheduleVersionId: "replacement-running-version",
+      expectedScheduleRevision: 2,
+      planDayId: "replacement-running-anchor",
+      slotId: "replacement-running-slot",
+      slotRevisionId: "replacement-running-slot:revision:1",
+      sessionRevisionId: "replacement-running-session-v1",
+      occurredAtMs: 8_000,
+    });
+
+    await expect(repository.confirm(reassign)).resolves.toMatchObject({
+      kind: "reassigned",
+      opportunityId: "replacement-running-opportunity",
+      relationRevision: 2,
+    });
+    await expect(repository.confirm(reassign)).resolves.toMatchObject({
+      kind: "replayed",
+      relationRevision: 2,
+    });
+    await expect(repository.confirm({
+      ...reassign,
+      requestId: "stale-reassign-to-replacement",
+      requestSha256: "3".repeat(64),
+    })).resolves.toMatchObject({ kind: "conflict", relationRevision: 2 });
+    await expect(kernel.queryAll("SELECT activity_id, opportunity_id, relation_revision FROM running_activity_current_matches"))
+      .resolves.toEqual([{
+        activity_id: "activity-1",
+        opportunity_id: "replacement-running-opportunity",
+        relation_revision: 2,
+      }]);
   });
 
   it("makes every stale source fence and conflicting replay a zero-write failure", async () => {
