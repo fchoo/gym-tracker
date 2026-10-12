@@ -1,6 +1,6 @@
 import React, { createContext, useContext } from "react";
 
-import { canonicalRunningRequestHash, createInactiveRunningPlan, saveRunningSourceGraph, type CreateInactiveRunningPlanInput } from "../domains/running/commands";
+import { canonicalRunningRequestHash, createInactiveRunningPlan, saveRunningSourceGraph, saveRunningTarget, type CreateInactiveRunningPlanInput, type SaveRunningTargetInput } from "../domains/running/commands";
 import type { RunningPlanAggregate, RunningSessionRevision } from "../domains/running/contracts";
 import type { RunningLifecycleAction, RunningLifecyclePreview } from "../domains/running/lifecycle";
 import type { CommitScheduleCollisionChoiceInput, ScheduleCollisionPreview } from "../domains/scheduling/collisionCommands";
@@ -15,6 +15,7 @@ export type RunningPlanRuntimePort = Readonly<{
   createInactivePlan(input: Omit<CreateInactiveRunningPlanInput, "requestId" | "requestSha256"> & Readonly<{ requestId?: string }>): Promise<RunningPlanAggregate>;
   loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
   savePlan(input: Omit<RunningPlanAggregate, "active" | "lifecycle"> & Readonly<{ requestId?: string }>): Promise<RunningPlanAggregate>;
+  saveRunningTarget(input: RunningTargetMutationInput): Promise<RunningTargetMutationResult>;
   saveSession(input: RunningSessionMutationInput): Promise<RunningSessionMutationResult>;
   previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview>;
   confirmLifecycle(input: RunningLifecycleConfirmationInput): Promise<RunningPlanAggregate>;
@@ -48,6 +49,21 @@ export type RunningSessionMutationInput = Readonly<{
 
 export type RunningSessionMutationResult = Readonly<{ plan: RunningPlanAggregate; sessionRootId: string }>;
 
+export type RunningTargetMutationInput = Readonly<{
+  planId: string;
+  requestId: string;
+  expectedSourceRevision: number;
+  goalDistanceMeters: number;
+  targetDurationMs: number;
+  targetLocalDate?: string | undefined;
+  trainingDays: RunningPlanAggregate["goal"]["trainingDays"];
+}>;
+
+export type RunningTargetMutationResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  plan: RunningPlanAggregate;
+}>;
+
 const RunningPlanRuntimeContext = createContext<RunningPlanRuntimePort | null>(null);
 
 export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies: Readonly<{
@@ -59,6 +75,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
   const collisions = createScheduleCollisionRepository(kernel, dependencies.sha256);
   const createId = (kind: string) => `${kind}:${dependencies.randomUUID()}`;
   const sessionCommands = new Map<string, ReturnType<typeof buildSessionCommand>>();
+  const targetCommands = new Map<string, SaveRunningTargetInput>();
   const lifecycleCommands = new Map<string, RunningLifecycleConfirmationInput>();
   return Object.freeze({
     createId,
@@ -88,6 +105,50 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       const readBack = await repository.readAggregate(current.id);
       if (readBack === null) throw new Error("running_plan_readback_missing");
       return readBack;
+    },
+    saveRunningTarget: async (input) => {
+      let command = targetCommands.get(input.requestId);
+      if (command === undefined) {
+        const current = await repository.readAggregate(input.planId);
+        if (current === null || current.revision !== input.expectedSourceRevision) {
+          throw new Error("running_target_revision_conflict");
+        }
+        if (current.goal.goalDistanceMeters !== input.goalDistanceMeters) {
+          throw new Error("running_target_distance_conflict");
+        }
+        const savedAtMs = dependencies.nowMs();
+        const goal = {
+          ...current.goal,
+          id: createId("running-goal-revision"),
+          revision: current.goal.revision + 1,
+          targetDurationMs: input.targetDurationMs,
+          targetLocalDate: input.targetLocalDate,
+          trainingDays: [...input.trainingDays],
+          createdAtMs: savedAtMs,
+        };
+        const hashInput = {
+          requestId: input.requestId,
+          planId: input.planId,
+          expectedPlanRevision: current.revision,
+          expectedGoalRevision: current.goal.revision,
+          savedAtMs,
+          goal,
+        };
+        command = {
+          ...hashInput,
+          requestSha256: canonicalRunningRequestHash(hashInput),
+        };
+        targetCommands.set(input.requestId, command);
+      }
+      const result = await saveRunningTarget(repository, command);
+      const readBack = await repository.readAggregate(command.planId);
+      if (readBack === null || readBack.goal.revision !== command.goal.revision) {
+        throw new Error("running_target_readback_missing");
+      }
+      return Object.freeze({
+        outcome: result.outcome === "already_committed" ? "already_committed" : "committed",
+        plan: readBack,
+      });
     },
     saveSession: async (input) => {
       const plan = await repository.readAggregate(input.planId);

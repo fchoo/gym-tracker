@@ -15,7 +15,8 @@ export type RunningCommandErrorCode =
   | "running_command_hash_invalid"
   | "running_command_identity_invalid"
   | "running_command_order_invalid"
-  | "running_command_revision_invalid";
+  | "running_command_revision_invalid"
+  | "running_target_invalid";
 
 export class RunningCommandError extends Error {
   readonly kind = "validation" as const;
@@ -55,6 +56,19 @@ export type SaveRunningSourceGraphInput = Readonly<{
 
 export type RunningSourceGraphRepository = Readonly<{
   saveSourceGraph(input: SaveRunningSourceGraphInput): Promise<Readonly<Record<string, unknown>>>;
+}>;
+
+/** A target is a revision of the existing Running goal, never a Progress-owned
+ * projection.  Keeping the full goal in the envelope makes the request
+ * canonical and permits the repository receipt to replay it exactly. */
+export type SaveRunningTargetInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  planId: string;
+  expectedPlanRevision: number;
+  expectedGoalRevision: number;
+  savedAtMs: number;
+  goal: RunningGoal;
 }>;
 
 export type CreateInactiveRunningPlanInput = Readonly<{
@@ -115,6 +129,48 @@ export async function saveRunningSourceGraph(
 ): Promise<Readonly<Record<string, unknown>>> {
   assertInput(input);
   return repository.saveSourceGraph(input);
+}
+
+function assertRunningTarget(input: SaveRunningTargetInput): void {
+  if (!identifier(input.requestId) || !identifier(input.planId) || !SHA256.test(input.requestSha256)) {
+    throw new RunningCommandError(input.requestId ? "running_command_hash_invalid" : "running_command_identity_invalid");
+  }
+  if (!Number.isSafeInteger(input.expectedPlanRevision) || input.expectedPlanRevision < 1
+    || !Number.isSafeInteger(input.expectedGoalRevision) || input.expectedGoalRevision < 1
+    || !Number.isSafeInteger(input.savedAtMs) || input.savedAtMs < 0) {
+    throw new RunningCommandError("running_command_revision_invalid");
+  }
+  parseRunningGoal(input.goal);
+  if (input.goal.planId !== input.planId || input.goal.revision !== input.expectedGoalRevision + 1
+    || input.goal.createdAtMs !== input.savedAtMs
+    || input.goal.targetDurationMs === undefined
+    || input.goal.targetDurationMs < 60_000 || input.goal.targetDurationMs >= 86_400_000) {
+    throw new RunningCommandError("running_target_invalid");
+  }
+}
+
+/**
+ * Stages one goal-only source revision.  It deliberately reuses the Running
+ * graph writer: the generic writer already owns the exclusive plan revision,
+ * immutable receipt and source-history transaction.  No UI or Progress table
+ * receives an independent target mutation.
+ */
+export async function saveRunningTarget(
+  repository: RunningSourceGraphRepository,
+  input: SaveRunningTargetInput,
+): Promise<Readonly<Record<string, unknown>>> {
+  assertRunningTarget(input);
+  return repository.saveSourceGraph({
+    requestId: input.requestId,
+    requestSha256: input.requestSha256,
+    operation: "edit",
+    planId: input.planId,
+    expectedPlanRevision: input.expectedPlanRevision,
+    createdAtMs: input.savedAtMs,
+    goal: input.goal,
+    sessions: [],
+    slots: [],
+  });
 }
 
 export async function createInactiveRunningPlan(
