@@ -212,6 +212,7 @@ export type ProgressGoalRevision = Readonly<{
   sport: "Strength" | "Running";
   distanceMeters?: number;
   targetDurationSeconds: number | null;
+  targetLocalDate?: string;
   effectiveAtMs: number;
   revision: number;
   /** Owner/source ordering is the first deterministic All-goal tie break. */
@@ -230,10 +231,15 @@ export type ProgressRunningEffort = Readonly<{
 
 export type ProgressRunningGoal = Readonly<{
   distanceMeters: number;
+  timeBasis: ProgressRunningTimeBasis;
   latest: ProgressRunningEffort;
   best: ProgressRunningEffort;
   target: Readonly<{ targetId: string; durationSeconds: number }> | null;
   targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  history: readonly Readonly<{
+    effort: ProgressRunningEffort;
+    targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
+  }>[];
   evidenceCount: number;
 }>;
 

@@ -72,4 +72,52 @@ describe("projectProgressDashboard", () => {
       absenceReason: "exact_effort_evidence_insufficient",
     });
   });
+
+  it("separates time bases and keeps historical targets at their effective revisions", () => {
+    const projection = projectProgressDashboard({
+      sport: "Running",
+      running: {
+        activities: [
+          { ...accepted2400, activityId: "elapsed-old", startedAtMs: 1_000, durationSeconds: 660 },
+          { ...accepted2400, activityId: "elapsed-new", startedAtMs: 3_000, durationSeconds: 650 },
+          { ...accepted2400, activityId: "moving", startedAtMs: 3_000, timeBasis: "moving", durationSeconds: 640 },
+        ],
+        targets: [
+          { targetId: "target-r1", sport: "Running", distanceMeters: 2400, targetDurationSeconds: 660, effectiveAtMs: 500, revision: 1, sourceOrder: 1 },
+          { targetId: "target-r2", sport: "Running", distanceMeters: 2400, targetDurationSeconds: 650, effectiveAtMs: 2_000, revision: 2, sourceOrder: 1 },
+        ],
+      },
+    });
+
+    expect(projection).toMatchObject({
+      state: "ready",
+      goals: [
+        {
+          timeBasis: "elapsed",
+          history: [
+            { effort: { activityId: "elapsed-old" }, targetAtDate: { targetId: "target-r1" } },
+            { effort: { activityId: "elapsed-new" }, targetAtDate: { targetId: "target-r2" } },
+          ],
+        },
+        { timeBasis: "moving", evidenceCount: 1 },
+      ],
+    });
+  });
+
+  it("selects an All goal by owner order, explicit target date, sport, source ID, then revision without a composite score", () => {
+    const projection = projectProgressDashboard({
+      sport: "All",
+      goals: [
+        { targetId: "running-later", sport: "Running", targetDurationSeconds: 660, effectiveAtMs: 1, targetLocalDate: "2026-12-01", revision: 1, sourceOrder: 2 },
+        { targetId: "running-earlier", sport: "Running", targetDurationSeconds: 660, effectiveAtMs: 1, targetLocalDate: "2026-11-01", revision: 1, sourceOrder: 2 },
+        { targetId: "strength-first", sport: "Strength", targetDurationSeconds: null, effectiveAtMs: 1, revision: 1, sourceOrder: 1 },
+      ],
+    });
+
+    expect(projection).toEqual({
+      sport: "All",
+      state: "ready",
+      primaryGoal: expect.objectContaining({ targetId: "strength-first" }),
+    });
+  });
 });

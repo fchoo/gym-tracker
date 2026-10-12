@@ -17,7 +17,7 @@ function validPositiveInteger(value: number): boolean {
 
 function compareGoals(left: ProgressGoalRevision, right: ProgressGoalRevision): number {
   return left.sourceOrder - right.sourceOrder
-    || (left.effectiveAtMs === right.effectiveAtMs ? 0 : left.effectiveAtMs - right.effectiveAtMs)
+    || (left.targetLocalDate ?? "\\uffff").localeCompare(right.targetLocalDate ?? "\\uffff")
     || left.sport.localeCompare(right.sport)
     || left.targetId.localeCompare(right.targetId)
     || left.revision - right.revision;
@@ -88,15 +88,18 @@ function runningProjection(input: NonNullable<ProgressDashboardInput["running"]>
         : "no_factual_points" as const,
     });
   }
-  const grouped = new Map<number, ProgressRunningActivityFact[]>();
+  const grouped = new Map<string, ProgressRunningActivityFact[]>();
   for (const fact of eligible) {
-    const values = grouped.get(fact.distanceMeters) ?? [];
+    const key = `${fact.distanceMeters}\\u0000${fact.timeBasis}`;
+    const values = grouped.get(key) ?? [];
     values.push(fact);
-    grouped.set(fact.distanceMeters, values);
+    grouped.set(key, values);
   }
   const goals: ProgressRunningGoal[] = [];
-  for (const [distanceMeters, values] of grouped) {
+  for (const values of grouped.values()) {
     const ordered = values.toSorted(compareEffort);
+    const distanceMeters = ordered[0]!.distanceMeters;
+    const timeBasis = ordered[0]!.timeBasis;
     const latest = ordered.at(-1)!;
     const best = ordered.reduce((current, candidate) =>
       candidate.durationSeconds < current.durationSeconds
@@ -106,17 +109,23 @@ function runningProjection(input: NonNullable<ProgressDashboardInput["running"]>
     );
     goals.push(Object.freeze({
       distanceMeters,
+      timeBasis,
       latest: effort(latest),
       best: effort(best),
       target: targetAt(input.targets, distanceMeters, latest.startedAtMs),
       targetAtDate: targetAt(input.targets, distanceMeters, latest.startedAtMs),
+      history: Object.freeze(ordered.map((item) => Object.freeze({
+        effort: effort(item),
+        targetAtDate: targetAt(input.targets, distanceMeters, item.startedAtMs),
+      }))),
       evidenceCount: ordered.length,
     }));
   }
   return Object.freeze({
     sport: "Running" as const,
     state: eligible.length === 1 ? "sparse" as const : "ready" as const,
-    goals: Object.freeze(goals.toSorted((left, right) => left.distanceMeters - right.distanceMeters)),
+    goals: Object.freeze(goals.toSorted((left, right) => left.distanceMeters - right.distanceMeters
+      || left.timeBasis.localeCompare(right.timeBasis))),
   });
 }
 
