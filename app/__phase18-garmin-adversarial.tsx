@@ -13,12 +13,12 @@ import {
 const INITIAL_STATUS = "native-proof-running";
 const REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
 
-function Phase18GarminAdversarialContent() {
+function Phase18GarminAdversarialContent({ nonce }: Readonly<{ nonce: string }>) {
   const [status, setStatus] = React.useState(INITIAL_STATUS);
   const buildIdentity = Constants.expoConfig?.extra?.phase18GarminAdversarialBuildIdentity;
   React.useEffect(() => {
     let active = true;
-    void collectAdversarialReport(undefined, buildIdentity).then((report) => {
+    void collectAdversarialReport(undefined, buildIdentity, nonce).then((report) => {
       if (!active) return;
       for (const entry of report.cases) {
         console.log(`${PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER}${JSON.stringify(entry)}`);
@@ -31,7 +31,7 @@ function Phase18GarminAdversarialContent() {
     return () => {
       active = false;
     };
-  }, [buildIdentity]);
+  }, [buildIdentity, nonce]);
   return (
     <View style={styles.root}>
       <Text accessibilityRole="header" style={styles.title}>
@@ -46,18 +46,24 @@ function Phase18GarminAdversarialContent() {
 }
 
 export default function Phase18GarminAdversarialRoute() {
-  const { confirmation } = useLocalSearchParams<{ confirmation?: string }>();
+  const { confirmation, nonce } = useLocalSearchParams<{
+    confirmation?: string | string[];
+    nonce?: string | string[];
+  }>();
   const extra = Constants.expoConfig?.extra;
   const enabled = phase18GarminAdversarialEnabled({
     buildProfile: extra?.buildProfile,
     nativeContractsEnabled: extra?.nativeContractsEnabled,
     suite: extra?.nativeContractSuite,
     confirmation,
+    nonce,
   });
-  if (!enabled || confirmation !== PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION) {
+  if (!enabled
+    || confirmation !== PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION
+    || typeof nonce !== "string") {
     return <Redirect href="/" />;
   }
-  return <Phase18GarminAdversarialContent />;
+  return <Phase18GarminAdversarialContent nonce={nonce} />;
 }
 
 const styles = StyleSheet.create({

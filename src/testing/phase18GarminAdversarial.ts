@@ -18,6 +18,7 @@ export const PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION =
   "VERIFY-PHASE18-GARMIN-ADVERSARIAL";
 export const PHASE18_GARMIN_ADVERSARIAL_RESULT_MARKER =
   "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_RESULT:";
+const PHASE18_GARMIN_ADVERSARIAL_NONCE = /^[a-f0-9]{32}$/u;
 
 export const PHASE18_GARMIN_ADVERSARIAL_CASE_IDS = Object.freeze([
   "PH18-ADV-RESTORE",
@@ -80,11 +81,14 @@ export function phase18GarminAdversarialEnabled(input: Readonly<{
   nativeContractsEnabled?: unknown;
   suite?: unknown;
   confirmation?: unknown;
+  nonce?: unknown;
 }>): boolean {
   return input.buildProfile === "development-test"
     && input.nativeContractsEnabled === true
     && input.suite === "phase18-garmin-adversarial"
-    && input.confirmation === PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION;
+    && input.confirmation === PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION
+    && typeof input.nonce === "string"
+    && PHASE18_GARMIN_ADVERSARIAL_NONCE.test(input.nonce);
 }
 
 const defaultSha256: Sha256 = (value) =>
@@ -808,11 +812,16 @@ function validRuntimeIdentity(value: unknown): value is Phase18GarminAdversarial
 export async function runPhase18GarminAdversarialNativeSuite(
   nativeModule = getGarminConnectNativeModule(),
   buildIdentity?: Phase18GarminAdversarialBuildIdentity,
+  runNonce?: string,
 ): Promise<Readonly<{
   status: "passed" | "TECHNICAL_REVIEW_REQUIRED";
+  run_nonce: string;
   cases: readonly Phase18GarminAdversarialCase[];
   current_identity: Phase18GarminAdversarialCurrentIdentity;
 }>> {
+  if (typeof runNonce !== "string" || !PHASE18_GARMIN_ADVERSARIAL_NONCE.test(runNonce)) {
+    throw new Error("phase18_garmin_adversarial_nonce_invalid");
+  }
   const raw = await nativeModule.runAdversarialSuite({
     confirmation: PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
   });
@@ -846,6 +855,7 @@ export async function runPhase18GarminAdversarialNativeSuite(
   }
   return Object.freeze({
     status: report.status,
+    run_nonce: runNonce,
     cases: Object.freeze(cases),
     current_identity: Object.freeze(currentIdentity),
   });

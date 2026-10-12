@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 
 import {
   PHASE18_GARMIN_ADVERSARIAL_CASE_IDS,
@@ -20,6 +20,7 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
       nativeContractsEnabled: true,
       suite: "phase18-garmin-adversarial",
       confirmation: PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
+      nonce: "0".repeat(32),
     };
     expect(phase18GarminAdversarialEnabled(exact)).toBe(true);
     for (const changed of [
@@ -27,6 +28,9 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
       { ...exact, nativeContractsEnabled: false },
       { ...exact, suite: "phase18-garmin-proof" },
       { ...exact, confirmation: "wrong" },
+      { ...exact, nonce: "short" },
+      { ...exact, nonce: "A".repeat(32) },
+      { ...exact, nonce: ["0".repeat(32)] },
     ]) expect(phase18GarminAdversarialEnabled(changed)).toBe(false);
   });
 
@@ -146,9 +150,11 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
 
     const report = await runPhase18GarminAdversarialNativeSuite({
       runAdversarialSuite: async () => raw,
-    } as never, buildIdentity);
+    } as never, buildIdentity, "0".repeat(32));
 
     expect(report.status).toBe("passed");
+    expect(report.run_nonce).toBe("0".repeat(32));
+    expect(JSON.stringify(report).match(/0{32}/gu)).toHaveLength(1);
     expect(report.current_identity).toEqual({
       ...buildIdentity,
       ...raw.runtime_identity,
@@ -189,7 +195,7 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
     for (const raw of invalid) {
       await expect(runPhase18GarminAdversarialNativeSuite({
         runAdversarialSuite: async () => raw,
-      } as never, buildIdentity)).rejects.toThrow("phase18_garmin_native_report_invalid");
+      } as never, buildIdentity, "0".repeat(32))).rejects.toThrow("phase18_garmin_native_report_invalid");
     }
   });
 
@@ -232,10 +238,26 @@ describe("Phase 18 Garmin adversarial lifecycle harness", () => {
 
     const report = await runPhase18GarminAdversarialNativeSuite({
       runAdversarialSuite: async () => raw,
-    } as never, buildIdentity);
+    } as never, buildIdentity, "0".repeat(32));
 
     expect(report.status).toBe("TECHNICAL_REVIEW_REQUIRED");
     expect(report.cases.every(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED")).toBe(true);
+  });
+
+  it("rejects malformed report nonces before invoking the native producer", async () => {
+    const runAdversarialSuite = jest.fn(async () => ({}));
+    const buildIdentity = {
+      currentHead: "a".repeat(40),
+      currentSourceTreeSha256: "b".repeat(64),
+      currentPythonLockSha256: "c".repeat(64),
+    };
+
+    for (const nonce of ["", "0".repeat(31), "0".repeat(33), "G".repeat(32)]) {
+      await expect(runPhase18GarminAdversarialNativeSuite({
+        runAdversarialSuite,
+      } as never, buildIdentity, nonce)).rejects.toThrow("phase18_garmin_adversarial_nonce_invalid");
+    }
+    expect(runAdversarialSuite).not.toHaveBeenCalled();
   });
 
   it("reduces every injected provider and session failure exactly once without losing prior facts", async () => {
