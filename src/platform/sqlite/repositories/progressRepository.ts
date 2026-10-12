@@ -8,6 +8,16 @@ import {
   type ProgressRecommendationReview,
   type ProgressScheduledOpportunity,
 } from "../../../domains/progress";
+import {
+  projectProgressDashboard,
+} from "../../../domains/progress/dashboardProjection";
+import type {
+  ProgressDashboardProjection,
+  ProgressGoalRevision,
+  ProgressRunningActivityFact,
+  ProgressRefreshMetadata,
+  ProgressSport,
+} from "../../../domains/progress/contracts";
 import type {
   EffectiveHistoryProjectionSession,
   HistoryProjectionPeriodInput,
@@ -15,6 +25,9 @@ import type {
 import {
   parseMetricIdentity,
 } from "../../../domains/metrics";
+import {
+  parseRunningGoal,
+} from "../../../domains/running/contracts";
 import {
   loadEffectiveHistoryProjectionSessions,
 } from "./historyRepository";
@@ -24,6 +37,8 @@ import {
 } from "../../../domains/progression";
 import type {
   SqliteKernel,
+  SqliteReadTransactionExecutor,
+  SqliteSnapshotKernel,
 } from "../sqliteKernel";
 
 type RevisionRow = Readonly<{
@@ -101,6 +116,14 @@ type RunningGoalFactRow = Readonly<{
   plan_id: string;
   revision: number;
   goal_json: string;
+  created_at_ms: number;
+}>;
+
+type DashboardRunningActivityRow = Readonly<{
+  id: string;
+  started_at_ms: number;
+  aggregate_json: string;
+  aggregate_revision: number;
 }>;
 
 type BodyweightFactRow = Readonly<{
@@ -137,18 +160,46 @@ export type ProgressRepositoryRead = Readonly<{
   period: ProgressPeriod;
   freshness: ProgressProjectionFreshness;
   projection: ProgressPeriodProjection | null;
+  /** Present for the Phase 19 sport-aware runtime path. */
+  sport?: ProgressSport;
+  dashboard?: ProgressDashboardProjection | null;
+  refresh?: ProgressRefreshMetadata;
   diagnostic?: ProgressProjectionDiagnostic;
   sourceFacts?: ProgressSourceFacts;
 }>;
 
 export type ProgressRepository = Readonly<{
   load(input: Readonly<{
+    /** Optional only while the legacy Progress screen is migrated in Plan 19-03. */
+    sport?: ProgressSport;
     period: ProgressPeriod;
     nowLocalDate: string;
   }>): Promise<ProgressRepositoryRead>;
 }>;
 
 const ALL_PERIOD_SUBJECT_ID = 'history-subject/v1:["period","all"]';
+const ALL_TIME_PAGE_SIZE = 500;
+const BOUNDED_REFRESH_BACKOFF_MS = Object.freeze([250, 1_000, 4_000] as const);
+
+function refreshMetadata(generation: number, terminal: ProgressProjectionFreshness): ProgressRefreshMetadata {
+  return Object.freeze({
+    generation,
+    automaticRefresh: Object.freeze({
+      maxAttempts: BOUNDED_REFRESH_BACKOFF_MS.length,
+      backoffMs: BOUNDED_REFRESH_BACKOFF_MS,
+      terminal,
+    }),
+  });
+}
+
+function rangeStart(period: ProgressPeriod, nowLocalDate: string): string | null {
+  const date = new Date(`${nowLocalDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.valueOf())) return null;
+  const days = period === "4_weeks" ? 27 : period === "12_weeks" ? 83 : null;
+  if (days === null) return null;
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
 
 function withToSortedCompatibility<Result>(operation: () => Result): Result {
   const arrayPrototype = Array.prototype as {
@@ -273,9 +324,11 @@ function positiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
-async function loadSourceFacts(kernel: SqliteKernel): Promise<ProgressSourceFacts> {
+async function loadSourceFacts(
+  executor: SqliteReadTransactionExecutor,
+): Promise<ProgressSourceFacts> {
   const [activityRows, goalRows, bodyweightRows] = await Promise.all([
-    kernel.queryAll<RunningActivityFactRow>(
+    executor.queryAll<RunningActivityFactRow>(
       `SELECT activity.id, activity.started_at_ms, activity.aggregate_json, match.opportunity_id
          FROM imported_activities activity
          JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
@@ -283,10 +336,11 @@ async function loadSourceFacts(kernel: SqliteKernel): Promise<ProgressSourceFact
         WHERE lifecycle.removal_state = 'active'
         ORDER BY activity.started_at_ms, activity.id`,
     ),
-    kernel.queryAll<RunningGoalFactRow>(
-      `SELECT id, plan_id, revision, goal_json FROM running_goals ORDER BY plan_id, revision, id`,
+    executor.queryAll<RunningGoalFactRow>(
+      `SELECT id, plan_id, revision, goal_json, created_at_ms
+         FROM running_goals ORDER BY plan_id, revision, id`,
     ),
-    kernel.queryAll<BodyweightFactRow>(
+    executor.queryAll<BodyweightFactRow>(
       `SELECT entry.id, entry.owner_id, entry.current_revision, measurement.local_date, measurement.timezone, measurement.grams
          FROM bodyweight_entries entry
          JOIN bodyweight_entry_events measurement ON measurement.entry_id = entry.id
@@ -317,6 +371,132 @@ async function loadSourceFacts(kernel: SqliteKernel): Promise<ProgressSourceFact
     running: Object.freeze({ kind: activityKind === "available" || goalKind === "available" ? "available" : "unavailable", activityKind, goalKind, activities: Object.freeze(activities), goals: Object.freeze(goals) }),
     bodyweight: Object.freeze({ kind: entries.length === 0 ? "unavailable" : "available", entries: Object.freeze(entries) }),
   });
+}
+
+function isLocalDate(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(value);
+}
+
+function durationFromNormalized(
+  normalized: Record<string, unknown>,
+): Readonly<{ seconds: number; timeBasis: ProgressRunningActivityFact["timeBasis"] }> | null {
+  for (const [key, timeBasis] of [
+    ["elapsed_ms", "elapsed"],
+    ["timer_ms", "timer"],
+    ["moving_ms", "moving"],
+  ] as const) {
+    const milliseconds = normalized[key];
+    if (positiveSafeInteger(milliseconds) && milliseconds % 1_000 === 0) {
+      return Object.freeze({ seconds: milliseconds / 1_000, timeBasis });
+    }
+  }
+  return null;
+}
+
+function evidenceFromAggregate(
+  aggregate: Record<string, unknown>,
+): ProgressRunningActivityFact["evidence"] {
+  const fidelity = aggregate.fidelity_by_channel;
+  const exactEffortBasis = fidelity !== null
+    && typeof fidelity === "object"
+    && !Array.isArray(fidelity)
+    ? (fidelity as Record<string, unknown>).exact_effort_basis
+    : aggregate.sample_fidelity;
+  return exactEffortBasis === "source_summary" || exactEffortBasis === "source_laps"
+    ? exactEffortBasis
+    : "sampled";
+}
+
+async function loadDashboardFacts(
+  executor: SqliteReadTransactionExecutor,
+): Promise<Readonly<{
+  activities: readonly ProgressRunningActivityFact[];
+  goals: readonly ProgressGoalRevision[];
+}>> {
+  const [activityRows, goalRows] = await Promise.all([
+    executor.queryAll<DashboardRunningActivityRow>(
+      `SELECT activity.id, activity.started_at_ms, activity.aggregate_json,
+              lifecycle.aggregate_revision
+         FROM imported_activities activity
+         JOIN imported_activity_identities identity ON identity.activity_id = activity.id
+         JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+        WHERE identity.removal_state = 'active'
+          AND lifecycle.removal_state = 'active'
+          AND identity.aggregate_revision = lifecycle.aggregate_revision
+        ORDER BY activity.started_at_ms, activity.id
+        LIMIT ?`,
+      [ALL_TIME_PAGE_SIZE],
+    ),
+    executor.queryAll<RunningGoalFactRow>(
+      `SELECT id, plan_id, revision, goal_json, created_at_ms
+         FROM running_goals
+         ORDER BY created_at_ms, id
+         LIMIT ?`,
+      [ALL_TIME_PAGE_SIZE],
+    ),
+  ]);
+  const activities = activityRows.flatMap((row) => {
+    const aggregate = parseJsonRecord(row.aggregate_json);
+    const normalized = aggregate?.normalized !== null
+      && typeof aggregate?.normalized === "object"
+      && !Array.isArray(aggregate.normalized)
+      ? aggregate.normalized as Record<string, unknown>
+      : null;
+    const localDate = aggregate === null ? null : stringValue(aggregate, "confirmed_local_date");
+    const distanceMeters = normalized?.distance_meters;
+    const duration = normalized === null ? null : durationFromNormalized(normalized);
+    if (
+      aggregate === null
+      || normalized === null
+      || !isLocalDate(localDate)
+      || !positiveSafeInteger(distanceMeters)
+      || duration === null
+      || !positiveSafeInteger(row.aggregate_revision)
+    ) return [];
+    const evidence = evidenceFromAggregate(aggregate);
+    return [Object.freeze({
+      activityId: row.id,
+      sourceIdentity: row.id,
+      sourceRevision: row.aggregate_revision,
+      startedAtMs: row.started_at_ms,
+      localDate,
+      lifecycle: "active" as const,
+      accepted: true,
+      fixture: false,
+      distanceMeters,
+      durationSeconds: duration.seconds,
+      timeBasis: duration.timeBasis,
+      evidence,
+      exactDistanceMeters: evidence === "sampled" ? null : distanceMeters,
+    })];
+  });
+  const goals = goalRows.flatMap((row, sourceOrder) => {
+    try {
+      const goal = parseRunningGoal(JSON.parse(row.goal_json));
+      if (
+        goal.planId !== row.plan_id
+        || goal.revision !== row.revision
+        || !positiveSafeInteger(goal.goalDistanceMeters)
+      ) return [];
+      const targetDurationSeconds = goal.targetDurationMs === undefined
+        ? null
+        : goal.targetDurationMs > 0 && goal.targetDurationMs % 1_000 === 0
+          ? goal.targetDurationMs / 1_000
+          : null;
+      return [Object.freeze({
+        targetId: row.id,
+        sport: "Running" as const,
+        distanceMeters: goal.goalDistanceMeters,
+        targetDurationSeconds,
+        effectiveAtMs: row.created_at_ms,
+        revision: row.revision,
+        sourceOrder,
+      })];
+    } catch {
+      return [];
+    }
+  });
+  return Object.freeze({ activities: Object.freeze(activities), goals: Object.freeze(goals) });
 }
 
 function stringValue(
@@ -422,9 +602,15 @@ function recommendationFromRow(
 export function createProgressRepository(
   kernel: SqliteKernel,
 ): ProgressRepository {
+  if (kernel.readSnapshot === undefined) {
+    throw new Error("progress_snapshot_kernel_required");
+  }
+  const snapshotKernel = kernel as SqliteSnapshotKernel;
   return Object.freeze({
     async load(input) {
-      const metricSubjects = await kernel.queryAll<MetricSubjectRow>(
+      const sport = input.sport;
+      return snapshotKernel.readSnapshot(async (executor) => {
+      const metricSubjects = await executor.queryAll<MetricSubjectRow>(
         `SELECT subject_id
          FROM history_subject_revisions
          WHERE subject_id LIKE 'history-subject/v1:["exercise_metric",%'
@@ -436,7 +622,7 @@ export function createProgressRepository(
       ];
       const metricSubjectIds = new Set(metricSubjects.map(({ subject_id }) => subject_id));
       const placeholders = subjectIds.map(() => "?").join(", " );
-      const revisions = await kernel.queryAll<RevisionRow>(
+      const revisions = await executor.queryAll<RevisionRow>(
         `SELECT subject.subject_id, subject.revision, freshness.applied_revision
          FROM history_subject_revisions subject
          LEFT JOIN history_projection_freshness freshness
@@ -446,10 +632,17 @@ export function createProgressRepository(
         subjectIds,
       );
       const hasHistorySubjects = revisions.length > 0;
+      const generation = revisions.reduce((current, row) =>
+        Math.max(current, row.revision, row.applied_revision ?? 0), 0);
       if (hasHistorySubjects && revisions.length !== subjectIds.length) {
         const presentSubjectIds = new Set(revisions.map(({ subject_id }) => subject_id));
         return Object.freeze({
           period: input.period,
+          ...(sport === undefined ? {} : {
+            sport,
+            dashboard: null,
+            refresh: refreshMetadata(generation, "unavailable"),
+          }),
           freshness: "unavailable",
           projection: null,
           diagnostic: diagnosticForSubjects({
@@ -464,7 +657,7 @@ export function createProgressRepository(
           .filter(({ revision, applied_revision }) => applied_revision !== revision)
           .map(({ subject_id }) => subject_id);
         const stalePlaceholders = staleSubjectIds.map(() => "?").join(", " );
-        const rebuildable = await kernel.queryAll<RebuildAvailabilityRow>(
+        const rebuildable = await executor.queryAll<RebuildAvailabilityRow>(
           `SELECT DISTINCT subject_id
            FROM history_rebuild_effects
            WHERE subject_id IN (${stalePlaceholders})
@@ -480,6 +673,11 @@ export function createProgressRepository(
         );
         return Object.freeze({
           period: input.period,
+          ...(sport === undefined ? {} : {
+            sport,
+            dashboard: null,
+            refresh: refreshMetadata(generation, unavailable ? "unavailable" : "updating"),
+          }),
           freshness: unavailable ? "unavailable" : "updating",
           projection: null,
           diagnostic: diagnosticForSubjects({
@@ -500,32 +698,40 @@ export function createProgressRepository(
         ownedRecommendationRows,
         sourceSessions,
         sourceFacts,
+        dashboardFacts,
       ] = await Promise.all([
-        kernel.queryAll<PeriodInputRow>(
+        executor.queryAll<PeriodInputRow>(
           `SELECT local_date, completed_exercises, planned_exercises,
                   completed_working_sets, planned_working_sets,
                   comparable_exposure_count
            FROM history_projection_period_inputs
            WHERE subject_id = ?
+             AND (? IS NULL OR local_date >= ?)
            ORDER BY local_date`,
-          [ALL_PERIOD_SUBJECT_ID],
+          [ALL_PERIOD_SUBJECT_ID, rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate)],
         ),
-        kernel.queryAll<ComparableExposureRow>(
+        executor.queryAll<ComparableExposureRow>(
           `SELECT exercise_id, identity_key, comparator_key, session_id,
                   local_date, set_id, set_ordinal, completed_at_ms,
                   target_json, observation_json
            FROM history_projection_comparable_exposures
+           WHERE (? IS NULL OR local_date >= ?)
            ORDER BY exercise_id, identity_key, comparator_key, completed_at_ms,
-                    session_id, set_ordinal, set_id`,
+                    session_id, set_ordinal, set_id
+           LIMIT ?`,
+          [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), ALL_TIME_PAGE_SIZE],
         ),
-        kernel.queryAll<OpportunityRow>(
+        executor.queryAll<OpportunityRow>(
           `SELECT id, local_date, outcome, session_id
            FROM owned_plan_schedule_opportunities
            WHERE state = 'consumed'
              AND outcome IS NOT NULL
-           ORDER BY local_date, id`,
+             AND (? IS NULL OR local_date >= ?)
+           ORDER BY local_date, id
+           LIMIT ?`,
+          [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), ALL_TIME_PAGE_SIZE],
         ),
-        kernel.queryAll<RecommendationReviewRow>(
+        executor.queryAll<RecommendationReviewRow>(
           `SELECT recommendation.id, recommendation.exercise_id,
                   exercise.name AS exercise_name, recommendation.status,
                   recommendation.evidence_json, recommendation.current_target_json,
@@ -540,7 +746,7 @@ export function createProgressRepository(
            JOIN exercises exercise ON exercise.id = recommendation.exercise_id
            ORDER BY recommendation.created_at_ms DESC, recommendation.id`,
         ),
-        kernel.queryAll<RecommendationReviewRow>(
+        executor.queryAll<RecommendationReviewRow>(
           `SELECT recommendation.id, recommendation.exercise_id,
                   exercise.name AS exercise_name, recommendation.status,
                   recommendation.evidence_json, recommendation.current_target_json,
@@ -555,8 +761,9 @@ export function createProgressRepository(
            JOIN exercises exercise ON exercise.id = recommendation.exercise_id
            ORDER BY recommendation.created_at_ms DESC, recommendation.id`,
         ),
-        loadEffectiveHistoryProjectionSessions(kernel),
-        loadSourceFacts(kernel),
+        loadEffectiveHistoryProjectionSessions(executor),
+        loadSourceFacts(executor),
+        loadDashboardFacts(executor),
       ]);
       const recommendations = [
         ...legacyRecommendationRows,
@@ -570,38 +777,56 @@ export function createProgressRepository(
       const effectiveSetsById = new Map(sourceSessions.flatMap(({ metricSets }) =>
         metricSets.map((set) => [`${set.sessionId}\u0000${set.setId}`, set] as const)
       ));
+      const projection = withToSortedCompatibility(() => projectProgressPeriod({
+        period: input.period,
+        nowLocalDate: input.nowLocalDate,
+        periodInputs: periodRows.map(periodInputFromRow),
+        comparableExposures: exposureRows.map((row) =>
+          exposureFromRow(row, effectiveSetsById)
+        ),
+        scheduledOpportunities: opportunityRows.map(opportunityFromRow),
+        attention: recommendations
+          .filter(({ lifecycle }) => lifecycle === "pending")
+          .map(({ id, exerciseId, exerciseName, sourceSessionId }) => Object.freeze({
+            id,
+            exerciseId,
+            exerciseName,
+            sessionId: sourceSessionId,
+          })),
+        sourceSessions: sourceSessions.map((session) => Object.freeze({
+          sessionId: session.sessionId,
+          localDate: session.localDate,
+          lifecycle: session.lifecycle,
+          exercises: Object.freeze(session.metricSets.map(({
+            exerciseId,
+            exerciseName,
+          }) => Object.freeze({ exerciseId, exerciseName }))),
+        })),
+        recommendations,
+      }));
+      const dashboard = sport === undefined ? undefined : withToSortedCompatibility(() =>
+        projectProgressDashboard({
+          sport,
+          running: {
+            activities: dashboardFacts.activities,
+            targets: dashboardFacts.goals,
+          },
+          strength: { facts: projection.records },
+          goals: dashboardFacts.goals,
+        })
+      );
       return Object.freeze({
         period: input.period,
         freshness: "current",
-        sourceFacts,
-        projection: withToSortedCompatibility(() => projectProgressPeriod({
-          period: input.period,
-          nowLocalDate: input.nowLocalDate,
-          periodInputs: periodRows.map(periodInputFromRow),
-          comparableExposures: exposureRows.map((row) =>
-            exposureFromRow(row, effectiveSetsById)
-          ),
-          scheduledOpportunities: opportunityRows.map(opportunityFromRow),
-          attention: recommendations
-            .filter(({ lifecycle }) => lifecycle === "pending")
-            .map(({ id, exerciseId, exerciseName, sourceSessionId }) => Object.freeze({
-              id,
-              exerciseId,
-              exerciseName,
-              sessionId: sourceSessionId,
-            })),
-          sourceSessions: sourceSessions.map((session) => Object.freeze({
-            sessionId: session.sessionId,
-            localDate: session.localDate,
-            lifecycle: session.lifecycle,
-            exercises: Object.freeze(session.metricSets.map(({
-              exerciseId,
-              exerciseName,
-            }) => Object.freeze({ exerciseId, exerciseName }))),
-          })),
-          recommendations,
-        })),
-      });
+        ...(sport === undefined ? { sourceFacts } : {}),
+        projection,
+        ...(sport === undefined ? {} : {
+          sport,
+          dashboard,
+          refresh: refreshMetadata(generation, "current"),
+        }),
+      }) as ProgressRepositoryRead;
+      }) as Promise<ProgressRepositoryRead>;
     },
   });
 }

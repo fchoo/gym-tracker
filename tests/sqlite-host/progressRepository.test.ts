@@ -3,7 +3,6 @@ import {
   describe,
   expect,
   it,
-  jest,
 } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -37,6 +36,7 @@ import {
 import {
   createSqliteKernel,
   type SqliteKernel,
+  type SqliteSnapshotKernel,
 } from "../../src/platform/sqlite/sqliteKernel";
 
 class Result<Row extends Record<string, unknown>>
@@ -454,13 +454,11 @@ describe("progress repository", () => {
     let snapshots = 0;
     const snapshotKernel = {
       ...kernel,
-      readSnapshot: async <Result>(
-        query: Parameters<NonNullable<SqliteKernel["readSnapshot"]>>[0],
-      ): Promise<Result> => {
+      readSnapshot: async (query: unknown) => {
         snapshots += 1;
-        return kernel.readSnapshot!(query);
+        return kernel.readSnapshot!(query as never);
       },
-    } as SqliteKernel;
+    } as unknown as SqliteSnapshotKernel;
 
     const result = await createProgressRepository(snapshotKernel).load({
       sport: "Running",

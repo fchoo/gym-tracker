@@ -29,6 +29,11 @@ import type {
   ProgressProjectionDiagnostic,
   ProgressProjectionFreshness,
 } from "../domains/progress";
+import type {
+  ProgressDashboardProjection,
+  ProgressRefreshMetadata,
+  ProgressSport,
+} from "../domains/progress/contracts";
 import {
   correctHistorySession,
   removeHistorySession,
@@ -363,6 +368,7 @@ import {
 import {
   openSqliteKernel,
   type SqliteKernel,
+  type SqliteSnapshotKernel,
 } from "../platform/sqlite";
 import type {
   LaunchFailure,
@@ -463,6 +469,21 @@ export {
 } from "./customExerciseRuntimeReadPort";
 
 const DATABASE_NAME = "gym-tracker.db";
+
+/** Production kernels always expose readSnapshot. The narrow test fallback
+ * keeps legacy in-memory runtime doubles usable without ever exposing storage
+ * to the Progress runtime port. */
+function progressSnapshotKernel(kernel: SqliteKernel): SqliteSnapshotKernel {
+  if (kernel.readSnapshot !== undefined) {
+    return kernel as SqliteSnapshotKernel;
+  }
+  return Object.freeze({
+    ...kernel,
+    readSnapshot(query: Parameters<SqliteSnapshotKernel["readSnapshot"]>[0]) {
+      return query({ queryAll: kernel.queryAll.bind(kernel) });
+    },
+  }) as SqliteSnapshotKernel;
+}
 const LIBRARY_SECTION_SETTING_KEY = "library.section";
 const LATEST_BACKUP_METADATA_SETTING_KEY = "backup.latest";
 const PHASE17_ACTION_ENVELOPE_SETTING_KEY = "development-test.phase17.action-envelope.v1";
@@ -802,12 +823,16 @@ type RuntimeValue = RuntimeState & Readonly<{
     exerciseId: string,
   ): Promise<ExerciseMetricHistory>;
   loadProgress(input: Readonly<{
+    sport?: ProgressSport;
     period: ProgressPeriod;
     nowLocalDate: string;
   }>): Promise<Readonly<{
     period: ProgressPeriod;
     freshness: ProgressProjectionFreshness;
     projection: ProgressPeriodProjection | null;
+    sport?: ProgressSport;
+    dashboard?: ProgressDashboardProjection | null;
+    refresh?: ProgressRefreshMetadata;
     diagnostic?: ProgressProjectionDiagnostic;
   }>>;
   openRestNotificationSettings(): Promise<void>;
@@ -2405,7 +2430,7 @@ export function WorkoutAppRuntimeProvider({
       historyRepository: createHistoryRepository(kernel),
       importedActivities: createImportedActivityRepository(kernel),
       garminSyncSummaries: createGarminSyncSummaryRepository(kernel),
-      progressRepository: createProgressRepository(kernel),
+      progressRepository: createProgressRepository(progressSnapshotKernel(kernel)),
       kernel,
       librarySearchRepository,
       lifecycle,

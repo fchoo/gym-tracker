@@ -1575,25 +1575,21 @@ describe("WorkoutAppRuntimeProvider", () => {
       period: "4_weeks",
       nowLocalDate: "2026-08-24",
     })).resolves.toEqual({
+      sport: "Running",
       period: "4_weeks",
       freshness: "current",
+      refresh: {
+        generation: 0,
+        automaticRefresh: {
+          maxAttempts: 3,
+          backoffMs: [250, 1_000, 4_000],
+          terminal: "current",
+        },
+      },
       projection: expect.objectContaining({
         state: "baseline",
         window: { start: "2026-07-28", end: "2026-08-24" },
       }),
-      sourceFacts: {
-        running: {
-          kind: "unavailable",
-          activityKind: "unavailable",
-          activities: [],
-          goalKind: "unavailable",
-          goals: [],
-        },
-        bodyweight: {
-          kind: "unavailable",
-          entries: [],
-        },
-      },
       dashboard: {
         sport: "Running",
         state: "empty",
