@@ -100,4 +100,18 @@ describe("PlannedWorkoutDetailScreen", () => {
     expect(screen.getByText("Complete")).toBeOnTheScreen();
     expect(screen.queryByText("50 kg × 5")).toBeNull();
   });
+
+  it("fails closed when source-backed plan, day, or exercise names are missing", async () => {
+    const invalid = [
+      Object.freeze({ ...occurrence, planName: " " }),
+      Object.freeze({ ...occurrence, dayName: " " }),
+      Object.freeze({ ...occurrence, exercises: Object.freeze([Object.freeze({ ...occurrence.exercises[0]!, exerciseName: " " })]) }),
+    ];
+    const rendered = await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={jest.fn(async () => invalid[0]!)} onBack={jest.fn()} /></AppearanceProvider>);
+    expect(await screen.findByText("Workout preview unavailable")).toBeOnTheScreen();
+    for (const next of invalid.slice(1)) {
+      await rendered.rerender(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={jest.fn(async () => next)} onBack={jest.fn()} /></AppearanceProvider>);
+      expect(await screen.findByText("Workout preview unavailable")).toBeOnTheScreen();
+    }
+  });
 });

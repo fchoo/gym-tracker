@@ -39,8 +39,11 @@ function targetText(targetJson: string): string | null {
 }
 
 function hasTargets(detail: PlannedStrengthOccurrenceDetail): boolean {
-  return detail.exercises.length > 0
+  return detail.planName.trim().length > 0
+    && detail.dayName.trim().length > 0
+    && detail.exercises.length > 0
     && detail.exercises.every((exercise) => exercise.targets.length > 0
+      && exercise.exerciseName.trim().length > 0
       && exercise.targets.every((target) => targetText(target.targetJson) !== null));
 }
 
