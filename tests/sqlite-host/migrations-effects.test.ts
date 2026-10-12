@@ -254,6 +254,41 @@ async function userVersion(kernel: SqliteKernel): Promise<number> {
   return row?.user_version ?? -1;
 }
 
+async function completeProtectedV27FixtureSchema(runtime: HostRuntime): Promise<void> {
+  const released = await createHostRuntime();
+  try {
+    await createMigrationRunner({
+      databaseName: "gym-tracker.db",
+      kernel: released.kernel,
+      migrations: runtimeMigrations.filter(({ version }) => version <= 27),
+      recoveryBackup: validatedBackup(),
+    }).run();
+    const existingTables = new Set((await runtime.kernel.queryAll<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table'",
+    )).map(({ name }) => name));
+    const missingReleasedTables = (await released.kernel.queryAll<{
+      name: string;
+      sql: string;
+    }>(
+      `SELECT name, sql FROM sqlite_master
+       WHERE type = 'table' AND sql LIKE 'CREATE TABLE %'
+         AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'exercise_search_fts%'
+       ORDER BY rowid`,
+    )).filter(({ name }) => !existingTables.has(name));
+
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        "ALTER TABLE automatic_backup_state ADD COLUMN dirty_since_ms INTEGER",
+      );
+      for (const { sql } of missingReleasedTables) {
+        await transaction.execute(sql);
+      }
+    });
+  } finally {
+    await released.close();
+  }
+}
+
 function validatedBackup(): RecoveryBackupPort & {
   createAndValidate: jest.MockedFunction<RecoveryBackupPort["createAndValidate"]>;
 } {
@@ -293,6 +328,10 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
   it("upgrades the schema-27 protected baseline to the complete current source graph", async () => {
     const runtime = await createHostRuntime(fixture("v27-multi-plan-baseline.sql"));
     try {
+      await completeProtectedV27FixtureSchema(runtime);
+      await expect(runtime.kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(automatic_backup_state)",
+      )).resolves.toContainEqual(expect.objectContaining({ name: "dirty_since_ms" }));
       const result = await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
@@ -302,7 +341,18 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
 
       expect(multiPlanRunningFoundationMigration.version).toBe(28);
       expect(sessionExerciseRestDefaultsMigration.version).toBe(36);
-      expect(result.currentVersion).toBe(36);
+      expect(result).toEqual({
+        appliedVersions: [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
+        currentVersion: 44,
+        recoveryBackup: {
+          backupId: "recovery-27-44",
+          databaseName: "gym-tracker.db",
+          fromVersion: 27,
+          toVersion: 44,
+          validated: true,
+        },
+      });
+      await expect(userVersion(runtime.kernel)).resolves.toBe(44);
       await expect(runtime.kernel.queryAll<{ name: string }>(
         `SELECT name FROM sqlite_master WHERE type = 'table'
          AND name IN ('running_plans', 'running_session_slots',
@@ -493,14 +543,14 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       25,
       26,
       27,
-        28,
-        29,
-        30,
-        31,
-        32,
-        33,
-        34,
-        35,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
       36,
       37,
       38,
@@ -508,6 +558,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       40,
       41,
       42,
+      43,
+      44,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -1076,10 +1128,17 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         recoveryBackup: validatedBackup(),
       }).run();
 
-      expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42],
-        currentVersion: 42,
-      }));
+      expect(result).toEqual({
+        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
+        currentVersion: 44,
+        recoveryBackup: {
+          backupId: "recovery-21-44",
+          databaseName: "gym-tracker.db",
+          fromVersion: 21,
+          toVersion: 44,
+          validated: true,
+        },
+      });
       await expect(runtime.kernel.queryAll(
         "SELECT id, owner_namespace FROM portable_owner_identity",
       )).resolves.toEqual([expect.objectContaining({
@@ -1514,10 +1573,17 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         migrations: runtimeMigrations,
         recoveryBackup: validatedBackup(),
       }).run();
-      expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42],
-        currentVersion: 42,
-      }));
+      expect(result).toEqual({
+        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
+        currentVersion: 44,
+        recoveryBackup: {
+          backupId: "recovery-26-44",
+          databaseName: "gym-tracker.db",
+          fromVersion: 26,
+          toVersion: 44,
+          validated: true,
+        },
+      });
       await expect(advancedTimingTargetOwnershipMigration.verify({
         execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
         queryAll: runtime.kernel.queryAll,
