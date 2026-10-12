@@ -4,6 +4,7 @@ import {
   it,
   jest,
 } from "@jest/globals";
+import { readFileSync } from "node:fs";
 
 import {
   PHASE18_GARMIN_PROOF_CASE_IDS,
@@ -71,6 +72,37 @@ function fixture() {
 }
 
 describe("Phase 18 guarded Garmin proof", () => {
+  it("keeps proof secrets out of React state and controlled input props", () => {
+    const route = readFileSync("app/__phase18-garmin-proof.tsx", "utf8");
+    const secretInput = (label: string) => {
+      const start = route.indexOf(`accessibilityLabel="${label}"`);
+      const end = route.indexOf("/>", start);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      return route.slice(start, end);
+    };
+
+    expect(route).not.toMatch(
+      /const\s+\[(?:password|mfaCode|challengeHandle),[^\]]+\]\s*=\s*React\.useState/u,
+    );
+    expect(secretInput("Garmin password")).not.toMatch(/\bvalue=/u);
+    expect(secretInput("Garmin MFA code")).not.toMatch(/\bvalue=/u);
+  });
+
+  it("clears native proof inputs and every private secret ref on all lifecycle exits", () => {
+    const route = readFileSync("app/__phase18-garmin-proof.tsx", "utf8");
+
+    expect(route).toMatch(/passwordInputRef\.current\?\.clear\(\)/u);
+    expect(route).toMatch(/mfaCodeInputRef\.current\?\.clear\(\)/u);
+    expect(route).toMatch(/passwordRef\.current\s*=\s*""/u);
+    expect(route).toMatch(/mfaCodeRef\.current\s*=\s*""/u);
+    expect(route).toMatch(/challengeHandleRef\.current\s*=\s*null/u);
+    expect(route).toMatch(/finally\s*\{[^}]*clearPassword/u);
+    expect(route).toMatch(/finally\s*\{[^}]*clearMfa/u);
+    expect(route).toMatch(/return\s*\(\)\s*=>\s*\{[^}]*clearAllSecrets/u);
+    expect(route).toContain("accessibilityLabel=\"Cancel Garmin proof\"");
+  });
+
   it("keeps the exact seven-case native proof order", () => {
     expect(PHASE18_GARMIN_PROOF_CASE_IDS).toEqual([
       "PH18-PKG",

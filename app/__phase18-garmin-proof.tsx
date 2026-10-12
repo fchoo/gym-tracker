@@ -23,7 +23,10 @@ type ScreenState =
   | "mfa"
   | "working"
   | "complete"
+  | "cancelled"
   | "technical_review_required";
+
+type AttendedStep = "login" | "mfa";
 
 function emitCases(cases: readonly Phase18GarminProofCase[]): void {
   for (const result of cases) {
@@ -39,78 +42,153 @@ function Phase18GarminProofContent({ operation }: Readonly<{
     [],
   );
   const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [mfaCode, setMfaCode] = React.useState("");
-  const [challengeHandle, setChallengeHandle] = React.useState<string>();
+  const [hasPassword, setHasPassword] = React.useState(false);
+  const [hasMfaCode, setHasMfaCode] = React.useState(false);
+  const [passwordInputVersion, setPasswordInputVersion] = React.useState(0);
+  const [mfaInputVersion, setMfaInputVersion] = React.useState(0);
+  const [attendedStep, setAttendedStep] = React.useState<AttendedStep>("login");
   const [state, setState] = React.useState<ScreenState>(
     operation === "restore" ? "working" : "login",
   );
+  const passwordInputRef = React.useRef<TextInput>(null);
+  const mfaCodeInputRef = React.useRef<TextInput>(null);
+  const passwordRef = React.useRef("");
+  const mfaCodeRef = React.useRef("");
+  const challengeHandleRef = React.useRef<string | null>(null);
+  const mountedRef = React.useRef(true);
+  const operationGenerationRef = React.useRef(0);
   const restoreStarted = React.useRef(false);
 
-  const finishRead = React.useCallback(async () => {
+  const clearPassword = React.useCallback(() => {
+    passwordInputRef.current?.clear();
+    passwordRef.current = "";
+    if (mountedRef.current) {
+      setHasPassword(false);
+      setPasswordInputVersion((current) => current + 1);
+    }
+  }, []);
+
+  const clearMfa = React.useCallback(() => {
+    mfaCodeInputRef.current?.clear();
+    mfaCodeRef.current = "";
+    if (mountedRef.current) {
+      setHasMfaCode(false);
+      setMfaInputVersion((current) => current + 1);
+    }
+  }, []);
+
+  const clearAllSecrets = React.useCallback(() => {
+    clearPassword();
+    clearMfa();
+    challengeHandleRef.current = null;
+  }, [clearMfa, clearPassword]);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      operationGenerationRef.current += 1;
+      clearAllSecrets();
+    };
+  }, [clearAllSecrets]);
+
+  const finishRead = React.useCallback(async (): Promise<ScreenState> => {
     const result = await harness.readOneActivity();
     emitCases([result]);
-    setState(
-      result.status === "passed"
-        ? "complete"
-        : "technical_review_required",
-    );
+    return result.status === "passed"
+      ? "complete"
+      : "technical_review_required";
   }, [harness]);
 
   React.useEffect(() => {
     if (operation !== "restore" || restoreStarted.current) return;
     restoreStarted.current = true;
-    let active = true;
+    const generation = ++operationGenerationRef.current;
     void harness.restoreAndRefresh().then((cases) => {
-      if (!active) return;
+      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
       emitCases(cases);
-      setState(
-        cases.every(({ status }) => status === "passed")
-          ? "complete"
-          : "technical_review_required",
-      );
+      setState(cases.every(({ status }) => status === "passed")
+        ? "complete"
+        : "technical_review_required");
+    }).catch(() => {
+      if (mountedRef.current && generation === operationGenerationRef.current) {
+        setState("technical_review_required");
+      }
     });
-    return () => {
-      active = false;
-    };
   }, [harness, operation]);
 
   const submitLogin = React.useCallback(() => {
+    const password = passwordRef.current;
     if (state !== "login" || email.length === 0 || password.length === 0) return;
+    const generation = ++operationGenerationRef.current;
+    setAttendedStep("login");
     setState("working");
-    const pending = harness.login({ email, password });
     setEmail("");
-    setPassword("");
-    void pending.then(async (result) => {
-      emitCases(result.cases);
-      if (result.next === "halt") {
-        setState("technical_review_required");
-      } else if (result.next === "read") {
-        await finishRead();
-      } else {
-        setChallengeHandle(result.next.challengeHandle);
-        setState("mfa");
+    void (async () => {
+      let nextState: ScreenState = "technical_review_required";
+      try {
+        const result = await harness.login({ email, password });
+        if (!mountedRef.current || generation !== operationGenerationRef.current) return;
+        emitCases(result.cases);
+        if (result.next === "halt") {
+          nextState = "technical_review_required";
+        } else if (result.next === "read") {
+          nextState = await finishRead();
+        } else {
+          challengeHandleRef.current = result.next.challengeHandle;
+          nextState = "mfa";
+        }
+      } catch {
+        nextState = "technical_review_required";
+      } finally {
+        clearPassword();
       }
-    });
-  }, [email, finishRead, harness, password, state]);
+      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
+      if (nextState === "mfa") setAttendedStep("mfa");
+      setState(nextState);
+    })();
+  }, [clearPassword, email, finishRead, harness, state]);
 
   const submitMfa = React.useCallback(() => {
-    if (state !== "mfa" || challengeHandle === undefined || mfaCode.length === 0) {
+    const challengeHandle = challengeHandleRef.current;
+    const mfaCode = mfaCodeRef.current;
+    if (state !== "mfa" || challengeHandle === null || mfaCode.length === 0) {
       return;
     }
+    const generation = ++operationGenerationRef.current;
+    setAttendedStep("mfa");
     setState("working");
-    const pending = harness.resumeMfa(challengeHandle, mfaCode);
-    setMfaCode("");
-    void pending.then(async (result) => {
-      emitCases(result.cases);
-      if (result.next === "halt") {
-        setState("technical_review_required");
-      } else {
-        setChallengeHandle(undefined);
-        await finishRead();
+    void (async () => {
+      let nextState: ScreenState = "technical_review_required";
+      try {
+        const result = await harness.resumeMfa(challengeHandle, mfaCode);
+        if (!mountedRef.current || generation !== operationGenerationRef.current) return;
+        emitCases(result.cases);
+        nextState = result.next === "halt"
+          ? "technical_review_required"
+          : await finishRead();
+      } catch {
+        nextState = "technical_review_required";
+      } finally {
+        clearMfa();
+        challengeHandleRef.current = null;
       }
-    });
-  }, [challengeHandle, finishRead, harness, mfaCode, state]);
+      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
+      setState(nextState);
+    })();
+  }, [clearMfa, finishRead, harness, state]);
+
+  const cancel = React.useCallback(() => {
+    operationGenerationRef.current += 1;
+    clearAllSecrets();
+    setEmail("");
+    setState("cancelled");
+  }, [clearAllSecrets]);
+
+  const loginVisible = state === "login"
+    || (state === "working" && attendedStep === "login" && operation === "login");
+  const mfaVisible = state === "mfa"
+    || (state === "working" && attendedStep === "mfa");
 
   return (
     <View style={styles.root}>
@@ -118,7 +196,7 @@ function Phase18GarminProofContent({ operation }: Readonly<{
         Garmin technical proof
       </Text>
       <Text style={styles.status}>{state}</Text>
-      {state === "login" ? (
+      {loginVisible ? (
         <View style={styles.form}>
           <TextInput
             accessibilityLabel="Garmin email"
@@ -134,41 +212,71 @@ function Phase18GarminProofContent({ operation }: Readonly<{
             accessibilityLabel="Garmin password"
             autoCapitalize="none"
             autoComplete="off"
-            onChangeText={setPassword}
+            defaultValue=""
+            editable={state === "login"}
+            key={`phase18-proof-password-${passwordInputVersion}`}
+            onChangeText={(value) => {
+              passwordRef.current = value;
+              setHasPassword(value.length > 0);
+            }}
             placeholder="Password"
+            ref={passwordInputRef}
             secureTextEntry
             style={styles.input}
-            value={password}
           />
           <Pressable
+            accessibilityLabel="Sign in to Garmin proof"
             accessibilityRole="button"
-            disabled={email.length === 0 || password.length === 0}
+            disabled={state !== "login" || email.length === 0 || !hasPassword}
             onPress={submitLogin}
             style={styles.button}
           >
             <Text style={styles.buttonText}>Sign in</Text>
           </Pressable>
+          <Pressable
+            accessibilityLabel="Cancel Garmin proof"
+            accessibilityRole="button"
+            onPress={cancel}
+            style={[styles.button, styles.secondaryButton]}
+          >
+            <Text style={[styles.buttonText, styles.secondaryButtonText]}>Cancel</Text>
+          </Pressable>
         </View>
       ) : null}
-      {state === "mfa" ? (
+      {mfaVisible ? (
         <View style={styles.form}>
           <TextInput
             accessibilityLabel="Garmin MFA code"
             autoComplete="off"
+            defaultValue=""
+            editable={state === "mfa"}
+            key={`phase18-proof-mfa-${mfaInputVersion}`}
             keyboardType="number-pad"
-            onChangeText={setMfaCode}
+            onChangeText={(value) => {
+              mfaCodeRef.current = value;
+              setHasMfaCode(value.length > 0);
+            }}
             placeholder="MFA code"
+            ref={mfaCodeInputRef}
             secureTextEntry
             style={styles.input}
-            value={mfaCode}
           />
           <Pressable
+            accessibilityLabel="Continue Garmin proof"
             accessibilityRole="button"
-            disabled={mfaCode.length === 0}
+            disabled={state !== "mfa" || !hasMfaCode}
             onPress={submitMfa}
             style={styles.button}
           >
             <Text style={styles.buttonText}>Continue</Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Cancel Garmin proof"
+            accessibilityRole="button"
+            onPress={cancel}
+            style={[styles.button, styles.secondaryButton]}
+          >
+            <Text style={[styles.buttonText, styles.secondaryButtonText]}>Cancel</Text>
           </Pressable>
         </View>
       ) : null}
@@ -239,6 +347,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "700",
+  },
+  secondaryButton: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#687580",
+    borderWidth: 1,
+  },
+  secondaryButtonText: {
+    color: "#171A1C",
   },
   notice: {
     color: "#4F5B66",
