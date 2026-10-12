@@ -42,10 +42,35 @@ function command(overrides: Partial<BodyweightCommand> = {}): BodyweightCommand 
 }
 
 async function protectedDigest(kernel: SqliteKernel) {
-  return kernel.queryAll<{ plans: number; sessions: number; sets: number; recommendations: number }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM workout_sessions) AS sessions, (SELECT count(*) FROM session_sets) AS sets, (SELECT count(*) FROM progression_recommendations) AS recommendations");
+  return kernel.queryAll<{
+    plans: number;
+    runningGoals: number;
+    importedActivities: number;
+    sessions: number;
+    sets: number;
+    recommendations: number;
+  }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM running_goals) AS runningGoals, (SELECT count(*) FROM imported_activities) AS importedActivities, (SELECT count(*) FROM workout_sessions) AS sessions, (SELECT count(*) FROM session_sets) AS sets, (SELECT count(*) FROM progression_recommendations) AS recommendations");
 }
 
 describe("bodyweight source history", () => {
+  it("rejects invalid bounds, precision, and future dates before any durable graph changes", async () => {
+    const { kernel, repository } = await runtime();
+    const beforeProtected = await protectedDigest(kernel);
+    const [before] = await kernel.queryAll<{ entries: number; events: number; receipts: number }>("SELECT (SELECT count(*) FROM bodyweight_entries) AS entries, (SELECT count(*) FROM bodyweight_entry_events) AS events, (SELECT count(*) FROM bodyweight_command_receipts) AS receipts");
+
+    for (const invalid of [
+      command({ grams: 19_900 }),
+      command({ requestId: "bodyweight-precision", grams: 20_050 }),
+      command({ requestId: "bodyweight-future", localDate: "2099-01-01" }),
+    ]) {
+      await expect(repository.commit(invalid)).rejects.toThrow("bodyweight_command_measurement_invalid");
+    }
+
+    const [after] = await kernel.queryAll<{ entries: number; events: number; receipts: number }>("SELECT (SELECT count(*) FROM bodyweight_entries) AS entries, (SELECT count(*) FROM bodyweight_entry_events) AS events, (SELECT count(*) FROM bodyweight_command_receipts) AS receipts");
+    expect(after).toEqual(before);
+    expect(await protectedDigest(kernel)).toEqual(beforeProtected);
+  });
+
   it("commits correction events and exact receipts without protected-graph writes", async () => {
     const { kernel, repository } = await runtime(); const before = await protectedDigest(kernel);
     const created = await repository.commit(command());
