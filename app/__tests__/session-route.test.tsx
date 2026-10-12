@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -140,5 +140,27 @@ describe("SessionDetailRoute", () => {
     expect(screen.getByLabelText("Correct workout")).toBeOnTheScreen();
     expect(screen.getByLabelText("Remove from history")).toBeOnTheScreen();
     expect(mockUseWorkoutAppRuntime).toHaveBeenCalled();
+  });
+
+  it("hides stale management facts and commands while reused session params load", async () => {
+    mockParams = { sessionId: "calendar-session" };
+    mockGetSessionDetail.mockResolvedValueOnce(detail);
+    const rendered = await render(<SessionDetailRoute />);
+    expect(await screen.findByText("Management details")).toBeOnTheScreen();
+
+    let resolveSecond: ((value: SessionDetail) => void) | undefined;
+    mockGetSessionDetail.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveSecond = resolve;
+    }));
+    mockParams = { sessionId: "second-session" };
+    await rendered.rerender(<SessionDetailRoute />);
+
+    await waitFor(() => expect(mockGetSessionDetail).toHaveBeenLastCalledWith("second-session"));
+    expect(screen.queryByText("Management details")).toBeNull();
+    expect(screen.queryByLabelText("Correct workout")).toBeNull();
+    expect(screen.queryByLabelText("Remove from history")).toBeNull();
+
+    await act(async () => resolveSecond?.({ ...detail, id: "second-session" }));
+    expect(await screen.findByText("Management details")).toBeOnTheScreen();
   });
 });

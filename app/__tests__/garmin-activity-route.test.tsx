@@ -238,6 +238,29 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     });
   });
 
+  it("hides stale activity facts and actions while reused route params load", async () => {
+    mockParams = { activityId: "activity-local-01", origin: "workout" };
+    const rendered = await renderRoute();
+    await settleNextLoad({ kind: "ready", detail });
+    expect(await screen.findByText("Outdoor run")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Match to scheduled workout" })).toBeOnTheScreen();
+
+    mockParams = { activityId: "activity-local-02", origin: "workout" };
+    await rendered.rerender(
+      <AppearanceProvider>
+        <ImportedActivityDetailRoute />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(mockLoadImportedActivityDetail).toHaveBeenLastCalledWith("activity-local-02"));
+    expect(screen.getByText("Loading activity details")).toBeOnTheScreen();
+    expect(screen.queryByText("Outdoor run")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Match to scheduled workout" })).toBeNull();
+
+    await settleNextLoad({ kind: "ready", detail: { ...detail, activityType: "Treadmill run" } });
+    expect(await screen.findByText("Treadmill run")).toBeOnTheScreen();
+  });
+
   it("keeps Calendar-origin revision review query-only", async () => {
     mockLoadGarminRevisionReview.mockResolvedValueOnce({
       activityId: "activity-local-01",
