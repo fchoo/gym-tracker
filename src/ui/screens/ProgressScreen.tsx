@@ -113,9 +113,11 @@ function SegmentedControls<T extends string>({
 function RunningRoot({ dashboard, onRetry }: Readonly<{ dashboard: Extract<ProgressDashboardProjection, { sport: "Running" }>; onRetry(): void }>) {
   const { colors } = useAppTheme();
   const goal = dashboard.goals.find((candidate) => candidate.distanceMeters === 2400) ?? dashboard.goals[0];
-  if (goal === undefined) {
-    return <EmptyState body="Import or accept a 2.4 km effort to establish a benchmark. No zero result is shown." heading="No 2.4 km effort recorded" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
-  }
+  if (goal === undefined) return <View style={styles.content}>
+    <InlineNotice body="Running facts and best efforts come from accepted imported Garmin activities." heading="Imported activity evidence" tone="neutral" />
+    <EmptyState body="Import or accept a 2.4 km effort to establish a benchmark. No zero result is shown." heading="No 2.4 km effort recorded" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
+    <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>10 km · Target unset · No effort recorded · Set target</Text><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Half Marathon · Target unset · No effort recorded · Set target</Text></View>
+  </View>;
   const target = goal.target === null ? "Target unset" : formatDuration(goal.target.durationSeconds);
   const pace = goal.target === null || goal.distanceMeters !== 2400 ? null : Math.round(goal.target.durationSeconds / 2.4);
   return (
@@ -146,27 +148,28 @@ function RunningRoot({ dashboard, onRetry }: Readonly<{ dashboard: Extract<Progr
   );
 }
 
-function DashboardContent({ dashboard, onRetry }: Readonly<{ dashboard: ProgressDashboardProjection; onRetry(): void }>) {
+function DashboardContent({ dashboard, onRetry, onOpenExercise, onSelectSport }: Readonly<{ dashboard: ProgressDashboardProjection; onRetry(): void; onOpenExercise(exerciseId: string, exerciseName: string): void; onSelectSport(sport: ProgressSport): void }>) {
   const { colors } = useAppTheme();
+  if (dashboard.sport === "Running") return <RunningRoot dashboard={dashboard} onRetry={onRetry} />;
   if (dashboard.state === "empty") {
     return <EmptyState body="Completed, accepted source facts appear here when they establish a comparable goal. Missing facts are not shown as zero." heading="No progress history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
   }
   if (dashboard.state === "sparse" || dashboard.state === "more_data_needed") {
-    return <InlineNotice body="One factual result is available, but more comparable evidence is needed before a trend or gap is shown." heading="More data needed" tone="attention" />;
+    return <View style={styles.content}><InlineNotice body="One factual result is available, but more comparable evidence is needed before a trend or gap is shown." heading="More data needed" tone="attention" /><PrimaryAction label="Refresh progress" onPress={onRetry} /></View>;
   }
   if (dashboard.state === "unavailable") {
     return <InlineNotice body="The requested progress facts are unavailable. Reload to try again." heading="Progress is temporarily unavailable" tone="error" />;
   }
-  if (dashboard.sport === "Running") return <RunningRoot dashboard={dashboard} onRetry={onRetry} />;
   if (dashboard.sport === "All") {
-    if (dashboard.primaryGoal === null) return <EmptyState body="Add a persisted goal and comparable completed history to show the nearest active goal." heading="No active goal yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
-    const target = dashboard.primaryGoal.targetDurationSeconds === null ? "Target unset" : formatDuration(dashboard.primaryGoal.targetDurationSeconds);
-    return <View style={styles.content}><View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Nearest active goal</Text><Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`${dashboard.primaryGoal.sport} · Target · ${target}`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>More data needed before Latest, Best, and Gap are comparable.</Text></View></View>;
+    const primaryGoal = dashboard.primaryGoal;
+    if (primaryGoal === null) return <EmptyState body="Add a persisted goal and comparable completed history to show the nearest active goal." heading="No active goal yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
+    const target = primaryGoal.targetDurationSeconds === null ? "Target unset" : formatDuration(primaryGoal.targetDurationSeconds);
+    return <View style={styles.content}><View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Nearest active goal</Text><Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`${primaryGoal.sport} · Target · ${target}`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>More data needed before Latest, Best, and Gap are comparable.</Text><FocusablePressable accessibilityLabel={`Open ${primaryGoal.sport} goal`} accessibilityRole="button" focusable onPress={() => onSelectSport(primaryGoal.sport)} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`Open ${primaryGoal.sport} goal`}</Text></FocusablePressable></View></View>;
   }
-  return <View style={styles.content}><View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Strength progress</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`${dashboard.facts.length} comparable completed ${dashboard.facts.length === 1 ? "fact" : "facts"} in this range.`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Targets and gaps appear only for compatible saved metrics.</Text></View></View>;
+  return <View style={styles.content}><View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Strength progress</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`${dashboard.facts.length} comparable completed ${dashboard.facts.length === 1 ? "fact" : "facts"} in this range.`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Targets and gaps appear only for compatible saved metrics.</Text></View>{dashboard.facts.map((fact) => <FocusablePressable accessibilityLabel={`Open exercise history for ${fact.exerciseName}`} accessibilityRole="button" focusable key={`${fact.exerciseId}:${fact.setId}`} onPress={() => onOpenExercise(fact.exerciseId, fact.exerciseName)} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{fact.exerciseName}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Target unavailable</Text></FocusablePressable>)}</View>;
 }
 
-export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenSettings = () => undefined, width, headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
+export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSettings = () => undefined, width, headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
   const [sport, setSport] = useState<ProgressSport>("All");
   const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
@@ -181,7 +184,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     setSnapshot(null);
     setFailed(false);
     void loadProgress({ sport, period, nowLocalDate }).then((next) => {
-      if (request !== requestRef.current || next.dashboard?.sport !== sport) return;
+      if (request !== requestRef.current || (next.dashboard !== null && next.dashboard !== undefined && next.dashboard.sport !== sport)) return;
       setSnapshot(next);
     }).catch(() => {
       if (request === requestRef.current) setFailed(true);
@@ -198,7 +201,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   if (failed) content = <EmptyState body="Your saved workouts and targets were not changed. Retry loading progress." heading="Progress could not be loaded" primaryAction={<PrimaryAction label="Retry loading progress" onPress={() => setRetry((current) => current + 1)} />} />;
   else if (snapshot === null) content = <View accessibilityLabel="Loading progress" accessibilityRole="progressbar" style={styles.content}><SkeletonBlock height={180} testID="progress-skeleton" /></View>;
   else if (snapshot.freshness !== "current" || snapshot.dashboard === null || snapshot.dashboard === undefined) content = <View style={styles.content}><InlineNotice body={rebuildText(snapshot.diagnostic)} heading="Updating progress" tone="neutral" />{retryAction}</View>;
-  else content = <DashboardContent dashboard={snapshot.dashboard} onRetry={() => setRetry((current) => current + 1)} />;
+  else content = <DashboardContent dashboard={snapshot.dashboard} onOpenExercise={onOpenExercise} onRetry={() => setRetry((current) => current + 1)} onSelectSport={setSport} />;
 
   return <AdaptiveScreen {...adaptiveWidth} primary={<View style={styles.screen}>{header}{content}</View>} testID="progress-screen" />;
 }
@@ -206,6 +209,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
 const styles = StyleSheet.create({
   content: { gap: space[4] },
   factRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderTopWidth: StyleSheet.hairlineWidth, gap: space[2], paddingVertical: space[2] },
+  goalAction: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: sizes.minimumTarget, padding: space[2] },
   goalRows: { gap: space[2] },
   hero: { borderTopWidth: 2, gap: space[2], marginTop: 18, paddingTop: space[4] },
   pacing: { gap: space[1] },
