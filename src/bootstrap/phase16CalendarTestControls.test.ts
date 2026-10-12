@@ -70,3 +70,22 @@ test("Phase 16 Calendar controls reject unsafe samples and retain no global reco
   expect(() => recordPhase16CalendarCancel()).not.toThrow();
   clearPhase16CalendarTestControls();
 });
+
+test("Phase 16 Calendar controls reject repeated timestamps and a trace buffer beyond its bounded capacity", () => {
+  const repeatedTimestamp = createPhase16CalendarTestControls({
+    ...developmentIdentity,
+    stage: "drag-cancel",
+    nowMs: () => 1_800_000_000_000,
+  });
+  repeatedTimestamp?.recordCancel();
+  expect(() => repeatedTimestamp?.recordCancel()).toThrow("phase16_calendar_diagnostic_clock_invalid");
+
+  let now = 1_800_000_100_000;
+  const boundedTrace = createPhase16CalendarTestControls({
+    ...developmentIdentity,
+    stage: "drag-cancel",
+    nowMs: () => ++now,
+  });
+  for (let index = 0; index < 64; index += 1) boundedTrace?.recordCancel();
+  expect(() => boundedTrace?.recordCancel()).toThrow("phase16_calendar_diagnostic_overflow");
+});

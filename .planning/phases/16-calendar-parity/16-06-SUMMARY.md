@@ -16,7 +16,7 @@ affects: [phase-16-plan-07, phase-20-native-acceptance, calendar-parity]
 actuals:
   tokens: 14419
   tasks: 3
-  commits: 7
+  commits: 8
 tech-stack:
   added: [pngjs comparison artifacts, Maestro diagnostic source contract]
   patterns:
@@ -53,7 +53,7 @@ coverage:
         ref: npm run test:unit -- --runInBand phase16CalendarTestControls.test.ts
         status: pass
       - kind: unit
-        ref: focused strict coverage: src/bootstrap/phase16CalendarTestControls.ts (95.45% statements, 92.59% branches, 100% functions, 100% lines)
+        ref: node node_modules/jest/bin/jest.js --config jest.config.js --selectProjects unit --runInBand phase16CalendarTestControls.test.ts --coverage --collectCoverageFrom=src/bootstrap/phase16CalendarTestControls.ts --coverageDirectory=<temporary-directory>
         status: pass
     human_judgment: false
   - id: D2
@@ -103,7 +103,8 @@ status: complete
 1. **Task 1: Capture one real Android 25% drag, 3dp focus, and measured week expansion**
    - `51be1205` — RED test control contract
    - `042081cf` — gated Calendar diagnostic hooks
-   - `9ba80197` — rejection-path and strict-coverage test completion
+   - `9ba80197` — rejection-path coverage test completion
+   - Coverage closure correction — committed atomically with this summary correction
 2. **Task 2: Map Revision 18 references and generate individual overlay/difference artifacts**
    - `3b795e51` — RED fail-closed comparison contract
    - `ad85ed31` — Revision 18 map and comparison generator
@@ -118,7 +119,7 @@ status: complete
 - `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx` — passed (9 tests)
 - `npm run typecheck` — passed
 - `npm run check:boundaries` — passed
-- Focused strict coverage — passed: 95.45% statements, 92.59% branches, 100% functions, 100% lines
+- Direct focused Jest coverage — passed: 100% statements (44/44), branches (27/27), functions (17/17), and lines (39/39)
 
 ## Execution Boundary
 
@@ -170,6 +171,7 @@ None. The host-only synthetic fixture is explicitly test input and cannot flow t
 
 - Phase 20 can execute the registered diagnostic stages only after it has a fresh development-test build manifest with matching source/APK/device identity.
 - The Phase 20 collector must populate actual reference/native/overlay/difference/mask records and preserve the existing fail-closed validators. Until then, the Calendar native evidence status remains `NOT_RUN` / `REVIEW_REQUIRED`.
+- `src/bootstrap/phase16CalendarTestControls.ts` is not yet registered in `scripts/run-coverage-gate.mjs`, so its standard `--focus-integrity` path cannot target the module. Plan 16-07/final phase coverage ownership must register it there; this correction proves closure now with the direct Jest command above without modifying Plan 16-07-owned files.
 
 ## Self-Check: PASSED
 
