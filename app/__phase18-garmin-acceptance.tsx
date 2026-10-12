@@ -9,11 +9,11 @@ import {
   GARMIN_ACCEPTANCE_NATIVE_PREREQUISITE_IDS,
 } from "../src/testing/contracts/garminImport.contract";
 import { useWorkoutAppRuntime } from "../src/bootstrap/workoutAppRuntime";
+import { createPhase18GarminBenchmarkBoundedSync } from "../src/bootstrap/phase18GarminBenchmarkRuntime";
 import { ImportedActivityDetailScreen } from "../src/ui/screens/ImportedActivityDetailScreen";
 import {
   PHASE18_GARMIN_BENCHMARK_MARKER,
   createInstalledPhase18GarminBenchmarkMeasurementPort,
-  createPhase18GarminBenchmarkBoundedSync,
   createPhase18GarminBenchmarkMarkerReport,
   parsePhase18GarminColdStartHandshake,
   phase18GarminBenchmarkDetailFixture,

@@ -8,7 +8,6 @@ import {
   PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES,
   PHASE18_GARMIN_BENCHMARK_MARKER,
   createInstalledPhase18GarminBenchmarkMeasurementPort,
-  createPhase18GarminBenchmarkBoundedSync,
   createPhase18GarminBenchmarkMarkerReport,
   createPhase18GarminAcceptanceHarness,
   parsePhase18GarminColdStartHandshake,
@@ -16,6 +15,7 @@ import {
   phase18GarminAcceptanceEnabled,
   type Phase18GarminBenchmarkMeasurementPort,
 } from "./phase18GarminAcceptance";
+import { createPhase18GarminBenchmarkBoundedSync } from "../bootstrap/phase18GarminBenchmarkRuntime";
 import type { GarminRuntimeInfo } from "../../modules/garmin-connect/src";
 import type { ConfirmGarminImportInput } from "../domains/activities/importCommands";
 import { GARMIN_SYNC_DEFAULT_LIMITS } from "../platform/garmin/garminSyncContracts";
@@ -446,7 +446,8 @@ describe("Phase 18 deterministic acceptance harness", () => {
   it("keeps the route source-owned, guarded, observed, and free of proof relabeling", () => {
     const route = readFileSync("app/__phase18-garmin-acceptance.tsx", "utf8");
     const producer = readFileSync("src/testing/phase18GarminAcceptance.ts", "utf8");
-    const installedProducer = `${route}\n${producer}`;
+    const runtime = readFileSync("src/bootstrap/phase18GarminBenchmarkRuntime.ts", "utf8");
+    const installedProducer = `${route}\n${producer}\n${runtime}`;
     expect(route).toContain("phase18GarminAcceptanceEnabled");
     expect(route).toContain("phase18GarminAcceptanceBenchmarkEnabled");
     expect(route).toContain("createPhase18GarminBenchmarkMarkerReport");
@@ -459,10 +460,10 @@ describe("Phase 18 deterministic acceptance harness", () => {
     expect(installedProducer).toContain("requestAnimationFrame");
     expect(installedProducer).toContain("readGarminRuntimeInfo");
     expect(installedProducer).not.toContain("forceRefreshForTest");
-    expect(producer).toContain("createGarminActivityAdapter");
-    expect(producer).toContain("normalizeGarminActivity");
-    expect(producer).toContain("createGarminSyncCoordinator");
-    expect(producer).toContain("createGarminSharedImportCommitter");
+    expect(runtime).toContain("createGarminActivityAdapter");
+    expect(runtime).toContain("normalizeGarminActivity");
+    expect(runtime).toContain("createGarminSyncCoordinator");
+    expect(runtime).toContain("createGarminSharedImportCommitter");
     expect(installedProducer).toContain("performPhase1Benchmark");
     expect(route).toContain("synthetic-redacted-only");
     expect(route).toContain("host-passed-native-deferred");
