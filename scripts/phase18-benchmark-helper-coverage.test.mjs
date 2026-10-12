@@ -13,6 +13,7 @@ import {
   PHASE18_GARMIN_BENCHMARK_METRICS,
   collectInstalledMeasurements,
   executePhase18GarminBenchmark,
+  phase18GarminBenchmarkCollectorBudgetMs,
   parsePhase18GarminBenchmarkArgs,
   resolvePhase18GarminBenchmarkCurrentIdentity,
   validatePhase18GarminBenchmarkEvidence,
@@ -521,6 +522,89 @@ test("benchmark collector completes five nonce-bound fresh-process cold starts b
   });
 });
 
+test("benchmark collector deadline admits five maximum bounded-sync samples plus the remaining source-owned budgets", () => {
+  const baselineReport = JSON.parse(REPO_BASELINE_BYTES.toString("utf8"));
+  const fifthProcessMeasurementBudgetMs = Object.entries(baselineReport.metrics)
+    .filter(([metric]) => metric.endsWith("_ms") && metric !== "python_cold_start_ms")
+    .reduce(
+      (total, [, specification]) => total
+        + (specification.maximum * specification.minimum_samples),
+      0,
+    );
+  assert.equal(
+    baselineReport.metrics.bounded_sync_ms.maximum
+      * baselineReport.metrics.bounded_sync_ms.minimum_samples,
+    5 * 30_000,
+  );
+  assert.ok(
+    phase18GarminBenchmarkCollectorBudgetMs(baselineReport, 5)
+      > fifthProcessMeasurementBudgetMs,
+  );
+
+  const originalNow = Date.now;
+  const ticks = [
+    0, 0,
+    10, 10,
+    20, 20,
+    30, 30,
+    40, 40 + fifthProcessMeasurementBudgetMs,
+  ];
+  Date.now = () => ticks.shift() ?? Number.POSITIVE_INFINITY;
+  try {
+    withColdStartCollector({
+      processIds: [4901, 4902, 4903, 4904, 4905],
+    }, () => {
+      const result = collectInstalledMeasurements();
+      assert.equal(result.producer_context.source_pid, 4905);
+      assert.equal(result.producer_context.status, "passed");
+    });
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("benchmark collector deadline rejects invalid sequence and source-budget inputs", () => {
+  const baselineReport = JSON.parse(REPO_BASELINE_BYTES.toString("utf8"));
+  for (const sequence of [0, 1.5, 6]) {
+    assert.throws(
+      () => phase18GarminBenchmarkCollectorBudgetMs(baselineReport, sequence),
+      /phase18_garmin_benchmark_collector_budget_invalid/u,
+    );
+  }
+  for (const candidate of [null, {}, { metrics: {} }]) {
+    assert.throws(
+      () => phase18GarminBenchmarkCollectorBudgetMs(candidate, 5),
+      /phase18_garmin_benchmark_collector_budget_invalid/u,
+    );
+  }
+  assert.throws(
+    () => phase18GarminBenchmarkCollectorBudgetMs({
+      ...baselineReport,
+      metrics: {
+        ...baselineReport.metrics,
+        bounded_sync_ms: {
+          ...baselineReport.metrics.bounded_sync_ms,
+          maximum: -1,
+        },
+      },
+    }, 5),
+    /phase18_garmin_benchmark_collector_budget_invalid/u,
+  );
+  assert.throws(
+    () => phase18GarminBenchmarkCollectorBudgetMs({
+      ...baselineReport,
+      metrics: {
+        ...baselineReport.metrics,
+        python_cold_start_ms: {
+          ...baselineReport.metrics.python_cold_start_ms,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
+      },
+    }, 1),
+    /phase18_garmin_benchmark_collector_budget_invalid/u,
+  );
+});
+
 test("benchmark cold-start handshake rejects repeated PIDs, gaps, order drift, stale nonces, and incompleteness", () => {
   const cases = [
     {
@@ -840,8 +924,10 @@ exit 1
 test("benchmark collector fails closed after a bounded timeout when no marker is emitted", () => {
   const originalNow = Date.now;
   const originalWait = Atomics.wait;
-  const ticks = [0, 1, 60_001];
-  Date.now = () => ticks.shift() ?? 60_001;
+  const baselineReport = JSON.parse(REPO_BASELINE_BYTES.toString("utf8"));
+  const budgetMs = phase18GarminBenchmarkCollectorBudgetMs(baselineReport, 1);
+  const ticks = [0, 1, budgetMs + 1];
+  Date.now = () => ticks.shift() ?? budgetMs + 1;
   Atomics.wait = () => "timed-out";
   try {
     withFakeSdk({

@@ -34,6 +34,7 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const COLD_START_SAMPLE_COUNT = 5;
 const COLD_START_OPERATION = "native-runtime:python-cold-start";
 const COLD_START_REVIEW = "python_cold_start_ms:minimum_samples_missing";
+const COLLECTOR_ORCHESTRATION_BUDGET_MS = 30_000;
 const FORBIDDEN_KEY = /(?:^|_)(?:account|activity_id|authorization|ciphertext|cookie|credentials?|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|secret|serial|token|url)(?:$|_)/iu;
 const FORBIDDEN_ROUTE_KEY = /(?:^|_)route(?:$|_points?$)/iu;
 const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/iu;
@@ -481,7 +482,35 @@ function benchmarkMarkerFromPidLog(
   );
 }
 
-export function collectInstalledMeasurements() {
+export function phase18GarminBenchmarkCollectorBudgetMs(baseline, sequence) {
+  if (!Number.isInteger(sequence) || sequence < 1 || sequence > COLD_START_SAMPLE_COUNT) {
+    fail("collector_budget_invalid");
+  }
+  const timedMetrics = sequence === COLD_START_SAMPLE_COUNT
+    ? PHASE18_GARMIN_BENCHMARK_METRICS.filter((metric) => metric.endsWith("_ms"))
+    : ["python_cold_start_ms"];
+  let measurementBudgetMs = 0;
+  for (const metric of timedMetrics) {
+    const specification = baseline?.metrics?.[metric];
+    const sampleCount = sequence === COLD_START_SAMPLE_COUNT
+      ? specification?.minimum_samples
+      : 1;
+    const metricBudgetMs = specification?.maximum * sampleCount;
+    if (!Number.isFinite(metricBudgetMs) || metricBudgetMs < 0) {
+      fail("collector_budget_invalid");
+    }
+    measurementBudgetMs += metricBudgetMs;
+  }
+  const budgetMs = Math.ceil(
+    COLLECTOR_ORCHESTRATION_BUDGET_MS + measurementBudgetMs,
+  );
+  if (!Number.isSafeInteger(budgetMs)) fail("collector_budget_invalid");
+  return budgetMs;
+}
+
+export function collectInstalledMeasurements(
+  baseline = JSON.parse(readFileSync(BASELINE, "utf8")),
+) {
   const adb = resolveAndroidTool("adb");
   const coldStartRuns = [];
   let coldStartSamples = Object.freeze([]);
@@ -499,7 +528,8 @@ export function collectInstalledMeasurements() {
       route,
       PACKAGE,
     ], { stdio: "ignore" });
-    const deadline = Date.now() + 60_000;
+    const deadline = Date.now()
+      + phase18GarminBenchmarkCollectorBudgetMs(baseline, sequence);
     while (Date.now() < deadline) {
       const pid = commandText(adb, ["shell", "pidof", PACKAGE]);
       if (!/^\d+$/u.test(pid)) {
@@ -568,7 +598,7 @@ export function executePhase18GarminBenchmark(args = process.argv.slice(2), depe
   const manifest = readJson(options.manifest);
   const baselineBytes = readBytes(BASELINE);
   const baseline = JSON.parse(Buffer.from(baselineBytes).toString("utf8"));
-  const collected = collect();
+  const collected = collect(baseline);
   const baselineSha256 = createHash("sha256").update(baselineBytes).digest("hex");
   const identity = currentIdentity();
   const evidence = Object.freeze({
