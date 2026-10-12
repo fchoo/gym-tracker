@@ -75,6 +75,7 @@ function envelope(): GarminSourceEnvelope {
 }
 
 function envelopeWithSourceDate(input: Readonly<{
+  absoluteStartedAtMs?: number;
   sourceLocalDateTime?: string;
   sourceTimeZone?: string;
   sourceUtcOffsetMinutes?: number;
@@ -82,6 +83,9 @@ function envelopeWithSourceDate(input: Readonly<{
   const source = envelope();
   const normalized = Object.freeze({
     ...source.normalized,
+    ...(input.absoluteStartedAtMs === undefined
+      ? {}
+      : { started_at_ms: input.absoluteStartedAtMs }),
     ...(input.sourceLocalDateTime === undefined
       ? {}
       : { source_local_date_time: input.sourceLocalDateTime }),
@@ -245,7 +249,9 @@ describe("Garmin import runtime", () => {
   });
 
   it("requires explicit date confirmation instead of committing a phone-zone-derived date", async () => {
-    const sourceEnvelope = envelope();
+    const sourceEnvelope = envelopeWithSourceDate({
+      absoluteStartedAtMs: Date.parse("2026-06-19T16:30:00.000Z"),
+    });
     const repository: ImportedActivityCommandRepository = {
       confirmGarminImport: jest.fn(async () => ({
         kind: "imported" as const,
@@ -330,7 +336,7 @@ describe("Garmin import runtime", () => {
   it.each<readonly [330 | -90, "UTC-01:30" | "UTC+05:30"]>([
     [-90, "UTC-01:30"],
     [330, "UTC+05:30"],
-  ])("derives %s-minute source offsets as %s without consulting the phone zone", async (offset, expectedZone) => {
+  ])("requires a named IANA zone for a %s-minute source offset suggested as %s", async (offset, expectedZone) => {
     const sourceEnvelope = envelopeWithSourceDate({
       sourceLocalDateTime: "2026-06-20T08:00:00",
       sourceUtcOffsetMinutes: offset,
@@ -369,11 +375,15 @@ describe("Garmin import runtime", () => {
       source,
     });
 
-    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({ kind: "success" });
-    expect(repository.confirmGarminImport).toHaveBeenCalledWith(expect.objectContaining({
-      confirmedLocalDate: "2026-06-20",
-      dateProvenance: expect.objectContaining({ confirmedTimeZone: expectedZone }),
-    }));
+    await expect(runtime.coordinator.syncNow()).resolves.toMatchObject({
+      kind: "failure",
+      failure: { code: "date_confirmation_required" },
+    });
+    expect(runtime.getPendingDateReview()).toMatchObject({
+      suggestedTimeZone: expectedZone,
+      suggestedUtcOffsetMinutes: offset,
+    });
+    expect(repository.confirmGarminImport).not.toHaveBeenCalled();
     await expect(runtime.loadLastSuccessfulSync()).resolves.toBeNull();
     await expect(runtime.saveLastSuccessfulSync({
       attemptId: "attempt",
@@ -652,7 +662,9 @@ describe("Garmin import runtime", () => {
   });
 
   it("prepares an ambiguous source date without writing and confirms owner-selected provenance through the shared command", async () => {
-    const source = envelope();
+    const source = envelopeWithSourceDate({
+      absoluteStartedAtMs: Date.parse("2026-06-19T16:30:00.000Z"),
+    });
     const repository: ImportedActivityCommandRepository = {
       confirmGarminImport: jest.fn(async () => ({
         kind: "imported" as const,

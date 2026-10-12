@@ -320,8 +320,13 @@ describe("Garmin envelope import boundary", () => {
 
   it("prepares ambiguous source time without writes and persists explicit midnight provenance on confirmation", async () => {
     const { kernel, runtime } = await applicationRuntime();
+    const source = await envelope();
+    const midnightSource = withNormalized(source, Object.freeze({
+      ...source.normalized,
+      started_at_ms: Date.parse("2026-10-05T16:30:00.000Z"),
+    }));
     const proposal = await runtime.prepareEnvelope({
-      envelope: await envelope(),
+      envelope: midnightSource,
       sourceDate: Object.freeze({
         sourceLocalDateTime: "2026-10-06T00:30:00",
       }),
@@ -370,9 +375,8 @@ describe("Garmin envelope import boundary", () => {
       activityId: request.activityId,
     });
 
-    const zoneOnlyEnvelope = await envelope();
     const zoneOnlyProposal = await runtime.prepareEnvelope({
-      envelope: withNormalized(zoneOnlyEnvelope, zoneOnlyEnvelope.normalized, "424243"),
+      envelope: withNormalized(midnightSource, midnightSource.normalized, "424243"),
       sourceDate: Object.freeze({
         sourceTimeZone: "Asia/Singapore",
         sourceUtcOffsetMinutes: 480,

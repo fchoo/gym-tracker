@@ -280,7 +280,9 @@ export function createGarminRootRuntime(input: Readonly<{
         const sourceLocalDateTime = envelope.normalized.source_local_date_time;
         const sourceUtcOffsetMinutes = envelope.normalized.source_utc_offset_minutes;
         const { confirmedLocalDate: _ignoredDate, ...request } = confirmation;
-        if (sourceLocalDateTime === undefined || sourceUtcOffsetMinutes === undefined) {
+        if (sourceLocalDateTime === undefined
+          || sourceUtcOffsetMinutes === undefined
+          || envelope.normalized.source_time_zone === undefined) {
           const proposal = await importer.prepareEnvelope({
             envelope,
             sourceDate: {
@@ -316,8 +318,7 @@ export function createGarminRootRuntime(input: Readonly<{
             kind: "confirmed",
             localDate: sourceLocalDateTime.slice(0, 10),
             localTime: sourceLocalDateTime.slice(11),
-            timeZone: envelope.normalized.source_time_zone
-              ?? sourceOffsetZone(sourceUtcOffsetMinutes),
+            timeZone: envelope.normalized.source_time_zone,
             utcOffsetMinutes: sourceUtcOffsetMinutes,
           },
         });
