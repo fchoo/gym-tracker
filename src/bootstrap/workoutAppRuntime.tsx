@@ -117,6 +117,7 @@ import type {
   RemoveWorkingSetInput,
   ReorderExercisesInput,
   ReviseCompletedSetInput,
+  PlannedStrengthOccurrenceDetail,
   SelectedStrengthOccurrence,
   SessionDetail,
   TodayView,
@@ -416,6 +417,13 @@ import {
   createPhase17FamilyCFixtureDriver,
 } from "./phase17FamilyCFixture";
 import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
+import {
+  createTrainingFoundationRuntimePort,
+  type TrainingFoundationRuntimePort,
+} from "./trainingFoundationRuntime";
+import type {
+  TrainingCalendarRange,
+} from "../platform/sqlite/repositories/trainingCalendarRepository";
 import { PHASE17_CASE_ACTION_CONTRACTS } from "../testing/contracts/phase17LibraryRunning.contract";
 import {
   createOwnedPlanRuntimePort,
@@ -818,6 +826,14 @@ type RuntimeValue = RuntimeState & Readonly<{
     selectedDate: string;
     today: string;
   }>): Promise<CalendarMonth>;
+  /** Calendar-only source reads delegated to the immutable training foundation port. */
+  loadCalendarRange(input: Readonly<{
+    startLocalDate: string;
+    endLocalDateExclusive: string;
+  }>): Promise<TrainingCalendarRange>;
+  loadPlannedStrengthOccurrence(
+    occurrenceId: string,
+  ): Promise<PlannedStrengthOccurrenceDetail | null>;
   listRemovedHistorySessions(): Promise<readonly RemovedHistorySession[]>;
   loadExerciseMetricHistory(
     exerciseId: string,
@@ -1104,6 +1120,7 @@ type RuntimeServices = Readonly<{
   restAlertPreferenceStore: RestAlertPreferenceStore;
   ownedPlans: ReturnType<typeof createOwnedPlanRuntimePort>;
   schedules: ReturnType<typeof createScheduleRuntimePort>;
+  trainingFoundation: TrainingFoundationRuntimePort;
   repository: ReturnType<typeof createPlansWorkoutRepository>;
   restRepository: ReturnType<typeof createRestRepository>;
   runningActivityMatches: ReturnType<typeof createRunningActivityMatchRepository>;
@@ -2438,6 +2455,7 @@ export function WorkoutAppRuntimeProvider({
       restAlertPreferenceStore,
       ownedPlans,
       schedules,
+      trainingFoundation: createTrainingFoundationRuntimePort(kernel),
       outcomeRepository,
       repository: dependencies.createRepository(kernel),
       restRepository,
@@ -3110,6 +3128,18 @@ export function WorkoutAppRuntimeProvider({
   }>) => {
     return requireServices().historyRepository.loadCalendarMonth(input);
   }, [requireServices]);
+
+  const loadCalendarRange = useCallback((input: Readonly<{
+    startLocalDate: string;
+    endLocalDateExclusive: string;
+  }>) => requireServices().trainingFoundation.loadCalendarRange(input), [
+    requireServices,
+  ]);
+
+  const loadPlannedStrengthOccurrence = useCallback((occurrenceId: string) =>
+    requireServices().trainingFoundation.loadPlannedStrengthOccurrence(
+      occurrenceId,
+    ), [requireServices]);
 
   const loadExerciseMetricHistory = useCallback((exerciseId: string) => {
     return requireServices().historyRepository.loadExerciseMetricHistory({
@@ -5082,6 +5112,8 @@ export function WorkoutAppRuntimeProvider({
     removeHistorySession: removeRuntimeHistorySession,
     restoreHistorySession: restoreRuntimeHistorySession,
     loadCalendarMonth,
+    loadCalendarRange,
+    loadPlannedStrengthOccurrence,
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
@@ -5236,6 +5268,8 @@ export function WorkoutAppRuntimeProvider({
     removeRuntimeHistorySession,
     restoreRuntimeHistorySession,
     loadCalendarMonth,
+    loadCalendarRange,
+    loadPlannedStrengthOccurrence,
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
