@@ -79,6 +79,39 @@ describe("dated bodyweight source facts", () => {
     expect(() => transitionBodyweight(undefined, value)).toThrow(BodyweightCommandError);
   });
 
+  it("requires reviewed decimal bounds and an owner-local nonfuture date", () => {
+    const now = jest.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 7, 12));
+    try {
+      expect(transitionBodyweight(undefined, command({ grams: 20_000, localDate: "2026-10-07" })))
+        .toMatchObject({ kind: "created" });
+      expect(transitionBodyweight(undefined, command({ grams: 400_000, localDate: "2026-10-07" })))
+        .toMatchObject({ kind: "created" });
+      for (const value of [
+        command({ grams: 19_900 }),
+        command({ grams: 400_100 }),
+        command({ grams: 20_050 }),
+        command({ localDate: "2026-10-08" }),
+      ]) {
+        expect(() => transitionBodyweight(undefined, value))
+          .toThrow("bodyweight_command_measurement_invalid");
+      }
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("fails closed when owner-local date formatting cannot provide a calendar day", () => {
+    const formatter = jest.spyOn(Intl, "DateTimeFormat").mockReturnValue({
+      formatToParts: () => [],
+    } as unknown as Intl.DateTimeFormat);
+    try {
+      expect(() => transitionBodyweight(undefined, command()))
+        .toThrow("bodyweight_command_measurement_invalid");
+    } finally {
+      formatter.mockRestore();
+    }
+  });
+
   it("appends edit, delete, and explicit restore transitions without changing identity", () => {
     const edited = transitionBodyweight(active, command({
       operation: "edit", expectedRevision: 1, revisionId: "bodyweight-revision-2",
