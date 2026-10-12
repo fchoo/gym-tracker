@@ -259,10 +259,16 @@ describe("ExerciseHistoryScreen", () => {
     expect(screen.getByText("45 kg × 9")).toBeOnTheScreen();
   });
 
-  it.each([
+  const freshnessCases: Array<[
+    "updating" | "unavailable",
+    string,
+    string,
+  ]> = [
     ["updating", "Updating exercise history", "Refresh exercise history"],
     ["unavailable", "Exercise history unavailable", "Retry exercise history"],
-  ] as const)("keeps Back and a retry action for coarse %s freshness", async (
+  ];
+
+  it.each(freshnessCases)("keeps Back and a retry action for coarse %s freshness", async (
     freshness,
     heading,
     retryLabel,
@@ -290,11 +296,16 @@ describe("ExerciseHistoryScreen", () => {
         ...projection,
         segments: [{
           ...segment,
-          comparableSets: segment.comparableSets.map((set, index) => ({
-            ...set,
-            historyStatus: index === 0 ? "corrected_effective" as const : "accepted_current" as const,
-            sourceRevision: index === 0 ? 3 : undefined,
-          })),
+          comparableSets: segment.comparableSets.map((set, index) => {
+            const { sourceRevision: _sourceRevision, ...withoutSourceRevision } = set;
+            return {
+              ...withoutSourceRevision,
+              ...(index === 0 ? { sourceRevision: 3 } : {}),
+              historyStatus: index === 0
+                ? "corrected_effective" as const
+                : "accepted_current" as const,
+            };
+          }),
         }],
       })),
     });

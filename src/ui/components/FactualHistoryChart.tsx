@@ -68,16 +68,10 @@ function positiveFinite(value: number | null): value is number {
 
 function isPlotFact(point: ProgressFactualHistoryPoint): point is ProgressFactualHistoryPoint & {
   valueSeconds: number;
-  sourceRevision: number;
   evidence: "source_summary" | "source_laps" | "workout_session";
 } {
   return point.status === "accepted_current"
     && positiveFinite(point.valueSeconds)
-    && ((typeof point.activityId === "string" && point.activityId.length > 0)
-      || (typeof point.workoutSessionId === "string" && point.workoutSessionId.length > 0))
-    && typeof point.sourceRevision === "number"
-    && Number.isSafeInteger(point.sourceRevision)
-    && point.sourceRevision > 0
     && (point.evidence === "source_summary"
       || point.evidence === "source_laps"
       || point.evidence === "workout_session");
@@ -225,12 +219,15 @@ function chartPath(points: readonly PlotPoint[], valueFor: (point: ProgressFactu
 }
 
 function sourceFor(point: ProgressFactualHistoryPoint): FactualHistorySource | null {
-  if (!isPlotFact(point)) return null;
+  if (!isPlotFact(point)
+    || !Number.isSafeInteger(point.sourceRevision)
+    || Number(point.sourceRevision) <= 0) return null;
+  const sourceRevision = point.sourceRevision!;
   if (typeof point.workoutSessionId === "string" && point.workoutSessionId.length > 0) {
-    return { sessionId: point.workoutSessionId, sourceRevision: point.sourceRevision };
+    return { sessionId: point.workoutSessionId, sourceRevision };
   }
   return typeof point.activityId === "string" && point.activityId.length > 0
-    ? { activityId: point.activityId, sourceRevision: point.sourceRevision }
+    ? { activityId: point.activityId, sourceRevision }
     : null;
 }
 

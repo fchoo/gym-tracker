@@ -177,10 +177,10 @@ function LoadHistory({
     points: Object.freeze(selected.points.map((point) => Object.freeze({
       activityId: null,
       workoutSessionId: point.sessionId,
-      evidence: point.sourceRevision === null ? null : "workout_session" as const,
+      evidence: "workout_session" as const,
       localDate: point.localDate,
       sourceRevision: point.sourceRevision,
-      status: point.sourceRevision === null ? "unavailable" as const : "accepted_current" as const,
+      status: "accepted_current" as const,
       statusLabel: point.statusLabel,
       targetAtDateSeconds: point.targetAtDate,
       timeBasis: "elapsed" as const,
@@ -285,6 +285,38 @@ export function ExerciseHistoryScreen({
               primaryAction={(
                 <PrimaryAction
                   label="Retry exercise history"
+                  onPress={() => setRetryGeneration((value) => value + 1)}
+                />
+              )}
+            />
+          </View>
+        )}
+        testID="exercise-history-screen"
+      />
+    );
+  }
+
+  if (history.freshness === "updating" || history.freshness === "unavailable") {
+    const updating = history.freshness === "updating";
+    return (
+      <AdaptiveScreen
+        {...adaptiveWidth}
+        onRequestBack={onBack}
+        primary={(
+          <View style={styles.screen}>
+            <ScreenHeader backAction={onBack} title="Exercise history" />
+            <EmptyState
+              body={updating
+                ? "Saved history is being recalculated. No final values are shown until one source-coherent projection is current."
+                : "Your saved workouts were not changed. Retry loading this history."}
+              heading={updating
+                ? "Updating exercise history"
+                : "Exercise history unavailable"}
+              primaryAction={(
+                <PrimaryAction
+                  label={updating
+                    ? "Refresh exercise history"
+                    : "Retry exercise history"}
                   onPress={() => setRetryGeneration((value) => value + 1)}
                 />
               )}
