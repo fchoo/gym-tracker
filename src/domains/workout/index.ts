@@ -77,13 +77,19 @@ export type PlannedStrengthOccurrenceDetail = Readonly<{
   scheduleVersionId: string;
   localDate: string;
   timezone: string;
-  sourceRevisions: Readonly<{ plan: number; day: number; schedule: number }>;
+  sourceRevisions: Readonly<{ plan: number; day: number; schedule: number; opportunity: number }>;
   exercises: readonly Readonly<{
     id: string;
     exerciseId: string;
     exerciseName: string;
     ordinal: number;
-    targets: readonly Readonly<{ id: string; ordinal: number; targetJson: string; unitJson: string }> [];
+    targets: readonly Readonly<{
+      id: string;
+      ordinal: number;
+      targetJson: string;
+      unitJson: string;
+      previousObservationJson: string | null;
+    }>[];
   }>[];
 }>;
 

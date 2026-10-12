@@ -1370,7 +1370,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       planDayId: "day-1", dayName: "Full Body A",
       scheduleId: "schedule-1", scheduleVersionId: "version-1",
       localDate: "2026-10-13", timezone: "Asia/Singapore",
-      sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }),
+      sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1, opportunity: 1 }),
       exercises: Object.freeze([]),
     }) as PlannedStrengthOccurrenceDetail;
     const loadPlannedStrengthOccurrence = jest.fn(async () => occurrence);

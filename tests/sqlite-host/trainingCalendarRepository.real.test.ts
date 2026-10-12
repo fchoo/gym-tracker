@@ -13,6 +13,7 @@ import { configureSqliteConnection } from "../../src/platform/sqlite/connection"
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createTrainingCalendarRepository } from "../../src/platform/sqlite/repositories/trainingCalendarRepository";
+import { captureStrengthOccurrenceSnapshot } from "../../src/platform/sqlite/repositories/strengthOccurrenceSnapshot";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
@@ -111,6 +112,8 @@ async function seedStrengthIntent(kernel: SqliteKernel): Promise<void> {
              ('strength-skipped', 'strength-schedule', 'strength-version', '2026-11-03', 'weekday', 'strength-day', 'consumed', 'skipped', NULL, 1, 3),
              ('strength-advanced', 'strength-schedule', 'strength-version', '2026-11-04', 'weekday', 'strength-day', 'consumed', 'advanced', NULL, 1, 4),
              ('inactive-planned', 'inactive-strength-schedule', 'inactive-strength-version', '2026-11-05', 'weekday', 'inactive-strength-day', 'pending', NULL, NULL, 1, NULL)`);
+    await captureStrengthOccurrenceSnapshot(transaction, "strength-planned", 10);
+    await captureStrengthOccurrenceSnapshot(transaction, "inactive-planned", 11);
   });
 }
 

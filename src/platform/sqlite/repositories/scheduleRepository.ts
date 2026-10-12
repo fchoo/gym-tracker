@@ -26,6 +26,7 @@ import type {
   SqliteKernel,
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
+import { captureStrengthOccurrenceSnapshot } from "./strengthOccurrenceSnapshot";
 
 export type WeekdayScheduleVersionBinding = Readonly<{
   id: string;
@@ -1631,6 +1632,13 @@ async function consumeOverrideTransaction(
     ],
   );
   await incrementScheduleRevision(transaction, input);
+  if (pending) {
+    await captureStrengthOccurrenceSnapshot(
+      transaction,
+      next.opportunityId,
+      input.occurredAtMs,
+    );
+  }
   const result = mutationResult(input);
   await appendCommandEvent(
     transaction,

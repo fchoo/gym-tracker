@@ -13,6 +13,7 @@ import {
   parseRunningSessionRevision,
   runningSessionRevisionReadback,
 } from "../../../domains/running/contracts";
+import { parseStrengthOccurrenceSnapshot } from "./strengthOccurrenceSnapshot";
 
 type CalendarDestination =
   | Readonly<{ kind: "session"; sessionId: string }>
@@ -68,9 +69,12 @@ export type TrainingCalendarDay = Readonly<{
 
 type StrengthRow = Readonly<{
   id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
-  plan_day_id: string | null; plan_day_name: string | null; schedule_lifecycle: "active" | "inactive";
+  plan_active: number; plan_revision: number; plan_day_id: string | null;
+  plan_day_name: string | null; day_revision: number | null;
+  schedule_lifecycle: "active" | "inactive"; schedule_revision: number;
   local_date: string; timezone: string; revision: number; state: string; outcome: string | null;
   session_id: string | null; session_status: string | null; snapshot_json: string | null;
+  planned_snapshot_json: string | null;
   completed_working_sets: number; planned_working_sets: number; planned_target_sets: number;
 }>;
 type RunningRow = Readonly<{
@@ -233,13 +237,33 @@ function strengthProjection(row: StrengthRow): StrengthProjection {
     || row.session_id !== null
     || row.session_status !== null
     || row.plan_day_id === null
-    || row.planned_target_sets < 1) return Object.freeze({ event: null, rest: null });
-  const title = row.plan_day_name?.trim() || row.plan_name;
+    || row.plan_active !== 1
+    || row.day_revision === null
+    || row.planned_snapshot_json === null) return Object.freeze({ event: null, rest: null });
+  const snapshot = parseStrengthOccurrenceSnapshot(row.planned_snapshot_json);
+  if (snapshot === null
+    || snapshot.occurrenceId !== row.id
+    || snapshot.planId !== row.plan_id
+    || snapshot.planDayId !== row.plan_day_id
+    || snapshot.scheduleId !== row.schedule_id
+    || snapshot.scheduleVersionId !== row.schedule_version_id
+    || snapshot.sourceRevisions.plan !== row.plan_revision
+    || snapshot.sourceRevisions.day !== row.day_revision
+    || snapshot.sourceRevisions.schedule !== row.schedule_revision
+    || snapshot.sourceRevisions.opportunity !== row.revision) {
+    return Object.freeze({ event: null, rest: null });
+  }
+  const plannedTargetSets = snapshot.exercises.reduce(
+    (count, exercise) => count + exercise.targets.length,
+    0,
+  );
+  if (plannedTargetSets < 1) return Object.freeze({ event: null, rest: null });
+  const title = snapshot.dayName;
   return Object.freeze({
     event: Object.freeze({
       id: row.id, source: "strength", sport: "strength", status: "planned",
-      title, displaySummary: `${title} · ${row.planned_target_sets} working set${row.planned_target_sets === 1 ? "" : "s"} planned`,
-      sourceLabel: "Strength", localDate: parseLocalDate(row.local_date), timeZone: row.timezone,
+      title, displaySummary: `${title} · ${plannedTargetSets} working set${plannedTargetSets === 1 ? "" : "s"} planned`,
+      sourceLabel: "Strength", localDate: parseLocalDate(snapshot.localDate), timeZone: snapshot.timezone,
       scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
       slotId: null, revision: row.revision, state: "planned",
       destination: Object.freeze({ kind: "occurrence", occurrenceId: row.id }),
@@ -276,13 +300,21 @@ async function queryRange(
   const [strengthRows, runningRows, importedRows] = await Promise.all([
     reader.queryAll<StrengthRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              schedule.plan_id, plan.name AS plan_name, opportunity.plan_day_id,
-              day.name AS plan_day_name, schedule.lifecycle AS schedule_lifecycle,
+              schedule.plan_id, plan.name AS plan_name, plan.is_active AS plan_active,
+              plan.revision AS plan_revision, opportunity.plan_day_id,
+              day.name AS plan_day_name, day.revision AS day_revision,
+              schedule.lifecycle AS schedule_lifecycle, schedule.revision AS schedule_revision,
               COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) AS local_date,
               COALESCE(overlay.effective_timezone, session.timezone, version.timezone) AS timezone,
               opportunity.revision, opportunity.state, opportunity.outcome,
               session.id AS session_id, session.status AS session_status,
               overlay.snapshot_json,
+              (SELECT event.payload_json
+                 FROM owned_plan_schedule_events event
+                WHERE event.schedule_id = schedule.id
+                  AND event.event_type = 'planned_occurrence_snapshot'
+                  AND json_extract(event.payload_json, '$.occurrenceId') = opportunity.id
+                ORDER BY event.created_at_ms DESC, event.id DESC LIMIT 1) AS planned_snapshot_json,
               (SELECT COUNT(*) FROM session_sets completed_set
                 JOIN session_exercises completed_exercise
                   ON completed_exercise.id = completed_set.session_exercise_id
