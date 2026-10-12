@@ -39,10 +39,60 @@ const range = Object.freeze({
   })]),
 }) as CalendarRange;
 
+const completedStrengthRange = Object.freeze({
+  events: Object.freeze([Object.freeze({
+    ...range.events[0],
+    id: "strength-session-1",
+    state: "completed",
+    status: "completed",
+    destination: Object.freeze({
+      kind: "session" as const,
+      sessionId: "strength-session-1",
+    }),
+  })]),
+}) as CalendarRange;
+
+const agendaRange = Object.freeze({
+  events: Object.freeze([
+    Object.freeze({
+      ...completedStrengthRange.events[0],
+      id: "partial-strength-1",
+      state: "partial",
+      status: "partial",
+      destination: Object.freeze({ kind: "session" as const, sessionId: "partial-strength-1" }),
+    }),
+    Object.freeze({
+      ...range.events[0],
+      id: "planned-strength-1",
+      destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: "planned-strength-1" }),
+    }),
+    Object.freeze({
+      ...range.events[0],
+      id: "planned-running-1",
+      source: "running" as const,
+      sport: "running" as const,
+      sourceLabel: "Tempo",
+      title: "Tempo progression",
+      destination: Object.freeze({ kind: "plan" as const, planId: "running-plan-1", sessionId: "session-revision-1" }),
+    }),
+    Object.freeze({
+      ...range.events[0],
+      id: "imported-running-1",
+      source: "imported_activity" as const,
+      sport: "running" as const,
+      sourceLabel: "Garmin",
+      status: "imported" as const,
+      state: "imported",
+      title: "Outdoor run",
+      destination: Object.freeze({ kind: "activity" as const, activityId: "activity-1" }),
+    }),
+  ]),
+}) as CalendarRange;
+
 describe("CalendarScreen", () => {
-  it("renders a full source-backed event in its shared Monday-first day cell", async () => {
+  it("opens one completed Strength agenda target without giving the date cell a nested event action", async () => {
     const onOpenEvent = jest.fn();
-    const loadCalendarRange = jest.fn(async () => range);
+    const loadCalendarRange = jest.fn(async () => completedStrengthRange);
 
     await render(
       <AppearanceProvider>
@@ -61,11 +111,21 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
 
     const day = screen.getByRole("button", {
-      name: /24 August 2026.*Full body progression, week 12.*Strength.*Planned/u,
+      name: /24 August 2026.*Full body progression, week 12.*Strength.*Complete/u,
     });
     await fireEvent.press(day);
 
-    expect(onOpenEvent).toHaveBeenCalledWith(range.events[0]!.destination);
+    expect(onOpenEvent).not.toHaveBeenCalled();
+    const agendaTarget = await screen.findByRole("button", {
+      name: /Full body progression, week 12.*Strength.*Complete.*Strength/u,
+    });
+    await fireEvent.press(agendaTarget);
+
+    expect(onOpenEvent).toHaveBeenCalledTimes(1);
+    expect(onOpenEvent).toHaveBeenCalledWith(
+      completedStrengthRange.events[0]!.destination,
+      "strength-session-1",
+    );
     expect(loadCalendarRange).toHaveBeenCalledWith({
       startLocalDate: "2026-07-27",
       endLocalDateExclusive: "2026-09-14",
@@ -102,6 +162,106 @@ describe("CalendarScreen", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Close Calendar key" }));
     expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
+  });
+
+  it("keeps all selected-date agenda identities in source order and exposes no management command", async () => {
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => agendaRange)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*4 scheduled or imported events/u }));
+
+    expect(await screen.findByLabelText("4 scheduled or imported events")).toBeOnTheScreen();
+    expect(screen.getAllByTestId(/calendar-agenda-event/u).map((node) => node.props.testID)).toEqual([
+      "calendar-agenda-event-partial-strength-1",
+      "calendar-agenda-event-planned-strength-1",
+      "calendar-agenda-event-planned-running-1",
+      "calendar-agenda-event-imported-running-1",
+    ]);
+    expect(screen.queryByText(/resume|correct|remove|match workout/u)).toBeNull();
+  });
+
+  it("restores the retained expanded month after Calendar returns from a detail route", async () => {
+    const onOpenEvent = jest.fn();
+    const loadCalendarRange = jest.fn(async () => completedStrengthRange);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={onOpenEvent}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
+    await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+    expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={onOpenEvent}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(await screen.findByText("August 2026")).toBeOnTheScreen();
+    await waitFor(() => {
+      expect(loadCalendarRange).toHaveBeenLastCalledWith({
+        startLocalDate: "2026-07-27",
+        endLocalDateExclusive: "2026-09-14",
+      });
+    });
+    expect(onOpenEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the retained source range when a Calendar-origin detail returns without changing month", async () => {
+    const onOpenEvent = jest.fn();
+    const loadCalendarRange = jest.fn(async () => completedStrengthRange);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={onOpenEvent}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
+    await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
+    const callsBeforeReturn = loadCalendarRange.mock.calls.length;
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={onOpenEvent}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeReturn));
   });
 
   it("retains the last good month during refresh and retries the exact failed range", async () => {
