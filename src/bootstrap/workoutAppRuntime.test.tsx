@@ -1706,6 +1706,7 @@ describe("WorkoutAppRuntimeProvider", () => {
         goals: [],
         absenceReason: "no_factual_points",
       },
+      runningTargetSources: [],
     });
     expect(readSnapshot).toHaveBeenCalledTimes(1);
   });
@@ -1740,15 +1741,31 @@ describe("WorkoutAppRuntimeProvider", () => {
       })),
     }) as unknown as RunningPlanRuntimePort;
     mockedCreateRunningPlanRuntimePort.mockImplementationOnce(() => progressRunningTargetRuntime);
-    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM running_goals")
-      ? [{
-        id: "running-goal-2400",
-        plan_id: "running-plan-2400",
-        revision: 2,
-        goal_json: JSON.stringify(targetSource.goal),
-        created_at_ms: 1,
-      }]
-      : []);
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("SELECT plan.id AS plan_id") && sql.includes("JOIN running_plans")) {
+        return [{ plan_id: "running-plan-2400" }];
+      }
+      if (sql.includes("SELECT plan.id, plan.name, plan.revision, running.created_at_ms")) {
+        return [{
+          id: targetSource.id,
+          name: targetSource.name,
+          revision: targetSource.revision,
+          created_at_ms: targetSource.createdAtMs,
+          is_active: 1,
+          status: "ready",
+        }];
+      }
+      if (sql.includes("FROM running_goals")) {
+        return [{
+          id: "running-goal-2400",
+          plan_id: "running-plan-2400",
+          revision: 2,
+          goal_json: JSON.stringify(targetSource.goal),
+          created_at_ms: 1,
+        }];
+      }
+      return [];
+    });
     const kernel = {
       close: jest.fn(async () => undefined),
       queryAll,

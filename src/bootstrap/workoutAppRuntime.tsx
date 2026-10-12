@@ -3232,31 +3232,7 @@ export function WorkoutAppRuntimeProvider({
     period: ProgressPeriod;
     nowLocalDate: string;
   }>) => {
-    const services = requireServices();
-    const snapshot = await services.progressRepository.load(input);
-    if (input.sport !== "Running" || snapshot.freshness !== "current") {
-      return snapshot;
-    }
-    const planRows = await services.kernel.queryAll<{ plan_id: string }>(
-      `SELECT DISTINCT goal.plan_id
-         FROM running_goals goal
-         JOIN plans plan ON plan.id = goal.plan_id
-        WHERE plan.plan_kind = 'running'
-          AND plan.status != 'retired'
-        ORDER BY goal.plan_id`,
-    );
-    const planIds = planRows
-      .map(({ plan_id: planId }) => planId)
-      .filter((planId) => /^[A-Za-z0-9._:-]{1,128}$/u.test(planId));
-    const plans = await Promise.all(planIds.map((planId) => services.runningPlans.loadPlan(planId)));
-    const runningTargetSources = plans.filter(
-      (plan): plan is RunningPlanAggregate => plan !== null && plan.lifecycle !== "archived",
-    );
-    if (runningTargetSources.length === 0) return snapshot;
-    return Object.freeze({
-      ...snapshot,
-      runningTargetSources: Object.freeze(runningTargetSources),
-    });
+    return requireServices().progressRepository.load(input);
   }, [requireServices]);
 
   const progressRunningTargetRuntime = useMemo(() => Object.freeze({
