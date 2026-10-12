@@ -274,6 +274,7 @@ export function CalendarScreen({
     setCalendarCommand(null);
     setMonth(retained.month);
     selectDate(retained.selectedDate);
+    setRetryGeneration((generation) => generation + 1);
 
     const frame = requestAnimationFrame(() => {
       agendaRef.current?.scrollTo(retained.agendaOffset);
