@@ -1,8 +1,14 @@
-import { expect, test } from "@jest/globals";
+import { expect, jest, test } from "@jest/globals";
 
 import {
+  clearPhase16CalendarTestControls,
+  configurePhase16CalendarTestControls,
   createPhase16CalendarTestControls,
   phase16CalendarStageFromNativeContract,
+  recordPhase16CalendarCancel,
+  recordPhase16CalendarDrag,
+  recordPhase16CalendarFocus,
+  recordPhase16CalendarRelease,
 } from "./phase16CalendarTestControls";
 
 const developmentIdentity = {
@@ -37,4 +43,30 @@ test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only
     ],
   }));
   expect(JSON.stringify(controls?.trace())).not.toMatch(/sessionId|eventId|token|email|serial/u);
+});
+
+test("Phase 16 Calendar controls reject unsafe samples and retain no global recorder outside exact identity", () => {
+  let now = 1_800_000_000_000;
+  const controls = createPhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-cancel", nowMs: () => now });
+  expect(controls).not.toBeNull();
+  expect(() => controls?.recordDrag({ dx: Number.NaN, viewportWidth: 360, transformX: 0, semanticMonth: "2026-10", titleMonth: "2026-10" })).toThrow("phase16_calendar_diagnostic_number_invalid");
+  expect(() => controls?.recordDrag({ dx: 0, viewportWidth: 360, transformX: 0, semanticMonth: "October", titleMonth: "2026-10" })).toThrow("phase16_calendar_diagnostic_month_invalid");
+  now = 1_600_000_000_000;
+  expect(() => controls?.recordCancel()).toThrow("phase16_calendar_diagnostic_clock_invalid");
+
+  let clock = 1_800_000_100_000;
+  const dateNow = jest.spyOn(Date, "now").mockImplementation(() => ++clock);
+  try {
+    configurePhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-cancel" });
+    recordPhase16CalendarDrag({ dx: 0, viewportWidth: 360, transformX: 0, semanticMonth: "2026-10", titleMonth: "2026-10" });
+    recordPhase16CalendarRelease({ dx: 0, viewportWidth: 360, semanticMonth: "2026-10", titleMonth: "2026-10" });
+    recordPhase16CalendarFocus({ selected: { y: 0, height: 64 }, following: { y: 64, height: 64 }, destination: { selectedY: 0, followingY: 296 } });
+    recordPhase16CalendarCancel();
+    clearPhase16CalendarTestControls();
+  } finally {
+    dateNow.mockRestore();
+  }
+  configurePhase16CalendarTestControls({ ...developmentIdentity, packageName: "com.fchoo.gymtracker", stage: "drag-cancel" });
+  expect(() => recordPhase16CalendarCancel()).not.toThrow();
+  clearPhase16CalendarTestControls();
 });
