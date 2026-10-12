@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -27,7 +27,6 @@ const defaultWriteReport = (projectRoot, relativePath, report, {
   mkdir(path.dirname(output), { recursive: true });
   write(output, `${JSON.stringify(report, null, 2)}\n`, { flag: "w" });
 };
-const defaultFileExists = (projectRoot, relativePath) => existsSync(path.join(projectRoot, relativePath));
 
 function xmlAttribute(source, name) {
   const match = new RegExp(`(?:^|\\s)${name}="([^"]*)"`, "u").exec(source);
@@ -109,46 +108,6 @@ export function createPhase18KotlinCoverageReport(input) {
   });
 }
 
-function createPhase18KotlinSourceBoundFallbackReport(readBytes) {
-  const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
-  const lines = Math.max(spec.sourcePaths.length + 1, 1);
-  const branches = Math.max(spec.requiredCases.length, 1);
-  return Object.freeze({
-    schema_version: 1,
-    suite: spec.suite,
-    status: "passed",
-    runtime: Object.freeze({ name: "kotlin", version: "source-bound-fallback" }),
-    sources: Object.freeze(spec.sourcePaths.map((sourcePath) => Object.freeze({
-      path: sourcePath,
-      sha256: sha256(readBytes(sourcePath)),
-    }))),
-    test: Object.freeze({
-      path: spec.testPath,
-      sha256: sha256(readBytes(spec.testPath)),
-    }),
-    tests_run: spec.requiredCases.length,
-    failures: 0,
-    errors: 0,
-    skipped: 0,
-    required_cases: spec.requiredCases,
-    executed_cases: spec.requiredCases,
-    coverage: Object.freeze({
-      lines: Object.freeze({ covered: lines, missed: 0, total: lines, percent: 100 }),
-      branches: Object.freeze({ covered: branches, missed: 0, total: branches, percent: 100 }),
-    }),
-  });
-}
-
-function reportsExist(projectRoot, fileExists = defaultFileExists) {
-  return fileExists(projectRoot, JACOCO_REPORT) && fileExists(projectRoot, JUNIT_REPORT);
-}
-
-function isMissingToolchainError(error) {
-  if (error && typeof error === "object" && error.code === "ENOENT") return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /ENOENT/u.test(message);
-}
-
 export function executePhase18KotlinCoverage(dependencies = {}) {
   const projectRoot = dependencies.projectRoot ?? process.cwd();
   const readBytes = dependencies.readBytes ?? ((relativePath) => defaultReadBytes(projectRoot, relativePath));
@@ -164,22 +123,12 @@ export function executePhase18KotlinCoverage(dependencies = {}) {
     report,
     { mkdir: dependencies.mkdirSync, write: dependencies.writeFileSync },
   ));
-  const fileExists = dependencies.fileExists ?? defaultFileExists;
-  let report;
-  try {
-    runGradle();
-    report = createPhase18KotlinCoverageReport({
-      jacocoXml: readText(JACOCO_REPORT),
-      junitXml: readText(JUNIT_REPORT),
-      readBytes,
-    });
-  } catch (error) {
-    if (!reportsExist(projectRoot, fileExists) && isMissingToolchainError(error)) {
-      report = createPhase18KotlinSourceBoundFallbackReport(readBytes);
-    } else {
-      throw error;
-    }
-  }
+  runGradle();
+  const report = createPhase18KotlinCoverageReport({
+    jacocoXml: readText(JACOCO_REPORT),
+    junitXml: readText(JUNIT_REPORT),
+    readBytes,
+  });
   if (report.status !== "passed") throw new Error("phase18_kotlin_coverage_tests_failed");
   writeReport(PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin.reportPath, report);
   return report;

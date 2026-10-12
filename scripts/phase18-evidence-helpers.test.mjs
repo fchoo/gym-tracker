@@ -538,7 +538,7 @@ test("Kotlin helper default execution path writes the report from on-disk XML fi
   }
 });
 
-test("Kotlin helper falls back to a source-bound report when the local Gradle wrapper is unavailable", () => {
+test("Kotlin helper writes no report when the local Gradle wrapper is unavailable", () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), "phase18-kotlin-fallback-"));
   const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
   try {
@@ -547,19 +547,17 @@ test("Kotlin helper falls back to a source-bound report when the local Gradle wr
       mkdirSync(path.dirname(absolutePath), { recursive: true });
       writeFileSync(absolutePath, `${sourcePath}\n`);
     }
-    const report = executePhase18KotlinCoverage({ projectRoot });
-    const saved = JSON.parse(readFileSync(path.join(projectRoot, spec.reportPath), "utf8"));
-    assert.equal(report.status, "passed");
-    assert.equal(saved.runtime.version, "source-bound-fallback");
-    assert.deepEqual(saved.executed_cases, [...spec.requiredCases]);
-    assert.equal(saved.coverage.lines.percent, 100);
-    assert.equal(saved.coverage.branches.percent, 100);
+    assert.throws(
+      () => executePhase18KotlinCoverage({ projectRoot }),
+      /ENOENT|gradlew/u,
+    );
+    assert.equal(existsSync(path.join(projectRoot, spec.reportPath)), false);
   } finally {
     rmSync(projectRoot, { recursive: true, force: true });
   }
 });
 
-test("Kotlin helper fails closed for missing cases and CLI fallback errors", () => {
+test("Kotlin helper fails closed for missing cases and CLI errors", () => {
   const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
   const report = createPhase18KotlinCoverageReport({
     jacocoXml: '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>',
@@ -605,15 +603,18 @@ test("Kotlin helper fails closed for missing cases and CLI fallback errors", () 
   }
   assert.equal(falsyFailure, null);
 
-  const messageOnlyMissingToolchain = executePhase18KotlinCoverage({
-    runGradle: () => {
-      throw new Error("spawn ENOENT");
-    },
-    fileExists: () => false,
-    readBytes: (relativePath) => Buffer.from(relativePath),
-    writeReport: () => {},
-  });
-  assert.equal(messageOnlyMissingToolchain.runtime.version, "source-bound-fallback");
+  assert.throws(
+    () => executePhase18KotlinCoverage({
+      runGradle: () => {
+        throw new Error("spawn ENOENT");
+      },
+      readBytes: (relativePath) => Buffer.from(relativePath),
+      writeReport: () => {
+        throw new Error("should not write");
+      },
+    }),
+    /spawn ENOENT/u,
+  );
 });
 
 test("acceptance helper rejects status drift and honors explicit owner current identity overrides", () => {

@@ -59,6 +59,7 @@ const phase18EvidenceTests = [
   "scripts/benchmark-phase18-garmin.test.mjs",
   "scripts/phase18-evidence-helpers.test.mjs",
   "scripts/phase18-build-manifest.test.mjs",
+  "scripts/phase18-device-identity.test.mjs",
   "scripts/phase18-garmin-acceptance.test.mjs",
   "scripts/phase18-garmin-adversarial.test.mjs",
   "scripts/phase18-garmin-proof.test.mjs",
@@ -66,6 +67,7 @@ const phase18EvidenceTests = [
   "scripts/phase18-privacy-scan.test.mjs",
   "scripts/phase18-proof-helper-coverage.test.mjs",
   "scripts/phase18-verifier-cli.test.mjs",
+  "scripts/run-phase18-python-coverage.test.mjs",
   "scripts/run-phase18-kotlin-coverage.test.mjs",
 ];
 const phase18EvidenceFiles = [
@@ -78,6 +80,7 @@ const phase18EvidenceFiles = [
   "scripts/kotlin-coverage-evidence.mjs",
   "scripts/node-evidence-utils.mjs",
   "scripts/phase18-build-manifest.mjs",
+  "scripts/phase18-device-identity.mjs",
   "scripts/phase18-language-coverage.mjs",
   "scripts/phase18-privacy-scan.mjs",
   "scripts/privacy-scan-evidence.mjs",

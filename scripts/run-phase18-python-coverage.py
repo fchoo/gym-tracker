@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import importlib
 import importlib.util
@@ -81,13 +80,16 @@ def _run_tests() -> _RecordingResult:
 
 
 def _run_with_coverage_py(coverage_lib):
-    coverage = coverage_lib.Coverage(branch=True, source=[str(SOURCE_PATH.parent)])
+    coverage = coverage_lib.Coverage(
+        branch=True,
+        source=[str(SOURCE_PATH.parent)],
+        data_file=None,
+    )
     coverage.start()
     try:
         result = _run_tests()
     finally:
         coverage.stop()
-        coverage.save()
     analysis = coverage._analyze(str(SOURCE_PATH))  # type: ignore[attr-defined]
     branch_stats = analysis.branch_stats()
     missing_branch_arcs = analysis.missing_branch_arcs()
@@ -99,37 +101,6 @@ def _run_with_coverage_py(coverage_lib):
         for destination in destinations
     )
     return result, analysis, covered_branches, total_branches, missing_branches, "coverage.py"
-
-
-def _source_bound_fallback_totals() -> tuple[int, int]:
-    tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"), filename=str(SOURCE_PATH))
-    executable_lines = {
-        node.lineno
-        for node in ast.walk(tree)
-        if isinstance(getattr(node, "lineno", None), int)
-    }
-    branch_nodes = sum(
-        isinstance(
-            node,
-            (
-                ast.If,
-                ast.For,
-                ast.AsyncFor,
-                ast.While,
-                ast.Try,
-                ast.IfExp,
-                ast.Match,
-            ),
-        )
-        for node in ast.walk(tree)
-    )
-    return max(len(executable_lines), 1), max(branch_nodes, 1)
-
-
-def _run_with_source_bound_fallback():
-    result = _run_tests()
-    total_lines, total_branches = _source_bound_fallback_totals()
-    return result, total_lines, total_branches, "source-bound-fallback"
 
 
 def _counter(covered: int, total: int) -> dict[str, int | float]:
@@ -150,16 +121,12 @@ def main() -> int:
 
     coverage_lib = _load_coverage_module()
     if coverage_lib is None:
-        result, total_lines, total_branches, coverage_engine = _run_with_source_bound_fallback()
-        covered_lines = total_lines
-        missing_lines: list[int] = []
-        covered_branches = total_branches
-        missing_branches: list[tuple[int, int]] = []
-    else:
-        result, analysis, covered_branches, total_branches, missing_branches, coverage_engine = _run_with_coverage_py(coverage_lib)
-        covered_lines = len(set(analysis.statements) - set(analysis.missing))
-        total_lines = len(analysis.statements)
-        missing_lines = sorted(analysis.missing)
+        print("phase18_python_coverage_dependency_missing", file=sys.stderr)
+        return 1
+    result, analysis, covered_branches, total_branches, missing_branches, coverage_engine = _run_with_coverage_py(coverage_lib)
+    covered_lines = len(set(analysis.statements) - set(analysis.missing))
+    total_lines = len(analysis.statements)
+    missing_lines = sorted(analysis.missing)
     executed_cases = sorted(result.executed)
     missing_cases = sorted(set(REQUIRED_CASES) - set(executed_cases))
     passed = (

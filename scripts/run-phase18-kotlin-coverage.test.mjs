@@ -57,8 +57,9 @@ test("Kotlin coverage execution writes only after the focused Gradle task succee
   assert.deepEqual(calls, ["gradle", [spec.reportPath, "passed"]]);
 });
 
-test("Kotlin coverage execution falls back only for missing toolchains without reports", () => {
-  const fallback = executePhase18KotlinCoverage({
+test("Kotlin coverage execution fails when Gradle, JaCoCo, or the toolchain is unavailable", () => {
+  const writes = [];
+  assert.throws(() => executePhase18KotlinCoverage({
     projectRoot: "/repo",
     runGradle: () => {
       const error = new Error("missing wrapper");
@@ -66,10 +67,8 @@ test("Kotlin coverage execution falls back only for missing toolchains without r
       throw error;
     },
     readBytes: (filePath) => Buffer.from(filePath),
-    writeReport: () => {},
-    fileExists: () => false,
-  });
-  assert.equal(fallback.runtime.version, "source-bound-fallback");
+    writeReport: (...args) => writes.push(args),
+  }), /missing wrapper/u);
 
   assert.throws(
     () => executePhase18KotlinCoverage({
@@ -79,8 +78,22 @@ test("Kotlin coverage execution falls back only for missing toolchains without r
       },
       readBytes: (filePath) => Buffer.from(filePath),
       writeReport: () => {},
-      fileExists: () => true,
     }),
     /ENOENT/u,
   );
+  assert.throws(
+    () => executePhase18KotlinCoverage({
+      projectRoot: "/repo",
+      runGradle: () => {},
+      readText: () => {
+        const error = new Error("JaCoCo report missing");
+        error.code = "ENOENT";
+        throw error;
+      },
+      readBytes: (filePath) => Buffer.from(filePath),
+      writeReport: (...args) => writes.push(args),
+    }),
+    /JaCoCo report missing/u,
+  );
+  assert.deepEqual(writes, []);
 });
