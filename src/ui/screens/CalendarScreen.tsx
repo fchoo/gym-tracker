@@ -139,6 +139,13 @@ export function CalendarScreen({
     interactionSamples: number;
     exported: boolean;
   }>({ producer: null, querySamples: 0, interactionSamples: 0, exported: false });
+  const diagnosticFrameProbe = useRef<{
+    frameIntervals: number[];
+    frameWorkMs: number[];
+    lastTimestamp: number | null;
+    maxProfilerOverheadMs: number;
+    raf: number;
+  } | null>(null);
   const calendarTransitionRef = useRef(calendarTransition);
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
@@ -196,6 +203,68 @@ export function CalendarScreen({
     state.interactionSamples += 1;
     exportCompletedDiagnostics();
   }, [currentDiagnosticState, diagnostics, exportCompletedDiagnostics]);
+
+  const diagnosticFrameTick = useCallback((timestamp: number) => {
+    const probe = diagnosticFrameProbe.current;
+    if (probe === null) return;
+    if (probe.lastTimestamp !== null) probe.frameIntervals.push(Math.max(0, timestamp - probe.lastTimestamp));
+    probe.lastTimestamp = timestamp;
+    probe.raf = requestAnimationFrame(diagnosticFrameTick);
+  }, []);
+
+  const startDiagnosticInteraction = useCallback(() => {
+    if (diagnostics === undefined) return;
+    if (diagnosticFrameProbe.current !== null) cancelAnimationFrame(diagnosticFrameProbe.current.raf);
+    const probe = {
+      frameIntervals: [] as number[],
+      frameWorkMs: [] as number[],
+      lastTimestamp: null as number | null,
+      maxProfilerOverheadMs: 0,
+      raf: 0,
+    };
+    diagnosticFrameProbe.current = probe;
+    probe.raf = requestAnimationFrame(diagnosticFrameTick);
+  }, [diagnosticFrameTick, diagnostics]);
+
+  const finishDiagnosticInteraction = useCallback(() => {
+    const probe = diagnosticFrameProbe.current;
+    diagnosticFrameProbe.current = null;
+    if (probe === null) return;
+    cancelAnimationFrame(probe.raf);
+    if (probe.frameWorkMs.length === 0) return;
+    const sortedIntervals = [...probe.frameIntervals].sort((left, right) => left - right);
+    const medianInterval = sortedIntervals[Math.floor(sortedIntervals.length / 2)] ?? (1_000 / 60);
+    const refreshRateHz = medianInterval <= 0 ? 60 : Math.min(240, 1_000 / medianInterval);
+    const missedFrames = probe.frameIntervals.reduce((total, duration) => (
+      total + Math.max(0, Math.round(duration / Math.max(medianInterval, 1)) - 1)
+    ), 0);
+    recordDiagnosticInteraction({
+      frameWorkMs: Object.freeze([...probe.frameWorkMs]),
+      missedFrames,
+      refreshRateHz,
+      profilerOverheadMs: probe.maxProfilerOverheadMs,
+    });
+  }, [recordDiagnosticInteraction]);
+
+  const recordDiagnosticRender = useCallback((
+    _id: string,
+    _phase: "mount" | "update" | "nested-update",
+    actualDuration: number,
+  ) => {
+    const callbackStartedAt = globalThis.performance?.now() ?? Date.now();
+    const probe = diagnosticFrameProbe.current;
+    if (probe === null) return;
+    probe.frameWorkMs.push(Math.max(0, actualDuration));
+    probe.maxProfilerOverheadMs = Math.max(
+      probe.maxProfilerOverheadMs,
+      (globalThis.performance?.now() ?? Date.now()) - callbackStartedAt,
+    );
+  }, []);
+
+  useEffect(() => () => {
+    if (diagnosticFrameProbe.current !== null) cancelAnimationFrame(diagnosticFrameProbe.current.raf);
+    diagnosticFrameProbe.current = null;
+  }, []);
 
   useEffect(() => {
     const request = requestGeneration.current + 1;
@@ -584,6 +653,7 @@ export function CalendarScreen({
       onRequestBack={requestCalendarBack}
       scrollable={false}
       primary={(
+        <React.Profiler id="phase16-calendar" onRender={recordDiagnosticRender}>
         <View style={styles.screen}>
           {header}
           <View style={styles.navigation}>
@@ -642,7 +712,10 @@ export function CalendarScreen({
                 month={visibleMonth}
                 onCancel={invalidateLayout}
                 onComplete={(epoch) => dispatchCalendarTransition({ type: "settle-complete", epoch })}
-                {...(diagnostics === undefined ? {} : { onInteractionDiagnostic: recordDiagnosticInteraction })}
+                {...(diagnostics === undefined ? {} : {
+                  onInteractionDiagnosticComplete: finishDiagnosticInteraction,
+                  onInteractionDiagnosticStart: startDiagnosticInteraction,
+                })}
                 onPreview={(dx, viewportWidth) => dispatchCalendarTransition({ type: "drag", dx, dy: 0, viewportWidth })}
                 onRelease={({ dx, dy, targetMonthId, viewportWidth }) => dispatchCalendarTransition({
                   type: "release",
@@ -760,6 +833,7 @@ export function CalendarScreen({
             </View>
           </BottomSheet>
         </View>
+        </React.Profiler>
       )}
     />
   );

@@ -90,7 +90,8 @@ describe("Calendar semantic transitions", () => {
       latestPan = createPan();
       return latestPan as ReturnType<typeof Gesture.Pan>;
     });
-    const onInteractionDiagnostic = jest.fn();
+    const onInteractionDiagnosticComplete = jest.fn();
+    const onInteractionDiagnosticStart = jest.fn();
     const common = {
       agenda: <View />,
       focusedWeek: {
@@ -102,7 +103,8 @@ describe("Calendar semantic transitions", () => {
       month: "2026-11-01" as LocalDate,
       onCancel: jest.fn(),
       onComplete: jest.fn(),
-      onInteractionDiagnostic,
+      onInteractionDiagnosticComplete,
+      onInteractionDiagnosticStart,
       onPreview: jest.fn(),
       onRelease: jest.fn(),
       renderMonth: () => <View />,
@@ -120,13 +122,8 @@ describe("Calendar semantic transitions", () => {
     const collapsing = Object.freeze({ ...expanding, mode: "month" as const, epoch: 2 });
     await rendered.rerender(<CalendarMonthViewport {...common} command={{ kind: "settle-week", epoch: 2, phase: "collapse", durationMs: 240, easing: [0.4, 0, 0.78, 0.2], agendaDelayMs: 0, agendaDurationMs: 140 }} transition={collapsing} />);
 
-    expect(onInteractionDiagnostic).toHaveBeenCalledTimes(1);
-    expect(onInteractionDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
-      frameWorkMs: expect.any(Array),
-      missedFrames: expect.any(Number),
-      refreshRateHz: expect.any(Number),
-      profilerOverheadMs: expect.any(Number),
-    }));
+    expect(onInteractionDiagnosticStart).toHaveBeenCalledTimes(1);
+    expect(onInteractionDiagnosticComplete).toHaveBeenCalledTimes(1);
     panSpy.mockRestore();
   });
 
