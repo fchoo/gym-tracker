@@ -217,7 +217,7 @@ const plannedOccurrence = (occurrenceId: string): PlannedStrengthOccurrenceDetai
     targets: Object.freeze([Object.freeze({
       id: "strength-target:calendar",
       ordinal: 0,
-      targetJson: JSON.stringify({ profile: "load_reps", loadGrams: 80_000, maxReps: 5 }),
+      targetJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 80_000, minReps: 5, maxReps: 5, incrementGrams: 2_500, perSide: false }),
       unitJson: "{}",
     })]),
   })]),

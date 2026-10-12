@@ -1,7 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { PlannedStrengthOccurrenceDetail } from "../../domains/workout";
+import {
+  METRIC_PROFILES,
+  parseMetricTarget,
+  type MetricProfile,
+} from "../../domains/metrics";
+import { formatWorkoutTarget } from "../../domains/workout/workoutPresentation";
 import { EmptyState, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { space, typeScale, useAppTheme } from "../theme";
@@ -16,19 +22,17 @@ function isDeepFrozen(value: unknown): boolean {
 
 function targetText(targetJson: string): string | null {
   try {
-    const target = JSON.parse(targetJson) as Readonly<Record<string, unknown>>;
-    if (target.profile === "load_reps"
-      && typeof target.loadGrams === "number"
-      && typeof target.maxReps === "number") {
-      return `${target.loadGrams / 1_000} kg × ${target.maxReps}`;
-    }
-    if (target.profile === "timed_hold" && typeof target.durationSeconds === "number") {
-      return `${target.durationSeconds} sec`;
-    }
-    if (target.profile === "bodyweight_reps" && typeof target.maxReps === "number") {
-      return `Bodyweight × ${target.maxReps}`;
-    }
-    return typeof target.profile === "string" ? "Planned target" : null;
+    const decoded = JSON.parse(targetJson) as Readonly<Record<string, unknown>>;
+    const profile = decoded.profile;
+    const version = decoded.version;
+    if (typeof profile !== "string"
+      || !METRIC_PROFILES.includes(profile as MetricProfile)
+      || !Number.isSafeInteger(version)) return null;
+    return formatWorkoutTarget(parseMetricTarget({
+      profile: profile as MetricProfile,
+      contractVersion: version as number,
+      exerciseMetricGeneration: 1,
+    }, decoded));
   } catch {
     return null;
   }
@@ -54,16 +58,20 @@ export function PlannedWorkoutDetailScreen({
   const [detail, setDetail] = useState<PlannedStrengthOccurrenceDetail | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const [generation, setGeneration] = useState(0);
+  const requestGeneration = useRef(0);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    const request = requestGeneration.current + 1;
+    requestGeneration.current = request;
     if (occurrenceId.length === 0) {
       setDetail(null);
       setState("missing");
-      return;
+      return undefined;
     }
+    let mounted = true;
     setState("loading");
-    try {
-      const result = await loadOccurrence(occurrenceId);
+    void loadOccurrence(occurrenceId).then((result) => {
+      if (!mounted || request !== requestGeneration.current) return;
       if (result === null || result.occurrenceId !== occurrenceId || !isDeepFrozen(result) || !hasTargets(result)) {
         setDetail(null);
         setState("missing");
@@ -71,13 +79,16 @@ export function PlannedWorkoutDetailScreen({
       }
       setDetail(result);
       setState("ready");
-    } catch {
+    }).catch(() => {
+      if (!mounted || request !== requestGeneration.current) return;
       setDetail(null);
       setState("error");
-    }
-  }, [loadOccurrence, occurrenceId]);
-
-  useEffect(() => { void load(); }, [generation, load]);
+    });
+    return () => {
+      mounted = false;
+      if (requestGeneration.current === request) requestGeneration.current += 1;
+    };
+  }, [generation, loadOccurrence, occurrenceId]);
 
   if (state === "loading") {
     return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} title="Workout preview" /><SkeletonBlock height={48} width="64%" /><SkeletonBlock height={160} /></>} />;

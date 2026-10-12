@@ -10,6 +10,7 @@ import type {
   SessionExerciseDetail,
   SessionSetDetail,
 } from "./sessionDetail";
+import type { MetricTarget } from "../metrics";
 
 export type WorkoutPresentationSet = Readonly<{
   id: string;
@@ -61,18 +62,18 @@ function formatObservation(observation: SetObservation): string {
   }
 }
 
-function targetFor(set: ActiveWorkoutSet): string {
-  switch (set.target.profile) {
-    case "load_reps": return `${formatLoadGrams(set.target.loadGrams)} kg × ${set.target.maxReps}`;
-    case "bodyweight_reps": return `Bodyweight × ${set.target.maxReps}`;
-    case "added_load_reps": return `BW + ${formatLoadGrams(set.target.addedLoadGrams)} kg × ${set.target.maxReps}`;
-    case "assisted_reps": return `${formatLoadGrams(set.target.assistanceGrams)} kg assist × ${set.target.maxReps}`;
-    case "timed_hold": return set.target.version === 1
-      ? `${set.target.durationSeconds} sec`
-      : `${set.target.durationMs / 1_000} sec`;
-    case "fixed_distance": return `${set.target.plannedDistanceMeters} m`;
-    case "fixed_time": return `${set.target.plannedDurationMs / 1_000} sec`;
-    case "intervals": return `${set.target.plannedRounds} rounds · ${set.target.workIntervalMs / 1_000} sec work`;
+export function formatWorkoutTarget(target: MetricTarget): string {
+  switch (target.profile) {
+    case "load_reps": return `${formatLoadGrams(target.loadGrams)} kg × ${target.maxReps}`;
+    case "bodyweight_reps": return `Bodyweight × ${target.maxReps}`;
+    case "added_load_reps": return `BW + ${formatLoadGrams(target.addedLoadGrams)} kg × ${target.maxReps}`;
+    case "assisted_reps": return `${formatLoadGrams(target.assistanceGrams)} kg assist × ${target.maxReps}`;
+    case "timed_hold": return target.version === 1
+      ? `${target.durationSeconds} sec`
+      : `${target.durationMs / 1_000} sec`;
+    case "fixed_distance": return `${target.plannedDistanceMeters} m`;
+    case "fixed_time": return `${target.plannedDurationMs / 1_000} sec`;
+    case "intervals": return `${target.plannedRounds} rounds · ${target.workIntervalMs / 1_000} sec work`;
     case "unscored": return "Complete";
   }
 }
@@ -86,7 +87,7 @@ function presentSet(set: ActiveWorkoutSet): WorkoutPresentationSet {
     previous: set.valueSources.find(({ source }) => source === "last_workout")
       ? formatObservation(set.valueSources.find(({ source }) => source === "last_workout")!.observation)
       : null,
-    target: targetFor(set),
+    target: formatWorkoutTarget(set.target),
     result: set.observation === null ? null : formatObservation(set.observation),
   };
 }
