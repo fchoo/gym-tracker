@@ -25,6 +25,7 @@ type Draft = Readonly<{
 type ErrorState = "save" | "stale" | null;
 
 export type RunningTargetSheetProps = Readonly<{
+  initialDistanceMeters?: number;
   visible: boolean;
   sources: readonly RunningPlanAggregate[];
   runtime: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
@@ -97,6 +98,7 @@ function pacingLabel(durationMs: number | null, distanceMeters: number): string 
 }
 
 export function RunningTargetSheet({
+  initialDistanceMeters,
   onClose,
   onSaved,
   restoreFocusRef,
@@ -106,7 +108,7 @@ export function RunningTargetSheet({
   visible,
 }: RunningTargetSheetProps) {
   const { colors } = useAppTheme();
-  const [selectedPlanId, setSelectedPlanId] = useState(() => sources[0]?.id ?? "");
+  const [selectedPlanId, setSelectedPlanId] = useState(() => sources.find(({ goal }) => goal.goalDistanceMeters === initialDistanceMeters)?.id ?? sources[0]?.id ?? "");
   const draftsRef = useRef(new Map<string, Draft>());
   const requestIdsRef = useRef(new Map<string, string>());
   const [renderVersion, setRenderVersion] = useState(0);
@@ -125,14 +127,14 @@ export function RunningTargetSheet({
 
   useEffect(() => {
     if (!visible) return;
-    const next = sources[0];
+    const next = sources.find(({ goal }) => goal.goalDistanceMeters === initialDistanceMeters) ?? sources[0];
     if (next === undefined) return;
     setSelectedPlanId((current) => sources.some((candidate) => candidate.id === current) ? current : next.id);
     for (const candidate of sources) {
       if (!draftsRef.current.has(candidate.id)) draftsRef.current.set(candidate.id, draftFrom(candidate));
     }
     setError(null);
-  }, [sources, visible]);
+  }, [initialDistanceMeters, sources, visible]);
 
   const update = (next: Partial<Draft>) => {
     if (source === undefined || draft === undefined) return;

@@ -123,6 +123,10 @@ type RunningGoalFactRow = Readonly<{
   created_at_ms: number;
 }>;
 
+type DashboardRunningGoalRow = RunningGoalFactRow & Readonly<{
+  is_current: number;
+}>;
+
 type DashboardRunningActivityRow = Readonly<{
   id: string;
   started_at_ms: number;
@@ -316,8 +320,27 @@ function exposureFromRow(
     setId: row.set_id,
     setOrdinal: row.set_ordinal,
     completedAtMs: row.completed_at_ms,
+    sourceRevision: Number.isSafeInteger(effectiveSet.sourceRevision)
+      && Number(effectiveSet.sourceRevision) > 0
+      ? effectiveSet.sourceRevision!
+      : null,
     targetJson: row.target_json,
     observationJson: row.observation_json,
+  });
+}
+
+function progressRecordFromExposure(exposure: ProgressComparableExposure) {
+  return Object.freeze({
+    exerciseId: exposure.exerciseId,
+    exerciseName: exposure.exerciseName,
+    identityKey: exposure.identityKey,
+    comparatorKey: exposure.comparatorKey,
+    sessionId: exposure.sessionId,
+    setId: exposure.setId,
+    localDate: exposure.localDate,
+    sourceRevision: exposure.sourceRevision ?? null,
+    targetJson: exposure.targetJson,
+    observationJson: exposure.observationJson,
   });
 }
 
@@ -450,10 +473,24 @@ async function loadDashboardFacts(
         ORDER BY activity.started_at_ms, activity.id`,
       [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), input.nowLocalDate],
     ),
-    readAllPages<RunningGoalFactRow>(executor,
-      `SELECT id, plan_id, revision, goal_json, created_at_ms
-         FROM running_goals
-         ORDER BY created_at_ms, id`,
+    readAllPages<DashboardRunningGoalRow>(executor,
+      `SELECT goal.id, goal.plan_id, goal.revision, goal.goal_json,
+              goal.created_at_ms,
+              CASE WHEN goal.id = (
+                SELECT current_goal.id FROM running_goals current_goal
+                 WHERE current_goal.plan_id = goal.plan_id
+                 ORDER BY current_goal.revision DESC,
+                          current_goal.created_at_ms DESC,
+                          current_goal.id DESC
+                 LIMIT 1
+              ) THEN 1 ELSE 0 END AS is_current
+         FROM running_goals goal
+         JOIN running_plans running ON running.plan_id = goal.plan_id
+         JOIN plans plan ON plan.id = goal.plan_id
+        WHERE plan.plan_kind = 'running'
+          AND plan.is_active = 1
+          AND running.status != 'retired'
+         ORDER BY goal.created_at_ms, goal.id`,
     ),
   ]);
   const activities = activityRows.flatMap((row) => {
@@ -506,12 +543,19 @@ async function loadDashboardFacts(
           : null;
       return [Object.freeze({
         targetId: row.id,
+        planId: row.plan_id,
         sport: "Running" as const,
         distanceMeters: goal.goalDistanceMeters,
         targetDurationSeconds,
+        ...(goal.targetLocalDate === undefined ? {} : {
+          targetLocalDate: goal.targetLocalDate,
+        }),
         effectiveAtMs: row.created_at_ms,
         revision: row.revision,
         sourceOrder,
+        lifecycle: "active" as const,
+        active: true,
+        current: row.is_current === 1,
       })];
     } catch {
       return [];
@@ -850,6 +894,9 @@ export function createProgressRepository(
         })),
         recommendations,
       }));
+      const dashboardStrengthFacts = exposureRows.map((row) =>
+        progressRecordFromExposure(exposureFromRow(row, effectiveSetsById))
+      );
       const dashboard = sport === undefined ? undefined : withToSortedCompatibility(() =>
         projectProgressDashboard({
           sport,
@@ -857,7 +904,7 @@ export function createProgressRepository(
             activities: dashboardFacts.activities,
             targets: dashboardFacts.goals,
           },
-          strength: { facts: projection.records },
+          strength: { facts: dashboardStrengthFacts },
           goals: dashboardFacts.goals,
         })
       );

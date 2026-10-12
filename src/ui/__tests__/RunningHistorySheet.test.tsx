@@ -10,10 +10,12 @@ const goal: ProgressRunningGoal = Object.freeze({
   best: Object.freeze({ activityId: "activity-september", sourceIdentity: "accepted-activity-september", sourceRevision: 4, localDate: "2026-09-04", durationSeconds: 654, timeBasis: "elapsed", evidence: "source_laps" }),
   distanceMeters: 2_400,
   evidenceCount: 2,
+  gap: "Gap · 6 seconds ahead of target",
   latest: Object.freeze({ activityId: "activity-september", sourceIdentity: "accepted-activity-september", sourceRevision: 4, localDate: "2026-09-04", durationSeconds: 654, timeBasis: "elapsed", evidence: "source_laps" }),
   target: Object.freeze({ targetId: "running-2.4", durationSeconds: 660 }),
   targetAtDate: Object.freeze({ targetId: "running-2.4", durationSeconds: 660 }),
   timeBasis: "elapsed",
+  pacing: Object.freeze({ target: "11:00", pacePerKm: "4:35/km", per400m: "1:50/400 m", per200m: "0:55/200 m" }),
   history: Object.freeze([
     Object.freeze({ effort: Object.freeze({ activityId: "activity-august", sourceIdentity: "accepted-activity-august", sourceRevision: 3, localDate: "2026-08-04", durationSeconds: 726, timeBasis: "elapsed", evidence: "source_summary" }), targetAtDate: Object.freeze({ targetId: "running-2.4", durationSeconds: 720 }) }),
     Object.freeze({ effort: Object.freeze({ activityId: "activity-september", sourceIdentity: "accepted-activity-september", sourceRevision: 4, localDate: "2026-09-04", durationSeconds: 654, timeBasis: "elapsed", evidence: "source_laps" }), targetAtDate: Object.freeze({ targetId: "running-2.4", durationSeconds: 660 }) }),

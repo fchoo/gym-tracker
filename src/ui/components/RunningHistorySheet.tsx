@@ -95,7 +95,7 @@ export function RunningHistorySheet({
         : series === null || series.points.length === 0 ? <View style={styles.notice}>{goal === null ? null : <View style={styles.heroFacts}><SheetFact label="Best" value="No effort recorded" /><SheetFact label="Target" value={goal.target === null ? "Target unset" : formatFactualDuration(goal.target.durationSeconds)} /></View>}<Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>No effort recorded</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Import or accept a {distance} effort to establish a benchmark. No zero result is plotted.</Text></View>
           : <View style={styles.content}>
             <View style={styles.heroFacts}>
-              <SheetFact label="Best" value={formatFactualDuration(goal!.best.durationSeconds)} />
+              <SheetFact label="Best" value={formatFactualDuration(goal?.best?.durationSeconds ?? null)} />
               <SheetFact label="Target" value={formatFactualDuration(goal!.target?.durationSeconds ?? null)} />
             </View>
             <FactualHistoryChart series={series} {...(onOpenSource === undefined ? {} : { onOpenSource })} />

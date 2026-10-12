@@ -85,10 +85,17 @@ export default function ProgressRoute() {
         triggerNativeID: settingsActionNativeID,
         triggerRef: settingsActionRef,
       })}
-      onOpenSession={(sessionId, returnToken) => {
+      onOpenSession={(sessionId, returnToken, sourceRevision) => {
         if (!OPAQUE_ID.test(sessionId)) return;
         if (returnToken !== undefined) pendingReturnFocusTokenRef.current = returnToken;
-        router.push(("/session/" + sessionId) as Href);
+        router.push(sourceRevision === undefined ? (("/session/" + sessionId) as Href) : ({
+          pathname: "/session/[sessionId]",
+          params: {
+            origin: "progress",
+            sessionId,
+            sourceRevision: String(sourceRevision),
+          },
+        } as Href));
       }}
       progressBodyweightRuntime={runtime.progressBodyweightRuntime}
       progressRecommendationRuntime={runtime.progressRecommendationRuntime}

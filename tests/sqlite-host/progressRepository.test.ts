@@ -1377,9 +1377,28 @@ describe("progress repository", () => {
         },
       });
     }
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE plans SET is_active = 1 WHERE id = 'plan-exact'",
+      );
+      await transaction.execute(
+        "UPDATE owned_plan_schedules SET lifecycle = 'active', deactivated_at_ms = NULL WHERE plan_id = 'plan-exact'",
+      );
+    });
     const result = await createProgressRepository(kernel).load({
       sport: "All", period: "all_time", nowLocalDate: "2026-08-24",
     });
-    expect(result.dashboard).toMatchObject({ sport: "All", state: "ready" });
+    expect(result.dashboard).toMatchObject({
+      sport: "All",
+      state: "sparse",
+      primaryGoal: {
+        sport: "Running",
+        goal: {
+          distanceMeters: 2_400,
+          target: { durationSeconds: 660 },
+          latest: null,
+        },
+      },
+    });
   });
 });

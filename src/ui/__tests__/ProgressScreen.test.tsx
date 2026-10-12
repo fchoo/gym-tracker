@@ -30,7 +30,7 @@ const runningTargetSource: RunningPlanAggregate = Object.freeze({
   sessions: [],
 });
 
-const runningDashboard = (): ProgressDashboardProjection => ({
+const runningDashboard = (): Extract<ProgressDashboardProjection, { sport: "Running" }> => ({
   sport: "Running",
   state: "ready",
   goals: [{
@@ -80,8 +80,33 @@ const runningDashboard = (): ProgressDashboardProjection => ({
       targetAtDate: { targetId: "running-2400", durationSeconds: 660 },
     }],
     evidenceCount: 2,
+    gap: "Gap · 10 seconds ahead of target",
+    pacing: {
+      target: "11:00",
+      pacePerKm: "4:35/km",
+      per400m: "1:50/400 m",
+      per200m: "0:55/200 m",
+    },
   }],
 });
+
+const strengthGoal = {
+  goalId: "bench-press\u0000load_reps:1:1\u0000identity",
+  exerciseId: "bench-press",
+  exerciseName: "Bench Press",
+  identityKey: "load_reps:1:1",
+  status: "improving" as const,
+  latest: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+  best: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+  target: { value: 60, label: "60 kg × 8" },
+  gap: "Gap · 2.5 kg better than target",
+  evidenceCount: 2,
+  fasterIsLower: false,
+  valueFormat: "kilograms" as const,
+  unitLabel: "kg",
+  directionLabel: "Higher comparable load is better.",
+  history: [{ value: 60, label: "60 kg × 8", localDate: "2026-08-17", sessionId: "session-41", sourceRevision: 1, targetAtDate: 60 }, { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2, targetAtDate: 60 }],
+};
 
 const pendingReview: ProgressRecommendationReview = {
   id: "recommendation-bench-1",
@@ -102,8 +127,8 @@ function dashboardFor(sport: "All" | "Strength" | "Running"): ProgressDashboardP
   return sport === "Running"
     ? runningDashboard()
     : sport === "All"
-      ? { sport: "All", state: "empty", primaryGoal: null }
-      : { sport: "Strength", state: "empty", facts: [] };
+      ? { sport: "All", state: "empty", primaryGoal: null, activeGoals: [] }
+      : { sport: "Strength", state: "empty", facts: [], goals: [] };
 }
 
 async function renderProgress(
@@ -141,7 +166,7 @@ describe("ProgressScreen", () => {
     await waitFor(() => expect(loadProgress).toHaveBeenLastCalledWith({
       sport: "Running", period: "all_time", nowLocalDate: "2026-08-24",
     }));
-    expect(await screen.findByText("Running facts and best efforts come from accepted imported Garmin activities."))
+    expect(await screen.findByText("Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation."))
       .toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "2.4 km goal" })).toBeOnTheScreen();
     expect(screen.getByText("Latest · 11:20 elapsed")).toBeOnTheScreen();
@@ -203,10 +228,8 @@ describe("ProgressScreen", () => {
         ? {
           sport: "All" as const,
           state: "ready" as const,
-          primaryGoal: {
-            targetId: "running-2400", sport: "Running" as const, distanceMeters: 2400,
-            targetDurationSeconds: 660, effectiveAtMs: 1, revision: 2, sourceOrder: 0,
-          },
+          primaryGoal: { sport: "Running" as const, goal: runningDashboard().goals[0]! },
+          activeGoals: [{ sport: "Running" as const, goal: runningDashboard().goals[0]! }],
         }
         : runningDashboard(),
     }));
@@ -233,14 +256,14 @@ describe("ProgressScreen", () => {
       period: input.period as "4_weeks" | "12_weeks" | "all_time",
       freshness: "current" as const,
       dashboard: input.sport === "Strength"
-        ? { sport: "Strength" as const, state: "ready" as const, facts: [strengthFact] }
+        ? { sport: "Strength" as const, state: "ready" as const, facts: [strengthFact], goals: [{ ...strengthGoal, exerciseId: "back-squat", exerciseName: "Back Squat", goalId: "back-squat" }] }
         : { sport: "Running" as const, state: "empty" as const, goals: [] },
     }));
     await renderProgress(loadProgress as never);
 
     await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
     expect(await screen.findByText("Back Squat")).toBeOnTheScreen();
-    expect(screen.getByText("Target unavailable")).toBeOnTheScreen();
+    expect(screen.getByText("Latest 62.5 kg × 8 · 60 kg × 8 · improving")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
     expect(await screen.findByText("10 km · Target unset · No effort recorded · Set target")).toBeOnTheScreen();
     expect(screen.getByText("Half Marathon · Target unset · No effort recorded · Set target")).toBeOnTheScreen();
@@ -267,7 +290,7 @@ describe("ProgressScreen", () => {
     await fireEvent.press(await screen.findByRole("button", { name: "Open history for 2.4 km" }));
 
     expect(screen.getByRole("header", { name: "2.4 km best efforts" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Show history data" }).at(-1)!);
     await fireEvent.press(screen.getAllByRole("button", { name: "Open source" })[0]!);
     expect(onOpenRunningSource).toHaveBeenCalledWith({
       activityId: "activity-best",
@@ -340,6 +363,7 @@ describe("ProgressScreen", () => {
         sport: "Strength" as const,
         state: "ready" as const,
         facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+        goals: [strengthGoal],
       } : dashboardFor(input.sport),
       projection: { recommendations: committed ? [] : [pendingReview] },
     }));
@@ -353,7 +377,7 @@ describe("ProgressScreen", () => {
     });
 
     await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
-    await fireEvent.press(await screen.findByRole("button", { name: "Open exercise history for Bench Press" }));
+    await fireEvent.press((await screen.findAllByRole("button", { name: "Open exercise history for Bench Press" })).at(-1)!);
     expect(onOpenExercise).toHaveBeenCalledWith(
       "bench-press",
       "Bench Press",
@@ -510,6 +534,7 @@ describe("ProgressScreen", () => {
           sport: "Strength" as const,
           state: "ready" as const,
           facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+          goals: [strengthGoal],
         } : dashboardFor(input.sport),
       })) as never,
       nowLocalDate: "2026-08-24",
@@ -523,7 +548,7 @@ describe("ProgressScreen", () => {
       </AppearanceProvider>,
     );
     await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
-    const trigger = await screen.findByRole("button", { name: "Open exercise history for Bench Press" });
+    const trigger = (await screen.findAllByRole("button", { name: "Open exercise history for Bench Press" }))[1]!;
 
     await rendered.rerender(
       <AppearanceProvider reduceMotion store={createMemoryAppearanceStore("Dark")}>

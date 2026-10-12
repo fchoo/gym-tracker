@@ -7,6 +7,9 @@ import type {
   MetricExposure,
   MetricTarget,
 } from "../metrics";
+import type {
+  RunningPacing,
+} from "./runningPacing";
 
 export type ProgressPeriod = "4_weeks" | "12_weeks" | "all_time";
 
@@ -78,6 +81,7 @@ export type ProgressEffectiveSourceSession = Readonly<{
 
 export type ProgressComparableExposure = HistoryProjectionComparableExposure & Readonly<{
   exerciseName: string;
+  sourceRevision?: number | null;
 }>;
 
 /**
@@ -147,6 +151,7 @@ export type ProgressRecord = Readonly<{
   sessionId: string;
   setId: string;
   localDate: string;
+  sourceRevision?: number | null;
   targetJson: string;
   observationJson: string;
 }>;
@@ -210,6 +215,7 @@ export type ProgressRunningActivityFact = Readonly<{
 
 export type ProgressGoalRevision = Readonly<{
   targetId: string;
+  planId?: string;
   sport: "Strength" | "Running";
   distanceMeters?: number;
   targetDurationSeconds: number | null;
@@ -218,6 +224,9 @@ export type ProgressGoalRevision = Readonly<{
   revision: number;
   /** Owner/source ordering is the first deterministic All-goal tie break. */
   sourceOrder: number;
+  lifecycle?: "active" | "inactive" | "archived";
+  active?: boolean;
+  current?: boolean;
 }>;
 
 export type ProgressRunningEffort = Readonly<{
@@ -233,8 +242,8 @@ export type ProgressRunningEffort = Readonly<{
 export type ProgressRunningGoal = Readonly<{
   distanceMeters: number;
   timeBasis: ProgressRunningTimeBasis;
-  latest: ProgressRunningEffort;
-  best: ProgressRunningEffort;
+  latest: ProgressRunningEffort | null;
+  best: ProgressRunningEffort | null;
   target: Readonly<{ targetId: string; durationSeconds: number }> | null;
   targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
   history: readonly Readonly<{
@@ -242,6 +251,8 @@ export type ProgressRunningGoal = Readonly<{
     targetAtDate: Readonly<{ targetId: string; durationSeconds: number }> | null;
   }>[];
   evidenceCount: number;
+  gap: string;
+  pacing: RunningPacing | null;
 }>;
 
 export type ProgressRunningDashboardProjection = Readonly<{
@@ -254,13 +265,58 @@ export type ProgressRunningDashboardProjection = Readonly<{
 export type ProgressAllDashboardProjection = Readonly<{
   sport: "All";
   state: ProgressReadState;
-  primaryGoal: ProgressGoalRevision | null;
+  primaryGoal: ProgressAllGoal | null;
+  activeGoals: readonly ProgressAllGoal[];
 }>;
+
+export type ProgressStrengthValueFormat =
+  | "kilograms"
+  | "repetitions"
+  | "seconds"
+  | "duration"
+  | "meters"
+  | "rounds"
+  | "completion";
+
+export type ProgressStrengthValue = Readonly<{
+  value: number;
+  label: string;
+  localDate: string;
+  sessionId: string;
+  sourceRevision: number | null;
+}>;
+
+export type ProgressStrengthHistoryPoint = ProgressStrengthValue & Readonly<{
+  targetAtDate: number | null;
+}>;
+
+export type ProgressStrengthGoal = Readonly<{
+  goalId: string;
+  exerciseId: string;
+  exerciseName: string;
+  identityKey: string;
+  status: ProgressExerciseStatus;
+  latest: ProgressStrengthValue;
+  best: ProgressStrengthValue;
+  target: Readonly<{ value: number; label: string }> | null;
+  gap: string;
+  evidenceCount: number;
+  fasterIsLower: boolean;
+  valueFormat: ProgressStrengthValueFormat;
+  unitLabel: string;
+  directionLabel: string;
+  history: readonly ProgressStrengthHistoryPoint[];
+}>;
+
+export type ProgressAllGoal =
+  | Readonly<{ sport: "Strength"; goal: ProgressStrengthGoal }>
+  | Readonly<{ sport: "Running"; goal: ProgressRunningGoal }>;
 
 export type ProgressStrengthDashboardProjection = Readonly<{
   sport: "Strength";
   state: ProgressReadState;
   facts: readonly ProgressRecord[];
+  goals: readonly ProgressStrengthGoal[];
 }>;
 
 /** Effective Strength facts retain the metric boundary and revision fence used
