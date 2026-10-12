@@ -741,6 +741,147 @@ test("runner rejects private native records before any raw report write", () => 
   assert.equal(writes.length, 0);
 });
 
+test("runner rejects Garmin-private structured collector aliases before any evidence write", () => {
+  const privateFields = [
+    { externalActivityId: 424242 },
+    { heartRate: 151 },
+    { averageHR: 149 },
+    { rawJson: { private: true } },
+    { geoPolylineDTO: "encoded-private-route" },
+    { lat: 1.3521, lon: 103.8198 },
+  ];
+
+  for (const privateField of privateFields) {
+    const rawWrites = [];
+    const nativeWrites = [];
+    const privacyWrites = [];
+    assert.throws(
+      () => executePhase18GarminAdversarialRunner([
+        "--manifest", MANIFEST,
+        "--record", RECORD,
+        "--execute",
+        "--phase20-native-checkpoint",
+      ], {
+        readJson: () => retainedManifest(),
+        collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
+          report: {
+            status: "passed",
+            cases: cases().map((entry, index) => index === 0
+              ? { ...entry, ...privateField }
+              : entry),
+            current_identity: CURRENT_IDENTITY,
+          },
+          run_nonce: RUN_NONCE,
+          source_pid: 4242,
+        }),
+        writeNativeReport: (...args) => nativeWrites.push(args),
+        writePrivacyReport: (...args) => privacyWrites.push(args),
+        writeRawReport: (...args) => rawWrites.push(args),
+      }),
+      /phase18_garmin_adversarial_record_privacy_invalid/u,
+      JSON.stringify(privateField),
+    );
+    assert.equal(nativeWrites.length, 0, JSON.stringify(privateField));
+    assert.equal(privacyWrites.length, 0, JSON.stringify(privateField));
+    assert.equal(rawWrites.length, 0, JSON.stringify(privateField));
+  }
+});
+
+test("runner rejects Garmin-private collector logs before any evidence write", () => {
+  for (const logcat of [
+    "externalActivityId=424242",
+    "heartRate=151 averageHR=149",
+    "rawJson={private}",
+    "geoPolylineDTO=encoded-private-route",
+    "lat=1.3521 lon=103.8198",
+    123,
+  ]) {
+    const rawWrites = [];
+    const nativeWrites = [];
+    const privacyWrites = [];
+    assert.throws(
+      () => executePhase18GarminAdversarialRunner([
+        "--manifest", MANIFEST,
+        "--record", RECORD,
+        "--execute",
+        "--phase20-native-checkpoint",
+      ], {
+        readJson: () => retainedManifest(),
+        collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
+          report: NATIVE_REPORT,
+          logcat,
+          run_nonce: RUN_NONCE,
+          source_pid: 4242,
+        }),
+        writeNativeReport: (...args) => nativeWrites.push(args),
+        writePrivacyReport: (...args) => privacyWrites.push(args),
+        writeRawReport: (...args) => rawWrites.push(args),
+      }),
+      /phase18_garmin_adversarial_record_privacy_invalid/u,
+      String(logcat),
+    );
+    assert.equal(nativeWrites.length, 0, String(logcat));
+    assert.equal(privacyWrites.length, 0, String(logcat));
+    assert.equal(rawWrites.length, 0, String(logcat));
+  }
+});
+
+test("runner log allowlist admits only the exact source-owned native marker", () => {
+  const seed = createPhase18GarminAdversarialTestCollectorFixture({
+    report: NATIVE_REPORT,
+    run_nonce: RUN_NONCE,
+    source_pid: 4242,
+  });
+  const marker = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
+  const exactLogcat = `I/Test(4242): ${marker}${JSON.stringify(seed.report)}`;
+  const writes = [];
+  assert.deepEqual(executePhase18GarminAdversarialRunner([
+    "--manifest", MANIFEST,
+    "--record", RECORD,
+    "--execute",
+    "--phase20-native-checkpoint",
+  ], {
+    readJson: () => retainedManifest(),
+    collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
+      report: NATIVE_REPORT,
+      logcat: exactLogcat,
+      run_nonce: RUN_NONCE,
+      source_pid: 4242,
+    }),
+    writeNativeReport: () => {},
+    writePrivacyReport: () => {},
+    writeRawReport: (...args) => writes.push(args),
+  }), {
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    final_evidence_written: false,
+  });
+  assert.equal(writes.length, 1);
+
+  const privacyWrites = [];
+  const rawWrites = [];
+  assert.throws(
+    () => executePhase18GarminAdversarialRunner([
+      "--manifest", MANIFEST,
+      "--record", RECORD,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ], {
+      readJson: () => retainedManifest(),
+      collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
+        report: NATIVE_REPORT,
+        logcat: `${exactLogcat} externalActivityId=424242`,
+        run_nonce: RUN_NONCE,
+        source_pid: 4242,
+      }),
+      writePrivacyReport: (...args) => privacyWrites.push(args),
+      writeRawReport: (...args) => rawWrites.push(args),
+    }),
+    /phase18_garmin_adversarial_record_privacy_invalid/u,
+  );
+  assert.equal(privacyWrites.length, 0);
+  assert.equal(rawWrites.length, 0);
+});
+
 test("native collector scopes one selected device, package PID, and cryptographic report nonce", () => {
   const originalPath = process.env.PATH;
   const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-scoped-"));

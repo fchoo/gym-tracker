@@ -8,6 +8,10 @@ import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 import {
+  assertPhase18PrivacySafe,
+  assertPhase18PrivateTextSafe,
+} from "./phase18-privacy-scan.mjs";
+import {
   choose,
   cliArgValue,
   errorMessage,
@@ -32,9 +36,13 @@ const RUN_NONCE = /^[a-f0-9]{32}$/u;
 const NATIVE_REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
 const COLLECTOR_OWNED = Symbol("phase18-garmin-adversarial-collector-owned");
 const TEST_FIXTURE_LABEL = "phase18-garmin-adversarial-test-collector/v1";
-const FORBIDDEN_KEY = /(?:^|_)(?:account_namespace|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
-const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\bauthorization\b|\bbearer\b|\bciphertext\b|\bcredentials?\b|\bmfa(?:[_ -]?code)?\b|\bpassword\b|\btoken\b)/iu;
-const PRIVATE_FILENAME = /(?:^|[\\/])[^\\/]+\.(?:csv|fit|gpx|json|tcx)(?:$|[?#])/iu;
+const PRIVACY_SAFE_STRINGS_BY_PATH = new Map([
+  ["native_report.path", new Set([NATIVE_REPORT])],
+  ["producer_context.kind", new Set([
+    "installed-route-log",
+    "test-collector-fixture",
+  ])],
+]);
 const MANIFEST_KEYS = [
   "abi",
   "apk_sha256",
@@ -80,25 +88,25 @@ const fail = (code) => {
   throw new Error(`phase18_garmin_adversarial_${code}`);
 };
 
-function privacySafe(value, context = "") {
-  if (typeof value === "string") {
-    const fixedPath = context === "native_report.path"
-      && value === `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`;
-    if (!fixedPath && (FORBIDDEN_VALUE.test(value) || PRIVATE_FILENAME.test(value))) {
-      fail("record_privacy_invalid");
-    }
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((entry, index) => privacySafe(entry, `${context}[${index}]`));
-    return;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, entry] of Object.entries(value)) {
-      if (FORBIDDEN_KEY.test(key)) fail("record_privacy_invalid");
-      privacySafe(entry, context.length === 0 ? key : `${context}.${key}`);
-    }
-  }
+function assertAdversarialRecordPrivacySafe(value, context = "") {
+  return assertPhase18PrivacySafe(value, {
+    prefix: "phase18_garmin_adversarial_record_privacy",
+    context,
+    allowString: (entry, entryContext) => (
+      PRIVACY_SAFE_STRINGS_BY_PATH.get(entryContext)?.has(entry) ?? false
+    ),
+  });
+}
+
+function assertAdversarialLogPrivacySafe(logcat, record) {
+  const sourceOwnedMarker = `${NATIVE_REPORT_MARKER}${JSON.stringify(record)}`;
+  const scannableLog = typeof logcat === "string"
+    ? logcat.replace(sourceOwnedMarker, "")
+    : logcat;
+  return assertPhase18PrivateTextSafe(
+    scannableLog,
+    "phase18_garmin_adversarial_record_privacy",
+  );
 }
 
 export function validatePhase18GarminAdversarialManifest(manifest, current) {
@@ -364,7 +372,7 @@ export function collectInstalledNativeReport() {
 }
 
 function validateRecord(record, manifest) {
-  privacySafe(record);
+  assertAdversarialRecordPrivacySafe(record);
   if (!exactKeys(record.current_identity, CURRENT_IDENTITY_KEYS)) {
     fail("record_invalid");
   }
@@ -428,8 +436,8 @@ export function executePhase18GarminAdversarialRunner(
   const collected = collectNativeReport();
   if (collected?.[COLLECTOR_OWNED] !== true) fail("collector_provenance_invalid");
   const record = collected.report;
-  privacySafe(record);
-  privacySafe(collected.logcat);
+  assertAdversarialRecordPrivacySafe(record);
+  assertAdversarialLogPrivacySafe(collected.logcat, record);
   const expectedNativeReportBytes = serializedNativeReport(record);
   if (!Buffer.isBuffer(collected.nativeReportBytes)
     || !collected.nativeReportBytes.equals(expectedNativeReportBytes)) {

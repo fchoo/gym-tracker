@@ -207,6 +207,47 @@ test("private text scanner rejects sensitive log terms across spelling families"
   }
 });
 
+test("privacy scanners reject canonical Garmin heart-rate, polyline, and coordinate aliases", () => {
+  const structuredVectors = [
+    { averageHR: 151 },
+    { average_hr: 151 },
+    { avgHR: 151 },
+    { geoPolylineDTO: "encoded-private-route" },
+    { geo_polyline: "encoded-private-route" },
+    { polyline: "encoded-private-route" },
+    { lat: 1.3521, lon: 103.8198 },
+    { latitude: 1.3521, longitude: 103.8198 },
+    { payload: { activityRoute: { startLocation: { lat: 1.3521, lon: 103.8198 } } } },
+    { payload: { route: { location: { latitude: 1.3521, longitude: 103.8198 } } } },
+  ];
+  for (const vector of structuredVectors) {
+    assert.throws(
+      () => assertPhase18PrivacySafe(vector),
+      /phase18_privacy_invalid/u,
+      JSON.stringify(vector),
+    );
+  }
+
+  for (const vector of [
+    "averageHR=151",
+    "average_hr=151",
+    "avgHR=151",
+    "geoPolylineDTO=encoded-private-route",
+    "geo_polyline=encoded-private-route",
+    "polyline=encoded-private-route",
+    "lat=1.3521 lon=103.8198",
+    "latitude=1.3521 longitude=103.8198",
+    "payload.activityRoute.startLocation.lat=1.3521",
+    "payload.route.location.longitude=103.8198",
+  ]) {
+    assert.throws(
+      () => assertPhase18PrivateTextSafe(vector),
+      /phase18_privacy_text_invalid/u,
+      vector,
+    );
+  }
+});
+
 test("privacy scanners allow explicit string exceptions and benign fixed codes", () => {
   assert.equal(
     assertPhase18PrivacySafe(
