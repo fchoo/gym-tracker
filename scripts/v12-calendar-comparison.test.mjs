@@ -55,12 +55,24 @@ function completeFixture() {
       { id: "calendar-reduced-motion", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "reduced", input: "touch", viewport: "390x844" },
     ],
   };
+  const identity = {
+    base_head: "a".repeat(40),
+    source_tree_sha256: "b".repeat(64),
+    source_manifest_sha256: "a".repeat(64),
+    package: "com.fchoo.gymtracker.devtest",
+    apk_sha256: "c".repeat(64),
+    installed_apk_sha256: "c".repeat(64),
+    device_identity_sha256: "d".repeat(64),
+    report_sha256: "e".repeat(64),
+  };
   return {
     directory,
     map,
+    identity,
     run: {
       schema_version: 1,
-      run_id: "host-fixture",
+      run_id: "phase16-host-deferred",
+      identity,
       source_tree_sha256: "b".repeat(64),
       source_manifest_sha256: "a".repeat(64),
       status: "NOT_RUN",
@@ -90,10 +102,51 @@ test("Calendar comparison creates individually hashed artifacts while keeping na
     const result = compareV12Calendar({ map: fixture.map, run: fixture.run, outputDirectory: path.join(fixture.directory, "comparison") });
     assert.equal(result.status, "REVIEW_REQUIRED");
     assert.equal(result.records.length, 1);
-    assert.deepEqual(result.case_results.map(({ id }) => id), V12_CALENDAR_REQUIRED_CASE_IDS);
+    assert.deepEqual(result.case_results, {
+      status: "REVIEW_REQUIRED",
+      native_execution: "NOT_RUN",
+      required_case_count: V12_CALENDAR_REQUIRED_CASE_IDS.length,
+    });
     assert.match(result.records[0].overlay.sha256, /^[a-f0-9]{64}$/u);
     assert.doesNotMatch(JSON.stringify(result), /PASS|serial|token|email/u);
     assert.equal(validateV12CalendarComparison(result), true);
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test("the shared comparison schema accepts a complete identity-bound live PASS", () => {
+  const fixture = completeFixture();
+  try {
+    const result = structuredClone(compareV12Calendar({
+      map: fixture.map,
+      run: fixture.run,
+      outputDirectory: path.join(fixture.directory, "shared-schema"),
+    }));
+    result.mode = "live-executed";
+    result.run_id = "phase20-20261013T000000Z-abcdef123456";
+    result.native_execution = "EXECUTED";
+    result.phase20_deferred = false;
+    result.status = "PASS";
+    result.records.forEach((record) => {
+      record.classification = "PASS";
+      record.differences = [];
+    });
+    result.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({
+      id,
+      status: "PASS",
+      native_execution: "EXECUTED",
+      artifact: { path: `artifacts/${id.replaceAll(":", "-")}.json`, sha256: "f".repeat(64) },
+    }));
+    assert.equal(validateV12CalendarComparison(result, {
+      expectedRunId: result.run_id,
+      expectedIdentity: fixture.identity,
+    }), true);
+    result.identity.apk_sha256 = "0".repeat(64);
+    assert.throws(() => validateV12CalendarComparison(result, {
+      expectedRunId: result.run_id,
+      expectedIdentity: fixture.identity,
+    }), /result_identity_invalid/u);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }
@@ -178,13 +231,13 @@ test("Calendar reference coverage is bound to the exact source-owned 64-configur
     incomplete.case_registry.sha256 = "0".repeat(64);
     assert.throws(() => validateV12CalendarReferenceMap(incomplete), /case_registry_invalid/u);
 
-    const result = compareV12Calendar({
+    const result = structuredClone(compareV12Calendar({
       map: fixture.map,
       run: fixture.run,
       outputDirectory: path.join(fixture.directory, "matrix"),
-    });
-    result.case_results.pop();
-    assert.throws(() => validateV12CalendarComparison(result), /case_result_set_invalid/u);
+    }));
+    result.case_results.required_case_count -= 1;
+    assert.throws(() => validateV12CalendarComparison(result), /case_result_invalid/u);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }

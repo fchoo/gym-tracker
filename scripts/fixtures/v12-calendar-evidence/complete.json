@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "suite": "v1.2-calendar",
+  "run_id": "phase16-host-deferred",
   "host_only_fixture": true,
   "native_execution": "NOT_RUN",
   "status": "REVIEW_REQUIRED",
@@ -56,8 +57,38 @@
     { "id": "DEV-02", "owner_decision": "accepted", "owner_decision_date": "2026-10-07", "technical_status": "REVIEW_REQUIRED", "evidence_complete": false, "classification": "REVIEW_REQUIRED", "evidence_hashes": [] }
   ],
   "comparison": {
+    "schema_version": 2,
+    "suite": "v1.2-calendar-comparison",
+    "mode": "host-deferred",
+    "run_id": "phase16-host-deferred",
     "native_execution": "NOT_RUN",
+    "phase20_deferred": true,
     "status": "REVIEW_REQUIRED",
+    "identity": {
+      "base_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_tree_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "source_manifest_sha256": "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
+      "package": "com.fchoo.gymtracker.devtest",
+      "apk_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "installed_apk_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "device_identity_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "report_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "case_registry": {
+      "schema_version": 1,
+      "id": "v12-calendar-reference-cases/v1",
+      "sha256": "b39f245595519123f3001f16c773b44bd670321f9bae4d32a899fae690a051b4",
+      "static_configuration_count": 64,
+      "state_count": 18,
+      "route_count": 8,
+      "input_count": 4,
+      "motion_count": 2
+    },
+    "case_results": {
+      "status": "REVIEW_REQUIRED",
+      "native_execution": "NOT_RUN",
+      "required_case_count": 96
+    },
     "source_manifest_sha256": "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
     "records": [
       { "id": "calendar-month-light-390", "classification": "REVIEW_REQUIRED", "differences": [], "artifacts": { "reference": { "path": "fixtures/comparison/calendar-month-light-390-reference.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "native": { "path": "fixtures/comparison/calendar-month-light-390-native.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "overlay": { "path": "fixtures/comparison/calendar-month-light-390-overlay.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "difference": { "path": "fixtures/comparison/calendar-month-light-390-difference.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "mask": { "path": "fixtures/comparison/calendar-month-light-390-mask.png", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "record": { "path": "fixtures/comparison/calendar-month-light-390-record.json", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } } },

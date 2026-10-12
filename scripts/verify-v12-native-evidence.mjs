@@ -11,6 +11,7 @@ import { validateV12CalendarComparison } from "./compare-v12-calendar.mjs";
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { V12_CALENDAR_ROUTE_JOURNEY_IDS } from "./v12-calendar-case-registry.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -23,16 +24,7 @@ export const CALENDAR_NATIVE_CASE_IDS = Object.freeze(
   Array.from({ length: 9 }, (_, index) => `NV-CAL-${String(index + 1).padStart(2, "0")}`),
 );
 
-export const CALENDAR_ROUTE_JOURNEY_IDS = Object.freeze([
-  "calendar-strength-completed",
-  "calendar-strength-partial",
-  "calendar-strength-planned",
-  "calendar-running-planned",
-  "calendar-garmin-outdoor",
-  "calendar-garmin-treadmill",
-  "calendar-running-missing",
-  "calendar-garmin-removed",
-]);
+export const CALENDAR_ROUTE_JOURNEY_IDS = V12_CALENDAR_ROUTE_JOURNEY_IDS;
 
 const REQUIRED_DEVIATIONS = Object.freeze(["DEV-01", "DEV-02"]);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -149,11 +141,14 @@ function validateDeviations(evidence) {
       || !ALLOWED_RESULTS.has(entry.technical_status)) fail("deviation_invalid");
     if (!entry.evidence_complete) {
       if (entry.technical_status !== "REVIEW_REQUIRED" || entry.classification !== "REVIEW_REQUIRED") fail("deviation_incomplete_status_invalid");
-    } else if (entry.technical_status !== "PASS"
-      || entry.classification !== "accepted_deviation"
-      || !Array.isArray(entry.evidence_hashes)
+    } else if (!Array.isArray(entry.evidence_hashes)
       || entry.evidence_hashes.length === 0
       || entry.evidence_hashes.some((value) => !HASH.test(value))) fail("deviation_complete_status_invalid");
+    else if (entry.technical_status === "PASS") {
+      if (!["PASS", "accepted_deviation"].includes(entry.classification)) fail("deviation_complete_status_invalid");
+    } else if (entry.technical_status === "FAIL") {
+      if (entry.classification !== "FAIL" || !/^[a-z][a-z0-9_]{2,63}$/u.test(entry.measured_reason_code ?? "")) fail("deviation_complete_status_invalid");
+    } else fail("deviation_complete_status_invalid");
   }
 }
 
@@ -163,8 +158,16 @@ function referenceMap(root) {
 
 function validateComparison(evidence, map) {
   const expected = map.captures.map(({ id }) => id);
-  if (evidence.comparison?.source_manifest_sha256 !== map.source_manifest_sha256
+  if (evidence.comparison?.identity?.source_manifest_sha256 !== map.source_manifest_sha256
     || evidence.comparison?.native_execution !== evidence.native_execution) fail("comparison_identity_invalid");
+  try {
+    validateV12CalendarComparison(evidence.comparison, {
+      expectedRunId: evidence.run_id,
+      expectedIdentity: evidence.identity,
+    });
+  } catch (error) {
+    fail(`comparison_schema_invalid:${error instanceof Error ? error.message : "unknown"}`);
+  }
   exactIds("comparison", evidence.comparison?.records, expected);
   const statuses = [];
   for (const record of evidence.comparison.records) {
@@ -198,6 +201,9 @@ function derivedStatus(evidence) {
 export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
   if (evidence?.schema_version !== 1
     || evidence.suite !== "v1.2-calendar"
+    || (evidence.host_only_fixture === true
+      ? evidence.run_id !== "phase16-host-deferred"
+      : !/^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u.test(evidence.run_id ?? ""))
     || !["NOT_RUN", "EXECUTED"].includes(evidence.native_execution)
     || evidence.acceptance_owner !== "phase20") fail("envelope_invalid");
   const fixtureMode = evidence.host_only_fixture === true;
@@ -287,7 +293,7 @@ function parseArgs(args) {
   fail("argument_invalid");
 }
 
-export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2), root = ROOT } = {}) {
+export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2), root = ROOT, currentIdentity } = {}) {
   const options = parseArgs(args);
   if (options.fixturePath !== undefined) {
     const evidence = JSON.parse(readFileSync(path.resolve(root, options.fixturePath), "utf8"));
@@ -297,8 +303,9 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
   const manifestPath = path.resolve(root, options.manifestPath);
   if (!existsSync(manifestPath) || lstatSync(manifestPath).isSymbolicLink()) fail("manifest_missing");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-  validateV12CalendarManifest(manifest, { head, source: sourceTreeSha256(root) });
+  const head = currentIdentity?.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const source = currentIdentity?.source ?? sourceTreeSha256(root);
+  validateV12CalendarManifest(manifest, { head, source });
   const evidencePath = path.join(path.dirname(manifestPath), "evidence", "calendar-evidence.json");
   if (!existsSync(evidencePath) || lstatSync(evidencePath).isSymbolicLink()) fail("evidence_missing");
   const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
@@ -306,7 +313,10 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
   const result = validateV12CalendarEvidence(evidence, { root });
   verifyV12CalendarArtifactSet(evidenceArtifactDescriptors(evidence), { root });
   const comparison = JSON.parse(readFileSync(path.resolve(root, evidence.artifacts.comparison.path), "utf8"));
-  validateV12CalendarComparison(comparison);
+  validateV12CalendarComparison(comparison, {
+    expectedRunId: evidence.run_id,
+    expectedIdentity: evidence.identity,
+  });
   return result;
 }
 
