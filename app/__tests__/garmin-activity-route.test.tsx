@@ -18,6 +18,7 @@ import type {
   ImportedActivityDetail,
   ImportedActivityDetailReadResult,
 } from "../../src/domains/activities/activityDetails";
+import type { GarminRevisionReviewDetail } from "../../src/bootstrap/workoutAppRuntime";
 import { AppearanceProvider } from "../../src/ui/theme";
 
 const mockBack = jest.fn();
@@ -25,6 +26,10 @@ const mockPush = jest.fn();
 const mockLoadImportedActivityDetail = jest.fn<
   (activityId: string) => Promise<ImportedActivityDetailReadResult>
 >();
+const mockLoadGarminRevisionReview = jest.fn<
+  (activityId: string) => Promise<GarminRevisionReviewDetail | null>
+>();
+const mockResolveGarminRevision = jest.fn();
 let mockParams: Readonly<{
   activityId?: string | readonly string[];
   origin?: string | readonly string[];
@@ -49,7 +54,9 @@ jest.mock("expo-router", () => ({
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
+    loadGarminRevisionReview: mockLoadGarminRevisionReview,
     loadImportedActivityDetail: mockLoadImportedActivityDetail,
+    resolveGarminRevision: mockResolveGarminRevision,
   }),
 }));
 
@@ -109,6 +116,8 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     mockBack.mockReset();
     mockPush.mockReset();
     mockLoadImportedActivityDetail.mockReset();
+    mockLoadGarminRevisionReview.mockReset();
+    mockResolveGarminRevision.mockReset();
     pendingLoads = [];
     mockParams = {
       activityId: "activity-local-01",
@@ -193,6 +202,7 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
   });
 
   it("routes matching with only the same opaque local ID", async () => {
+    mockParams = { activityId: "activity-local-01", origin: "workout" };
     await renderRoute();
     await settleNextLoad({ kind: "ready", detail });
     expect(await screen.findByText("Outdoor run")).toBeTruthy();
@@ -203,10 +213,27 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
       pathname: "/garmin/match/[activityId]",
       params: {
         activityId: "activity-local-01",
-        origin: "calendar",
+        origin: "workout",
         returnFocusToken: "match:activity-local-01",
       },
     });
+  });
+
+  it("keeps Calendar-origin revision review query-only", async () => {
+    mockLoadGarminRevisionReview.mockResolvedValueOnce({
+      activityId: "activity-local-01",
+      acceptedRevision: 1,
+      proposedRevision: 2,
+      expectedProposedSha256: "a".repeat(64),
+      changedFields: [{ field: "distance", accepted: "5.00 km", proposed: "5.01 km" }],
+    });
+    await renderRoute();
+    await settleNextLoad({ kind: "revision_review" });
+
+    expect(await screen.findByText("Source revision needs review")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use updated facts" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Keep current facts" })).toBeNull();
+    expect(mockResolveGarminRevision).not.toHaveBeenCalled();
   });
 });
 

@@ -87,7 +87,13 @@ describe("CalendarRoute", () => {
 
     expect(mockPush).toHaveBeenNthCalledWith(1, "/calendar/plan/occurrence-17?origin=calendar&returnEventId=event-occurrence-17");
     expect(mockPush).toHaveBeenNthCalledWith(2, "/library/running/running-plan-17?origin=calendar&sessionId=revision-17&returnEventId=event-plan-17");
-    expect(mockPush).toHaveBeenNthCalledWith(3, "/garmin/activity/activity-17?origin=calendar&returnEventId=event-activity-17");
+    expect(mockPush).toHaveBeenNthCalledWith(3, {
+      pathname: "/garmin/activity/[activityId]",
+      params: {
+        activityId: "activity-17",
+        origin: "calendar",
+      },
+    });
     expect(mockPush.mock.calls.join(" ")).not.toMatch(/resume|correct|remove|match|workout/u);
   });
 });

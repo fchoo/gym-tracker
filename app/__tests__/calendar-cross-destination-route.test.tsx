@@ -402,7 +402,7 @@ describe("Calendar cross-destination routes", () => {
         activate: "keyboard",
         params: { origin: "calendar", planId: runningPlan.id },
         Route: RunningPlanDetailRoute,
-        loaded: "Calendar tempo plan",
+        loaded: "Saved Running goal, benchmark, and schedule facts. Activation stays separate.",
         back: "Go back",
       },
       {
@@ -410,7 +410,7 @@ describe("Calendar cross-destination routes", () => {
         activate: "press",
         params: { activityId: "activity-local-outdoor", origin: "calendar" },
         Route: ImportedActivityDetailRoute,
-        loaded: "Outdoor run",
+        loaded: "Activity detail",
         back: "Go back",
       },
       {
@@ -418,7 +418,7 @@ describe("Calendar cross-destination routes", () => {
         activate: "keyboard",
         params: { activityId: "activity-local-treadmill", origin: "calendar" },
         Route: ImportedActivityDetailRoute,
-        loaded: "Treadmill run",
+        loaded: "Activity detail",
         back: "Go back",
       },
     ] as const;
@@ -465,6 +465,13 @@ describe("Calendar cross-destination routes", () => {
       "activity-local-outdoor",
       "activity-local-treadmill",
     ]);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/garmin/activity/[activityId]",
+      params: {
+        activityId: "activity-local-treadmill",
+        origin: "calendar",
+      },
+    });
     Object.values(mockMutationCommands).forEach((command) => expect(command).not.toHaveBeenCalled());
     expect(mockPreviewLifecycle).not.toHaveBeenCalled();
     expect(mockConfirmLifecycle).not.toHaveBeenCalled();

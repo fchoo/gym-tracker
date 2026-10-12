@@ -99,6 +99,12 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
           const sport = event.sport === "strength" ? "Strength" : "Running";
           const status = statusLabel(event);
           const label = [event.title, resultOrTargetLabel(event), `${sport} · ${status}`, event.sourceLabel, "Open details"].join(". ");
+          const activate = () => {
+            if (activeEventIdRef.current !== null) return;
+            activeEventIdRef.current = event.id;
+            onActivateEvent(event.id);
+            onOpenEvent(event.destination);
+          };
           return (
             <FocusablePressable
               accessibilityHint="Opens read-only details"
@@ -106,14 +112,13 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
               accessibilityRole="button"
               key={event.id}
               onKeyDown={(event) => {
-                if (event.nativeEvent.key === "Escape") onRequestBack();
+                if (event.nativeEvent.key === "Escape") {
+                  onRequestBack();
+                } else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " ") {
+                  activate();
+                }
               }}
-              onPress={() => {
-                if (activeEventIdRef.current !== null) return;
-                activeEventIdRef.current = event.id;
-                onActivateEvent(event.id);
-                onOpenEvent(event.destination);
-              }}
+              onPress={activate}
               ref={(node) => {
                 if (node === null) rowRefs.current.delete(event.id);
                 else rowRefs.current.set(event.id, node as CalendarAgendaRowHandle);

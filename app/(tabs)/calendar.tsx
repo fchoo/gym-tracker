@@ -24,6 +24,7 @@ import {
   clearPhase16CalendarTestControls,
   configurePhase16CalendarTestControls,
 } from "../../src/bootstrap/phase16CalendarTestControls";
+import { createImportedActivityDetailHref } from "../garmin/activity/[activityId]";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -77,10 +78,10 @@ export default function CalendarRoute() {
         return;
       }
       case "activity": {
-        const activityId = routeId(destination.activityId);
-        if (activityId === null) return;
-        // This preserves the typed handoff only; Plan 16-07 owns real Garmin integration.
-        router.push((`/garmin/activity/${activityId}?${calendarQuery(returnEventId)}`) as Href);
+        router.push(createImportedActivityDetailHref({
+          activityId: destination.activityId,
+          origin: "calendar",
+        }));
         return;
       }
     }
