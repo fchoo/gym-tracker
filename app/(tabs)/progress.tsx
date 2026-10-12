@@ -28,6 +28,8 @@ export default function ProgressRoute() {
   const rootSettings = useRootSettingsController();
   const runtime = useWorkoutAppRuntime();
   const [returnFocusVersion, setReturnFocusVersion] = React.useState(0);
+  const [returnFocusToken, setReturnFocusToken] = React.useState<string>();
+  const pendingReturnFocusTokenRef = React.useRef<string | null>(null);
   const hasFocused = React.useRef(false);
   const now = new Date();
   const nowLocalDate = [
@@ -38,7 +40,12 @@ export default function ProgressRoute() {
 
   useFocusEffect(React.useCallback(() => {
     if (hasFocused.current) {
-      setReturnFocusVersion((current) => current + 1);
+      const token = pendingReturnFocusTokenRef.current;
+      if (token !== null) {
+        pendingReturnFocusTokenRef.current = null;
+        setReturnFocusToken(token);
+        setReturnFocusVersion((current) => current + 1);
+      }
     } else {
       hasFocused.current = true;
     }
@@ -53,6 +60,7 @@ export default function ProgressRoute() {
         if (!OPAQUE_ID.test(exerciseId)
           || returnToken === undefined
           || !RETURN_TOKEN.test(returnToken)) return;
+        pendingReturnFocusTokenRef.current = returnToken;
         router.push({
           pathname: "/exercise-history/[exerciseId]",
           params: {
@@ -63,8 +71,9 @@ export default function ProgressRoute() {
           },
         } as Href);
       }}
-      onOpenRunningSource={(source) => {
+      onOpenRunningSource={(source, returnToken) => {
         if (!("activityId" in source)) return;
+        pendingReturnFocusTokenRef.current = returnToken;
         router.push(createImportedActivityDetailHref({
           activityId: source.activityId,
           origin: "progress",
@@ -76,11 +85,16 @@ export default function ProgressRoute() {
         triggerNativeID: settingsActionNativeID,
         triggerRef: settingsActionRef,
       })}
-      onOpenSession={(sessionId) => router.push(("/session/" + sessionId) as Href)}
+      onOpenSession={(sessionId, returnToken) => {
+        if (!OPAQUE_ID.test(sessionId)) return;
+        if (returnToken !== undefined) pendingReturnFocusTokenRef.current = returnToken;
+        router.push(("/session/" + sessionId) as Href);
+      }}
       progressBodyweightRuntime={runtime.progressBodyweightRuntime}
       progressRecommendationRuntime={runtime.progressRecommendationRuntime}
       runningTargetRuntime={runtime.progressRunningTargetRuntime}
       returnFocusVersion={returnFocusVersion}
+      {...(returnFocusToken === undefined ? {} : { returnFocusToken })}
       headingRef={headingRef}
       settingsActionRef={settingsActionRef}
       settingsActionNativeID={settingsActionNativeID}

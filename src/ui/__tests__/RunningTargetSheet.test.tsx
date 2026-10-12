@@ -162,4 +162,29 @@ describe("RunningTargetSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(saveRunningTarget).not.toHaveBeenCalled();
   });
+
+  it("supports wrapped D-pad focus and Enter or Space activation for training days", async () => {
+    const view = await render(
+      <AppearanceProvider reduceMotion><RunningTargetSheet
+        onClose={jest.fn()}
+        runtime={{ createId: () => "request-1", saveRunningTarget: jest.fn() } as never}
+        sources={[source()]}
+        todayLocalDate="2026-10-12"
+        visible
+      /></AppearanceProvider>,
+    );
+
+    await fireEvent(view.getByLabelText("Monday"), "keyDown", {
+      nativeEvent: { key: "ArrowRight", preventDefault: jest.fn() },
+    });
+    await waitFor(() => expect(view.getByLabelText("Tuesday"))
+      .toHaveProp("hasTVPreferredFocus", true));
+    await fireEvent(view.getByLabelText("Tuesday"), "keyDown", {
+      nativeEvent: { key: " ", preventDefault: jest.fn() },
+    });
+    expect(view.getByLabelText("Tuesday")).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ checked: true }),
+    );
+  });
 });

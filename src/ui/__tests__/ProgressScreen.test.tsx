@@ -421,12 +421,12 @@ describe("ProgressScreen", () => {
     expect(screen.getByText("Bodyweight entry deleted.")).toBeOnTheScreen();
   });
 
-  it.each([
+  it.each<[number, string]>([
     [360, "compact layout"],
     [390, "compact layout"],
     [600, "medium layout"],
     [840, "expanded layout"],
-  ] as const)("preserves one scroll owner and 48dp controls at %ipx", async (width, layoutLabel) => {
+  ])("preserves one scroll owner and 48dp controls at %ipx", async (width, layoutLabel) => {
     await renderProgress(undefined, { width });
 
     expect(screen.getByLabelText(layoutLabel)).toBeOnTheScreen();
@@ -436,7 +436,7 @@ describe("ProgressScreen", () => {
   });
 
   it("safely dismisses an open target editor before switching roots", async () => {
-    const saveRunningTarget = jest.fn();
+    const saveRunningTarget = jest.fn(async () => ({ outcome: "committed" as const, plan: runningTargetSource }));
     const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
       sport: input.sport,
       period: input.period as "4_weeks" | "12_weeks" | "all_time",

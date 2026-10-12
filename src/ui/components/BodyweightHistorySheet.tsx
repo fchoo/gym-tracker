@@ -19,6 +19,8 @@ export type BodyweightHistorySheetProps = Readonly<{
   onAdd(): void;
   onEdit(entry: BodyweightHistoryEntry): void;
   onDelete(entry: BodyweightHistoryEntry): Promise<readonly BodyweightHistoryEntry[]>;
+  editorRestoreFocusRef?: React.MutableRefObject<View | null>;
+  restoreFocusRef?: React.RefObject<View | null>;
 }>;
 
 function newestFirst(entries: readonly BodyweightHistoryEntry[]): readonly BodyweightHistoryEntry[] {
@@ -32,7 +34,7 @@ function displayKilograms(grams: number): string {
 }
 
 /** Presents optional source facts; writes, reloads, and target isolation stay above the sheet. */
-export function BodyweightHistorySheet({ visible, entries, onAdd, onClose, onDelete, onEdit }: BodyweightHistorySheetProps) {
+export function BodyweightHistorySheet({ visible, entries, editorRestoreFocusRef, onAdd, onClose, onDelete, onEdit, restoreFocusRef }: BodyweightHistorySheetProps) {
   const { colors } = useAppTheme();
   const authoritativeEntries = useMemo(() => newestFirst(entries), [entries]);
   const [renderedEntries, setRenderedEntries] = useState(authoritativeEntries);
@@ -101,6 +103,7 @@ export function BodyweightHistorySheet({ visible, entries, onAdd, onClose, onDel
       contentStyle={styles.content}
       heading="Bodyweight"
       onCancel={close}
+      restoreFocusRef={restoreFocusRef}
       scrollTestID="bodyweight-history-sheet-content"
       visible={visible}
     >
@@ -111,13 +114,13 @@ export function BodyweightHistorySheet({ visible, entries, onAdd, onClose, onDel
         <View style={styles.empty}>
           <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>No bodyweight entries</Text>
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Add one only if bodyweight-relative strength is useful to you. Nothing else in Progress depends on it.</Text>
-          <PrimaryAction label="Add first entry" onPress={onAdd} ref={addRef} />
+          <PrimaryAction label="Add first entry" onPress={() => { if (editorRestoreFocusRef !== undefined) editorRestoreFocusRef.current = addRef.current; onAdd(); }} ref={addRef} />
         </View>
       ) : (
         <>
           <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`Latest · ${displayKilograms(renderedEntries[0]!.grams)}`}</Text>
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{countLabel}</Text>
-          <PrimaryAction label="Add entry" onPress={() => { setPendingEntry(null); setFailure(null); onAdd(); }} />
+          <PrimaryAction label="Add entry" onPress={() => { setPendingEntry(null); setFailure(null); if (editorRestoreFocusRef !== undefined) editorRestoreFocusRef.current = addRef.current; onAdd(); }} ref={addRef} />
           {renderedEntries.map((entry) => {
             const pending = pendingEntry?.entryId === entry.entryId;
             return (
@@ -141,7 +144,7 @@ export function BodyweightHistorySheet({ visible, entries, onAdd, onClose, onDel
                     <FocusablePressable
                       accessibilityLabel={`Edit bodyweight entry for ${entry.localDate}`}
                       accessibilityRole="button"
-                      onPress={() => { setPendingEntry(null); setFailure(null); onEdit(entry); }}
+                      onPress={() => { setPendingEntry(null); setFailure(null); if (editorRestoreFocusRef !== undefined) editorRestoreFocusRef.current = refFor(entry.entryId).current; onEdit(entry); }}
                       ref={refFor(entry.entryId)}
                       style={[styles.rowAction, { borderColor: colors.divider }]}
                     >
