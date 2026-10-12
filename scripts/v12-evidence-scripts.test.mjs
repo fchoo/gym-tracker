@@ -22,13 +22,16 @@ import {
   executeV12CalendarDiagnostics,
   validateV12CalendarDiagnostics,
 } from "./benchmark-v12-interactions.mjs";
+import { validateV12CalendarComparison } from "./compare-v12-calendar.mjs";
 import {
   V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
+  validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { stableCanonicalJson } from "./v12-calendar-artifacts.mjs";
 import {
   CALENDAR_NATIVE_CASE_IDS,
   CALENDAR_ROUTE_JOURNEY_IDS,
@@ -142,13 +145,21 @@ function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
   return evidence;
 }
 
-function writeDescriptor(root, descriptor) {
-  const bytes = Buffer.from(`bounded:${descriptor.path}`);
+function writeDescriptor(root, descriptor, bytes = Buffer.from(`bounded:${descriptor.path}`)) {
   const absolute = path.join(root, descriptor.path);
   mkdirSync(path.dirname(absolute), { recursive: true });
   writeFileSync(absolute, bytes);
   descriptor.sha256 = hash(bytes);
   descriptor.size_bytes = bytes.length;
+}
+
+function writeJsonDescriptor(root, descriptor, value) {
+  writeDescriptor(root, descriptor, Buffer.from(stableCanonicalJson(value)));
+}
+
+function withoutArtifact(entry) {
+  const { artifact, ...value } = entry;
+  return value;
 }
 
 function materializeLiveEvidence(root, currentIdentity, runId) {
@@ -171,25 +182,51 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
   const sourceMap = path.resolve(".planning/phases/16-calendar-parity/16-REFERENCE-MAP.json");
   if (path.resolve(destinationMap) !== sourceMap) writeFileSync(destinationMap, readFileSync(sourceMap));
 
-  const descriptors = [
-    evidence.artifacts.report,
-    evidence.artifacts.diagnostics,
-    ...evidence.functional_cases.map(({ artifact }) => artifact),
-    ...evidence.route_journeys.map(({ artifact }) => artifact),
-    ...evidence.comparison.case_results.map(({ artifact }) => artifact),
-    ...evidence.comparison.records.flatMap(({ artifacts }) => Object.values(artifacts)),
-  ];
-  descriptors.forEach((descriptor) => writeDescriptor(root, descriptor));
-  const manifestBytes = Buffer.from(`${JSON.stringify(evidence.manifest, null, 2)}\n`);
-  writeFileSync(manifestPath, manifestBytes);
-  evidence.artifacts.manifest.sha256 = hash(manifestBytes);
-  evidence.artifacts.manifest.size_bytes = manifestBytes.length;
+  writeDescriptor(root, evidence.manifest.apk, Buffer.from("synthetic-apk"));
+  evidence.manifest.installed_apk.sha256 = evidence.manifest.apk.sha256;
+  evidence.identity.apk_sha256 = evidence.manifest.apk.sha256;
+  evidence.identity.installed_apk_sha256 = evidence.manifest.apk.sha256;
 
-  const comparisonBytes = Buffer.from(`${JSON.stringify(evidence.comparison, null, 2)}\n`);
-  mkdirSync(path.dirname(path.join(root, evidence.artifacts.comparison.path)), { recursive: true });
-  writeFileSync(path.join(root, evidence.artifacts.comparison.path), comparisonBytes);
-  evidence.artifacts.comparison.sha256 = hash(comparisonBytes);
-  evidence.artifacts.comparison.size_bytes = comparisonBytes.length;
+  writeJsonDescriptor(root, evidence.artifacts.report, {
+    schema_version: 1,
+    suite: "v1.2-calendar-native-report",
+    run_id: evidence.run_id,
+    native_execution: "EXECUTED",
+  });
+  evidence.manifest.report_sha256 = evidence.artifacts.report.sha256;
+  evidence.identity.report_sha256 = evidence.artifacts.report.sha256;
+  evidence.comparison.identity = clone(evidence.identity);
+  evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
+
+  for (const entry of evidence.functional_cases) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
+  for (const entry of evidence.route_journeys) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
+  for (const entry of evidence.comparison.case_results) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
+
+  const map = JSON.parse(readFileSync(destinationMap, "utf8"));
+  const mappedById = new Map(map.captures.map((entry) => [entry.id, entry]));
+  for (const record of evidence.comparison.records) {
+    for (const kind of ["reference", "native", "overlay", "difference", "mask"]) {
+      writeDescriptor(root, record.artifacts[kind]);
+    }
+    writeJsonDescriptor(root, record.artifacts.record, {
+      schema_version: 2,
+      id: record.id,
+      requirement_ids: mappedById.get(record.id).requirement_ids,
+      classification: record.classification,
+      differences: record.differences,
+      reference: record.artifacts.reference,
+      native: record.artifacts.native,
+      overlay: record.artifacts.overlay,
+      difference: record.artifacts.difference,
+      mask: record.artifacts.mask,
+      source_manifest_sha256: evidence.identity.source_manifest_sha256,
+      source_tree_sha256: evidence.identity.source_tree_sha256,
+    });
+  }
+  writeJsonDescriptor(root, evidence.artifacts.diagnostics, evidence.diagnostics);
+
+  writeJsonDescriptor(root, evidence.artifacts.comparison, evidence.comparison);
+  writeJsonDescriptor(root, evidence.artifacts.manifest, evidence.manifest);
   writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
   return { evidence, manifestPath: path.relative(root, manifestPath) };
 }
@@ -219,6 +256,7 @@ test("Calendar evidence rejects missing, duplicate, stale, mutating, non-monoton
     (value) => { value.route_journeys[0].actual_loader = false; },
     (value) => { value.identity.source_tree_sha256 = "0".repeat(64); },
     (value) => { value.manifest.reference_map_sha256 = "0".repeat(64); value.identity.reference_map_sha256 = "0".repeat(64); value.comparison.identity.reference_map_sha256 = "0".repeat(64); },
+    (value) => { value.artifacts.report.sha256 = "0".repeat(64); },
   ];
   for (const mutate of mutations) {
     const evidence = fixture();
@@ -270,6 +308,14 @@ test("Calendar evidence derives FAIL and REVIEW_REQUIRED and permits accepted de
   falsePass.status = "PASS";
   assert.throws(() => validateV12CalendarEvidence(falsePass), /aggregate_status_mismatch/u);
 
+  const failedRequiredCase = completeLiveEvidence();
+  failedRequiredCase.comparison.case_results[0].status = "FAIL";
+  failedRequiredCase.comparison.status = "FAIL";
+  assert.throws(() => validateV12CalendarEvidence(failedRequiredCase), /aggregate_status_mismatch/u);
+  failedRequiredCase.status = "FAIL";
+  failedRequiredCase.all_pass = false;
+  assert.equal(validateV12CalendarEvidence(failedRequiredCase).status, "FAIL");
+
   const wrongCaseIdentity = completeLiveEvidence();
   wrongCaseIdentity.comparison.case_results[0].case_sha256 = "0".repeat(64);
   assert.throws(() => validateV12CalendarEvidence(wrongCaseIdentity), /case_result_invalid/u);
@@ -279,6 +325,30 @@ test("the final CLI verifier accepts a complete live comparison on the same run 
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-live-"));
   try {
     const { evidence, manifestPath } = materializeLiveEvidence(root);
+    assert.equal(validateV12CalendarComparison(evidence.comparison), true);
+    assert.deepEqual(
+      JSON.parse(readFileSync(path.join(root, evidence.artifacts.comparison.path), "utf8")),
+      evidence.comparison,
+    );
+    assert.equal(validateV12CalendarEvidence(evidence, { root }).status, "PASS");
+    verifyV12CalendarArtifactSet([
+      evidence.manifest.apk,
+      evidence.artifacts.manifest,
+      evidence.artifacts.report,
+      evidence.artifacts.comparison,
+      evidence.artifacts.diagnostics,
+      ...evidence.functional_cases.map(({ artifact }) => artifact),
+      ...evidence.route_journeys.map(({ artifact }) => artifact),
+      ...evidence.comparison.case_results.map(({ artifact }) => artifact),
+      ...evidence.comparison.records.flatMap(({ artifacts }) => Object.values(artifacts)),
+    ], { root });
+    const retainedComparison = JSON.parse(readFileSync(path.join(root, evidence.artifacts.comparison.path), "utf8"));
+    assert.deepEqual(retainedComparison.case_registry, evidence.comparison.case_registry);
+    assert.equal(validateV12CalendarCaseRegistryDescriptor(retainedComparison.case_registry), true);
+    assert.equal(validateV12CalendarComparison(
+      retainedComparison,
+      { expectedRunId: evidence.run_id, expectedIdentity: evidence.identity },
+    ), true);
     assert.deepEqual(executeV12CalendarEvidenceVerifier({
       args: ["--manifest", manifestPath, "--automated-only"],
       root,
@@ -293,6 +363,83 @@ test("the final CLI verifier accepts a complete live comparison on the same run 
       route_journeys: 8,
       comparisons: 14,
     });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the live verifier requires retained APK, case artifacts, and exact embedded JSON", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-live-binding-"));
+  try {
+    const first = materializeLiveEvidence(root, undefined, "phase20-20261013T010101Z-abcdef123456");
+    assert.equal(existsSync(path.join(root, first.evidence.manifest.apk.path)), true);
+    assert.equal(existsSync(path.join(root, first.evidence.comparison.case_results[0].artifact.path)), true);
+    unlinkSync(path.join(root, first.evidence.comparison.case_results[0].artifact.path));
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", first.manifestPath, "--automated-only"],
+      root,
+      currentIdentity: { head: first.evidence.manifest.base_head, source: first.evidence.manifest.source_tree_sha256 },
+    }), /artifact_path_invalid/u);
+
+    const second = materializeLiveEvidence(root, undefined, "phase20-20261013T020202Z-abcdef123456");
+    unlinkSync(path.join(root, second.evidence.manifest.apk.path));
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", second.manifestPath, "--automated-only"],
+      root,
+      currentIdentity: { head: second.evidence.manifest.base_head, source: second.evidence.manifest.source_tree_sha256 },
+    }), /artifact_path_invalid/u);
+
+    const third = materializeLiveEvidence(root, undefined, "phase20-20261013T030303Z-abcdef123456");
+    const retainedManifest = clone(third.evidence.manifest);
+    retainedManifest.apk.size_bytes += 1;
+    const retainedBytes = Buffer.from(`${JSON.stringify(retainedManifest, null, 2)}\n`);
+    writeFileSync(path.join(root, third.manifestPath), retainedBytes);
+    third.evidence.artifacts.manifest.sha256 = hash(retainedBytes);
+    third.evidence.artifacts.manifest.size_bytes = retainedBytes.length;
+    writeFileSync(path.join(root, path.dirname(third.manifestPath), "evidence/calendar-evidence.json"), `${JSON.stringify(third.evidence, null, 2)}\n`);
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", third.manifestPath, "--automated-only"],
+      root,
+      currentIdentity: { head: third.evidence.manifest.base_head, source: third.evidence.manifest.source_tree_sha256 },
+    }), /live_evidence_identity_invalid/u);
+
+    const fourth = materializeLiveEvidence(root, undefined, "phase20-20261013T040404Z-abcdef123456");
+    const retainedComparison = clone(fourth.evidence.comparison);
+    retainedComparison.records[0].differences = [{ kind: "visual", explained: true }];
+    const retainedComparisonBytes = Buffer.from(stableCanonicalJson(retainedComparison));
+    writeFileSync(path.join(root, fourth.evidence.artifacts.comparison.path), retainedComparisonBytes);
+    fourth.evidence.artifacts.comparison.sha256 = hash(retainedComparisonBytes);
+    fourth.evidence.artifacts.comparison.size_bytes = retainedComparisonBytes.length;
+    writeFileSync(path.join(root, path.dirname(fourth.manifestPath), "evidence/calendar-evidence.json"), `${JSON.stringify(fourth.evidence, null, 2)}\n`);
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", fourth.manifestPath, "--automated-only"],
+      root,
+      currentIdentity: { head: fourth.evidence.manifest.base_head, source: fourth.evidence.manifest.source_tree_sha256 },
+    }), /comparison_content_mismatch/u);
+
+    const fifth = materializeLiveEvidence(root, undefined, "phase20-20261013T050505Z-abcdef123456");
+    const diagnosticsPath = path.join(root, fifth.evidence.artifacts.diagnostics.path);
+    writeFileSync(diagnosticsPath, "{");
+    fifth.evidence.artifacts.diagnostics.sha256 = hash("{");
+    fifth.evidence.artifacts.diagnostics.size_bytes = 1;
+    writeFileSync(path.join(root, path.dirname(fifth.manifestPath), "evidence/calendar-evidence.json"), `${JSON.stringify(fifth.evidence, null, 2)}\n`);
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", fifth.manifestPath, "--automated-only"],
+      root,
+      currentIdentity: { head: fifth.evidence.manifest.base_head, source: fifth.evidence.manifest.source_tree_sha256 },
+    }), /diagnostics_json_invalid/u);
+
+    const sixth = materializeLiveEvidence(root, undefined, "phase20-20261013T060606Z-abcdef123456");
+    const nonCanonicalDiagnostics = JSON.stringify(sixth.evidence.diagnostics);
+    writeFileSync(path.join(root, sixth.evidence.artifacts.diagnostics.path), nonCanonicalDiagnostics);
+    sixth.evidence.artifacts.diagnostics.sha256 = hash(nonCanonicalDiagnostics);
+    sixth.evidence.artifacts.diagnostics.size_bytes = Buffer.byteLength(nonCanonicalDiagnostics);
+    writeFileSync(path.join(root, path.dirname(sixth.manifestPath), "evidence/calendar-evidence.json"), `${JSON.stringify(sixth.evidence, null, 2)}\n`);
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", sixth.manifestPath, "--automated-only"],
+      root,
+      currentIdentity: { head: sixth.evidence.manifest.base_head, source: sixth.evidence.manifest.source_tree_sha256 },
+    }), /diagnostics_content_mismatch/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

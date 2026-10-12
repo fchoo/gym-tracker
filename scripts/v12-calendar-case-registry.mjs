@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 const APPEARANCES = Object.freeze([
   Object.freeze({ code: "L", preference: "Light", os_scheme: "Light" }),
@@ -178,14 +179,14 @@ export const V12_CALENDAR_CASE_LEDGER_DESCRIPTOR = Object.freeze({
 });
 
 export function validateV12CalendarCaseRegistryDescriptor(value) {
-  if (JSON.stringify(value) !== JSON.stringify(V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR)) {
+  if (!isDeepStrictEqual(value, V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR)) {
     throw new Error("v12_calendar_case_registry_invalid");
   }
   return true;
 }
 
 export function validateV12CalendarCaseLedgerDescriptor(value) {
-  if (JSON.stringify(value) !== JSON.stringify(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR)) {
+  if (!isDeepStrictEqual(value, V12_CALENDAR_CASE_LEDGER_DESCRIPTOR)) {
     throw new Error("v12_calendar_case_ledger_invalid");
   }
   return true;

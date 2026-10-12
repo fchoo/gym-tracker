@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   v12CalendarReferenceMapSha256,
@@ -16,7 +17,10 @@ import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { V12_CALENDAR_ROUTE_JOURNEY_IDS } from "./v12-calendar-case-registry.mjs";
 import { errorMessage, exactKeys } from "./node-evidence-utils.mjs";
-import { resolveV12CalendarPath } from "./v12-calendar-artifacts.mjs";
+import {
+  resolveV12CalendarPath,
+  stableCanonicalJson,
+} from "./v12-calendar-artifacts.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -183,6 +187,9 @@ function validateComparison(evidence, map) {
 function derivedStatus(evidence) {
   const failed = [
     evidence.functional_cases.some(({ status }) => status === "FAIL"),
+    evidence.comparison.status === "FAIL",
+    Array.isArray(evidence.comparison.case_results)
+      && evidence.comparison.case_results.some(({ status }) => status === "FAIL"),
     evidence.comparison.records.some(({ classification }) => classification === "FAIL"),
     evidence.deviations.some(({ technical_status }) => technical_status === "FAIL"),
   ].some(Boolean);
@@ -190,6 +197,9 @@ function derivedStatus(evidence) {
   const reviewRequired = [
     evidence.native_execution !== "EXECUTED",
     evidence.functional_cases.some(({ status }) => status === "REVIEW_REQUIRED"),
+    evidence.comparison.status === "REVIEW_REQUIRED",
+    !Array.isArray(evidence.comparison.case_results)
+      || evidence.comparison.case_results.some(({ status }) => status === "REVIEW_REQUIRED"),
     evidence.comparison.records.some(({ classification }) => ["REVIEW_REQUIRED", "accepted_deviation"].includes(classification)),
     evidence.deviations.some(({ technical_status, classification }) => technical_status === "REVIEW_REQUIRED" || classification === "accepted_deviation"),
   ].some(Boolean);
@@ -225,6 +235,7 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
     diagnostics: `${liveRoot(evidence.run_id)}/diagnostics/calendar.json`,
   };
   for (const [name, artifact] of Object.entries(evidence.artifacts)) descriptor(artifact, `artifacts.${name}`, [artifactPaths[name]]);
+  if (evidence.artifacts.report.sha256 !== evidence.manifest.report_sha256) fail("report_identity_invalid");
   const status = derivedStatus(evidence);
   if ([evidence.status !== status, evidence.all_pass !== (status === "PASS")].some(Boolean)) fail("aggregate_status_mismatch");
   return Object.freeze({
@@ -271,16 +282,49 @@ export function validateV12CalendarPackageScripts(packageJson) {
 
 function evidenceArtifactDescriptors(evidence) {
   return [
+    evidence.manifest?.apk,
     evidence.artifacts?.manifest,
     evidence.artifacts?.report,
     evidence.artifacts?.comparison,
     evidence.artifacts?.diagnostics,
     ...evidence.functional_cases.map(({ artifact }) => artifact),
     ...evidence.route_journeys.map(({ artifact }) => artifact),
+    ...evidence.comparison.case_results.map(({ artifact }) => artifact),
     ...evidence.comparison.records.flatMap((record) => {
       return ["reference", "native", "overlay", "difference", "mask", "record"].map((kind) => record.artifacts[kind]);
     }),
   ];
+}
+
+function retainedJson(root, descriptorValue, expected, code) {
+  const artifactPath = resolveV12CalendarPath(path.resolve(root, descriptorValue.path), { root, mustExist: true });
+  const text = readFileSync(artifactPath, "utf8");
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch { fail(`${code}_json_invalid`); }
+  if (!isDeepStrictEqual(parsed, expected) || text !== stableCanonicalJson(parsed)) fail(`${code}_content_mismatch`);
+}
+
+function withoutArtifact(entry) {
+  const { artifact, ...value } = entry;
+  return value;
+}
+
+function comparisonRecordPayload(record, mapped, evidence) {
+  return {
+    schema_version: 2,
+    id: record.id,
+    requirement_ids: mapped.requirement_ids,
+    classification: record.classification,
+    differences: record.differences,
+    reference: record.artifacts.reference,
+    native: record.artifacts.native,
+    overlay: record.artifacts.overlay,
+    difference: record.artifacts.difference,
+    mask: record.artifacts.mask,
+    source_manifest_sha256: evidence.identity.source_manifest_sha256,
+    source_tree_sha256: evidence.identity.source_tree_sha256,
+  };
 }
 
 function parseArgs(args) {
@@ -315,7 +359,7 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
     fail("evidence_missing");
   }
   const evidence = JSON.parse(readFileSync(safeEvidencePath, "utf8"));
-  if ([evidence.host_only_fixture === true, evidence.manifest?.source_tree_sha256 !== manifest.source_tree_sha256].some(Boolean)) fail("live_evidence_identity_invalid");
+  if ([evidence.host_only_fixture === true, !isDeepStrictEqual(evidence.manifest, manifest)].some(Boolean)) fail("live_evidence_identity_invalid");
   const result = validateV12CalendarEvidence(evidence, { root });
   verifyV12CalendarArtifactSet(evidenceArtifactDescriptors(evidence), { root });
   const comparisonPath = resolveV12CalendarPath(path.resolve(root, evidence.artifacts.comparison.path), { root, mustExist: true });
@@ -324,6 +368,24 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
     expectedRunId: evidence.run_id,
     expectedIdentity: evidence.identity,
   });
+  if (!isDeepStrictEqual(comparison, evidence.comparison)) fail("comparison_content_mismatch");
+  retainedJson(root, evidence.artifacts.manifest, evidence.manifest, "manifest");
+  retainedJson(root, evidence.artifacts.report, {
+    schema_version: 1,
+    suite: "v1.2-calendar-native-report",
+    run_id: evidence.run_id,
+    native_execution: "EXECUTED",
+  }, "report");
+  retainedJson(root, evidence.artifacts.comparison, evidence.comparison, "comparison");
+  retainedJson(root, evidence.artifacts.diagnostics, evidence.diagnostics, "diagnostics");
+  for (const entry of evidence.functional_cases) retainedJson(root, entry.artifact, withoutArtifact(entry), "functional_case");
+  for (const entry of evidence.route_journeys) retainedJson(root, entry.artifact, withoutArtifact(entry), "route_journey");
+  for (const entry of evidence.comparison.case_results) retainedJson(root, entry.artifact, withoutArtifact(entry), "case_result");
+  const map = referenceMap(root, evidence.manifest.reference_map_sha256);
+  const mappedById = new Map(map.captures.map((entry) => [entry.id, entry]));
+  for (const record of evidence.comparison.records) {
+    retainedJson(root, record.artifacts.record, comparisonRecordPayload(record, mappedById.get(record.id), evidence), "comparison_record");
+  }
   return result;
 }
 
