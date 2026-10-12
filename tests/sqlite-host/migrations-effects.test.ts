@@ -342,17 +342,17 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       expect(multiPlanRunningFoundationMigration.version).toBe(28);
       expect(sessionExerciseRestDefaultsMigration.version).toBe(36);
       expect(result).toEqual({
-        appliedVersions: [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
-        currentVersion: 44,
+        appliedVersions: [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45],
+        currentVersion: 45,
         recoveryBackup: {
-          backupId: "recovery-27-44",
+          backupId: "recovery-27-45",
           databaseName: "gym-tracker.db",
           fromVersion: 27,
-          toVersion: 44,
+          toVersion: 45,
           validated: true,
         },
       });
-      await expect(userVersion(runtime.kernel)).resolves.toBe(44);
+      await expect(userVersion(runtime.kernel)).resolves.toBe(45);
       await expect(runtime.kernel.queryAll<{ name: string }>(
         `SELECT name FROM sqlite_master WHERE type = 'table'
          AND name IN ('running_plans', 'running_session_slots',
@@ -1130,13 +1130,13 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(result).toEqual({
-        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
-        currentVersion: 44,
+        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45],
+        currentVersion: 45,
         recoveryBackup: {
-          backupId: "recovery-21-44",
+          backupId: "recovery-21-45",
           databaseName: "gym-tracker.db",
           fromVersion: 21,
-          toVersion: 44,
+          toVersion: 45,
           validated: true,
         },
       });
@@ -1575,13 +1575,13 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         recoveryBackup: validatedBackup(),
       }).run();
       expect(result).toEqual({
-        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
-        currentVersion: 44,
+        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45],
+        currentVersion: 45,
         recoveryBackup: {
-          backupId: "recovery-26-44",
+          backupId: "recovery-26-45",
           databaseName: "gym-tracker.db",
           fromVersion: 26,
-          toVersion: 44,
+          toVersion: 45,
           validated: true,
         },
       });
