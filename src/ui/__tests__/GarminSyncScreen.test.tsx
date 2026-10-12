@@ -539,6 +539,56 @@ describe("GarminSyncScreen shared shell and disconnect contracts", () => {
     addEventListener.mockRestore();
   });
 
+  it.each(["Keep for later", "Back"] as const)(
+    "restores date-review focus to the root trigger after %s dismissal",
+    async (dismissal) => {
+      const remove = jest.fn();
+      const addEventListener = jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove });
+      const pendingReview = Object.freeze({
+        activityId: "local-activity-1",
+        absoluteStartedAtMs: Date.UTC(2026, 9, 10, 1, 0, 0),
+        sourceLocalDateTime: "2026-10-10T09:00:00",
+        sourceTimeZone: "Asia/Singapore",
+        sourceUtcOffsetMinutes: 480,
+        suggestedLocalDate: "2026-10-10",
+        suggestedLocalTime: "09:00:00",
+        suggestedTimeZone: "Asia/Singapore",
+        suggestedUtcOffsetMinutes: 480,
+      });
+      await renderScreen({
+        coordinator: {
+          syncNow: async () => ({
+            kind: "failure",
+            counts: { ...counts, newActivities: 0, attemptedActivities: 0 },
+            failure: { code: "date_confirmation_required", retryable: false },
+          }),
+        },
+        getPendingDateReview: () => pendingReview,
+        source: connectedSource(),
+      });
+
+      await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+      const rootTrigger = await screen.findByRole("button", { name: "Review activity date" });
+      expect(rootTrigger).toHaveProp("hasTVPreferredFocus", false);
+      await fireEvent.press(rootTrigger);
+
+      if (dismissal === "Keep for later") {
+        await fireEvent.press(screen.getByRole("button", { name: dismissal }));
+      } else {
+        const listener = addEventListener.mock.calls.at(-1)?.[1];
+        await act(async () => {
+          expect(listener?.(undefined as never)).toBe(true);
+        });
+      }
+
+      await waitFor(() => expect(screen.queryByText("Confirm activity date")).not.toBeOnTheScreen());
+      await waitFor(() => expect(
+        screen.getByRole("button", { name: "Review activity date" }),
+      ).toHaveProp("hasTVPreferredFocus", true));
+      addEventListener.mockRestore();
+    },
+  );
+
   it("uses Back to cancel MFA before leaving the contextual Garmin route", async () => {
     const remove = jest.fn();
     const addEventListener = jest.spyOn(BackHandler, "addEventListener").mockReturnValue({ remove });

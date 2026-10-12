@@ -334,6 +334,7 @@ function SyncResult({
   onSignIn,
   onRetryLastSuccessfulSync,
   onReviewPendingDate,
+  reviewPendingDateRef,
   hasPendingDateReview,
 }: Readonly<{
   lastSuccessfulSync: GarminDurableSyncSummary | null;
@@ -343,6 +344,7 @@ function SyncResult({
   onSignIn(): void;
   onRetryLastSuccessfulSync(): void;
   onReviewPendingDate(): void;
+  reviewPendingDateRef: React.RefObject<View | null>;
   hasPendingDateReview: boolean;
 }>) {
   const { colors } = useAppTheme();
@@ -412,7 +414,7 @@ function SyncResult({
   const action = sync.failure.code === "sign_in_required" || sync.failure.code === "data_access_denied"
     ? <SecondaryAction label="Sign in again" onPress={onSignIn} />
     : sync.failure.code === "date_confirmation_required" && hasPendingDateReview
-      ? <SecondaryAction label="Review activity date" onPress={onReviewPendingDate} />
+      ? <SecondaryAction label="Review activity date" onPress={onReviewPendingDate} ref={reviewPendingDateRef} />
     : sync.failure.retryable
       ? <SecondaryAction label="Retry Garmin sync" onPress={onRetry} />
       : null;
@@ -449,7 +451,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
   const connectRef = useRef<View>(null);
   const appearanceRef = useRef<View>(null);
   const disconnectRef = useRef<View>(null);
-  const dateReviewActionRef = useRef<View>(null);
+  const dateReviewTriggerRef = useRef<View>(null);
   const headingRef = useRef<FocusTarget>(null);
   const errorSummaryRef = useRef<FocusTarget>(null);
   const [passwordInputVersion, setPasswordInputVersion] = useState(0);
@@ -700,6 +702,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
             onRetryLastSuccessfulSync={() => { void controller.retryLastSuccessfulSync(); }}
             onReviewPendingDate={openPendingDateReview}
             onSignIn={controller.openCredentials}
+            reviewPendingDateRef={dateReviewTriggerRef}
             sync={state.sync}
           />
         </View>
@@ -780,7 +783,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
         cancelLabel="Keep pending review"
         heading="Confirm activity date"
         onCancel={() => setDateReviewOpen(false)}
-        restoreFocusRef={dateReviewActionRef}
+        restoreFocusRef={dateReviewTriggerRef}
         visible={dateReviewOpen && state.pendingDateReview !== null}
       >
         <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
@@ -854,7 +857,6 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
           disabled={dateReviewBusy}
           label="Keep for later"
           onPress={() => setDateReviewOpen(false)}
-          ref={dateReviewActionRef}
         />
       </BottomSheet>
       <ConfirmationDialog
