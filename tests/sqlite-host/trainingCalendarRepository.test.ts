@@ -4,25 +4,41 @@ import { createTrainingCalendarRepository } from "../../src/platform/sqlite/repo
 import type { SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 
 describe("training calendar repository", () => {
-  it("returns bounded, separately addressable source events without mutating source facts", async () => {
+  it("projects all durable calendar destinations with full source facts from one bounded snapshot", async () => {
     const queryAll = jest.fn(async (sql: string, _parameters?: readonly unknown[]) => {
-      if (sql.includes("owned_plan_schedule_opportunities")) return [{
-        id: "strength-occurrence", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
-        plan_id: "strength-plan", local_date: "2026-11-01", timezone: "America/New_York",
-        revision: 2, state: "pending", outcome: null,
-      }];
+      if (sql.includes("owned_plan_schedule_opportunities")) return [
+        {
+          id: "strength-planned", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
+          plan_id: "strength-plan", plan_name: "Full body progression, week 12", local_date: "2026-11-01",
+          timezone: "America/New_York", revision: 2, state: "pending", outcome: null,
+          session_id: null, session_status: null,
+        },
+        {
+          id: "strength-completed", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
+          plan_id: "strength-plan", plan_name: "Full body progression, week 12", local_date: "2026-11-01",
+          timezone: "America/New_York", revision: 3, state: "completed", outcome: "completed",
+          session_id: "completed-session", session_status: "completed",
+        },
+        {
+          id: "strength-partial", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
+          plan_id: "strength-plan", plan_name: "Full body progression, week 12", local_date: "2026-11-01",
+          timezone: "America/New_York", revision: 4, state: "partial", outcome: "partial",
+          session_id: "partial-session", session_status: "partial",
+        },
+      ];
       if (sql.includes("running_opportunities")) return [{
-        id: "running-slot-a", schedule_id: "running-schedule", schedule_version_id: "running-v2",
-        plan_id: "running-plan", slot_id: "slot-a", session_revision_id: "revision-a",
-        local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
-      }, {
-        id: "running-slot-b", schedule_id: "running-schedule", schedule_version_id: "running-v2",
-        plan_id: "running-plan", slot_id: "slot-b", session_revision_id: "revision-b",
+        id: "running-slot", schedule_id: "running-schedule", schedule_version_id: "running-v2",
+        plan_id: "running-plan", plan_name: "Autumn half marathon build", slot_id: "slot-a",
+        session_revision_id: "running-session-revision", session_kind: "long_run",
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }];
       return [{
-        id: "imported-run", started_at_ms: 1_793_491_200_000,
-        aggregate_json: JSON.stringify({ confirmed_local_date: "2026-11-01", normalized: { sport: "running" } }),
+        id: "imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1_793_491_200_000,
+        aggregate_json: JSON.stringify({
+          confirmed_local_date: "2026-11-01",
+          normalized: { sport: "running", subtype: "outdoor", source_time_zone: "Europe/London" },
+        }),
+        opportunity_id: null,
       }];
     });
     const kernel = { queryAll } as unknown as SqliteKernel;
@@ -32,56 +48,105 @@ describe("training calendar repository", () => {
       endLocalDateExclusive: "2026-11-02",
     });
 
-    expect(result.events.map((event) => event.id)).toEqual([
-      "strength-occurrence", "running-slot-a", "running-slot-b", "imported-run",
-    ]);
-    expect(result.events.map((event) => event.source)).toEqual([
-      "strength", "running", "running", "imported_activity",
-    ]);
+    expect(result.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "strength-planned", title: "Full body progression, week 12", sourceLabel: "Strength",
+        sport: "strength", status: "planned", localDate: "2026-11-01", timeZone: "America/New_York",
+        destination: { kind: "occurrence", occurrenceId: "strength-planned" },
+      }),
+      expect.objectContaining({
+        id: "strength-completed", title: "Full body progression, week 12", sport: "strength", status: "completed",
+        destination: { kind: "session", sessionId: "completed-session" },
+      }),
+      expect.objectContaining({
+        id: "strength-partial", title: "Full body progression, week 12", sport: "strength", status: "partial",
+        destination: { kind: "session", sessionId: "partial-session" },
+      }),
+      expect.objectContaining({
+        id: "running-slot", title: "Autumn half marathon build", sourceLabel: "Long run",
+        sport: "running", status: "planned", localDate: "2026-11-01", timeZone: "Australia/Sydney",
+        destination: { kind: "plan", planId: "running-plan", sessionId: "running-session-revision" },
+      }),
+      expect.objectContaining({
+        id: "imported-run", title: "Outdoor run", sourceLabel: "garmin_connect_account:owner-a",
+        sport: "running", status: "imported", localDate: "2026-11-01", timeZone: "Europe/London",
+        destination: { kind: "activity", activityId: "imported-run" },
+      }),
+    ]));
     expect(Object.isFrozen(result.events)).toBe(true);
+    for (const event of result.events) {
+      expect(Object.isFrozen(event)).toBe(true);
+      expect(Object.isFrozen((event as unknown as { destination: unknown }).destination)).toBe(true);
+    }
     expect(queryAll).toHaveBeenCalledTimes(3);
     expect(queryAll.mock.calls.every(([, parameters]) => Array.isArray(parameters))).toBe(true);
   });
 
-  it("overlays one current match onto its planned Running slot without duplicating the imported activity", async () => {
+  it("overlays a current imported activity onto its matched Running slot without duplication", async () => {
     const queryAll = jest.fn(async (sql: string) => {
       if (sql.includes("owned_plan_schedule_opportunities")) return [];
       if (sql.includes("running_opportunities")) return [{
         id: "running-slot-a", schedule_id: "running-schedule", schedule_version_id: "running-v2",
-        plan_id: "running-plan", slot_id: "slot-a", session_revision_id: "revision-a",
+        plan_id: "running-plan", plan_name: "Autumn half marathon build", slot_id: "slot-a",
+        session_revision_id: "revision-a", session_kind: "recovery",
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }, {
         id: "running-slot-b", schedule_id: "running-schedule", schedule_version_id: "running-v2",
-        plan_id: "running-plan", slot_id: "slot-b", session_revision_id: "revision-b",
+        plan_id: "running-plan", plan_name: "Autumn half marathon build", slot_id: "slot-b",
+        session_revision_id: "revision-b", session_kind: "tempo",
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }];
       return [{
-        id: "imported-run", started_at_ms: 1_793_491_200_000,
-        aggregate_json: JSON.stringify({ confirmed_local_date: "2026-11-01" }),
+        id: "imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1_793_491_200_000,
+        aggregate_json: JSON.stringify({
+          confirmed_local_date: "2026-11-01",
+          normalized: { sport: "running", subtype: "treadmill", source_time_zone: "Australia/Sydney" },
+        }),
         opportunity_id: "running-slot-a",
       }];
     });
     const kernel = { queryAll } as unknown as SqliteKernel;
 
-    const first = await createTrainingCalendarRepository(kernel).loadRange({
-      startLocalDate: "2026-11-01",
-      endLocalDateExclusive: "2026-11-02",
-    });
-    const second = await createTrainingCalendarRepository(kernel).loadRange({
+    const result = await createTrainingCalendarRepository(kernel).loadRange({
       startLocalDate: "2026-11-01",
       endLocalDateExclusive: "2026-11-02",
     });
 
-    expect(first).toEqual(second);
-    expect(first.events).toEqual(expect.arrayContaining([
+    expect(result.events).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        id: "imported-run", source: "imported_activity", scheduleId: "running-schedule",
-        scheduleVersionId: "running-v2", planId: "running-plan", slotId: "slot-a",
+        id: "imported-run", title: "Treadmill run", sourceLabel: "garmin_connect_account:owner-a",
+        status: "matched", scheduleId: "running-schedule", scheduleVersionId: "running-v2",
+        planId: "running-plan", slotId: "slot-a", destination: { kind: "activity", activityId: "imported-run" },
       }),
-      expect.objectContaining({ id: "running-slot-b", source: "running", slotId: "slot-b" }),
+      expect.objectContaining({ id: "running-slot-b", destination: { kind: "plan", planId: "running-plan", sessionId: "revision-b" } }),
     ]));
-    expect(first.events.filter(({ id }) => id === "running-slot-a")).toHaveLength(0);
-    expect(first.events).toHaveLength(2);
+    expect(result.events.some(({ id }) => id === "running-slot-a")).toBe(false);
+    expect(result.events).toHaveLength(2);
+  });
+
+  it("fails closed when a completed Strength opportunity lacks a durable session identity", async () => {
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("owned_plan_schedule_opportunities")) return [{
+        id: "stale-completed-strength", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
+        plan_id: "strength-plan", plan_name: "Strength plan", local_date: "2026-11-01", timezone: "America/New_York",
+        revision: 2, state: "completed", outcome: "completed", session_id: null, session_status: null,
+      }];
+      if (sql.includes("running_opportunities")) return [];
+      return [{
+        id: "stale-imported-run", source: "garmin_connect_account:owner-a", started_at_ms: 1,
+        aggregate_json: JSON.stringify({
+          confirmed_local_date: "2026-11-01",
+          normalized: { sport: "running", subtype: "outdoor", source_time_zone: "America/New_York" },
+        }),
+        opportunity_id: "missing-running-opportunity",
+      }];
+    });
+    const kernel = { queryAll } as unknown as SqliteKernel;
+
+    await expect(createTrainingCalendarRepository(kernel).loadRange({
+      startLocalDate: "2026-11-01",
+      endLocalDateExclusive: "2026-11-02",
+    })).resolves.toEqual({ events: [] });
   });
 
   it("uses snapshot reads, rejects inverted bounds, and refuses malformed imported dates", async () => {
@@ -89,10 +154,10 @@ describe("training calendar repository", () => {
       if (sql.includes("owned_plan_schedule_opportunities")) return [];
       if (sql.includes("running_opportunities")) return [];
       return [{
-        id: "malformed-import", started_at_ms: 1,
+        id: "malformed-import", source: "garmin", started_at_ms: 1,
         aggregate_json: "not-json", opportunity_id: "missing-opportunity",
       }, {
-        id: "non-date-import", started_at_ms: 2,
+        id: "non-date-import", source: "garmin", started_at_ms: 2,
         aggregate_json: JSON.stringify({ confirmed_local_date: 3 }), opportunity_id: null,
       }];
     });

@@ -1,9 +1,19 @@
 import { parseLocalDate, type LocalDate } from "../../../domains/scheduling/localDate";
 import type { SqliteKernel, SqliteReadTransactionExecutor } from "../sqliteKernel";
 
-export type TrainingCalendarEvent = Readonly<{
+type CalendarDestination =
+  | Readonly<{ kind: "session"; sessionId: string }>
+  | Readonly<{ kind: "occurrence"; occurrenceId: string }>
+  | Readonly<{ kind: "plan"; planId: string; sessionId: string }>
+  | Readonly<{ kind: "activity"; activityId: string }>;
+
+type CalendarEventFacts = Readonly<{
   id: string;
   source: "strength" | "running" | "imported_activity";
+  sport: "strength" | "running";
+  status: "planned" | "completed" | "partial" | "imported" | "matched";
+  title: string;
+  sourceLabel: string;
   localDate: LocalDate;
   timeZone: string | null;
   scheduleId: string | null;
@@ -12,25 +22,30 @@ export type TrainingCalendarEvent = Readonly<{
   slotId: string | null;
   revision: number | null;
   state: string;
+  destination: CalendarDestination;
 }>;
+
+export type TrainingCalendarEvent =
+  | Readonly<CalendarEventFacts & { source: "strength"; sport: "strength"; status: "planned"; destination: Readonly<{ kind: "occurrence"; occurrenceId: string }> }>
+  | Readonly<CalendarEventFacts & { source: "strength"; sport: "strength"; status: "completed" | "partial"; destination: Readonly<{ kind: "session"; sessionId: string }> }>
+  | Readonly<CalendarEventFacts & { source: "running"; sport: "running"; status: "planned"; destination: Readonly<{ kind: "plan"; planId: string; sessionId: string }> }>
+  | Readonly<CalendarEventFacts & { source: "imported_activity"; sport: "running"; status: "imported" | "matched"; destination: Readonly<{ kind: "activity"; activityId: string }> }>;
 
 export type TrainingCalendarRange = Readonly<{
   events: readonly TrainingCalendarEvent[];
 }>;
 
 type StrengthRow = Readonly<{
-  id: string; schedule_id: string; schedule_version_id: string; plan_id: string;
+  id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
   local_date: string; timezone: string; revision: number; state: string; outcome: string | null;
+  session_id: string | null; session_status: string | null;
 }>;
 type RunningRow = Readonly<{
-  id: string; schedule_id: string; schedule_version_id: string; plan_id: string;
-  slot_id: string; session_revision_id: string; local_date: string; timezone: string; state: string;
+  id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
+  slot_id: string; session_revision_id: string; session_kind: string; local_date: string; timezone: string; state: string;
 }>;
 type ImportedRow = Readonly<{
-  id: string;
-  started_at_ms: number;
-  aggregate_json: string;
-  opportunity_id: string | null;
+  id: string; source: string; started_at_ms: number; aggregate_json: string; opportunity_id: string | null;
 }>;
 
 function range(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: string }>): Readonly<{ start: LocalDate; end: LocalDate }> {
@@ -40,13 +55,70 @@ function range(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: 
   return Object.freeze({ start, end });
 }
 
-function importedLocalDate(row: ImportedRow): LocalDate | null {
+type ImportedFacts = Readonly<{ localDate: LocalDate; timeZone: string | null; title: string }>;
+
+function displayWords(value: string): string {
+  const words = value.replaceAll("_", " ").replaceAll("-", " ").trim();
+  return words.length === 0 ? "" : `${words[0]!.toUpperCase()}${words.slice(1)}`;
+}
+
+function importedFacts(row: ImportedRow): ImportedFacts | null {
   try {
-    const aggregate = JSON.parse(row.aggregate_json) as { confirmed_local_date?: unknown };
-    return typeof aggregate.confirmed_local_date === "string" ? parseLocalDate(aggregate.confirmed_local_date) : null;
+    const aggregate = JSON.parse(row.aggregate_json) as {
+      confirmed_local_date?: unknown;
+      normalized?: { sport?: unknown; subtype?: unknown; source_time_zone?: unknown };
+    };
+    if (typeof aggregate.confirmed_local_date !== "string"
+      || aggregate.normalized?.sport !== "running"
+      || typeof aggregate.normalized.subtype !== "string") return null;
+    const subtype = displayWords(aggregate.normalized.subtype);
+    if (subtype.length === 0 || row.source.trim().length === 0) return null;
+    return Object.freeze({
+      localDate: parseLocalDate(aggregate.confirmed_local_date),
+      timeZone: typeof aggregate.normalized.source_time_zone === "string" ? aggregate.normalized.source_time_zone : null,
+      title: `${subtype} run`,
+    });
   } catch {
     return null;
   }
+}
+
+function strengthEvent(row: StrengthRow): TrainingCalendarEvent | null {
+  if (row.plan_name.trim().length === 0) return null;
+  const base = {
+    id: row.id, source: "strength" as const, sport: "strength" as const,
+    title: row.plan_name, sourceLabel: "Strength", localDate: parseLocalDate(row.local_date), timeZone: row.timezone,
+    scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
+    slotId: null, revision: row.revision,
+  };
+  if ((row.session_status === "completed" || row.session_status === "partial") && row.session_id !== null) {
+    return Object.freeze({
+      ...base, status: row.session_status, state: row.session_status,
+      destination: Object.freeze({ kind: "session" as const, sessionId: row.session_id }),
+    });
+  }
+  if (row.session_id !== null
+    || row.session_status !== null
+    || row.outcome === "completed"
+    || row.outcome === "partial"
+    || row.state === "completed"
+    || row.state === "partial") return null;
+  return Object.freeze({
+    ...base, status: "planned" as const, state: "planned",
+    destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: row.id }),
+  });
+}
+
+function runningEvent(row: RunningRow): TrainingCalendarEvent | null {
+  if (row.state !== "planned" || row.plan_name.trim().length === 0 || row.session_revision_id.trim().length === 0) return null;
+  const sourceLabel = displayWords(row.session_kind);
+  if (sourceLabel.length === 0) return null;
+  return Object.freeze({
+    id: row.id, source: "running", sport: "running", status: "planned", title: row.plan_name, sourceLabel,
+    localDate: parseLocalDate(row.local_date), timeZone: row.timezone, scheduleId: row.schedule_id,
+    scheduleVersionId: row.schedule_version_id, planId: row.plan_id, slotId: row.slot_id, revision: null, state: "planned",
+    destination: Object.freeze({ kind: "plan", planId: row.plan_id, sessionId: row.session_revision_id }),
+  });
 }
 
 async function queryRange(
@@ -56,11 +128,14 @@ async function queryRange(
   const [strengthRows, runningRows, importedRows] = await Promise.all([
     reader.queryAll<StrengthRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              schedule.plan_id, COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, version.timezone,
-              opportunity.revision, opportunity.state, opportunity.outcome
+              schedule.plan_id, plan.name AS plan_name, COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, version.timezone,
+              opportunity.revision, opportunity.state, opportunity.outcome, session.id AS session_id, session.status AS session_status
          FROM owned_plan_schedule_opportunities opportunity
          JOIN owned_plan_schedules schedule ON schedule.id = opportunity.schedule_id
          JOIN owned_plan_schedule_versions version ON version.id = opportunity.schedule_version_id
+         JOIN plans plan ON plan.id = schedule.plan_id
+         LEFT JOIN workout_session_schedule_links link ON link.opportunity_id = opportunity.id
+         LEFT JOIN workout_sessions session ON session.id = link.workout_session_id
          LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'strength' AND projection.selected_opportunity_id = opportunity.id
           AND NOT EXISTS (
             SELECT 1
@@ -80,9 +155,11 @@ async function queryRange(
     ),
     reader.queryAll<RunningRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              opportunity.plan_id, opportunity.slot_id, opportunity.session_revision_id,
+              opportunity.plan_id, plan.name AS plan_name, opportunity.slot_id, opportunity.session_revision_id, session.session_kind,
               COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, opportunity.timezone, opportunity.state
          FROM running_opportunities opportunity
+         JOIN plans plan ON plan.id = opportunity.plan_id
+         JOIN running_session_revisions session ON session.id = opportunity.session_revision_id AND session.plan_id = opportunity.plan_id
          LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'running' AND projection.selected_opportunity_id = opportunity.id
           AND NOT EXISTS (
             SELECT 1
@@ -101,7 +178,7 @@ async function queryRange(
         ORDER BY local_date, opportunity.slot_id, opportunity.id`, [input.start, input.end],
     ),
     reader.queryAll<ImportedRow>(
-      `SELECT activity.id, activity.started_at_ms, activity.aggregate_json,
+      `SELECT activity.id, activity.source, activity.started_at_ms, activity.aggregate_json,
               match.opportunity_id
          FROM imported_activities activity
          JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
@@ -116,26 +193,27 @@ async function queryRange(
     importedRows.flatMap(({ opportunity_id }) => opportunity_id === null ? [] : [opportunity_id]),
   );
   const events: TrainingCalendarEvent[] = [
-    ...strengthRows.map((row) => Object.freeze({
-      id: row.id, source: "strength" as const, localDate: parseLocalDate(row.local_date), timeZone: row.timezone,
-      scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
-      slotId: null, revision: row.revision, state: row.outcome ?? row.state,
-    })),
-    ...runningRows.filter((row) => !matchedOpportunityIds.has(row.id)).map((row) => Object.freeze({
-      id: row.id, source: "running" as const, localDate: parseLocalDate(row.local_date), timeZone: row.timezone,
-      scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
-      slotId: row.slot_id, revision: null, state: row.state,
-    })),
+    ...strengthRows.flatMap((row) => {
+      const event = strengthEvent(row);
+      return event === null ? [] : [event];
+    }),
+    ...runningRows.filter((row) => !matchedOpportunityIds.has(row.id)).flatMap((row) => {
+      const event = runningEvent(row);
+      return event === null ? [] : [event];
+    }),
     ...importedRows.flatMap((row) => {
-      const localDate = importedLocalDate(row);
+      const facts = importedFacts(row);
       const matched = row.opportunity_id === null
         ? null
         : runningRows.find(({ id }) => id === row.opportunity_id) ?? null;
-      return localDate === null ? [] : [Object.freeze({
-        id: row.id, source: "imported_activity" as const, localDate, timeZone: null,
+      if (facts === null || (row.opportunity_id !== null && matched === null)) return [];
+      return [Object.freeze({
+        id: row.id, source: "imported_activity" as const, sport: "running" as const,
+        status: matched === null ? "imported" as const : "matched" as const, title: facts.title, sourceLabel: row.source,
+        localDate: facts.localDate, timeZone: facts.timeZone,
         scheduleId: matched?.schedule_id ?? null, scheduleVersionId: matched?.schedule_version_id ?? null,
         planId: matched?.plan_id ?? null, slotId: matched?.slot_id ?? null, revision: null,
-        state: matched === null ? "imported" : "matched",
+        state: matched === null ? "imported" : "matched", destination: Object.freeze({ kind: "activity" as const, activityId: row.id }),
       })];
     }),
   ];
