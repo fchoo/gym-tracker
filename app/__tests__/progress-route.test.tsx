@@ -16,14 +16,25 @@ const mockLoadProgress = jest.fn(async (input: { sport?: string; period: string 
       distanceMeters: 2400, timeBasis: "elapsed" as const,
       latest: { activityId: "latest", sourceIdentity: "opaque-latest", sourceRevision: 2, localDate: "2026-08-24", durationSeconds: 680, timeBasis: "elapsed" as const, evidence: "source_summary" as const },
       best: { activityId: "best", sourceIdentity: "opaque-best", sourceRevision: 1, localDate: "2026-08-17", durationSeconds: 650, timeBasis: "elapsed" as const, evidence: "source_laps" as const },
-      target: { targetId: "target", durationSeconds: 660 }, targetAtDate: { targetId: "target", durationSeconds: 660 }, history: [], evidenceCount: 2,
+      target: { targetId: "target", durationSeconds: 660 }, targetAtDate: { targetId: "target", durationSeconds: 660 }, history: [{ effort: { activityId: "activity-local-01", sourceIdentity: "opaque-latest", sourceRevision: 2, localDate: "2026-08-24", durationSeconds: 680, timeBasis: "elapsed" as const, evidence: "source_summary" as const }, targetAtDate: { targetId: "target", durationSeconds: 660 } }], evidenceCount: 2,
     }],
   } : { sport: "All" as const, state: "empty" as const, primaryGoal: null },
 }));
 
-jest.mock("expo-router", () => ({ router: { push: (...args: readonly unknown[]) => mockPush(...args) } }));
+jest.mock("expo-router", () => ({
+  router: { push: (...args: readonly unknown[]) => mockPush(...args) },
+  useFocusEffect: (effect: () => void) => effect(),
+}));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ loadProgress: mockLoadProgress, workoutRefreshGeneration: 0 }),
+  useWorkoutAppRuntime: () => ({
+    loadProgress: mockLoadProgress,
+    progressRunningTargetRuntime: {
+      createId: () => "target-request",
+      loadPlan: jest.fn(async () => null),
+      saveRunningTarget: jest.fn(),
+    },
+    workoutRefreshGeneration: 0,
+  }),
 }));
 
 import ProgressRoute from "../(tabs)/progress";
@@ -40,5 +51,22 @@ describe("ProgressRoute", () => {
       sport: "Running", period: "12_weeks", nowLocalDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/u),
     })));
     expect(screen.queryByText(/opaque-latest|opaque-best/u)).not.toBeOnTheScreen();
+  });
+
+  it("navigates Running evidence with only the exact local activity revision", async () => {
+    await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);
+    await fireEvent.press(await screen.findByRole("tab", { name: "Running" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Open history for 2.4 km" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Open source" }));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/garmin/activity/[activityId]",
+      params: {
+        activityId: "activity-local-01",
+        origin: "progress",
+        sourceRevision: "2",
+      },
+    });
   });
 });

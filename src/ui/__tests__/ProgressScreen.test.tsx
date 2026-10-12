@@ -3,8 +3,31 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { ProgressDashboardProjection } from "../../domains/progress/contracts";
+import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import { ProgressScreen } from "../screens/ProgressScreen";
+import { SemanticToastProvider } from "../components/SemanticToast";
 import { AppearanceProvider, createMemoryAppearanceStore } from "../theme";
+
+const runningTargetSource: RunningPlanAggregate = Object.freeze({
+  version: 1,
+  id: "running-plan-2400",
+  name: "2.4 km plan",
+  revision: 4,
+  active: true,
+  lifecycle: "active",
+  createdAtMs: 1,
+  goal: {
+    version: 1,
+    id: "running-goal-2400",
+    planId: "running-plan-2400",
+    revision: 2,
+    goalDistanceMeters: 2_400,
+    targetDurationMs: 660_000,
+    trainingDays: ["Monday"],
+    createdAtMs: 1,
+  },
+  sessions: [],
+});
 
 const runningDashboard = (): ProgressDashboardProjection => ({
   sport: "Running",
@@ -32,7 +55,29 @@ const runningDashboard = (): ProgressDashboardProjection => ({
     },
     target: { targetId: "running-2400", durationSeconds: 660 },
     targetAtDate: { targetId: "running-2400", durationSeconds: 660 },
-    history: [],
+    history: [{
+      effort: {
+        activityId: "activity-best",
+        sourceIdentity: "accepted-activity-best",
+        sourceRevision: 3,
+        localDate: "2026-08-17",
+        durationSeconds: 650,
+        timeBasis: "elapsed",
+        evidence: "source_laps",
+      },
+      targetAtDate: { targetId: "running-2400", durationSeconds: 660 },
+    }, {
+      effort: {
+        activityId: "activity-latest",
+        sourceIdentity: "accepted-activity-latest",
+        sourceRevision: 4,
+        localDate: "2026-08-24",
+        durationSeconds: 680,
+        timeBasis: "elapsed",
+        evidence: "source_summary",
+      },
+      targetAtDate: { targetId: "running-2400", durationSeconds: 660 },
+    }],
     evidenceCount: 2,
   }],
 });
@@ -45,20 +90,26 @@ function dashboardFor(sport: "All" | "Strength" | "Running"): ProgressDashboardP
       : { sport: "Strength", state: "empty", facts: [] };
 }
 
-async function renderProgress(loadProgress: React.ComponentProps<typeof ProgressScreen>["loadProgress"] = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+async function renderProgress(
+  loadProgress: React.ComponentProps<typeof ProgressScreen>["loadProgress"] = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
   sport: input.sport,
   period: input.period as "4_weeks" | "12_weeks" | "all_time",
   freshness: "current" as const,
   dashboard: dashboardFor(input.sport),
-})) as never) {
+})) as never,
+  overrides: Partial<React.ComponentProps<typeof ProgressScreen>> = {},
+) {
   await render(
     <AppearanceProvider store={createMemoryAppearanceStore("Light")}>
-      <ProgressScreen
-        loadProgress={loadProgress as never}
-        nowLocalDate="2026-08-24"
-        onOpenExercise={jest.fn()}
-        onOpenSession={jest.fn()}
-      />
+      <SemanticToastProvider>
+        <ProgressScreen
+          loadProgress={loadProgress as never}
+          nowLocalDate="2026-08-24"
+          onOpenExercise={jest.fn()}
+          onOpenSession={jest.fn()}
+          {...overrides}
+        />
+      </SemanticToastProvider>
     </AppearanceProvider>,
   );
   return loadProgress;
@@ -189,5 +240,75 @@ describe("ProgressScreen", () => {
     expect(screen.queryByText(/Latest ·|Best ·/u)).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Refresh progress" }));
     await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+  });
+
+  it("opens exact Running history evidence and retains sport and range on close", async () => {
+    const onOpenRunningSource = jest.fn();
+    await renderProgress(undefined, { onOpenRunningSource });
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    await fireEvent.press(screen.getByRole("button", { name: "All time" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Open history for 2.4 km" }));
+
+    expect(screen.getByRole("header", { name: "2.4 km best efforts" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Open source" })[0]!);
+    expect(onOpenRunningSource).toHaveBeenCalledWith({
+      activityId: "activity-best",
+      sourceRevision: 3,
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Close 2.4 km best efforts" }));
+    expect(screen.getByRole("tab", { name: "Running" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
+    expect(screen.getByRole("button", { name: "All time" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
+  });
+
+  it("refreshes from committed read-back before acknowledging a saved Running target", async () => {
+    const saved = Object.freeze({
+      ...runningTargetSource,
+      revision: 5,
+      goal: Object.freeze({
+        ...runningTargetSource.goal,
+        revision: 3,
+      }),
+    });
+    const saveRunningTarget = jest.fn(async () => ({ outcome: "committed" as const, plan: saved }));
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: dashboardFor(input.sport),
+      runningTargetSources: input.sport === "Running" ? [runningTargetSource] : [],
+    }));
+    await renderProgress(loadProgress as never, {
+      runningTargetRuntime: {
+        createId: () => "running-target-save:request",
+        loadPlan: async () => runningTargetSource,
+        saveRunningTarget,
+      },
+    });
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Set target for 2.4 km" }));
+    expect(screen.getByRole("header", { name: "Running target" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Save target" }));
+
+    await waitFor(() => expect(saveRunningTarget).toHaveBeenCalledWith(expect.objectContaining({
+      planId: "running-plan-2400",
+      expectedSourceRevision: 4,
+      goalDistanceMeters: 2_400,
+    })));
+    await waitFor(() => expect(loadProgress).toHaveBeenLastCalledWith({
+      sport: "Running",
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    }));
+    expect(screen.getByText("2.4 km target saved.")).toBeOnTheScreen();
   });
 });

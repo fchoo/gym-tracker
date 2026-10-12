@@ -183,6 +183,15 @@ jest.mock("./trainingFoundationRuntime", () => {
     ),
   };
 });
+jest.mock("./runningPlanRuntime", () => {
+  const actual = jest.requireActual<typeof import("./runningPlanRuntime")>(
+    "./runningPlanRuntime",
+  );
+  return {
+    ...actual,
+    createRunningPlanRuntimePort: jest.fn(actual.createRunningPlanRuntimePort),
+  };
+});
 
 import {
   acknowledgeCommittedRuntimeResult,
@@ -200,6 +209,11 @@ import {
 import {
   createTrainingFoundationRuntimePort,
 } from "./trainingFoundationRuntime";
+import {
+  createRunningPlanRuntimePort,
+  type RunningPlanRuntimePort,
+} from "./runningPlanRuntime";
+import type { RunningPlanAggregate } from "../domains/running/contracts";
 import type {
   TrainingCalendarRange,
 } from "../platform/sqlite/repositories/trainingCalendarRepository";
@@ -232,6 +246,9 @@ const mockedCreateOwnedPlanRuntimePort = jest.mocked(
 );
 const mockedCreateTrainingFoundationRuntimePort = jest.mocked(
   createTrainingFoundationRuntimePort,
+);
+const mockedCreateRunningPlanRuntimePort = jest.mocked(
+  createRunningPlanRuntimePort,
 );
 
 type Repository = PlansRepository & WorkoutRepository;
@@ -1308,6 +1325,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockCommittedHaptic.mockClear();
     mockCueHaptic.mockClear();
     mockedCreateTrainingFoundationRuntimePort.mockClear();
+    mockedCreateRunningPlanRuntimePort.mockClear();
     applyWorkoutMutationTestControl("reset_workout_failures");
   });
 
@@ -1687,6 +1705,73 @@ describe("WorkoutAppRuntimeProvider", () => {
       },
     });
     expect(readSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes only typed Running target reads and commit-gated commands to Progress", async () => {
+    const targetSource = Object.freeze({
+      version: 1 as const,
+      id: "running-plan-2400",
+      name: "2.4 km plan",
+      revision: 4,
+      active: true,
+      lifecycle: "active" as const,
+      createdAtMs: 1,
+      goal: Object.freeze({
+        version: 1 as const,
+        id: "running-goal-2400",
+        planId: "running-plan-2400",
+        revision: 2,
+        goalDistanceMeters: 2_400,
+        targetDurationMs: 660_000,
+        trainingDays: ["Monday" as const],
+        createdAtMs: 1,
+      }),
+      sessions: Object.freeze([]),
+    }) satisfies RunningPlanAggregate;
+    const progressRunningTargetRuntime = Object.freeze({
+      createId: jest.fn(() => "running-target-save:request"),
+      loadPlan: jest.fn(async () => targetSource),
+      saveRunningTarget: jest.fn(async () => Object.freeze({
+        outcome: "committed" as const,
+        plan: targetSource,
+      })),
+    }) as unknown as RunningPlanRuntimePort;
+    mockedCreateRunningPlanRuntimePort.mockImplementationOnce(() => progressRunningTargetRuntime);
+    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM running_goals")
+      ? [{
+        id: "running-goal-2400",
+        plan_id: "running-plan-2400",
+        revision: 2,
+        goal_json: JSON.stringify(targetSource.goal),
+        created_at_ms: 1,
+      }]
+      : []);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (
+        query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
+      ) => query({ queryAll })),
+    } as unknown as SqliteKernel;
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, { openKernel: jest.fn(async () => kernel) })}
+        onReady={(runtime) => { captured = runtime; }}
+      />,
+    );
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+
+    const progress = await captured!.loadProgress({
+      sport: "Running",
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    });
+    expect(progress.runningTargetSources).toEqual([targetSource]);
+    expect(progress).not.toHaveProperty("sourceFacts");
+    expect(captured!.progressRunningTargetRuntime).toBe(progressRunningTargetRuntime);
   });
 
   it("keeps the development expiry bridge unavailable until launch is trusted", async () => {
