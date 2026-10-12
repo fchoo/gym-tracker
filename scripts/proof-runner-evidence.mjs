@@ -410,7 +410,7 @@ export function createPhase18GarminTechnicalReviewReport(input) {
   });
 }
 
-function classifyRunnerFailure(stage, error) {
+export function classifyPhase18GarminProofRunnerFailure(stage, error) {
   const message = error instanceof Error ? error.message : "";
   if (/(?:privacy|backup_path)/u.test(message)) return "privacy_scan_failed";
   if (stage === "PH18-PKG") return "packaging_failed";
@@ -602,7 +602,7 @@ export function executePhase18GarminProofRunner(
       manifest,
       passedCases: completedCases,
       stage: currentStage,
-      code: classifyRunnerFailure(currentStage, error),
+      code: classifyPhase18GarminProofRunnerFailure(currentStage, error),
       privateError: error,
     });
   }
@@ -614,9 +614,9 @@ export function executePhase18GarminProofRunner(
   });
 }
 
-export function executePhase18GarminProofRunnerCli() {
+export function executePhase18GarminProofRunnerCli(dependencies = {}) {
   try {
-    process.stdout.write(`${JSON.stringify(executePhase18GarminProofRunner())}\n`);
+    process.stdout.write(`${JSON.stringify(executePhase18GarminProofRunner(process.argv.slice(2), dependencies))}\n`);
   } catch (error) {
     process.stderr.write(`${errorMessage(error, "phase18_runner_failed")}\n`);
     process.exitCode = 1;

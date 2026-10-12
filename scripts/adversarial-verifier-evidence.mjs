@@ -322,7 +322,7 @@ function installedIdentity() {
   });
 }
 
-function currentIdentity() {
+export function resolvePhase18GarminAdversarialCurrentIdentity() {
   const apkPath = path.resolve(process.cwd(), `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-adversarial-devtest.apk`);
   const apkBytes = readFileSync(apkPath);
   return Object.freeze({
@@ -371,7 +371,7 @@ export function executePhase18GarminAdversarialVerifier(
   const finalWriter = choose(dependencies.writeFinalEvidence, writeFinalEvidence);
   const retainedManifest = jsonReader(MANIFEST);
   const evidence = jsonReader(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT);
-  const current = choose(dependencies.resolveCurrentIdentity, currentIdentity)();
+  const current = choose(dependencies.resolveCurrentIdentity, resolvePhase18GarminAdversarialCurrentIdentity)();
   const manifest = sanitizePhase18BuildManifest(retainedManifest, {
     suite: "phase18-garmin-adversarial",
     pythonLockSha256: current.currentPythonLockSha256,
@@ -390,9 +390,9 @@ export function executePhase18GarminAdversarialVerifier(
   return Object.freeze({ ...result, final_evidence_written: options.seal });
 }
 
-export function executePhase18GarminAdversarialVerifierCli() {
+export function executePhase18GarminAdversarialVerifierCli(dependencies = {}) {
   try {
-    process.stdout.write(`${JSON.stringify(executePhase18GarminAdversarialVerifier())}\n`);
+    process.stdout.write(`${JSON.stringify(executePhase18GarminAdversarialVerifier(process.argv.slice(2), dependencies))}\n`);
   } catch (error) {
     process.stderr.write(`${errorMessage(error, "phase18_garmin_adversarial_verifier_failed")}\n`);
     process.exitCode = 1;

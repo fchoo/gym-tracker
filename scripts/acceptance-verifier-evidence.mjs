@@ -87,7 +87,7 @@ function command(program, args) {
   return execFileSync(program, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 }
 
-function resolveCurrentIdentity() {
+export function resolvePhase18GarminAcceptanceCurrentIdentity() {
   const androidHome = firstDefined(process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT);
   if (androidHome === undefined) fail("android_sdk_missing");
   const adb = path.join(androidHome, "platform-tools", "adb");
@@ -323,7 +323,7 @@ export function executePhase18GarminAcceptanceVerifier(
     (path) => JSON.parse(readFileSync(path, "utf8")),
   );
   const readBytes = choose(dependencies.readBytes, readFileSync);
-  const current = choose(dependencies.resolveCurrentIdentity, resolveCurrentIdentity)();
+  const current = choose(dependencies.resolveCurrentIdentity, resolvePhase18GarminAcceptanceCurrentIdentity)();
   const retainedManifest = readJson(MANIFEST);
   const manifest = sanitizePhase18BuildManifest(retainedManifest, {
     suite: "phase18-garmin-acceptance",
@@ -344,21 +344,23 @@ export function executePhase18GarminAcceptanceVerifier(
   const ownerArtifacts = [
     [
       PROOF_EVIDENCE,
-      () => executePhase18GarminProofVerifier(["--manifest", "artifacts/native/phase18-garmin-proof/build.json"]),
+      "artifacts/native/phase18-garmin-proof/build.json",
+      executePhase18GarminProofVerifier,
       validatePhase18GarminProofEvidence,
       validatePhase18GarminProofCurrentIdentity,
     ],
     [
       ADVERSARIAL_EVIDENCE,
-      () => executePhase18GarminAdversarialVerifier(["--manifest", "artifacts/native/phase18-garmin-adversarial/build.json"]),
+      "artifacts/native/phase18-garmin-adversarial/build.json",
+      executePhase18GarminAdversarialVerifier,
       validatePhase18GarminAdversarialEvidence,
       validatePhase18GarminAdversarialCurrentIdentity,
     ],
   ];
   const ownerVerifier = dependencies.verifyOwnerArtifact;
-  for (const [artifactPath, executeVerifier, validateEvidence, validateIdentity] of ownerArtifacts) {
+  for (const [artifactPath, manifestPath, executeVerifier, validateEvidence, validateIdentity] of ownerArtifacts) {
     const ownerEvidence = readJson(artifactPath);
-    if (ownerVerifier === undefined) executeVerifier();
+    if (ownerVerifier === undefined) executeVerifier(["--manifest", manifestPath]);
     else ownerVerifier(artifactPath, ownerEvidence);
     validateEvidence(ownerEvidence);
     matchingArtifactIdentity(ownerEvidence.manifest, manifest);
@@ -384,9 +386,9 @@ export function executePhase18GarminAcceptanceVerifier(
   return validated;
 }
 
-export function executePhase18GarminAcceptanceVerifierCli() {
+export function executePhase18GarminAcceptanceVerifierCli(dependencies = {}) {
   try {
-    process.stdout.write(`${JSON.stringify(executePhase18GarminAcceptanceVerifier())}\n`);
+    process.stdout.write(`${JSON.stringify(executePhase18GarminAcceptanceVerifier(process.argv.slice(2), dependencies))}\n`);
   } catch (error) {
     process.stderr.write(`${errorMessage(error, "phase18_acceptance_verifier_failed")}\n`);
     process.exitCode = 1;

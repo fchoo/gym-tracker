@@ -289,9 +289,9 @@ export function executePhase18GarminAdversarialRunner(
   return Object.freeze({ status: report.status, final_evidence_written: false });
 }
 
-export function executePhase18GarminAdversarialRunnerCli() {
+export function executePhase18GarminAdversarialRunnerCli(dependencies = {}) {
   try {
-    process.stdout.write(`${JSON.stringify(executePhase18GarminAdversarialRunner())}\n`);
+    process.stdout.write(`${JSON.stringify(executePhase18GarminAdversarialRunner(process.argv.slice(2), dependencies))}\n`);
   } catch (error) {
     process.stderr.write(`${errorMessage(error, "phase18_garmin_adversarial_runner_failed")}\n`);
     process.exitCode = 1;

@@ -379,7 +379,7 @@ function installedIdentity() {
   });
 }
 
-function currentIdentity(rawReportBytes) {
+export function resolvePhase18GarminProofCurrentIdentity(rawReportBytes) {
   const apkPath = path.resolve(ROOT, PHASE18_GARMIN_PROOF_APK);
   const apkBytes = readRegularFile(PHASE18_GARMIN_PROOF_APK, "apk");
   return Object.freeze({
@@ -393,13 +393,16 @@ function currentIdentity(rawReportBytes) {
   });
 }
 
-export function executePhase18GarminProofVerifier(args = process.argv.slice(2)) {
+export function executePhase18GarminProofVerifier(args = process.argv.slice(2), dependencies = {}) {
   const options = parsePhase18GarminProofVerifierArgs(args);
+  const readRequired = dependencies.readRegularFile ?? readRegularFile;
+  const resolveCurrentIdentity = dependencies.currentIdentity ?? resolvePhase18GarminProofCurrentIdentity;
+  const fileWriter = dependencies.writeFileSync ?? writeFileSync;
   const retainedManifest = JSON.parse(
-    readRegularFile(options.manifest, "manifest").toString("utf8"),
+    readRequired(options.manifest, "manifest").toString("utf8"),
   );
-  const rawReportBytes = readRegularFile(PHASE18_GARMIN_PROOF_RAW_REPORT, "raw_report");
-  const identity = currentIdentity(rawReportBytes);
+  const rawReportBytes = readRequired(PHASE18_GARMIN_PROOF_RAW_REPORT, "raw_report");
+  const identity = resolveCurrentIdentity(rawReportBytes);
   const manifest = sanitizePhase18GarminProofBuildManifest(retainedManifest, {
     currentPythonLockSha256: identity.currentPythonLockSha256,
     retainedSignatureSha256: identity.retainedSignatureSha256,
@@ -416,13 +419,13 @@ export function executePhase18GarminProofVerifier(args = process.argv.slice(2)) 
       evidence,
       identity,
     );
-    writeFileSync(
+    fileWriter(
       path.resolve(ROOT, FINAL_EVIDENCE),
       `${JSON.stringify(evidence, null, 2)}\n`,
       { flag: "wx" },
     );
   } else {
-    evidence = JSON.parse(readRegularFile(FINAL_EVIDENCE, "final").toString("utf8"));
+    evidence = JSON.parse(readRequired(FINAL_EVIDENCE, "final").toString("utf8"));
     validatePhase18GarminProofEvidence(evidence);
     if (!isDeepStrictEqual(evidence.manifest, manifest)) {
       fail("report_identity_invalid");
@@ -435,9 +438,9 @@ export function executePhase18GarminProofVerifier(args = process.argv.slice(2)) 
   return validatePhase18GarminProofEvidence(evidence);
 }
 
-export function executePhase18GarminProofVerifierCli() {
+export function executePhase18GarminProofVerifierCli(dependencies = {}) {
   try {
-    process.stdout.write(`${JSON.stringify(executePhase18GarminProofVerifier())}\n`);
+    process.stdout.write(`${JSON.stringify(executePhase18GarminProofVerifier(process.argv.slice(2), dependencies))}\n`);
   } catch (error) {
     process.stderr.write(`${errorMessage(error, "phase18_evidence_failed")}\n`);
     process.exitCode = 1;

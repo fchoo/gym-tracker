@@ -254,7 +254,7 @@ function retainedSignatureSha256(apkPath) {
   return digest;
 }
 
-function resolveCurrentIdentity() {
+export function resolvePhase18GarminBenchmarkCurrentIdentity() {
   const adb = resolveAndroidTool("adb");
   const devices = commandText(adb, ["devices"])
     .split("\n")
@@ -306,7 +306,7 @@ function parseBenchmarkMarker(payload, expectedNonce) {
   });
 }
 
-function collectInstalledMeasurements() {
+export function collectInstalledMeasurements() {
   const adb = resolveAndroidTool("adb");
   const runNonce = randomBytes(16).toString("hex");
   execFileSync(adb, ["logcat", "-c"], { stdio: "ignore" });
@@ -354,7 +354,7 @@ export function executePhase18GarminBenchmark(args = process.argv.slice(2), depe
   const readJson = choose(dependencies.readJson, (file) => JSON.parse(readFileSync(file, "utf8")));
   const readBytes = choose(dependencies.readBytes, readFileSync);
   const collect = choose(dependencies.collectMeasurements, collectInstalledMeasurements);
-  const currentIdentity = choose(dependencies.resolveCurrentIdentity, resolveCurrentIdentity);
+  const currentIdentity = choose(dependencies.resolveCurrentIdentity, resolvePhase18GarminBenchmarkCurrentIdentity);
   const writeEvidence = choose(
     dependencies.writeEvidence,
     (value) => writeFileSync(options.evidence, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx" }),
@@ -386,9 +386,9 @@ export function executePhase18GarminBenchmark(args = process.argv.slice(2), depe
   return result;
 }
 
-export function executePhase18GarminBenchmarkCli() {
+export function executePhase18GarminBenchmarkCli(dependencies = {}) {
   try {
-    process.stdout.write(`${JSON.stringify(executePhase18GarminBenchmark())}\n`);
+    process.stdout.write(`${JSON.stringify(executePhase18GarminBenchmark(process.argv.slice(2), dependencies))}\n`);
   } catch (error) {
     process.stderr.write(`${errorMessage(error, "phase18_garmin_benchmark_failed")}\n`);
     process.exitCode = 1;

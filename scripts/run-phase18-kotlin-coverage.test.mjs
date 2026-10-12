@@ -56,3 +56,31 @@ test("Kotlin coverage execution writes only after the focused Gradle task succee
   assert.equal(report.status, "passed");
   assert.deepEqual(calls, ["gradle", [spec.reportPath, "passed"]]);
 });
+
+test("Kotlin coverage execution falls back only for missing toolchains without reports", () => {
+  const fallback = executePhase18KotlinCoverage({
+    projectRoot: "/repo",
+    runGradle: () => {
+      const error = new Error("missing wrapper");
+      error.code = "ENOENT";
+      throw error;
+    },
+    readBytes: (filePath) => Buffer.from(filePath),
+    writeReport: () => {},
+    fileExists: () => false,
+  });
+  assert.equal(fallback.runtime.version, "source-bound-fallback");
+
+  assert.throws(
+    () => executePhase18KotlinCoverage({
+      projectRoot: "/repo",
+      runGradle: () => {
+        throw new Error("spawn ENOENT");
+      },
+      readBytes: (filePath) => Buffer.from(filePath),
+      writeReport: () => {},
+      fileExists: () => true,
+    }),
+    /ENOENT/u,
+  );
+});

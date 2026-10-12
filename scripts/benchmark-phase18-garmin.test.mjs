@@ -336,7 +336,6 @@ test("execute follows the installed-route benchmark path in-process", { concurre
   };
   const retainedSignatureSha256 = "b".repeat(64);
   const currentHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-  const currentSourceTreeSha256 = sourceTreeSha256(process.cwd());
   const currentPythonLockSha256 = createHash("sha256").update(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")).digest("hex");
   const retainedApkSha256 = createHash("sha256").update(retainedApkBytes).digest("hex");
   const deviceIdentitySha256 = createHash("sha256").update(JSON.stringify({
@@ -362,7 +361,7 @@ test("execute follows the installed-route benchmark path in-process", { concurre
       abi: "arm64-v8a",
       js_bundle_embedded: true,
       base_head: currentHead,
-      source_tree_sha256: currentSourceTreeSha256,
+      source_tree_sha256: sourceTreeSha256(process.cwd()),
       python_lock_sha256: currentPythonLockSha256,
       apk_sha256: retainedApkSha256,
       signature_sha256: retainedSignatureSha256,
@@ -434,6 +433,20 @@ exit 1
 set -eu
 printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
 `);
+    writeFileSync(path.join(artifactRoot, "build.json"), `${JSON.stringify({
+      schema_version: 1,
+      suite: "phase18-garmin-acceptance",
+      profile: "development-test",
+      package: "com.fchoo.gymtracker.devtest",
+      abi: "arm64-v8a",
+      js_bundle_embedded: true,
+      base_head: currentHead,
+      source_tree_sha256: sourceTreeSha256(process.cwd()),
+      python_lock_sha256: currentPythonLockSha256,
+      apk_sha256: retainedApkSha256,
+      signature_sha256: retainedSignatureSha256,
+      device_identity_sha256: deviceIdentitySha256,
+    }, null, 2)}\n`);
     process.env.ANDROID_HOME = sdkRoot;
     process.env.ANDROID_SDK_ROOT = sdkRoot;
     const report = executePhase18GarminBenchmark([
@@ -441,7 +454,19 @@ printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
       "--evidence", EVIDENCE_PATH,
       "--execute",
       "--phase20-native-checkpoint",
-    ]);
+    ], {
+      resolveCurrentIdentity: () => ({
+        base_head: currentHead,
+        source_tree_sha256: sourceTreeSha256(process.cwd()),
+        python_lock_sha256: currentPythonLockSha256,
+        apk_sha256: retainedApkSha256,
+        signature_sha256: retainedSignatureSha256,
+        device_identity_sha256: deviceIdentitySha256,
+        package: "com.fchoo.gymtracker.devtest",
+        profile: "development-test",
+        abi: "arm64-v8a",
+      }),
+    });
     assert.equal(report.sample_counts.python_warm_start_ms, 10);
     assert.equal(report.maxima.frame_time_ms, 30);
   } finally {
