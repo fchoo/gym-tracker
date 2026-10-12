@@ -3,6 +3,7 @@ import {
   describe,
   expect,
   it,
+  jest,
 } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -447,6 +448,37 @@ async function insertRecommendation(
 }
 
 describe("progress repository", () => {
+  it("loads a Running dashboard through exactly one source-coherent SQLite snapshot", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    let snapshots = 0;
+    const snapshotKernel = {
+      ...kernel,
+      readSnapshot: async <Result>(
+        query: Parameters<NonNullable<SqliteKernel["readSnapshot"]>>[0],
+      ): Promise<Result> => {
+        snapshots += 1;
+        return kernel.readSnapshot!(query);
+      },
+    } as SqliteKernel;
+
+    const result = await createProgressRepository(snapshotKernel).load({
+      sport: "Running",
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(snapshots).toBe(1);
+    expect(result).toMatchObject({
+      sport: "Running",
+      freshness: "current",
+      dashboard: {
+        sport: "Running",
+        state: "empty",
+      },
+    });
+  });
+
   it("reads only current all-period and metric projections with persisted opportunities", async () => {
     const kernel = await open();
     await seedCurrentProjection(kernel);
