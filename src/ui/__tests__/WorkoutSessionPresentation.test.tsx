@@ -148,7 +148,11 @@ describe("WorkoutSessionPresentation", () => {
       workingSetProgress: { completed: 0, planned: 1, percent: 0 },
       exercises: [{
         id: "detail-exercise", exerciseId: "exercise-row", name: "Cable row", status: "planned",
-        warmups: [], workingSets: [{ id: "detail-set", kind: "working", ordinal: 1, status: "planned", value: "45 kg × 10" }],
+        warmups: [], workingSets: [{
+          id: "detail-set", kind: "working", ordinal: 1, status: "planned",
+          value: "45 kg × 10",
+          previousObservation: { version: 1, profile: "load_reps", loadGrams: 40_000, reps: 8, source: "manual" },
+        }],
       }],
     } as unknown as SessionDetail);
     const presenterSource = readFileSync(
@@ -158,7 +162,7 @@ describe("WorkoutSessionPresentation", () => {
 
     expect(model).toMatchObject({
       activeExerciseId: null,
-      exercises: [{ name: "Cable row", workingSets: [{ target: "45 kg × 10" }] }],
+      exercises: [{ name: "Cable row", workingSets: [{ previous: "40 kg × 8", target: "45 kg × 10" }] }],
     });
     expect(presenterSource).not.toMatch(/(runtime|repository|commands|resume|correction|removal|schedule|outcome|write-back|navigation)/iu);
   });

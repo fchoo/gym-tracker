@@ -679,6 +679,59 @@ function parseSetObservation(
   }
 }
 
+async function loadPreviousObservation(
+  executor: QueryExecutor,
+  session: Pick<SessionRow, "id" | "started_at_ms">,
+  exerciseId: string,
+  identity: MetricIdentity,
+  ordinal: number,
+): Promise<MetricObservation | null> {
+  const [row] = await executor.queryAll<{ observed_json: string }>(
+    `SELECT set_row.observed_json
+       FROM workout_sessions prior_session
+       JOIN session_exercises prior_exercise
+         ON prior_exercise.session_id = prior_session.id
+       JOIN session_sets set_row
+         ON set_row.session_exercise_id = prior_exercise.id
+      WHERE prior_session.id <> ?
+        AND prior_session.status IN ('completed', 'partial')
+        AND (COALESCE(prior_session.completed_at_ms, prior_session.started_at_ms) < ?
+          OR (COALESCE(prior_session.completed_at_ms, prior_session.started_at_ms) = ?
+            AND prior_session.id < ?))
+        AND prior_exercise.exercise_id = ?
+        AND prior_exercise.metric_profile = ?
+        AND prior_exercise.metric_contract_version = ?
+        AND prior_exercise.exercise_metric_generation = ?
+        AND set_row.metric_profile = prior_exercise.metric_profile
+        AND set_row.metric_contract_version = prior_exercise.metric_contract_version
+        AND set_row.exercise_metric_generation = prior_exercise.exercise_metric_generation
+        AND set_row.set_kind = 'working'
+        AND set_row.status = 'completed'
+        AND set_row.observed_json IS NOT NULL
+      ORDER BY COALESCE(prior_session.completed_at_ms, prior_session.started_at_ms) DESC,
+               CASE WHEN set_row.ordinal = ? THEN 0 ELSE 1 END,
+               set_row.ordinal, set_row.id
+      LIMIT 1`,
+    [
+      session.id,
+      session.started_at_ms,
+      session.started_at_ms,
+      session.id,
+      exerciseId,
+      identity.profile,
+      identity.contractVersion,
+      identity.exerciseMetricGeneration,
+      ordinal,
+    ],
+  );
+  if (row === undefined) return null;
+  try {
+    return parseMetricObservationJson(identity, row.observed_json);
+  } catch {
+    return null;
+  }
+}
+
 function formatDurationMs(durationMs: number): string {
   return `${durationMs / 1_000} sec`;
 }
@@ -1574,21 +1627,22 @@ function topEffectiveWorkingSet(
   return setValue(set, best.observation);
 }
 
-function detailFromEffectiveOverlay(
+async function detailFromEffectiveOverlay(
+  executor: QueryExecutor,
   session: SessionRow,
   snapshot: HistoryCorrectionSnapshot,
   recommendations: readonly SessionRecommendation[],
   nonLoadOutcomes: readonly SessionNonLoadOutcome[],
-): SessionDetail {
+): Promise<SessionDetail> {
   const effectiveRevision = session.effective_revision;
   if (effectiveRevision === null) {
     throw new WorkoutOutcomeConflictError(
       "session_detail_effective_revision_missing",
     );
   }
-  const exercises: SessionExerciseDetail[] = snapshot.exercises.map((exercise) => {
+  const exercises: SessionExerciseDetail[] = await Promise.all(snapshot.exercises.map(async (exercise) => {
     const identity = parseMetricIdentity(exercise.metricIdentity);
-    const setDetails = exercise.sets.map((set): SessionSetDetail => {
+    const setDetails = await Promise.all(exercise.sets.map(async (set): Promise<SessionSetDetail> => {
       const target = parseMetricTarget(identity, set.target);
       const observation = set.observation === undefined
         ? null
@@ -1601,9 +1655,18 @@ function detailFromEffectiveOverlay(
         metricIdentity: identity,
         target,
         observation,
+        previousObservation: set.kind === "working"
+          ? await loadPreviousObservation(
+              executor,
+              session,
+              exercise.exerciseId,
+              identity,
+              set.ordinal,
+            )
+          : null,
         value: setValue(set, observation),
       };
-    });
+    }));
     const workingSets = setDetails.filter(({ kind }) => kind === "working");
     const totalWorkingReps = identity.profile === "load_reps"
       ? workingSets
@@ -1628,7 +1691,7 @@ function detailFromEffectiveOverlay(
       warmups: setDetails.filter(({ kind }) => kind === "warmup"),
       workingSets,
     };
-  });
+  }));
   const workingSets = snapshot.exercises.flatMap(({ sets }) => sets).filter(
     ({ kind }) => kind === "working",
   );
@@ -1784,6 +1847,7 @@ async function loadSessionDetail(
   const overlay = effectiveOverlaySnapshot(session);
   if (session.lifecycle === "voided" && session.status !== "in_progress") {
     return detailFromEffectiveOverlay(
+      executor,
       session,
       overlay ?? {
         version: 1,
@@ -1809,6 +1873,7 @@ async function loadSessionDetail(
   }
   if (overlay !== null && session.lifecycle !== "voided") {
     return detailFromEffectiveOverlay(
+      executor,
       session,
       overlay,
       recommendations,
@@ -1821,12 +1886,12 @@ async function loadSessionDetail(
     exercises,
     sets,
   );
-  const exerciseDetails: SessionExerciseDetail[] = exercises.map((exercise) => {
+  const exerciseDetails: SessionExerciseDetail[] = await Promise.all(exercises.map(async (exercise) => {
     const identity = exerciseIdentity(exercise);
     const exerciseSets = sets.filter(
       ({ session_exercise_id: exerciseId }) => exerciseId === exercise.id,
     );
-    const toDetail = (row: SetRow): SessionSetDetail => {
+    const toDetail = async (row: SetRow): Promise<SessionSetDetail> => {
       const rowIdentity = setIdentity(row, exercise);
       const target = parseSetTarget(row, rowIdentity);
       const observation = parseSetObservation(row, rowIdentity);
@@ -1838,6 +1903,15 @@ async function loadSessionDetail(
         metricIdentity: rowIdentity,
         target,
         observation,
+        previousObservation: row.set_kind === "working"
+          ? await loadPreviousObservation(
+              executor,
+              session,
+              exercise.exercise_id,
+              rowIdentity,
+              row.ordinal,
+            )
+          : null,
         value: setValue(row, observation),
       };
     };
@@ -1865,14 +1939,14 @@ async function loadSessionDetail(
         exerciseSets,
       ),
       totalWorkingReps,
-      warmups: exerciseSets
+      warmups: await Promise.all(exerciseSets
         .filter(({ set_kind }) => set_kind === "warmup")
-        .map(toDetail),
-      workingSets: exerciseSets
+        .map(toDetail)),
+      workingSets: await Promise.all(exerciseSets
         .filter(({ set_kind }) => set_kind === "working")
-        .map(toDetail),
+        .map(toDetail)),
     };
-  });
+  }));
   const workingSets = sets.filter(({ set_kind }) => set_kind === "working");
   const endedAtMs = session.completed_at_ms;
   return {

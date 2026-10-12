@@ -19,6 +19,7 @@ export type SessionSetDetail = Readonly<{
   metricIdentity: MetricIdentity;
   target: MetricTarget;
   observation: MetricObservation | null;
+  previousObservation?: MetricObservation | null;
   value: string;
 }>;
 

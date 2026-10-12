@@ -10,7 +10,7 @@ const occurrence = Object.freeze({
   occurrenceId: "occurrence-1", planId: "plan-1", planName: "Full Body Foundation",
   planDayId: "day-1", dayName: "Full Body A", scheduleId: "schedule-1", scheduleVersionId: "version-1",
   localDate: "2026-10-13", timezone: "Asia/Singapore", sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1, opportunity: 1 }),
-  exercises: Object.freeze([Object.freeze({ id: "exercise-1", exerciseId: "bench", exerciseName: "Bench press", ordinal: 0, targets: Object.freeze([Object.freeze({ id: "target-1", ordinal: 0, targetJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 50_000, minReps: 5, maxReps: 5, incrementGrams: 2_500, perSide: false }), unitJson: "{}", previousObservationJson: null })]) })]),
+  exercises: Object.freeze([Object.freeze({ id: "exercise-1", exerciseId: "bench", exerciseName: "Bench press", ordinal: 0, targets: Object.freeze([Object.freeze({ id: "target-1", ordinal: 0, targetJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 50_000, minReps: 5, maxReps: 5, incrementGrams: 2_500, perSide: false }), unitJson: "{}", previousObservationJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 40_000, reps: 8, source: "manual" }) })]) })]),
 }) as PlannedStrengthOccurrenceDetail;
 
 function occurrenceWithTargets(
@@ -41,6 +41,7 @@ describe("PlannedWorkoutDetailScreen", () => {
     expect(screen.getByRole("header", { name: "Bench press" })).toBeOnTheScreen();
     expect(screen.getByText("0 of 1 sets")).toBeOnTheScreen();
     expect(screen.getByText("50 kg × 5")).toBeOnTheScreen();
+    expect(screen.getByText("40 kg × 8")).toBeOnTheScreen();
     expect(screen.getByLabelText("Planned")).toHaveTextContent("—");
     expect(screen.queryByText(/Exercise 1/u)).toBeNull();
     expect(screen.queryByText("Start workout")).toBeNull();

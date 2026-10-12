@@ -300,6 +300,62 @@ describe("history command repository corrections", () => {
     await expect(repository.getCalendarSessionDetail("session-1")).resolves.toBeNull();
   });
 
+  it("loads the immutable prior comparable observation for Calendar Previous facts", async () => {
+    const kernel = await open();
+    await seed(kernel);
+    const previousObservation = JSON.stringify({
+      version: 1,
+      profile: "load_reps",
+      loadGrams: 35_000,
+      reps: 10,
+      source: "manual",
+    });
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO workout_sessions
+          (id, plan_id, plan_day_id, source, status, local_date, timezone,
+           started_at_ms, completed_at_ms, revision)
+         VALUES ('session-previous', NULL, NULL, 'manual', 'completed',
+                 '2026-08-23', 'Asia/Singapore', 1724342400000,
+                 1724342760000, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO session_exercises
+          (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+           exercise_name, metric_profile, metric_contract_version,
+           exercise_metric_generation, default_rest_seconds, target_revision,
+           status, effort, effort_recorded_at_ms, revision)
+         VALUES ('previous-exercise', 'session-previous', NULL, 'bench-press', 0,
+                 'Bench press', 'load_reps', 1, 1, 90, 1, 'completed',
+                 'on_target', 1724342760000, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO session_sets
+          (id, session_exercise_id, set_kind, ordinal, target_load_grams,
+           target_min_reps, target_max_reps, target_json, unit_json, rule_type,
+           rule_version, metric_profile, metric_contract_version,
+           exercise_metric_generation, observed_json, completed_at_ms, status, revision)
+         VALUES ('previous-working', 'previous-exercise', 'working', 0, 35000,
+                 10, 10, ?, '{}', 'load_reps', 1, 'load_reps', 1, 1, ?,
+                 1724342760000, 'completed', 1)`,
+        [JSON.stringify({
+          version: 1, profile: "load_reps", loadGrams: 35_000,
+          minReps: 10, maxReps: 10, incrementGrams: 2_500, perSide: false,
+        }), previousObservation],
+      );
+    });
+
+    await expect(createWorkoutOutcomeRepository(kernel).getCalendarSessionDetail(
+      "session-1",
+    )).resolves.toMatchObject({
+      exercises: [{
+        workingSets: [{
+          previousObservation: JSON.parse(previousObservation),
+        }],
+      }],
+    });
+  });
+
   it("writes the full overlay, immutable audit, scoped invalidation, revisions, and rebuild effects atomically", async () => {
     const kernel = await open();
     await seed(kernel);

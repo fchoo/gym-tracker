@@ -46,7 +46,7 @@ function formatLoadGrams(loadGrams: number): string {
     : kilograms.toFixed(1).replace(/\.0$/u, "");
 }
 
-function formatObservation(observation: SetObservation): string {
+export function formatWorkoutObservation(observation: SetObservation): string {
   switch (observation.profile) {
     case "load_reps": return `${formatLoadGrams(observation.loadGrams)} kg × ${observation.reps}`;
     case "bodyweight_reps": return `Bodyweight × ${observation.reps}`;
@@ -85,10 +85,10 @@ function presentSet(set: ActiveWorkoutSet): WorkoutPresentationSet {
     ordinal: set.ordinal,
     status: set.status,
     previous: set.valueSources.find(({ source }) => source === "last_workout")
-      ? formatObservation(set.valueSources.find(({ source }) => source === "last_workout")!.observation)
+      ? formatWorkoutObservation(set.valueSources.find(({ source }) => source === "last_workout")!.observation)
       : null,
     target: formatWorkoutTarget(set.target),
-    result: set.observation === null ? null : formatObservation(set.observation),
+    result: set.observation === null ? null : formatWorkoutObservation(set.observation),
   };
 }
 
@@ -109,7 +109,9 @@ function presentDetailSet(set: SessionSetDetail): WorkoutPresentationSet {
     kind: set.kind,
     ordinal: set.ordinal,
     status: set.status,
-    previous: null,
+    previous: set.previousObservation == null
+      ? null
+      : formatWorkoutObservation(set.previousObservation),
     target: set.value,
     result: set.status === "completed" && set.observation !== null ? set.value : null,
   };
