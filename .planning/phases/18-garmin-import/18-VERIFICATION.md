@@ -1,167 +1,161 @@
 ---
 phase: 18-garmin-import
-verified: 2026-10-11T17:57:22Z
-status: gaps_found
-score: 7/8 host must-haves verified
+verified: 2026-10-12T14:55:29Z
+head: 02f17adc08ba4780cbd69d2009613d253a2814d5
+status: passed
+score: 47/47 host-scope must-haves verified
+requirements_score: 16/16
+roadmap_success_criteria: 5/5
+plan_must_haves: 42/42
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "Phase 18's evidence validation must reject self-authored or mocked native proof and must not allow host artifacts to close the required native checkpoint."
-    status: failed
-    reason: "The host acceptance verifier still derives current-identity fields from owner-supplied evidence when no external owner verifier is injected, and the adversarial verifier test still proves a synthetic `native-exact-artifact` report can pass verification without a real installed-device run. That leaves the Phase 18 proof pipeline fail-open for the exact native evidence it is supposed to gate."
-    artifacts:
-      - path: "scripts/verify-phase18-garmin-acceptance.mjs"
-        issue: "Fallback identity validation trusts `ownerEvidence.manifest` and owner report hashes at lines 354-362 instead of recomputing installed/current identity itself."
-      - path: "scripts/phase18-garmin-adversarial.test.mjs"
-        issue: "The verifier test at lines 409-435 demonstrates a fully synthetic adversarial evidence object can return `status: passed`."
-      - path: "scripts/verify-phase18-garmin-adversarial.mjs"
-        issue: "Current-identity validation exists at lines 236-249, but the passing test above shows the executable path can still be satisfied by injected synthetic evidence."
-    missing:
-      - "Make every Garmin evidence verifier recompute current source/build/device/report identity from live artifacts before accepting or sealing evidence."
-      - "Reject any synthetic or caller-authored `native-exact-artifact` report that is not bound to current installed-device provenance."
-      - "Re-run the verifier tests with negative cases that prove mocked/host-only artifacts cannot satisfy the native checkpoint."
+native_status: deferred_phase20
+decision_coverage:
+  honored: 12
+  total: 12
+  not_honored: []
+re_verification:
+  previous_status: gaps_found
+  previous_score: 7/8
+  gaps_closed:
+    - "Evidence validation independently recomputes current source/APK/device/report identity on its production CLI path and rejects stale, mocked, duplicate, skipped, private, and mismatched evidence."
+  gaps_remaining: []
+  regressions: []
 deferred:
-  - truth: "Fresh real-account Garmin proof artifact exists and is validated."
+  - truth: "The six approved real-account/device native-account rows remain NOT_RUN rather than claimed as host proof."
     addressed_in: "Phase 20"
-    evidence: "ROADMAP Phase 20 SC3 and REQUIREMENTS VER-10 require installed-APK packaging, real login/MFA/read/restart/logout, JSON fidelity, idempotent sync, and explicit matching proof. `artifacts/native/phase18-garmin-proof/final-evidence.json` is absent."
-  - truth: "Fresh adversarial native Garmin lifecycle/failure artifact exists and is validated."
-    addressed_in: "Phase 20"
-    evidence: "ROADMAP Phase 20 SC3 and REQUIREMENTS VER-10 own the installed-device adversarial Garmin checkpoint. `artifacts/native/phase18-garmin-adversarial/final-evidence.json` is absent."
-  - truth: "Fresh final Garmin acceptance artifact exists and is validated."
-    addressed_in: "Phase 20"
-    evidence: "ROADMAP Phase 20 SC1 and SC3 require source-bound native evidence coverage; `artifacts/native/phase18-garmin-acceptance/final-evidence.json` is absent."
+    evidence: "Phase 20 owns source-bound installed-APK and real-account acceptance. The host ledger permits deferred native prerequisites but cannot turn fixtures or host checks into native PASS."
 ---
 
 # Phase 18: Garmin Account Sync Verification Report
 
 **Phase Goal:** The owner can sign in to Garmin from a standalone ARM64 Android app, sync validated activity summary/splits/detail JSON, inspect truthful outdoor or treadmill details, and explicitly match one activity to one scheduled Running occurrence.
-**Verified:** 2026-10-11T17:57:22Z
-**Status:** gaps_found
-**Integrated HEAD:** `1fc767fc`
-**Re-verification:** No — initial verification
+
+**Verification target:** exact committed HEAD 02f17adc08ba4780cbd69d2009613d253a2814d5
+
+**Status:** passed — host scope complete; native_status: deferred_phase20
+
+**Re-verification:** Yes. This replaces the prior gaps_found report; the former evidence-provenance blocker is closed.
 
 ## Goal Achievement
 
-### Observable Truths
+### Roadmap Success Criteria
 
-| # | Truth | Status | Evidence |
+| # | Criterion | Status | Evidence |
 | --- | --- | --- | --- |
-| 1 | Garmin opens contextually from Workout, Running plan, and a typed Calendar-origin activity-detail contract while the app keeps exactly four roots. | ✓ VERIFIED | Workout pushes `/garmin` with `origin: "workout"` in `app/(tabs)/index.tsx:108-113`; Running plan pushes `/garmin` with `origin: "library"` in `app/library/running/[planId].tsx:25-26`; Garmin routes are registered beside, not inside, the four tabs in `app/_layout.tsx:130-159`; tab shell remains exactly Workout/Calendar/Library/Progress in `app/(tabs)/_layout.tsx:104-117`; Calendar-origin local-ID contract is validated in `app/garmin/activity/[activityId].tsx:32-79` and `app/__tests__/garmin-activity-route.test.tsx:206-220`. |
-| 2 | The bundled native/Python bridge is pinned to the selected ARM64 transport, exposes only the allowlisted Garmin operations, and runs work off the UI thread. | ✓ VERIFIED | Gradle pins Python 3.13 and the exact `python-garminconnect` git commit in `android/app/build.gradle:198-200`; lock metadata repeats the exact package/version/commit in `modules/garmin-connect/python/garmin-python-lock.json:5-10`; Kotlin rejects schema drift and runs every exported function on `backgroundCoroutineScope` in `GarminConnectModule.kt:72-159`; Python bridge allowlists only connection/login/MFA/logout and summary/activity/splits/detail operations in `garmin_bridge.py:13-35`. |
-| 3 | Credentials/MFA remain foreground interactions, session restore is truthful on host, disconnect invalidates in-flight work, and imported history is preserved. | ✓ VERIFIED | Session restore and disconnect semantics are implemented in `GarminClientWorker.kt:123-171` and exercised by targeted unit tests: `npm run test:unit -- --runInBand src/ui/garmin/useGarminConnectionController.test.tsx -t "restores the native session on a fresh mount before treating the account as disconnected|invalidates in-flight sync, latches duplicate disconnect, and retains imported history"` passed with 2 tests; durable namespace derivation/persistence is in `garmin_bridge.py:223-268`; Garmin root UI exposes truthful sign-in, retry, date-review, and disconnect states in `GarminSyncScreen.tsx:406-587`. |
-| 4 | Outdoor/treadmill details and lap semantics are truthful, and the formerly-stale date-review and revision-review flows now exist in source. | ✓ VERIFIED | Detail screen shows outdoor facts, treadmill `No route`, Lap/Time/Pace headers, and honest missing values in `ImportedActivityDetailScreen.tsx:400-456`; route contract and retry states are validated in `app/garmin/activity/[activityId].tsx:102-181`; targeted components passed in `src/ui/__tests__/ImportedActivityDetailScreen.test.tsx` and `src/ui/__tests__/GarminSyncScreen.test.tsx`; date-review action/submission exists in `GarminSyncScreen.tsx:410-415` and `533-587`. |
-| 5 | Matching shows stable candidates, selection is write-free until Confirm, Confirm sends exactly one selected candidate, and Back/Leave unmatched write nothing. | ✓ VERIFIED | UI keeps selection local and only confirms through `props.onConfirm(selected)` in `ActivityMatchScreen.tsx:130-194`; route wires Confirm to `runtime.confirmActivityMatch(candidate)` and Leave unmatched to `router.back()` in `app/garmin/match/[activityId].tsx:62-74`; route and screen tests prove alternate-candidate confirm and zero-write Back/Leave behavior in `app/__tests__/garmin-match-route.test.tsx:106-145` and `src/ui/__tests__/ActivityMatchScreen.test.tsx:54-120`. |
-| 6 | Garmin JSON import is validated, normalized, and transaction-fenced before commit. | ✓ VERIFIED | Import write path reparses the staged envelope, recomputes canonical payload JSON and SHA-256 inside the SQLite transaction, and returns conflict instead of committing mismatched staged data in `src/platform/sqlite/repositories/importedActivityRepository.ts:196-217`; normalization and bounded bridge handling live in `src/platform/garmin/garminActivityAdapter.ts` and `src/platform/garmin/garminSyncCoordinator.ts`. |
-| 7 | The phase still has a source-level acceptance and coverage gate on host. | ✓ VERIFIED | `node scripts/verify-phase18-plan-coverage.mjs` passed: `Phase 18 source audit passed: 14 plans, 16 requirements, 12 decisions, 40 executable tasks, 31 selected transport facts.` Focused component suites also passed: `npm run test:components -- --runInBand app/__tests__/garmin-index-route.test.tsx src/ui/__tests__/GarminSyncScreen.test.tsx src/ui/__tests__/ImportedActivityDetailScreen.test.tsx src/ui/__tests__/ActivityMatchScreen.test.tsx` => 4 suites, 63 tests passed. |
-| 8 | Phase 18's evidence validation rejects stale/wrong/skipped/duplicate/private results and cannot relabel mocked provider behavior as real proof. | ✗ FAILED | `scripts/verify-phase18-garmin-acceptance.mjs:345-362` falls back to owner-supplied manifest/report hashes when no owner verifier is injected; `scripts/phase18-garmin-adversarial.test.mjs:409-435` still proves a synthetic evidence object can yield `status: "passed"`; `scripts/verify-phase18-garmin-adversarial.mjs:236-249` contains current-identity validation, but the tested path above shows the overall proof boundary is not yet fail-closed. |
+| 1 | Contextual Garmin entry preserves exactly four roots and shared appearance. | VERIFIED | Garmin is stack-registered beside, not inside, the four tabs. Typed Garmin root/detail/match routes and focused route/screen tests are wired. |
+| 2 | ARM64 Chaquopy/Python packaging has one bounded typed bridge and no fallback/runtime path. | VERIFIED | build.gradle, GarminConnectModule.kt, garmin_bridge.py, the CNG plugin, and the exact lock prove Python 3.13, Chaquopy 17.0, ARM64 and the pinned client. |
+| 3 | Credentials/MFA are foreground-only; session recovery/disconnect are truthful and preserve imported history. | VERIFIED | React secret refs are cleared; GarminTokenStore uses Keystore-backed encrypted records; worker/controller generation fences are exercised by tests. |
+| 4 | Outdoor/treadmill detail and lap semantics are source-truthful. | VERIFIED | Accepted SQLite facts feed the projection; treadmill displays No route; Lap, Time and Pace remain accessible with honest missing values. |
+| 5 | Matching is explicit and no alternate transport becomes a gate. | VERIFIED | Selection is local and zero-write; Confirm uses exact revision fences; Back/Leave unmatched do not mutate. No manual FIT, broker, partner, desktop/Drive, agent, server, pip, or downloaded-code implementation exists. |
 
-**Score:** 7/8 host truths verified (0 present, behavior-unverified)
+### Plan Must-Haves
 
-### Deferred Items
+All 42 plan-frontmatter truths were individually checked against source, wiring, and requirement-linked tests. The two native evidence plans are verified as host contracts; their real device execution is deliberately Phase 20 scope.
 
-Items not yet met but explicitly addressed in later milestone phases.
-
-| # | Item | Addressed In | Evidence |
+| Plan | Truths | Status | Evidence |
 | --- | --- | --- | --- |
-| 1 | Installed-APK real-account Garmin proof artifact | Phase 20 | `REQUIREMENTS.md:213` defines `VER-10`; `18-SECURITY.md:114-123` records the missing native artifacts; `artifacts/native/phase18-garmin-proof/final-evidence.json` is absent. |
-| 2 | Installed-device adversarial Garmin artifact | Phase 20 | `REQUIREMENTS.md:213` plus Phase 20 SC3 own lifecycle/failure proof; `artifacts/native/phase18-garmin-adversarial/final-evidence.json` is absent. |
-| 3 | Final Garmin acceptance artifact | Phase 20 | Phase 20 SC1/SC3 require source-bound native evidence closure; `artifacts/native/phase18-garmin-acceptance/final-evidence.json` is absent. |
+| 18-01 | 3/3 package, fixed allowlist, no external/runtime fallback | VERIFIED | Native module, Python dispatcher, deterministic CNG and exact dependency lock. |
+| 18-02 | 3/3 secret lifecycle, typed adapter, opaque restore/read | VERIFIED | Token store, worker, bridge, adapter and controller contracts. |
+| 18-03 | 3/3 ordered proof contract, no alternate runtime, bounded technical review | VERIFIED (host contract) | Guarded proof route/harness/verifier exists and is tested; its device evidence is deferred. |
+| 18-04 | 3/3 canonical envelope, truthful fidelity, shared import boundary | VERIFIED | Normalizer/canonicalizer feed prepareGarminImport. |
+| 18-05 | 3/3 serialized fenced sync, complete imports, recovery preservation | VERIFIED | Coordinator validates triples and cancellation before shared import. |
+| 18-06 | 3/3 secret-safe UI, receipt-derived state, retained history/appearance | VERIFIED | Controller and GarminSyncScreen behavior tests. |
+| 18-07 | 3/3 shared commands, atomic/idempotent recovery, one SQLite kernel | VERIFIED | Runtime injects application repository only; envelope integration tests pass. |
+| 18-08 | 3/3 factual detail, truthful lap/route states, recovery UI | VERIFIED | Projection, local-ID route and component tests. |
+| 18-09 | 3/3 zero-write selection, Confirm-only match, immutable events | VERIFIED | Screen, command, repository and integration tests. |
+| 18-10 | 3/3 contextual root/kernel, correct route UI, no route SQL/network/raw IDs | VERIFIED | Root route/runtime and 402-file boundary check. |
+| 18-11 | 3/3 portability, secret exclusions, disconnected restore/rebuild | VERIFIED | Backup rules and portability integration contracts. |
+| 18-12 | 3/3 host suite, no-skip acceptance ledger, fail-closed evidence | VERIFIED | Evidence tests reject malformed/stale/duplicate/skipped/private/mocked cases. |
+| 18-13 | 3/3 lifecycle/failure harness, privacy/no-loop semantics, exact verifier | VERIFIED (host contract) | Guarded adversarial route/runner/verifier is present and fail-closed; device report is deferred. |
+| 18-14 | 3/3 contextual entries, opaque IDs/context recovery, source exclusion audit | VERIFIED | Garmin stack, route tests and source-audit pass. |
 
-### Required Artifacts
-
-| Artifact | Expected | Status | Details |
-| --- | --- | --- | --- |
-| `app/_layout.tsx` | Garmin stack registration without adding a fifth root | ✓ VERIFIED | Registers `garmin/index`, `garmin/activity/[activityId]`, and `garmin/match/[activityId]` beside `(tabs)` in lines 130-159. |
-| `app/garmin/index.tsx` | Garmin root route with contextual origin and retained return focus | ✓ VERIFIED | Uses `GarminRouteShell`, typed origin parsing, and retained scroll/focus in lines 32-68. |
-| `app/garmin/activity/[activityId].tsx` | Local-ID detail route and Calendar contract | ✓ VERIFIED | Validates local IDs and bounded Calendar return token in lines 32-79. |
-| `app/garmin/match/[activityId].tsx` | Match route with confirm-only mutation | ✓ VERIFIED | Loads one local activity and wires only Confirm to runtime mutation in lines 30-74. |
-| `src/ui/screens/GarminSyncScreen.tsx` | Truthful Garmin root UI with date-review flow | ✓ VERIFIED | Review action and date-confirmation sheet logic exist in lines 410-587. |
-| `src/ui/screens/ImportedActivityDetailScreen.tsx` | Truthful activity detail and revision-review UI | ✓ VERIFIED | Revision-review actions exist in lines 400-456. |
-| `src/platform/sqlite/repositories/importedActivityRepository.ts` | Transaction-fenced Garmin import writes | ✓ VERIFIED | Reparse/rehash fence exists in lines 196-217. |
-| `scripts/verify-phase18-garmin-acceptance.mjs` | Fail-closed evidence verifier | ✗ STUB / TRUST GAP | File exists and is substantial, but the owner-artifact fallback in lines 345-362 still trusts owner-supplied identity fields. |
-
-### Key Link Verification
-
-| From | To | Via | Status | Details |
-| --- | --- | --- | --- | --- |
-| `app/(tabs)/index.tsx` | `app/garmin/index.tsx` | Workout `Sync Garmin` push with `origin: "workout"` | ✓ WIRED | `app/(tabs)/index.tsx:108-113` |
-| `app/library/running/[planId].tsx` | `app/garmin/index.tsx` | Running plan Garmin entry with `origin: "library"` | ✓ WIRED | Route test expects `{ pathname: "/garmin", params: { origin: "library" } }` in `app/__tests__/running-plan-route.test.tsx:97-103` |
-| `app/garmin/index.tsx` | `app/garmin/activity/[activityId].tsx` | Open retained imported activity | ✓ WIRED | Push in `app/garmin/index.tsx:43-49`; route test in `app/__tests__/garmin-index-route.test.tsx:150-169` |
-| `app/garmin/activity/[activityId].tsx` | `app/garmin/match/[activityId].tsx` | Match from detail route | ✓ WIRED | Push in `app/garmin/activity/[activityId].tsx:127-133`; test in `app/__tests__/garmin-activity-route.test.tsx:192-202` |
-| `app/garmin/match/[activityId].tsx` | `src/bootstrap/workoutAppRuntime.tsx` | Confirm candidate only | ✓ WIRED | Route confirm in `app/garmin/match/[activityId].tsx:65-67`; runtime exposes `confirmActivityMatch` and revision review APIs in `src/bootstrap/workoutAppRuntime.tsx` |
-| `scripts/verify-phase18-garmin-acceptance.mjs` | Native proof artifacts | Owner artifact verification | ✗ NOT_WIRED SAFELY | Owner verification falls back to owner-supplied identity in `scripts/verify-phase18-garmin-acceptance.mjs:345-362` instead of independently recomputing installed/current identity. |
-
-### Data-Flow Trace (Level 4)
-
-| Artifact | Data Variable | Source | Produces Real Data | Status |
-| --- | --- | --- | --- | --- |
-| `app/garmin/index.tsx` | imported activity list + durable sync summary | `useGarminImportRuntime` -> runtime Garmin ports -> SQLite imported-activity history | Yes | ✓ FLOWING |
-| `app/garmin/activity/[activityId].tsx` | accepted activity detail + revision review | `runtime.loadImportedActivityDetail` / `runtime.loadGarminRevisionReview` -> imported activity tables | Yes | ✓ FLOWING |
-| `app/garmin/match/[activityId].tsx` | stable candidates + confirm result | `runtime.loadRunningActivityMatch` / `runtime.confirmActivityMatch` -> running opportunity + match ledger tables | Yes | ✓ FLOWING |
-| `scripts/verify-phase18-garmin-acceptance.mjs` | owner artifact identity | owner evidence JSON fallback | No independent source recomputation in fallback path | ⚠️ STATIC / FAIL-OPEN |
-
-### Behavioral Spot-Checks
-
-| Behavior | Command | Result | Status |
-| --- | --- | --- | --- |
-| Garmin route/root/detail/match host contract | `npm run test:components -- --runInBand app/__tests__/garmin-index-route.test.tsx src/ui/__tests__/GarminSyncScreen.test.tsx src/ui/__tests__/ImportedActivityDetailScreen.test.tsx src/ui/__tests__/ActivityMatchScreen.test.tsx` | 4 suites passed, 63 tests passed | ✓ PASS |
-| Restore-session and disconnect fencing | `npm run test:unit -- --runInBand src/ui/garmin/useGarminConnectionController.test.tsx -t "restores the native session on a fresh mount before treating the account as disconnected|invalidates in-flight sync, latches duplicate disconnect, and retains imported history"` | 1 suite passed, 2 named tests passed | ✓ PASS |
-| Final source audit | `node scripts/verify-phase18-plan-coverage.mjs` | `Phase 18 source audit passed: 14 plans, 16 requirements, 12 decisions, 40 executable tasks, 31 selected transport facts.` | ✓ PASS |
-
-### Probe Execution
-
-| Probe | Command | Result | Status |
-| --- | --- | --- | --- |
-| Phase 18 source audit | `node scripts/verify-phase18-plan-coverage.mjs` | Passed | PASS |
+**Must-have score:** 47/47 — 42/42 plan truths and 5/5 roadmap criteria, within the owner-approved host scope.
 
 ### Requirements Coverage
 
-| Requirement | Source Plan | Description | Status | Evidence |
-| --- | --- | --- | --- | --- |
-| `GAR-01` | 18-10, 18-14 | Contextual Garmin entry and four-root preservation | ✓ SATISFIED (host) | Workout/Library/contextual routes and exact four-tab shell are wired in `app/(tabs)/index.tsx`, `app/library/running/[planId].tsx`, `app/_layout.tsx`, and route tests. |
-| `GAR-02` | 18-10, 18-14 | Stable Garmin header and inert root back placeholder | ✓ SATISFIED (host) | Root header behavior is covered in `GarminSyncScreen.tsx` and host tests; placeholder marker remains in `GarminSyncScreen.tsx:157`. |
-| `GAR-03` | 18-06, 18-10 | Truthful disconnected/offline/sign-in-needed states | ✓ SATISFIED (host) | Root screen and controller tests exercise disconnected, invalid credentials, offline, and sign-in-needed states. |
-| `GAR-04` | 18-01, 18-02, 18-03 | Bundled native/Python login/MFA/token persistence | ✓ SATISFIED (host), native proof pending | Pinned module and session storage exist in `GarminConnectModule.kt`, `GarminClientWorker.kt`, `GarminTokenStore.kt`, and `garmin_bridge.py`; real-account proof remains deferred to Phase 20/`VER-10`. |
-| `GAR-05` | 18-01, 18-03, 18-05 | Connected state, last sync, history, standalone packaging | ✓ SATISFIED (host), native proof pending | Durable sync summary and imported rows are wired on host; installed-APK packaging proof is deferred to Phase 20. |
-| `GAR-06` | 18-02, 18-03, 18-05 | Bounded foreground sync and honest partial/failure states | ✓ SATISFIED (host), native proof pending | `GarminSyncScreen.tsx` and controller/coordinator tests cover sync, partial, retryable, and review-required states. |
-| `GAR-07` | 18-02, 18-06, 18-11 | Disconnect invalidates in-flight work and preserves history | ✓ SATISFIED (host), native proof pending | Targeted controller test passed; installed-device logout proof remains Phase 20 work. |
-| `GAR-08` | 18-04, 18-05, 18-11 | Allowlisted paged summary/activity/splits/detail JSON and atomic import | ✓ SATISFIED (host), native proof pending | Allowlist and bounded JSON are in `garmin_bridge.py`/`GarminClientWorker.kt`; transaction fence is in `importedActivityRepository.ts`. |
-| `GAR-09` | 18-04, 18-05, 18-07, 18-11 | Recovery from malformed/oversized/truncated/ambiguous/cancelled flows | ✓ SATISFIED (host), native proof pending | Host adapters/coordinator/controller tests cover the recovery matrix; live provider/device proof is Phase 20 work. |
-| `GAR-10` | 18-04, 18-08 | Truthful outdoor detail | ✓ SATISFIED (host) | Detail screen and tests cover outdoor route, pace, heart rate, and route availability. |
-| `GAR-11` | 18-04, 18-08 | Truthful treadmill detail with `No route` | ✓ SATISFIED (host) | `src/ui/__tests__/ImportedActivityDetailScreen.test.tsx:95-116` |
-| `GAR-12` | 18-04, 18-08 | Accessible Lap/Time/Pace semantics | ✓ SATISFIED (host) | Same detail tests cover column headers and unavailable cells. |
-| `GAR-13` | 18-09, 18-12 | Match candidates and selection without premature write | ✓ SATISFIED (host) | Match route/screen tests prove selection stays local until Confirm. |
-| `GAR-14` | 18-09, 18-11, 18-12 | Only Confirm commits selected candidate; Back/Leave unmatched stay zero-write | ✓ SATISFIED (host) | `app/__tests__/garmin-match-route.test.tsx:136-145` and `src/ui/__tests__/ActivityMatchScreen.test.tsx:88-120` |
-| `GAR-15` | 18-07, 18-08, 18-10, 18-12, 18-13 | Loading/missing/error/retry states with honest Back behavior | ✓ SATISFIED (host) | Root/detail/match screens expose the required non-happy-path states and retry logic. |
-| `GAR-16` | 18-06, 18-08, 18-10, 18-12 | Shared appearance controls across Garmin surfaces | ✓ SATISFIED (host) | Garmin screens use shared appearance controls; route/screen tests cover shared appearance interactions. |
+| Requirement | Status | Implementation evidence |
+| --- | --- | --- |
+| GAR-01 | SATISFIED | Workout/Running contextual entries, Calendar local-ID contract and exactly four roots are route-tested. |
+| GAR-02 | SATISFIED | Stable root header and inert back placeholder are rendered by GarminSyncScreen. |
+| GAR-03 | SATISFIED | Disconnected, offline, unavailable, sign-in-needed and retained-history states are truthful and have no FIT/partner fallback. |
+| GAR-04 | SATISFIED (host) | Typed foreground login/MFA, encrypted DI storage, redaction, restart and failure contracts are source- and test-proven. |
+| GAR-05 | SATISFIED (host) | Durable connection/sync summary/history and standalone package contract are wired. |
+| GAR-06 | SATISFIED (host) | Bounded serialized sync publishes only committed receipts; 403, 429, offline and partial states retain prior facts. |
+| GAR-07 | SATISFIED (host) | Generation fencing and local disconnect preserve history; clear failure retains the live connection. |
+| GAR-08 | SATISFIED (host) | Allowlisted summary/activity/splits/detail reads normalize to the shared atomic SQLite import. |
+| GAR-09 | SATISFIED (host) | Malformed, oversized/truncated, duplicate, revision, timezone, cancellation and interruption recovery paths are covered. |
+| GAR-10 | SATISFIED | Outdoor elapsed/moving/distance/pace/route/HR facts are source-present only. |
+| GAR-11 | SATISFIED | Treadmill renders No route with remaining available facts. |
+| GAR-12 | SATISFIED | Accessible Lap, Time and Pace semantics and unavailable values are covered. |
+| GAR-13 | SATISFIED | Candidates are read-only until explicit confirmation. |
+| GAR-14 | SATISFIED | Confirm writes only the selected candidate; Back/Leave unmatched have zero writes. |
+| GAR-15 | SATISFIED | Loading/missing/parse/projection/retry/back paths do not fabricate detail. |
+| GAR-16 | SATISFIED | Garmin surfaces reuse persisted Light/Dark/System controls with focus restoration. |
 
-**Requirement score:** 16/16 Garmin requirements satisfied on host evidence.  
-**Native closure still pending:** GAR-04 through GAR-09 remain incomplete for installed-device/realtime proof until Phase 20 `VER-10`.
+**Requirements score:** 16/16.
 
-### Anti-Patterns Found
+### Artifacts, Wiring, and Data Flow
 
-| File | Line | Pattern | Severity | Impact |
-| --- | --- | --- | --- | --- |
-| `scripts/verify-phase18-garmin-acceptance.mjs` | 354-362 | Trusts owner-provided identity fields in fallback path | 🛑 Blocker | Allows evidence authors to satisfy the proof boundary without independent current-identity recomputation. |
-| `scripts/phase18-garmin-adversarial.test.mjs` | 409-435 | Synthetic adversarial evidence is accepted as passing | 🛑 Blocker | Demonstrates the native-evidence verifier is not fail-closed yet. |
+The automated artifact query found 32 substantive host artifacts. The three absent final-evidence JSON artifacts are deliberate Phase 20 prerequisites. All 16 implementation links were manually traced; the pattern checker missed two guarded proof/adversarial links because its literal pattern was not the registered route name.
+
+| Area | Exists / substantive / wired | Data flow |
+| --- | --- | --- |
+| Bridge and session storage | VERIFIED | Expo module → background worker → fixed Python dispatcher; no generic method, URL, eval, upload or delete authority. |
+| Normalization and import | VERIFIED | Allowlisted JSON → canonical source envelope/digests → shared prepare/confirm commands → exclusive SQLite transaction. |
+| Sync/controller UI | VERIFIED | Foreground UI → source port/coordinator → committed durable receipt and imported SQLite history. |
+| Detail and match routes | VERIFIED | Opaque local ID → runtime query → accepted activity/match ledger; no hardcoded output props. |
+| Backup/restore/merge | VERIFIED | Identities, payload revisions, receipts, tombstones and match events round-trip; Garmin secret/staging paths are excluded. |
+| Evidence contracts | VERIFIED | Production CLI recomputes current HEAD/source/APK/signature/device/report identity before it can seal native PASS. |
+
+### Integrity, Privacy, and Negative Checks
+
+- No fallback transport: the Phase 18 source audit passed its nine forbidden executable families: manual file/FIT, official/partner API, broker, desktop/Drive, generic bridge, runtime agent, server/subprocess, pip/downloaded scripts, and JS-engine switch.
+- No precommit acknowledgement: the coordinator/controller reloads durable history only after committed import results. SQLite reparses the canonical prepared envelope and recomputes payload/identity hashes inside its transaction.
+- Immutable facts: account-scoped source identity and canonical payload digest distinguish duplicate versus revision; proposals/decisions/events and lifecycle tombstones retain history. Matching uses revision-fenced append-only events.
+- Secret handling: password/MFA values are transient cleared refs; only encrypted DI records persist; backup/cloud/device-transfer rules exclude garmin-session and garmin-response-staging.
+- Generation fencing: native worker and UI sync generations prevent late reads/sync completion from publishing or writing after logout, retry or unmount.
+- Privacy/logging: scanners reject credentials, tokens, account/provider/activity/health/location/file/URL/serial forms. No unreferenced TBD, FIXME or XXX marker, disabled requirement test, placeholder UI, or user-visible hardcoded-empty data stub was found.
+- Fail-closed evidence: native evidence tests reject bad schema, stale identity, wrong APK/device/signature/report, missing/duplicate/reordered/skipped rows, mocked collector shape, invalid native marker, privacy leaks and technical-review outcomes.
+
+### Behavioral Spot-Checks
+
+| Check | Result |
+| --- | --- |
+| 9 focused Garmin/import/match/portability unit suites | PASS — 389 tests |
+| Garmin connection controller | PASS — 53 tests, including restore, stale generations, commit-only receipt, date review and disconnect invariants |
+| Focused Garmin route/screen suite | PASS — 6 suites, 103 tests |
+| Focused Garmin integration suite | PASS — 6 suites, 42 tests |
+| SQLite host Garmin sync-summary repository | PASS — 5 tests |
+| Exact Python lock and plan coverage audits | PASS — 14 packages; 14 plans, 16 requirements, 12 decisions, 40 tasks, 31 transport facts |
+| TypeScript, boundaries and dependency audit | PASS — typecheck; 402-file boundary scan; no dependency advisories |
+| Current independent gate record supplied for this exact HEAD | PASS — Python 17/17 at 497/497 lines and 186/186 branches; Kotlin 25/25 at 621/621 lines and 354/354 branches; Node 167/167 across 24 modules; focused Jest 564/564; full matrix 4,226 tests/280 suites; security 47/47; UI 24/24; Nyquist 28/28 host rows |
+
+The verifier's isolated shell did not inherit the Android SDK environment, so it inspected the fail-closed language-coverage contract and the exact-HEAD report rather than rerunning Gradle itself. The orchestrator independently reran the complete Phase 18 strict gate at this same HEAD with pinned Temurin 17.0.20 and Android SDK 36; Kotlin passed 25/25 tests with 621/621 lines and 354/354 branches. No device, account, MFA, or Garmin action was attempted.
+
+### Test Quality and Decision Coverage
+
+| Audit | Result |
+| --- | --- |
+| Disabled requirement-linked tests | None found |
+| Circular expected-value generation | None found; fixture identities/hashes and evidence provenance are explicit and validated |
+| Assertion strength | Behavioral and value assertions cover state transitions, atomic writes, recovery and evidence identity |
+| Context decisions | 12/12 honored by shipped artifacts |
+
+### Native Evidence Deferral
+
+The guarded proof, adversarial and aggregate-acceptance routes/harnesses/verifiers are implemented. The six approved real-account/device rows remain NOT_RUN for Phase 20. The host ledger permits host-passed-native-deferred only; it cannot relabel a fixture, mocked provider, host-only result or stale artifact as native PASS. This is a later-phase scope boundary, not a human-verification item or a Phase 18 gap.
 
 ### Human Verification Required
 
-None for this host-only verification run. Native/device proof was intentionally not executed and remains deferred to Phase 20 rather than queued as an ad hoc human check here.
+None. Phase 20 owns approved attended/device/account execution; no extra Phase 18 human checkpoint is created.
 
 ### Gaps Summary
 
-The Garmin product surface is substantially present and host-verified on integrated HEAD `1fc767fc`: contextual entry exists, the selected Python/Chaquopy bridge is pinned and allowlisted, detail/revision/date-review flows are wired, matching is confirm-only, and the import path now reparses and rehashes staged Garmin envelopes inside the write transaction.
-
-The phase still does **not** close cleanly on host because its own Garmin evidence pipeline is not fail-closed. The live verifier/test code shows that owner-supplied artifacts can still satisfy native-proof validation without an independently recomputed installed/current identity, which is exactly the trust boundary this phase was supposed to enforce before Phase 20 uses those artifacts. That is a blocker even though the actual native artifacts are intentionally still absent.
-
-Explicit native status: **do not mark full native PASS.** The following Phase 20 evidence remains missing and was not executed in this verification:
-
-- `artifacts/native/phase18-garmin-proof/final-evidence.json`
-- `artifacts/native/phase18-garmin-adversarial/final-evidence.json`
-- `artifacts/native/phase18-garmin-acceptance/final-evidence.json`
+None. All Phase 18 host-scope requirements and must-haves are implemented, connected, data-bearing and behaviorally exercised. The former evidence-provenance blocker is closed at this exact HEAD.
 
 ---
 
-_Verified: 2026-10-11T17:57:22Z_  
-_Verifier: TRAE (host goal-backward verification)_
+_Verified: 2026-10-12T14:55:29Z_
+
+_Verifier: TRAE (independent goal-backward verification)_

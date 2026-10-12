@@ -1,9 +1,11 @@
 ---
 phase: 18-garmin-import
-reviewed: 2026-10-11T17:54:50Z
+reviewed: 2026-10-12T14:42:24Z
+head: 02f17adc08ba4780cbd69d2009613d253a2814d5
 depth: deep
-files_reviewed: 134
+files_reviewed: 186
 files_reviewed_list:
+  - .github/workflows/pr.yml
   - .gitignore
   - app.config.ts
   - app/(tabs)/__tests__/index.test.tsx
@@ -14,16 +16,21 @@ files_reviewed_list:
   - app/__tests__/garmin-activity-route.test.tsx
   - app/__tests__/garmin-index-route.test.tsx
   - app/__tests__/garmin-match-route.test.tsx
+  - app/__tests__/phase18-garmin-acceptance.test.tsx
+  - app/__tests__/phase18-garmin-adversarial-route.test.tsx
+  - app/__tests__/phase18-garmin-proof-route.test.tsx
   - app/__tests__/running-plan-route.test.tsx
   - app/_layout.tsx
   - app/garmin/activity/[activityId].tsx
   - app/garmin/index.tsx
   - app/garmin/match/[activityId].tsx
   - app/library/running/[planId].tsx
+  - docs/development.md
   - jest.config.js
   - maestro/phase18/garmin-sync.yaml
   - modules/garmin-connect/android/build.gradle
   - modules/garmin-connect/android/src/main/AndroidManifest.xml
+  - modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminAdversarialSuiteRunner.kt
   - modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminClientWorker.kt
   - modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectModule.kt
   - modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminTokenStore.kt
@@ -35,21 +42,50 @@ files_reviewed_list:
   - modules/garmin-connect/python/THIRD_PARTY_NOTICES.md
   - modules/garmin-connect/python/garmin-python-lock.json
   - modules/garmin-connect/src/index.ts
+  - package-lock.json
   - package.json
   - plugins/withAndroidBackupRules.test.ts
   - plugins/withAndroidBackupRules.ts
   - plugins/withGarminConnectModule.test.ts
   - plugins/withGarminConnectModule.ts
+  - requirements-dev.lock
+  - scripts/acceptance-runner-evidence.mjs
+  - scripts/acceptance-verifier-evidence.mjs
+  - scripts/adversarial-runner-evidence.mjs
+  - scripts/adversarial-verifier-evidence.mjs
+  - scripts/benchmark-evidence-runner.mjs
   - scripts/benchmark-phase18-garmin.mjs
   - scripts/benchmark-phase18-garmin.test.mjs
+  - scripts/bootstrap-phase18-python-coverage.sh
   - scripts/build-current-native-test-apk.sh
+  - scripts/build-current-native-test-apk.test.mjs
+  - scripts/evaluate-npm-audit.mjs
+  - scripts/evaluate-npm-audit.test.mjs
+  - scripts/kotlin-coverage-evidence.mjs
+  - scripts/node-evidence-utils.mjs
+  - scripts/phase18-acceptance-helper-coverage.test.mjs
+  - scripts/phase18-aggregate-acceptance.mjs
+  - scripts/phase18-aggregate-acceptance.test.mjs
+  - scripts/phase18-benchmark-helper-coverage.test.mjs
   - scripts/phase18-build-manifest.mjs
   - scripts/phase18-build-manifest.test.mjs
+  - scripts/phase18-device-identity.mjs
+  - scripts/phase18-device-identity.test.mjs
+  - scripts/phase18-evidence-helpers.test.mjs
   - scripts/phase18-garmin-acceptance.test.mjs
   - scripts/phase18-garmin-adversarial.test.mjs
   - scripts/phase18-garmin-proof.test.mjs
+  - scripts/phase18-installed-apk.mjs
+  - scripts/phase18-installed-apk.test.mjs
   - scripts/phase18-language-coverage.mjs
   - scripts/phase18-language-coverage.test.mjs
+  - scripts/phase18-privacy-scan.mjs
+  - scripts/phase18-privacy-scan.test.mjs
+  - scripts/phase18-proof-helper-coverage.test.mjs
+  - scripts/phase18-verifier-cli.test.mjs
+  - scripts/privacy-scan-evidence.mjs
+  - scripts/proof-runner-evidence.mjs
+  - scripts/proof-verifier-evidence.mjs
   - scripts/run-coverage-gate.mjs
   - scripts/run-phase18-garmin-acceptance.mjs
   - scripts/run-phase18-garmin-adversarial.mjs
@@ -57,6 +93,7 @@ files_reviewed_list:
   - scripts/run-phase18-kotlin-coverage.mjs
   - scripts/run-phase18-kotlin-coverage.test.mjs
   - scripts/run-phase18-python-coverage.py
+  - scripts/run-phase18-python-coverage.test.mjs
   - scripts/verify-garmin-module-schema.test.mjs
   - scripts/verify-garmin-python-lock.mjs
   - scripts/verify-garmin-python-lock.test.mjs
@@ -65,9 +102,15 @@ files_reviewed_list:
   - scripts/verify-phase18-garmin-proof.mjs
   - scripts/verify-phase18-plan-coverage.mjs
   - scripts/verify-phase18-plan-coverage.test.mjs
+  - src/bootstrap/appConfig.test.ts
   - src/bootstrap/garminImportRuntime.test.tsx
   - src/bootstrap/garminImportRuntime.tsx
+  - src/bootstrap/phase12BackupBenchmark.ts
+  - src/bootstrap/phase18GarminAdversarial.ts
+  - src/bootstrap/phase18GarminBenchmarkRuntime.test.ts
+  - src/bootstrap/phase18GarminBenchmarkRuntime.ts
   - src/bootstrap/phase18GarminProof.ts
+  - src/bootstrap/workoutAppRuntime.test.tsx
   - src/bootstrap/workoutAppRuntime.tsx
   - src/domains/activities/activityDetails.test.ts
   - src/domains/activities/activityDetails.ts
@@ -77,11 +120,14 @@ files_reviewed_list:
   - src/domains/activities/importContracts.ts
   - src/domains/portability/backupContracts.test.ts
   - src/domains/portability/backupContracts.ts
+  - src/domains/portability/backupFormat.test.ts
   - src/domains/portability/mergePlan.test.ts
   - src/domains/portability/mergePlan.ts
+  - src/domains/portability/restoreCommands.test.ts
   - src/domains/portability/restoreCommands.ts
   - src/domains/running/activityMatchCommands.test.ts
   - src/domains/running/activityMatchCommands.ts
+  - src/domains/shared/tooling.test.ts
   - src/platform/garmin/canonicalGarminPayload.test.ts
   - src/platform/garmin/canonicalGarminPayload.ts
   - src/platform/garmin/garminActivityAdapter.test.ts
@@ -118,11 +164,13 @@ files_reviewed_list:
   - src/ui/__tests__/ImportedActivityDetailScreen.test.tsx
   - src/ui/__tests__/RunningPlanDetailScreen.test.tsx
   - src/ui/__tests__/TodayScreen.test.tsx
+  - src/ui/garmin/GarminRouteShell.tsx
   - src/ui/garmin/useGarminConnectionController.test.tsx
   - src/ui/garmin/useGarminConnectionController.ts
   - src/ui/screens/ActivityMatchScreen.tsx
   - src/ui/screens/GarminSyncScreen.tsx
   - src/ui/screens/ImportedActivityDetailScreen.tsx
+  - tests/fixtures/garmin-json/discovery-running-summary.json
   - tests/fixtures/garmin-json/fixture-manifest.ts
   - tests/fixtures/garmin-json/phase18-performance-baseline.json
   - tests/integration/automatic-drive-backup.test.ts
@@ -131,183 +179,50 @@ files_reviewed_list:
   - tests/integration/garmin-sync.test.ts
   - tests/integration/imported-activity-facts.test.ts
   - tests/integration/multi-plan-portability.test.ts
+  - tests/integration/phase17-family-a-cleanup-matrix.test.ts
+  - tests/integration/phase18-garmin-adversarial.test.ts
+  - tests/integration/portable-merge.test.ts
   - tests/integration/running-activity-match.test.ts
+  - tests/sqlite-host/cleanInstallRestore.test.ts
   - tests/sqlite-host/garminSyncSummaryRepository.test.ts
   - tests/sqlite-host/logicalMergeRepository.test.ts
   - tests/sqlite-host/logicalRestoreRepository.test.ts
+  - tests/sqlite-host/migrations-effects.test.ts
   - tests/sqlite-host/phase12BackupBenchmark.host.test.ts
   - tests/sqlite-host/restoreReconciliationRepository.test.ts
   - tsconfig.json
 findings:
-  critical: 2
-  warning: 1
+  critical: 0
+  warning: 0
   info: 0
-  total: 3
-status: issues_found
+  total: 0
+status: clean
 ---
 
-# Phase 18: Garmin Account Sync Code Review
+# Phase 18: Garmin Import Code Review Report
 
-**Reviewed:** 2026-10-11T17:54:50Z  
-**Depth:** deep  
-**Files Reviewed:** 134  
-**Diff Base:** `44aeaad1e1e36610b3cc5d3554ccc5219c1b5382`  
-**Status:** issues_found
+**Reviewed:** 2026-10-12T14:42:24Z
+**Exact HEAD:** `02f17adc08ba4780cbd69d2009613d253a2814d5`
+**Depth:** deep
+**Files Reviewed:** 186
+**Status:** clean
+
+## Summary
+
+The inherited deep audit scope covers Phase 18 TypeScript/UI/runtime paths, SQLite import and match transactions, backup/restore/merge graph, Kotlin token and lifecycle bridge, embedded Python dispatcher, Android backup exclusions, aggregate evidence verification, and dependency remediation. Commit `02f17adc08ba4780cbd69d2009613d253a2814d5` has exactly two implementation-adjacent changes: `.github/workflows/pr.yml` and `scripts/run-phase18-python-coverage.test.mjs`; no Phase 18 product, SQLite, backup/restore/merge, Kotlin, Python-bridge, evidence, or UI source changed after the prior deep audit.
+
+WR-01 is fully fixed. The pull-request `bootstrap` job invokes `npm run audit:dependencies` immediately after `npm ci` at `.github/workflows/pr.yml:61-65`. That command is the checked fail-closed policy in `package.json:34`, whose evaluator rejects malformed audit output and every advisory/count in `scripts/evaluate-npm-audit.mjs:3-20`. The regression test at `scripts/run-phase18-python-coverage.test.mjs:86-92` asserts that exact required ordering. It is registered in `scripts/run-coverage-gate.mjs:58-76`, and PR CI runs the coverage gate after its bootstrap dependency at `.github/workflows/pr.yml:127-168`.
+
+Verification passed at this exact HEAD: `npm run audit:dependencies`, `node --test scripts/run-phase18-python-coverage.test.mjs`, `node scripts/run-coverage-gate.mjs --focus-phase18 --runInBand`, `npm run typecheck`, `node --test scripts/evaluate-npm-audit.test.mjs`, YAML parsing for `.github/workflows/pr.yml`, and `git diff --check c55d3770d70661e9d6b4c83be04a7bc68c53866b..02f17adc08ba4780cbd69d2009613d253a2814d5`. Physical-device and real-account native execution remains explicitly deferred to Phase 20 and is not a Phase 18 warning.
+
+All reviewed files meet the Phase 18 acceptance threshold: Critical 0, BLOCKER 0, Warning 0.
 
 ## Narrative Findings (AI reviewer)
 
-### Summary
-
-This fresh deep re-review on integrated `HEAD 1fc767fc` materially changes the Phase 18 verdict. Most of the prior Phase 18 blockers are now fixed in the integrated code, including durable Garmin account identity, ambiguous-date recovery UI, revision-review product flow, logout tombstone failure handling, split residual merge handling, four-root shell integration, evidence current-identity validation, privacy scanning, and benchmark nonce/PID fencing.
-
-The review still found **2 BLOCKER findings** and **1 WARNING finding**. Phase 20 native execution remains explicitly pending and is **not** treated as a finding by itself. The only remaining actionable issues are one import-boundary integrity hole, one still-incomplete match lifecycle, and the still-incomplete Python/evidence coverage gate.
-
-### Re-review disposition
-
-Resolved on integrated `HEAD`:
-
-- `CR-01` durable Garmin account identity now derives from provider-stable `di_client_id` and survives logout/re-auth.
-- `CR-02` ambiguous source dates now surface a bounded review sheet and route back through `confirmPendingDateReview`.
-- `CR-03` revision reviews are now visible and actionable in the product through detail-route accept/keep flows.
-- `CR-05` revision-review replay now reads the authoritative accepted revision from `imported_activity_identities`.
-- `CR-06` logout now fails closed when tombstone deletion fails and preserves the connected worker state on that error path.
-- `CR-07` bodyweight and schedule-collision residual facts are now split into independent aggregates before merge classification.
-- `CR-08` Garmin routes now render inside the persistent four-root shell via `GarminRouteShell`.
-- `CR-10` adversarial verification now recomputes and enforces current source/APK/device/report identity before pass/seal.
-- `CR-11` aggregate acceptance now executes the owner proof/adversarial verifiers and checks current identities for those artifacts.
-- `CR-12` privacy scanning now rejects account namespace, email, DI token, serial, and related forbidden forms.
-- `CR-13` benchmark collection now requires a guarded benchmark route, per-run nonce, and `logcat --pid` filtering.
-- `WR-01`, `WR-02`, `WR-04`, `WR-05`, and `WR-06` are closed in the integrated UI/scripts.
-
-Still actionable:
-
-- `CR-04` remains open.
-- `CR-09` remains open.
-- `WR-03` remains open.
-
-No additional integration-only regressions were found beyond the still-open lifecycle gap below.
-
-## Critical Issues
-
-### CR-01: Prepared-import integrity still does not bind mutable identity fields
-
-**File:** `src/domains/activities/importCommands.ts:61-65`, `src/platform/sqlite/repositories/importedActivityRepository.ts:198-217`, `src/platform/sqlite/repositories/importedActivityRepository.ts:251-259`
-**Issue:** `prepareGarminImport()` returns `Object.freeze({ envelope: parsed, canonical_payload_json })`, but `parsed` itself is not deeply frozen, and the commit path reparses `input.staged.envelope` at write time. The repository only rebinds the normalized payload and digest:
-
-```ts
-const parsed = parseGarminSourceEnvelope(envelope) as GarminSourceEnvelope;
-return Object.freeze({ envelope: parsed, canonical_payload_json });
-```
-
-```ts
-const reparsedEnvelope = parseGarminSourceEnvelope(input.staged.envelope);
-const canonicalPayloadJson = canonicalJson({
-  normalization_version: reparsedEnvelope.normalization_version,
-  normalized: reparsedEnvelope.normalized,
-});
-if (canonicalPayloadJson !== input.staged.canonical_payload_json) { ... }
-if (canonicalDigest !== reparsedEnvelope.normalized_json_sha256) { ... }
-```
-
-```ts
-WHERE identity.source_kind = ? AND identity.account_namespace = ? AND identity.external_activity_id = ?
-```
-
-Because `source_kind`, `account_namespace`, and `external_activity_id` are consumed from the reparsed mutable envelope, a caller can mutate those fields after prepare while keeping the same normalized payload and digest. The accepted digest no longer proves the identity tuple being inserted or deduplicated.
-**Fix:**
-```ts
-type PreparedGarminImport = Readonly<{
-  canonicalEnvelopeJson: string;
-  canonicalPayloadJson: string;
-  envelopeSha256: string;
-}>;
-
-const canonicalEnvelopeJson = canonicalJson(parsed);
-return Object.freeze({
-  canonicalEnvelopeJson,
-  canonicalPayloadJson,
-  envelopeSha256: await sha256(canonicalEnvelopeJson),
-});
-```
-
-Then, inside `confirmGarminImport()`, reparse from `canonicalEnvelopeJson` and verify the stored envelope hash before using any identity fields. A regression test should mutate `account_namespace` or `external_activity_id` after prepare and prove the write is rejected.
-
-### CR-02: Product code still cannot unmatch or reassign an already matched activity
-
-**File:** `app/garmin/match/[activityId].tsx:64-67`, `src/bootstrap/workoutAppRuntime.tsx:2943-2948`, `src/ui/screens/ActivityMatchScreen.tsx:171-194`
-**Issue:** The repository and domain command layer support `match | unmatch | reassign`, but the route/runtime/UI still expose only the initial match path:
-
-```tsx
-onConfirm={(candidate: RunningActivityMatchCandidate) => runtime.confirmActivityMatch(candidate)}
-onLeaveUnmatched={() => router.back()}
-```
-
-```ts
-input: await prepareRunningActivityMatchInput({
-  action: "match",
-  candidate,
-  requestId: `running-match-${randomUUID()}`,
-  occurredAtMs: dependencies.nowMs(),
-}, ...)
-```
-
-```tsx
-{props.state.kind === "already_matched"
-  ? <InlineNotice body="This activity already has one committed scheduled workout relation." ... />
-  : null}
-...
-<SecondaryAction disabled={busy} label="Leave unmatched" onPress={props.onLeaveUnmatched} />
-```
-
-When an activity is already matched, the user gets a notice plus a Back action, but no way to clear the existing relation or move it to another opportunity. That leaves the implemented repository lifecycle unreachable in production and keeps the recovery contract incomplete after parallel-lane integration.
-**Fix:**
-```ts
-type RunningActivityMatchScreenState =
-  | { kind: "ready"; candidates: RunningActivityMatchCandidate[]; current?: CurrentMatch }
-  | { kind: "already_matched"; current: CurrentMatch; reassignmentCandidates: RunningActivityMatchCandidate[] };
-```
-
-Expose runtime methods that prepare `action: "unmatch"` and `action: "reassign"` inputs with the current relation fence, then render explicit `Keep unmatched` and `Move to selected workout` actions in the route. Add route/component tests that prove both flows are reachable and that stale fences stay zero-write.
-
-## Warnings
-
-### WR-01: The focused Phase 18 coverage gate still does not satisfy complete branch coverage for Python and evidence scripts
-
-**File:** `scripts/phase18-language-coverage.mjs:17-21`, `scripts/run-phase18-python-coverage.py:131-142`, `scripts/run-coverage-gate.mjs:56-74`
-**Issue:** The current gate still explicitly declines a Python branch oracle and only records `lines` plus named `cases`:
-
-```js
-// The stdlib `trace` collector measures line execution only.
-// We deliberately do NOT emit a fabricated `branches` counter.
-metrics: Object.freeze(["lines", "cases"]),
-```
-
-```py
-# The stdlib `trace` module has no branch oracle, so we do not
-# fabricate a `branches` counter.
-"cases": { ... }
-```
-
-At the same time, the evidence coverage set is still limited to a subset of the Phase 18 scripts:
-
-```js
-const phase18EvidenceFiles = [
-  "scripts/benchmark-phase18-garmin.mjs",
-  "scripts/phase18-build-manifest.mjs",
-  "scripts/phase18-language-coverage.mjs",
-  "scripts/phase18-privacy-scan.mjs",
-  "scripts/run-phase18-kotlin-coverage.mjs",
-  "scripts/verify-phase18-garmin-acceptance.mjs",
-  "scripts/verify-phase18-garmin-adversarial.mjs",
-  "scripts/verify-phase18-garmin-proof.mjs",
-];
-```
-
-This is much better than the prior state, but it still does not meet the repo rule that integrity-critical modules carry complete branch coverage, and it still leaves the Python bridge covered by a weaker surrogate metric.
-**Fix:** Replace the Python `trace` collector with a real branch-aware runner, or explicitly narrow the repo rule if true branch coverage is impossible in this lane. Keep the focused gate failing when a required language report is missing or stale, and extend the evidence branch gate only if the missing scripts are still intended to be integrity-critical.
+No Critical, BLOCKER, Warning, or actionable Info findings. The previous WR-01 is resolved and regression-protected.
 
 ---
 
-_Reviewed: 2026-10-11T17:54:50Z_  
-_Reviewer: TRAE (gsd-code-reviewer + gstack review)_  
+_Reviewed: 2026-10-12T14:42:24Z_
+_Reviewer: TRAE (gsd-code-reviewer)_
 _Depth: deep_
