@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -13,14 +14,19 @@ const repeated = (count, value) => Array.from({ length: count }, (_, index) => v
 
 function evidence(overrides = {}) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     suite: "phase19-progress",
-    producer: "phase19-progress-benchmark/v1",
-    environment: "host-synthetic",
+    producer: "phase19-progress-benchmark/v2",
+    environment: "host-production-workload",
     status: "passed",
     native_status: "NOT_RUN",
     phase20_owned: true,
     budgets: PHASE19_PROGRESS_BUDGETS,
+    production_artifact: {
+      case_id: "phase19-progress-production-workload",
+      source_sha256: "a".repeat(64),
+      result_sha256: "b".repeat(64),
+    },
     measurements: {
       useful_content_ms: repeated(20, 10),
       review_open_ms: repeated(100, 8),
@@ -30,11 +36,8 @@ function evidence(overrides = {}) {
       js_task_ms: repeated(100, 2),
     },
     query_rows: {
-      zero: [0],
-      one: [1],
-      many: [28, 84],
-      long: [500],
-      all_time: [500],
+      case_id: "progress-repository-query-rows",
+      samples: [0, 1, 28, 84, 500],
     },
     targeted_rebuild: {
       updating_visible: true,
@@ -54,11 +57,14 @@ test("Progress benchmark enforces only the named NV-PERF-08 and JS-task budgets"
     "js_task_ms",
   ]);
   assert.deepEqual(PHASE19_PROGRESS_BUDGETS, {
-    useful_content: { minimum_samples: 20, maximum_ms: 500 },
-    review_open: { minimum_samples: 100, maximum_p95_ms: 200 },
-    targeted_rebuild: { minimum_samples: 20, maximum_ms: 500 },
-    ordinary_js_task: { minimum_samples: 100, maximum_ms: 50 },
+    useful_content: { minimum_samples: 20, maximum_samples: 20, maximum_ms: 500 },
+    review_open: { minimum_samples: 100, maximum_samples: 100, maximum_p95_ms: 200 },
+    targeted_rebuild: { minimum_samples: 20, maximum_samples: 20, maximum_ms: 500 },
+    range_query: { minimum_samples: 100, maximum_samples: 100 },
+    chart_render: { minimum_samples: 20, maximum_samples: 20 },
+    ordinary_js_task: { minimum_samples: 100, maximum_samples: 100, maximum_ms: 50 },
     maximum_query_rows: 500,
+    maximum_query_samples: 4_096,
   });
   assert.equal(nearestRankP95([1, 2, 3, 4, 5]), 5);
 
@@ -70,6 +76,7 @@ test("Progress benchmark enforces only the named NV-PERF-08 and JS-task budgets"
   assert.equal(result.statistics.review_open_ms.p95_ms, 10);
   assert.equal(result.statistics.useful_content_ms.maximum_ms, 12);
   assert.equal(result.statistics.js_task_ms.maximum_ms, 4);
+  assert.deepEqual(result.production_artifact, evidence().production_artifact);
   assert.equal(Object.hasOwn(result, "score"), false);
   assert.doesNotMatch(JSON.stringify(result), /aggregate[_-]?score|baseline[_-]?score/iu);
 });
@@ -96,10 +103,21 @@ test("Progress benchmark rejects under-sampling, non-finite data, invented score
   jsTaskSlow.measurements.js_task_ms[99] = 51;
   variants.push(jsTaskSlow);
   const unboundedRows = evidence();
-  unboundedRows.query_rows.long = [501];
+  unboundedRows.query_rows.samples = [501];
   variants.push(unboundedRows);
+  const unboundedQuerySamples = evidence();
+  unboundedQuerySamples.query_rows.samples = Array(4_097).fill(1);
+  variants.push(unboundedQuerySamples);
   variants.push(evidence({ score: 100 }));
   variants.push(evidence({ native_status: "PASS" }));
+  const overSampled = evidence();
+  overSampled.measurements.useful_content_ms.push(1);
+  variants.push(overSampled);
+  variants.push(evidence({ production_artifact: {
+    case_id: "phase19-progress-production-workload",
+    source_sha256: "not-a-hash",
+    result_sha256: "b".repeat(64),
+  } }));
 
   for (const variant of variants) {
     assert.throws(
@@ -107,6 +125,14 @@ test("Progress benchmark rejects under-sampling, non-finite data, invented score
       /phase19_progress_benchmark_/u,
     );
   }
+});
+
+test("Progress benchmark executes the production repository and UI workload with bounded subprocesses", () => {
+  const source = readFileSync("scripts/benchmark-phase19-progress.mjs", "utf8");
+  assert.doesNotMatch(source, /CREATE TABLE progress_facts|createSyntheticRuntime/u);
+  assert.match(source, /Phase19ProgressBenchmark\.test\.tsx/u);
+  assert.match(source, /timeout:\s*PHASE19_BENCHMARK_SUBPROCESS_TIMEOUT_MS/u);
+  assert.match(source, /maxBuffer:\s*PHASE19_BENCHMARK_MAX_OUTPUT_BYTES/u);
 });
 
 test("Progress benchmark CLI is host-only and does not accept native or score flags", () => {

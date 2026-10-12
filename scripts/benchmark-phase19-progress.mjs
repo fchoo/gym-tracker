@@ -1,13 +1,21 @@
 #!/usr/bin/env node
 
-import { performance } from "node:perf_hooks";
-import { execFileSync } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+
+export const PHASE19_BENCHMARK_SUBPROCESS_TIMEOUT_MS = 180_000;
+export const PHASE19_BENCHMARK_MAX_OUTPUT_BYTES = 1_048_576;
 
 export const PHASE19_PROGRESS_MEASUREMENTS = Object.freeze([
   "useful_content_ms",
@@ -19,13 +27,42 @@ export const PHASE19_PROGRESS_MEASUREMENTS = Object.freeze([
 ]);
 
 export const PHASE19_PROGRESS_BUDGETS = Object.freeze({
-  useful_content: Object.freeze({ minimum_samples: 20, maximum_ms: 500 }),
-  review_open: Object.freeze({ minimum_samples: 100, maximum_p95_ms: 200 }),
-  targeted_rebuild: Object.freeze({ minimum_samples: 20, maximum_ms: 500 }),
-  ordinary_js_task: Object.freeze({ minimum_samples: 100, maximum_ms: 50 }),
+  useful_content: Object.freeze({
+    minimum_samples: 20,
+    maximum_samples: 20,
+    maximum_ms: 500,
+  }),
+  review_open: Object.freeze({
+    minimum_samples: 100,
+    maximum_samples: 100,
+    maximum_p95_ms: 200,
+  }),
+  targeted_rebuild: Object.freeze({
+    minimum_samples: 20,
+    maximum_samples: 20,
+    maximum_ms: 500,
+  }),
+  range_query: Object.freeze({ minimum_samples: 100, maximum_samples: 100 }),
+  chart_render: Object.freeze({ minimum_samples: 20, maximum_samples: 20 }),
+  ordinary_js_task: Object.freeze({
+    minimum_samples: 100,
+    maximum_samples: 100,
+    maximum_ms: 50,
+  }),
   maximum_query_rows: 500,
+  maximum_query_samples: 4_096,
 });
 
+const SHA256 = /^[a-f0-9]{64}$/u;
+const PRODUCTION_CASE_ID = "phase19-progress-production-workload";
+const BENCHMARK_WORKER = "src/ui/__tests__/Phase19ProgressBenchmark.test.tsx";
+const BENCHMARK_JEST_CONFIG = "scripts/benchmark-phase19-progress.jest.cjs";
+const BENCHMARK_SOURCE_FILES = Object.freeze([
+  "src/platform/sqlite/repositories/progressRepository.ts",
+  "src/ui/components/FactualHistoryChart.tsx",
+  "src/ui/components/RecommendationSurface.tsx",
+  BENCHMARK_WORKER,
+]);
 const EXACT_EVIDENCE_KEYS = Object.freeze([
   "schema_version",
   "suite",
@@ -35,6 +72,7 @@ const EXACT_EVIDENCE_KEYS = Object.freeze([
   "native_status",
   "phase20_owned",
   "budgets",
+  "production_artifact",
   "measurements",
   "query_rows",
   "targeted_rebuild",
@@ -42,6 +80,20 @@ const EXACT_EVIDENCE_KEYS = Object.freeze([
 
 function fail(code) {
   throw new Error(code);
+}
+
+function resolveJestBin() {
+  if (process.env.PHASE19_JEST_BIN !== undefined) {
+    if (!existsSync(process.env.PHASE19_JEST_BIN)) {
+      fail("phase19_progress_benchmark_jest_missing");
+    }
+    return process.env.PHASE19_JEST_BIN;
+  }
+  try {
+    return createRequire(import.meta.url).resolve("jest/bin/jest.js");
+  } catch {
+    fail("phase19_progress_benchmark_jest_missing");
+  }
 }
 
 function exactKeys(value, expected) {
@@ -68,6 +120,25 @@ function maximum(samples) {
   return samples.reduce((current, sample) => Math.max(current, sample), 0);
 }
 
+function assertBoundedSamples(samples, budget, code) {
+  if (
+    !validSamples(samples)
+    || samples.length < budget.minimum_samples
+    || samples.length > budget.maximum_samples
+  ) fail(code);
+}
+
+function canonicalSourceSha256(root) {
+  const hash = createHash("sha256");
+  for (const relativePath of BENCHMARK_SOURCE_FILES) {
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(readFileSync(path.join(root, relativePath)));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
 export function nearestRankP95(samples) {
   if (!validSamples(samples) || samples.length === 0) {
     fail("phase19_progress_benchmark_samples_invalid");
@@ -80,60 +151,84 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
   if (
     !exactKeys(evidence, EXACT_EVIDENCE_KEYS)
     || containsScoreKey(evidence)
-    || evidence.schema_version !== 1
+    || evidence.schema_version !== 2
     || evidence.suite !== "phase19-progress"
-    || evidence.producer !== "phase19-progress-benchmark/v1"
-    || evidence.environment !== "host-synthetic"
+    || evidence.producer !== "phase19-progress-benchmark/v2"
+    || evidence.environment !== "host-production-workload"
     || evidence.status !== "passed"
     || evidence.native_status !== "NOT_RUN"
     || evidence.phase20_owned !== true
     || JSON.stringify(evidence.budgets) !== JSON.stringify(PHASE19_PROGRESS_BUDGETS)
+    || !exactKeys(evidence.production_artifact, [
+      "case_id", "source_sha256", "result_sha256",
+    ])
+    || evidence.production_artifact.case_id !== PRODUCTION_CASE_ID
+    || !SHA256.test(evidence.production_artifact.source_sha256 ?? "")
+    || !SHA256.test(evidence.production_artifact.result_sha256 ?? "")
     || !exactKeys(evidence.measurements, PHASE19_PROGRESS_MEASUREMENTS)
-  ) {
-    fail("phase19_progress_benchmark_schema_invalid");
-  }
-  for (const id of PHASE19_PROGRESS_MEASUREMENTS) {
-    if (!validSamples(evidence.measurements[id])) {
-      fail("phase19_progress_benchmark_samples_invalid");
-    }
-  }
+  ) fail("phase19_progress_benchmark_schema_invalid");
+
   const { measurements } = evidence;
-  if (
-    measurements.useful_content_ms.length
-      < PHASE19_PROGRESS_BUDGETS.useful_content.minimum_samples
-    || maximum(measurements.useful_content_ms)
-      > PHASE19_PROGRESS_BUDGETS.useful_content.maximum_ms
-  ) fail("phase19_progress_benchmark_useful_content_failed");
-  if (
-    measurements.review_open_ms.length
-      < PHASE19_PROGRESS_BUDGETS.review_open.minimum_samples
-    || nearestRankP95(measurements.review_open_ms)
-      > PHASE19_PROGRESS_BUDGETS.review_open.maximum_p95_ms
-  ) fail("phase19_progress_benchmark_review_open_failed");
+  assertBoundedSamples(
+    measurements.useful_content_ms,
+    PHASE19_PROGRESS_BUDGETS.useful_content,
+    "phase19_progress_benchmark_useful_content_failed",
+  );
+  assertBoundedSamples(
+    measurements.review_open_ms,
+    PHASE19_PROGRESS_BUDGETS.review_open,
+    "phase19_progress_benchmark_review_open_failed",
+  );
+  assertBoundedSamples(
+    measurements.targeted_rebuild_ms,
+    PHASE19_PROGRESS_BUDGETS.targeted_rebuild,
+    "phase19_progress_benchmark_targeted_rebuild_failed",
+  );
+  assertBoundedSamples(
+    measurements.range_query_ms,
+    PHASE19_PROGRESS_BUDGETS.range_query,
+    "phase19_progress_benchmark_range_query_failed",
+  );
+  assertBoundedSamples(
+    measurements.chart_data_render_ms,
+    PHASE19_PROGRESS_BUDGETS.chart_render,
+    "phase19_progress_benchmark_chart_render_failed",
+  );
+  assertBoundedSamples(
+    measurements.js_task_ms,
+    PHASE19_PROGRESS_BUDGETS.ordinary_js_task,
+    "phase19_progress_benchmark_js_task_failed",
+  );
+
+  if (maximum(measurements.useful_content_ms)
+      > PHASE19_PROGRESS_BUDGETS.useful_content.maximum_ms) {
+    fail("phase19_progress_benchmark_useful_content_failed");
+  }
+  if (nearestRankP95(measurements.review_open_ms)
+      > PHASE19_PROGRESS_BUDGETS.review_open.maximum_p95_ms) {
+    fail("phase19_progress_benchmark_review_open_failed");
+  }
   const rebuildWithinBudget = maximum(measurements.targeted_rebuild_ms)
     <= PHASE19_PROGRESS_BUDGETS.targeted_rebuild.maximum_ms;
   const rebuildYielded = evidence.targeted_rebuild?.updating_visible === true
     && Number.isSafeInteger(evidence.targeted_rebuild?.bounded_yield_count)
     && evidence.targeted_rebuild.bounded_yield_count
-      >= PHASE19_PROGRESS_BUDGETS.targeted_rebuild.minimum_samples;
+      === PHASE19_PROGRESS_BUDGETS.targeted_rebuild.maximum_samples;
+  if (!rebuildWithinBudget && !rebuildYielded) {
+    fail("phase19_progress_benchmark_targeted_rebuild_failed");
+  }
+  if (maximum(measurements.js_task_ms)
+      > PHASE19_PROGRESS_BUDGETS.ordinary_js_task.maximum_ms) {
+    fail("phase19_progress_benchmark_js_task_failed");
+  }
   if (
-    measurements.targeted_rebuild_ms.length
-      < PHASE19_PROGRESS_BUDGETS.targeted_rebuild.minimum_samples
-    || (!rebuildWithinBudget && !rebuildYielded)
-  ) fail("phase19_progress_benchmark_targeted_rebuild_failed");
-  if (
-    measurements.js_task_ms.length
-      < PHASE19_PROGRESS_BUDGETS.ordinary_js_task.minimum_samples
-    || maximum(measurements.js_task_ms)
-      > PHASE19_PROGRESS_BUDGETS.ordinary_js_task.maximum_ms
-  ) fail("phase19_progress_benchmark_js_task_failed");
-  if (
-    !exactKeys(evidence.query_rows, ["zero", "one", "many", "long", "all_time"])
-    || Object.values(evidence.query_rows).some((samples) =>
-      !Array.isArray(samples)
-      || samples.length === 0
-      || samples.some((rows) => !Number.isSafeInteger(rows)
-        || rows < 0 || rows > PHASE19_PROGRESS_BUDGETS.maximum_query_rows))
+    !exactKeys(evidence.query_rows, ["case_id", "samples"])
+    || evidence.query_rows.case_id !== "progress-repository-query-rows"
+    || !Array.isArray(evidence.query_rows.samples)
+    || evidence.query_rows.samples.length < 1
+    || evidence.query_rows.samples.length > PHASE19_PROGRESS_BUDGETS.maximum_query_samples
+    || evidence.query_rows.samples.some((rows) => !Number.isSafeInteger(rows)
+      || rows < 0 || rows > PHASE19_PROGRESS_BUDGETS.maximum_query_rows)
   ) fail("phase19_progress_benchmark_query_bounds_failed");
 
   const statistics = Object.fromEntries(PHASE19_PROGRESS_MEASUREMENTS.map((id) => [
@@ -144,7 +239,7 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
     }),
   ]));
   return Object.freeze({
-    schema_version: 1,
+    schema_version: 2,
     suite: evidence.suite,
     producer: evidence.producer,
     environment: evidence.environment,
@@ -152,6 +247,7 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
     native_status: "NOT_RUN",
     phase20_owned: true,
     budgets: PHASE19_PROGRESS_BUDGETS,
+    production_artifact: evidence.production_artifact,
     measurements,
     query_rows: evidence.query_rows,
     targeted_rebuild: evidence.targeted_rebuild,
@@ -162,216 +258,52 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
   });
 }
 
-function localDateForIndex(index) {
-  const date = new Date(Date.UTC(2026, 7, 24));
-  date.setUTCDate(date.getUTCDate() - index);
-  return date.toISOString().slice(0, 10);
-}
-
-async function createSyntheticRuntime() {
+function runProductionBenchmarkWorker(root) {
   const directory = mkdtempSync(path.join(tmpdir(), "gym-phase19-progress-benchmark-"));
-  const databasePath = path.join(directory, "gym.db");
-  const database = new DatabaseSync(databasePath);
-  database.exec(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE progress_facts (
-      id TEXT PRIMARY KEY NOT NULL,
-      local_date TEXT NOT NULL,
-      started_at_ms INTEGER NOT NULL,
-      source_revision INTEGER NOT NULL,
-      distance_meters INTEGER NOT NULL,
-      duration_seconds INTEGER NOT NULL
-    ) STRICT;
-    CREATE INDEX progress_facts_range_idx
-      ON progress_facts(local_date, started_at_ms, id);
-    CREATE TABLE progress_reviews (
-      id TEXT PRIMARY KEY NOT NULL,
-      source_revision INTEGER NOT NULL,
-      target_revision INTEGER NOT NULL,
-      status TEXT NOT NULL
-    ) STRICT;
-    INSERT INTO progress_reviews
-      (id, source_revision, target_revision, status)
-      VALUES ('synthetic-review', 1, 1, 'pending');
-  `);
-  const insert = database.prepare(
-    `INSERT INTO progress_facts
-      (id, local_date, started_at_ms, source_revision, distance_meters, duration_seconds)
-     VALUES (?, ?, ?, ?, 2400, ?)`,
-  );
-  database.exec("BEGIN IMMEDIATE");
+  const resultPath = path.join(directory, "production-result.json");
   try {
-    for (let index = 0; index < 500; index += 1) {
-      insert.run(
-        `phase19-benchmark-fact-${String(index).padStart(3, "0")}`,
-        localDateForIndex(index),
-        10_000 + index,
-        index + 1,
-        660 + index,
-      );
+    const worker = spawnSync(
+      process.execPath,
+      [
+        resolveJestBin(),
+        "--config", BENCHMARK_JEST_CONFIG,
+        "--runInBand",
+        "--runTestsByPath", BENCHMARK_WORKER,
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, PHASE19_BENCHMARK_RESULT_PATH: resultPath },
+        timeout: PHASE19_BENCHMARK_SUBPROCESS_TIMEOUT_MS,
+        maxBuffer: PHASE19_BENCHMARK_MAX_OUTPUT_BYTES,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    if (worker.error !== undefined) throw worker.error;
+    if (worker.signal !== null || worker.status !== 0 || !existsSync(resultPath)) {
+      fail("phase19_progress_benchmark_worker_failed");
     }
-    database.exec("COMMIT");
-  } catch (error) {
-    database.exec("ROLLBACK");
-    throw error;
-  }
-  const rangeStatement = database.prepare(
-    `SELECT local_date, source_revision, distance_meters, duration_seconds
-       FROM progress_facts
-      WHERE (? IS NULL OR local_date >= ?)
-      ORDER BY local_date, started_at_ms, id
-      LIMIT 500`,
-  );
-  const reviewStatement = database.prepare(
-    `SELECT source_revision, target_revision, status
-       FROM progress_reviews
-      WHERE id = 'synthetic-review'`,
-  );
-  const rangeStart = (period) => period === "4_weeks"
-    ? "2026-07-28"
-    : period === "12_weeks" ? "2026-06-02" : null;
-  const load = (period = "all_time") => {
-    const start = rangeStart(period);
-    const rows = rangeStatement.all(start, start);
-    const latest = rows.at(-1) ?? null;
-    const best = rows.reduce((current, row) =>
-      current === null || row.duration_seconds < current.duration_seconds ? row : current, null);
-    return Object.freeze({
-      state: rows.length === 0 ? "empty" : rows.length === 1 ? "sparse" : "ready",
-      latest,
-      best,
-      target: Object.freeze({ distance_meters: 2_400, duration_seconds: 660 }),
-      history: Object.freeze(rows),
-    });
-  };
-  return {
-    database,
-    load,
-    openReview: () => reviewStatement.get(),
-    close: async () => {
-      database.close();
-      rmSync(directory, { force: true, recursive: true });
-    },
-  };
-}
-
-function runProductionRepositoryPreflight() {
-  execFileSync(
-    process.execPath,
-    [
-      path.join(process.cwd(), "node_modules/jest/bin/jest.js"),
-      "--config", "jest.config.js",
-      "--selectProjects", "unit",
-      "--runInBand",
-      "src/testing/contracts/progressParity.contract.test.ts",
-    ],
-    { cwd: process.cwd(), stdio: "ignore" },
-  );
-}
-
-async function duration(operation) {
-  const started = performance.now();
-  const value = await operation();
-  return { elapsed: performance.now() - started, value };
-}
-
-async function collectSamples(count, operation) {
-  const values = [];
-  const outputs = [];
-  for (let index = 0; index < count; index += 1) {
-    const measured = await duration(() => operation(index));
-    values.push(measured.elapsed);
-    outputs.push(measured.value);
-  }
-  return { values, outputs };
-}
-
-export async function runSyntheticPhase19ProgressBenchmark() {
-  runProductionRepositoryPreflight();
-  const runtime = await createSyntheticRuntime();
-  try {
-    const load = (period = "all_time") => runtime.load(period);
-    const useful = await collectSamples(20, async () => {
-      const result = await load();
-      if (result.state !== "ready" || result.history.length === 0) {
-        fail("phase19_progress_benchmark_fixture_invalid");
-      }
-      return result.history.length;
-    });
-    const review = await collectSamples(100, async () => {
-      const result = runtime.openReview();
-      if (result?.status !== "pending") fail("phase19_progress_benchmark_fixture_invalid");
-      return result.target_revision;
-    });
-    let boundedYieldCount = 0;
-    const rebuild = await collectSamples(20, async () => {
-      await new Promise((resolve) => setImmediate(resolve));
-      boundedYieldCount += 1;
-      const result = await load();
-      return result.history.length;
-    });
-    const periods = ["4_weeks", "12_weeks", "all_time"];
-    const range = await collectSamples(100, async (index) => {
-      const result = await load(periods[index % periods.length]);
-      return result.history.length;
-    });
-    const chart = await collectSamples(20, async () => {
-      const result = await load();
-      const rows = result.history.map((row) => ({
-        date: row.local_date,
-        duration: row.duration_seconds,
-        target: result.target.duration_seconds,
-      }));
-      JSON.stringify(rows);
-      return rows.length;
-    });
-    const source = Array.from({ length: 500 }, (_, index) => 500 - index);
-    const jsTask = await collectSamples(100, async () => {
-      const rows = source.slice().sort((left, right) => left - right).slice(0, 84);
-      return rows.reduce((sum, value) => sum + value, 0);
-    });
-    const rows = (where, limit) => runtime.database.prepare(
-      `SELECT id FROM progress_facts ${where} ORDER BY id LIMIT ${limit}`,
-    ).all();
-    const queryRows = [
-      rows("WHERE started_at_ms < 0", 500),
-      rows("", 1),
-      rows("", 28),
-      rows("", 84),
-      rows("", 500),
-    ];
-    return evaluatePhase19ProgressBenchmark({
-      schema_version: 1,
-      suite: "phase19-progress",
-      producer: "phase19-progress-benchmark/v1",
-      environment: "host-synthetic",
-      status: "passed",
-      native_status: "NOT_RUN",
-      phase20_owned: true,
-      budgets: PHASE19_PROGRESS_BUDGETS,
-      measurements: {
-        useful_content_ms: useful.values,
-        review_open_ms: review.values,
-        targeted_rebuild_ms: rebuild.values,
-        range_query_ms: range.values,
-        chart_data_render_ms: chart.values,
-        js_task_ms: jsTask.values,
-      },
-      query_rows: {
-        zero: [queryRows[0].length],
-        one: [queryRows[1].length],
-        many: [queryRows[2].length, queryRows[3].length],
-        long: [queryRows[4].length],
-        all_time: [Math.max(...range.outputs)],
-      },
-      targeted_rebuild: {
-        updating_visible: false,
-        bounded_yield_count: boundedYieldCount,
-      },
-    });
+    const raw = readFileSync(resultPath);
+    const result = JSON.parse(raw.toString("utf8"));
+    return {
+      result,
+      resultSha256: createHash("sha256").update(raw).digest("hex"),
+    };
   } finally {
-    await runtime.close();
+    rmSync(directory, { force: true, recursive: true });
   }
+}
+
+export async function runSyntheticPhase19ProgressBenchmark(root = process.cwd()) {
+  const worker = runProductionBenchmarkWorker(root);
+  return evaluatePhase19ProgressBenchmark({
+    ...worker.result,
+    production_artifact: {
+      case_id: PRODUCTION_CASE_ID,
+      source_sha256: canonicalSourceSha256(root),
+      result_sha256: worker.resultSha256,
+    },
+  });
 }
 
 export function parsePhase19ProgressBenchmarkArgs(args) {
