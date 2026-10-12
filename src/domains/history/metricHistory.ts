@@ -16,6 +16,15 @@ import {
   type MetricTarget,
 } from "../metrics";
 
+type RelativeStrengthProjection = Readonly<{
+  loadGrams: number;
+  relativeLoad: number;
+  basis: Readonly<{
+    grams: number;
+    localDate: string;
+  }>;
+}>;
+
 export type EffectiveMetricHistorySet = Readonly<{
   sessionId: string;
   localDate: string;
@@ -32,6 +41,13 @@ export type EffectiveMetricHistorySet = Readonly<{
   setId: string;
   setOrdinal: number;
   completedAtMs: number | null;
+  /** Effective immutable source revision used by source navigation. */
+  sourceRevision?: number;
+  /** Target captured at this observation's effective source date. */
+  targetAtDate?: MetricTarget;
+  /** Optional view-only dated projection. No command authority crosses this field. */
+  relativeStrength?: RelativeStrengthProjection | null;
+  historyStatus?: "accepted_current" | "corrected_effective";
 }>;
 
 export type MetricHistorySegment = Readonly<{
@@ -45,8 +61,29 @@ export type MetricHistorySegment = Readonly<{
 
 export type ExerciseMetricHistory = Readonly<{
   exerciseId: string;
+  exerciseName?: string | null;
+  freshness?: "current" | "updating" | "unavailable";
   segments: readonly MetricHistorySegment[];
   warmupVisits: readonly EffectiveMetricHistorySet[];
+}>;
+
+export type LoadMetricHistoryView = "load" | "relative";
+
+export type LoadMetricHistoryPoint = Readonly<{
+  sessionId: string;
+  sourceRevision: number | null;
+  localDate: string;
+  value: number;
+  targetAtDate: number;
+  basisDisclosure: string | null;
+  statusLabel: "Accepted/current" | "Corrected effective fact";
+}>;
+
+export type LoadMetricHistorySeries = Readonly<{
+  view: LoadMetricHistoryView;
+  points: readonly LoadMetricHistoryPoint[];
+  currentTarget: number;
+  relativeAvailable: boolean;
 }>;
 
 /** A bounded, one-point-per-session view for the Active Workout trend sheet. */
@@ -215,8 +252,86 @@ export function buildExerciseMetricHistory(input: Readonly<{
     );
   return Object.freeze({
     exerciseId: input.exerciseId,
+    exerciseName: relevant
+      .filter(({ exerciseName }) => exerciseName.trim().length > 0)
+      .sort(visitOrder)[0]?.exerciseName ?? null,
+    freshness: "current",
     segments: Object.freeze(segments),
     warmupVisits: Object.freeze(warmupVisits),
+  });
+}
+
+function loadTargetGrams(target: MetricTarget): number | null {
+  return target.profile === "load_reps" ? target.loadGrams : null;
+}
+
+function basisDisclosure(projection: RelativeStrengthProjection): string {
+  const kilograms = projection.basis.grams / 1_000;
+  const [year, month, day] = projection.basis.localDate.split("-").map(Number);
+  const formattedDate = year === undefined || month === undefined || day === undefined
+    ? projection.basis.localDate
+    : new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+      year: "numeric",
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+  return `Using ${kilograms} kg from ${formattedDate}`;
+}
+
+/**
+ * Converts one already-comparable load segment into one immutable chart/data
+ * series. Temporal selection has already happened below this boundary.
+ */
+export function projectLoadMetricHistorySeries(
+  segment: MetricHistorySegment,
+  view: LoadMetricHistoryView,
+): LoadMetricHistorySeries | null {
+  if (segment.identity.profile !== "load_reps") return null;
+  const referenceTargetGrams = loadTargetGrams(segment.referenceTarget);
+  if (referenceTargetGrams === null) return null;
+  const ordered = [...segment.comparableSets].sort((left, right) =>
+    left.completedAtMs! - right.completedAtMs!
+    || left.sessionId.localeCompare(right.sessionId)
+    || left.setOrdinal - right.setOrdinal
+    || left.setId.localeCompare(right.setId)
+  );
+  const relativeAvailable = ordered.length > 0
+    && ordered.every(({ relativeStrength }) => relativeStrength != null);
+  if (view === "relative" && !relativeAvailable) return null;
+  const points = ordered.flatMap((set): readonly LoadMetricHistoryPoint[] => {
+    if (set.observation?.profile !== "load_reps") return [];
+    const targetGrams = loadTargetGrams(set.targetAtDate ?? set.target);
+    if (targetGrams === null) return [];
+    const relative = set.relativeStrength ?? null;
+    if (view === "relative" && relative === null) return [];
+    const basisGrams = relative?.basis.grams ?? null;
+    return [Object.freeze({
+      sessionId: set.sessionId,
+      sourceRevision: Number.isSafeInteger(set.sourceRevision) && set.sourceRevision! > 0
+        ? set.sourceRevision!
+        : null,
+      localDate: set.localDate,
+      value: view === "load"
+        ? set.observation.loadGrams / 1_000
+        : relative!.relativeLoad,
+      targetAtDate: view === "load"
+        ? targetGrams / 1_000
+        : targetGrams / basisGrams!,
+      basisDisclosure: relative === null ? null : basisDisclosure(relative),
+      statusLabel: set.historyStatus === "corrected_effective"
+        ? "Corrected effective fact"
+        : "Accepted/current",
+    })];
+  });
+  const latestBasis = ordered.at(-1)?.relativeStrength?.basis.grams ?? null;
+  return Object.freeze({
+    view,
+    points: Object.freeze(points),
+    currentTarget: view === "load"
+      ? referenceTargetGrams / 1_000
+      : referenceTargetGrams / latestBasis!,
+    relativeAvailable,
   });
 }
 

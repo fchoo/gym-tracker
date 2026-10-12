@@ -18,20 +18,22 @@ export type FactualHistoryPointStatus =
   | "removed"
   | "unavailable";
 
-export type FactualHistorySource = Readonly<{
-  activityId: string;
-  sourceRevision: number;
-}>;
+export type FactualHistorySource =
+  | Readonly<{ activityId: string; sourceRevision: number }>
+  | Readonly<{ sessionId: string; sourceRevision: number }>;
 
 export type ProgressFactualHistoryPoint = Readonly<{
   activityId: string | null;
-  evidence: "source_summary" | "source_laps" | null;
+  evidence: "source_summary" | "source_laps" | "workout_session" | null;
   localDate: string;
   sourceRevision: number | null;
   status: FactualHistoryPointStatus;
   targetAtDateSeconds: number | null;
   timeBasis: "elapsed" | "moving" | "timer";
   valueSeconds: number | null;
+  workoutSessionId?: string | null;
+  basisLabel?: string | null;
+  statusLabel?: string;
 }>;
 
 /** Immutable presentation input. SVG coordinates are derived only from this series. */
@@ -42,6 +44,8 @@ export type ProgressFactualSeries = Readonly<{
   rangeLabel: string;
   unitLabel: string;
   currentTargetSeconds?: number | null;
+  metricLabel?: string;
+  directionLabel?: string;
 }>;
 
 type PlotPoint = Readonly<{
@@ -64,18 +68,13 @@ function positiveFinite(value: number | null): value is number {
 
 function isPlotFact(point: ProgressFactualHistoryPoint): point is ProgressFactualHistoryPoint & {
   valueSeconds: number;
-  activityId: string;
-  sourceRevision: number;
-  evidence: "source_summary" | "source_laps";
+  evidence: "source_summary" | "source_laps" | "workout_session";
 } {
   return point.status === "accepted_current"
     && positiveFinite(point.valueSeconds)
-    && typeof point.activityId === "string"
-    && point.activityId.length > 0
-    && typeof point.sourceRevision === "number"
-    && Number.isSafeInteger(point.sourceRevision)
-    && point.sourceRevision > 0
-    && (point.evidence === "source_summary" || point.evidence === "source_laps");
+    && (point.evidence === "source_summary"
+      || point.evidence === "source_laps"
+      || point.evidence === "workout_session");
 }
 
 function localExtremaIndexes(points: readonly PlotPoint[]): readonly number[] {
@@ -198,6 +197,7 @@ function longDate(localDate: string): string {
 }
 
 function statusText(point: ProgressFactualHistoryPoint): string {
+  if (point.statusLabel !== undefined) return point.statusLabel;
   switch (point.status) {
     case "accepted_current": return `Accepted/current · ${point.evidence?.replace("_", " ") ?? "source evidence"}`;
     case "corrected_effective": return "Corrected effective fact";
@@ -219,7 +219,16 @@ function chartPath(points: readonly PlotPoint[], valueFor: (point: ProgressFactu
 }
 
 function sourceFor(point: ProgressFactualHistoryPoint): FactualHistorySource | null {
-  return isPlotFact(point) ? { activityId: point.activityId, sourceRevision: point.sourceRevision } : null;
+  if (!isPlotFact(point)
+    || !Number.isSafeInteger(point.sourceRevision)
+    || Number(point.sourceRevision) <= 0) return null;
+  const sourceRevision = point.sourceRevision!;
+  if (typeof point.workoutSessionId === "string" && point.workoutSessionId.length > 0) {
+    return { sessionId: point.workoutSessionId, sourceRevision };
+  }
+  return typeof point.activityId === "string" && point.activityId.length > 0
+    ? { activityId: point.activityId, sourceRevision }
+    : null;
 }
 
 function Fact({ label, value }: Readonly<{ label: string; value: string }>) {
@@ -233,9 +242,10 @@ function Fact({ label, value }: Readonly<{ label: string; value: string }>) {
 export type FactualHistoryChartProps = Readonly<{
   onOpenSource?: (source: FactualHistorySource) => void;
   series: ProgressFactualSeries;
+  formatValue?: (value: number | null) => string;
 }>;
 
-export function FactualHistoryChart({ onOpenSource, series }: FactualHistoryChartProps) {
+export function FactualHistoryChart({ formatValue, onOpenSource, series }: FactualHistoryChartProps) {
   const { colors } = useAppTheme();
   const { fontScale, height, width } = useWindowDimensions();
   const [dataVisible, setDataVisible] = useState(false);
@@ -259,7 +269,11 @@ export function FactualHistoryChart({ onOpenSource, series }: FactualHistoryChar
     .filter(positiveFinite);
   const minimum = values.length === 0 ? 0 : Math.min(...values);
   const maximum = values.length === 0 ? 1 : Math.max(...values);
-  const label = `${formatDistance(series.distanceMeters)} personal history for ${series.rangeLabel}: ${facts.length} factual points. ${series.fasterIsLower ? "Faster is lower on the clock." : "Higher values are better."} goal line ${visual.targetSegments.length > 0 ? "present" : "absent"}.`;
+  const valueText = formatValue ?? formatFactualDuration;
+  const metricLabel = series.metricLabel ?? formatDistance(series.distanceMeters);
+  const directionLabel = series.directionLabel
+    ?? (series.fasterIsLower ? "Faster is lower on the clock." : "Higher values are better.");
+  const label = `${metricLabel} personal history for ${series.rangeLabel}: ${facts.length} factual points. ${directionLabel} goal line ${visual.targetSegments.length > 0 ? "present" : "absent"}.`;
   const showStackedFacts = fontScale >= 2 || width > height;
 
   if (facts.length === 0) {
@@ -272,15 +286,16 @@ export function FactualHistoryChart({ onOpenSource, series }: FactualHistoryChar
 
   return <View style={styles.container} testID="factual-history-chart">
     <View style={[styles.facts, showStackedFacts ? styles.factsStacked : undefined]} testID="factual-history-facts">
-      <Fact label="Latest" value={formatFactualDuration(latest?.valueSeconds ?? null)} />
-      <Fact label="Best" value={formatFactualDuration(best?.valueSeconds ?? null)} />
-      <Fact label="Target" value={formatFactualDuration(target)} />
-      <Fact label="Gap" value={gap === null ? "—" : `${formatFactualDuration(gap)} ${series.fasterIsLower && best!.valueSeconds! < target! ? "faster" : "slower"}`} />
+      <Fact label="Latest" value={valueText(latest?.valueSeconds ?? null)} />
+      <Fact label="Best" value={valueText(best?.valueSeconds ?? null)} />
+      <Fact label="Target" value={valueText(target)} />
+      <Fact label="Gap" value={gap === null ? "—" : `${valueText(gap)} ${series.fasterIsLower ? best!.valueSeconds! < target! ? "faster" : "slower" : best!.valueSeconds! > target! ? "higher" : "lower"}`} />
     </View>
     <View accessible accessibilityLabel={label} style={styles.chartSummary}>
       <Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Personal history</Text>
-      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${series.rangeLabel} · ${facts.length} evidence ${facts.length === 1 ? "point" : "points"} · ${series.fasterIsLower ? "Faster is lower on the clock." : "Higher is better."}`}</Text>
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${series.rangeLabel} · ${facts.length} evidence ${facts.length === 1 ? "point" : "points"} · ${directionLabel}`}</Text>
       {facts.length === 1 ? <Text style={[typeScale.secondary as TextStyle, { color: colors.yellow }]}>More data needed</Text> : null}
+      {latest?.basisLabel ? <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{latest.basisLabel}</Text> : null}
     </View>
     <View style={[styles.chart, { borderColor: colors.line }]}>
       <Svg accessibilityElementsHidden height={CHART_HEIGHT} importantForAccessibility="no-hide-descendants" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} width="100%">
@@ -294,7 +309,7 @@ export function FactualHistoryChart({ onOpenSource, series }: FactualHistoryChar
         })}
       </Svg>
     </View>
-    {positiveFinite(target) ? <Text style={[typeScale.secondary as TextStyle, { color: colors.yellow }]}>{`Goal ${formatFactualDuration(target)}`}</Text> : null}
+    {positiveFinite(target) ? <Text style={[typeScale.secondary as TextStyle, { color: colors.yellow }]}>{`Goal ${valueText(target)}`}</Text> : null}
     <FocusablePressable accessibilityLabel={dataVisible ? "Hide history data" : "Show history data"} accessibilityRole="button" onPress={() => setDataVisible((visible) => !visible)} style={[styles.disclosure, { borderColor: colors.focusRing }]}>
       <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>{dataVisible ? "Hide history data" : "Show history data"}</Text>
     </FocusablePressable>
@@ -304,8 +319,9 @@ export function FactualHistoryChart({ onOpenSource, series }: FactualHistoryChar
         const source = sourceFor(point);
         return <View key={`${point.localDate}-${point.activityId ?? "unavailable"}-${index}`} style={[styles.dataRow, { borderColor: colors.line }]}>
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{longDate(point.localDate)}</Text>
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${formatFactualDuration(point.valueSeconds)} · ${series.unitLabel}`}</Text>
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{positiveFinite(point.targetAtDateSeconds) ? `Target at date ${formatFactualDuration(point.targetAtDateSeconds)}` : "Target unset"}</Text>
+          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{formatValue === undefined ? `${valueText(point.valueSeconds)} · ${series.unitLabel}` : valueText(point.valueSeconds)}</Text>
+          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{positiveFinite(point.targetAtDateSeconds) ? `Target at date ${valueText(point.targetAtDateSeconds)}` : "Target unset"}</Text>
+          {point.basisLabel ? <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{point.basisLabel}</Text> : null}
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{statusText(point)}</Text>
           {source !== null && onOpenSource !== undefined ? <FocusablePressable accessibilityLabel="Open source" accessibilityRole="button" onPress={() => onOpenSource(source)} style={[styles.sourceAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text></FocusablePressable> : <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>}
         </View>;

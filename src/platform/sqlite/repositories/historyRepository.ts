@@ -5,6 +5,7 @@ import {
   historySourceLabel,
   orderedCalendarStates,
   parseHistoryLocalDate,
+  parseHistorySubjectId,
   type EffectiveMetricHistorySet,
   type EffectiveHistoryProjectionSession,
   type ExerciseMetricHistory,
@@ -22,6 +23,10 @@ import {
   parseMetricTargetJson,
   type MetricIdentity,
 } from "../../../domains/metrics";
+import {
+  projectRelativeStrength,
+  type RelativeStrengthBodyweightFact,
+} from "../../../domains/progress/relativeStrength";
 import type {
   LocalDate,
 } from "../../../domains/scheduling";
@@ -84,11 +89,31 @@ type SourceMetricSetRow = Readonly<{
   completed_at_ms: number;
   planned_working_sets: number;
   completed_working_sets: number;
+  source_revision: number;
 }>;
 
 type SourceRecommendationScopeRow = Readonly<{
   session_id: string;
   scope_id: string;
+}>;
+
+type HistoryFreshnessRow = Readonly<{
+  subject_id: string;
+  revision: number;
+  applied_revision: number | null;
+}>;
+
+type HistoryRebuildRow = Readonly<{
+  subject_id: string;
+}>;
+
+type BodyweightBasisRow = Readonly<{
+  fact_id: string;
+  current_revision: number;
+  lifecycle: "active" | "deleted";
+  local_date: string | null;
+  grams: number | null;
+  occurred_at_ms: number;
 }>;
 
 export type EffectiveSnapshot = Readonly<{
@@ -390,13 +415,15 @@ function metricSetFromSourceRow(row: SourceMetricSetRow): EffectiveMetricHistory
     contractVersion: row.metric_contract_version,
     exerciseMetricGeneration: row.exercise_metric_generation,
   });
+  const target = parseMetricTargetJson(identity, row.target_json);
   return Object.freeze({
     sessionId: row.session_id,
     localDate: row.local_date,
     exerciseId: row.exercise_id,
     exerciseName: effectiveExerciseName(row.exercise_name),
     identity,
-    target: parseMetricTargetJson(identity, row.target_json),
+    target,
+    targetAtDate: target,
     observation: parseMetricObservationJson(identity, row.observed_json),
     sessionStatus: row.session_status,
     setKind: row.set_kind,
@@ -406,7 +433,73 @@ function metricSetFromSourceRow(row: SourceMetricSetRow): EffectiveMetricHistory
     setId: row.set_id,
     setOrdinal: row.set_ordinal,
     completedAtMs: row.completed_at_ms,
+    sourceRevision: row.source_revision,
+    historyStatus: "accepted_current",
+    relativeStrength: null,
   });
+}
+
+function bodyweightFacts(rows: readonly BodyweightBasisRow[]): readonly RelativeStrengthBodyweightFact[] {
+  return Object.freeze(rows.map((row) => Object.freeze({
+    factId: row.fact_id,
+    localDate: row.local_date ?? "",
+    grams: row.grams ?? 0,
+    effectiveAtMs: row.occurred_at_ms,
+    sourceRevision: row.current_revision,
+    lifecycle: row.lifecycle,
+  })));
+}
+
+function enrichExerciseMetricSet(
+  set: EffectiveMetricHistorySet,
+  input: Readonly<{
+    sourceRevision: number;
+    status: "accepted_current" | "corrected_effective";
+    bodyweight: readonly RelativeStrengthBodyweightFact[];
+  }>,
+): EffectiveMetricHistorySet {
+  const relativeStrength = set.observation?.profile === "load_reps"
+    ? projectRelativeStrength({
+      observation: {
+        localDate: set.localDate,
+        loadGrams: set.observation.loadGrams,
+      },
+      bodyweightFacts: input.bodyweight,
+    })
+    : null;
+  return Object.freeze({
+    ...set,
+    sourceRevision: input.sourceRevision,
+    targetAtDate: set.target,
+    relativeStrength,
+    historyStatus: input.status,
+  });
+}
+
+function exerciseHistoryFreshness(
+  exerciseId: string,
+  rows: readonly HistoryFreshnessRow[],
+  rebuildRows: readonly HistoryRebuildRow[],
+): "current" | "updating" | "unavailable" {
+  const relevant: HistoryFreshnessRow[] = [];
+  for (const row of rows) {
+    try {
+      const parsed = parseHistorySubjectId(row.subject_id);
+      if (parsed.kind === "exercise_metric" && parsed.scope[0] === exerciseId) {
+        relevant.push(row);
+      }
+    } catch {
+      return "unavailable";
+    }
+  }
+  const stale = relevant.filter(({ revision, applied_revision }) =>
+    applied_revision !== revision
+  );
+  if (stale.length === 0) return "current";
+  const rebuilding = new Set(rebuildRows.map(({ subject_id }) => subject_id));
+  return stale.every(({ subject_id }) => rebuilding.has(subject_id))
+    ? "updating"
+    : "unavailable";
 }
 
 /**
@@ -452,6 +545,7 @@ export async function loadEffectiveHistoryProjectionSessions(
     ),
     executor.queryAll<SourceMetricSetRow>(
       `SELECT session.id AS session_id, session.local_date,
+              session.revision AS source_revision,
               session.status AS session_status, exercise.exercise_id,
               exercise.exercise_name,
               exercise.metric_profile, exercise.metric_contract_version,
@@ -863,88 +957,152 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
       });
     },
     async loadExerciseMetricHistory(input) {
-      const rows = await kernel.queryAll<SourceSessionRow>(
-        `SELECT ws.id, ws.source, ws.status, ws.local_date, ws.timezone,
-                ws.started_at_ms, ws.completed_at_ms,
-                ws.creation_timezone_offset_minutes, ws.revision,
-                plan.name AS plan_name, day.name AS day_name,
-                overlay.effective_revision, overlay.lifecycle,
-                overlay.snapshot_json, overlay.effective_local_date,
-                overlay.effective_timezone, overlay.effective_started_at_ms,
-                overlay.effective_completed_at_ms
-         FROM workout_sessions ws
-         LEFT JOIN plans plan ON plan.id = ws.plan_id
-         LEFT JOIN plan_days day ON day.id = ws.plan_day_id
-         LEFT JOIN history_session_overlays overlay ON overlay.session_id = ws.id
-         WHERE (ws.status IN ('completed', 'partial')
-                OR overlay.session_id IS NOT NULL)
-         ORDER BY ws.id`,
-      );
-      const overlaySessions = new Set<string>();
-      const effectiveSets: EffectiveMetricHistorySet[] = [];
-      for (const row of rows) {
-        if (row.snapshot_json === null) {
-          continue;
+      if (kernel.readSnapshot === undefined) {
+        throw new Error("history_snapshot_kernel_required");
+      }
+      return kernel.readSnapshot(async (executor) => {
+        const [rows, sourceRows, basisRows, freshnessRows, rebuildRows] = await Promise.all([
+          executor.queryAll<SourceSessionRow>(
+            `SELECT ws.id, ws.source, ws.status, ws.local_date, ws.timezone,
+                    ws.started_at_ms, ws.completed_at_ms,
+                    ws.creation_timezone_offset_minutes, ws.revision,
+                    plan.name AS plan_name, day.name AS day_name,
+                    overlay.effective_revision, overlay.lifecycle,
+                    overlay.snapshot_json, overlay.effective_local_date,
+                    overlay.effective_timezone, overlay.effective_started_at_ms,
+                    overlay.effective_completed_at_ms
+             FROM workout_sessions ws
+             LEFT JOIN plans plan ON plan.id = ws.plan_id
+             LEFT JOIN plan_days day ON day.id = ws.plan_day_id
+             LEFT JOIN history_session_overlays overlay ON overlay.session_id = ws.id
+             WHERE (ws.status IN ('completed', 'partial')
+                    OR overlay.session_id IS NOT NULL)
+             ORDER BY ws.id`,
+          ),
+          executor.queryAll<SourceMetricSetRow>(
+            `SELECT session.id AS session_id,
+                    session.revision AS source_revision,
+                    session.local_date,
+                    session.status AS session_status,
+                    exercise.exercise_id,
+                    exercise.exercise_name,
+                    exercise.metric_profile,
+                    exercise.metric_contract_version,
+                    exercise.exercise_metric_generation,
+                    set_row.id AS set_id,
+                    set_row.set_kind,
+                    set_row.ordinal AS set_ordinal,
+                    set_row.status AS set_status,
+                    set_row.target_json,
+                    set_row.observed_json,
+                    set_row.completed_at_ms,
+                    (
+                      SELECT COUNT(*)
+                      FROM session_sets planned
+                      WHERE planned.session_exercise_id = exercise.id
+                        AND planned.set_kind = 'working'
+                    ) AS planned_working_sets,
+                    (
+                      SELECT COUNT(*)
+                      FROM session_sets completed
+                      WHERE completed.session_exercise_id = exercise.id
+                        AND completed.set_kind = 'working'
+                        AND completed.status = 'completed'
+                    ) AS completed_working_sets
+             FROM workout_sessions session
+             JOIN session_exercises exercise ON exercise.session_id = session.id
+             JOIN session_sets set_row ON set_row.session_exercise_id = exercise.id
+             WHERE session.status IN ('completed', 'partial')
+               AND exercise.exercise_id = ?
+               AND set_row.status = 'completed'
+               AND set_row.observed_json IS NOT NULL
+               AND set_row.completed_at_ms IS NOT NULL
+             ORDER BY set_row.completed_at_ms DESC, session.id, set_row.ordinal, set_row.id`,
+            [input.exerciseId],
+          ),
+          executor.queryAll<BodyweightBasisRow>(
+            `SELECT entry.id AS fact_id, entry.current_revision,
+                    entry.lifecycle, measurement.local_date,
+                    measurement.grams, measurement.occurred_at_ms
+             FROM portable_owner_identity owner
+             JOIN bodyweight_entries entry
+               ON entry.owner_id = owner.owner_namespace
+             JOIN bodyweight_entry_events measurement
+               ON measurement.entry_id = entry.id
+              AND measurement.revision = entry.current_revision
+             WHERE owner.id = 1
+             ORDER BY measurement.local_date DESC,
+                      measurement.occurred_at_ms DESC,
+                      entry.current_revision DESC, entry.id DESC`,
+          ),
+          executor.queryAll<HistoryFreshnessRow>(
+            `SELECT subject.subject_id, subject.revision,
+                    freshness.applied_revision
+             FROM history_subject_revisions subject
+             LEFT JOIN history_projection_freshness freshness
+               ON freshness.subject_id = subject.subject_id
+             WHERE subject.subject_id LIKE 'history-subject/v1:["exercise_metric",%'
+             ORDER BY subject.subject_id`,
+          ),
+          executor.queryAll<HistoryRebuildRow>(
+            `SELECT DISTINCT subject_id
+             FROM history_rebuild_effects
+             WHERE status IN ('pending', 'processing')
+             ORDER BY subject_id`,
+          ),
+        ]);
+        const freshness = exerciseHistoryFreshness(
+          input.exerciseId,
+          freshnessRows,
+          rebuildRows,
+        );
+        if (freshness !== "current") {
+          return Object.freeze({
+            exerciseId: input.exerciseId,
+            exerciseName: null,
+            freshness,
+            segments: Object.freeze([]),
+            warmupVisits: Object.freeze([]),
+          });
         }
-        overlaySessions.add(row.id);
-        if (row.lifecycle === "voided") {
-          continue;
-        }
-        const snapshot = parseEffectiveSnapshot(row.snapshot_json, row);
-        for (const set of metricSetsFromEffectiveSnapshot(snapshot)) {
-          if (set.exerciseId === input.exerciseId) {
-            effectiveSets.push(set);
+
+        const bodyweight = bodyweightFacts(basisRows);
+        const overlaySessions = new Set<string>();
+        const effectiveSets: EffectiveMetricHistorySet[] = [];
+        for (const row of rows) {
+          if (row.snapshot_json === null) continue;
+          overlaySessions.add(row.id);
+          if (row.lifecycle === "voided") continue;
+          if (!Number.isSafeInteger(row.effective_revision)
+            || Number(row.effective_revision) <= 0) {
+            throw new Error("history_source_revision_invalid");
+          }
+          const snapshot = parseEffectiveSnapshot(row.snapshot_json, row);
+          for (const set of metricSetsFromEffectiveSnapshot(snapshot)) {
+            if (set.exerciseId === input.exerciseId) {
+              effectiveSets.push(enrichExerciseMetricSet(set, {
+                sourceRevision: row.effective_revision!,
+                status: "corrected_effective",
+                bodyweight,
+              }));
+            }
           }
         }
-      }
-      const sourceRows = await kernel.queryAll<SourceMetricSetRow>(
-        `SELECT session.id AS session_id,
-                session.local_date,
-                session.status AS session_status,
-                exercise.exercise_id,
-                exercise.exercise_name,
-                exercise.metric_profile,
-                exercise.metric_contract_version,
-                exercise.exercise_metric_generation,
-                set_row.id AS set_id,
-                set_row.set_kind,
-                set_row.ordinal AS set_ordinal,
-                set_row.status AS set_status,
-                set_row.target_json,
-                set_row.observed_json,
-                set_row.completed_at_ms,
-                (
-                  SELECT COUNT(*)
-                  FROM session_sets planned
-                  WHERE planned.session_exercise_id = exercise.id
-                    AND planned.set_kind = 'working'
-                ) AS planned_working_sets,
-                (
-                  SELECT COUNT(*)
-                  FROM session_sets completed
-                  WHERE completed.session_exercise_id = exercise.id
-                    AND completed.set_kind = 'working'
-                    AND completed.status = 'completed'
-                ) AS completed_working_sets
-         FROM workout_sessions session
-         JOIN session_exercises exercise ON exercise.session_id = session.id
-         JOIN session_sets set_row ON set_row.session_exercise_id = exercise.id
-         WHERE session.status IN ('completed', 'partial')
-           AND exercise.exercise_id = ?
-           AND set_row.status = 'completed'
-           AND set_row.observed_json IS NOT NULL
-           AND set_row.completed_at_ms IS NOT NULL
-         ORDER BY set_row.completed_at_ms DESC, session.id, set_row.ordinal, set_row.id`,
-        [input.exerciseId],
-      );
-      for (const row of sourceRows) {
-        if (!overlaySessions.has(row.session_id)) {
-          effectiveSets.push(metricSetFromSourceRow(row));
+        for (const row of sourceRows) {
+          if (overlaySessions.has(row.session_id)) continue;
+          if (!Number.isSafeInteger(row.source_revision) || row.source_revision <= 0) {
+            throw new Error("history_source_revision_invalid");
+          }
+          effectiveSets.push(enrichExerciseMetricSet(metricSetFromSourceRow(row), {
+            sourceRevision: row.source_revision,
+            status: "accepted_current",
+            bodyweight,
+          }));
         }
-      }
-      return buildExerciseMetricHistory({
-        exerciseId: input.exerciseId,
-        sets: effectiveSets,
+        return buildExerciseMetricHistory({
+          exerciseId: input.exerciseId,
+          sets: effectiveSets,
+        });
       });
     },
   });
