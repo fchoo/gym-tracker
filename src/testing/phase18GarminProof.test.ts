@@ -119,14 +119,14 @@ describe("Phase 18 guarded Garmin proof", () => {
     const exact = {
       buildProfile: "development-test",
       nativeContractsEnabled: true,
-      suite: "phase18-garmin-proof",
+      suite: "v1.2-acceptance",
       confirmation: PHASE18_GARMIN_PROOF_CONFIRMATION,
     };
     expect(phase18GarminProofEnabled(exact)).toBe(true);
     for (const input of [
       { ...exact, buildProfile: "production" },
       { ...exact, nativeContractsEnabled: false },
-      { ...exact, suite: "phase18" },
+      { ...exact, suite: "phase18-garmin-proof" },
       { ...exact, confirmation: "wrong-confirmation" },
       { ...exact, confirmation: undefined },
     ]) {

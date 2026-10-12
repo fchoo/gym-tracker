@@ -299,10 +299,10 @@ function RootLayoutAttempt({
   const phase12GoogleAuthSmokeEnabled =
     nativeContractsEnabled && pathname === "/__phase12-google-auth-smoke";
   const phase18GarminProofEnabled = nativeContractsEnabled
-    && nativeContractSuite === "phase18-garmin-proof"
+    && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__phase18-garmin-proof";
   const phase18GarminAdversarialEnabled = nativeContractsEnabled
-    && nativeContractSuite === "phase18-garmin-adversarial"
+    && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__phase18-garmin-adversarial";
 
   const isolatedNativeRoute = attendedPreviewEnabled

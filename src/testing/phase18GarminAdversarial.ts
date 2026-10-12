@@ -132,13 +132,15 @@ export function phase18GarminAdversarialEnabled(input: Readonly<{
   nativeContractsEnabled?: unknown;
   suite?: unknown;
   confirmation?: unknown;
+  operation?: unknown;
   nonce?: unknown;
   deviceIdentitySha256?: unknown;
 }>): boolean {
   return input.buildProfile === "development-test"
     && input.nativeContractsEnabled === true
-    && input.suite === "phase18-garmin-adversarial"
+    && input.suite === "v1.2-acceptance"
     && input.confirmation === PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION
+    && input.operation === "collect-adversarial"
     && typeof input.nonce === "string" && NONCE.test(input.nonce)
     && typeof input.deviceIdentitySha256 === "string" && HASH.test(input.deviceIdentitySha256);
 }

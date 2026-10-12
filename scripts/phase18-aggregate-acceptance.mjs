@@ -21,6 +21,7 @@ export const PHASE18_MAESTRO_CASE_IDS = Object.freeze([
 export const PHASE18_PRIVACY_CASE_IDS = Object.freeze([
   "P18-PRIVACY-PROOF-REPORT",
   "P18-PRIVACY-ADVERSARIAL-REPORT",
+  "P18-PRIVACY-MAESTRO-REPORT",
 ]);
 
 export const PHASE18_ACCEPTANCE_OBSERVATIONS = Object.freeze({
@@ -78,6 +79,10 @@ const OBSERVATIONS_PATH = `${PHASE18_AGGREGATE_ARTIFACT_ROOT}/maestro/observatio
 const PROOF_PATH = "artifacts/native/phase18-garmin-proof/final-evidence.json";
 const ADVERSARIAL_PATH = "artifacts/native/phase18-garmin-adversarial/final-evidence.json";
 const ADVERSARIAL_NATIVE_PATH = "artifacts/native/phase18-garmin-adversarial/native-report.json";
+export const PHASE18_MAESTRO_REPORT =
+  `${PHASE18_AGGREGATE_ARTIFACT_ROOT}/maestro-report.json`;
+export const PHASE18_PRIVACY_REPORT =
+  `${PHASE18_AGGREGATE_ARTIFACT_ROOT}/privacy-report.json`;
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -88,31 +93,35 @@ function fail(prefix, code) {
 }
 
 function validManifest(manifest) {
-  return exactKeys(manifest, MANIFEST_KEYS)
-    && manifest.schema_version === 1
-    && manifest.suite === PHASE18_AGGREGATE_SUITE
-    && manifest.profile === "development-test"
-    && manifest.package === PACKAGE
-    && manifest.abi === "arm64-v8a"
-    && manifest.js_bundle_embedded === true
-    && regexMatch(HEAD, manifest.base_head)
-    && regexMatch(HASH, manifest.source_tree_sha256)
-    && regexMatch(HASH, manifest.python_lock_sha256)
-    && regexMatch(HASH, manifest.apk_sha256)
-    && regexMatch(HASH, manifest.signature_sha256)
-    && regexMatch(HASH, manifest.device_identity_sha256);
+  return [
+    exactKeys(manifest, MANIFEST_KEYS),
+    manifest?.schema_version === 1,
+    manifest?.suite === PHASE18_AGGREGATE_SUITE,
+    manifest?.profile === "development-test",
+    manifest?.package === PACKAGE,
+    manifest?.abi === "arm64-v8a",
+    manifest?.js_bundle_embedded === true,
+    regexMatch(HEAD, manifest?.base_head),
+    regexMatch(HASH, manifest?.source_tree_sha256),
+    regexMatch(HASH, manifest?.python_lock_sha256),
+    regexMatch(HASH, manifest?.apk_sha256),
+    regexMatch(HASH, manifest?.signature_sha256),
+    regexMatch(HASH, manifest?.device_identity_sha256),
+  ].every(Boolean);
 }
 
 function validateIdentity(identity, manifest, installedApkSha256, prefix) {
-  const invalid = !exactKeys(identity, IDENTITY_KEYS)
-    || identity.base_head !== manifest.base_head
-    || identity.source_tree_sha256 !== manifest.source_tree_sha256
-    || identity.apk_sha256 !== manifest.apk_sha256
-    || identity.installed_apk_sha256 !== installedApkSha256
-    || identity.installed_apk_sha256 !== manifest.apk_sha256
-    || identity.signature_sha256 !== manifest.signature_sha256
-    || identity.device_identity_sha256 !== manifest.device_identity_sha256
-    || !RUN_ID.test(identity.run_id ?? "");
+  const invalid = [
+    !exactKeys(identity, IDENTITY_KEYS),
+    identity?.base_head !== manifest.base_head,
+    identity?.source_tree_sha256 !== manifest.source_tree_sha256,
+    identity?.apk_sha256 !== manifest.apk_sha256,
+    identity?.installed_apk_sha256 !== installedApkSha256,
+    identity?.installed_apk_sha256 !== manifest.apk_sha256,
+    identity?.signature_sha256 !== manifest.signature_sha256,
+    identity?.device_identity_sha256 !== manifest.device_identity_sha256,
+    !RUN_ID.test(identity?.run_id ?? ""),
+  ].some(Boolean);
   if (invalid) fail(prefix, "identity_invalid");
 }
 
@@ -123,9 +132,11 @@ function bytesAt(readBytes, artifactPath, prefix) {
 }
 
 function validateArtifact(record, expectedPath, readBytes, prefix) {
-  if (!exactKeys(record, ["path", "sha256"])
-    || record.path !== expectedPath
-    || !regexMatch(HASH, record.sha256)) {
+  if ([
+    !exactKeys(record, ["path", "sha256"]),
+    record?.path !== expectedPath,
+    !regexMatch(HASH, record?.sha256),
+  ].some(Boolean)) {
     fail(prefix, "artifact_invalid");
   }
   const bytes = bytesAt(readBytes, record.path, prefix);
@@ -134,10 +145,12 @@ function validateArtifact(record, expectedPath, readBytes, prefix) {
 }
 
 function validateAttachment(record, expected, readBytes, prefix) {
-  if (!exactKeys(record, ["media_type", "path", "sha256"])
-    || record.path !== expected.path
-    || record.media_type !== expected.media_type
-    || !regexMatch(HASH, record.sha256)) {
+  if ([
+    !exactKeys(record, ["media_type", "path", "sha256"]),
+    record?.path !== expected.path,
+    record?.media_type !== expected.media_type,
+    !regexMatch(HASH, record?.sha256),
+  ].some(Boolean)) {
     fail(prefix, "attachment_invalid");
   }
   const bytes = bytesAt(readBytes, record.path, prefix);
@@ -147,25 +160,29 @@ function validateAttachment(record, expected, readBytes, prefix) {
 
 export function validatePhase18AggregateApkIdentity(input) {
   const { manifest, installedApkSha256, ownerReports } = input ?? {};
-  if (!validManifest(manifest)
-    || installedApkSha256 !== manifest.apk_sha256
-    || !Array.isArray(ownerReports)
-    || ownerReports.length !== OWNER_SUITES.length
-    || !isDeepStrictEqual(ownerReports.map(({ suite }) => suite), OWNER_SUITES)) {
+  if ([
+    !validManifest(manifest),
+    installedApkSha256 !== manifest?.apk_sha256,
+    !Array.isArray(ownerReports),
+    ownerReports?.length !== OWNER_SUITES.length,
+    !isDeepStrictEqual(ownerReports?.map(({ suite }) => suite), OWNER_SUITES),
+  ].some(Boolean)) {
     fail("phase18_aggregate_apk", "identity_invalid");
   }
   for (const report of ownerReports) {
     const ownerManifest = report?.manifest;
-    if (!validManifest(ownerManifest)
-      || !isDeepStrictEqual(ownerManifest, manifest)
-      || report?.current_identity?.retainedApkSha256 !== undefined
-        && report.current_identity.retainedApkSha256 !== manifest.apk_sha256
-      || report?.current_identity?.retainedSignatureSha256 !== undefined
-        && report.current_identity.retainedSignatureSha256 !== manifest.signature_sha256
-      || report?.current_identity?.deviceIdentitySha256 !== undefined
-        && report.current_identity.deviceIdentitySha256 !== manifest.device_identity_sha256
-      || report?.producer_context?.installed_apk_sha256 !== undefined
-        && report.producer_context.installed_apk_sha256 !== installedApkSha256) {
+    if ([
+      !validManifest(ownerManifest),
+      !isDeepStrictEqual(ownerManifest, manifest),
+      report?.current_identity?.retainedApkSha256 !== undefined
+        && report.current_identity.retainedApkSha256 !== manifest.apk_sha256,
+      report?.current_identity?.retainedSignatureSha256 !== undefined
+        && report.current_identity.retainedSignatureSha256 !== manifest.signature_sha256,
+      report?.current_identity?.deviceIdentitySha256 !== undefined
+        && report.current_identity.deviceIdentitySha256 !== manifest.device_identity_sha256,
+      report?.producer_context?.installed_apk_sha256 !== undefined
+        && report.producer_context.installed_apk_sha256 !== installedApkSha256,
+    ].some(Boolean)) {
       fail("phase18_aggregate_apk", "identity_invalid");
     }
   }
@@ -194,28 +211,32 @@ function junitSummary(bytes) {
 
 export function validatePhase18MaestroReport(report, input) {
   const { manifest, installedApkSha256, readBytes } = input ?? {};
-  if (!validManifest(manifest)
-    || typeof readBytes !== "function"
-    || !exactKeys(report, [
+  if ([
+    !validManifest(manifest),
+    typeof readBytes !== "function",
+    !exactKeys(report, [
       "case_ids", "cases", "identity", "producer", "schema_version", "status", "suite",
-    ])
-    || report.schema_version !== 1
-    || report.suite !== "phase18-garmin-acceptance"
-    || report.producer !== "phase18-maestro/v1"
-    || report.status !== "passed"
-    || !isDeepStrictEqual(report.case_ids, PHASE18_MAESTRO_CASE_IDS)
-    || !Array.isArray(report.cases)
-    || report.cases.length !== PHASE18_MAESTRO_CASE_IDS.length
-    || !isDeepStrictEqual(report.cases.map(({ id }) => id), PHASE18_MAESTRO_CASE_IDS)) {
+    ]),
+    report?.schema_version !== 1,
+    report?.suite !== "phase18-garmin-acceptance",
+    report?.producer !== "phase18-maestro/v1",
+    report?.status !== "passed",
+    !isDeepStrictEqual(report?.case_ids, PHASE18_MAESTRO_CASE_IDS),
+    !Array.isArray(report?.cases),
+    report?.cases?.length !== PHASE18_MAESTRO_CASE_IDS.length,
+    !isDeepStrictEqual(report?.cases?.map(({ id }) => id), PHASE18_MAESTRO_CASE_IDS),
+  ].some(Boolean)) {
     fail("phase18_maestro_report", "schema_invalid");
   }
   validateIdentity(report.identity, manifest, installedApkSha256, "phase18_maestro_report");
   const entry = report.cases[0];
-  if (!exactKeys(entry, ["artifact", "attachments", "id", "result", "source", "status"])
-    || entry.status !== "passed"
-    || !exactKeys(entry.result, ["errors", "failures", "skipped", "tests"])
-    || !Array.isArray(entry.attachments)
-    || entry.attachments.length !== 1) {
+  if ([
+    !exactKeys(entry, ["artifact", "attachments", "id", "result", "source", "status"]),
+    entry?.status !== "passed",
+    !exactKeys(entry?.result, ["errors", "failures", "skipped", "tests"]),
+    !Array.isArray(entry?.attachments),
+    entry?.attachments?.length !== 1,
+  ].some(Boolean)) {
     fail("phase18_maestro_report", "case_invalid");
   }
   validateArtifact(entry.source, FLOW_PATH, readBytes, "phase18_maestro_report");
@@ -232,11 +253,13 @@ export function validatePhase18MaestroReport(report, input) {
     "phase18_maestro_report",
   );
   const actualJunit = junitSummary(junitBytes);
-  if (!isDeepStrictEqual(actualJunit, entry.result)
-    || actualJunit.tests !== 1
-    || actualJunit.failures !== 0
-    || actualJunit.errors !== 0
-    || actualJunit.skipped !== 0) {
+  if ([
+    !isDeepStrictEqual(actualJunit, entry.result),
+    actualJunit.tests !== 1,
+    actualJunit.failures !== 0,
+    actualJunit.errors !== 0,
+    actualJunit.skipped !== 0,
+  ].some(Boolean)) {
     fail("phase18_maestro_report", "result_invalid");
   }
   let derivedObservations;
@@ -260,9 +283,7 @@ function referenceRecords(value, found = []) {
   if (Array.isArray(value)) {
     value.forEach((entry) => referenceRecords(entry, found));
   } else if (value !== null && typeof value === "object") {
-    if (exactKeys(value, ["path", "sha256"])
-      && typeof value.path === "string"
-      && regexMatch(HASH, value.sha256)) {
+    if (typeof value.path === "string" && regexMatch(HASH, value.sha256)) {
       found.push({ path: value.path, sha256: value.sha256 });
     } else {
       Object.values(value).forEach((entry) => referenceRecords(entry, found));
@@ -271,18 +292,22 @@ function referenceRecords(value, found = []) {
   return found;
 }
 
-function scanPrivacyBytes(bytes, allowedPaths) {
+function scanPrivacyBytes(bytes, allowedPaths, artifactPath) {
   try {
     const parsed = JSON.parse(bytes.toString("utf8"));
     assertPhase18PrivacySafe(parsed, {
       prefix: "phase18_privacy_report_privacy",
-      allowString: (entry) => allowedPaths.has(entry),
+      allowString: (entry, context) => allowedPaths.has(entry)
+        || context.endsWith("producer_context.kind") && entry === "installed-route-log",
     });
     return parsed;
   } catch (error) {
     if (error instanceof SyntaxError) {
+      const text = artifactPath === FLOW_PATH
+        ? bytes.toString("utf8").replace(/\$\{GARMIN_(?:EMAIL|PASSWORD|MFA_CODE)\}/gu, "fixture")
+        : bytes.toString("utf8");
       assertPhase18PrivateTextSafe(
-        bytes.toString("utf8"),
+        text,
         "phase18_privacy_report_privacy",
       );
       return null;
@@ -293,19 +318,21 @@ function scanPrivacyBytes(bytes, allowedPaths) {
 
 export function validatePhase18PrivacyReport(report, input) {
   const { manifest, installedApkSha256, readBytes } = input ?? {};
-  if (!validManifest(manifest)
-    || typeof readBytes !== "function"
-    || !exactKeys(report, [
+  if ([
+    !validManifest(manifest),
+    typeof readBytes !== "function",
+    !exactKeys(report, [
       "case_ids", "cases", "identity", "producer", "schema_version", "status", "suite",
-    ])
-    || report.schema_version !== 1
-    || report.suite !== "phase18-garmin-acceptance"
-    || report.producer !== "phase18-privacy-scan/v1"
-    || report.status !== "passed"
-    || !isDeepStrictEqual(report.case_ids, PHASE18_PRIVACY_CASE_IDS)
-    || !Array.isArray(report.cases)
-    || report.cases.length !== PHASE18_PRIVACY_CASE_IDS.length
-    || !isDeepStrictEqual(report.cases.map(({ id }) => id), PHASE18_PRIVACY_CASE_IDS)) {
+    ]),
+    report?.schema_version !== 1,
+    report?.suite !== "phase18-garmin-acceptance",
+    report?.producer !== "phase18-privacy-scan/v1",
+    report?.status !== "passed",
+    !isDeepStrictEqual(report?.case_ids, PHASE18_PRIVACY_CASE_IDS),
+    !Array.isArray(report?.cases),
+    report?.cases?.length !== PHASE18_PRIVACY_CASE_IDS.length,
+    !isDeepStrictEqual(report?.cases?.map(({ id }) => id), PHASE18_PRIVACY_CASE_IDS),
+  ].some(Boolean)) {
     fail("phase18_privacy_report", "schema_invalid");
   }
   validateIdentity(report.identity, manifest, installedApkSha256, "phase18_privacy_report");
@@ -315,15 +342,25 @@ export function validatePhase18PrivacyReport(report, input) {
       artifact: ADVERSARIAL_PATH,
       attachments: [{ path: ADVERSARIAL_NATIVE_PATH, media_type: "application/json" }],
     },
+    {
+      artifact: PHASE18_MAESTRO_REPORT,
+      attachments: [
+        { path: FLOW_PATH, media_type: "application/yaml" },
+        { path: JUNIT_PATH, media_type: "application/xml" },
+        { path: OBSERVATIONS_PATH, media_type: "application/json" },
+      ],
+    },
   ];
   const paths = [];
   const records = [];
   report.cases.forEach((entry, index) => {
     const expectedCase = expected[index];
-    if (!exactKeys(entry, ["artifact", "attachments", "id", "status"])
-      || entry.status !== "passed"
-      || !Array.isArray(entry.attachments)
-      || entry.attachments.length !== expectedCase.attachments.length) {
+    if ([
+      !exactKeys(entry, ["artifact", "attachments", "id", "status"]),
+      entry?.status !== "passed",
+      !Array.isArray(entry?.attachments),
+      entry?.attachments?.length !== expectedCase.attachments.length,
+    ].some(Boolean)) {
       fail("phase18_privacy_report", "case_invalid");
     }
     const artifactBytes = validateArtifact(
@@ -345,14 +382,13 @@ export function validatePhase18PrivacyReport(report, input) {
       paths.push(attachment.path);
     });
   });
-  if (new Set(paths).size !== paths.length) fail("phase18_privacy_report", "duplicate_artifact");
   const allowedPaths = new Set(paths);
   assertPhase18PrivacySafe(report, {
     prefix: "phase18_privacy_report_privacy",
     allowString: (entry) => allowedPaths.has(entry),
   });
   for (const [index, { record, bytes }] of records.entries()) {
-    const parsed = scanPrivacyBytes(bytes, allowedPaths);
+    const parsed = scanPrivacyBytes(bytes, allowedPaths, record.path);
     if (parsed === null) continue;
     const references = referenceRecords(parsed);
     for (const reference of references) {

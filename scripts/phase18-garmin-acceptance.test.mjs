@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import test from "node:test";
 
 import {
   PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT,
+  collectPhase18OwnerRoutes,
   createPhase18GarminAcceptanceRawReport,
   createPhase18GarminAcceptanceRunnerPlan,
   executePhase18GarminAcceptanceRunner,
@@ -18,8 +19,17 @@ import {
   executePhase18GarminAcceptanceVerifier,
   executePhase18GarminAcceptanceVerifierCli,
   validatePhase18GarminAcceptanceCurrentIdentity,
+  validatePhase18GarminAcceptanceDerivedEvidence,
   validatePhase18GarminAcceptanceEvidence,
 } from "./verify-phase18-garmin-acceptance.mjs";
+import {
+  PHASE18_AGGREGATE_APK,
+  PHASE18_AGGREGATE_SUITE,
+  PHASE18_MAESTRO_CASE_IDS,
+  PHASE18_MAESTRO_REPORT,
+  PHASE18_PRIVACY_CASE_IDS,
+  PHASE18_PRIVACY_REPORT,
+} from "./phase18-aggregate-acceptance.mjs";
 
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
@@ -27,11 +37,16 @@ const MANIFEST_PATH = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/build.json`;
 const RECORD_PATH = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/acceptance-record.json`;
 const PROOF_PATH = "artifacts/native/phase18-garmin-proof/final-evidence.json";
 const ADVERSARIAL_PATH = "artifacts/native/phase18-garmin-adversarial/final-evidence.json";
+const ADVERSARIAL_NATIVE_PATH = "artifacts/native/phase18-garmin-adversarial/native-report.json";
+const MAESTRO_SOURCE_PATH = "maestro/phase18/garmin-sync.yaml";
+const MAESTRO_JUNIT_PATH = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro/garmin-sync.xml`;
+const MAESTRO_OBSERVATIONS_PATH = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro/observations.json`;
+const RUN_ID = "phase18-20261012-abcdef0";
 
 function manifest(overrides = {}) {
   return {
     schema_version: 1,
-    suite: "phase18-garmin-acceptance",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     package: "com.fchoo.gymtracker.devtest",
     abi: "arm64-v8a",
@@ -49,14 +64,14 @@ function manifest(overrides = {}) {
 function retainedManifest() {
   return {
     schema_version: 1,
-    suite: "phase18-garmin-acceptance",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     build_variant: "release",
     js_bundle: { embedded: true },
     base_head: HEAD,
     source_tree_sha256: HASH,
     package: "com.fchoo.gymtracker.devtest",
-    apk: { path: `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-acceptance-devtest.apk`, sha256: HASH, page_alignment_verified: true },
+    apk: { path: PHASE18_AGGREGATE_APK, sha256: HASH, page_alignment_verified: true },
     installed_apk: { sha256: HASH, matches_retained_apk: true },
     device: { abi: "arm64-v8a", identity_sha256: HASH },
   };
@@ -78,6 +93,87 @@ const observations = {
   reduced_motion: true,
   process_restart: true,
 };
+
+function sourceOwnedReports(bytes, current) {
+  const digest = (value) => createHash("sha256").update(value).digest("hex");
+  const identity = {
+    base_head: current.currentHead,
+    source_tree_sha256: current.currentSourceTreeSha256,
+    apk_sha256: current.retainedApkSha256,
+    installed_apk_sha256: current.installedApkSha256,
+    signature_sha256: current.retainedSignatureSha256,
+    device_identity_sha256: current.deviceIdentitySha256,
+    run_id: RUN_ID,
+  };
+  bytes.set(MAESTRO_SOURCE_PATH, Buffer.from("appId: com.fchoo.gymtracker.devtest\n"));
+  bytes.set(
+    MAESTRO_JUNIT_PATH,
+    Buffer.from('<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase name="garmin-sync"/></testsuite>'),
+  );
+  bytes.set(MAESTRO_OBSERVATIONS_PATH, Buffer.from(`${JSON.stringify(observations)}\n`));
+  const maestro = {
+    schema_version: 1,
+    suite: "phase18-garmin-acceptance",
+    producer: "phase18-maestro/v1",
+    status: "passed",
+    identity,
+    case_ids: PHASE18_MAESTRO_CASE_IDS,
+    cases: [{
+      id: PHASE18_MAESTRO_CASE_IDS[0],
+      status: "passed",
+      source: { path: MAESTRO_SOURCE_PATH, sha256: digest(bytes.get(MAESTRO_SOURCE_PATH)) },
+      result: { tests: 1, failures: 0, errors: 0, skipped: 0 },
+      artifact: { path: MAESTRO_JUNIT_PATH, sha256: digest(bytes.get(MAESTRO_JUNIT_PATH)) },
+      attachments: [{
+        path: MAESTRO_OBSERVATIONS_PATH,
+        sha256: digest(bytes.get(MAESTRO_OBSERVATIONS_PATH)),
+        media_type: "application/json",
+      }],
+    }],
+  };
+  bytes.set(PHASE18_MAESTRO_REPORT, Buffer.from(`${JSON.stringify(maestro)}\n`));
+  if (!bytes.has(ADVERSARIAL_NATIVE_PATH)) {
+    bytes.set(ADVERSARIAL_NATIVE_PATH, Buffer.from('{"schema_version":1,"status":"passed"}\n'));
+  }
+  const privacy = {
+    schema_version: 1,
+    suite: "phase18-garmin-acceptance",
+    producer: "phase18-privacy-scan/v1",
+    status: "passed",
+    identity,
+    case_ids: PHASE18_PRIVACY_CASE_IDS,
+    cases: [
+      {
+        id: PHASE18_PRIVACY_CASE_IDS[0],
+        status: "passed",
+        artifact: { path: PROOF_PATH, sha256: digest(bytes.get(PROOF_PATH)) },
+        attachments: [],
+      },
+      {
+        id: PHASE18_PRIVACY_CASE_IDS[1],
+        status: "passed",
+        artifact: { path: ADVERSARIAL_PATH, sha256: digest(bytes.get(ADVERSARIAL_PATH)) },
+        attachments: [{
+          path: ADVERSARIAL_NATIVE_PATH,
+          sha256: digest(bytes.get(ADVERSARIAL_NATIVE_PATH)),
+          media_type: "application/json",
+        }],
+      },
+      {
+        id: PHASE18_PRIVACY_CASE_IDS[2],
+        status: "passed",
+        artifact: { path: PHASE18_MAESTRO_REPORT, sha256: digest(bytes.get(PHASE18_MAESTRO_REPORT)) },
+        attachments: [
+          { path: MAESTRO_SOURCE_PATH, sha256: digest(bytes.get(MAESTRO_SOURCE_PATH)), media_type: "application/yaml" },
+          { path: MAESTRO_JUNIT_PATH, sha256: digest(bytes.get(MAESTRO_JUNIT_PATH)), media_type: "application/xml" },
+          { path: MAESTRO_OBSERVATIONS_PATH, sha256: digest(bytes.get(MAESTRO_OBSERVATIONS_PATH)), media_type: "application/json" },
+        ],
+      },
+    ],
+  };
+  bytes.set(PHASE18_PRIVACY_REPORT, Buffer.from(`${JSON.stringify(privacy)}\n`));
+  return { maestro, privacy };
+}
 
 function captureCli(fn, argv) {
   const originalArgv = process.argv;
@@ -144,7 +240,7 @@ function validProofEvidence(current) {
     status: "passed",
     manifest: {
       schema_version: 1,
-      suite: "phase18-garmin-proof",
+      suite: PHASE18_AGGREGATE_SUITE,
       profile: "development-test",
       package: "com.fchoo.gymtracker.devtest",
       abi: "arm64-v8a",
@@ -207,7 +303,7 @@ function validAdversarialEvidence(current) {
     status: "passed",
     manifest: {
       schema_version: 1,
-      suite: "phase18-garmin-adversarial",
+      suite: PHASE18_AGGREGATE_SUITE,
       profile: "development-test",
       package: "com.fchoo.gymtracker.devtest",
       abi: "arm64-v8a",
@@ -320,8 +416,55 @@ function evidence(overrides = {}) {
       scanned_artifact_count: 4,
       report_sha256: HASH,
     },
+    run_identity: { run_id: RUN_ID },
     ...overrides,
   });
+}
+
+function aggregateRunnerFixture() {
+  const exact = evidence();
+  const currentIdentity = {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+  };
+  const proof = validProofEvidence(currentIdentity);
+  const nativeBytes = Buffer.from('{"schema_version":1,"status":"passed"}\n');
+  const adversarial = validAdversarialEvidence({
+    ...currentIdentity,
+    nativeReportSha256: createHash("sha256").update(nativeBytes).digest("hex"),
+  });
+  const bytes = new Map([
+    [PROOF_PATH, Buffer.from(JSON.stringify(proof))],
+    [ADVERSARIAL_PATH, Buffer.from(JSON.stringify(adversarial))],
+    [ADVERSARIAL_NATIVE_PATH, nativeBytes],
+  ]);
+  const reports = sourceOwnedReports(bytes, currentIdentity);
+  const owners = [
+    { artifact: PROOF_PATH, evidence: proof, bytes: bytes.get(PROOF_PATH) },
+    { artifact: ADVERSARIAL_PATH, evidence: adversarial, bytes: bytes.get(ADVERSARIAL_PATH) },
+  ];
+  const record = {
+    cases: exact.cases,
+    current_identity: currentIdentity,
+  };
+  const dependencies = {
+    readJson: (artifactPath) => {
+      if (artifactPath === MANIFEST_PATH) return retainedManifest();
+      if (artifactPath === RECORD_PATH) return record;
+      if (artifactPath === PHASE18_MAESTRO_REPORT) return reports.maestro;
+      if (artifactPath === PHASE18_PRIVACY_REPORT) return reports.privacy;
+      throw new Error(`unexpected path: ${artifactPath}`);
+    },
+    readBytes: (artifactPath) => bytes.get(artifactPath),
+    collectOwnerRoutes: () => owners,
+    writeReport: () => {},
+  };
+  return { bytes, currentIdentity, dependencies, owners, record, reports };
 }
 
 test("Phase 18 acceptance runner is inert without the explicit Phase 20 native gate", () => {
@@ -377,6 +520,98 @@ test("runner plan owns one ordered ledger and separate exact native prerequisite
   assert.equal(plan.mock_to_real_relabeling, "prohibited");
 });
 
+test("aggregate runner collects proof and adversarial routes against one unchanged manifest", () => {
+  const calls = [];
+  const current = {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+  };
+  const proofEvidence = validProofEvidence(current);
+  const adversarialEvidence = validAdversarialEvidence(current);
+  const result = collectPhase18OwnerRoutes({
+    runProof: (args) => {
+      calls.push(["proof-runner", args]);
+      return { status: "passed" };
+    },
+    verifyProof: (args) => {
+      calls.push(["proof-verifier", args]);
+      return { status: "passed", cases: 7 };
+    },
+    runAdversarial: (args) => {
+      calls.push(["adversarial-runner", args]);
+      return { status: "passed" };
+    },
+    verifyAdversarial: (args) => {
+      calls.push(["adversarial-verifier", args]);
+      return { status: "passed", cases: 16 };
+    },
+    readJson: (artifactPath) => artifactPath === PROOF_PATH
+      ? proofEvidence
+      : adversarialEvidence,
+    readBytes: (artifactPath) => Buffer.from(JSON.stringify(
+      artifactPath === PROOF_PATH ? proofEvidence : adversarialEvidence,
+    )),
+  });
+  assert.deepEqual(calls, [
+    ["proof-runner", ["--manifest", MANIFEST_PATH, "--execute", "--phase20-native-checkpoint"]],
+    ["proof-verifier", ["--manifest", MANIFEST_PATH, "--seal", "--phase20-native-checkpoint"]],
+    ["adversarial-runner", ["--manifest", MANIFEST_PATH, "--record", "artifacts/native/phase18-garmin-adversarial/native-record.json", "--execute", "--phase20-native-checkpoint"]],
+    ["adversarial-verifier", ["--manifest", MANIFEST_PATH, "--seal", "--phase20-native-checkpoint"]],
+  ]);
+  assert.deepEqual(result.map(({ artifact, evidence }) => ({ artifact, suite: evidence.suite })), [
+    { artifact: PROOF_PATH, suite: "phase18-garmin-proof" },
+    { artifact: ADVERSARIAL_PATH, suite: "phase18-garmin-adversarial" },
+  ]);
+  assert.deepEqual(result.map(({ evidence }) => evidence.manifest.apk_sha256), [HASH, HASH]);
+});
+
+test("aggregate owner collection rejects failed, malformed, and identity-drifted subreports", () => {
+  const current = {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+  };
+  const proof = validProofEvidence(current);
+  const adversarial = validAdversarialEvidence(current);
+  const base = {
+    runProof: () => ({ status: "passed" }),
+    verifyProof: () => ({ status: "passed" }),
+    runAdversarial: () => ({ status: "passed" }),
+    verifyAdversarial: () => ({ status: "passed" }),
+    readJson: (artifactPath) => artifactPath === PROOF_PATH ? proof : adversarial,
+    readBytes: () => Buffer.from("owner"),
+  };
+  assert.throws(() => collectPhase18OwnerRoutes({
+    ...base,
+    runProof: () => ({ status: "TECHNICAL_REVIEW_REQUIRED" }),
+  }), /phase18_acceptance_owner_route_failed/u);
+  assert.throws(() => collectPhase18OwnerRoutes({
+    ...base,
+    readBytes: () => "not-bytes",
+  }), /phase18_acceptance_owner_route_invalid/u);
+  assert.throws(() => collectPhase18OwnerRoutes({
+    ...base,
+    readJson: (artifactPath) => artifactPath === PROOF_PATH
+      ? { ...proof, status: "TECHNICAL_REVIEW_REQUIRED" }
+      : adversarial,
+  }), /phase18_acceptance_owner_route_invalid/u);
+  assert.throws(() => collectPhase18OwnerRoutes({
+    ...base,
+    readJson: (artifactPath) => artifactPath === PROOF_PATH
+      ? proof
+      : { ...adversarial, manifest: manifest({ signature_sha256: "c".repeat(64) }) },
+  }), /phase18_acceptance_owner_route_identity_invalid/u);
+});
+
 test("manifest binds source, Python lock, APK, signature, package, profile, and ARM64 device", () => {
   assert.equal(validatePhase18GarminAcceptanceManifest(manifest(), {
     currentHead: HEAD,
@@ -424,33 +659,140 @@ test("verifier accepts deterministic host PASS with exact native work still defe
 test("acceptance runner consumes the shared nested builder manifest", () => {
   const exact = evidence();
   const writes = [];
+  const ownerIdentity = {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+  };
+  const proofEvidence = validProofEvidence(ownerIdentity);
+  const nativeBytes = Buffer.from('{"schema_version":1,"status":"passed"}\n');
+  const nativeReportSha256 = createHash("sha256").update(nativeBytes).digest("hex");
+  const adversarialEvidence = validAdversarialEvidence({
+    ...ownerIdentity,
+    nativeReportSha256,
+  });
+  const bytes = new Map([
+    [PROOF_PATH, Buffer.from(JSON.stringify(proofEvidence))],
+    [ADVERSARIAL_PATH, Buffer.from(JSON.stringify(adversarialEvidence))],
+    [ADVERSARIAL_NATIVE_PATH, nativeBytes],
+  ]);
+  const sourceReports = sourceOwnedReports(bytes, {
+    ...ownerIdentity,
+    installedApkSha256: HASH,
+  });
   const result = executePhase18GarminAcceptanceRunner([
     "--manifest", MANIFEST_PATH,
     "--record", RECORD_PATH,
     "--execute",
     "--phase20-native-checkpoint",
   ], {
-    readJson: (path) => path === MANIFEST_PATH
-      ? retainedManifest()
-      : {
+    readJson: (path) => {
+      if (path === MANIFEST_PATH) return retainedManifest();
+      if (path === PHASE18_MAESTRO_REPORT) return sourceReports.maestro;
+      if (path === PHASE18_PRIVACY_REPORT) return sourceReports.privacy;
+      return {
         cases: exact.cases,
-        observations: exact.observations,
-        native_flow: exact.native_flow,
-        privacy_scan: exact.privacy_scan,
         current_identity: {
           currentHead: HEAD,
           currentSourceTreeSha256: HASH,
           currentPythonLockSha256: HASH,
           retainedApkSha256: HASH,
+          installedApkSha256: HASH,
           retainedSignatureSha256: HASH,
           deviceIdentitySha256: HASH,
         },
+      };
+    },
+    readBytes: (artifactPath) => bytes.get(artifactPath),
+    collectOwnerRoutes: () => [
+      {
+        artifact: PROOF_PATH,
+        evidence: proofEvidence,
+        bytes: bytes.get(PROOF_PATH),
       },
+      {
+        artifact: ADVERSARIAL_PATH,
+        evidence: adversarialEvidence,
+        bytes: bytes.get(ADVERSARIAL_PATH),
+      },
+    ],
     writeReport: (report) => writes.push(report),
   });
-  assert.equal(result.status, "host-passed-native-deferred");
+  assert.equal(result.status, "passed");
   assert.equal(writes.length, 1);
   assert.deepEqual(writes[0].manifest, manifest());
+  assert.deepEqual(writes[0].cases.slice(-2).map(({ status }) => status), [
+    "verified",
+    "verified",
+  ]);
+});
+
+test("aggregate runner fails closed on installed, owner, and run identity drift", () => {
+  const args = [
+    "--manifest", MANIFEST_PATH,
+    "--record", RECORD_PATH,
+    "--execute",
+    "--phase20-native-checkpoint",
+  ];
+  const installed = aggregateRunnerFixture();
+  assert.throws(() => executePhase18GarminAcceptanceRunner(args, {
+    ...installed.dependencies,
+    readJson: (artifactPath) => artifactPath === RECORD_PATH
+      ? {
+        ...installed.record,
+        current_identity: {
+          ...installed.currentIdentity,
+          installedApkSha256: "c".repeat(64),
+        },
+      }
+      : installed.dependencies.readJson(artifactPath),
+  }), /phase18_acceptance_installed_apk_identity_invalid/u);
+
+  const owner = aggregateRunnerFixture();
+  assert.throws(() => executePhase18GarminAcceptanceRunner(args, {
+    ...owner.dependencies,
+    collectOwnerRoutes: () => owner.owners.map((entry, index) => index === 0
+      ? {
+        ...entry,
+        evidence: { ...entry.evidence, manifest: manifest({ signature_sha256: "c".repeat(64) }) },
+      }
+      : entry),
+  }), /phase18_acceptance_owner_route_identity_invalid/u);
+
+  const run = aggregateRunnerFixture();
+  assert.throws(() => executePhase18GarminAcceptanceRunner(args, {
+    ...run.dependencies,
+    readJson: (artifactPath) => artifactPath === PHASE18_PRIVACY_REPORT
+      ? {
+        ...run.reports.privacy,
+        identity: { ...run.reports.privacy.identity, run_id: "phase18-20261012-bbbbbbb" },
+      }
+      : run.dependencies.readJson(artifactPath),
+  }), /phase18_acceptance_run_identity_invalid/u);
+});
+
+test("aggregate runner default writer publishes only the derived raw report", () => {
+  const args = [
+    "--manifest", MANIFEST_PATH,
+    "--record", RECORD_PATH,
+    "--execute",
+    "--phase20-native-checkpoint",
+  ];
+  const fixture = aggregateRunnerFixture();
+  const outputPath = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/raw-report.json`;
+  mkdirSync(PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT, { recursive: true });
+  rmSync(outputPath, { force: true });
+  try {
+    const { writeReport: _ignored, ...dependencies } = fixture.dependencies;
+    assert.equal(executePhase18GarminAcceptanceRunner(args, dependencies).status, "passed");
+    assert.equal(existsSync(outputPath), true);
+    assert.equal(JSON.parse(readFileSync(outputPath, "utf8")).run_identity.run_id, RUN_ID);
+  } finally {
+    rmSync(outputPath, { force: true });
+  }
 });
 
 test("verifier accepts native completion only from the two exact artifact identities", () => {
@@ -514,15 +856,31 @@ test("verifier rejects stale report and artifact identities", () => {
   }
 });
 
+test("derived aggregate identity rejects count and either source-owned run drift", () => {
+  const exact = evidence();
+  const maestro = { identity: { run_id: RUN_ID } };
+  const privacy = { identity: { run_id: RUN_ID } };
+  const summary = { scanned_artifact_count: exact.privacy_scan.scanned_artifact_count };
+  assert.equal(
+    validatePhase18GarminAcceptanceDerivedEvidence(exact, maestro, privacy, summary),
+    true,
+  );
+  for (const [changedMaestro, changedPrivacy, changedSummary] of [
+    [maestro, privacy, { scanned_artifact_count: 99 }],
+    [{ identity: { run_id: "phase18-20261012-bbbbbbb" } }, privacy, summary],
+    [maestro, { identity: { run_id: "phase18-20261012-bbbbbbb" } }, summary],
+  ]) {
+    assert.throws(() => validatePhase18GarminAcceptanceDerivedEvidence(
+      exact,
+      changedMaestro,
+      changedPrivacy,
+      changedSummary,
+    ), /phase18_acceptance_evidence_observations_invalid/u);
+  }
+});
+
 test("CLI verifier resolves current identity and hashes every owner, Maestro, and privacy artifact", () => {
-  const maestroSourcePath = "maestro/phase18/garmin-sync.yaml";
-  const maestroReportPath = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro-report.json`;
-  const privacyReportPath = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/privacy-report.json`;
-  const bytes = new Map([
-    [maestroSourcePath, Buffer.from("flow")],
-    [maestroReportPath, Buffer.from("maestro")],
-    [privacyReportPath, Buffer.from("privacy")],
-  ]);
+  const bytes = new Map();
   const digest = (value) => createHash("sha256").update(value).digest("hex");
   const current = {
     currentHead: HEAD,
@@ -534,11 +892,17 @@ test("CLI verifier resolves current identity and hashes every owner, Maestro, an
     deviceIdentitySha256: HASH,
   };
   const proofEvidence = validProofEvidence(current);
-  const adversarialEvidence = validAdversarialEvidence(current);
+  const nativeBytes = Buffer.from('{"schema_version":1,"status":"passed"}\n');
+  bytes.set(ADVERSARIAL_NATIVE_PATH, nativeBytes);
+  const adversarialEvidence = validAdversarialEvidence({
+    ...current,
+    nativeReportSha256: digest(nativeBytes),
+  });
   const proofBytes = Buffer.from(JSON.stringify(proofEvidence));
   const adversarialBytes = Buffer.from(JSON.stringify(adversarialEvidence));
   bytes.set(PROOF_PATH, proofBytes);
   bytes.set(ADVERSARIAL_PATH, adversarialBytes);
+  const sourceReports = sourceOwnedReports(bytes, current);
   const exact = evidence({
     cases: cases({ nativeStatus: "verified" }).map((entry) => entry.id === "P18-NATIVE-18-03-REAL-ACCOUNT"
       ? { ...entry, artifact_sha256: digest(bytes.get(PROOF_PATH)) }
@@ -546,14 +910,14 @@ test("CLI verifier resolves current identity and hashes every owner, Maestro, an
         ? { ...entry, artifact_sha256: digest(bytes.get(ADVERSARIAL_PATH)) }
         : entry),
     native_flow: {
-      path: maestroSourcePath,
-      source_sha256: digest(bytes.get(maestroSourcePath)),
-      report_sha256: digest(bytes.get(maestroReportPath)),
+      path: MAESTRO_SOURCE_PATH,
+      source_sha256: digest(bytes.get(MAESTRO_SOURCE_PATH)),
+      report_sha256: digest(bytes.get(PHASE18_MAESTRO_REPORT)),
     },
     privacy_scan: {
       status: "passed",
-      scanned_artifact_count: 4,
-      report_sha256: digest(bytes.get(privacyReportPath)),
+      scanned_artifact_count: 7,
+      report_sha256: digest(bytes.get(PHASE18_PRIVACY_REPORT)),
     },
   });
   const ownerCalls = [];
@@ -566,8 +930,8 @@ test("CLI verifier resolves current identity and hashes every owner, Maestro, an
     readJson: (artifactPath) => {
       if (artifactPath === MANIFEST_PATH) return retainedManifest();
       if (artifactPath.endsWith("raw-report.json")) return exact;
-      if (artifactPath === maestroReportPath) return { status: "passed", observations };
-      if (artifactPath === privacyReportPath) return { status: "passed", scanned_artifact_count: 4 };
+      if (artifactPath === PHASE18_MAESTRO_REPORT) return sourceReports.maestro;
+      if (artifactPath === PHASE18_PRIVACY_REPORT) return sourceReports.privacy;
       if (artifactPath === PROOF_PATH) return proofEvidence;
       if (artifactPath === ADVERSARIAL_PATH) return adversarialEvidence;
       throw new Error(`unexpected path: ${artifactPath}`);
@@ -582,14 +946,7 @@ test("CLI verifier resolves current identity and hashes every owner, Maestro, an
 });
 
 test("verifier fails closed on report identity and Maestro or privacy observation drift", () => {
-  const maestroSourcePath = "maestro/phase18/garmin-sync.yaml";
-  const maestroReportPath = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro-report.json`;
-  const privacyReportPath = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/privacy-report.json`;
-  const bytes = new Map([
-    [maestroSourcePath, Buffer.from("flow")],
-    [maestroReportPath, Buffer.from("maestro")],
-    [privacyReportPath, Buffer.from("privacy")],
-  ]);
+  const bytes = new Map();
   const digest = (value) => createHash("sha256").update(value).digest("hex");
   const current = {
     currentHead: HEAD,
@@ -601,11 +958,17 @@ test("verifier fails closed on report identity and Maestro or privacy observatio
     deviceIdentitySha256: HASH,
   };
   const proofEvidence = validProofEvidence(current);
-  const adversarialEvidence = validAdversarialEvidence(current);
+  const nativeBytes = Buffer.from('{"schema_version":1,"status":"passed"}\n');
+  bytes.set(ADVERSARIAL_NATIVE_PATH, nativeBytes);
+  const adversarialEvidence = validAdversarialEvidence({
+    ...current,
+    nativeReportSha256: digest(nativeBytes),
+  });
   const proofBytes = Buffer.from(JSON.stringify(proofEvidence));
   const adversarialBytes = Buffer.from(JSON.stringify(adversarialEvidence));
   bytes.set(PROOF_PATH, proofBytes);
   bytes.set(ADVERSARIAL_PATH, adversarialBytes);
+  const sourceReports = sourceOwnedReports(bytes, current);
   const exact = evidence({
     cases: cases({ nativeStatus: "verified" }).map((entry) => entry.id === "P18-NATIVE-18-03-REAL-ACCOUNT"
       ? { ...entry, artifact_sha256: digest(bytes.get(PROOF_PATH)) }
@@ -613,21 +976,21 @@ test("verifier fails closed on report identity and Maestro or privacy observatio
         ? { ...entry, artifact_sha256: digest(bytes.get(ADVERSARIAL_PATH)) }
         : entry),
     native_flow: {
-      path: maestroSourcePath,
-      source_sha256: digest(bytes.get(maestroSourcePath)),
-      report_sha256: digest(bytes.get(maestroReportPath)),
+      path: MAESTRO_SOURCE_PATH,
+      source_sha256: digest(bytes.get(MAESTRO_SOURCE_PATH)),
+      report_sha256: digest(bytes.get(PHASE18_MAESTRO_REPORT)),
     },
     privacy_scan: {
       status: "passed",
-      scanned_artifact_count: 4,
-      report_sha256: digest(bytes.get(privacyReportPath)),
+      scanned_artifact_count: 7,
+      report_sha256: digest(bytes.get(PHASE18_PRIVACY_REPORT)),
     },
   });
   const readJson = (artifactPath) => {
     if (artifactPath === MANIFEST_PATH) return retainedManifest();
     if (artifactPath.endsWith("raw-report.json")) return exact;
-    if (artifactPath === maestroReportPath) return { status: "passed", observations };
-    if (artifactPath === privacyReportPath) return { status: "passed", scanned_artifact_count: 4 };
+    if (artifactPath === PHASE18_MAESTRO_REPORT) return sourceReports.maestro;
+    if (artifactPath === PHASE18_PRIVACY_REPORT) return sourceReports.privacy;
     if (artifactPath === PROOF_PATH) return proofEvidence;
     if (artifactPath === ADVERSARIAL_PATH) return adversarialEvidence;
     throw new Error(`unexpected path: ${artifactPath}`);
@@ -661,15 +1024,35 @@ test("verifier fails closed on report identity and Maestro or privacy observatio
     ], {
       resolveCurrentIdentity: () => current,
       readBytes: (artifactPath) => bytes.get(artifactPath),
+      readJson: (artifactPath) => artifactPath.endsWith("raw-report.json")
+        ? {
+          ...exact,
+          privacy_scan: { ...exact.privacy_scan, scanned_artifact_count: 6 },
+        }
+        : readJson(artifactPath),
+      verifyOwnerArtifact: () => {},
+    }),
+    /phase18_acceptance_evidence_observations_invalid/u,
+  );
+
+  assert.throws(
+    () => executePhase18GarminAcceptanceVerifier([
+      "--manifest", MANIFEST_PATH,
+    ], {
+      resolveCurrentIdentity: () => current,
+      readBytes: (artifactPath) => bytes.get(artifactPath),
       readJson: (artifactPath) => {
-        if (artifactPath === maestroReportPath) {
-          return { status: "passed", observations: { ...observations, reduced_motion: false } };
+        if (artifactPath === PHASE18_MAESTRO_REPORT) {
+          return {
+            ...sourceReports.maestro,
+            cases: [{ ...sourceReports.maestro.cases[0], status: "skipped" }],
+          };
         }
         return readJson(artifactPath);
       },
       verifyOwnerArtifact: () => {},
     }),
-    /phase18_acceptance_evidence_observations_invalid/u,
+    /phase18_maestro_report_case_invalid/u,
   );
 });
 

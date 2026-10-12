@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 
 import { createHash, randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
+import {
+  PHASE18_AGGREGATE_MANIFEST,
+  PHASE18_AGGREGATE_SUITE,
+} from "./phase18-aggregate-acceptance.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 import {
@@ -25,7 +30,7 @@ export const PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT =
 export const PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT =
   `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/raw-report.json`;
 
-const MANIFEST = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/build.json`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
 const RECORD = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-record.json`;
 const NATIVE_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`;
 const PRIVACY_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/privacy-report.json`;
@@ -113,7 +118,7 @@ export function validatePhase18GarminAdversarialManifest(manifest, current) {
   const invalid = [
     !exactKeys(manifest, MANIFEST_KEYS),
     manifest.schema_version !== 1,
-    manifest.suite !== "phase18-garmin-adversarial",
+    manifest.suite !== PHASE18_AGGREGATE_SUITE,
     manifest.profile !== "development-test",
     manifest.package !== PACKAGE,
     manifest.abi !== "arm64-v8a",
@@ -185,6 +190,7 @@ function readJson(path) {
 }
 
 function writeRawReport(report) {
+  mkdirSync(path.dirname(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT), { recursive: true });
   writeFileSync(
     PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT,
     `${JSON.stringify(report, null, 2)}\n`,
@@ -193,6 +199,7 @@ function writeRawReport(report) {
 }
 
 function writeJson(path, value) {
+  mkdirSync(PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT, { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx" });
 }
 
@@ -336,7 +343,7 @@ export function collectInstalledNativeReport() {
   adb(["shell", "am", "force-stop", PACKAGE], { stdio: "ignore" });
   adb([
     "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
-    `gymtracker-devtest://__phase18-garmin-adversarial?confirmation=VERIFY-PHASE18-GARMIN-ADVERSARIAL&nonce=${runNonce}&device_identity_sha256=${deviceIdentitySha256}`,
+    `gymtracker-devtest://__phase18-garmin-adversarial?operation=collect-adversarial&confirmation=VERIFY-PHASE18-GARMIN-ADVERSARIAL&nonce=${runNonce}&device_identity_sha256=${deviceIdentitySha256}`,
     PACKAGE,
   ], { stdio: "ignore" });
   const deadline = Date.now() + 30_000;
@@ -462,7 +469,7 @@ export function executePhase18GarminAdversarialRunner(
     },
   };
   const manifest = sanitizePhase18BuildManifest(jsonReader(options.manifest), {
-    suite: "phase18-garmin-adversarial",
+    suite: PHASE18_AGGREGATE_SUITE,
     pythonLockSha256: boundRecord.current_identity.currentPythonLockSha256,
     signatureSha256: boundRecord.current_identity.retainedSignatureSha256,
   });

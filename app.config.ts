@@ -41,8 +41,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const nativeContractSuite = developmentTest
     ? process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE ?? null
     : null;
+  if (nativeContractSuite !== null && [
+    'phase18-garmin-proof',
+    'phase18-garmin-acceptance',
+    'phase18-garmin-adversarial',
+  ].includes(nativeContractSuite)) {
+    throw new Error(
+      `Phase 18 suite-specific profile "${nativeContractSuite}" is retired. Use v1.2-acceptance.`,
+    );
+  }
   const adversarialBuildIdentity = phase18GarminAdversarialBuildIdentity(
-    nativeContractSuite === 'phase18-garmin-adversarial',
+    nativeContractSuite === 'v1.2-acceptance',
   );
 
   return {

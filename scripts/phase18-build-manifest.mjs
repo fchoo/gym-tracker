@@ -1,9 +1,7 @@
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const SUITES = new Set([
-  "phase18-garmin-proof",
-  "phase18-garmin-acceptance",
-  "phase18-garmin-adversarial",
+  "v1.2-acceptance",
 ]);
 function fail(code) {
   throw new Error(`phase18_build_manifest_${code}`);

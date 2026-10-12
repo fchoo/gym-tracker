@@ -15,6 +15,11 @@ import {
 import { assertPhase18PrivacySafe } from "./phase18-privacy-scan.mjs";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 import {
+  PHASE18_AGGREGATE_APK,
+  PHASE18_AGGREGATE_MANIFEST,
+  PHASE18_AGGREGATE_SUITE,
+} from "./phase18-aggregate-acceptance.mjs";
+import {
   choose,
   cliArgValue,
   errorMessage,
@@ -27,7 +32,7 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
-const MANIFEST = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/build.json`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
 const FINAL_EVIDENCE = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/final-evidence.json`;
 const NATIVE_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`;
 const PRIVACY_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/privacy-report.json`;
@@ -472,7 +477,7 @@ function installedIdentity(expectedByteCount) {
 export function resolvePhase18GarminAdversarialCurrentIdentity(
   rawReportBytes = readFileSync(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT),
 ) {
-  const apkPath = path.resolve(process.cwd(), `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-adversarial-devtest.apk`);
+  const apkPath = path.resolve(process.cwd(), PHASE18_AGGREGATE_APK);
   const apkBytes = readFileSync(apkPath);
   return Object.freeze({
     currentHead: commandText("git", ["rev-parse", "HEAD"]),
@@ -575,7 +580,7 @@ export function executePhase18GarminAdversarialVerifier(
     resolvePhase18GarminAdversarialCurrentIdentity,
   )(rawReportBytes);
   const manifest = sanitizePhase18BuildManifest(retainedManifest, {
-    suite: "phase18-garmin-adversarial",
+    suite: PHASE18_AGGREGATE_SUITE,
     pythonLockSha256: current.currentPythonLockSha256,
     signatureSha256: current.retainedSignatureSha256,
   });

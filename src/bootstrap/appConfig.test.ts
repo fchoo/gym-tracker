@@ -101,6 +101,16 @@ describe("Android lifecycle configuration", () => {
     });
   });
 
+  it.each([
+    "phase18-garmin-proof",
+    "phase18-garmin-acceptance",
+    "phase18-garmin-adversarial",
+  ])("rejects retired suite-specific Phase 18 profile %s", (suite) => {
+    expect(() => configForProfile("development-test", suite)).toThrow(
+      `Phase 18 suite-specific profile "${suite}" is retired. Use v1.2-acceptance.`,
+    );
+  });
+
   it("keeps explicit production on the production identity", () => {
     const config = configForProfile("production");
 

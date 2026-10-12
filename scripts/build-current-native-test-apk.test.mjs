@@ -14,10 +14,12 @@ test("the native test APK build retries launcher resolution after install", () =
   );
   assert.match(
     source,
-    /phase18-garmin-proof \| phase18-garmin-acceptance \| phase18-garmin-adversarial/u,
+    /phase14 \| phase14-\* \| v1\.2-acceptance/u,
   );
+  assert.match(source, /phase18-garmin-proof\|phase18-garmin-acceptance\|phase18-garmin-adversarial/u);
+  assert.match(source, /use v1\.2-acceptance/u);
   assert.doesNotMatch(
     source,
-    /phase18-garmin-acceptance[\s\S]*device=%\$?device_serial/u,
+    /v1\.2-acceptance[\s\S]*device=%\$?device_serial/u,
   );
 });

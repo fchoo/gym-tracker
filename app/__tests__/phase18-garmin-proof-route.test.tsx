@@ -73,7 +73,7 @@ jest.mock("expo-constants", () => ({
       extra: {
         buildProfile: "development-test",
         nativeContractsEnabled: true,
-        nativeContractSuite: "phase18-garmin-proof",
+        nativeContractSuite: "v1.2-acceptance",
       },
     },
   },

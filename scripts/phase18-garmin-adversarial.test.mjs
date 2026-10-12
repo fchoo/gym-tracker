@@ -24,8 +24,13 @@ import {
   validatePhase18GarminAdversarialCurrentIdentity,
   validatePhase18GarminAdversarialEvidence,
 } from "./verify-phase18-garmin-adversarial.mjs";
+import {
+  PHASE18_AGGREGATE_APK,
+  PHASE18_AGGREGATE_MANIFEST,
+  PHASE18_AGGREGATE_SUITE,
+} from "./phase18-aggregate-acceptance.mjs";
 
-const MANIFEST = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/build.json`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
 const RECORD = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-record.json`;
 const RAW_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/raw-report.json`;
 const FINAL_EVIDENCE = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/final-evidence.json`;
@@ -80,7 +85,7 @@ test("installed adversarial route uses the native producer and never the host-fa
 function manifest(overrides = {}) {
   return {
     schema_version: 1,
-    suite: "phase18-garmin-adversarial",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     package: "com.fchoo.gymtracker.devtest",
     abi: "arm64-v8a",
@@ -98,14 +103,14 @@ function manifest(overrides = {}) {
 function retainedManifest() {
   return {
     schema_version: 1,
-    suite: "phase18-garmin-adversarial",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     build_variant: "release",
     js_bundle: { embedded: true },
     base_head: HEAD,
     source_tree_sha256: HASH,
     package: "com.fchoo.gymtracker.devtest",
-    apk: { path: `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-adversarial-devtest.apk`, sha256: HASH, page_alignment_verified: true },
+    apk: { path: PHASE18_AGGREGATE_APK, sha256: HASH, page_alignment_verified: true },
     installed_apk: { sha256: HASH, matches_retained_apk: true },
     device: { abi: "arm64-v8a", identity_sha256: HASH },
   };

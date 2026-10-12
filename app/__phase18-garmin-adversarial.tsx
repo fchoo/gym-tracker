@@ -59,8 +59,9 @@ function Phase18GarminAdversarialContent({
 }
 
 export default function Phase18GarminAdversarialRoute() {
-  const { confirmation, nonce, device_identity_sha256: deviceIdentitySha256 } = useLocalSearchParams<{
+  const { confirmation, operation, nonce, device_identity_sha256: deviceIdentitySha256 } = useLocalSearchParams<{
     confirmation?: string | string[];
+    operation?: string | string[];
     nonce?: string | string[];
     device_identity_sha256?: string | string[];
   }>();
@@ -70,6 +71,7 @@ export default function Phase18GarminAdversarialRoute() {
     nativeContractsEnabled: extra?.nativeContractsEnabled,
     suite: extra?.nativeContractSuite,
     confirmation,
+    operation,
     nonce,
     deviceIdentitySha256,
   });

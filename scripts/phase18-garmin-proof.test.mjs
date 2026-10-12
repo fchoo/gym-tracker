@@ -21,6 +21,12 @@ import {
 } from "./run-phase18-garmin-proof.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import {
+  PHASE18_AGGREGATE_APK,
+  PHASE18_AGGREGATE_ARTIFACT_ROOT,
+  PHASE18_AGGREGATE_MANIFEST,
+  PHASE18_AGGREGATE_SUITE,
+} from "./phase18-aggregate-acceptance.mjs";
+import {
   createPhase18GarminProofFinalEvidence,
   executePhase18GarminProofVerifier,
   executePhase18GarminProofVerifierCli,
@@ -31,14 +37,14 @@ import {
 
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
-const MANIFEST = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/build.json`;
-const APK_PATH = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-proof-devtest.apk`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
+const APK_PATH = PHASE18_AGGREGATE_APK;
 const PYTHON_LOCK = "modules/garmin-connect/python/garmin-python-lock.json";
 
 function manifest(overrides = {}) {
   return {
     schema_version: 1,
-    suite: "phase18-garmin-proof",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     package: "com.fchoo.gymtracker.devtest",
     abi: "arm64-v8a",
@@ -120,12 +126,15 @@ function currentProofFixture(overrides = {}) {
 function withProofArtifacts(overrides = {}) {
   const fixture = currentProofFixture(overrides);
   const artifactRoot = path.resolve(PHASE18_GARMIN_PROOF_ARTIFACT_ROOT);
+  const aggregateRoot = path.resolve(PHASE18_AGGREGATE_ARTIFACT_ROOT);
   const sdkRoot = path.resolve("artifacts/fake-phase18-proof-sdk");
   const previousAndroidHome = process.env.ANDROID_HOME;
   const previousAndroidSdkRoot = process.env.ANDROID_SDK_ROOT;
   rmSync(artifactRoot, { recursive: true, force: true });
+  rmSync(aggregateRoot, { recursive: true, force: true });
   rmSync(sdkRoot, { recursive: true, force: true });
   mkdirSync(artifactRoot, { recursive: true });
+  mkdirSync(aggregateRoot, { recursive: true });
   mkdirSync(path.join(sdkRoot, "platform-tools"), { recursive: true });
   mkdirSync(path.join(sdkRoot, "build-tools", "35.0.0"), { recursive: true });
   writeFileSync(path.resolve(APK_PATH), fixture.apkBytes);
@@ -169,7 +178,7 @@ exit 0
   chmodSync(path.join(sdkRoot, "build-tools", "35.0.0", "apksigner"), 0o755);
   writeFileSync(path.resolve(MANIFEST), `${JSON.stringify({
     schema_version: 1,
-    suite: "phase18-garmin-proof",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     build_variant: "release",
     js_bundle: { embedded: true },
@@ -197,6 +206,7 @@ exit 0
     fixture,
     cleanup() {
       rmSync(artifactRoot, { recursive: true, force: true });
+      rmSync(aggregateRoot, { recursive: true, force: true });
       rmSync(sdkRoot, { recursive: true, force: true });
       if (previousAndroidHome === undefined) delete process.env.ANDROID_HOME;
       else process.env.ANDROID_HOME = previousAndroidHome;
@@ -401,7 +411,7 @@ test("Phase 18 log parser immediately rejects duplicate pass, failure, and mixed
 test("Phase 18 runner sanitizes the repository native-build manifest without manual evidence fabrication", { concurrency: false }, () => {
   const retained = {
     schema_version: 1,
-    suite: "phase18-garmin-proof",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     build_variant: "release",
     js_bundle: { embedded: true },
@@ -409,7 +419,7 @@ test("Phase 18 runner sanitizes the repository native-build manifest without man
     source_tree_sha256: HASH,
     package: "com.fchoo.gymtracker.devtest",
     apk: {
-      path: `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-proof-devtest.apk`,
+      path: PHASE18_AGGREGATE_APK,
       sha256: HASH,
       size_bytes: 1,
       page_alignment_kib: 16,
@@ -768,7 +778,7 @@ test("Phase 18 route is guarded, uses the real adapter/module, and keeps secrets
   assert.doesNotMatch(route, /fetch\(|axios|child_process|python-shell|localhost|http:\/\//u);
   assert.doesNotMatch(route, /final-evidence\.json/u);
   assert.match(layout, /Phase18GarminProofNavigator/u);
-  assert.match(layout, /nativeContractSuite === "phase18-garmin-proof"/u);
+  assert.match(layout, /nativeContractSuite === "v1\.2-acceptance"/u);
   assert.match(layout, /pathname === "\/__phase18-garmin-proof"/u);
 });
 

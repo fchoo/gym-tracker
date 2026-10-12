@@ -57,6 +57,7 @@ const phase18TargetedTests = [
 ];
 const phase18EvidenceTests = [
   "scripts/phase18-acceptance-helper-coverage.test.mjs",
+  "scripts/phase18-aggregate-acceptance.test.mjs",
   "scripts/phase18-benchmark-helper-coverage.test.mjs",
   "scripts/benchmark-phase18-garmin.test.mjs",
   "scripts/phase18-evidence-helpers.test.mjs",
@@ -83,6 +84,7 @@ const phase18EvidenceFiles = [
   "scripts/kotlin-coverage-evidence.mjs",
   "scripts/node-evidence-utils.mjs",
   "scripts/phase18-build-manifest.mjs",
+  "scripts/phase18-aggregate-acceptance.mjs",
   "scripts/phase18-device-identity.mjs",
   "scripts/phase18-installed-apk.mjs",
   "scripts/phase18-language-coverage.mjs",

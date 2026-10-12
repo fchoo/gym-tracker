@@ -26,56 +26,51 @@ function retained(suite, overrides = {}) {
   };
 }
 
-test("sanitizes the shared builder manifest for every Phase 18 native suite", () => {
-  for (const suite of [
-    "phase18-garmin-proof",
-    "phase18-garmin-acceptance",
-    "phase18-garmin-adversarial",
-  ]) {
-    assert.deepEqual(sanitizePhase18BuildManifest(retained(suite), {
-      suite,
-      pythonLockSha256: HASH,
-      signatureSha256: HASH,
-    }), {
-      schema_version: 1,
-      suite,
-      profile: "development-test",
-      package: "com.fchoo.gymtracker.devtest",
-      abi: "arm64-v8a",
-      js_bundle_embedded: true,
-      base_head: HEAD,
-      source_tree_sha256: HASH,
-      python_lock_sha256: HASH,
-      apk_sha256: HASH,
-      signature_sha256: HASH,
-      device_identity_sha256: HASH,
-    });
-  }
+test("sanitizes the one retained v1.2 acceptance builder manifest", () => {
+  const suite = "v1.2-acceptance";
+  assert.deepEqual(sanitizePhase18BuildManifest(retained(suite), {
+    suite,
+    pythonLockSha256: HASH,
+    signatureSha256: HASH,
+  }), {
+    schema_version: 1,
+    suite,
+    profile: "development-test",
+    package: "com.fchoo.gymtracker.devtest",
+    abi: "arm64-v8a",
+    js_bundle_embedded: true,
+    base_head: HEAD,
+    source_tree_sha256: HASH,
+    python_lock_sha256: HASH,
+    apk_sha256: HASH,
+    signature_sha256: HASH,
+    device_identity_sha256: HASH,
+  });
 });
 
 test("rejects privacy-unsafe retained Phase 18 manifests", () => {
-  assert.throws(() => sanitizePhase18BuildManifest(retained("phase18-garmin-acceptance", {
+  assert.throws(() => sanitizePhase18BuildManifest(retained("v1.2-acceptance", {
     installed_apk: { device_path: "/data/app/private.apk", sha256: HASH, matches_retained_apk: true },
   }), {
-    suite: "phase18-garmin-acceptance",
+    suite: "v1.2-acceptance",
     pythonLockSha256: HASH,
     signatureSha256: HASH,
   }), /phase18_build_manifest_privacy_invalid/u);
-  assert.throws(() => sanitizePhase18BuildManifest(retained("phase18-garmin-acceptance", {
+  assert.throws(() => sanitizePhase18BuildManifest(retained("v1.2-acceptance", {
     device: { serial: "private", abi: "arm64-v8a", identity_sha256: HASH },
   }), {
-    suite: "phase18-garmin-acceptance",
+    suite: "v1.2-acceptance",
     pythonLockSha256: HASH,
     signatureSha256: HASH,
   }), /phase18_build_manifest_privacy_invalid/u);
 });
 
 test("rejects malformed retained Phase 18 manifests", () => {
-  const suite = "phase18-garmin-acceptance";
+  const suite = "v1.2-acceptance";
   const validInput = { suite, pythonLockSha256: HASH, signatureSha256: HASH };
   const variants = [
     [retained(suite), null],
-    [retained(suite), { ...validInput, suite: "unknown-suite" }],
+    [retained(suite), { ...validInput, suite: "phase18-garmin-acceptance" }],
     [retained(suite, { schema_version: 2 }), validInput],
     [retained(suite, { suite: "phase18-garmin-proof" }), validInput],
     [retained(suite, { profile: "release" }), validInput],

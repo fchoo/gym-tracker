@@ -21,6 +21,7 @@ import {
   validatePhase18GarminProofBuildManifest,
 } from "./run-phase18-garmin-proof.mjs";
 import { assertPhase18PrivacySafe } from "./phase18-privacy-scan.mjs";
+import { PHASE18_AGGREGATE_MANIFEST } from "./phase18-aggregate-acceptance.mjs";
 import {
   cliArgValue,
   errorMessage,
@@ -34,7 +35,7 @@ import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
 const ROOT = process.cwd();
-const MANIFEST = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/build.json`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
 const FINAL_EVIDENCE = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/final-evidence.json`;
 const PYTHON_LOCK = "modules/garmin-connect/python/garmin-python-lock.json";
 const PACKAGE = "com.fchoo.gymtracker.devtest";

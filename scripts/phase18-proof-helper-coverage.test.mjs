@@ -36,8 +36,13 @@ import {
   validatePhase18GarminProofEvidence,
 } from "./proof-verifier-evidence.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import {
+  PHASE18_AGGREGATE_ARTIFACT_ROOT,
+  PHASE18_AGGREGATE_MANIFEST,
+  PHASE18_AGGREGATE_SUITE,
+} from "./phase18-aggregate-acceptance.mjs";
 
-const MANIFEST = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/build.json`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
 const FINAL_EVIDENCE = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/final-evidence.json`;
 const PYTHON_LOCK = "modules/garmin-connect/python/garmin-python-lock.json";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
@@ -81,7 +86,7 @@ function withEnv(updates, callback) {
 function createRetainedManifest({ currentHead, currentSourceTreeSha256, apkSha256, deviceIdentitySha256 }) {
   return {
     schema_version: 1,
-    suite: "phase18-garmin-proof",
+    suite: PHASE18_AGGREGATE_SUITE,
     profile: "development-test",
     build_variant: "release",
     js_bundle: { embedded: true },
@@ -111,6 +116,7 @@ function writeExecutable(filePath, contents) {
 
 function withProofWorkspace(options, callback) {
   const artifactRoot = path.resolve(PHASE18_GARMIN_PROOF_ARTIFACT_ROOT);
+  const aggregateRoot = path.resolve(PHASE18_AGGREGATE_ARTIFACT_ROOT);
   const sdkRoot = path.join(tmpdir(), `phase18-proof-sdk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const stateRoot = path.join(tmpdir(), `phase18-proof-sdk-${process.pid}-${Date.now()}`);
   const stateFile = path.join(stateRoot, "log-state.txt");
@@ -145,9 +151,11 @@ function withProofWorkspace(options, callback) {
   const installedApkPath = path.join(stateRoot, "installed.apk");
 
   rmSync(artifactRoot, { recursive: true, force: true });
+  rmSync(aggregateRoot, { recursive: true, force: true });
   rmSync(sdkRoot, { recursive: true, force: true });
   rmSync(stateRoot, { recursive: true, force: true });
   mkdirSync(artifactRoot, { recursive: true });
+  mkdirSync(aggregateRoot, { recursive: true });
   mkdirSync(path.join(sdkRoot, "platform-tools"), { recursive: true });
   mkdirSync(path.join(sdkRoot, "build-tools", "35.0.0"), { recursive: true });
   mkdirSync(stateRoot, { recursive: true });
@@ -251,6 +259,7 @@ exit 1
     if (previousAndroidSdkRoot === undefined) delete process.env.ANDROID_SDK_ROOT;
     else process.env.ANDROID_SDK_ROOT = previousAndroidSdkRoot;
     rmSync(artifactRoot, { recursive: true, force: true });
+    rmSync(aggregateRoot, { recursive: true, force: true });
     rmSync(sdkRoot, { recursive: true, force: true });
     rmSync(stateRoot, { recursive: true, force: true });
   }

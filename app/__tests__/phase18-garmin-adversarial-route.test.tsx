@@ -11,10 +11,12 @@ const DEVICE_IDENTITY_SHA256 = "f".repeat(64);
 type CollectAdversarialReport = typeof import("../../src/bootstrap/phase18GarminAdversarial")["runPhase18GarminAdversarialNativeSuite"];
 let mockParams: Readonly<{
   confirmation?: unknown;
+  operation?: unknown;
   nonce?: unknown;
   device_identity_sha256?: unknown;
 }> = {
   confirmation: CONFIRMATION,
+  operation: "collect-adversarial",
   nonce: NONCE,
   device_identity_sha256: DEVICE_IDENTITY_SHA256,
 };
@@ -27,7 +29,7 @@ jest.mock("expo-constants", () => ({
       extra: {
         buildProfile: "development-test",
         nativeContractsEnabled: true,
-        nativeContractSuite: "phase18-garmin-adversarial",
+        nativeContractSuite: "v1.2-acceptance",
         phase18GarminAdversarialBuildIdentity: {
           currentHead: "a".repeat(40),
           currentSourceTreeSha256: "b".repeat(64),
@@ -54,6 +56,7 @@ describe("Phase18GarminAdversarialRoute", () => {
   beforeEach(() => {
     mockParams = {
       confirmation: CONFIRMATION,
+      operation: "collect-adversarial",
       nonce: NONCE,
       device_identity_sha256: DEVICE_IDENTITY_SHA256,
     };

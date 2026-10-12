@@ -86,8 +86,9 @@ describe("Phase 18 Garmin native observation contract", () => {
     const exact = {
       buildProfile: "development-test",
       nativeContractsEnabled: true,
-      suite: "phase18-garmin-adversarial",
+      suite: "v1.2-acceptance",
       confirmation: PHASE18_GARMIN_ADVERSARIAL_CONFIRMATION,
+      operation: "collect-adversarial",
       nonce: "0".repeat(32),
       deviceIdentitySha256: DEVICE_IDENTITY,
     };
@@ -95,8 +96,9 @@ describe("Phase 18 Garmin native observation contract", () => {
     for (const changed of [
       { ...exact, buildProfile: "production" },
       { ...exact, nativeContractsEnabled: false },
-      { ...exact, suite: "phase18-garmin-proof" },
+      { ...exact, suite: "phase18-garmin-adversarial" },
       { ...exact, confirmation: "wrong" },
+      { ...exact, operation: "wrong" },
       { ...exact, nonce: "short" },
       { ...exact, nonce: "A".repeat(32) },
       { ...exact, nonce: ["0".repeat(32)] },

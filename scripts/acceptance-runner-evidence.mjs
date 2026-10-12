@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 
@@ -16,14 +17,30 @@ import {
   runCliIfMain,
 } from "./node-evidence-utils.mjs";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
+import { executePhase18GarminProofRunner } from "./run-phase18-garmin-proof.mjs";
+import { executePhase18GarminProofVerifier } from "./verify-phase18-garmin-proof.mjs";
+import { executePhase18GarminAdversarialRunner } from "./run-phase18-garmin-adversarial.mjs";
+import { executePhase18GarminAdversarialVerifier } from "./verify-phase18-garmin-adversarial.mjs";
+import {
+  PHASE18_AGGREGATE_ARTIFACT_ROOT,
+  PHASE18_AGGREGATE_MANIFEST,
+  PHASE18_AGGREGATE_SUITE,
+  PHASE18_MAESTRO_REPORT,
+  PHASE18_PRIVACY_REPORT,
+  validatePhase18MaestroReport,
+  validatePhase18PrivacyReport,
+} from "./phase18-aggregate-acceptance.mjs";
 
 export const PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT =
-  "artifacts/native/phase18-garmin-acceptance";
+  PHASE18_AGGREGATE_ARTIFACT_ROOT;
 export const PHASE18_GARMIN_ACCEPTANCE_RAW_REPORT =
   `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/raw-report.json`;
 
-const MANIFEST = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/build.json`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
 const RECORD = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/acceptance-record.json`;
+const PROOF_EVIDENCE = "artifacts/native/phase18-garmin-proof/final-evidence.json";
+const ADVERSARIAL_EVIDENCE = "artifacts/native/phase18-garmin-adversarial/final-evidence.json";
+const ADVERSARIAL_RECORD = "artifacts/native/phase18-garmin-adversarial/native-record.json";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
@@ -50,7 +67,7 @@ export function validatePhase18GarminAcceptanceManifest(manifest, current) {
   const invalid = [
     !exactKeys(manifest, MANIFEST_KEYS),
     manifest.schema_version !== 1,
-    manifest.suite !== "phase18-garmin-acceptance",
+    manifest.suite !== PHASE18_AGGREGATE_SUITE,
     manifest.profile !== "development-test",
     manifest.package !== PACKAGE,
     manifest.abi !== "arm64-v8a",
@@ -98,6 +115,7 @@ export function createPhase18GarminAcceptanceRawReport(input) {
     case_ids: PHASE18_GARMIN_ACCEPTANCE_CASE_IDS,
     cases: Object.freeze(input.cases.map((entry) => Object.freeze({ ...entry }))),
     observations: Object.freeze(structuredClone(input.observations)),
+    run_identity: Object.freeze({ ...input.run_identity }),
     native_flow: Object.freeze({ ...input.native_flow }),
     privacy_scan: Object.freeze({ ...input.privacy_scan }),
   });
@@ -138,14 +156,66 @@ function writeReport(report) {
   );
 }
 
+export function collectPhase18OwnerRoutes(dependencies = {}) {
+  const runProof = choose(dependencies.runProof, executePhase18GarminProofRunner);
+  const verifyProof = choose(dependencies.verifyProof, executePhase18GarminProofVerifier);
+  const runAdversarial = choose(
+    dependencies.runAdversarial,
+    executePhase18GarminAdversarialRunner,
+  );
+  const verifyAdversarial = choose(
+    dependencies.verifyAdversarial,
+    executePhase18GarminAdversarialVerifier,
+  );
+  const jsonReader = choose(dependencies.readJson, readJson);
+  const bytesReader = choose(dependencies.readBytes, readFileSync);
+  const steps = [
+    () => runProof([
+      "--manifest", MANIFEST,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ]),
+    () => verifyProof([
+      "--manifest", MANIFEST,
+      "--seal",
+      "--phase20-native-checkpoint",
+    ]),
+    () => runAdversarial([
+      "--manifest", MANIFEST,
+      "--record", ADVERSARIAL_RECORD,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ]),
+    () => verifyAdversarial([
+      "--manifest", MANIFEST,
+      "--seal",
+      "--phase20-native-checkpoint",
+    ]),
+  ];
+  for (const execute of steps) {
+    if (execute().status !== "passed") fail("owner_route_failed");
+  }
+  const owners = [PROOF_EVIDENCE, ADVERSARIAL_EVIDENCE].map((artifact) => {
+    const evidence = jsonReader(artifact);
+    const bytes = bytesReader(artifact);
+    if (!Buffer.isBuffer(bytes)
+      || evidence?.status !== "passed"
+      || evidence?.manifest?.suite !== PHASE18_AGGREGATE_SUITE) {
+      fail("owner_route_invalid");
+    }
+    return Object.freeze({ artifact, evidence, bytes });
+  });
+  if (!isDeepStrictEqual(owners[0].evidence.manifest, owners[1].evidence.manifest)) {
+    fail("owner_route_identity_invalid");
+  }
+  return Object.freeze(owners);
+}
+
 function validateRecord(record, plan) {
   const invalid = [
     !exactKeys(record, [
       "cases",
       "current_identity",
-      "native_flow",
-      "observations",
-      "privacy_scan",
     ]),
     !Array.isArray(record.cases),
     !isDeepStrictEqual(record.cases.map(({ id }) => id), plan.case_ids),
@@ -165,23 +235,83 @@ export function executePhase18GarminAcceptanceRunner(
     });
   }
   const jsonReader = choose(dependencies.readJson, readJson);
+  const bytesReader = choose(dependencies.readBytes, readFileSync);
   const reportWriter = choose(dependencies.writeReport, writeReport);
   const retainedManifest = jsonReader(options.manifest);
   const record = jsonReader(options.record);
   const plan = createPhase18GarminAcceptanceRunnerPlan();
   validateRecord(record, plan);
+  const collectOwnerRoutes = choose(
+    dependencies.collectOwnerRoutes,
+    collectPhase18OwnerRoutes,
+  );
+  const owners = collectOwnerRoutes(dependencies.ownerRouteDependencies);
   const manifest = sanitizePhase18BuildManifest(retainedManifest, {
-    suite: "phase18-garmin-acceptance",
+    suite: PHASE18_AGGREGATE_SUITE,
     pythonLockSha256: record.current_identity.currentPythonLockSha256,
     signatureSha256: record.current_identity.retainedSignatureSha256,
   });
   validatePhase18GarminAcceptanceManifest(manifest, record.current_identity);
+  if (record.current_identity.installedApkSha256 !== manifest.apk_sha256) {
+    fail("installed_apk_identity_invalid");
+  }
+  if (!owners.every(({ evidence }) => isDeepStrictEqual(evidence.manifest, manifest))) {
+    fail("owner_route_identity_invalid");
+  }
+  const ownerCases = new Map([
+    ["P18-NATIVE-18-03-REAL-ACCOUNT", owners[0]],
+    ["P18-NATIVE-18-13-ADVERSARIAL", owners[1]],
+  ]);
+  const contractsById = new Map(plan.cases.map((contract) => [contract.id, contract]));
+  const reportCases = record.cases.map((entry) => {
+    const owner = ownerCases.get(entry.id);
+    if (owner === undefined) return entry;
+    const contract = contractsById.get(entry.id);
+    return Object.freeze({
+      id: entry.id,
+      status: "verified",
+      owner_plan: contract.ownerPlan,
+      artifact: owner.artifact,
+      artifact_sha256: createHash("sha256").update(owner.bytes).digest("hex"),
+      proof_kind: "native-exact-artifact",
+    });
+  });
+  const maestroReport = jsonReader(PHASE18_MAESTRO_REPORT);
+  const maestro = validatePhase18MaestroReport(maestroReport, {
+    manifest,
+    installedApkSha256: record.current_identity.installedApkSha256,
+    readBytes: bytesReader,
+  });
+  const privacyReport = jsonReader(PHASE18_PRIVACY_REPORT);
+  const privacy = validatePhase18PrivacyReport(privacyReport, {
+    manifest,
+    installedApkSha256: record.current_identity.installedApkSha256,
+    readBytes: bytesReader,
+  });
+  if (maestroReport.identity.run_id !== privacyReport.identity.run_id) {
+    fail("run_identity_invalid");
+  }
   const report = createPhase18GarminAcceptanceRawReport({
     manifest,
-    cases: record.cases,
-    observations: record.observations,
-    native_flow: record.native_flow,
-    privacy_scan: record.privacy_scan,
+    cases: reportCases,
+    observations: maestro.observations,
+    run_identity: { run_id: maestroReport.identity.run_id },
+    native_flow: {
+      path: "maestro/phase18/garmin-sync.yaml",
+      source_sha256: createHash("sha256").update(
+        bytesReader("maestro/phase18/garmin-sync.yaml"),
+      ).digest("hex"),
+      report_sha256: createHash("sha256").update(
+        bytesReader(PHASE18_MAESTRO_REPORT),
+      ).digest("hex"),
+    },
+    privacy_scan: {
+      status: "passed",
+      scanned_artifact_count: privacy.scanned_artifact_count,
+      report_sha256: createHash("sha256").update(
+        bytesReader(PHASE18_PRIVACY_REPORT),
+      ).digest("hex"),
+    },
   });
   reportWriter(report);
   return Object.freeze({

@@ -31,6 +31,11 @@ import {
 } from "./node-evidence-utils.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
+import {
+  PHASE18_AGGREGATE_APK,
+  PHASE18_AGGREGATE_MANIFEST,
+  PHASE18_AGGREGATE_SUITE,
+} from "./phase18-aggregate-acceptance.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
@@ -38,11 +43,11 @@ const ROOT = process.cwd();
 export const PHASE18_GARMIN_PROOF_ARTIFACT_ROOT =
   "artifacts/native/phase18-garmin-proof";
 export const PHASE18_GARMIN_PROOF_APK =
-  `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-proof-devtest.apk`;
+  PHASE18_AGGREGATE_APK;
 export const PHASE18_GARMIN_PROOF_RAW_REPORT =
   `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/raw-report.json`;
 
-const MANIFEST = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/build.json`;
+const MANIFEST = PHASE18_AGGREGATE_MANIFEST;
 const PYTHON_LOCK = "modules/garmin-connect/python/garmin-python-lock.json";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const HASH = /^[a-f0-9]{64}$/u;
@@ -139,7 +144,7 @@ export function validatePhase18GarminProofBuildManifest(manifest, current) {
   const invalid = [
     !exactKeys(manifest, MANIFEST_KEYS),
     manifest.schema_version !== 1,
-    manifest.suite !== "phase18-garmin-proof",
+    manifest.suite !== PHASE18_AGGREGATE_SUITE,
     manifest.profile !== "development-test",
     manifest.package !== PACKAGE,
     manifest.abi !== "arm64-v8a",
@@ -168,7 +173,7 @@ export function sanitizePhase18GarminProofBuildManifest(retained, current) {
   let sanitized;
   try {
     sanitized = sanitizePhase18BuildManifest(retained, {
-      suite: "phase18-garmin-proof",
+      suite: PHASE18_AGGREGATE_SUITE,
       pythonLockSha256: current.currentPythonLockSha256,
       signatureSha256: current.retainedSignatureSha256,
     });

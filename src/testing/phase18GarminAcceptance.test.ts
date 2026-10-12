@@ -88,17 +88,19 @@ describe("Phase 18 deterministic acceptance harness", () => {
     const exact = {
       buildProfile: "development-test",
       nativeContractsEnabled: true,
-      suite: "phase18-garmin-acceptance",
+      suite: "v1.2-acceptance",
       confirmation: PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION,
+      mode: "acceptance",
     };
     expect(phase18GarminAcceptanceEnabled(exact)).toBe(true);
     for (const rejected of [
       { ...exact, buildProfile: "production" },
       { ...exact, buildProfile: "preview" },
       { ...exact, nativeContractsEnabled: false },
-      { ...exact, suite: "phase18-garmin-proof" },
+      { ...exact, suite: "phase18-garmin-acceptance" },
       { ...exact, confirmation: "wrong" },
       { ...exact, confirmation: undefined },
+      { ...exact, mode: "view" },
     ]) {
       expect(phase18GarminAcceptanceEnabled(rejected)).toBe(false);
     }
@@ -108,7 +110,7 @@ describe("Phase 18 deterministic acceptance harness", () => {
     const exact = {
       buildProfile: "development-test",
       nativeContractsEnabled: true,
-      suite: "phase18-garmin-acceptance",
+      suite: "v1.2-acceptance",
       confirmation: PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION,
       mode: "benchmark",
       nonce: "a".repeat(32),

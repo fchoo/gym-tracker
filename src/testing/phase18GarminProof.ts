@@ -83,7 +83,7 @@ export function phase18GarminProofEnabled(input: Readonly<{
 }>): boolean {
   return input.buildProfile === "development-test"
     && input.nativeContractsEnabled === true
-    && input.suite === "phase18-garmin-proof"
+    && input.suite === "v1.2-acceptance"
     && input.confirmation === PHASE18_GARMIN_PROOF_CONFIRMATION;
 }
 

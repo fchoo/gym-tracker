@@ -58,6 +58,11 @@ case "$suite" in
     fail 'suite must contain only letters, numbers, dot, underscore, or hyphen.'
     ;;
 esac
+case "$suite" in
+  phase18-garmin-proof|phase18-garmin-acceptance|phase18-garmin-adversarial)
+    fail 'Phase 18 suite-specific APKs are prohibited; use v1.2-acceptance.'
+    ;;
+esac
 
 cd "$project_root"
 [ "$(git rev-parse --show-toplevel)" = "$project_root" ] ||
@@ -238,7 +243,7 @@ BUILD_MANIFEST="$build_manifest" \
   node <<'NODE'
 import { renameSync, writeFileSync } from 'node:fs';
 
-const privacyBoundedManifest = /^(?:phase14(?:-|$)|phase18-garmin-(?:proof|acceptance|adversarial)$)/u.test(process.env.SUITE ?? '');
+const privacyBoundedManifest = /^(?:phase14(?:-|$)|v1\.2-acceptance$)/u.test(process.env.SUITE ?? '');
 const manifest = {
   schema_version: 1,
   suite: process.env.SUITE,
@@ -298,7 +303,7 @@ printf 'build-current-native-test-apk: manifest=%s\n' "$build_manifest"
 printf 'build-current-native-test-apk: apk=%s\n' "$apk_path"
 printf 'build-current-native-test-apk: sha256=%s\n' "$apk_sha256"
 case "$suite" in
-  phase14 | phase14-* | phase18-garmin-proof | phase18-garmin-acceptance | phase18-garmin-adversarial)
+  phase14 | phase14-* | v1.2-acceptance)
     printf 'build-current-native-test-apk: device_identity_sha256=%s api=%s abi=%s\n' \
       "$device_identity_sha256" "$device_api" "$device_abi"
     ;;

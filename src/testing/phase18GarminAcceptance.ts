@@ -525,11 +525,13 @@ export function phase18GarminAcceptanceEnabled(input: Readonly<{
   nativeContractsEnabled?: unknown;
   suite?: unknown;
   confirmation?: unknown;
+  mode?: unknown;
 }>): boolean {
   return input.buildProfile === "development-test"
     && input.nativeContractsEnabled === true
-    && input.suite === "phase18-garmin-acceptance"
-    && input.confirmation === PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION;
+    && input.suite === "v1.2-acceptance"
+    && input.confirmation === PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION
+    && input.mode === "acceptance";
 }
 
 export function phase18GarminAcceptanceBenchmarkEnabled(input: Readonly<{
@@ -542,12 +544,15 @@ export function phase18GarminAcceptanceBenchmarkEnabled(input: Readonly<{
 }>): input is Readonly<{
   buildProfile: "development-test";
   nativeContractsEnabled: true;
-  suite: "phase18-garmin-acceptance";
+  suite: "v1.2-acceptance";
   confirmation: string;
   mode: "benchmark";
   nonce: string;
 }> {
-  return phase18GarminAcceptanceEnabled(input)
+  return input.buildProfile === "development-test"
+    && input.nativeContractsEnabled === true
+    && input.suite === "v1.2-acceptance"
+    && input.confirmation === PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION
     && input.mode === "benchmark"
     && typeof input.nonce === "string"
     && BENCHMARK_NONCE.test(input.nonce);

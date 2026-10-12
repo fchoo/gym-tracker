@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   PHASE18_AGGREGATE_SUITE,
   PHASE18_MAESTRO_CASE_IDS,
+  PHASE18_MAESTRO_REPORT,
   PHASE18_PRIVACY_CASE_IDS,
   validatePhase18AggregateApkIdentity,
   validatePhase18MaestroReport,
@@ -108,7 +109,7 @@ function maestroFixture() {
 }
 
 function privacyFixture() {
-  const proof = Buffer.from('{"schema_version":1,"suite":"phase18-garmin-proof","status":"passed"}\n');
+  const proof = Buffer.from('{"schema_version":1,"suite":"phase18-garmin-proof","status":"passed","producer_context":{"kind":"fixture"}}\n');
   const native = Buffer.from('{"schema_version":1,"status":"passed"}\n');
   const adversarial = Buffer.from(`${JSON.stringify({
     schema_version: 1,
@@ -116,10 +117,18 @@ function privacyFixture() {
     status: "passed",
     native_report: { path: NATIVE_PATH, sha256: sha256(native) },
   })}\n`);
+  const maestro = maestroFixture();
+  assert.throws(
+    () => validatePhase18MaestroReport(maestro.report, null),
+    /phase18_maestro_report_schema_invalid/u,
+  );
+  const maestroReportBytes = Buffer.from(`${JSON.stringify(maestro.report)}\n`);
   const bytes = new Map([
     [PROOF_PATH, proof],
     [ADVERSARIAL_PATH, adversarial],
     [NATIVE_PATH, native],
+    [PHASE18_MAESTRO_REPORT, maestroReportBytes],
+    ...maestro.bytes,
   ]);
   const report = {
     schema_version: 1,
@@ -140,6 +149,16 @@ function privacyFixture() {
         status: "passed",
         artifact: { path: ADVERSARIAL_PATH, sha256: sha256(adversarial) },
         attachments: [{ path: NATIVE_PATH, sha256: sha256(native), media_type: "application/json" }],
+      },
+      {
+        id: PHASE18_PRIVACY_CASE_IDS[2],
+        status: "passed",
+        artifact: { path: PHASE18_MAESTRO_REPORT, sha256: sha256(maestroReportBytes) },
+        attachments: [
+          { path: FLOW_PATH, sha256: sha256(bytes.get(FLOW_PATH)), media_type: "application/yaml" },
+          { path: JUNIT_PATH, sha256: sha256(bytes.get(JUNIT_PATH)), media_type: "application/xml" },
+          { path: OBSERVATIONS_PATH, sha256: sha256(bytes.get(OBSERVATIONS_PATH)), media_type: "application/json" },
+        ],
       },
     ],
   };
@@ -223,9 +242,17 @@ test("validates the ordered privacy ledger and recursively scans referenced atta
     installedApkSha256: HASH,
     readBytes: (artifactPath) => bytes.get(artifactPath),
   }), {
-    case_count: 2,
-    scanned_artifact_count: 3,
-    scanned_paths: [PROOF_PATH, ADVERSARIAL_PATH, NATIVE_PATH],
+    case_count: 3,
+    scanned_artifact_count: 7,
+    scanned_paths: [
+      PROOF_PATH,
+      ADVERSARIAL_PATH,
+      NATIVE_PATH,
+      PHASE18_MAESTRO_REPORT,
+      FLOW_PATH,
+      JUNIT_PATH,
+      OBSERVATIONS_PATH,
+    ],
   });
 
   const privateBytes = new Map(bytes);
@@ -246,4 +273,187 @@ test("validates the ordered privacy ledger and recursively scans referenced atta
     installedApkSha256: HASH,
     readBytes: (artifactPath) => privateBytes.get(artifactPath),
   }), /phase18_privacy_report_privacy_invalid/u);
+});
+
+test("aggregate schema validators fail closed across malformed identity, artifact, and attachment branches", () => {
+  assert.throws(
+    () => validatePhase18AggregateApkIdentity(null),
+    /phase18_aggregate_apk_identity_invalid/u,
+  );
+  const aggregateReports = [
+    ownerReport("phase18-garmin-proof", HASH),
+    ownerReport("phase18-garmin-adversarial", HASH),
+    ownerReport("phase18-garmin-acceptance", HASH),
+  ];
+  for (const ownerReports of [
+    null,
+    aggregateReports.slice(0, 2),
+    [...aggregateReports].reverse(),
+    aggregateReports.map((entry, index) => index === 0
+      ? { ...entry, current_identity: { retainedApkSha256: "c".repeat(64) } }
+      : entry),
+    aggregateReports.map((entry, index) => index === 0
+      ? { ...entry, current_identity: { retainedSignatureSha256: "c".repeat(64) } }
+      : entry),
+    aggregateReports.map((entry, index) => index === 1
+      ? { ...entry, current_identity: { deviceIdentitySha256: "c".repeat(64) } }
+      : entry),
+    aggregateReports.map((entry, index) => index === 1
+      ? { ...entry, producer_context: { installed_apk_sha256: "c".repeat(64) } }
+      : entry),
+  ]) {
+    assert.throws(() => validatePhase18AggregateApkIdentity({
+      manifest: manifest(HASH),
+      installedApkSha256: HASH,
+      ownerReports,
+    }), /phase18_aggregate_apk_identity_invalid/u);
+  }
+  assert.throws(() => validatePhase18AggregateApkIdentity({
+    manifest: manifest(HASH),
+    installedApkSha256: "c".repeat(64),
+    ownerReports: aggregateReports,
+  }), /phase18_aggregate_apk_identity_invalid/u);
+
+  const maestro = maestroFixture();
+  assert.throws(() => validatePhase18MaestroReport(null, {
+    manifest: manifest(HASH), installedApkSha256: HASH, readBytes: () => undefined,
+  }), /phase18_maestro_report_schema_invalid/u);
+  const malformedMaestroCases = [
+    {
+      report: {
+        ...maestro.report,
+        cases: [{ ...maestro.report.cases[0], artifact: null }],
+      },
+      bytes: maestro.bytes,
+      error: /phase18_maestro_report_artifact_invalid/u,
+    },
+    {
+      report: {
+        ...maestro.report,
+        cases: [{
+          ...maestro.report.cases[0],
+          artifact: { ...maestro.report.cases[0].artifact, path: "wrong.xml" },
+        }],
+      },
+      bytes: maestro.bytes,
+      error: /phase18_maestro_report_artifact_invalid/u,
+    },
+    {
+      report: {
+        ...maestro.report,
+        cases: [{ ...maestro.report.cases[0], attachments: [null] }],
+      },
+      bytes: maestro.bytes,
+      error: /phase18_maestro_report_attachment_invalid/u,
+    },
+    {
+      report: {
+        ...maestro.report,
+        cases: [{
+          ...maestro.report.cases[0],
+          attachments: [{
+            ...maestro.report.cases[0].attachments[0],
+            media_type: "text/plain",
+          }],
+        }],
+      },
+      bytes: maestro.bytes,
+      error: /phase18_maestro_report_attachment_invalid/u,
+    },
+    {
+      report: maestro.report,
+      bytes: new Map([...maestro.bytes].filter(([artifactPath]) => artifactPath !== JUNIT_PATH)),
+      error: /phase18_maestro_report_artifact_missing/u,
+    },
+    {
+      report: maestro.report,
+      bytes: new Map(maestro.bytes).set(JUNIT_PATH, Buffer.from("not-junit")),
+      error: /phase18_maestro_report_artifact_hash_invalid/u,
+    },
+    {
+      report: maestro.report,
+      bytes: new Map(maestro.bytes).set(OBSERVATIONS_PATH, Buffer.from("changed")),
+      error: /phase18_maestro_report_attachment_hash_invalid/u,
+    },
+  ];
+  for (const { report, bytes, error } of malformedMaestroCases) {
+    assert.throws(() => validatePhase18MaestroReport(report, {
+      manifest: manifest(HASH),
+      installedApkSha256: HASH,
+      readBytes: (artifactPath) => bytes.get(artifactPath),
+    }), error);
+  }
+  const malformedJunit = Buffer.from("not-junit");
+  const malformedJunitReport = structuredClone(maestro.report);
+  malformedJunitReport.cases[0].artifact.sha256 = sha256(malformedJunit);
+  assert.throws(() => validatePhase18MaestroReport(malformedJunitReport, {
+    manifest: manifest(HASH), installedApkSha256: HASH,
+    readBytes: (artifactPath) => artifactPath === JUNIT_PATH
+      ? malformedJunit
+      : maestro.bytes.get(artifactPath),
+  }), /phase18_maestro_report_junit_invalid/u);
+  for (const observationBytes of [Buffer.from("{"), Buffer.from('{"appearance":[]}')]) {
+    const report = structuredClone(maestro.report);
+    report.cases[0].attachments[0].sha256 = sha256(observationBytes);
+    assert.throws(() => validatePhase18MaestroReport(report, {
+      manifest: manifest(HASH), installedApkSha256: HASH,
+      readBytes: (artifactPath) => artifactPath === OBSERVATIONS_PATH
+        ? observationBytes
+        : maestro.bytes.get(artifactPath),
+    }), /phase18_maestro_report_observations_invalid/u);
+  }
+  assert.throws(() => validatePhase18MaestroReport({
+    ...maestro.report,
+    identity: { ...maestro.report.identity, run_id: undefined },
+  }, {
+    manifest: manifest(HASH), installedApkSha256: HASH,
+    readBytes: (artifactPath) => maestro.bytes.get(artifactPath),
+  }), /phase18_maestro_report_identity_invalid/u);
+
+  const privacy = privacyFixture();
+  assert.throws(
+    () => validatePhase18PrivacyReport(privacy.report, null),
+    /phase18_privacy_report_schema_invalid/u,
+  );
+  assert.throws(() => validatePhase18PrivacyReport(null, {
+    manifest: manifest(HASH), installedApkSha256: HASH, readBytes: () => undefined,
+  }), /phase18_privacy_report_schema_invalid/u);
+  const malformedPrivacyCase = structuredClone(privacy.report);
+  malformedPrivacyCase.cases[0].status = "skipped";
+  assert.throws(() => validatePhase18PrivacyReport(malformedPrivacyCase, {
+    manifest: manifest(HASH), installedApkSha256: HASH,
+    readBytes: (artifactPath) => privacy.bytes.get(artifactPath),
+  }), /phase18_privacy_report_case_invalid/u);
+  const staleReferenceBytes = Buffer.from(`${JSON.stringify({
+    schema_version: 1,
+    suite: "phase18-garmin-adversarial",
+    status: "passed",
+    native_report: { path: NATIVE_PATH, sha256: "c".repeat(64) },
+  })}\n`);
+  const staleReference = structuredClone(privacy.report);
+  staleReference.cases[1].artifact.sha256 = sha256(staleReferenceBytes);
+  assert.throws(() => validatePhase18PrivacyReport(staleReference, {
+    manifest: manifest(HASH), installedApkSha256: HASH,
+    readBytes: (artifactPath) => artifactPath === ADVERSARIAL_PATH
+      ? staleReferenceBytes
+      : privacy.bytes.get(artifactPath),
+  }), /phase18_privacy_report_recursive_reference_invalid/u);
+  const priorReferenceBytes = Buffer.from(`${JSON.stringify({
+    schema_version: 1,
+    suite: "phase18-garmin-adversarial",
+    status: "passed",
+    prior_report: {
+      path: PROOF_PATH,
+      sha256: privacy.report.cases[0].artifact.sha256,
+    },
+    native_report: privacy.report.cases[1].attachments[0],
+  })}\n`);
+  const priorReference = structuredClone(privacy.report);
+  priorReference.cases[1].artifact.sha256 = sha256(priorReferenceBytes);
+  assert.throws(() => validatePhase18PrivacyReport(priorReference, {
+    manifest: manifest(HASH), installedApkSha256: HASH,
+    readBytes: (artifactPath) => artifactPath === ADVERSARIAL_PATH
+      ? priorReferenceBytes
+      : privacy.bytes.get(artifactPath),
+  }), /phase18_privacy_report_recursive_reference_invalid/u);
 });
