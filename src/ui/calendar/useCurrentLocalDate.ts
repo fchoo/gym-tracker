@@ -6,10 +6,13 @@ import { SystemClock, type Clock } from "../../domains/shared/clock";
 
 export type CurrentLocalDateDependencies = Readonly<{
   clock: Pick<Clock, "nowMs">;
+  localDate?(nowMs: number): LocalDate;
   schedule(callback: () => void, delayMs: number): unknown;
   cancel(handle: unknown): void;
   subscribeForeground(callback: () => void): () => void;
 }>;
+
+const ACTIVE_CIVIL_DATE_POLL_MS = 60_000;
 
 const systemClock = new SystemClock();
 const productionDependencies: CurrentLocalDateDependencies = Object.freeze({
@@ -47,16 +50,19 @@ export function useCurrentLocalDate(
   dependencies: CurrentLocalDateDependencies = productionDependencies,
 ): LocalDate {
   const [current, setCurrent] = useState(() =>
-    localDateAtDeviceTime(dependencies.clock.nowMs())
+    (dependencies.localDate ?? localDateAtDeviceTime)(dependencies.clock.nowMs())
   );
 
   useEffect(() => {
     let timer: unknown;
     const refresh = () => {
       const nowMs = dependencies.clock.nowMs();
-      setCurrent(localDateAtDeviceTime(nowMs));
+      setCurrent((dependencies.localDate ?? localDateAtDeviceTime)(nowMs));
       if (timer !== undefined) dependencies.cancel(timer);
-      timer = dependencies.schedule(refresh, millisecondsUntilNextLocalMidnight(nowMs));
+      timer = dependencies.schedule(
+        refresh,
+        Math.min(ACTIVE_CIVIL_DATE_POLL_MS, millisecondsUntilNextLocalMidnight(nowMs)),
+      );
     };
     refresh();
     const unsubscribe = dependencies.subscribeForeground(refresh);
