@@ -95,6 +95,7 @@ export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
       && (requestedSuite === 'migrations-effects'
         || requestedSuite === 'portable-merge'
         || requestedSuite === 'multi-plan-running'))
+    || (manifestSuite === 'phase19' && requestedSuite === 'progress-parity')
     || (manifestSuite === 'phase12' && requestedSuite === 'google-drive-backup');
 }
 
@@ -137,6 +138,10 @@ const PORTABLE_MERGE_CASE_IDS = await deriveCaseIds(
 const MULTI_PLAN_RUNNING_CONTRACT_CASES = await deriveCaseIds(
   'multiPlanRunning.contract.ts',
   'MULTI_PLAN_RUNNING_CONTRACT_CASES',
+);
+const PROGRESS_PARITY_CONTRACT_CASES = await deriveCaseIds(
+  'progressParity.contract.ts',
+  'PROGRESS_PARITY_CONTRACT_CASES',
 );
 const GOOGLE_DRIVE_BACKUP_CASE_IDS = await deriveCaseIds(
   'googleDriveBackup.contract.ts',
@@ -191,6 +196,7 @@ const supportedSuiteCases = {
   'migrations-effects': MIGRATIONS_EFFECTS_CASE_IDS,
   'portable-merge': PORTABLE_MERGE_CASE_IDS,
   'multi-plan-running': MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  'progress-parity': PROGRESS_PARITY_CONTRACT_CASES,
   'google-drive-backup': GOOGLE_DRIVE_BACKUP_CASE_IDS,
   'phase2': PHASE2_AGGREGATE_CASE_IDS,
   'phase2-content': PHASE2_CONTENT_CASE_IDS,
@@ -334,6 +340,61 @@ function assertPhase2ContractResult(input, expectedCaseIds, errorCode) {
   }
 }
 
+function assertProgressParityContractResult(input) {
+  const countKeys = [
+    'snapshots',
+    'runningFacts',
+    'goalRevisions',
+    'receiptRows',
+    'receiptReplays',
+  ];
+  const hashKeys = ['source', 'projection', 'receipt'];
+  const cases = Array.isArray(input?.cases) ? input.cases : [];
+  const validCases = cases.length === PROGRESS_PARITY_CONTRACT_CASES.length
+    && cases.every((contractCase, index) => (
+      exactKeys(contractCase, ['id', 'status', 'code', 'counts', 'timings', 'hashes'])
+      && contractCase?.id === PROGRESS_PARITY_CONTRACT_CASES[index]
+      && contractCase?.status === 'passed'
+      && contractCase?.code === 'progress_contract_case_passed'
+      && exactKeys(contractCase.counts, countKeys)
+      && countKeys.every((key) => Number.isSafeInteger(contractCase.counts[key])
+        && contractCase.counts[key] >= 0)
+      && exactKeys(contractCase.timings, ['durationMs'])
+      && typeof contractCase.timings.durationMs === 'number'
+      && contractCase.timings.durationMs >= 0
+      && exactKeys(contractCase.hashes, hashKeys)
+      && hashKeys.every((key) => /^[a-f0-9]{64}$/u.test(contractCase.hashes[key]))
+    ));
+  if (
+    !exactKeys(input, [
+      'schemaVersion',
+      'contractVersion',
+      'status',
+      'total',
+      'passed',
+      'failed',
+      'skipped',
+      'cases',
+      'startedAt',
+      'finishedAt',
+    ])
+    || input?.schemaVersion !== 1
+    || input?.contractVersion !== 1
+    || input?.status !== 'passed'
+    || input?.total !== PROGRESS_PARITY_CONTRACT_CASES.length
+    || input?.passed !== PROGRESS_PARITY_CONTRACT_CASES.length
+    || input?.failed !== 0
+    || input?.skipped !== 0
+    || !validCases
+    || typeof input?.startedAt !== 'string'
+    || Number.isNaN(Date.parse(input.startedAt))
+    || typeof input?.finishedAt !== 'string'
+    || Number.isNaN(Date.parse(input.finishedAt))
+  ) {
+    throw new Error('progress_parity_contract_result_invalid');
+  }
+}
+
 function assertPhase2FtsContractResult(input) {
   assertPhase2ContractResult(
     input,
@@ -446,6 +507,8 @@ try {
   const contractResult = await dumpResult(runId);
   if (suite === 'phase2-fts') {
     assertPhase2FtsContractResult(contractResult);
+  } else if (suite === 'progress-parity') {
+    assertProgressParityContractResult(contractResult);
   } else if (expectedPhase2Cases !== null) {
     assertPhase2ContractResult(
       contractResult,

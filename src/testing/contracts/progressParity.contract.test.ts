@@ -129,6 +129,9 @@ describe("Progress parity contract", () => {
     ]);
 
     const result = await runProgressParityContract(createHostAdapter());
+    if (result.status !== "passed") {
+      throw new Error(JSON.stringify(result));
+    }
 
     expect(result).toMatchObject({
       schemaVersion: 1,
@@ -181,6 +184,7 @@ describe("Progress parity contract", () => {
     expect(route).toContain("runProgressParityContract");
     expect(runner).toContain("PROGRESS_PARITY_CONTRACT_CASES");
     expect(runner).toContain("'progress-parity'");
+    expect(runner).toContain("assertProgressParityContractResult");
     expect(packageJson.scripts?.["test:sqlite:progress-parity:device"]).toContain(
       "--suite progress-parity",
     );

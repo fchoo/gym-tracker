@@ -88,6 +88,11 @@ import {
   type MultiPlanRunningContractResult,
 } from "../src/testing/contracts/multiPlanRunning.contract";
 import {
+  PROGRESS_PARITY_CONTRACT_CASES,
+  runProgressParityContract as verifyProgressParityContract,
+  type ProgressParityContractResult,
+} from "../src/testing/contracts/progressParity.contract";
+import {
   GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS,
   createExpoGoogleDriveBackupContractAdapter,
   runGoogleDriveBackupContract as verifyGoogleDriveBackupContract,
@@ -112,7 +117,9 @@ const PHASE2_AGGREGATE_CASE_IDS = [
   ...PHASE2_CASE_IDS,
 ] as const;
 const configuredSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
-const defaultSuite = configuredSuite === "phase13"
+const defaultSuite = configuredSuite === "phase19"
+  ? "progress-parity"
+  : configuredSuite === "phase13"
   ? "multi-plan-running"
   : configuredSuite === "phase10" || configuredSuite === "phase11" || configuredSuite === "phase12"
   ? "migrations-effects"
@@ -127,14 +134,16 @@ const defaultSuite = configuredSuite === "phase13"
   || configuredSuite === "phase2-starter"
   || configuredSuite === "portable-merge"
   || configuredSuite === "multi-plan-running"
+  || configuredSuite === "progress-parity"
   || configuredSuite === "google-drive-backup"
   ? configuredSuite
   : "sqlite-kernel";
 
 function requestedPackagedSuite(
   value: string | string[] | undefined,
-): "migrations-effects" | "portable-merge" | "multi-plan-running" | "google-drive-backup" | undefined {
+): "migrations-effects" | "portable-merge" | "multi-plan-running" | "progress-parity" | "google-drive-backup" | undefined {
   const candidate = Array.isArray(value) ? value[0] : value;
+  if (configuredSuite === "phase19" && candidate === "progress-parity") return "progress-parity";
   if (configuredSuite === "phase11" && candidate === "portable-merge") return "portable-merge";
   if (
     configuredSuite === "phase13"
@@ -161,6 +170,7 @@ function expectedCaseCountFor(suite: typeof defaultSuite): number {
   "phase2-starter": PHASE2_STARTER_CASE_IDS.length,
   "portable-merge": PORTABLE_MERGE_CONTRACT_CASES.length,
   "multi-plan-running": MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
+  "progress-parity": PROGRESS_PARITY_CONTRACT_CASES.length,
   "google-drive-backup": GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS.length,
   "sqlite-kernel": 10,
   }[suite];
@@ -198,7 +208,8 @@ type NativeContractResult =
   | SqliteKernelContractResult
   | MigrationsEffectsContractResult
   | PortableMergeContractResult
-  | MultiPlanRunningContractResult;
+  | MultiPlanRunningContractResult
+  | ProgressParityContractResult;
 
 type RouteState =
   | Readonly<{ status: "disabled" | "running" }>
@@ -517,6 +528,12 @@ export default function NativeSqliteContractsScreen() {
           setState({ status: "finished", result });
           return;
         }
+        if (selectedSuite === "progress-parity") {
+          const result = await verifyProgressParityContract(runId);
+          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          setState({ status: "finished", result });
+          return;
+        }
         if (selectedSuite === "google-drive-backup") {
           const result = await verifyGoogleDriveBackupContract(
             await createExpoGoogleDriveBackupContractAdapter(runId),
@@ -572,6 +589,8 @@ export default function NativeSqliteContractsScreen() {
       ? `Running ${expectedCaseCount} portable merge SQLite contracts…`
       : selectedSuite === "multi-plan-running"
       ? `Running ${expectedCaseCount} Phase 13 lifecycle SQLite contracts…`
+      : selectedSuite === "progress-parity"
+      ? `Running ${expectedCaseCount} Phase 19 Progress parity SQLite contracts…`
       : selectedSuite === "google-drive-backup"
       ? `Running ${expectedCaseCount} Google Drive fake-port contracts…`
       : "Running 10 SQLite integrity contracts…"
@@ -603,6 +622,8 @@ export default function NativeSqliteContractsScreen() {
           ? "Portable Merge Contracts"
           : selectedSuite === "multi-plan-running"
           ? "Phase 13 Lifecycle Contracts"
+          : selectedSuite === "progress-parity"
+          ? "Phase 19 Progress Parity Contracts"
           : selectedSuite === "google-drive-backup"
           ? "Google Drive Backup Contracts"
           : "SQLite Kernel Contracts"}
