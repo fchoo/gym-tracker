@@ -30,6 +30,7 @@ import {
   runCliIfMain,
 } from "./node-evidence-utils.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 
 const ROOT = process.cwd();
 const MANIFEST = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/build.json`;
@@ -375,7 +376,7 @@ function installedIdentity() {
   ]);
   return Object.freeze({
     installedApkSha256: sha256(installedBytes),
-    deviceIdentitySha256: sha256(JSON.stringify({ serial, abi, apiLevel, model })),
+    deviceIdentitySha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
   });
 }
 

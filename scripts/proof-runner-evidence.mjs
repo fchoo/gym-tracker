@@ -31,6 +31,7 @@ import {
 } from "./node-evidence-utils.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 
 const ROOT = process.cwd();
 export const PHASE18_GARMIN_PROOF_ARTIFACT_ROOT =
@@ -301,7 +302,7 @@ function discoverDevice(native, adb) {
   }
   return Object.freeze({
     serial,
-    identitySha256: sha256(JSON.stringify({ serial, abi, apiLevel, model })),
+    identitySha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
   });
 }
 

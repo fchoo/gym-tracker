@@ -20,6 +20,7 @@ import {
   runCliIfMain,
 } from "./node-evidence-utils.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 
 const MANIFEST = "artifacts/native/phase18-garmin-acceptance/build.json";
 const EVIDENCE = "artifacts/native/phase18-garmin-acceptance/benchmark.json";
@@ -278,7 +279,7 @@ export function resolvePhase18GarminBenchmarkCurrentIdentity() {
     python_lock_sha256: createHash("sha256").update(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")).digest("hex"),
     apk_sha256: createHash("sha256").update(retainedBytes).digest("hex"),
     signature_sha256: retainedSignatureSha256(apkPath),
-    device_identity_sha256: createHash("sha256").update(JSON.stringify({ serial, abi, apiLevel, model })).digest("hex"),
+    device_identity_sha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
     package: PACKAGE,
     profile: "development-test",
     abi,

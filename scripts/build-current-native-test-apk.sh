@@ -210,13 +210,8 @@ device_abi=$(adb -s "$device_serial" shell getprop ro.product.cpu.abi | tr -d '\
 device_model=$(adb -s "$device_serial" shell getprop ro.product.model | tr -d '\r')
 android_release=$(adb -s "$device_serial" shell getprop ro.build.version.release | tr -d '\r')
 device_identity_sha256=$(
-  {
-    adb -s "$device_serial" shell getprop ro.build.fingerprint
-    adb -s "$device_serial" shell getprop ro.product.cpu.abi
-    adb -s "$device_serial" shell getprop ro.product.model
-    adb -s "$device_serial" shell getprop ro.build.version.sdk
-    adb -s "$device_serial" shell getprop ro.build.version.release
-  } | tr -d '\r' | shasum -a 256 | awk '{ print $1 }'
+  printf '%s\n' "$device_serial" "$device_abi" "$device_api" "$device_model" |
+    node scripts/phase18-device-identity.mjs
 )
 build_finished_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 

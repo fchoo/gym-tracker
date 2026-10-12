@@ -34,6 +34,7 @@ import {
   regexMatch,
   runCliIfMain,
 } from "./node-evidence-utils.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 
 const MANIFEST = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/build.json`;
 const APK = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-acceptance-devtest.apk`;
@@ -106,12 +107,7 @@ export function resolvePhase18GarminAcceptanceCurrentIdentity() {
   const abi = getprop("ro.product.cpu.abi");
   const apiLevel = getprop("ro.build.version.sdk");
   const model = getprop("ro.product.model");
-  const deviceIdentitySha256 = sha256(JSON.stringify({
-    serial,
-    abi,
-    apiLevel,
-    model,
-  }));
+  const deviceIdentitySha256 = phase18DeviceIdentitySha256({ serial, abi, apiLevel, model });
   const installedPath = command(adb, ["-s", serial, "shell", "pm", "path", "com.fchoo.gymtracker.devtest"])
     .split("\n").find((line) => line.startsWith("package:"))?.slice("package:".length);
   if (installedPath === undefined) fail("installed_apk_missing");
