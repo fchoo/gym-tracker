@@ -107,6 +107,37 @@ async function measureAugustFocusedRows(): Promise<void> {
 }
 
 describe("CalendarScreen", () => {
+  it("records bounded source-backed query aggregates through the routed diagnostics producer", async () => {
+    const producer = {
+      recordQuery: jest.fn(),
+      recordInteraction: jest.fn(),
+      exportResult: jest.fn(() => Object.freeze({
+        producer: "v12-calendar-native-diagnostics/v1" as const,
+        native_execution: "EXECUTED" as const,
+        query_samples: Object.freeze([]),
+        interaction_samples: Object.freeze([]),
+      })),
+    };
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          diagnostics={{ producer, request: { querySamples: 1, interactionSamples: 1 } }}
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => range)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+    expect(producer.recordQuery).toHaveBeenCalledWith({
+      durationMs: expect.any(Number),
+      eventCount: 1,
+      importedCount: 0,
+      planCount: 1,
+    });
+  });
+
   it("opens one completed Strength agenda target without giving the date cell a nested event action", async () => {
     const onOpenEvent = jest.fn();
     const loadCalendarRange = jest.fn(async () => completedStrengthRange);

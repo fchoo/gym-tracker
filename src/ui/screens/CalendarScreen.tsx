@@ -11,6 +11,10 @@ import {
 } from "react-native";
 
 import { addLocalDays, parseLocalDate, type LocalDate } from "../../domains/scheduling";
+import type {
+  Phase16CalendarDiagnosticsProducer,
+  Phase16CalendarDiagnosticsRequest,
+} from "../../bootstrap/phase16CalendarTestControls";
 import {
   addLocalMonthsClamped,
   calendarGridForMonth,
@@ -52,6 +56,7 @@ const MONDAY_FIRST = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const NOOP = () => undefined;
 
 type CalendarScreenProps = Readonly<{
+  diagnostics?: Phase16CalendarDiagnosticsRuntime;
   initialDate: string;
   loadCalendarRange: CalendarReadPort["loadCalendarRange"];
   onOpenEvent(destination: CalendarEventDestination, returnEventId?: string): void;
@@ -62,6 +67,11 @@ type CalendarScreenProps = Readonly<{
   settingsActionNativeID?: string;
   onRequestRootBack?(): void;
   returnFocusGeneration?: number;
+}>;
+
+export type Phase16CalendarDiagnosticsRuntime = Readonly<{
+  producer: Phase16CalendarDiagnosticsProducer;
+  request: Phase16CalendarDiagnosticsRequest;
 }>;
 
 function monthLabel(value: LocalDate): string {
@@ -85,6 +95,7 @@ function monthIdDate(monthId: string): LocalDate {
 }
 
 export function CalendarScreen({
+  diagnostics,
   initialDate,
   loadCalendarRange,
   onOpenEvent,
@@ -122,6 +133,12 @@ export function CalendarScreen({
   const [weekMeasurements, setWeekMeasurements] = useState<ReadonlyMap<LocalDate, CalendarWeekGeometry>>(() => new Map());
   const [layoutGeneration, setLayoutGeneration] = useState(0);
   const requestGeneration = useRef(0);
+  const diagnosticState = useRef<{
+    producer: Phase16CalendarDiagnosticsProducer | null;
+    querySamples: number;
+    interactionSamples: number;
+    exported: boolean;
+  }>({ producer: null, querySamples: 0, interactionSamples: 0, exported: false });
   const calendarTransitionRef = useRef(calendarTransition);
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
@@ -150,9 +167,40 @@ export function CalendarScreen({
     endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 8),
   }), [grid]);
 
+  const currentDiagnosticState = useCallback(() => {
+    if (diagnostics === undefined) return null;
+    if (diagnosticState.current.producer !== diagnostics.producer) {
+      diagnosticState.current = {
+        producer: diagnostics.producer,
+        querySamples: 0,
+        interactionSamples: 0,
+        exported: false,
+      };
+    }
+    return diagnosticState.current;
+  }, [diagnostics]);
+
+  const exportCompletedDiagnostics = useCallback(() => {
+    const state = currentDiagnosticState();
+    if (diagnostics === undefined || state === null || state.exported
+      || state.querySamples !== diagnostics.request.querySamples
+      || state.interactionSamples !== diagnostics.request.interactionSamples) return;
+    state.exported = true;
+    diagnostics.producer.exportResult();
+  }, [currentDiagnosticState, diagnostics]);
+
+  const recordDiagnosticInteraction = useCallback((sample: Parameters<Phase16CalendarDiagnosticsProducer["recordInteraction"]>[0]) => {
+    const state = currentDiagnosticState();
+    if (diagnostics === undefined || state === null || state.interactionSamples >= diagnostics.request.interactionSamples) return;
+    diagnostics.producer.recordInteraction(sample);
+    state.interactionSamples += 1;
+    exportCompletedDiagnostics();
+  }, [currentDiagnosticState, diagnostics, exportCompletedDiagnostics]);
+
   useEffect(() => {
     const request = requestGeneration.current + 1;
     requestGeneration.current = request;
+    const queryStartedAt = globalThis.performance?.now() ?? Date.now();
     let active = true;
 
     setIsLoading(true);
@@ -167,6 +215,19 @@ export function CalendarScreen({
         setLastGoodMonth(month);
         setLastGoodSelectedDate(selectedDateRef.current);
         setRefreshCompletion(Object.freeze({ generation: request, range: next }));
+        if (diagnostics !== undefined) {
+          const current = currentDiagnosticState();
+          if (current !== null && current.querySamples < diagnostics.request.querySamples) {
+            diagnostics.producer.recordQuery({
+              durationMs: Math.max(0, (globalThis.performance?.now() ?? Date.now()) - queryStartedAt),
+              eventCount: next.events.length,
+              planCount: new Set(next.events.flatMap(({ planId }) => planId === null ? [] : [planId])).size,
+              importedCount: next.events.filter(({ source }) => source === "imported_activity").length,
+            });
+            current.querySamples += 1;
+            exportCompletedDiagnostics();
+          }
+        }
       })
       .catch((nextError: unknown) => {
         if (!active || request !== requestGeneration.current) {
@@ -182,7 +243,7 @@ export function CalendarScreen({
       });
 
     return () => { active = false; };
-  }, [loadCalendarRange, month, rangeInput, retryGeneration]);
+  }, [currentDiagnosticState, diagnostics, exportCompletedDiagnostics, loadCalendarRange, month, rangeInput, retryGeneration]);
 
   const selectDate = (date: LocalDate) => {
     selectedDateRef.current = date;
@@ -581,6 +642,7 @@ export function CalendarScreen({
                 month={visibleMonth}
                 onCancel={invalidateLayout}
                 onComplete={(epoch) => dispatchCalendarTransition({ type: "settle-complete", epoch })}
+                {...(diagnostics === undefined ? {} : { onInteractionDiagnostic: recordDiagnosticInteraction })}
                 onPreview={(dx, viewportWidth) => dispatchCalendarTransition({ type: "drag", dx, dy: 0, viewportWidth })}
                 onRelease={({ dx, dy, targetMonthId, viewportWidth }) => dispatchCalendarTransition({
                   type: "release",

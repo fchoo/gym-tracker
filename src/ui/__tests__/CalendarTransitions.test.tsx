@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { View } from "react-native";
@@ -80,6 +80,53 @@ describe("Calendar semantic transitions", () => {
     );
 
     expect((latestPan as { config: { enabled?: boolean } }).config.enabled).toBe(false);
+    panSpy.mockRestore();
+  });
+
+  it("records one bounded interaction sample only after a committed drag expands and collapses", async () => {
+    const createPan = Gesture.Pan.bind(Gesture);
+    let latestPan: unknown;
+    const panSpy = jest.spyOn(Gesture, "Pan").mockImplementation(() => {
+      latestPan = createPan();
+      return latestPan as ReturnType<typeof Gesture.Pan>;
+    });
+    const onInteractionDiagnostic = jest.fn();
+    const common = {
+      agenda: <View />,
+      focusedWeek: {
+        selectedDates: ["2026-11-02" as LocalDate],
+        followingDates: ["2026-11-09" as LocalDate],
+        selectedGeometry: { y: 70, height: 70, generation: 0 },
+        followingGeometry: { y: 140, height: 70, generation: 0 },
+      },
+      month: "2026-11-01" as LocalDate,
+      onCancel: jest.fn(),
+      onComplete: jest.fn(),
+      onInteractionDiagnostic,
+      onPreview: jest.fn(),
+      onRelease: jest.fn(),
+      renderMonth: () => <View />,
+      renderWeek: () => <View />,
+      weekCount: 5,
+    } as const;
+    const rendered = await render(<CalendarMonthViewport {...common} command={null} transition={initial()} />);
+    await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", { nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } } });
+    const handlers = (latestPan as { handlers: { onBegin?: () => void; onEnd?: (event: Readonly<{ translationX: number; translationY: number }>, success: boolean) => void } }).handlers;
+    handlers.onBegin?.();
+    handlers.onEnd?.({ translationX: -100, translationY: 0 }, true);
+
+    const expanding = Object.freeze({ ...initial(), mode: "focused" as const, phase: "settling" as const, epoch: 1 });
+    await rendered.rerender(<CalendarMonthViewport {...common} command={{ kind: "settle-week", epoch: 1, phase: "expand", durationMs: 260, easing: [0.22, 0.8, 0.3, 1], agendaDelayMs: 70, agendaDurationMs: 170 }} transition={expanding} />);
+    const collapsing = Object.freeze({ ...expanding, mode: "month" as const, epoch: 2 });
+    await rendered.rerender(<CalendarMonthViewport {...common} command={{ kind: "settle-week", epoch: 2, phase: "collapse", durationMs: 240, easing: [0.4, 0, 0.78, 0.2], agendaDelayMs: 0, agendaDurationMs: 140 }} transition={collapsing} />);
+
+    expect(onInteractionDiagnostic).toHaveBeenCalledTimes(1);
+    expect(onInteractionDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      frameWorkMs: expect.any(Array),
+      missedFrames: expect.any(Number),
+      refreshRateHz: expect.any(Number),
+      profilerOverheadMs: expect.any(Number),
+    }));
     panSpy.mockRestore();
   });
 

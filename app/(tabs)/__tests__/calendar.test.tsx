@@ -61,8 +61,31 @@ jest.mock("../../../src/ui/shell/rootFocus", () => ({
 jest.mock("../../../src/ui/screens/CalendarScreen", () => {
   const { Pressable } = require("react-native") as typeof import("react-native");
   return {
-    CalendarScreen: ({ onOpenEvent }: Readonly<{ onOpenEvent(destination: unknown, returnEventId?: string): void }>) => (
+    CalendarScreen: ({ diagnostics, onOpenEvent }: Readonly<{
+      diagnostics?: Readonly<{
+        producer: Readonly<{
+          recordQuery(input: Readonly<{ durationMs: number; eventCount: number; planCount: number; importedCount: number }>): void;
+          recordInteraction(input: Readonly<{ frameWorkMs: readonly number[]; missedFrames: number; refreshRateHz: number; profilerOverheadMs: number }>): void;
+          exportResult(): unknown;
+        }>;
+        request: Readonly<{ querySamples: number; interactionSamples: number }>;
+      }>;
+      onOpenEvent(destination: unknown, returnEventId?: string): void;
+    }>) => (
       <>
+        {diagnostics === undefined ? null : <Pressable
+          accessibilityLabel="Complete Calendar diagnostics"
+          accessibilityRole="button"
+          onPress={() => {
+            for (let index = 0; index < diagnostics.request.querySamples; index += 1) {
+              diagnostics.producer.recordQuery({ durationMs: 1, eventCount: 1, planCount: 1, importedCount: 0 });
+            }
+            for (let index = 0; index < diagnostics.request.interactionSamples; index += 1) {
+              diagnostics.producer.recordInteraction({ frameWorkMs: [1], missedFrames: 0, refreshRateHz: 60, profilerOverheadMs: 0 });
+            }
+            diagnostics.producer.exportResult();
+          }}
+        />}
         <Pressable
           accessibilityLabel="Open completed Strength event"
           accessibilityRole="button"
@@ -116,6 +139,29 @@ describe("CalendarRoute", () => {
     expect(mockConfigurePhase16CalendarTestControls).toHaveBeenLastCalledWith(expect.objectContaining({
       stage: undefined,
     }));
+  });
+
+  it("hooks scalar diagnostics requests to the gated producer and one-shot export", async () => {
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+    mockLocalSearchParams = {
+      phase16CalendarDiagnostics: "true",
+      querySamples: "100",
+      interactionSamples: "100",
+    };
+    const rendered = await render(<CalendarRoute />);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Calendar diagnostics" }));
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0]?.[0]).toMatch(/^GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:/u);
+
+    mockLocalSearchParams = {
+      phase16CalendarDiagnostics: ["true"],
+      querySamples: "100",
+      interactionSamples: "100",
+    };
+    await rendered.rerender(<CalendarRoute />);
+    expect(screen.queryByRole("button", { name: "Complete Calendar diagnostics" })).toBeNull();
+    info.mockRestore();
   });
 
   it("routes a completed Strength event by its durable session identity with Calendar origin", async () => {

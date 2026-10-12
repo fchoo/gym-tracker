@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -140,6 +140,7 @@ export function CalendarMonthViewport({
   month,
   onCancel,
   onComplete,
+  onInteractionDiagnostic,
   onPreview,
   onRelease,
   renderMonth,
@@ -160,6 +161,12 @@ export function CalendarMonthViewport({
   month: LocalDate;
   onCancel(): void;
   onComplete(epoch: number): void;
+  onInteractionDiagnostic?(input: Readonly<{
+    frameWorkMs: readonly number[];
+    missedFrames: number;
+    refreshRateHz: number;
+    profilerOverheadMs: number;
+  }>): void;
   onPreview(dx: number, viewportWidth: number): void;
   onRelease(input: Readonly<{ dx: number; dy: number; targetMonthId: string; viewportWidth: number }>): void;
   renderMonth(month: LocalDate, interactive: boolean): React.ReactNode;
@@ -181,14 +188,69 @@ export function CalendarMonthViewport({
   const touchStartY = useSharedValue(0);
   const panEnabled = useSharedValue(calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
+  const frameProbe = useRef<{
+    expanded: boolean;
+    frameDurations: number[];
+    lastTimestamp: number | null;
+    maxOverheadMs: number;
+    raf: number;
+    startedAt: number;
+  } | null>(null);
   const lastWidth = useRef(0);
   const lastHeight = useRef(0);
   const previousMonth = startOfLocalMonth(addLocalMonthsClamped(month, -1));
   const nextMonth = startOfLocalMonth(addLocalMonthsClamped(month, 1));
 
+  const frameTick = useCallback((timestamp: number) => {
+    const callbackStartedAt = globalThis.performance?.now() ?? Date.now();
+    const probe = frameProbe.current;
+    if (probe === null) return;
+    if (probe.lastTimestamp !== null) probe.frameDurations.push(Math.max(0, timestamp - probe.lastTimestamp));
+    probe.lastTimestamp = timestamp;
+    probe.maxOverheadMs = Math.max(probe.maxOverheadMs, (globalThis.performance?.now() ?? Date.now()) - callbackStartedAt);
+    probe.raf = requestAnimationFrame(frameTick);
+  }, []);
+
+  const beginDiagnosticInteraction = useCallback(() => {
+    if (onInteractionDiagnostic === undefined) return;
+    if (frameProbe.current !== null) cancelAnimationFrame(frameProbe.current.raf);
+    const probe = {
+      expanded: false,
+      frameDurations: [] as number[],
+      lastTimestamp: null as number | null,
+      maxOverheadMs: 0,
+      raf: 0,
+      startedAt: globalThis.performance?.now() ?? Date.now(),
+    };
+    frameProbe.current = probe;
+    probe.raf = requestAnimationFrame(frameTick);
+  }, [frameTick, onInteractionDiagnostic]);
+
+  const finishDiagnosticInteraction = useCallback(() => {
+    const probe = frameProbe.current;
+    frameProbe.current = null;
+    if (probe === null) return;
+    cancelAnimationFrame(probe.raf);
+    if (!probe.expanded || onInteractionDiagnostic === undefined) return;
+    const elapsed = Math.max(0, (globalThis.performance?.now() ?? Date.now()) - probe.startedAt);
+    const frameDurations = probe.frameDurations.length === 0 ? [elapsed] : probe.frameDurations;
+    const sorted = [...frameDurations].sort((left, right) => left - right);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 16.67;
+    const refreshRateHz = median <= 0 ? 60 : Math.min(240, 1_000 / median);
+    const missedFrames = frameDurations.reduce((total, duration) => total + Math.max(0, Math.round(duration / Math.max(median, 1)) - 1), 0);
+    onInteractionDiagnostic({
+      frameWorkMs: Object.freeze([...frameDurations]),
+      missedFrames,
+      refreshRateHz,
+      profilerOverheadMs: probe.maxOverheadMs,
+    });
+  }, [onInteractionDiagnostic]);
+
   useEffect(() => () => {
     mounted.current = false;
     cancelAnimation(pointerX);
+    if (frameProbe.current !== null) cancelAnimationFrame(frameProbe.current.raf);
+    frameProbe.current = null;
   }, [pointerX]);
 
   useEffect(() => {
@@ -212,6 +274,7 @@ export function CalendarMonthViewport({
 
   useEffect(() => {
     if (command?.kind !== "settle-week") return;
+    if (command.phase === "expand" && frameProbe.current !== null) frameProbe.current.expanded = true;
     const agendaMotion = calendarAgendaMotion(command);
     cancelAnimation(agendaOpacity);
     agendaOpacity.value = agendaMotion.delayMs > 0
@@ -238,9 +301,10 @@ export function CalendarMonthViewport({
     }, (finished) => {
       if (finished && weekCompletionEpoch.value === command.epoch) {
         scheduleOnRN(onComplete, command.epoch);
+        if (command.phase === "collapse") scheduleOnRN(finishDiagnosticInteraction);
       }
     });
-  }, [agendaOpacity, command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, onCancel, onComplete, viewportHeight, weekCompletionEpoch]);
+  }, [agendaOpacity, command, finishDiagnosticInteraction, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, onCancel, onComplete, viewportHeight, weekCompletionEpoch]);
 
   useEffect(() => {
     if (!transition.reducedMotion) return;
@@ -319,6 +383,7 @@ export function CalendarMonthViewport({
       released.value = true;
       const dx = Math.max(-width, Math.min(width, event.translationX));
       const selectedMonth = (Math.abs(dx) >= width * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);
+      if (Math.abs(dx) >= width * 0.25) scheduleOnRN(beginDiagnosticInteraction);
       scheduleOnRN(recordPhase16CalendarRelease, { dx, viewportWidth: width, semanticMonth: selectedMonth, titleMonth: selectedMonth });
       scheduleOnRN(onRelease, {
         dx,
