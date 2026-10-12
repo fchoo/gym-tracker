@@ -15,20 +15,20 @@ import type {
   SessionDetail,
 } from "../../src/domains/workout";
 import {
-  AdaptiveScreen,
-} from "../../src/ui/layout/AdaptiveScreen";
-import {
   EmptyState,
   PrimaryAction,
   ScreenHeader,
   SkeletonBlock,
 } from "../../src/ui/components";
 import {
+  CalendarSessionDetailRouteAdapter,
+} from "../../src/ui/calendar/CalendarRouteAdapters";
+import {
+  AdaptiveScreen,
+} from "../../src/ui/layout/AdaptiveScreen";
+import {
   SessionDetailScreen,
 } from "../../src/ui/screens/SessionDetailScreen";
-import {
-  CalendarReadOnlyWorkout,
-} from "../../src/ui/calendar/CalendarReadOnlyWorkout";
 
 type RouteParam = string | readonly string[] | undefined;
 
@@ -40,73 +40,15 @@ function isCalendarOrigin(value: RouteParam): boolean {
   return value === "calendar";
 }
 
-function CalendarUnavailable() {
-  return (
-    <AdaptiveScreen
-      primary={
-        <>
-          <ScreenHeader backAction={() => router.back()} title="Workout details" />
-          <EmptyState
-            body="This workout was removed or changed. Return to Calendar to refresh."
-            heading="Workout details unavailable"
-            primaryAction={<PrimaryAction label="Back to Calendar" onPress={() => router.back()} />}
-          />
-        </>
-      }
-    />
-  );
-}
-
-function CalendarSessionDetail({
-  sessionId,
-  readSession,
-}: Readonly<{
-  sessionId: string;
-  readSession: Readonly<{ getSessionDetail(id: string): Promise<SessionDetail> }>;
-}>) {
-  const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [missing, setMissing] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setDetail(null);
-    setMissing(false);
-    void readSession.getSessionDetail(sessionId).then((next) => {
-      if (active) setDetail(next);
-    }).catch(() => {
-      if (active) setMissing(true);
-    });
-    return () => { active = false; };
-  }, [readSession, sessionId]);
-
-  if (missing) return <CalendarUnavailable />;
-  if (detail === null) {
-    return <AdaptiveScreen primary={<><ScreenHeader backAction={() => router.back()} title="Workout details" /><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></>} />;
-  }
-  return <CalendarReadOnlyWorkout detail={detail} onGoBack={() => router.back()} />;
-}
-
-export default function SessionDetailRoute() {
-  const { sessionId, origin } = useLocalSearchParams() as Readonly<{
-    sessionId?: RouteParam;
-    origin?: RouteParam;
-  }>;
-  const resolvedSessionId = exactRouteParam(sessionId);
+function ManagementSessionDetailRoute({ sessionId }: Readonly<{ sessionId: string }>) {
   const runtime = useWorkoutAppRuntime();
-
-  if (isCalendarOrigin(origin)) {
-    if (resolvedSessionId === null) return <CalendarUnavailable />;
-    return <CalendarSessionDetail sessionId={resolvedSessionId} readSession={{ getSessionDetail: runtime.getSessionDetail }} />;
-  }
-
-  const managementSessionId = resolvedSessionId ?? "unknown";
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
     setFailed(false);
-    void runtime.getSessionDetail(managementSessionId).then((next) => {
+    void runtime.getSessionDetail(sessionId).then((next) => {
       if (active) {
         setDetail(next);
       }
@@ -119,7 +61,7 @@ export default function SessionDetailRoute() {
       active = false;
     };
   }, [
-    managementSessionId,
+    sessionId,
     runtime,
     runtime.workoutRefreshGeneration,
   ]);
@@ -193,4 +135,22 @@ export default function SessionDetailRoute() {
       }}
     />
   );
+}
+
+export default function SessionDetailRoute() {
+  const { sessionId, origin } = useLocalSearchParams() as Readonly<{
+    sessionId?: RouteParam;
+    origin?: RouteParam;
+  }>;
+  const resolvedSessionId = exactRouteParam(sessionId);
+
+  if (isCalendarOrigin(origin)) {
+    return (
+      <CalendarSessionDetailRouteAdapter
+        onBack={() => router.back()}
+        sessionId={resolvedSessionId}
+      />
+    );
+  }
+  return <ManagementSessionDetailRoute sessionId={resolvedSessionId ?? "unknown"} />;
 }

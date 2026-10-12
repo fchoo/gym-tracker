@@ -32,6 +32,23 @@ const mockMutationCommands = Object.freeze({
   resolveGarminRevision: jest.fn(),
   resumePartialWorkout: jest.fn(),
 });
+const mockUseWorkoutAppRuntime = jest.fn(() => ({
+  createPhase17ActionRequestId: mockCreatePhase17ActionRequestId,
+  getSessionDetail: mockGetSessionDetail,
+  loadCalendarRange: mockLoadCalendarRange,
+  loadGarminRevisionReview: mockLoadGarminRevisionReview,
+  loadImportedActivityDetail: mockLoadActivity,
+  loadPlannedStrengthOccurrence: mockLoadOccurrence,
+  ...mockMutationCommands,
+  workoutRefreshGeneration: 0,
+}));
+const mockUseRunningPlanRuntime = jest.fn(() => ({
+  confirmLifecycle: mockConfirmLifecycle,
+  createId: (kind: string) => `${kind}:calendar-test`,
+  loadPlan: mockLoadRunningPlan,
+  previewLifecycle: mockPreviewLifecycle,
+  ...mockMutationCommands,
+}));
 const mockFocusEffects = new Set<() => void>();
 let mockSearchParams: Readonly<Record<string, string | undefined>> = {};
 
@@ -225,26 +242,21 @@ function sourceDigest(value: unknown): string {
 }
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({
-    createPhase17ActionRequestId: mockCreatePhase17ActionRequestId,
-    getSessionDetail: mockGetSessionDetail,
-    loadCalendarRange: mockLoadCalendarRange,
+  useCalendarActivityReadPort: () => ({
     loadGarminRevisionReview: mockLoadGarminRevisionReview,
     loadImportedActivityDetail: mockLoadActivity,
-    loadPlannedStrengthOccurrence: mockLoadOccurrence,
-    ...mockMutationCommands,
-    workoutRefreshGeneration: 0,
   }),
+  useCalendarRangeReadPort: () => ({ loadCalendarRange: mockLoadCalendarRange }),
+  useCalendarSessionReadPort: () => ({ getSessionDetail: mockGetSessionDetail }),
+  useCalendarStrengthOccurrenceReadPort: () => ({
+    loadPlannedStrengthOccurrence: mockLoadOccurrence,
+  }),
+  useWorkoutAppRuntime: () => mockUseWorkoutAppRuntime(),
 }));
 
 jest.mock("../../src/bootstrap/runningPlanRuntime", () => ({
-  useRunningPlanRuntime: () => ({
-    confirmLifecycle: mockConfirmLifecycle,
-    createId: (kind: string) => `${kind}:calendar-test`,
-    loadPlan: mockLoadRunningPlan,
-    previewLifecycle: mockPreviewLifecycle,
-    ...mockMutationCommands,
-  }),
+  useCalendarRunningPlanReadPort: () => ({ loadPlan: mockLoadRunningPlan }),
+  useRunningPlanRuntime: () => mockUseRunningPlanRuntime(),
 }));
 
 jest.mock("../../src/ui/garmin/GarminRouteShell", () => ({
@@ -284,6 +296,8 @@ describe("Calendar cross-destination routes", () => {
     mockCreatePhase17ActionRequestId.mockClear();
     mockPreviewLifecycle.mockReset();
     mockConfirmLifecycle.mockReset();
+    mockUseWorkoutAppRuntime.mockClear();
+    mockUseRunningPlanRuntime.mockClear();
     Object.values(mockMutationCommands).forEach((command) => command.mockReset());
     mockFocusEffects.clear();
     mockSearchParams = {};
@@ -328,6 +342,8 @@ describe("Calendar cross-destination routes", () => {
     expect(sizes.focusRing).toBe(3);
     expect(mockPreviewLifecycle).not.toHaveBeenCalled();
     expect(mockConfirmLifecycle).not.toHaveBeenCalled();
+    expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
+    expect(mockUseRunningPlanRuntime).not.toHaveBeenCalled();
   });
 
   it("uses the real Running missing state for a stale identity and returns without substituting another plan", async () => {
@@ -475,6 +491,8 @@ describe("Calendar cross-destination routes", () => {
     Object.values(mockMutationCommands).forEach((command) => expect(command).not.toHaveBeenCalled());
     expect(mockPreviewLifecycle).not.toHaveBeenCalled();
     expect(mockConfirmLifecycle).not.toHaveBeenCalled();
+    expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
+    expect(mockUseRunningPlanRuntime).not.toHaveBeenCalled();
     expect(sourceDigest(sourceState)).toBe(beforeDigest);
   });
 

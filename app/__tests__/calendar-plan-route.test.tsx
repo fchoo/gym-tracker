@@ -13,7 +13,9 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => mockParams,
 }));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ loadPlannedStrengthOccurrence: mockLoadPlannedStrengthOccurrence }),
+  useCalendarStrengthOccurrenceReadPort: () => ({
+    loadPlannedStrengthOccurrence: mockLoadPlannedStrengthOccurrence,
+  }),
 }));
 jest.mock("../../src/ui/screens/PlannedWorkoutDetailScreen", () => ({
   PlannedWorkoutDetailScreen: ({ occurrenceId, loadOccurrence }: { occurrenceId: string; loadOccurrence(id: string): Promise<PlannedStrengthOccurrenceDetail | null> }) => {

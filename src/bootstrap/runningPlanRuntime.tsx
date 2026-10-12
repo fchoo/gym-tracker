@@ -6,6 +6,10 @@ import type { RunningLifecycleAction, RunningLifecyclePreview } from "../domains
 import type { CommitScheduleCollisionChoiceInput, ScheduleCollisionPreview } from "../domains/scheduling/collisionCommands";
 import type { SqliteKernel } from "../platform/sqlite";
 import {
+  createCalendarRunningPlanReadPort,
+  type CalendarRunningPlanReadPort,
+} from "./calendarReadPorts";
+import {
   createRunningPlanRepository,
 } from "../platform/sqlite/repositories/runningPlanRepository";
 import { createScheduleCollisionRepository, type ScheduleCollisionCommandResult } from "../platform/sqlite/repositories/scheduleCollisionRepository";
@@ -65,6 +69,7 @@ export type RunningTargetMutationResult = Readonly<{
 }>;
 
 const RunningPlanRuntimeContext = createContext<RunningPlanRuntimePort | null>(null);
+const CalendarRunningPlanReadContext = createContext<CalendarRunningPlanReadPort | null>(null);
 
 export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies: Readonly<{
   nowMs(): number;
@@ -237,11 +242,27 @@ function buildSessionCommand(input: Readonly<{
 }
 
 export function RunningPlanRuntimeProvider(props: Readonly<{ runtime: RunningPlanRuntimePort; children: React.ReactNode }>) {
-  return <RunningPlanRuntimeContext.Provider value={props.runtime}>{props.children}</RunningPlanRuntimeContext.Provider>;
+  const calendarRead = React.useMemo(
+    () => createCalendarRunningPlanReadPort(props.runtime),
+    [props.runtime],
+  );
+  return (
+    <RunningPlanRuntimeContext.Provider value={props.runtime}>
+      <CalendarRunningPlanReadContext.Provider value={calendarRead}>
+        {props.children}
+      </CalendarRunningPlanReadContext.Provider>
+    </RunningPlanRuntimeContext.Provider>
+  );
 }
 
 export function useRunningPlanRuntime(): RunningPlanRuntimePort {
   const runtime = useContext(RunningPlanRuntimeContext);
   if (runtime === null) throw new Error("running_plan_runtime_unavailable");
+  return runtime;
+}
+
+export function useCalendarRunningPlanReadPort(): CalendarRunningPlanReadPort {
+  const runtime = useContext(CalendarRunningPlanReadContext);
+  if (runtime === null) throw new Error("calendar_running_plan_read_port_unavailable");
   return runtime;
 }

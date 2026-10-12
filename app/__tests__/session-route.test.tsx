@@ -6,6 +6,11 @@ import type { SessionDetail } from "../../src/domains/workout";
 
 const mockBack = jest.fn();
 const mockGetSessionDetail = jest.fn<() => Promise<SessionDetail>>();
+const mockUseWorkoutAppRuntime = jest.fn(() => ({
+  getSessionDetail: mockGetSessionDetail,
+  ...mockMutationCommands,
+  workoutRefreshGeneration: 0,
+}));
 const mockMutationCommands = {
   addExercise: jest.fn(), addWarmup: jest.fn(), addWorkingSet: jest.fn(), adjustRest: jest.fn(), completeSet: jest.fn(), completeWarmup: jest.fn(),
   discardWorkout: jest.fn(), finishCompleted: jest.fn(), finishPartial: jest.fn(), removeExercise: jest.fn(), removeHistorySession: jest.fn(), removeWarmup: jest.fn(),
@@ -23,11 +28,10 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => mockParams,
 }));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({
+  useCalendarSessionReadPort: () => ({
     getSessionDetail: mockGetSessionDetail,
-    ...mockMutationCommands,
-    workoutRefreshGeneration: 0,
   }),
+  useWorkoutAppRuntime: () => mockUseWorkoutAppRuntime(),
 }));
 jest.mock("../../src/ui/calendar/CalendarReadOnlyWorkout", () => ({
   CalendarReadOnlyWorkout: ({ detail, onGoBack }: { detail: SessionDetail; onGoBack(): void }) => {
@@ -56,7 +60,7 @@ const detail = {
 } as unknown as SessionDetail;
 
 describe("SessionDetailRoute", () => {
-  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
+  beforeEach(() => { mockBack.mockReset(); mockGetSessionDetail.mockReset(); mockUseWorkoutAppRuntime.mockClear(); Object.values(mockMutationCommands).forEach((command) => command.mockReset()); mockParams = { sessionId: "calendar-session", origin: "calendar" }; });
 
   it("opens an exact Calendar session through the query-only facts branch", async () => {
     mockGetSessionDetail.mockResolvedValue(detail);
@@ -64,6 +68,7 @@ describe("SessionDetailRoute", () => {
     const rendered = await render(<SessionDetailRoute />);
     expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
     expect(mockGetSessionDetail).toHaveBeenCalledWith("calendar-session");
+    expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
     expect(screen.queryByLabelText("Correct workout")).toBeNull();
     expect(screen.queryByLabelText("Remove from history")).toBeNull();
     screen.getByRole("button", { name: "Toggle disclosure" });
@@ -86,5 +91,6 @@ describe("SessionDetailRoute", () => {
     expect(await screen.findByText("Management details")).toBeOnTheScreen();
     expect(screen.getByLabelText("Correct workout")).toBeOnTheScreen();
     expect(screen.getByLabelText("Remove from history")).toBeOnTheScreen();
+    expect(mockUseWorkoutAppRuntime).toHaveBeenCalled();
   });
 });

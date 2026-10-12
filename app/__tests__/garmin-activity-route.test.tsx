@@ -53,6 +53,10 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
+  useCalendarActivityReadPort: () => ({
+    loadGarminRevisionReview: mockLoadGarminRevisionReview,
+    loadImportedActivityDetail: mockLoadImportedActivityDetail,
+  }),
   useWorkoutAppRuntime: () => ({
     loadGarminRevisionReview: mockLoadGarminRevisionReview,
     loadImportedActivityDetail: mockLoadImportedActivityDetail,

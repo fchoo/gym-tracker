@@ -26,6 +26,7 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../src/bootstrap/runningPlanRuntime", () => ({
+  useCalendarRunningPlanReadPort: () => ({ loadPlan: jest.fn() }),
   useRunningPlanRuntime: () => ({
     commitScheduleCollisionChoice: jest.fn(),
     confirmLifecycle: jest.fn(),

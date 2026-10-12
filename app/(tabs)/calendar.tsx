@@ -7,7 +7,7 @@ import {
 } from "expo-router";
 
 import {
-  useWorkoutAppRuntime,
+  useCalendarRangeReadPort,
 } from "../../src/bootstrap/workoutAppRuntime";
 import {
   CalendarScreen,
@@ -43,7 +43,7 @@ export default function CalendarRoute() {
   const headingRef = useRootHeadingRef("calendar");
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
-  const runtime = useWorkoutAppRuntime();
+  const calendarRead = useCalendarRangeReadPort();
   const phase16Stage = (typeof globalThis.location?.search === "string"
     ? new URLSearchParams(globalThis.location.search).get("phase16CalendarStage")
     : undefined) ?? undefined;
@@ -110,7 +110,7 @@ export default function CalendarRoute() {
   return (
     <CalendarScreen
       initialDate={initialDate}
-      loadCalendarRange={runtime.loadCalendarRange}
+      loadCalendarRange={calendarRead.loadCalendarRange}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "calendar",
         triggerNativeID: settingsActionNativeID,

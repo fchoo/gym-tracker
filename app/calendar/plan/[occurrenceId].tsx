@@ -1,8 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import React from "react";
 
-import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
-import { PlannedWorkoutDetailScreen } from "../../../src/ui/screens/PlannedWorkoutDetailScreen";
+import { CalendarPlannedStrengthRouteAdapter } from "../../../src/ui/calendar/CalendarRouteAdapters";
 
 export default function CalendarPlannedWorkoutRoute() {
   const { occurrenceId } = useLocalSearchParams() as Readonly<{
@@ -11,12 +10,9 @@ export default function CalendarPlannedWorkoutRoute() {
   const exactOccurrenceId = typeof occurrenceId === "string" && occurrenceId.length > 0
     ? occurrenceId
     : "";
-  const runtime = useWorkoutAppRuntime();
-
   return (
-    <PlannedWorkoutDetailScreen
+    <CalendarPlannedStrengthRouteAdapter
       occurrenceId={exactOccurrenceId}
-      loadOccurrence={runtime.loadPlannedStrengthOccurrence}
       onBack={() => router.back()}
     />
   );

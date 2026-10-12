@@ -20,7 +20,7 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ loadCalendarRange: jest.fn() }),
+  useCalendarRangeReadPort: () => ({ loadCalendarRange: jest.fn() }),
 }));
 
 jest.mock("../../../src/ui/shell/AppRootShell", () => ({
