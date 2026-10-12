@@ -4,6 +4,7 @@ import { StyleSheet, Text, View, type TextStyle } from "react-native";
 import type { ProgressRunningGoal } from "../../domains/progress/contracts";
 import { space, typeScale, useAppTheme } from "../theme";
 import { BottomSheet, type BottomSheetProps } from "./BottomSheet";
+import { FocusablePressable } from "./index";
 import {
   FactualHistoryChart,
   formatFactualDuration,
@@ -34,6 +35,15 @@ function formatDistance(distanceMeters: number): string {
       : `${distanceMeters} m`;
 }
 
+function isQualifiedEffort(effort: ProgressRunningGoal["history"][number]["effort"]): boolean {
+  return effort.activityId.length > 0
+    && Number.isSafeInteger(effort.sourceRevision)
+    && effort.sourceRevision > 0
+    && Number.isFinite(effort.durationSeconds)
+    && effort.durationSeconds > 0
+    && (effort.evidence === "source_summary" || effort.evidence === "source_laps");
+}
+
 /** Converts the Phase 18-qualified goal history without parsing provider payloads. */
 export function runningGoalToFactualSeries(goal: ProgressRunningGoal, rangeLabel: string): ProgressFactualSeries {
   return Object.freeze({
@@ -45,10 +55,10 @@ export function runningGoalToFactualSeries(goal: ProgressRunningGoal, rangeLabel
       evidence: effort.evidence,
       localDate: effort.localDate,
       sourceRevision: effort.sourceRevision,
-      status: "accepted_current" as const,
+      status: isQualifiedEffort(effort) ? "accepted_current" as const : "unavailable" as const,
       targetAtDateSeconds: targetAtDate?.durationSeconds ?? null,
       timeBasis: effort.timeBasis,
-      valueSeconds: effort.durationSeconds,
+      valueSeconds: isQualifiedEffort(effort) ? effort.durationSeconds : null,
     }))),
     rangeLabel,
     unitLabel: "elapsed time",
@@ -79,10 +89,10 @@ export function RunningHistorySheet({
   const distance = formatDistance(goal?.distanceMeters ?? 2_400);
   const heading = `${distance} best efforts`;
   const series = goal === null ? null : runningGoalToFactualSeries(goal, rangeLabel);
-  const body = state === "loading" ? <View accessibilityRole="progressbar" style={styles.notice}><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Loading progress</Text></View>
+  const body = state === "loading" ? <View accessibilityLabel="Loading progress" accessibilityLiveRegion="polite" accessibilityRole="progressbar" accessibilityState={{ busy: true, disabled: true }} style={styles.notice}><Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Loading progress</Text></View>
     : state === "rebuilding" ? <View accessibilityLiveRegion="polite" style={styles.notice}><Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>Updating progress</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Saved history is being recalculated. Results refresh automatically.</Text></View>
-      : state === "source_error" ? <View accessibilityLiveRegion="assertive" style={styles.notice}><Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>History could not be loaded</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Your saved history was not changed. Retry loading this history.</Text>{onRetry === undefined ? null : <Text accessibilityRole="button" onPress={onRetry} style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Retry history</Text>}</View>
-        : series === null || series.points.length === 0 ? <View style={styles.notice}><Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>No effort recorded</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Import or accept a {distance} effort to establish a benchmark. No zero result is plotted.</Text></View>
+      : state === "source_error" ? <View accessibilityLiveRegion="assertive" style={styles.notice}><Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>History could not be loaded</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Your saved history was not changed. Retry loading this history.</Text>{onRetry === undefined ? null : <FocusablePressable accessibilityLabel="Retry history" accessibilityRole="button" onPress={onRetry} style={[styles.retry, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Retry history</Text></FocusablePressable>}</View>
+        : series === null || series.points.length === 0 ? <View style={styles.notice}>{goal === null ? null : <View style={styles.heroFacts}><SheetFact label="Best" value="No effort recorded" /><SheetFact label="Target" value={goal.target === null ? "Target unset" : formatFactualDuration(goal.target.durationSeconds)} /></View>}<Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>No effort recorded</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Import or accept a {distance} effort to establish a benchmark. No zero result is plotted.</Text></View>
           : <View style={styles.content}>
             <View style={styles.heroFacts}>
               <SheetFact label="Best" value={formatFactualDuration(goal!.best.durationSeconds)} />
@@ -112,4 +122,5 @@ const styles = StyleSheet.create({
   fact: { flex: 1, gap: space[1] },
   heroFacts: { flexDirection: "row", gap: space[4] },
   notice: { gap: space[2], paddingVertical: space[4] },
+  retry: { alignItems: "center", alignSelf: "flex-start", borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center", minHeight: 48, paddingHorizontal: space[4] },
 });

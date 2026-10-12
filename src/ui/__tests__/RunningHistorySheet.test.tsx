@@ -44,7 +44,7 @@ describe("RunningHistorySheet", () => {
   it("preserves a persisted target in no-effort state and makes retry a full 48dp action", async () => {
     const noEffortGoal: ProgressRunningGoal = Object.freeze({ ...goal, history: Object.freeze([]) });
     const empty = await render(<AppearanceProvider><RunningHistorySheet goal={noEffortGoal} onClose={jest.fn()} rangeLabel="All time" visible /></AppearanceProvider>);
-    expect(empty.getByText("No effort recorded")).toBeTruthy();
+    expect(empty.getAllByText("No effort recorded")[0]).toBeTruthy();
     expect(empty.getByText("Target")).toBeTruthy();
     expect(empty.getByText("11:00")).toBeTruthy();
 

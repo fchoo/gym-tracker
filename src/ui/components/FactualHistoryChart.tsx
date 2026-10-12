@@ -207,12 +207,12 @@ function statusText(point: ProgressFactualHistoryPoint): string {
   }
 }
 
-function chartPath(points: readonly PlotPoint[], valueFor: (point: ProgressFactualHistoryPoint) => number | null, minimum: number, maximum: number): string {
+function chartPath(points: readonly PlotPoint[], valueFor: (point: ProgressFactualHistoryPoint) => number | null, minimum: number, maximum: number, sourceCount: number): string {
   const range = Math.max(1, maximum - minimum);
-  const count = Math.max(1, points.length - 1);
-  return points.map(({ point }, index) => {
+  const count = Math.max(1, sourceCount - 1);
+  return points.map(({ point, sourceIndex }) => {
     const value = valueFor(point) ?? minimum;
-    const x = 12 + (index / count) * (CHART_WIDTH - 24);
+    const x = 12 + (sourceIndex / count) * (CHART_WIDTH - 24);
     const y = 12 + ((value - minimum) / range) * (CHART_HEIGHT - 32);
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   }).join(" ");
@@ -264,13 +264,14 @@ export function FactualHistoryChart({ onOpenSource, series }: FactualHistoryChar
 
   if (facts.length === 0) {
     return <View accessibilityLabel={label} accessible style={styles.empty}>
+      {positiveFinite(target) ? <View style={styles.facts} testID="factual-history-facts"><Fact label="Target" value={formatFactualDuration(target)} /></View> : null}
       <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>No effort recorded</Text>
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Import or accept a {formatDistance(series.distanceMeters)} effort to establish a benchmark. No zero result is plotted.</Text>
     </View>;
   }
 
   return <View style={styles.container} testID="factual-history-chart">
-    <View style={[styles.facts, showStackedFacts ? styles.factsStacked : undefined]}>
+    <View style={[styles.facts, showStackedFacts ? styles.factsStacked : undefined]} testID="factual-history-facts">
       <Fact label="Latest" value={formatFactualDuration(latest?.valueSeconds ?? null)} />
       <Fact label="Best" value={formatFactualDuration(best?.valueSeconds ?? null)} />
       <Fact label="Target" value={formatFactualDuration(target)} />
@@ -283,11 +284,11 @@ export function FactualHistoryChart({ onOpenSource, series }: FactualHistoryChar
     </View>
     <View style={[styles.chart, { borderColor: colors.line }]}>
       <Svg accessibilityElementsHidden height={CHART_HEIGHT} importantForAccessibility="no-hide-descendants" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} width="100%">
-        {visual.targetSegments.map((segment, index) => <Polyline fill="none" key={`target-${index}`} points={chartPath(segment, (point) => point.targetAtDateSeconds, minimum, maximum)} stroke={colors.yellow} strokeDasharray="7 5" strokeWidth={2} />)}
-        {visual.actualSegments.map((segment, index) => <Polyline fill="none" key={`actual-${index}`} points={chartPath(segment, (point) => point.valueSeconds, minimum, maximum)} stroke={colors.green} strokeWidth={2} />)}
-        {visual.actualSegments.flatMap((segment) => segment).map(({ point, sourceIndex }, index, all) => {
+        {visual.targetSegments.map((segment, index) => segment.length < 2 ? null : <Polyline fill="none" key={`target-${index}`} points={chartPath(segment, (point) => point.targetAtDateSeconds, minimum, maximum, series.points.length)} stroke={colors.yellow} strokeDasharray="7 5" strokeWidth={2} />)}
+        {visual.actualSegments.map((segment, index) => segment.length < 2 ? null : <Polyline fill="none" key={`actual-${index}`} points={chartPath(segment, (point) => point.valueSeconds, minimum, maximum, series.points.length)} stroke={colors.green} strokeWidth={2} />)}
+        {visual.actualSegments.flatMap((segment) => segment).map(({ point, sourceIndex }) => {
           const value = point.valueSeconds!;
-          const x = 12 + (index / Math.max(1, all.length - 1)) * (CHART_WIDTH - 24);
+          const x = 12 + (sourceIndex / Math.max(1, series.points.length - 1)) * (CHART_WIDTH - 24);
           const y = 12 + ((value - minimum) / Math.max(1, maximum - minimum)) * (CHART_HEIGHT - 32);
           return <Circle cx={x} cy={y} fill={colors.paper} key={`${point.activityId}-${sourceIndex}`} r={4} stroke={colors.green} strokeWidth={2} />;
         })}
