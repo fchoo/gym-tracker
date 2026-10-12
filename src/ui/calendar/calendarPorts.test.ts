@@ -14,7 +14,8 @@ import {
 describe("Calendar capability ports", () => {
   it("narrows the foundation runtime to bounded calendar reads and the exact stale-safe Strength occurrence loader", async () => {
     const occurrence: PlannedStrengthOccurrenceDetail = Object.freeze({
-      occurrenceId: "strength-occurrence", planId: "strength-plan", planDayId: "day-1", scheduleId: "schedule-1",
+      occurrenceId: "strength-occurrence", planId: "strength-plan", planName: "Full Body Foundation",
+      planDayId: "day-1", dayName: "Full Body A", scheduleId: "schedule-1",
       scheduleVersionId: "version-1", localDate: "2026-11-01", timezone: "Asia/Singapore",
       sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }), exercises: Object.freeze([]),
     });

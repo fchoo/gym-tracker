@@ -576,7 +576,9 @@ export function createPlansWorkoutRepository(
       const [occurrence] = await kernel.queryAll<{
         occurrence_id: string;
         plan_id: string;
+        plan_name: string;
         plan_day_id: string;
+        day_name: string;
         schedule_id: string;
         schedule_version_id: string;
         local_date: string;
@@ -585,8 +587,8 @@ export function createPlansWorkoutRepository(
         day_revision: number;
         schedule_revision: number;
       }>(
-        `SELECT opportunity.id AS occurrence_id, plan.id AS plan_id,
-                opportunity.plan_day_id AS plan_day_id,
+        `SELECT opportunity.id AS occurrence_id, plan.id AS plan_id, plan.name AS plan_name,
+                opportunity.plan_day_id AS plan_day_id, day.name AS day_name,
                 schedule.id AS schedule_id,
                 version.id AS schedule_version_id,
                 opportunity.local_date AS local_date, version.timezone AS timezone,
@@ -606,10 +608,12 @@ export function createPlansWorkoutRepository(
       );
       if (occurrence === undefined) return null;
       const exercises = await kernel.queryAll<{
-        id: string; exercise_id: string; ordinal: number;
+        id: string; exercise_id: string; exercise_name: string; ordinal: number;
       }>(
-        `SELECT id, exercise_id, ordinal FROM owned_plan_day_exercises
-         WHERE plan_day_id = ? ORDER BY ordinal, id`,
+        `SELECT planned.id, planned.exercise_id, exercise.name AS exercise_name, planned.ordinal
+           FROM owned_plan_day_exercises planned
+           JOIN exercises exercise ON exercise.id = planned.exercise_id
+          WHERE planned.plan_day_id = ? ORDER BY planned.ordinal, planned.id`,
         [occurrence.plan_day_id],
       );
       if (exercises.length === 0) return null;
@@ -624,7 +628,7 @@ export function createPlansWorkoutRepository(
         );
         if (targets.length === 0) return null;
         return Object.freeze({
-          id: exercise.id, exerciseId: exercise.exercise_id, ordinal: exercise.ordinal,
+          id: exercise.id, exerciseId: exercise.exercise_id, exerciseName: exercise.exercise_name, ordinal: exercise.ordinal,
           targets: Object.freeze(targets.map((target) => Object.freeze({
             id: target.id, ordinal: target.ordinal,
             targetJson: target.target_json, unitJson: target.unit_json,
@@ -633,8 +637,8 @@ export function createPlansWorkoutRepository(
       }));
       if (mapped.some((exercise) => exercise === null)) return null;
       return Object.freeze({
-        occurrenceId: occurrence.occurrence_id, planId: occurrence.plan_id,
-        planDayId: occurrence.plan_day_id, scheduleId: occurrence.schedule_id,
+        occurrenceId: occurrence.occurrence_id, planId: occurrence.plan_id, planName: occurrence.plan_name,
+        planDayId: occurrence.plan_day_id, dayName: occurrence.day_name, scheduleId: occurrence.schedule_id,
         scheduleVersionId: occurrence.schedule_version_id,
         localDate: occurrence.local_date, timezone: occurrence.timezone,
         sourceRevisions: Object.freeze({ plan: occurrence.plan_revision, day: occurrence.day_revision, schedule: occurrence.schedule_revision }),
