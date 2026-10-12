@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   configureSqliteConnection,
   type SqliteConnection,
+  type SqliteParameter,
   type SqlitePreparedResult,
   type SqlitePreparedStatement,
 } from "../../src/platform/sqlite/connection";
@@ -1314,6 +1315,77 @@ describe("history repository Calendar reads", () => {
     });
     expect(JSON.stringify(result)).not.toContain("basis-selected-z");
     expect(JSON.stringify(result)).not.toContain(await ownerNamespace(kernel));
+  });
+
+  it("does not mix a bodyweight fact committed after the exercise-history snapshot begins", async () => {
+    const kernel = await open();
+    await insertSession(kernel, {
+      id: "snapshot-source",
+      source: "scheduled_day",
+      status: "completed",
+      localDate: "2026-08-24",
+      timezone: "Asia/Singapore",
+      startedAtMs: 1_724_515_200_000,
+      completedAtMs: 1_724_515_560_000,
+      exercises: [{
+        id: "snapshot-exercise",
+        exerciseId: "bench-press",
+        status: "completed",
+        sets: [{
+          id: "snapshot-working",
+          status: "completed",
+          observation: { loadGrams: 45_000, reps: 8 },
+        }],
+      }],
+    });
+    const ownerId = await ownerNamespace(kernel);
+    let injected = false;
+    const racingKernel: SqliteKernel = {
+      write: kernel.write.bind(kernel),
+      queryAll: kernel.queryAll.bind(kernel),
+      async readSnapshot<Result>(
+        query: (transaction: SqliteReadTransactionExecutor) => Promise<Result>,
+      ) {
+        return kernel.readSnapshot!(async (transaction) => query({
+          async queryAll<Row extends Record<string, unknown>>(
+            sql: string,
+            parameters: readonly SqliteParameter[] = [],
+          ) {
+            const rows = await transaction.queryAll<Row>(sql, parameters);
+            if (!injected) {
+              injected = true;
+              await kernel.write(async (writer) => {
+                await writer.execute(
+                  "INSERT INTO bodyweight_entries(id, owner_id, current_revision, lifecycle, created_at_ms) VALUES ('late-basis', ?, 1, 'active', 20)",
+                  [ownerId],
+                );
+                await writer.execute(
+                  `INSERT INTO bodyweight_entry_events
+                    (id, entry_id, owner_id, revision, event_id, operation,
+                     local_date, timezone, grams, occurred_at_ms)
+                   VALUES ('late-basis-revision-1', 'late-basis', ?, 1,
+                           'late-basis-event-1', 'create', '2026-08-24',
+                           'Asia/Singapore', 90000, 20)`,
+                  [ownerId],
+                );
+              });
+            }
+            return rows;
+          },
+        }));
+      },
+      connectionConfiguration: kernel.connectionConfiguration.bind(kernel),
+      close: kernel.close.bind(kernel),
+    };
+
+    const result = await createHistoryRepository(racingKernel)
+      .loadExerciseMetricHistory({ exerciseId: "bench-press" });
+
+    expect(injected).toBe(true);
+    expect(result.segments[0]?.comparableSets[0]?.relativeStrength).toBeNull();
+    await expect(kernel.queryAll<{ id: string }>(
+      "SELECT id FROM bodyweight_entries WHERE id = 'late-basis'",
+    )).resolves.toEqual([{ id: "late-basis" }]);
   });
 
   it("returns a coarse unavailable projection instead of mixing stale history facts", async () => {
