@@ -6,7 +6,7 @@ import {
   useCalendarStrengthOccurrenceReadPort,
 } from "../../bootstrap/workoutAppRuntime";
 import { useCalendarRunningPlanReadPort } from "../../bootstrap/runningPlanRuntime";
-import type { SessionDetail } from "../../domains/workout";
+import { WorkoutOutcomeConflictError, type SessionDetail } from "../../domains/workout";
 import { EmptyState, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { GarminRouteShell } from "../garmin/GarminRouteShell";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
@@ -44,27 +44,44 @@ export function CalendarSessionDetailRouteAdapter({
 }>) {
   const readSession = useCalendarSessionReadPort();
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [missing, setMissing] = useState(sessionId === null);
+  const [state, setState] = useState<"loading" | "ready" | "missing" | "error">(
+    sessionId === null ? "missing" : "loading",
+  );
+  const [retryGeneration, setRetryGeneration] = useState(0);
 
   useEffect(() => {
     if (sessionId === null) {
       setDetail(null);
-      setMissing(true);
+      setState("missing");
       return undefined;
     }
     let active = true;
     setDetail(null);
-    setMissing(false);
+    setState("loading");
     void readSession.getSessionDetail(sessionId).then((next) => {
-      if (active) setDetail(next);
-    }).catch(() => {
-      if (active) setMissing(true);
+      if (active) {
+        setDetail(next);
+        setState("ready");
+      }
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setState(error instanceof WorkoutOutcomeConflictError
+        && error.code === "workout_session_not_found"
+        ? "missing"
+        : "error");
     });
     return () => { active = false; };
-  }, [readSession.getSessionDetail, sessionId]);
+  }, [readSession.getSessionDetail, retryGeneration, sessionId]);
 
-  if (missing) return <CalendarSessionUnavailable onBack={onBack} />;
-  if (detail === null) {
+  if (state === "missing") return <CalendarSessionUnavailable onBack={onBack} />;
+  if (state === "error") {
+    return (
+      <AdaptiveScreen
+        primary={<><ScreenHeader backAction={onBack} title="Workout details" /><EmptyState body="Your saved workout was not changed. Try loading these details again." heading="Workout details could not be loaded" primaryAction={<PrimaryAction label="Retry workout details" onPress={() => setRetryGeneration((value) => value + 1)} />} /></>}
+      />
+    );
+  }
+  if (state === "loading" || detail === null) {
     return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} title="Workout details" /><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></>} />;
   }
   return <CalendarReadOnlyWorkout detail={detail} onGoBack={onBack} />;

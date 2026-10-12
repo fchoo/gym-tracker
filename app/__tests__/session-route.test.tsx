@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
-import type { SessionDetail } from "../../src/domains/workout";
+import { WorkoutOutcomeConflictError, type SessionDetail } from "../../src/domains/workout";
 
 const mockBack = jest.fn();
 const mockGetSessionDetail = jest.fn<() => Promise<SessionDetail>>();
@@ -46,8 +46,8 @@ jest.mock("../../src/ui/screens/SessionDetailScreen", () => ({
   },
 }));
 jest.mock("../../src/ui/components", () => {
-  const { Text } = require("react-native") as typeof import("react-native");
-  return { EmptyState: ({ heading }: { heading: string }) => <Text>{heading}</Text>, PrimaryAction: () => null, ScreenHeader: () => null, SkeletonBlock: () => null };
+  const { Pressable, Text } = require("react-native") as typeof import("react-native");
+  return { EmptyState: ({ heading, primaryAction }: { heading: string; primaryAction?: React.ReactNode }) => <><Text>{heading}</Text>{primaryAction}</>, PrimaryAction: ({ label, onPress }: { label: string; onPress(): void }) => <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} />, ScreenHeader: () => null, SkeletonBlock: () => null };
 });
 jest.mock("../../src/ui/layout/AdaptiveScreen", () => ({ AdaptiveScreen: ({ primary }: { primary: React.ReactNode }) => primary }));
 
@@ -94,6 +94,30 @@ describe("SessionDetailRoute", () => {
       expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
     },
   );
+
+  it("keeps retryable Calendar read failures distinct from a missing session", async () => {
+    mockGetSessionDetail
+      .mockRejectedValueOnce(new Error("sqlite unavailable"))
+      .mockResolvedValueOnce(detail);
+    await render(<SessionDetailRoute />);
+
+    expect(await screen.findByText("Workout details could not be loaded")).toBeOnTheScreen();
+    expect(screen.queryByText("Workout details unavailable")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry workout details" }));
+    expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
+    expect(mockGetSessionDetail).toHaveBeenNthCalledWith(1, "calendar-session");
+    expect(mockGetSessionDetail).toHaveBeenNthCalledWith(2, "calendar-session");
+  });
+
+  it("maps only the typed not-found result to the unavailable state", async () => {
+    mockGetSessionDetail.mockRejectedValueOnce(
+      new WorkoutOutcomeConflictError("workout_session_not_found"),
+    );
+    await render(<SessionDetailRoute />);
+
+    expect(await screen.findByText("Workout details unavailable")).toBeOnTheScreen();
+    expect(screen.queryByText("Workout details could not be loaded")).toBeNull();
+  });
 
   it("retains management commands outside the explicit Calendar origin", async () => {
     mockParams = { sessionId: "calendar-session" };
