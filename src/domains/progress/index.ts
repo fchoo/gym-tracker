@@ -1,13 +1,6 @@
 export {
   projectProgressPeriod,
 } from "./periodProjection";
-export {
-  projectRelativeStrength,
-} from "./relativeStrength";
-export type {
-  RelativeStrengthBodyweightFact,
-  RelativeStrengthProjection,
-} from "./relativeStrength";
 export type {
   ProgressAttentionItem,
   ProgressComparableExposure,

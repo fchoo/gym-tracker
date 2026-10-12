@@ -26,7 +26,7 @@ import {
 import {
   projectRelativeStrength,
   type RelativeStrengthBodyweightFact,
-} from "../../../domains/progress";
+} from "../../../domains/progress/relativeStrength";
 import type {
   LocalDate,
 } from "../../../domains/scheduling";

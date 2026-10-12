@@ -11,10 +11,12 @@ import {
 } from "react-native";
 
 import {
-  projectLoadMetricHistorySeries,
   type EffectiveMetricHistorySet,
   type ExerciseMetricHistory,
 } from "../../domains/history";
+import {
+  projectLoadMetricHistorySeries,
+} from "../../domains/history/metricHistory";
 import {
   formatMetricDuration,
   roundMetricAggregateForPresentation,

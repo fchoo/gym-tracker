@@ -1,9 +1,6 @@
 import type {
   MetricAggregate,
 } from "../metrics";
-import type {
-  RelativeStrengthProjection,
-} from "../progress";
 import {
   aggregateMetricObservations,
   areMetricExposuresComparable,
@@ -18,6 +15,15 @@ import {
   type MetricObservation,
   type MetricTarget,
 } from "../metrics";
+
+type RelativeStrengthProjection = Readonly<{
+  loadGrams: number;
+  relativeLoad: number;
+  basis: Readonly<{
+    grams: number;
+    localDate: string;
+  }>;
+}>;
 
 export type EffectiveMetricHistorySet = Readonly<{
   sessionId: string;

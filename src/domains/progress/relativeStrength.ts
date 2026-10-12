@@ -1,10 +1,7 @@
-import {
-  BODYWEIGHT_GRAMS_INCREMENT,
-  MAX_BODYWEIGHT_GRAMS,
-  MIN_BODYWEIGHT_GRAMS,
-} from "../bodyweight";
-
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const MIN_BODYWEIGHT_GRAMS = 20_000;
+const MAX_BODYWEIGHT_GRAMS = 400_000;
+const BODYWEIGHT_GRAMS_INCREMENT = 100;
 
 export type RelativeStrengthBodyweightFact = Readonly<{
   factId: string;
