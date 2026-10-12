@@ -22,7 +22,7 @@ jest.mock("expo-constants", () => ({
 import type { SqliteConnection, SqlitePreparedResult, SqlitePreparedStatement } from "../../src/platform/sqlite/connection";
 import { configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
-import { migrations } from "../../src/platform/sqlite/migrations";
+import { CURRENT_SCHEMA_VERSION, migrations } from "../../src/platform/sqlite/migrations";
 import { createLogicalBackupRepository } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import type { OwnedPlanCommittedResult, OwnedPlanRepositoryResult } from "../../src/platform/sqlite/repositories/ownedPlanRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
@@ -61,12 +61,13 @@ import { discardWorkout } from "../../src/domains/workout/finishWorkout";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../../src/testing/contracts/phase17LibraryRunning.contract";
 import { createScheduleRuntimePort } from "../../src/bootstrap/scheduleRuntime";
 import { createStarterTemplateUpdatePreview, legacyFullBodySourceJson } from "../../src/bootstrap/starterPlanRuntime";
+import { LOGICAL_BACKUP_FORMAT_VERSION } from "../../src/domains/portability/backupContracts";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
 
 /**
  * These are deliberately the only Family A matrix rows migrated in this pass.
  * Each row drives its labelled runtime command and proves the exact receipt,
- * resulting plan facts, fixture probe, and migration-42 cleanup boundary.
+ * resulting plan facts, fixture probe, and current post-migration cleanup boundary.
  */
 const FAMILY_A_PLAN_MUTATION_ROWS = Object.freeze([
   { caseId: "library.true-no-plans", label: "owned-plan-create", operation: "create", preRevision: null, postRevision: 1, preLifecycle: null, postLifecycle: "draft" },
@@ -111,6 +112,8 @@ const kernels = new Set<SqliteKernel>();
 const NOW_MS = 1_794_225_600_000;
 const ENVELOPE_KEY = "development-test.phase17.action-envelope.v1";
 const SENTINEL_KEY = "phase17-matrix-nonfixture-sentinel";
+const MIGRATION_42_RECEIPT_REQUEST_ID = "phase17:migration-42-receipt";
+const CURRENT_MIGRATED_STATE_LABEL = `schema-${CURRENT_SCHEMA_VERSION}/backup-v${LOGICAL_BACKUP_FORMAT_VERSION}`;
 const repositoryRoot = join(__dirname, "../..");
 const starterPackBytes = readFileSync(join(repositoryRoot, "assets/content/starter-plans.v2.json"), "utf8");
 const starterAcceptanceBytes = readFileSync(join(repositoryRoot, "artifacts/review/phase2/starter-plans-acceptance.json"), "utf8");
@@ -194,8 +197,13 @@ async function migratedKernel(): Promise<SqliteKernel> {
 
 async function logicalDigest(kernel: SqliteKernel): Promise<Readonly<{ digest: string; snapshot: unknown }>> {
   const snapshot = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase17-family-a", createdAtMs: 1 });
-  expect(snapshot.version).toBe(8);
+  expect(snapshot.version).toBe(LOGICAL_BACKUP_FORMAT_VERSION);
   return Object.freeze({ digest: createHash("sha256").update(JSON.stringify(snapshot)).digest("hex"), snapshot });
+}
+
+async function expectCurrentSchemaVersion(kernel: SqliteKernel): Promise<void> {
+  await expect(kernel.queryAll<{ user_version: number }>("PRAGMA user_version"))
+    .resolves.toEqual([{ user_version: CURRENT_SCHEMA_VERSION }]);
 }
 
 function completePlan(planId: string, dayId: string, exerciseId: string, suffix: string, name: string): OwnedPlanDraftInput {
@@ -323,11 +331,10 @@ async function activateStarterFixture(input: Readonly<{
 }
 
 describe("Phase 17 Family A cleanup matrix", () => {
-  it("keeps the schema-42 instruction and durable custom-library receipt paths live after the v8 upgrade", async () => {
+  it(`keeps the Phase 17 instruction and migration-42 receipt paths live under ${CURRENT_MIGRATED_STATE_LABEL}`, async () => {
     const kernel = await migratedKernel();
 
-    await expect(kernel.queryAll<{ user_version: number }>("PRAGMA user_version"))
-      .resolves.toEqual([{ user_version: 42 }]);
+    await expectCurrentSchemaVersion(kernel);
 
     const [instructionCount] = await kernel.queryAll<{ count: number }>(
       "SELECT COUNT(*) AS count FROM exercise_instruction_sets",
@@ -353,7 +360,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
         (request_id, mutation_kind, request_json, result_json, committed_at_ms)
        VALUES (?, 'favorite', ?, ?, ?)`,
       [
-        "phase17:migration-42-receipt",
+        MIGRATION_42_RECEIPT_REQUEST_ID,
         JSON.stringify({ exerciseId: "phase17:probe", favorite: true }),
         JSON.stringify({ outcome: "committed", revision: 2 }),
         NOW_MS,
@@ -364,7 +371,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
         (request_id, mutation_kind, request_json, result_json, committed_at_ms)
        VALUES (?, 'favorite', ?, ?, ?)`,
       [
-        "phase17:migration-42-receipt",
+        MIGRATION_42_RECEIPT_REQUEST_ID,
         JSON.stringify({ exerciseId: "phase17:probe", favorite: true }),
         JSON.stringify({ outcome: "committed", revision: 2 }),
         NOW_MS,
@@ -373,7 +380,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
 
     const [receipt] = await kernel.queryAll<{ mutation_kind: string; result_json: string }>(
       "SELECT mutation_kind, result_json FROM custom_exercise_mutation_receipts WHERE request_id = ?",
-      ["phase17:migration-42-receipt"],
+      [MIGRATION_42_RECEIPT_REQUEST_ID],
     );
     expect(receipt).toEqual({
       mutation_kind: "favorite",
@@ -390,10 +397,9 @@ describe("Phase 17 Family A cleanup matrix", () => {
       .toContainEqual([caseId, "owned_plan_mutation_requests", expect.any(String)]);
   });
 
-  it.each(FAMILY_A_PLAN_MUTATION_ROWS)("runs migrated schema-42/v8 $caseId through the real $label command, exact receipt probe, and cleanup", async (row) => {
+  it.each(FAMILY_A_PLAN_MUTATION_ROWS)(`runs migrated ${CURRENT_MIGRATED_STATE_LABEL} $caseId through the real $label command, exact receipt probe, and cleanup`, async (row) => {
     const kernel = await migratedKernel();
-    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
-    expect(schema?.user_version).toBe(42);
+    await expectCurrentSchemaVersion(kernel);
     await kernel.write((transaction) => transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
       [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
@@ -602,12 +608,11 @@ describe("Phase 17 Family A cleanup matrix", () => {
     expect(after).toEqual(before);
   });
 
-  it("runs migrated schema-42/v8 library.starter-detail through its real inactive-copy command and cleanup", async () => {
+  it(`runs migrated ${CURRENT_MIGRATED_STATE_LABEL} library.starter-detail through its real inactive-copy command and cleanup`, async () => {
     const caseId = "library.starter-detail";
     const label = "starter-editable-copy";
     const kernel = await migratedKernel();
-    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
-    expect(schema?.user_version).toBe(42);
+    await expectCurrentSchemaVersion(kernel);
     await kernel.write((transaction) => transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
       [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
@@ -708,12 +713,11 @@ describe("Phase 17 Family A cleanup matrix", () => {
     expect(await logicalDigest(kernel)).toEqual(before);
   });
 
-  it("runs migrated schema-42/v8 library.template-update from a source-backed older owned copy through preview, copy, receipt, and cleanup", async () => {
+  it(`runs migrated ${CURRENT_MIGRATED_STATE_LABEL} library.template-update from a source-backed older owned copy through preview, copy, receipt, and cleanup`, async () => {
     const caseId = "library.template-update";
     const label = "starter-template-update-copy";
     const kernel = await migratedKernel();
-    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
-    expect(schema?.user_version).toBe(42);
+    await expectCurrentSchemaVersion(kernel);
     await kernel.write((transaction) => transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
       [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
@@ -839,10 +843,9 @@ describe("Phase 17 Family A cleanup matrix", () => {
     { caseId: "library.schedule-editor", label: "schedule-save" },
     { caseId: "library.replacement-impact", label: "plan-impact-replace" },
     { caseId: "library.day-removal-impact", label: "plan-impact-remove" },
-  ] as const)("runs migrated schema-42/v8 $caseId through its reviewed production preview, confirmation, receipt, and cleanup", async ({ caseId, label }) => {
+  ] as const)(`runs migrated ${CURRENT_MIGRATED_STATE_LABEL} $caseId through its reviewed production preview, confirmation, receipt, and cleanup`, async ({ caseId, label }) => {
     const kernel = await migratedKernel();
-    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
-    expect(schema?.user_version).toBe(42);
+    await expectCurrentSchemaVersion(kernel);
     await kernel.write((transaction) => transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
       [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
@@ -1016,10 +1019,9 @@ describe("Phase 17 Family A cleanup matrix", () => {
     ["library.custom-exercise-copy-bundled", "custom-exercise-copy", "copy"],
     ["library.custom-exercise-archive", "custom-exercise-archive", "archive"],
     ["library.custom-exercise-reactivate", "custom-exercise-reactivate", "reactivate"],
-  ] as [string, string, string][])("runs schema-42/v8 %s through its labelled custom command, exact receipt, fixture probe, and cleanup", async (caseId, label, operation) => {
+  ] as [string, string, string][])(`runs ${CURRENT_MIGRATED_STATE_LABEL} %s through its labelled custom command, exact receipt, fixture probe, and cleanup`, async (caseId, label, operation) => {
     const kernel = await migratedKernel();
-    const [schema] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
-    expect(schema?.user_version).toBe(42);
+    await expectCurrentSchemaVersion(kernel);
     await kernel.write((transaction) => transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
       [SENTINEL_KEY, JSON.stringify({ preserve: true }), NOW_MS],
@@ -1121,7 +1123,7 @@ describe("Phase 17 Family A cleanup matrix", () => {
   it.each([
     ["library.copy-metric-migration", "custom-exercise-metric-migration"],
     ["library.metric-profile-migration", "custom-exercise-metric-migration"],
-  ] as [string, string][])("runs schema-42/v8 %s through metric preview, confirmation, event probe, and cleanup", async (caseId, label) => {
+  ] as [string, string][])(`runs ${CURRENT_MIGRATED_STATE_LABEL} %s through metric preview, confirmation, event probe, and cleanup`, async (caseId, label) => {
     const kernel = await migratedKernel();
     await kernel.write((transaction) => transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 1, ?)",
