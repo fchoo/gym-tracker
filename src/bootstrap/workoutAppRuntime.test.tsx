@@ -1901,7 +1901,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       expectedSourceRevision: 4,
       expectedTargetRevision: 3,
       recommendationId: "recommendation-1",
-      requestId: expect.stringMatching(/^progress-recommendation-use:/u),
+      requestId: expect.stringMatching(/^recommendation-use:/u),
     }));
   });
 
@@ -4771,9 +4771,20 @@ describe("WorkoutAppRuntimeProvider", () => {
       Array.from({ length: 12 }, () => activation),
     );
     const outcomeRepository = runtimeOutcomeRepository();
+    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM progression_recommendations")
+      ? [{ evidence_version: 2, source_revision: 1, target_revision: 1, status: "pending" }]
+      : []);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (
+        query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
+      ) => query({ queryAll: queryAll as unknown as SqliteTransactionExecutor["queryAll"] })),
+    } as unknown as SqliteKernel;
     await render(
       <RuntimeHarness dependencies={dependencies(repository, {
         createOutcomeRepository: () => outcomeRepository,
+        openKernel: jest.fn(async () => kernel),
       })} />,
     );
     await waitFor(() => {
@@ -4795,6 +4806,20 @@ describe("WorkoutAppRuntimeProvider", () => {
       expect(outcomeRepository.recordExerciseEffort).toHaveBeenCalledTimes(1);
       expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledTimes(1);
       expect(outcomeRepository.keepCurrentTarget).toHaveBeenCalledTimes(1);
+      expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledWith(expect.objectContaining({
+        decision: "use_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 1,
+        requestId: expect.stringMatching(/^recommendation-use:/u),
+      }));
+      expect(outcomeRepository.keepCurrentTarget).toHaveBeenCalledWith(expect.objectContaining({
+        decision: "keep_current_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 1,
+        requestId: expect.stringMatching(/^recommendation-keep:/u),
+      }));
     });
   });
 
