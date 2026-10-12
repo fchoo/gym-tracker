@@ -219,7 +219,7 @@ describe("Garmin sync coordinator", () => {
     expect(driver.getActivitySplits).toHaveBeenCalledTimes(1);
     expect(driver.getActivityDetails).toHaveBeenCalledTimes(1);
     expect(repository.confirmGarminImport).toHaveBeenCalledTimes(1);
-    expect(prepareSha256).toHaveBeenCalledTimes(1);
+    expect(prepareSha256).toHaveBeenCalledTimes(2);
     expect(progress.at(-1)).toMatchObject({ kind: "committed", counts: { newActivities: 1 } });
   });
 
