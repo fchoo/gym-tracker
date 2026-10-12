@@ -11,14 +11,22 @@ import {
   PHASE18_GARMIN_BENCHMARK_MARKER,
   createInstalledPhase18GarminBenchmarkMeasurementPort,
   createPhase18GarminBenchmarkMarkerReport,
+  parsePhase18GarminColdStartHandshake,
   phase18GarminAcceptanceBenchmarkEnabled,
   phase18GarminAcceptanceEnabled,
-  type Phase18GarminBenchmarkObservation,
   type Phase18GarminBenchmarkRenderProbe,
   type Phase18GarminBenchmarkRenderProbeKind,
 } from "../src/testing/phase18GarminAcceptance";
 
-function Phase18GarminBenchmarkScreen({ nonce }: Readonly<{ nonce: string }>) {
+function Phase18GarminBenchmarkScreen({
+  coldStartSamples,
+  coldStartSequence,
+  nonce,
+}: Readonly<{
+  coldStartSamples?: string;
+  coldStartSequence?: string;
+  nonce: string;
+}>) {
   const [status, setStatus] = React.useState("benchmark-pending");
   const [renderProbeState, setRenderProbeState] = React.useState<Readonly<{
     generation: number;
@@ -29,7 +37,7 @@ function Phase18GarminBenchmarkScreen({ nonce }: Readonly<{ nonce: string }>) {
     generation: number;
     kind: Phase18GarminBenchmarkRenderProbeKind;
     startedAt: number;
-    resolve(value: Phase18GarminBenchmarkObservation): void;
+    resolve(value: Awaited<ReturnType<Phase18GarminBenchmarkRenderProbe>>): void;
     reject(error: Error): void;
   }> | null>(null);
   const renderProbe = React.useCallback<Phase18GarminBenchmarkRenderProbe>((kind) => new Promise((resolve, reject) => {
@@ -48,8 +56,14 @@ function Phase18GarminBenchmarkScreen({ nonce }: Readonly<{ nonce: string }>) {
     setRenderProbeState(Object.freeze({ generation, kind }));
   }), []);
   const measurementPort = React.useMemo(
-    () => createInstalledPhase18GarminBenchmarkMeasurementPort(renderProbe),
-    [renderProbe],
+    () => createInstalledPhase18GarminBenchmarkMeasurementPort(
+      renderProbe,
+      parsePhase18GarminColdStartHandshake({
+        sequence: coldStartSequence,
+        samples: coldStartSamples,
+      }) ?? Object.freeze({ sequence: 0, prior_samples: Object.freeze([]) }),
+    ),
+    [coldStartSamples, coldStartSequence, renderProbe],
   );
 
   React.useEffect(() => {
@@ -84,9 +98,6 @@ function Phase18GarminBenchmarkScreen({ nonce }: Readonly<{ nonce: string }>) {
     pending.resolve(Object.freeze({
       value: observedAt - pending.startedAt,
       observed_at_monotonic_ms: observedAt,
-      operation: pending.kind === "route"
-        ? "react-native-layout:route"
-        : "react-native-layout:laps",
     }));
   }, [renderProbeState?.generation]);
 
@@ -120,7 +131,9 @@ function Phase18GarminBenchmarkScreen({ nonce }: Readonly<{ nonce: string }>) {
 }
 
 export default function Phase18GarminAcceptanceScreen() {
-  const { confirmation, mode, nonce } = useLocalSearchParams<{
+  const { coldStartSamples, coldStartSequence, confirmation, mode, nonce } = useLocalSearchParams<{
+    coldStartSamples?: string;
+    coldStartSequence?: string;
     confirmation?: string;
     mode?: string;
     nonce?: string;
@@ -138,7 +151,13 @@ export default function Phase18GarminAcceptanceScreen() {
   const enabled = phase18GarminAcceptanceEnabled(params);
 
   if (benchmarkEnabled && typeof nonce === "string") {
-    return <Phase18GarminBenchmarkScreen nonce={nonce} />;
+    return (
+      <Phase18GarminBenchmarkScreen
+        nonce={nonce}
+        {...(coldStartSamples === undefined ? {} : { coldStartSamples })}
+        {...(coldStartSequence === undefined ? {} : { coldStartSequence })}
+      />
+    );
   }
   if (!enabled) return <Redirect href="/" />;
 

@@ -63,6 +63,13 @@ export type Phase18GarminBenchmarkObservation = Readonly<{
   value: number;
   observed_at_monotonic_ms: number;
   operation: string;
+  process_id: number;
+  sequence: number;
+}>;
+
+export type Phase18GarminColdStartHandshake = Readonly<{
+  sequence: number;
+  prior_samples: readonly Phase18GarminBenchmarkObservation[];
 }>;
 
 export type Phase18GarminBenchmarkMeasurementPort = Readonly<{
@@ -77,22 +84,96 @@ export type Phase18GarminBenchmarkMeasurementPort = Readonly<{
 export type Phase18GarminBenchmarkRenderProbeKind = "route" | "laps";
 export type Phase18GarminBenchmarkRenderProbe = (
   kind: Phase18GarminBenchmarkRenderProbeKind,
-) => Promise<Phase18GarminBenchmarkObservation>;
+) => Promise<Pick<
+  Phase18GarminBenchmarkObservation,
+  "value" | "observed_at_monotonic_ms"
+>>;
+
+const COLD_START_OPERATION = "native-runtime:python-cold-start";
+
+function validObservationIdentity(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
+}
+
+function validColdStartSample(
+  value: unknown,
+  expectedSequence: number,
+): value is Phase18GarminBenchmarkObservation {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const sample = value as Record<string, unknown>;
+  return Object.keys(sample).length === 5
+    && Object.keys(sample).every((key) => [
+      "value",
+      "observed_at_monotonic_ms",
+      "operation",
+      "process_id",
+      "sequence",
+    ].includes(key))
+    && Number.isFinite(sample.value)
+    && (sample.value as number) >= 0
+    && Number.isFinite(sample.observed_at_monotonic_ms)
+    && (sample.observed_at_monotonic_ms as number) >= 0
+    && sample.operation === COLD_START_OPERATION
+    && validObservationIdentity(sample.process_id)
+    && sample.sequence === expectedSequence;
+}
+
+export function parsePhase18GarminColdStartHandshake(input: Readonly<{
+  sequence?: unknown;
+  samples?: unknown;
+}>): Phase18GarminColdStartHandshake | null {
+  if (input.sequence === undefined && input.samples === undefined) {
+    return Object.freeze({ sequence: 1, prior_samples: Object.freeze([]) });
+  }
+  const sequence = typeof input.sequence === "string" && /^[1-5]$/u.test(input.sequence)
+    ? Number(input.sequence)
+    : null;
+  if (sequence === null || (sequence === 1 && input.samples === undefined)) {
+    return sequence === 1
+      ? Object.freeze({ sequence, prior_samples: Object.freeze([]) })
+      : null;
+  }
+  if (typeof input.samples !== "string" || input.samples.length > 2_048) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.samples);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed) || parsed.length !== sequence - 1) return null;
+  const samples = parsed.filter((sample, index) => validColdStartSample(sample, index + 1));
+  if (samples.length !== parsed.length
+    || new Set(samples.map(({ process_id }) => process_id)).size !== samples.length) {
+    return null;
+  }
+  return Object.freeze({
+    sequence,
+    prior_samples: Object.freeze(samples),
+  });
+}
 
 function benchmarkObservation(
   value: number,
   observedAtMonotonicMs: number,
   operation: string,
+  processId: number,
+  sequence: number,
 ): Phase18GarminBenchmarkObservation {
   return Object.freeze({
     value,
     observed_at_monotonic_ms: observedAtMonotonicMs,
     operation,
+    process_id: processId,
+    sequence,
   });
 }
 
 export function createInstalledPhase18GarminBenchmarkMeasurementPort(
   renderProbe: Phase18GarminBenchmarkRenderProbe,
+  coldStartHandshake: Phase18GarminColdStartHandshake = Object.freeze({
+    sequence: 1,
+    prior_samples: Object.freeze([]),
+  }),
 ): Phase18GarminBenchmarkMeasurementPort {
   let nativeModulePromise: Promise<GarminConnectNativeModule> | undefined;
   const nativeModule = () => {
@@ -115,17 +196,23 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
     sample: GarminRuntimeInfo,
     value: number,
     operationName: string,
+    sequence: number,
   ) => benchmarkObservation(
     value,
     sample.benchmark.observedAtMonotonicMs,
     operationName,
+    sample.benchmark.processId,
+    sequence,
   );
   const observeRuntimeSamples = async (
     minimumSamples: number,
-    projectSample: (sample: GarminRuntimeInfo) => Phase18GarminBenchmarkObservation | null,
+    projectSample: (
+      sample: GarminRuntimeInfo,
+      sequence: number,
+    ) => Phase18GarminBenchmarkObservation | null,
   ) => {
     const selected = () => runtimeSamples
-      .map(projectSample)
+      .map((sample, index) => projectSample(sample, index + 1))
       .filter((entry): entry is Phase18GarminBenchmarkObservation => entry !== null);
     let attempts = 0;
     while (selected().length < minimumSamples && attempts < minimumSamples + 2) {
@@ -139,6 +226,7 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
     operationName: string,
     performOperation: () => Promise<void>,
   ) => {
+    const processId = (await firstRuntime()).benchmark.processId;
     const observations: Phase18GarminBenchmarkObservation[] = [];
     for (let index = 0; index < minimumSamples; index += 1) {
       const startedAt = performance.now();
@@ -148,6 +236,8 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
         observedAt - startedAt,
         observedAt,
         operationName,
+        processId,
+        index + 1,
       ));
     }
     return observations;
@@ -166,6 +256,7 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
             sample,
             sample.benchmark.installedApkSizeBytes,
             "native-runtime:apk-size",
+            1,
           )];
         }
         case "garmin_module_size_bytes": {
@@ -174,25 +265,31 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
             sample,
             sample.benchmark.garminModuleSizeBytes,
             "native-runtime:garmin-module-size",
+            1,
           )];
         }
         case "python_cold_start_ms": {
-          await firstRuntime();
-          return runtimeSamples
-            .filter(({ benchmark }) => benchmark.pythonStartupKind === "cold")
-            .map((sample) => nativeObservation(
-              sample,
-              sample.benchmark.pythonStartupDurationMs,
-              "native-runtime:python-cold-start",
-            ));
+          const sample = await firstRuntime();
+          return Object.freeze([
+            ...coldStartHandshake.prior_samples,
+            ...(sample.benchmark.pythonStartupKind === "cold"
+              ? [nativeObservation(
+                sample,
+                sample.benchmark.pythonStartupDurationMs,
+                COLD_START_OPERATION,
+                coldStartHandshake.sequence,
+              )]
+              : []),
+          ]);
         }
         case "python_warm_start_ms":
-          return observeRuntimeSamples(minimumSamples, (sample) => (
+          return observeRuntimeSamples(minimumSamples, (sample, sequence) => (
             sample.benchmark.pythonStartupKind === "warm"
               ? nativeObservation(
                 sample,
                 sample.benchmark.pythonStartupDurationMs,
                 "native-runtime:python-warm-start",
+                sequence,
               )
               : null
           ));
@@ -205,30 +302,48 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
             },
           );
         case "route_render_ms": {
+          const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           for (let index = 0; index < minimumSamples; index += 1) {
-            observations.push(await renderProbe("route"));
+            const rendered = await renderProbe("route");
+            observations.push(benchmarkObservation(
+              rendered.value,
+              rendered.observed_at_monotonic_ms,
+              "react-native-layout:route",
+              processId,
+              index + 1,
+            ));
           }
           return observations;
         }
         case "lap_render_ms": {
+          const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           for (let index = 0; index < minimumSamples; index += 1) {
-            observations.push(await renderProbe("laps"));
+            const rendered = await renderProbe("laps");
+            observations.push(benchmarkObservation(
+              rendered.value,
+              rendered.observed_at_monotonic_ms,
+              "react-native-layout:laps",
+              processId,
+              index + 1,
+            ));
           }
           return observations;
         }
         case "memory_rss_bytes":
-          return observeRuntimeSamples(minimumSamples, (sample) => (
+          return observeRuntimeSamples(minimumSamples, (sample, sequence) => (
             sample.benchmark.memoryRssBytes === undefined
               ? null
               : nativeObservation(
                 sample,
                 sample.benchmark.memoryRssBytes,
                 "native-runtime:memory-rss",
+                sequence,
               )
           ));
         case "js_task_ms": {
+          const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           let checksum = 0;
           for (let index = 0; index < minimumSamples; index += 1) {
@@ -241,12 +356,15 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
               observedAt - startedAt,
               observedAt,
               "react-native:bounded-js-task",
+              processId,
+              index + 1,
             ));
           }
           if (!Number.isSafeInteger(checksum)) throw new Error("phase18_js_probe_invalid");
           return observations;
         }
         case "frame_time_ms": {
+          const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           for (let index = 0; index < minimumSamples; index += 1) {
             const startedAt = performance.now();
@@ -257,11 +375,14 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
               observedAt - startedAt,
               observedAt,
               "react-native:animation-frame",
+              processId,
+              index + 1,
             ));
           }
           return observations;
         }
         case "offline_workout_commit_ms": {
+          const processId = (await firstRuntime()).benchmark.processId;
           const observations: Phase18GarminBenchmarkObservation[] = [];
           const { performPhase1Benchmark } = await import("../bootstrap/phase1Benchmark.ts");
           for (let index = 0; index < minimumSamples; index += 1) {
@@ -272,6 +393,8 @@ export function createInstalledPhase18GarminBenchmarkMeasurementPort(
               duration,
               performance.now(),
               "sqlite:offline-workout-commit",
+              processId,
+              index + 1,
             ));
           }
           return observations;
@@ -336,15 +459,13 @@ export function phase18GarminAcceptanceBenchmarkEnabled(input: Readonly<{
 }
 
 function timestampLabel(
-  metric: Phase18GarminBenchmarkMetric,
-  observedAtMonotonicMs: number,
-  index: number,
+  observation: Phase18GarminBenchmarkObservation,
 ): string | null {
-  const observedAtMonotonicMicros = Math.round(observedAtMonotonicMs * 1_000);
+  const observedAtMonotonicMicros = Math.round(observation.observed_at_monotonic_ms * 1_000);
   if (!Number.isSafeInteger(observedAtMonotonicMicros) || observedAtMonotonicMicros < 0) {
     return null;
   }
-  return `${metric}:${observedAtMonotonicMicros}:${index + 1}`;
+  return `p${observation.process_id}:s${observation.sequence}:t${observedAtMonotonicMicros}`;
 }
 
 export async function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
@@ -372,10 +493,11 @@ export async function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
   }
   const producerObservationInvalid = processId === 0;
 
-  const measurements = {} as Record<Phase18GarminBenchmarkMetric, readonly number[]>;
-  const commands = {} as Record<Phase18GarminBenchmarkMetric, string>;
-  const sampleLabels = {} as Record<Phase18GarminBenchmarkMetric, readonly string[]>;
-  for (const metric of PHASE18_GARMIN_BENCHMARK_METRICS) {
+  const measurements = Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, Object.freeze([])])) as unknown as Record<Phase18GarminBenchmarkMetric, readonly number[]>;
+  const commands = Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, `review-required:${metric.replaceAll("_", "-")}`])) as Record<Phase18GarminBenchmarkMetric, string>;
+  const sampleLabels = Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, Object.freeze([])])) as unknown as Record<Phase18GarminBenchmarkMetric, readonly string[]>;
+  let coldStartSamples: readonly Phase18GarminBenchmarkObservation[] = Object.freeze([]);
+  const collectMetric = async (metric: Phase18GarminBenchmarkMetric): Promise<boolean> => {
     const minimumSamples = PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES[metric];
     let observations: readonly Phase18GarminBenchmarkObservation[];
     try {
@@ -385,12 +507,13 @@ export async function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
       commands[metric] = `review-required:${metric.replaceAll("_", "-")}`;
       sampleLabels[metric] = Object.freeze([]);
       reviewRequired.push(`${metric}:measurement_unavailable`);
-      continue;
+      return false;
     }
 
     const values: number[] = [];
     const labels: string[] = [];
-    const timestampKeys: number[] = [];
+    const observationKeys = new Set<string>();
+    const timestampKeys = new Set<number>();
     const operations = new Set<string>();
     let invalid = !Array.isArray(observations) || observations.length > 120;
     const observationList = Array.isArray(observations) ? observations : [];
@@ -400,19 +523,28 @@ export async function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
         continue;
       }
       const observation = candidate as Phase18GarminBenchmarkObservation;
-      const label = timestampLabel(metric, observation.observed_at_monotonic_ms, index);
+      const label = timestampLabel(observation);
       const timestampKey = Math.round(observation.observed_at_monotonic_ms * 1_000);
+      const observationKey = `${observation.process_id}:${observation.sequence}:${timestampKey}`;
       if (
         !Number.isFinite(observation.value)
         || observation.value < 0
         || label === null
         || !BENCHMARK_OPERATION.test(observation.operation)
         || NON_OBSERVATION_PRODUCER.test(observation.operation)
+        || !validObservationIdentity(observation.process_id)
+        || !validObservationIdentity(observation.sequence)
+        || observation.sequence !== index + 1
+        || (metric !== "python_cold_start_ms" && observation.process_id !== processId)
       ) {
         invalid = true;
         continue;
       }
-      if (timestampKeys.includes(timestampKey)) {
+      if (observationKeys.has(observationKey)) {
+        invalid = true;
+        continue;
+      }
+      if (metric !== "python_cold_start_ms" && timestampKeys.has(timestampKey)) {
         invalid = true;
         continue;
       }
@@ -422,8 +554,16 @@ export async function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
       }
       values.push(observation.value);
       labels.push(label);
-      timestampKeys.push(timestampKey);
+      observationKeys.add(observationKey);
+      timestampKeys.add(timestampKey);
       operations.add(observation.operation);
+    }
+    if (metric === "python_cold_start_ms") {
+      const processIds = observationList.map((observation) => observation.process_id);
+      if (new Set(processIds).size !== processIds.length
+        || (observationList.length > 0 && observationList.at(-1)?.process_id !== processId)) {
+        invalid = true;
+      }
     }
     if (operations.size !== 1) {
       invalid = true;
@@ -438,6 +578,17 @@ export async function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
     } else if (values.length < minimumSamples) {
       reviewRequired.push(`${metric}:minimum_samples_missing`);
     }
+    if (metric === "python_cold_start_ms" && !invalid) {
+      coldStartSamples = Object.freeze([...observationList]);
+    }
+    return !invalid && values.length >= minimumSamples;
+  };
+
+  const coldStartReady = await collectMetric("python_cold_start_ms");
+  if (coldStartReady) {
+    for (const metric of PHASE18_GARMIN_BENCHMARK_METRICS) {
+      if (metric !== "python_cold_start_ms") await collectMetric(metric);
+    }
   }
 
   return Object.freeze({
@@ -448,6 +599,12 @@ export async function createPhase18GarminBenchmarkMarkerReport(input: Readonly<{
       ? "passed" as const
       : "REVIEW_REQUIRED" as const,
     review_required: Object.freeze(reviewRequired),
+    cold_start_handshake: Object.freeze({
+      next_sequence: coldStartSamples.length >= PHASE18_GARMIN_BENCHMARK_MINIMUM_SAMPLES.python_cold_start_ms
+        ? null
+        : coldStartSamples.length + 1,
+      samples: coldStartSamples,
+    }),
     measurement_context: Object.freeze({
       profile: "physical-arm64",
       commands: Object.freeze(commands),

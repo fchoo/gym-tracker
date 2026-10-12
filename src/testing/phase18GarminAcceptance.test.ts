@@ -8,6 +8,7 @@ import {
   PHASE18_GARMIN_BENCHMARK_MARKER,
   createPhase18GarminBenchmarkMarkerReport,
   createPhase18GarminAcceptanceHarness,
+  parsePhase18GarminColdStartHandshake,
   phase18GarminAcceptanceBenchmarkEnabled,
   phase18GarminAcceptanceEnabled,
   type Phase18GarminBenchmarkMeasurementPort,
@@ -45,6 +46,8 @@ function observationPort(
         value: index + 1,
         observed_at_monotonic_ms: 10_000 + (index * 2) + PHASE18_GARMIN_BENCHMARK_METRICS.indexOf(metric) / 10,
         operation: OPERATION_BY_METRIC[metric],
+        process_id: metric === "python_cold_start_ms" ? 119 + index : 123,
+        sequence: index + 1,
       }),
     ),
     ...override,
@@ -115,6 +118,76 @@ describe("Phase 18 deterministic acceptance harness", () => {
       expect(new Set(report.measurement_context.sample_labels[metric]).size).toBe(minimum);
       expect(report.measurement_context.commands[metric]).toBe(OPERATION_BY_METRIC[metric]);
     }
+    expect(report.cold_start_handshake).toEqual({
+      next_sequence: null,
+      samples: Array.from({ length: 5 }, (_, index) => ({
+        value: index + 1,
+        observed_at_monotonic_ms: 10_000 + (index * 2) + 0.2,
+        operation: "native-runtime:python-cold-start",
+        process_id: 119 + index,
+        sequence: index + 1,
+      })),
+    });
+  });
+
+  it("requires five sequence-bound cold starts from distinct processes before collecting other metrics", async () => {
+    const observedMetrics: string[] = [];
+    const report = await createPhase18GarminBenchmarkMarkerReport({
+      nonce: "f".repeat(32),
+      measurementPort: observationPort({
+        observe: async (metric, minimumSamples) => {
+          observedMetrics.push(metric);
+          if (metric === "python_cold_start_ms") {
+            return Array.from({ length: minimumSamples }, (_, index) => ({
+              value: index + 1,
+              observed_at_monotonic_ms: 40_000 + index,
+              operation: OPERATION_BY_METRIC[metric],
+              process_id: 123,
+              sequence: index + 1,
+            }));
+          }
+          return observationPort().observe(metric, minimumSamples);
+        },
+      }),
+    });
+
+    expect(report.status).toBe("REVIEW_REQUIRED");
+    expect(report.review_required).toEqual([
+      "python_cold_start_ms:observation_invalid",
+    ]);
+    expect(observedMetrics).toEqual(["python_cold_start_ms"]);
+    expect(report.measurements.bounded_sync_ms).toEqual([]);
+  });
+
+  it("parses only a contiguous privacy-safe cold-start continuation", () => {
+    const prior = Array.from({ length: 2 }, (_, index) => ({
+      value: index + 1,
+      observed_at_monotonic_ms: 50_000 + index,
+      operation: "native-runtime:python-cold-start",
+      process_id: 201 + index,
+      sequence: index + 1,
+    }));
+
+    expect(parsePhase18GarminColdStartHandshake({
+      sequence: "3",
+      samples: JSON.stringify(prior),
+    })).toEqual({ sequence: 3, prior_samples: prior });
+    expect(parsePhase18GarminColdStartHandshake({})).toEqual({
+      sequence: 1,
+      prior_samples: [],
+    });
+    expect(parsePhase18GarminColdStartHandshake({
+      sequence: "3",
+      samples: JSON.stringify([{ ...prior[0], process_id: 0 }]),
+    })).toBeNull();
+    expect(parsePhase18GarminColdStartHandshake({
+      sequence: "3",
+      samples: JSON.stringify(prior.map((sample) => ({ ...sample, sequence: 1 }))),
+    })).toBeNull();
+    expect(parsePhase18GarminColdStartHandshake({
+      sequence: "6",
+      samples: JSON.stringify(prior),
+    })).toBeNull();
   });
 
   it("fails closed for unavailable metrics and duplicate observation timestamps", async () => {
@@ -127,6 +200,8 @@ describe("Phase 18 deterministic acceptance harness", () => {
             value: index + 1,
             observed_at_monotonic_ms: metric === "frame_time_ms" ? 20_000 : 20_000 + index,
             operation: OPERATION_BY_METRIC[metric],
+            process_id: metric === "python_cold_start_ms" ? 119 + index : 123,
+            sequence: index + 1,
           }));
         },
       }),
@@ -160,12 +235,14 @@ describe("Phase 18 deterministic acceptance harness", () => {
             value: 1,
             observed_at_monotonic_ms: 30_000 + index,
             operation: `constant:${metric}`,
+            process_id: metric === "python_cold_start_ms" ? 119 + index : 123,
+            sequence: index + 1,
           }),
         ),
       }),
     });
     expect(report.status).toBe("REVIEW_REQUIRED");
-    expect(report.review_required).toContain("apk_size_bytes:observation_invalid");
+    expect(report.review_required).toContain("python_cold_start_ms:observation_invalid");
   });
 
   it("runs every host case in ledger order and leaves native proof explicitly deferred", async () => {
