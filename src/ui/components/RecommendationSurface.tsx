@@ -46,7 +46,7 @@ function reps(values: readonly number[]): string {
   return values.length === 0 ? "current range" : values.join(" / ");
 }
 
-function targetText(target: MetricTarget): string {
+export function recommendationTargetText(target: MetricTarget): string {
   switch (target.profile) {
     case "load_reps":
       return `${formatLoadGrams(target.loadGrams)} kg × ${
@@ -211,10 +211,10 @@ function ReviewSurface({
             {recommendation.exerciseName}
           </Text>
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-            {`Current · ${targetText(recommendation.currentTarget)}`}
+            {`Current · ${recommendationTargetText(recommendation.currentTarget)}`}
           </Text>
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-            {`Proposed · ${targetText(recommendation.proposedTarget)}`}
+            {`Proposed · ${recommendationTargetText(recommendation.proposedTarget)}`}
           </Text>
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
             {recommendation.reason}
@@ -243,10 +243,10 @@ function ReviewSurface({
               {`${recommendation.exerciseName} · personal completed history only`}
             </Text>
             <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-              {`Current target · ${targetText(recommendation.currentTarget)}`}
+              {`Current target · ${recommendationTargetText(recommendation.currentTarget)}`}
             </Text>
             <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-              {`Proposed target · ${targetText(recommendation.proposedTarget)}`}
+              {`Proposed target · ${recommendationTargetText(recommendation.proposedTarget)}`}
             </Text>
             <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
               {`Rule · ${recommendation.rule.id} v${recommendation.rule.version}`}
@@ -326,10 +326,10 @@ function ReviewSurface({
         {lifecycleLabel(recommendation.lifecycle)}
       </Text>
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-        {`${historical ? "Current target at review time" : "Current target"} · ${targetText(recommendation.currentTarget)}`}
+        {`${historical ? "Current target at review time" : "Current target"} · ${recommendationTargetText(recommendation.currentTarget)}`}
       </Text>
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-        {`${historical ? "Proposed target at review time" : "Proposed target"} · ${targetText(recommendation.proposedTarget)}`}
+        {`${historical ? "Proposed target at review time" : "Proposed target"} · ${recommendationTargetText(recommendation.proposedTarget)}`}
       </Text>
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
         {`Rule · ${recommendation.rule.id} v${recommendation.rule.version}`}

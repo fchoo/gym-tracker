@@ -26,6 +26,7 @@ import type {
 import type {
   ProgressPeriod,
   ProgressPeriodProjection,
+  ProgressRecommendationReview,
   ProgressProjectionDiagnostic,
   ProgressProjectionFreshness,
 } from "../domains/progress";
@@ -87,9 +88,16 @@ import {
   acceptRecommendation,
   keepCurrentTarget,
   recordExerciseEffort,
+  type RecommendationDecision,
+  type RecommendationDecisionInput,
   type ExerciseEffort,
   type RecommendationDecisionResult,
 } from "../domains/progression";
+import {
+  canonicalBodyweightRequestPayload,
+  type BodyweightCommand,
+  type BodyweightEntryState,
+} from "../domains/bodyweight/contracts";
 import {
   adjustRest,
   expireRest,
@@ -524,6 +532,19 @@ export type LibraryRuntimePlanSummary = Readonly<{
 export type LibraryRuntimeStarterPlanSummary = StarterPlanRuntimeSummary;
 export type RuntimeSecureBackupArchive = SecureBackupArchiveHandle;
 export type RuntimeCsvExport = CsvExportHandle;
+
+export type ProgressBodyweightEntry = Pick<
+  BodyweightEntryState,
+  "entryId" | "revision" | "localDate" | "grams"
+>;
+
+export type ProgressBodyweightSaveInput = Readonly<{
+  requestId: string;
+  entryId: string;
+  expectedRevision: number;
+  localDate: string;
+  grams: number;
+}>;
 export type RuntimeRestorePreflightResult = Awaited<ReturnType<RestoreCommands["preflightSecureRestore"]>>;
 export type RuntimeMergePreflightResult = Awaited<ReturnType<SecureMergeCommands["preflightSecureMerge"]>>;
 export type RuntimeRestoreCommitResult = Readonly<{
@@ -862,6 +883,18 @@ type RuntimeValue = RuntimeState & Readonly<{
     createId(kind: string): string;
     loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
     saveRunningTarget(input: RunningTargetMutationInput): Promise<RunningTargetMutationResult>;
+  }>;
+  progressRecommendationRuntime: Readonly<{
+    decide(
+      recommendation: ProgressRecommendationReview,
+      decision: RecommendationDecision,
+    ): Promise<RecommendationDecisionResult>;
+  }>;
+  progressBodyweightRuntime: Readonly<{
+    createId(kind: string): string;
+    loadHistory(): Promise<readonly ProgressBodyweightEntry[]>;
+    save(input: ProgressBodyweightSaveInput): Promise<readonly ProgressBodyweightEntry[]>;
+    delete(entry: ProgressBodyweightEntry, requestId: string): Promise<readonly ProgressBodyweightEntry[]>;
   }>;
   openRestNotificationSettings(): Promise<void>;
   readRestAlertPreferences(): RestAlertPreferences;
@@ -2235,6 +2268,8 @@ export function WorkoutAppRuntimeProvider({
     candidateKey: string;
     input: RunningActivityMatchInput;
   }> | null>(null);
+  const progressBodyweightCommandsRef = useRef(new Map<string, BodyweightCommand>());
+  const progressRecommendationCommandsRef = useRef(new Map<string, RecommendationDecisionInput>());
   const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
   const phase17ActionEnvelopeSourceRef = useRef<ReturnType<typeof createPhase17ActionEnvelopeSource> | null>(null);
   const phase17RequestId = useCallback(async (label: string, productionRequestId: string) => {
@@ -2269,6 +2304,8 @@ export function WorkoutAppRuntimeProvider({
     const services = servicesRef.current;
     servicesRef.current = null;
     pendingActivityMatchRef.current = null;
+    progressBodyweightCommandsRef.current.clear();
+    progressRecommendationCommandsRef.current.clear();
     await services?.lifecycle.dispose?.().catch(() => undefined);
     services?.automaticBackupRuntime?.dispose();
     await services?.kernel.close().catch(() => undefined);
@@ -3202,6 +3239,96 @@ export function WorkoutAppRuntimeProvider({
     saveRunningTarget: (input: RunningTargetMutationInput) =>
       requireServices().runningPlans.saveRunningTarget(input),
   }), [requireServices]);
+
+  const createProgressId = useCallback((kind: string) =>
+    requireServices().runningPlans.createId(kind), [requireServices]);
+
+  const loadProgressBodyweightHistory = useCallback(async (): Promise<readonly ProgressBodyweightEntry[]> => {
+    const services = requireServices();
+    const owners = await services.kernel.queryAll<{ owner_namespace: string }>(
+      "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+    );
+    const ownerId = owners.length === 1 ? owners[0]?.owner_namespace : undefined;
+    if (ownerId === undefined || !/^[A-Za-z0-9._:-]{1,128}$/u.test(ownerId)) {
+      throw new Error("progress_bodyweight_owner_unavailable");
+    }
+    const entries = await services.trainingFoundation.loadBodyweightHistory(ownerId);
+    return Object.freeze(entries
+      .filter(({ lifecycle }) => lifecycle === "active")
+      .map(({ entryId, revision, localDate, grams }) => Object.freeze({
+        entryId,
+        revision,
+        localDate,
+        grams,
+      })));
+  }, [requireServices]);
+
+  const commitProgressBodyweight = useCallback(async (
+    operation: "create" | "edit" | "delete",
+    input: ProgressBodyweightSaveInput | Readonly<{ requestId: string; entryId: string; expectedRevision: number }>,
+  ): Promise<readonly ProgressBodyweightEntry[]> => {
+    const services = requireServices();
+    let command = progressBodyweightCommandsRef.current.get(input.requestId);
+    if (command === undefined) {
+      const owners = await services.kernel.queryAll<{ owner_namespace: string }>(
+        "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+      );
+      const ownerId = owners.length === 1 ? owners[0]?.owner_namespace : undefined;
+      if (ownerId === undefined || !/^[A-Za-z0-9._:-]{1,128}$/u.test(ownerId)) {
+        throw new Error("progress_bodyweight_owner_unavailable");
+      }
+      const context = localContext(dependencies.now());
+      const request = {
+        operation,
+        requestId: input.requestId,
+        entryId: input.entryId,
+        ownerId,
+        expectedRevision: input.expectedRevision,
+        revisionId: createProgressId("bodyweight-revision"),
+        eventId: createProgressId("bodyweight-event"),
+        occurredAtMs: dependencies.nowMs(),
+        ...(operation === "delete" ? {} : {
+          localDate: (input as ProgressBodyweightSaveInput).localDate,
+          timezone: context.timezone,
+          grams: (input as ProgressBodyweightSaveInput).grams,
+        }),
+      } as const;
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      command = Object.freeze({
+        ...request,
+        requestSha256: await digestStringAsync(
+          CryptoDigestAlgorithm.SHA256,
+          canonicalBodyweightRequestPayload(request),
+        ),
+      });
+      progressBodyweightCommandsRef.current.set(input.requestId, command);
+    }
+    const result = await services.trainingFoundation.commitBodyweight(command);
+    if (result.kind === "conflict") throw new Error("bodyweight_revision_conflict");
+    const readBack = await loadProgressBodyweightHistory();
+    const committedEntry = readBack.find(({ entryId }) => entryId === input.entryId);
+    if ((operation === "delete" && committedEntry !== undefined)
+      || (operation !== "delete" && committedEntry === undefined)) {
+      throw new Error("bodyweight_readback_missing");
+    }
+    progressBodyweightCommandsRef.current.delete(input.requestId);
+    return readBack;
+  }, [createProgressId, dependencies, loadProgressBodyweightHistory, requireServices]);
+
+  const progressBodyweightRuntime = useMemo(() => Object.freeze({
+    createId: createProgressId,
+    loadHistory: loadProgressBodyweightHistory,
+    save: (input: ProgressBodyweightSaveInput) => commitProgressBodyweight(
+      input.expectedRevision === 0 ? "create" : "edit",
+      input,
+    ),
+    delete: (entry: ProgressBodyweightEntry, requestId: string) =>
+      commitProgressBodyweight("delete", {
+        requestId,
+        entryId: entry.entryId,
+        expectedRevision: entry.revision,
+      }),
+  }), [commitProgressBodyweight, createProgressId, loadProgressBodyweightHistory]);
 
   const listRemovedHistorySessions = useCallback(() =>
     requireServices().historyRepository.listRemovedSessions(),
@@ -4563,6 +4690,51 @@ export function WorkoutAppRuntimeProvider({
     [dependencies, runOutcomeMutation],
   );
 
+  const decideProgressRecommendation = useCallback(async (
+    recommendation: ProgressRecommendationReview,
+    decision: RecommendationDecision,
+  ): Promise<RecommendationDecisionResult> => {
+    if (recommendation.lifecycle !== "pending") {
+      throw new Error("recommendation_no_longer_actionable");
+    }
+    if (!Number.isSafeInteger(recommendation.evidenceVersion)
+      || recommendation.evidenceVersion === undefined
+      || recommendation.evidenceVersion < 1
+      || !Number.isSafeInteger(recommendation.sourceRevision)
+      || recommendation.sourceRevision === undefined
+      || recommendation.sourceRevision < 1
+      || !Number.isSafeInteger(recommendation.targetRevision)
+      || recommendation.targetRevision === undefined
+      || recommendation.targetRevision < 1) {
+      throw new Error("recommendation_revision_fence_unavailable");
+    }
+    const key = `${decision}:${recommendation.id}`;
+    let command = progressRecommendationCommandsRef.current.get(key);
+    if (command === undefined) {
+      command = Object.freeze({
+        recommendationId: recommendation.id,
+        requestId: createProgressId(`progress-recommendation-${decision === "use_target" ? "use" : "keep"}`),
+        decision,
+        expectedEvidenceVersion: recommendation.evidenceVersion,
+        expectedSourceRevision: recommendation.sourceRevision,
+        expectedTargetRevision: recommendation.targetRevision,
+        decidedAtMs: dependencies.nowMs(),
+      });
+      progressRecommendationCommandsRef.current.set(key, command);
+    }
+    const committedCommand = command;
+    if (committedCommand === undefined) throw new Error("recommendation_command_unavailable");
+    const result = await runOutcomeMutation((repository) => decision === "use_target"
+      ? acceptRecommendation({ repository, input: committedCommand })
+      : keepCurrentTarget({ repository, input: committedCommand }));
+    progressRecommendationCommandsRef.current.delete(key);
+    return result;
+  }, [createProgressId, dependencies, runOutcomeMutation]);
+
+  const progressRecommendationRuntime = useMemo(() => Object.freeze({
+    decide: decideProgressRecommendation,
+  }), [decideProgressRecommendation]);
+
   const phase17ActionEnvelopeSource = useCallback(() => {
     if (!phase17NativeContractEnabled()) throw new Error("phase17_action_envelope_unavailable");
     if (phase17ActionEnvelopeSourceRef.current !== null) return phase17ActionEnvelopeSourceRef.current;
@@ -5169,6 +5341,8 @@ export function WorkoutAppRuntimeProvider({
     loadExerciseMetricHistory,
     loadProgress,
     progressRunningTargetRuntime,
+    progressRecommendationRuntime,
+    progressBodyweightRuntime,
     keepCurrentTarget: keepWorkoutTarget,
     keepCompletedWorkoutPlanAsIs: keepCompletedPlanAsIs,
     chooseTimeZone: (choice, detectedDeviceTimeZone) =>
@@ -5326,6 +5500,8 @@ export function WorkoutAppRuntimeProvider({
     loadExerciseMetricHistory,
     loadProgress,
     progressRunningTargetRuntime,
+    progressRecommendationRuntime,
+    progressBodyweightRuntime,
     initialize,
     keepWorkoutTarget,
     listLibraryRecentExercises,

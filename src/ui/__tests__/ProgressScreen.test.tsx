@@ -373,17 +373,16 @@ describe("ProgressScreen", () => {
     expect(screen.getByText("Bench Press target updated to 62.5 kg × 6.")).toBeOnTheScreen();
   });
 
-  it("moves through Progress settings and bodyweight add/delete with authoritative lists", async () => {
+  it("moves through Progress settings and saves bodyweight from authoritative read-back", async () => {
     const entry = { entryId: "bodyweight-1", revision: 1, localDate: "2026-08-24", grams: 72_100 };
     const loadHistory = jest.fn(async () => [] as readonly typeof entry[]);
     const save = jest.fn(async () => [entry] as readonly typeof entry[]);
-    const remove = jest.fn(async () => [] as readonly typeof entry[]);
     await renderProgress(undefined, {
       progressBodyweightRuntime: {
         createId: (kind) => `${kind}:request`,
         loadHistory,
         save,
-        delete: remove,
+        delete: jest.fn(async () => []),
       },
     });
 
@@ -400,11 +399,25 @@ describe("ProgressScreen", () => {
       grams: 72_100,
     })));
     expect(screen.getByText("Bodyweight entry saved.")).toBeOnTheScreen();
+  });
 
+  it("requires confirmation and committed read-back before removing bodyweight", async () => {
+    const entry = { entryId: "bodyweight-1", revision: 1, localDate: "2026-08-24", grams: 72_100 };
+    const remove = jest.fn(async () => [] as readonly typeof entry[]);
+    await renderProgress(undefined, {
+      progressBodyweightRuntime: {
+        createId: (kind) => `${kind}:request`,
+        loadHistory: jest.fn(async () => [entry]),
+        save: jest.fn(async () => [entry]),
+        delete: remove,
+      },
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Body metrics" }));
     await fireEvent.press(screen.getByRole("button", { name: "Delete bodyweight entry for 2026-08-24" }));
     expect(screen.getByText("Delete bodyweight entry?")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Delete bodyweight entry" }));
-    await waitFor(() => expect(remove).toHaveBeenCalledWith(entry));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(entry, "bodyweight-delete:request"));
     expect(screen.getByText("Bodyweight entry deleted.")).toBeOnTheScreen();
   });
 });

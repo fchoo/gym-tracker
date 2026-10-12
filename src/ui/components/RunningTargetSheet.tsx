@@ -29,7 +29,7 @@ export type RunningTargetSheetProps = Readonly<{
   sources: readonly RunningPlanAggregate[];
   runtime: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
   onClose(): void;
-  onSaved?(plan: RunningPlanAggregate): void;
+  onSaved?(plan: RunningPlanAggregate): unknown;
   restoreFocusRef?: React.RefObject<View | null> | undefined;
   todayLocalDate: string;
 }>;
@@ -169,7 +169,7 @@ export function RunningTargetSheet({
         targetLocalDate: draft.targetDate === "" ? undefined : draft.targetDate,
         trainingDays: [...draft.trainingDays],
       });
-      onSaved?.(saved.plan);
+      await onSaved?.(saved.plan);
       requestIdsRef.current.delete(source.id);
       onClose();
     } catch (cause) {

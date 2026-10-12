@@ -1,11 +1,16 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
-import type { ProgressPeriod, ProgressProjectionDiagnostic, ProgressProjectionFreshness } from "../../domains/progress";
+import type { ProgressPeriod, ProgressPeriodProjection, ProgressProjectionDiagnostic, ProgressProjectionFreshness, ProgressRecommendationReview } from "../../domains/progress";
 import type { ProgressDashboardProjection, ProgressRunningGoal, ProgressSport } from "../../domains/progress/contracts";
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
+import type { ProgressBodyweightEntry, ProgressBodyweightSaveInput } from "../../bootstrap/workoutAppRuntime";
 import { EmptyState, FocusablePressable, IconAction, InlineNotice, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
+import { BodyweightEditorSheet } from "../components/BodyweightEditorSheet";
+import { BodyweightHistorySheet } from "../components/BodyweightHistorySheet";
+import { ProgressSettingsSheet } from "../components/ProgressSettingsSheet";
+import { RecommendationSurface, recommendationTargetText } from "../components/RecommendationSurface";
 import { RunningHistorySheet } from "../components/RunningHistorySheet";
 import { RunningTargetSheet } from "../components/RunningTargetSheet";
 import type { FactualHistorySource } from "../components/FactualHistoryChart";
@@ -19,6 +24,7 @@ type ProgressSnapshot = Readonly<{
   freshness: ProgressProjectionFreshness;
   sport?: ProgressSport;
   dashboard?: ProgressDashboardProjection | null;
+  projection?: ProgressPeriodProjection | null;
   diagnostic?: ProgressProjectionDiagnostic;
   runningTargetSources?: readonly RunningPlanAggregate[];
 }>;
@@ -27,11 +33,20 @@ export type ProgressScreenProps = Readonly<{
   nowLocalDate: string;
   workoutRefreshGeneration?: number;
   loadProgress(input: Readonly<{ sport: ProgressSport; period: ProgressPeriod; nowLocalDate: string }>): Promise<ProgressSnapshot>;
-  onOpenExercise(exerciseId: string, exerciseName: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string, returnFocusToken?: string): void;
   onOpenSession(sessionId: string): void;
   onOpenRunningSource?(source: FactualHistorySource, returnFocusToken: string): void;
   onOpenSettings?(): void;
   runningTargetRuntime?: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
+  progressRecommendationRuntime?: Readonly<{
+    decide(recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target"): Promise<unknown>;
+  }>;
+  progressBodyweightRuntime?: Readonly<{
+    createId(kind: string): string;
+    loadHistory(): Promise<readonly ProgressBodyweightEntry[]>;
+    save(input: ProgressBodyweightSaveInput): Promise<readonly ProgressBodyweightEntry[]>;
+    delete(entry: ProgressBodyweightEntry, requestId: string): Promise<readonly ProgressBodyweightEntry[]>;
+  }>;
   returnFocusVersion?: number;
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
@@ -177,7 +192,16 @@ function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget
   );
 }
 
-function DashboardContent({ dashboard, onRetry, onOpenExercise, onSelectSport }: Readonly<{ dashboard: Exclude<ProgressDashboardProjection, { sport: "Running" }>; onRetry(): void; onOpenExercise(exerciseId: string, exerciseName: string): void; onSelectSport(sport: ProgressSport): void }>) {
+function DashboardContent({ dashboard, onDecideRecommendation, onOpenExercise, onOpenSession, onRetry, onSelectSport, period, recommendations }: Readonly<{
+  dashboard: Exclude<ProgressDashboardProjection, { sport: "Running" }>;
+  onDecideRecommendation?: ((recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target") => Promise<unknown>) | undefined;
+  onOpenExercise(exerciseId: string, exerciseName: string, returnFocusToken?: string): void;
+  onOpenSession(sessionId: string): void;
+  onRetry(): void;
+  onSelectSport(sport: ProgressSport): void;
+  period: ProgressPeriod;
+  recommendations: readonly ProgressRecommendationReview[];
+}>) {
   const { colors } = useAppTheme();
   if (dashboard.state === "empty") {
     return <EmptyState body="Completed, accepted source facts appear here when they establish a comparable goal. Missing facts are not shown as zero." heading="No progress history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
@@ -194,10 +218,26 @@ function DashboardContent({ dashboard, onRetry, onOpenExercise, onSelectSport }:
     const target = primaryGoal.targetDurationSeconds === null ? "Target unset" : formatDuration(primaryGoal.targetDurationSeconds);
     return <View style={styles.content}><View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Nearest active goal</Text><Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`${primaryGoal.sport} · Target · ${target}`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>More data needed before Latest, Best, and Gap are comparable.</Text><FocusablePressable accessibilityLabel={`Open ${primaryGoal.sport} goal`} accessibilityRole="button" focusable onPress={() => onSelectSport(primaryGoal.sport)} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`Open ${primaryGoal.sport} goal`}</Text></FocusablePressable></View></View>;
   }
-  return <View style={styles.content}><View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Strength progress</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`${dashboard.facts.length} comparable completed ${dashboard.facts.length === 1 ? "fact" : "facts"} in this range.`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Targets and gaps appear only for compatible saved metrics.</Text></View>{dashboard.facts.map((fact) => <FocusablePressable accessibilityLabel={`Open exercise history for ${fact.exerciseName}`} accessibilityRole="button" focusable key={`${fact.exerciseId}:${fact.setId}`} onPress={() => onOpenExercise(fact.exerciseId, fact.exerciseName)} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{fact.exerciseName}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Target unavailable</Text></FocusablePressable>)}</View>;
+  return <View style={styles.content}>
+    <View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Strength progress</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`${dashboard.facts.length} comparable completed ${dashboard.facts.length === 1 ? "fact" : "facts"} in this range.`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Targets and gaps appear only for compatible saved metrics.</Text></View>
+    {recommendations.length === 0 ? null : <View style={styles.goalRows}>
+      <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Needs review</Text>
+      {recommendations.map((recommendation) => <RecommendationSurface
+        key={recommendation.id}
+        recommendation={recommendation}
+        onAccept={() => onDecideRecommendation?.(recommendation, "use_target")}
+        onKeepCurrent={() => onDecideRecommendation?.(recommendation, "keep_current_target")}
+        onOpenSource={onOpenSession}
+      />)}
+    </View>}
+    <View style={styles.goalRows}>
+      <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Exercise progress</Text>
+      {dashboard.facts.map((fact) => <FocusablePressable accessibilityLabel={`Open exercise history for ${fact.exerciseName}`} accessibilityRole="button" focusable key={`${fact.exerciseId}:${fact.setId}`} onPress={() => onOpenExercise(fact.exerciseId, fact.exerciseName, `progress:Strength:${period}:exercise:${fact.exerciseId}`)} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{fact.exerciseName}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Target unavailable</Text></FocusablePressable>)}
+    </View>
+  </View>;
 }
 
-export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, returnFocusVersion = 0, width, headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
+export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSession, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, progressRecommendationRuntime, progressBodyweightRuntime, returnFocusVersion = 0, width, headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
   const [sport, setSport] = useState<ProgressSport>("All");
   const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
@@ -206,33 +246,85 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const requestRef = useRef(0);
   const historyTriggerRef = useRef<View>(null);
   const targetTriggerRef = useRef<View>(null);
+  const bodyMetricsTriggerRef = useRef<View>(null);
+  const progressSettingsTriggerRef = useRef<View>(null);
   const [historyGoal, setHistoryGoal] = useState<ProgressRunningGoal | null>(null);
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
+  const [progressSettingsVisible, setProgressSettingsVisible] = useState(false);
+  const [bodyweightVisible, setBodyweightVisible] = useState(false);
+  const [bodyweightEntries, setBodyweightEntries] = useState<readonly ProgressBodyweightEntry[]>([]);
+  const [bodyweightEditor, setBodyweightEditor] = useState<Readonly<{ mode: "add" | "edit"; entry?: ProgressBodyweightEntry }> | null>(null);
+  const bodyweightRequestRef = useRef<string | null>(null);
+  const bodyweightDeleteRequestsRef = useRef(new Map<string, string>());
   const semanticToast = useOptionalSemanticToast();
   const adaptiveWidth = width === undefined ? {} : { width };
 
-  useEffect(() => {
+  const readProgress = useCallback(async (showLoading: boolean) => {
     const request = requestRef.current + 1;
     requestRef.current = request;
-    setSnapshot(null);
+    if (showLoading) setSnapshot(null);
     setFailed(false);
-    void loadProgress({ sport, period, nowLocalDate }).then((next) => {
-      if (request !== requestRef.current || (next.dashboard !== null && next.dashboard !== undefined && next.dashboard.sport !== sport)) return;
+    try {
+      const next = await loadProgress({ sport, period, nowLocalDate });
+      if (request !== requestRef.current || (next.dashboard !== null && next.dashboard !== undefined && next.dashboard.sport !== sport)) return null;
       setSnapshot(next);
-    }).catch(() => {
+      return next;
+    } catch (error) {
       if (request === requestRef.current) setFailed(true);
-    });
-  }, [loadProgress, nowLocalDate, period, retry, sport, workoutRefreshGeneration]);
+      throw error;
+    }
+  }, [loadProgress, nowLocalDate, period, sport]);
+
+  useEffect(() => {
+    void readProgress(true).catch(() => undefined);
+  }, [readProgress, retry, workoutRefreshGeneration]);
 
   useEffect(() => {
     if (returnFocusVersion === 0) return;
     requestAnimationFrame(() => historyTriggerRef.current?.focus?.());
   }, [returnFocusVersion]);
 
+  const closeLocalSurfaces = () => {
+    setHistoryGoal(null);
+    setTargetDistanceMeters(null);
+    setProgressSettingsVisible(false);
+    setBodyweightVisible(false);
+    setBodyweightEditor(null);
+  };
+
+  const openBodyweight = async () => {
+    if (progressBodyweightRuntime === undefined) return;
+    const entries = await progressBodyweightRuntime.loadHistory();
+    setBodyweightEntries(entries);
+    setProgressSettingsVisible(false);
+    setBodyweightEditor(null);
+    setBodyweightVisible(true);
+  };
+
+  const decideRecommendation = async (
+    recommendation: ProgressRecommendationReview,
+    decision: "use_target" | "keep_current_target",
+  ) => {
+    if (progressRecommendationRuntime === undefined) throw new Error("progress_recommendation_runtime_unavailable");
+    const result = await progressRecommendationRuntime.decide(recommendation, decision);
+    const readBack = await readProgress(false);
+    if (readBack === null) throw new Error("progress_recommendation_readback_obsolete");
+    semanticToast?.enqueue({
+      message: decision === "use_target"
+        ? `${recommendation.exerciseName} target updated to ${recommendationTargetText(recommendation.proposedTarget)}.`
+        : `Current ${recommendation.exerciseName} target kept.`,
+    });
+    return result;
+  };
+
   const header = <>
     <ScreenHeader {...(headingRef === undefined ? {} : { ref: headingRef as React.Ref<View> })} action={<IconAction accessibilityHint="Opens App Settings" accessibilityLabel="Open App Settings" icon="settings" nativeID={settingsActionNativeID} onPress={onOpenSettings} ref={settingsActionRef as React.Ref<View>} />} title="Progress" />
-    <SegmentedControls<ProgressSport> label="Progress sport" onChange={setSport} role="tab" selected={sport} values={SPORTS} />
-    <SegmentedControls<ProgressPeriod> label="Progress range" onChange={setPeriod} role="button" selected={period} values={PERIODS} />
+    {progressBodyweightRuntime === undefined ? null : <View style={styles.supplementaryActions}>
+      <FocusablePressable accessibilityLabel="Body metrics" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); void openBodyweight(); }} ref={bodyMetricsTriggerRef} style={styles.supplementaryAction}><Text style={typeScale.bodyStrong as TextStyle}>Body metrics</Text></FocusablePressable>
+      <FocusablePressable accessibilityLabel="Settings" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); setProgressSettingsVisible(true); }} ref={progressSettingsTriggerRef} style={styles.supplementaryAction}><Text style={typeScale.bodyStrong as TextStyle}>Settings</Text></FocusablePressable>
+    </View>}
+    <SegmentedControls<ProgressSport> label="Progress sport" onChange={(next) => { closeLocalSurfaces(); setSport(next); }} role="tab" selected={sport} values={SPORTS} />
+    <SegmentedControls<ProgressPeriod> label="Progress range" onChange={(next) => { closeLocalSurfaces(); setPeriod(next); }} role="button" selected={period} values={PERIODS} />
   </>;
   const retryAction = <PrimaryAction label="Refresh progress" onPress={() => setRetry((current) => current + 1)} />;
   let content: React.ReactNode;
@@ -251,7 +343,16 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
       targetAvailable={runningTargetRuntime !== undefined && primaryDistance !== undefined && (snapshot.runningTargetSources ?? []).some(({ goal }) => goal.goalDistanceMeters === primaryDistance)}
       targetTriggerRef={targetTriggerRef}
     />;
-  } else content = <DashboardContent dashboard={snapshot.dashboard} onOpenExercise={onOpenExercise} onRetry={() => setRetry((current) => current + 1)} onSelectSport={setSport} />;
+  } else content = <DashboardContent
+    dashboard={snapshot.dashboard}
+    {...(progressRecommendationRuntime === undefined ? {} : { onDecideRecommendation: decideRecommendation })}
+    onOpenExercise={onOpenExercise}
+    onOpenSession={onOpenSession}
+    onRetry={() => setRetry((current) => current + 1)}
+    onSelectSport={(next) => { closeLocalSurfaces(); setSport(next); }}
+    period={period}
+    recommendations={snapshot.projection?.recommendations ?? []}
+  />;
 
   const rangeLabel = PERIODS.find(({ value }) => value === period)?.label ?? period;
   const targetSources = targetDistanceMeters === null
@@ -276,8 +377,8 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     {runningTargetRuntime === undefined ? null : <RunningTargetSheet
       key={`running-target-${targetDistanceMeters ?? "closed"}`}
       onClose={() => setTargetDistanceMeters(null)}
-      onSaved={(saved) => {
-        setRetry((current) => current + 1);
+      onSaved={async (saved) => {
+        await readProgress(false);
         semanticToast?.enqueue({ message: `${distanceLabel(saved.goal.goalDistanceMeters)} target saved.` });
       }}
       restoreFocusRef={targetTriggerRef}
@@ -285,6 +386,61 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
       sources={targetSources}
       todayLocalDate={nowLocalDate}
       visible={targetDistanceMeters !== null && targetSources.length > 0}
+    />}
+    <ProgressSettingsSheet
+      onClose={() => setProgressSettingsVisible(false)}
+      onOpenBodyweightHistory={() => { void openBodyweight(); }}
+      visible={progressSettingsVisible}
+    />
+    {progressBodyweightRuntime === undefined ? null : <BodyweightHistorySheet
+      entries={bodyweightEntries}
+      onAdd={() => {
+        bodyweightRequestRef.current = progressBodyweightRuntime.createId("bodyweight-save");
+        setBodyweightVisible(false);
+        setBodyweightEditor({ mode: "add" });
+      }}
+      onClose={() => setBodyweightVisible(false)}
+      onDelete={async (entry) => {
+        const requestId = bodyweightDeleteRequestsRef.current.get(entry.entryId)
+          ?? progressBodyweightRuntime.createId("bodyweight-delete");
+        bodyweightDeleteRequestsRef.current.set(entry.entryId, requestId);
+        const entries = await progressBodyweightRuntime.delete(entry, requestId);
+        bodyweightDeleteRequestsRef.current.delete(entry.entryId);
+        setBodyweightEntries(entries);
+        semanticToast?.enqueue({ message: "Bodyweight entry deleted." });
+        return entries;
+      }}
+      onEdit={(entry) => {
+        bodyweightRequestRef.current = progressBodyweightRuntime.createId("bodyweight-save");
+        setBodyweightVisible(false);
+        setBodyweightEditor({ mode: "edit", entry });
+      }}
+      visible={bodyweightVisible}
+    />}
+    {progressBodyweightRuntime === undefined ? null : <BodyweightEditorSheet
+      expectedRevision={bodyweightEditor?.entry?.revision ?? 0}
+      {...(bodyweightEditor?.entry === undefined ? {} : {
+        initialGrams: bodyweightEditor.entry.grams,
+        initialLocalDate: bodyweightEditor.entry.localDate,
+      })}
+      mode={bodyweightEditor?.mode ?? "add"}
+      onClose={() => { bodyweightRequestRef.current = null; setBodyweightEditor(null); setBodyweightVisible(true); }}
+      onSave={async (input) => {
+        const requestId = bodyweightRequestRef.current ?? progressBodyweightRuntime.createId("bodyweight-save");
+        bodyweightRequestRef.current = requestId;
+        const entries = await progressBodyweightRuntime.save({
+          ...input,
+          entryId: bodyweightEditor?.entry?.entryId ?? progressBodyweightRuntime.createId("bodyweight-entry"),
+          requestId,
+        });
+        bodyweightRequestRef.current = null;
+        setBodyweightEntries(entries);
+        setBodyweightEditor(null);
+        setBodyweightVisible(true);
+        semanticToast?.enqueue({ message: "Bodyweight entry saved." });
+      }}
+      todayLocalDate={nowLocalDate}
+      visible={bodyweightEditor !== null}
     />}
   </>;
 }
@@ -300,4 +456,6 @@ const styles = StyleSheet.create({
   screen: { gap: space[4], maxWidth: 960, width: "100%" },
   segment: { alignItems: "center", borderRadius: radius.emphasized, borderWidth: StyleSheet.hairlineWidth, flex: 1, justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[1] },
   segmented: { flexDirection: "row", gap: 3 },
+  supplementaryAction: { alignItems: "center", justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[2] },
+  supplementaryActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });

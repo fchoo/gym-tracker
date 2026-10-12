@@ -98,6 +98,9 @@ export type ProgressRecommendationReview = Readonly<{
   metricIdentity: MetricIdentity;
   currentTarget: MetricTarget;
   proposedTarget: MetricTarget;
+  evidenceVersion?: number;
+  sourceRevision?: number;
+  targetRevision?: number;
 }>;
 
 export type ProgressPeriodProjectionInput = Readonly<{

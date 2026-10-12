@@ -1801,7 +1801,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       timezone: "Asia/Singapore",
       grams: 72_100,
     }) satisfies BodyweightEntryState;
-    const loadBodyweightHistory = jest.fn()
+    const loadBodyweightHistory = jest.fn<() => Promise<readonly BodyweightEntryState[]>>()
       .mockResolvedValueOnce([])
       .mockResolvedValue([bodyweightEntry]);
     const commitBodyweight = jest.fn(async () => Object.freeze({
@@ -1845,7 +1845,12 @@ describe("WorkoutAppRuntimeProvider", () => {
       grams: 72_100,
       localDate: "2026-08-17",
       requestId: "bodyweight-save-1",
-    })).resolves.toEqual([bodyweightEntry]);
+    })).resolves.toEqual([{
+      entryId: "bodyweight-1",
+      revision: 1,
+      localDate: "2026-08-17",
+      grams: 72_100,
+    }]);
     expect(commitBodyweight).toHaveBeenCalledWith(expect.objectContaining({
       operation: "create",
       ownerId: "owner-1",
@@ -1855,14 +1860,19 @@ describe("WorkoutAppRuntimeProvider", () => {
 
     const recommendation = {
       id: "recommendation-1",
+      lifecycle: "pending",
       evidenceVersion: 2,
       sourceRevision: 4,
       targetRevision: 3,
     } as ProgressRecommendationReview;
-    await expect(captured!.progressRecommendationRuntime.decide(
-      recommendation,
-      "use_target",
-    )).resolves.toEqual({ recommendationId: "recommendation-1", status: "accepted" });
+    let decisionResult: unknown;
+    await act(async () => {
+      decisionResult = await captured!.progressRecommendationRuntime.decide(
+        recommendation,
+        "use_target",
+      );
+    });
+    expect(decisionResult).toEqual({ recommendationId: "recommendation-1", status: "accepted" });
     expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledWith(expect.objectContaining({
       decision: "use_target",
       expectedEvidenceVersion: 2,

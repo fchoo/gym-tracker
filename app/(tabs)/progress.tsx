@@ -18,6 +18,9 @@ import {
 } from "../../src/ui/shell/rootFocus";
 import { createImportedActivityDetailHref } from "../garmin/activity/[activityId]";
 
+const OPAQUE_ID = /^[A-Za-z0-9._:-]{1,128}$/u;
+const RETURN_TOKEN = /^[A-Za-z0-9._:-]{1,256}$/u;
+
 export default function ProgressRoute() {
   const settingsActionNativeID = rootSettingsTriggerNativeID("progress");
   const headingRef = useRootHeadingRef("progress");
@@ -46,8 +49,20 @@ export default function ProgressRoute() {
       loadProgress={(input) => runtime.loadProgress(input)}
       nowLocalDate={nowLocalDate}
       workoutRefreshGeneration={runtime.workoutRefreshGeneration}
-      onOpenExercise={(exerciseId, exerciseName) =>
-        router.push(("/exercise-history/" + exerciseId + "?exerciseName=" + encodeURIComponent(exerciseName)) as Href)}
+      onOpenExercise={(exerciseId, exerciseName, returnToken) => {
+        if (!OPAQUE_ID.test(exerciseId)
+          || returnToken === undefined
+          || !RETURN_TOKEN.test(returnToken)) return;
+        router.push({
+          pathname: "/exercise-history/[exerciseId]",
+          params: {
+            exerciseId,
+            exerciseName,
+            origin: "progress",
+            returnToken,
+          },
+        } as Href);
+      }}
       onOpenRunningSource={(source) => {
         if (!("activityId" in source)) return;
         router.push(createImportedActivityDetailHref({
@@ -62,6 +77,8 @@ export default function ProgressRoute() {
         triggerRef: settingsActionRef,
       })}
       onOpenSession={(sessionId) => router.push(("/session/" + sessionId) as Href)}
+      progressBodyweightRuntime={runtime.progressBodyweightRuntime}
+      progressRecommendationRuntime={runtime.progressRecommendationRuntime}
       runningTargetRuntime={runtime.progressRunningTargetRuntime}
       returnFocusVersion={returnFocusVersion}
       headingRef={headingRef}
