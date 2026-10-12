@@ -45,12 +45,12 @@ function dashboardFor(sport: "All" | "Strength" | "Running"): ProgressDashboardP
       : { sport: "Strength", state: "empty", facts: [] };
 }
 
-async function renderProgress(loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+async function renderProgress(loadProgress: React.ComponentProps<typeof ProgressScreen>["loadProgress"] = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
   sport: input.sport,
   period: input.period as "4_weeks" | "12_weeks" | "all_time",
   freshness: "current" as const,
   dashboard: dashboardFor(input.sport),
-}))) {
+})) as never) {
   await render(
     <AppearanceProvider store={createMemoryAppearanceStore("Light")}>
       <ProgressScreen
@@ -117,7 +117,7 @@ describe("ProgressScreen", () => {
       }
       resolve({ sport: input.sport, period: input.period, freshness: "current", dashboard: runningDashboard() });
     }));
-    await renderProgress(loadProgress);
+    await renderProgress(loadProgress as never);
 
     await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
     expect(await screen.findByRole("header", { name: "2.4 km goal" })).toBeOnTheScreen();
