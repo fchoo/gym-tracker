@@ -23,7 +23,7 @@ import {
   calendarWeekGeometryForGeneration,
   type CalendarWeekGeometry,
 } from "../calendar/CalendarMonthViewport";
-import { CalendarWeekRow } from "../calendar/CalendarWeekRow";
+import { CalendarWeekRow, type CalendarDateCellHandle } from "../calendar/CalendarWeekRow";
 import {
   createCalendarTransitionState,
   transitionCalendar,
@@ -107,6 +107,10 @@ export function CalendarScreen({
   const [lastGoodSelectedDate, setLastGoodSelectedDate] = useState(() => parseLocalDate(initialDate));
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [refreshCompletion, setRefreshCompletion] = useState<Readonly<{
+    generation: number;
+    range: CalendarRange | null;
+  }> | null>(null);
   const [retryGeneration, setRetryGeneration] = useState(0);
   const [isCalendarKeyOpen, setCalendarKeyOpen] = useState(false);
   const [calendarTransition, setCalendarTransition] = useState<CalendarTransitionState>(() => createCalendarTransitionState({
@@ -122,6 +126,9 @@ export function CalendarScreen({
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
   const collapseActionRef = useRef<View>(null);
+  const dateCellRefs = useRef(new Map<LocalDate, CalendarDateCellHandle>());
+  const pendingDateFocusRef = useRef<LocalDate | null>(null);
+  const pendingCollapseFocusRef = useRef(false);
   const agendaRef = useRef<CalendarAgendaHandle>(null);
   const agendaRowRefs = useRef(new Map<string, CalendarAgendaRowHandle>());
   const agendaOffsetRef = useRef(0);
@@ -131,6 +138,10 @@ export function CalendarScreen({
     mode: CalendarTransitionState["mode"];
     agendaOffset: number;
     eventId: string;
+  }> | null>(null);
+  const pendingReturnFocusRef = useRef<Readonly<{
+    retained: NonNullable<typeof calendarReturnRef.current>;
+    requestGeneration: number;
   }> | null>(null);
   const weekRows = useMemo(() => calendarGridForMonth(month), [month]);
   const grid = useMemo(() => weekRows.flat(), [weekRows]);
@@ -155,12 +166,14 @@ export function CalendarScreen({
         setRange(next);
         setLastGoodMonth(month);
         setLastGoodSelectedDate(selectedDateRef.current);
+        setRefreshCompletion(Object.freeze({ generation: request, range: next }));
       })
       .catch((nextError: unknown) => {
         if (!active || request !== requestGeneration.current) {
           return;
         }
         setError(nextError instanceof Error ? nextError : new Error("Calendar query failed"));
+        setRefreshCompletion(Object.freeze({ generation: request, range: null }));
       })
       .finally(() => {
         if (active && request === requestGeneration.current) {
@@ -241,15 +254,26 @@ export function CalendarScreen({
     if (next === null) {
       return;
     }
-    dispatchCalendarTransition({
-      type: "move",
-      direction: direction === 1 ? "next" : "previous",
-      targetMonthId: next.slice(0, 7),
-      targetSelectedLocalDate: addLocalMonthsClamped(selectedDateRef.current, direction),
-    });
+    const targetDate = addLocalMonthsClamped(selectedDateRef.current, direction);
+    if (calendarTransitionRef.current.mode === "focused") {
+      pendingDateFocusRef.current = targetDate;
+      dispatchCalendarTransition({ type: "select-adjacent", localDate: targetDate, targetMonthId: next.slice(0, 7) });
+    } else {
+      dispatchCalendarTransition({
+        type: "move",
+        direction: direction === 1 ? "next" : "previous",
+        targetMonthId: next.slice(0, 7),
+        targetSelectedLocalDate: targetDate,
+      });
+    }
   };
 
   const returnToToday = () => {
+    if (calendarTransitionRef.current.mode === "focused") {
+      pendingDateFocusRef.current = parsedToday;
+      dispatchCalendarTransition({ type: "select-adjacent", localDate: parsedToday, targetMonthId: parsedToday.slice(0, 7) });
+      return;
+    }
     if (parsedToday.slice(0, 7) === month.slice(0, 7)) {
       selectDate(parsedToday);
       return;
@@ -262,14 +286,19 @@ export function CalendarScreen({
     });
   };
 
-  const moveSelection = (date: LocalDate) => {
+  const moveSelection = (date: LocalDate, restoreFocus = false) => {
+    if (restoreFocus) pendingDateFocusRef.current = date;
     if (date.slice(0, 7) !== month.slice(0, 7)) {
-      dispatchCalendarTransition({
-        type: "move",
-        direction: date > selectedDateRef.current ? "next" : "previous",
-        targetMonthId: date.slice(0, 7),
-        targetSelectedLocalDate: date,
-      });
+      if (calendarTransitionRef.current.mode === "focused") {
+        dispatchCalendarTransition({ type: "select-adjacent", localDate: date, targetMonthId: date.slice(0, 7) });
+      } else {
+        dispatchCalendarTransition({
+          type: "move",
+          direction: date > selectedDateRef.current ? "next" : "previous",
+          targetMonthId: date.slice(0, 7),
+          targetSelectedLocalDate: date,
+        });
+      }
       return;
     }
     selectDate(date);
@@ -306,17 +335,50 @@ export function CalendarScreen({
     setCalendarCommand(null);
     setMonth(retained.month);
     selectDate(retained.selectedDate);
-    setRetryGeneration((generation) => generation + 1);
-
-    const frame = requestAnimationFrame(() => {
-      agendaRef.current?.scrollTo(retained.agendaOffset);
-      const target = agendaRowRefs.current.get(retained.eventId) ?? collapseActionRef.current;
-      if (target === undefined || target === null) return;
-      target.focus?.();
-      AccessibilityInfo.sendAccessibilityEvent(target, "focus");
+    pendingReturnFocusRef.current = Object.freeze({
+      retained,
+      requestGeneration: requestGeneration.current + 1,
     });
-    return () => cancelAnimationFrame(frame);
+    setRetryGeneration((generation) => generation + 1);
   }, [returnFocusGeneration]);
+
+  const focusTarget = useCallback((target: (View & Readonly<{ focus?: () => void }>) | null | undefined) => {
+    if (target === undefined || target === null) return;
+    target.focus?.();
+    AccessibilityInfo.sendAccessibilityEvent(target, "focus");
+  }, []);
+
+  useEffect(() => {
+    const pending = pendingReturnFocusRef.current;
+    if (pending === null || refreshCompletion === null || refreshCompletion.generation < pending.requestGeneration) return;
+    pendingReturnFocusRef.current = null;
+    const eventStillExists = refreshCompletion.range?.events.some((event) => (
+      event.id === pending.retained.eventId && event.localDate === pending.retained.selectedDate
+    )) === true;
+    if (eventStillExists) agendaRef.current?.scrollTo(pending.retained.agendaOffset);
+    const target = eventStillExists
+      ? agendaRowRefs.current.get(pending.retained.eventId)
+      : dateCellRefs.current.get(pending.retained.selectedDate);
+    focusTarget(target ?? dateCellRefs.current.get(pending.retained.selectedDate));
+    if (!eventStillExists) {
+      AccessibilityInfo.announceForAccessibility("Calendar refreshed. The previous event is no longer available.");
+    }
+  }, [focusTarget, refreshCompletion]);
+
+  useEffect(() => {
+    if (!pendingCollapseFocusRef.current || calendarTransition.mode !== "focused") return;
+    pendingCollapseFocusRef.current = false;
+    focusTarget(collapseActionRef.current);
+  }, [calendarTransition.mode, focusTarget]);
+
+  useEffect(() => {
+    const pendingDate = pendingDateFocusRef.current;
+    if (pendingDate === null || calendarTransition.phase !== "idle") return;
+    const target = dateCellRefs.current.get(pendingDate);
+    if (target === undefined) return;
+    pendingDateFocusRef.current = null;
+    focusTarget(target);
+  }, [calendarTransition.mode, calendarTransition.phase, focusTarget, layoutGeneration, selectedDate]);
 
   const recordWeekGeometry = useCallback((weekStart: LocalDate, geometry: Readonly<{ y: number; height: number }>) => {
     if (!Number.isFinite(geometry.y) || !Number.isFinite(geometry.height) || geometry.height <= 0) return;
@@ -408,6 +470,14 @@ export function CalendarScreen({
       : titleBaseMonth;
   const selectedEvents = (range?.events ?? []).filter((event) => event.localDate === visibleSelectedDate);
   const selectedDay = range?.days?.find((day) => day.localDate === visibleSelectedDate);
+  const registerDateCell = (date: LocalDate, node: CalendarDateCellHandle | null) => {
+    if (node === null) dateCellRefs.current.delete(date);
+    else dateCellRefs.current.set(date, node);
+  };
+  const collapseCalendar = () => {
+    pendingDateFocusRef.current = selectedDateRef.current;
+    dispatchCalendarTransition({ type: "collapse" });
+  };
   const agendaRegion = (
     <View style={styles.agendaRegion} testID="calendar-agenda-region">
       <FocusablePressable
@@ -415,8 +485,9 @@ export function CalendarScreen({
         accessibilityRole="button"
         onKeyDown={(event) => {
           if (event.nativeEvent.key === "Escape") requestCalendarBack();
+          else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " " || event.nativeEvent.key === "Select") collapseCalendar();
         }}
-        onPress={() => dispatchCalendarTransition({ type: "collapse" })}
+        onPress={collapseCalendar}
         ref={collapseActionRef}
         style={({ pressed }) => [
           styles.collapseAction,
@@ -537,14 +608,17 @@ export function CalendarScreen({
                       key={dates[0]}
                       month={panelMonth}
                       {...(interactive ? { onLayout: (event: LayoutChangeEvent) => recordWeekGeometry(dates[0]!, event.nativeEvent.layout) } : {})}
-                      onMoveDate={(date) => { if (interactive) moveSelection(date); }}
+                      {...(interactive && !hidden ? { onDateRef: registerDateCell } : {})}
+                      onMoveDate={(date) => { if (interactive) moveSelection(date, true); }}
                       onPressDate={(date) => {
                         if (!interactive) return;
                         const weekStart = dates[0]!;
                         if (calendarTransition.mode === "focused" && weekStart !== selectedStart) {
+                          pendingDateFocusRef.current = date;
                           dispatchCalendarTransition({ type: "select-adjacent", localDate: date, targetMonthId: date.slice(0, 7) });
                         } else {
                           moveSelection(date);
+                          pendingCollapseFocusRef.current = true;
                           dispatchCalendarTransition({ type: "expand" });
                         }
                       }}
@@ -570,11 +644,16 @@ export function CalendarScreen({
                     eventsByDate={eventsByDate}
                     fontScale={fontScale}
                     month={visibleMonth}
-                    onMoveDate={(date) => { if (interactive) moveSelection(date); }}
+                    {...(interactive ? { onDateRef: registerDateCell } : {})}
+                    onMoveDate={(date) => { if (interactive) moveSelection(date, true); }}
                     onPressDate={(date) => {
                       if (!interactive) return;
-                      moveSelection(date);
-                      dispatchCalendarTransition({ type: "expand" });
+                      if (dates[0] !== focusedWeek?.selectedDates[0]) {
+                        pendingDateFocusRef.current = date;
+                        dispatchCalendarTransition({ type: "select-adjacent", localDate: date, targetMonthId: date.slice(0, 7) });
+                      } else {
+                        moveSelection(date, true);
+                      }
                     }}
                     selectedDate={visibleSelectedDate}
                     today={parsedToday}

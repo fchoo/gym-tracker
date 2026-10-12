@@ -91,14 +91,18 @@ const agendaRange = Object.freeze({
   ]),
 }) as CalendarRange;
 
-async function measureAugustFocusedRows(): Promise<void> {
+async function measureFocusedRows(selectedStart: string, followingStart: string): Promise<void> {
   const measure = async (testID: string, y: number) => {
     const row = screen.getAllByTestId(testID).find((candidate) => typeof candidate.props.onLayout === "function");
     if (row === undefined) throw new Error(`missing interactive row ${testID}`);
     await fireEvent(row, "layout", { nativeEvent: { layout: { height: 70, width: 360, x: 0, y } } });
   };
-  await measure("calendar-week-row-2026-08-24", 280);
-  await measure("calendar-week-row-2026-08-31", 350);
+  await measure(`calendar-week-row-${selectedStart}`, 280);
+  await measure(`calendar-week-row-${followingStart}`, 350);
+}
+
+async function measureAugustFocusedRows(): Promise<void> {
+  await measureFocusedRows("2026-08-24", "2026-08-31");
 }
 
 describe("CalendarScreen", () => {
@@ -182,6 +186,104 @@ describe("CalendarScreen", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Close Calendar key" }));
     expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
+  });
+
+  it("moves arrow focus to the selected civil date and transfers focus through expand and Collapse", async () => {
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => range)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+
+    await fireEvent(screen.getByTestId("calendar-day-2026-08-24"), "keyDown", { nativeEvent: { key: "ArrowRight" } });
+    await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-08-25").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
+
+    await measureAugustFocusedRows();
+    await fireEvent.press(screen.getByTestId("calendar-day-2026-08-25"));
+    const collapse = await screen.findByRole("button", { name: "Collapse day and return to month" });
+    await waitFor(() => expect(collapse).toHaveProp("hasTVPreferredFocus", true));
+
+    await fireEvent(collapse, "keyDown", { nativeEvent: { key: "Enter" } });
+    await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-08-25").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
+  });
+
+  it("waits for the authoritative return refresh before focusing a surviving row or selected-date fallback", async () => {
+    const removedRange = Object.freeze({
+      events: Object.freeze([]),
+      days: Object.freeze([{ localDate: "2026-08-24", kind: "empty", restSummary: null }]),
+    }) as unknown as CalendarRange;
+    const loadCalendarRange = jest.fn<() => Promise<CalendarRange>>()
+      .mockResolvedValueOnce(completedStrengthRange)
+      .mockResolvedValueOnce(removedRange);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+    await measureAugustFocusedRows();
+    await fireEvent.press(screen.getByTestId("calendar-day-2026-08-24"));
+    await fireEvent.press(await screen.findByTestId("calendar-agenda-event-strength-session-1"));
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(loadCalendarRange).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-08-24").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
+    expect(screen.queryByTestId("calendar-agenda-event-strength-session-1")).toBeNull();
+  });
+
+  it("routes focused Next, Today, and Previous through collapse, selection, remeasurement, and expansion", async () => {
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => range)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+    await measureAugustFocusedRows();
+    await fireEvent.press(screen.getByTestId("calendar-day-2026-08-24"));
+
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+    await screen.findByText("September 2026");
+    await measureFocusedRows("2026-09-21", "2026-09-28");
+    await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-09-24").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
+    expect(screen.getByTestId("calendar-focused-agenda")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Return to today, 24 August 2026" }));
+    await screen.findByText("August 2026");
+    await measureAugustFocusedRows();
+    await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-08-24").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
+
+    await fireEvent.press(screen.getByRole("button", { name: "Show July 2026" }));
+    await screen.findByText("July 2026");
+    await measureFocusedRows("2026-07-20", "2026-07-27");
+    await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-07-24").some((node) => node.props.hasTVPreferredFocus === true)).toBe(true));
   });
 
   it("keeps all selected-date agenda identities in source order and exposes no management command", async () => {

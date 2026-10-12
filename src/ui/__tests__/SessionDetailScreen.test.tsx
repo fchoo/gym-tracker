@@ -18,6 +18,7 @@ describe("CalendarReadOnlyWorkout", () => {
     const onGoBack = jest.fn();
     await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={detail} onGoBack={onGoBack} /></AppearanceProvider>);
     expect(screen.getByText("Complete · read only")).toBeOnTheScreen();
+    expect(await screen.findByRole("button", { name: "Back to Calendar agenda" })).toHaveProp("hasTVPreferredFocus", true);
     expect(screen.getByText("Not completed")).toBeOnTheScreen();
     expect(screen.queryByText("Correct workout")).toBeNull();
     expect(screen.queryByText("Resume workout")).toBeNull();

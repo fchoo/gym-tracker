@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { presentSessionDetail } from "../../domains/workout/workoutPresentation";
@@ -26,11 +26,16 @@ export function CalendarReadOnlyWorkout({
 }>) {
   const { colors } = useAppTheme();
   const presentation = presentSessionDetail(detail);
+  const backRef = useRef<View>(null);
   const completed = detail.workingSetProgress.completed;
   const planned = detail.workingSetProgress.planned;
   const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
     () => new Set(presentation.exercises.map(({ id }) => id)),
   );
+
+  useEffect(() => {
+    backRef.current?.focus?.();
+  }, []);
 
   return (
     <AdaptiveScreen
@@ -41,6 +46,7 @@ export function CalendarReadOnlyWorkout({
               accessibilityLabel="Back to Calendar agenda"
               accessibilityRole="button"
               onPress={onGoBack}
+              ref={backRef}
               style={styles.backAction}
             >
               <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Back</Text>

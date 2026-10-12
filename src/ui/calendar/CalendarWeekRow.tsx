@@ -5,6 +5,7 @@ import {
   View,
   type LayoutChangeEvent,
   type TextStyle,
+  type View as NativeView,
 } from "react-native";
 
 import { addLocalDays, type LocalDate } from "../../domains/scheduling";
@@ -33,6 +34,8 @@ export type CalendarTrackMetrics = Readonly<{
   rowMinHeight: number;
 }>;
 
+export type CalendarDateCellHandle = NativeView & Readonly<{ focus?: () => void }>;
+
 export function calendarTrackMetrics(fontScale: number): CalendarTrackMetrics {
   const scale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
   const chipMinHeight = scale === 1 ? 17 : Math.ceil(14 * scale + 4);
@@ -53,6 +56,7 @@ export function CalendarWeekRow({
   month,
   hidden = false,
   onLayout,
+  onDateRef,
   onMoveDate,
   onPressDate,
   selectedDate,
@@ -64,6 +68,7 @@ export function CalendarWeekRow({
   month: LocalDate;
   hidden?: boolean;
   onLayout?(event: LayoutChangeEvent): void;
+  onDateRef?(date: LocalDate, node: CalendarDateCellHandle | null): void;
   onMoveDate(date: LocalDate): void;
   onPressDate(date: LocalDate, events: readonly CalendarEvent[]): void;
   selectedDate: LocalDate;
@@ -115,6 +120,7 @@ export function CalendarWeekRow({
               }
             }}
             onPress={() => onPressDate(date, events)}
+            ref={(node) => onDateRef?.(date, node as CalendarDateCellHandle | null)}
             style={({ pressed }: { pressed: boolean }) => [
               styles.cell,
               {
