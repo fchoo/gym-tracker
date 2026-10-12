@@ -425,7 +425,7 @@ describe("clean install logical restore", () => {
     });
     expect(archive).toEqual(expect.objectContaining({
       version: 9,
-      schemaVersion: 44,
+      schemaVersion: 45,
     }));
     const encryptedArchive = await createBackupEnvelopeCodec(crypto()).seal({
       snapshot: archive,

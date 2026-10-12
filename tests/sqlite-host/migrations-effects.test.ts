@@ -560,6 +560,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       42,
       43,
       44,
+      45,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({

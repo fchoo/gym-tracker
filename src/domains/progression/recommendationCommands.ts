@@ -9,12 +9,14 @@ export type RecommendationStatus =
   | "invalidated"
   | "superseded";
 
+export type RecommendationDecision = "use_target" | "keep_current_target";
+
 export type RecommendationDecisionResult = Readonly<{
   recommendationId: string;
   status: Extract<
     RecommendationStatus,
     "accepted" | "rejected" | "superseded"
-  >;
+  > | "already_committed";
 }>;
 
 export type RecordExerciseEffortInput = Readonly<{
@@ -28,6 +30,12 @@ export type RecordExerciseEffortInput = Readonly<{
 export type RecommendationDecisionInput = Readonly<{
   recommendationId: string;
   decidedAtMs: number;
+  /** New callers must submit the full immutable envelope; old route callers remain readable. */
+  requestId?: string;
+  decision?: RecommendationDecision;
+  expectedEvidenceVersion?: number;
+  expectedSourceRevision?: number;
+  expectedTargetRevision?: number;
 }>;
 
 export interface ProgressionRepository {
@@ -56,6 +64,64 @@ function validTimestamp(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+const IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/u;
+
+function explicitEnvelopePresent(input: RecommendationDecisionInput): boolean {
+  return input.requestId !== undefined
+    || input.decision !== undefined
+    || input.expectedEvidenceVersion !== undefined
+    || input.expectedSourceRevision !== undefined
+    || input.expectedTargetRevision !== undefined;
+}
+
+function validRevision(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right, "en"))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function canonicalRecommendationDecisionRequest(input: Readonly<{
+  recommendationId: string;
+  requestId: string;
+  decision: RecommendationDecision;
+  expectedEvidenceVersion: number;
+  expectedSourceRevision: number;
+  expectedTargetRevision: number;
+  decidedAtMs: number;
+}>): string {
+  return stableJson(input);
+}
+
+export function validateRecommendationDecisionInput(
+  input: RecommendationDecisionInput,
+  expectedDecision?: RecommendationDecision,
+): void {
+  if (!IDENTIFIER.test(input.recommendationId) || !validTimestamp(input.decidedAtMs)) {
+    throw new TypeError("recommendation_decision_input_invalid");
+  }
+  if (!explicitEnvelopePresent(input)) return;
+  if (
+    typeof input.requestId !== "string"
+    || !IDENTIFIER.test(input.requestId)
+    || (input.decision !== "use_target" && input.decision !== "keep_current_target")
+    || (expectedDecision !== undefined && input.decision !== expectedDecision)
+    || !validRevision(input.expectedEvidenceVersion)
+    || !validRevision(input.expectedSourceRevision)
+    || !validRevision(input.expectedTargetRevision)
+  ) {
+    throw new TypeError("recommendation_decision_input_invalid");
+  }
+}
+
 export function recordExerciseEffort(input: Readonly<{
   repository: ProgressionRepository;
   input: RecordExerciseEffortInput;
@@ -74,9 +140,7 @@ export function acceptRecommendation(input: Readonly<{
   repository: ProgressionRepository;
   input: RecommendationDecisionInput;
 }>) {
-  if (!validTimestamp(input.input.decidedAtMs)) {
-    throw new TypeError("recommendation_decision_input_invalid");
-  }
+  validateRecommendationDecisionInput(input.input, "use_target");
   return input.repository.acceptRecommendation(input.input);
 }
 
@@ -84,8 +148,6 @@ export function keepCurrentTarget(input: Readonly<{
   repository: ProgressionRepository;
   input: RecommendationDecisionInput;
 }>) {
-  if (!validTimestamp(input.input.decidedAtMs)) {
-    throw new TypeError("recommendation_decision_input_invalid");
-  }
+  validateRecommendationDecisionInput(input.input, "keep_current_target");
   return input.repository.keepCurrentTarget(input.input);
 }

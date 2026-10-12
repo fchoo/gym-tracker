@@ -1,7 +1,7 @@
 /** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
-/** Version 9 carries immutable imported-activity revision review history. */
-export const LOGICAL_BACKUP_FORMAT_VERSION = 9 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9] as const);
+/** Version 10 carries immutable recommendation decision receipts. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 10 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -56,6 +56,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   plan_working_set_targets: { primaryKey: ["id"] },
   progression_policies: { primaryKey: ["id"] },
   progression_recommendations: { primaryKey: ["id"] },
+  progression_recommendation_decision_receipts: { primaryKey: ["request_id"] },
   owned_plan_aggregate_states: { primaryKey: ["plan_id"] },
   owned_plan_mutation_requests: { primaryKey: ["request_id"] },
   owned_plan_starter_sources: { primaryKey: ["plan_id"] },
@@ -84,6 +85,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   history_session_overlays: { primaryKey: ["session_id"] },
   history_audit_events: { primaryKey: ["id"] },
   owned_progression_recommendations: { primaryKey: ["id"] },
+  owned_progression_recommendation_decision_receipts: { primaryKey: ["request_id"] },
   running_plans: { primaryKey: ["plan_id"] },
   running_session_revisions: { primaryKey: ["id"] },
   running_session_roots: { primaryKey: ["id"] },
@@ -132,9 +134,20 @@ export const LOGICAL_BACKUP_TABLES = Object.freeze(
   Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).sort(),
 ) as readonly LogicalBackupTableName[];
 
+const RECOMMENDATION_DECISION_RECEIPT_TABLES = Object.freeze([
+  "progression_recommendation_decision_receipts",
+  "owned_progression_recommendation_decision_receipts",
+] as const satisfies readonly LogicalBackupTableName[]);
+
+const LEGACY_LOGICAL_BACKUP_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => !(
+    RECOMMENDATION_DECISION_RECEIPT_TABLES as readonly string[]
+  ).includes(table)),
+) as readonly LogicalBackupTableName[];
+
 /** The historical v2 graph must never grow when successor source tables land. */
 export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => ![
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
     "running_plans", "running_session_revisions", "running_goals",
     "running_session_slots", "running_opportunities", "workout_provenance",
     "workout_receipts", "imported_activities", "imported_activity_payloads",
@@ -158,7 +171,7 @@ export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
 
 /** Schema 29 stable-root data is a v4 successor only; v1-v3 stay frozen. */
 export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => ![
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
     "running_session_roots", "running_session_slot_roots",
     "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
     "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
@@ -174,7 +187,7 @@ export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
 
 /** v4 is frozen before the bodyweight aggregate successor landed. */
 export const LOGICAL_BACKUP_V4_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => ![
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
     "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
     "imported_activity_identities", "imported_activity_events",
     "imported_activity_match_invalidations", "workout_session_schedule_links",
@@ -188,7 +201,7 @@ export const LOGICAL_BACKUP_V4_TABLES = Object.freeze(
 
 /** v5 is frozen at schema 31, before the remaining Phase 13 source successors. */
 export const LOGICAL_BACKUP_V5_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => ![
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
     "imported_activity_identities", "imported_activity_events",
     "imported_activity_match_invalidations", "workout_session_schedule_links",
     "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
@@ -201,7 +214,7 @@ export const LOGICAL_BACKUP_V5_TABLES = Object.freeze(
 
 /** v6 is frozen at schema 36; collision decisions did not exist yet. */
 export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => ![
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
     "running_current_matches",
     "schedule_collision_outcomes",
     "schedule_collision_receipts",
@@ -212,7 +225,7 @@ export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
 
 /** v7 adds the schema-40 collision decision ledger; current matches still rebuild. */
 export const LOGICAL_BACKUP_V7_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => ![
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
     "running_current_matches", "custom_exercise_mutation_receipts",
     "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   ].includes(table)),
@@ -220,7 +233,7 @@ export const LOGICAL_BACKUP_V7_TABLES = Object.freeze(
 
 /** v8 adds durable custom-library command receipts. */
 export const LOGICAL_BACKUP_V8_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => ![
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => ![
     "running_current_matches",
     "imported_activity_revision_proposals",
     "imported_activity_revision_decisions",
@@ -229,6 +242,11 @@ export const LOGICAL_BACKUP_V8_TABLES = Object.freeze(
 
 /** v9 adds durable imported-activity revision review events. */
 export const LOGICAL_BACKUP_V9_TABLES = Object.freeze(
+  LEGACY_LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
+) as readonly LogicalBackupTableName[];
+
+/** v10 adds durable recommendation decision receipts. */
+export const LOGICAL_BACKUP_V10_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
 ) as readonly LogicalBackupTableName[];
 
@@ -300,6 +318,7 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
+  if (version === 10) return LOGICAL_BACKUP_V10_TABLES;
   if (version === 9) return LOGICAL_BACKUP_V9_TABLES;
   if (version === 8) return LOGICAL_BACKUP_V8_TABLES;
   if (version === 7) return LOGICAL_BACKUP_V7_TABLES;

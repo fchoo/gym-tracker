@@ -1280,7 +1280,11 @@ describe("Plan 01-10 recommendation lifecycle", () => {
         ...input,
         decision: "keep_current_target",
       },
-    })).rejects.toThrow("recommendation_request_identity_conflict");
+    })).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        message: "recommendation_request_identity_conflict",
+      }),
+    });
   });
 
   it("keeps historical empty target payloads readable while retaining source observations", async () => {

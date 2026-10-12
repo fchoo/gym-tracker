@@ -10,7 +10,7 @@ describe("multi-plan portability successor boundary", () => {
     const v5 = logicalBackupTablesForVersion(5);
     const current = logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION);
 
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(9);
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(10);
     expect(v5).not.toEqual(expect.arrayContaining([
       "imported_activity_identities",
       "workout_session_schedule_links",
