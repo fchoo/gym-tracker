@@ -89,18 +89,21 @@ export function CalendarPlannedStrengthRouteAdapter({
 
 export function CalendarRunningPlanRouteAdapter({
   planId,
+  sessionId,
   onBack,
 }: Readonly<{
   planId: string;
+  sessionId: string;
   onBack(): void;
 }>) {
   const readPlan = useCalendarRunningPlanReadPort();
   return (
     <RunningPlanDetailScreen
-      loadPlan={readPlan.loadPlan}
+      loadPlan={readPlan.loadScheduledSessionPlan}
       mode="calendar"
       onBack={onBack}
       planId={planId}
+      sessionId={sessionId}
     />
   );
 }

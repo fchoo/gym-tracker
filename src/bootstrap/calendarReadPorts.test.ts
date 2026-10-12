@@ -42,11 +42,20 @@ describe("production Calendar read capabilities", () => {
     expect(ports.some((port) => "removeHistorySession" in port || "resumePartialWorkout" in port || "resolveGarminRevision" in port)).toBe(false);
   });
 
-  it("freezes the one-purpose Running read port without lifecycle commands", () => {
-    const loadPlan = jest.fn<(planId: string) => Promise<RunningPlanAggregate | null>>();
+  it("loads a Calendar Running plan only when the exact scheduled revision remains a member", async () => {
+    const plan = Object.freeze({
+      id: "plan-1",
+      sessions: Object.freeze([
+        Object.freeze({ session: Object.freeze({ id: "session-revision-2", planId: "plan-1" }) }),
+      ]),
+    }) as unknown as RunningPlanAggregate;
+    const loadPlan = jest.fn(async (planId: string) => planId === "plan-1" ? plan : null);
     const port = createCalendarRunningPlanReadPort({ loadPlan });
 
-    expect(Object.keys(port)).toEqual(["loadPlan"]);
+    await expect(port.loadScheduledSessionPlan("plan-1", "session-revision-2")).resolves.toBe(plan);
+    await expect(port.loadScheduledSessionPlan("plan-1", "stale-revision")).resolves.toBeNull();
+    await expect(port.loadScheduledSessionPlan("other-plan", "session-revision-2")).resolves.toBeNull();
+    expect(Object.keys(port)).toEqual(["loadScheduledSessionPlan"]);
     expect(Object.isFrozen(port)).toBe(true);
   });
 });

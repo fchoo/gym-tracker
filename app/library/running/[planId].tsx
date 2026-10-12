@@ -53,20 +53,24 @@ export default function RunningPlanDetailRoute() {
   const {
     origin: rawOrigin,
     planId: rawPlanId,
+    sessionId: rawSessionId,
   } = useLocalSearchParams<{
     origin?: string | string[];
     planId?: string | string[];
+    sessionId?: string | string[];
   }>();
   const planId = routeId(rawPlanId);
+  const sessionId = routeId(rawSessionId);
   const origin = parseCalendarRouteOrigin(rawOrigin, {
     absentManagementOrigin: "library",
     managementOrigins: ["library"] as const,
   });
   if (planId === null || origin.kind === "invalid") return <RunningPlanRouteUnavailable />;
   if (origin.kind === "calendar") {
+    if (sessionId === null) return <RunningPlanRouteUnavailable />;
     return <>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <CalendarRunningPlanRouteAdapter planId={planId} onBack={() => router.back()} />
+      <CalendarRunningPlanRouteAdapter planId={planId} sessionId={sessionId} onBack={() => router.back()} />
     </>;
   }
   return <ManagementRunningPlanDetailRoute planId={planId} />;

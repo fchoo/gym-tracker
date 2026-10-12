@@ -18,7 +18,7 @@ import { AppearanceProvider, sizes } from "../../src/ui/theme";
 const mockPush = jest.fn();
 const mockBack = jest.fn();
 const mockLoadCalendarRange = jest.fn<CalendarReadPort["loadCalendarRange"]>();
-const mockLoadRunningPlan = jest.fn<(planId: string) => Promise<RunningPlanAggregate | null>>();
+const mockLoadRunningPlan = jest.fn<(planId: string, sessionId?: string) => Promise<RunningPlanAggregate | null>>();
 const mockGetSessionDetail = jest.fn<(sessionId: string) => Promise<SessionDetail>>();
 const mockLoadOccurrence = jest.fn<(occurrenceId: string) => Promise<PlannedStrengthOccurrenceDetail | null>>();
 const mockLoadActivity = jest.fn<(activityId: string) => Promise<ImportedActivityDetailReadResult>>();
@@ -102,7 +102,10 @@ const runningPlan: RunningPlanAggregate = {
     trainingDays: ["Monday"],
     createdAtMs: 1,
   },
-  sessions: [],
+  sessions: [{
+    slot: { id: "running-slot-revision:calendar", rootId: "running-slot:calendar", weekday: "Monday", revision: 1, ordinal: 0 },
+    session: { version: 1, id: "running-session-revision:calendar", rootId: "running-session:calendar", planId: "running-plan:calendar/tempo", sessionKind: "tempo", revision: 1, createdAtMs: 1, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }], contextual: { format: "continuous", work: { durationMs: 60_000 } } },
+  }],
 };
 
 const calendarRange = (): CalendarRange => Object.freeze({
@@ -255,7 +258,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
 }));
 
 jest.mock("../../src/bootstrap/runningPlanRuntime", () => ({
-  useCalendarRunningPlanReadPort: () => ({ loadPlan: mockLoadRunningPlan }),
+  useCalendarRunningPlanReadPort: () => ({ loadScheduledSessionPlan: mockLoadRunningPlan }),
   useRunningPlanRuntime: () => mockUseRunningPlanRuntime(),
 }));
 
@@ -327,7 +330,7 @@ describe("Calendar cross-destination routes", () => {
     const detail = await render(<AppearanceProvider><RunningPlanDetailRoute /></AppearanceProvider>);
 
     expect(await detail.findByText("Calendar tempo plan")).toBeOnTheScreen();
-    expect(mockLoadRunningPlan).toHaveBeenCalledWith(runningPlan.id);
+    expect(mockLoadRunningPlan).toHaveBeenCalledWith(runningPlan.id, "running-session-revision:calendar");
     expect(detail.queryByRole("button", { name: "Sync Garmin / match activity" })).toBeNull();
     expect(detail.queryByRole("button", { name: "Edit running plan" })).toBeNull();
     expect(detail.queryByRole("button", { name: "Review archive" })).toBeNull();
@@ -347,16 +350,17 @@ describe("Calendar cross-destination routes", () => {
   });
 
   it("uses the real Running missing state for a stale identity and returns without substituting another plan", async () => {
-    mockLoadRunningPlan.mockResolvedValueOnce(null);
+    mockLoadRunningPlan.mockResolvedValueOnce(runningPlan);
     mockSearchParams = {
       origin: "calendar",
-      planId: "running-plan:removed",
+      planId: runningPlan.id,
+      sessionId: "running-session-revision:removed",
       returnEventId: "calendar-event:removed",
     };
     const detail = await render(<AppearanceProvider><RunningPlanDetailRoute /></AppearanceProvider>);
 
     expect(await detail.findByText("Running plan not found")).toBeOnTheScreen();
-    expect(mockLoadRunningPlan).toHaveBeenCalledWith("running-plan:removed");
+    expect(mockLoadRunningPlan).toHaveBeenCalledWith(runningPlan.id, "running-session-revision:removed");
     expect(detail.queryByText("Calendar tempo plan")).toBeNull();
     expect(detail.getByRole("button", { name: "Back to Calendar" })).toBeOnTheScreen();
 
@@ -416,7 +420,7 @@ describe("Calendar cross-destination routes", () => {
       {
         eventId: "calendar-event:running/tempo",
         activate: "keyboard",
-        params: { origin: "calendar", planId: runningPlan.id },
+        params: { origin: "calendar", planId: runningPlan.id, sessionId: "running-session-revision:calendar" },
         Route: RunningPlanDetailRoute,
         loaded: "Saved Running goal, benchmark, and schedule facts. Activation stays separate.",
         back: "Go back",
@@ -476,7 +480,7 @@ describe("Calendar cross-destination routes", () => {
       "strength-session:partial",
     ]);
     expect(mockLoadOccurrence).toHaveBeenCalledWith("strength-occurrence:planned");
-    expect(mockLoadRunningPlan).toHaveBeenCalledWith(runningPlan.id);
+    expect(mockLoadRunningPlan).toHaveBeenCalledWith(runningPlan.id, "running-session-revision:calendar");
     expect(mockLoadActivity.mock.calls.map(([id]) => id)).toEqual([
       "activity-local-outdoor",
       "activity-local-treadmill",

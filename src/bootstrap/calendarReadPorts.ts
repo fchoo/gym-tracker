@@ -24,7 +24,10 @@ export type CalendarActivityReadPort = Pick<
 >;
 
 export type CalendarRunningPlanReadPort = Readonly<{
-  loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
+  loadScheduledSessionPlan(
+    planId: string,
+    sessionRevisionId: string,
+  ): Promise<RunningPlanAggregate | null>;
 }>;
 
 export function createCalendarRangeReadPort(
@@ -61,5 +64,13 @@ export function createCalendarRunningPlanReadPort(
     loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
   }>,
 ): CalendarRunningPlanReadPort {
-  return Object.freeze({ loadPlan: source.loadPlan });
+  return Object.freeze({
+    async loadScheduledSessionPlan(planId, sessionRevisionId) {
+      const plan = await source.loadPlan(planId);
+      if (plan === null || plan.id !== planId) return null;
+      return plan.sessions.some(({ session }) =>
+        session.id === sessionRevisionId && session.planId === planId
+      ) ? plan : null;
+    },
+  });
 }
