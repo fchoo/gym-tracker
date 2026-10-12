@@ -600,6 +600,68 @@ exit 0
   }
 });
 
+test("native collector rejects every ambiguous PID-scoped nonce marker set", () => {
+  const originalPath = process.env.PATH;
+  const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-cardinality-"));
+  const noncePath = path.join(root, "nonce.txt");
+  const markersPath = path.join(root, "markers.txt");
+  const report = {
+    schema_version: 1,
+    suite: "phase18-garmin-adversarial",
+    status: "passed",
+    cases: cases(),
+    current_identity: {},
+    run_nonce: "__NONCE__",
+  };
+  const passed = `GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:${JSON.stringify(report)}`;
+  const failed = `GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:${JSON.stringify({
+    ...report,
+    status: "TECHNICAL_REVIEW_REQUIRED",
+  })}`;
+  const malformed = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:{malformed";
+  try {
+    writeExecutable(path.join(root, "adb"), `#!/bin/sh
+set -eu
+if [ "$1" = "devices" ]; then printf 'List of devices attached\nDEVICE_A\tdevice\n'; exit 0; fi
+if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
+  for argument in "$@"; do
+    case "$argument" in *nonce=*) printf '%s' "\${argument##*nonce=}" > "${noncePath}" ;; esac
+  done
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '4242\n'; exit 0; fi
+if [ "$1" = "logcat" ] && [ "$2" = "--pid" ]; then
+  nonce=$(cat "${noncePath}")
+  sed "s/__NONCE__/$nonce/g" "${markersPath}"
+  exit 0
+fi
+exit 0
+`);
+    process.env.PATH = `${root}:${originalPath ?? ""}`;
+    for (const markers of [
+      [passed, passed],
+      [passed, failed],
+      [passed, malformed],
+    ]) {
+      writeFileSync(markersPath, `${markers.join("\n")}\n`);
+      assert.throws(
+        () => collectInstalledNativeReport(),
+        /phase18_garmin_adversarial_native_report_cardinality_invalid/u,
+      );
+    }
+    writeFileSync(markersPath, `${malformed}\n`);
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_nonce_invalid/u,
+    );
+  } finally {
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("runner rejects privacy-unsafe free-form strings and native collection timeouts", () => {
   assert.throws(
     () => executePhase18GarminAdversarialRunner([

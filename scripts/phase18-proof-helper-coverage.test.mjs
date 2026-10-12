@@ -142,6 +142,7 @@ function withProofWorkspace(options, callback) {
     retainedSignatureSha256,
   });
   const logs = options.logs ?? [];
+  const installedApkPath = path.join(stateRoot, "installed.apk");
 
   rmSync(artifactRoot, { recursive: true, force: true });
   rmSync(sdkRoot, { recursive: true, force: true });
@@ -151,13 +152,13 @@ function withProofWorkspace(options, callback) {
   mkdirSync(path.join(sdkRoot, "build-tools", "35.0.0"), { recursive: true });
   mkdirSync(stateRoot, { recursive: true });
   writeFileSync(stateFile, "0");
+  writeFileSync(installedApkPath, options.installedApkBytes ?? apkBytes);
   writeFileSync(path.resolve(PHASE18_GARMIN_PROOF_APK), apkBytes);
   writeFileSync(path.resolve(MANIFEST), `${JSON.stringify(retainedManifest, null, 2)}\n`);
 
   const adbScript = `#!/bin/sh
 set -eu
 state_file='${stateFile}'
-apk_path='${path.resolve(PHASE18_GARMIN_PROOF_APK)}'
 if [ "$1" = "devices" ]; then
   printf 'List of devices attached\\n${device.serial}\\tdevice\\n'
   exit 0
@@ -178,8 +179,8 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  cat "$apk_path"
+if [ "$1" = "-s" ] && [ "$3" = "pull" ] && [ "$4" = "/data/app/phase18/base.apk" ]; then
+  cp '${installedApkPath}' "$5"
   exit 0
 fi
 if [ "$1" = "-s" ] && [ "$3" = "logcat" ] && [ "$4" = "-c" ]; then
@@ -528,6 +529,7 @@ test("proof helper coverage exercises remaining runner fail-closed branches", { 
     },
     {
       name: "installed apk bytes drift",
+      installedApkBytes: Buffer.from("drift-apk"),
       native(program, args) {
         if (path.basename(program) === "git") return `${execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" })}`;
         if (path.basename(program) === "apksigner") return `Signer #1 certificate SHA-256 digest: ${"b".repeat(64)}\n`;
@@ -541,7 +543,6 @@ test("proof helper coverage exercises remaining runner fail-closed branches", { 
         if (args[2] === "shell" && args[3] === "pm" && args[4] === "path") {
           return "package:/data/app/phase18/base.apk\n";
         }
-        if (args[2] === "exec-out" && args[3] === "cat") return Buffer.from("different-apk");
         throw new Error(`unexpected_command:${[path.basename(program), ...args].join(" ")}`);
       },
       expectedCode: "packaging_failed",
@@ -549,6 +550,7 @@ test("proof helper coverage exercises remaining runner fail-closed branches", { 
   ]) {
     withProofWorkspace({
       logs: [],
+      installedApkBytes: scenario.installedApkBytes,
     }, () => {
       const writes = [];
       const result = executePhase18GarminProofRunner([

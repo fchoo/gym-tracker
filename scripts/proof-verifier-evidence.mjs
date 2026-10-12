@@ -31,6 +31,7 @@ import {
 } from "./node-evidence-utils.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
 const ROOT = process.cwd();
 const MANIFEST = `${PHASE18_GARMIN_PROOF_ARTIFACT_ROOT}/build.json`;
@@ -348,7 +349,7 @@ function retainedSignatureSha256(apkPath) {
   return digest;
 }
 
-function installedIdentity() {
+function installedIdentity(expectedByteCount) {
   const adb = resolveAdb();
   const devices = commandText(adb, ["devices"])
     .split("\n")
@@ -367,15 +368,13 @@ function installedIdentity() {
   if (abi !== "arm64-v8a" || !installedPath.startsWith("/data/app/")) {
     fail("installed_identity_invalid");
   }
-  const installedBytes = command(adb, [
-    "-s",
-    serial,
-    "exec-out",
-    "cat",
-    installedPath,
-  ]);
   return Object.freeze({
-    installedApkSha256: sha256(installedBytes),
+    installedApkSha256: pullInstalledApkSha256({
+      adb,
+      serial,
+      installedPath,
+      expectedByteCount,
+    }),
     deviceIdentitySha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
   });
 }
@@ -390,7 +389,7 @@ export function resolvePhase18GarminProofCurrentIdentity(rawReportBytes) {
     retainedApkSha256: sha256(apkBytes),
     retainedSignatureSha256: retainedSignatureSha256(apkPath),
     rawReportSha256: sha256(rawReportBytes),
-    ...installedIdentity(),
+    ...installedIdentity(apkBytes.length),
   });
 }
 

@@ -32,6 +32,7 @@ import {
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
 const ROOT = process.cwd();
 export const PHASE18_GARMIN_PROOF_ARTIFACT_ROOT =
@@ -453,6 +454,7 @@ export function executePhase18GarminProofRunner(
   const retainedManifest = JSON.parse(readFileSync(path.resolve(ROOT, options.manifest), "utf8"));
   const apkPath = path.resolve(ROOT, PHASE18_GARMIN_PROOF_APK);
   if (!existsSync(apkPath)) fail("apk_missing");
+  const retainedApkBytes = readFileSync(apkPath);
   const currentPythonLockSha256 = sha256(
     readFileSync(path.resolve(ROOT, PYTHON_LOCK)),
   );
@@ -465,7 +467,7 @@ export function executePhase18GarminProofRunner(
     currentHead: commandText(native, "git", ["rev-parse", "HEAD"]),
     currentSourceTreeSha256: sourceTreeSha256(ROOT),
     currentPythonLockSha256,
-    retainedApkSha256: sha256(readFileSync(apkPath)),
+    retainedApkSha256: sha256(retainedApkBytes),
     retainedSignatureSha256: currentSignatureSha256,
   });
   let completedCases = [];
@@ -490,14 +492,13 @@ export function executePhase18GarminProofRunner(
     );
     const installedPath = installedPathOutput.replace(/^package:/u, "");
     if (!installedPath.startsWith("/data/app/")) fail("installed_apk_path_invalid");
-    const installedBytes = native(adb, [
-      "-s",
-      device.serial,
-      "exec-out",
-      "cat",
+    const installedApkSha256 = pullInstalledApkSha256({
+      adb,
+      serial: device.serial,
       installedPath,
-    ]);
-    if (sha256(installedBytes) !== manifest.apk_sha256) fail("installed_apk_mismatch");
+      expectedByteCount: retainedApkBytes.length,
+    });
+    if (installedApkSha256 !== manifest.apk_sha256) fail("installed_apk_mismatch");
     const packageCase = Object.freeze({
       id: "PH18-PKG",
       status: "passed",

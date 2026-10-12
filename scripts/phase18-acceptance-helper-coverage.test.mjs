@@ -215,8 +215,8 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "${PAC
   printf 'package:${packagePath}\\n'
   exit 0
 fi
-if [ "$1" = "exec-out" ] && [ "$2" = "cat" ] && [ "$3" = "${packagePath}" ]; then
-  cat "${installedApkSource}"
+if [ "$1" = "pull" ] && [ "$2" = "${packagePath}" ]; then
+  cp "${installedApkSource}" "$3"
   exit 0
 fi
 exit 1

@@ -1028,10 +1028,6 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]
   printf 'package:/data/app/com.fchoo.gymtracker.devtest/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  cat "$PHASE18_INSTALLED_APK"
-  exit 0
-fi
 if [ "$1" = "-s" ] && [ "$3" = "pull" ]; then
   cp "$PHASE18_INSTALLED_APK" "$5"
   exit 0
@@ -1151,8 +1147,8 @@ test("default identity helpers also cover successful installed evidence collecti
     withWorkspaceFiles({
       [benchmarkApk]: installedBytes,
       [acceptanceApk]: installedBytes,
-      [adversarialApk]: "adversarial-apk",
-      [proofApk]: "proof-apk",
+      [adversarialApk]: installedBytes,
+      [proofApk]: installedBytes,
       [MAESTRO_SOURCE]: "maestro-source\n",
       [nativeReport]: '{"status":"passed"}\n',
       [privacyReport]: '{"status":"passed"}\n',
@@ -1172,10 +1168,6 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "getprop" ]; then
 fi
 if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]; then
   printf 'package:/data/app/com.fchoo.gymtracker.devtest/base.apk\\n'
-  exit 0
-fi
-if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  cat "$PHASE18_INSTALLED_APK"
   exit 0
 fi
 if [ "$1" = "-s" ] && [ "$3" = "pull" ]; then
@@ -1567,6 +1559,15 @@ test("benchmark helper rejects malformed envelopes, budget drift, and malformed 
     metrics: Object.fromEntries(metricNames.map((metric) => [metric, { minimum_samples: 1, maximum: 1 }])),
   };
   const baselineBytes = Buffer.from(JSON.stringify(baseline));
+  const coldStartSamples = Array.from({ length: 5 }, (_, index) => ({
+    value: 2,
+    observed_at_monotonic_ms: 60_000 + index,
+    operation: "native-runtime:python-cold-start",
+    process_id: index + 1,
+    sequence: index + 1,
+  }));
+  const measurements = Object.fromEntries(metricNames.map((metric) => [metric, [2]]));
+  measurements.python_cold_start_ms = coldStartSamples.map(({ value }) => value);
   assert.throws(
     () => validatePhase18GarminBenchmarkEvidence({}, manifest, baseline, baselineBytes),
     /phase18_garmin_benchmark_envelope_invalid/u,
@@ -1577,10 +1578,19 @@ test("benchmark helper rejects malformed envelopes, budget drift, and malformed 
       suite: "phase18-garmin-acceptance",
       producer: "phase18-garmin-benchmark/v2",
       producer_context: {
+        cold_start_handshake: { next_sequence: null, samples: coldStartSamples },
+        cold_start_runs: coldStartSamples.map(({ process_id, sequence }) => ({
+          process_id,
+          run_nonce: sequence === 5 ? "a".repeat(32) : String(sequence).repeat(32),
+          sequence,
+        })),
         kind: "installed-route-log",
         marker: "GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:",
+        process_id: 5,
+        review_required: [],
         run_nonce: "a".repeat(32),
-        source_pid: 1,
+        source_pid: 5,
+        status: "passed",
       },
       status: "passed",
       identity: {
@@ -1594,7 +1604,7 @@ test("benchmark helper rejects malformed envelopes, budget drift, and malformed 
         path: "tests/fixtures/garmin-json/phase18-performance-baseline.json",
         report_sha256: createHash("sha256").update(baselineBytes).digest("hex"),
       },
-      measurements: Object.fromEntries(metricNames.map((metric) => [metric, [2]])),
+      measurements,
       measurement_context: {
         profile: "physical-arm64",
         device_identity_sha256: HASH,
@@ -1648,8 +1658,8 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]
   printf 'package:/data/app/com.fchoo.gymtracker.devtest/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  printf 'apk'
+if [ "$1" = "-s" ] && [ "$3" = "pull" ]; then
+  printf 'apk' > "$5"
   exit 0
 fi
 exit 0
@@ -1674,8 +1684,8 @@ if [ "$1" = "-s" ] && [ "$3" = "shell" ] && [ "$4" = "pm" ] && [ "$5" = "path" ]
   printf 'package:/data/app/com.fchoo.gymtracker.devtest/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "-s" ] && [ "$3" = "exec-out" ] && [ "$4" = "cat" ]; then
-  printf 'apk'
+if [ "$1" = "-s" ] && [ "$3" = "pull" ]; then
+  printf 'apk' > "$5"
   exit 0
 fi
 exit 0

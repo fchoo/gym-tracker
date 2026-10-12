@@ -27,6 +27,7 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const RUN_NONCE = /^[a-f0-9]{32}$/u;
+const NATIVE_REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
 const FORBIDDEN_KEY = /(?:^|_)(?:account_namespace|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
 const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\bauthorization\b|\bbearer\b|\bciphertext\b|\bcredentials?\b|\bmfa(?:[_ -]?code)?\b|\bpassword\b|\btoken\b)/iu;
 const PRIVATE_FILENAME = /(?:^|[\\/])[^\\/]+\.(?:csv|fit|gpx|json|tcx)(?:$|[?#])/iu;
@@ -177,8 +178,28 @@ function sha256Bytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function nativeReportFromPidLog(logcat, expectedNonce) {
+  const lines = logcat
+    .split(/\r?\n/u)
+    .filter((entry) => entry.includes(NATIVE_REPORT_MARKER));
+  if (lines.length === 0) return null;
+  if (lines.length !== 1) fail("native_report_cardinality_invalid");
+  const line = lines[0];
+  let report;
+  try {
+    report = JSON.parse(
+      line.slice(line.indexOf(NATIVE_REPORT_MARKER) + NATIVE_REPORT_MARKER.length),
+    );
+  } catch {
+    fail("native_report_nonce_invalid");
+  }
+  if (!RUN_NONCE.test(report?.run_nonce ?? "") || report.run_nonce !== expectedNonce) {
+    fail("native_report_nonce_invalid");
+  }
+  return report;
+}
+
 export function collectInstalledNativeReport() {
-  const marker = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
   const devices = execFileSync("adb", ["devices"], { encoding: "utf8" })
     .split(/\r?\n/u)
     .slice(1)
@@ -203,12 +224,8 @@ export function collectInstalledNativeReport() {
       continue;
     }
     const logcat = adb(["logcat", "--pid", processId, "-d"], { encoding: "utf8" });
-    const line = logcat.split(/\r?\n/u).find((entry) => entry.includes(marker));
-    if (line !== undefined) {
-      const report = JSON.parse(line.slice(line.indexOf(marker) + marker.length));
-      if (!RUN_NONCE.test(report?.run_nonce ?? "") || report.run_nonce !== runNonce) {
-        fail("native_report_nonce_invalid");
-      }
+    const report = nativeReportFromPidLog(logcat, runNonce);
+    if (report !== null) {
       return { report, logcat };
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);

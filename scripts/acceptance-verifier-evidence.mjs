@@ -2,8 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
@@ -35,6 +34,7 @@ import {
   runCliIfMain,
 } from "./node-evidence-utils.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
 const MANIFEST = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/build.json`;
 const APK = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-acceptance-devtest.apk`;
@@ -111,26 +111,31 @@ export function resolvePhase18GarminAcceptanceCurrentIdentity() {
   const installedPath = command(adb, ["-s", serial, "shell", "pm", "path", "com.fchoo.gymtracker.devtest"])
     .split("\n").find((line) => line.startsWith("package:"))?.slice("package:".length);
   if (installedPath === undefined) fail("installed_apk_missing");
-  const temporary = mkdtempSync(path.join(tmpdir(), "phase18-acceptance-"));
+  const retainedApkBytes = readFileSync(APK);
+  let installedApkSha256;
   try {
-    const installedCopy = path.join(temporary, "installed.apk");
-    execFileSync(adb, ["-s", serial, "pull", installedPath, installedCopy], { stdio: "ignore" });
-    const signatureOutput = command(apksigner, ["verify", "--print-certs", APK]);
-    const signature = signatureOutput.match(/certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u)?.[1]
-      ?.replaceAll(":", "").toLowerCase();
-    if (signature === undefined || !HASH.test(signature)) fail("signature_unreadable");
-    return Object.freeze({
-      currentHead: command("git", ["rev-parse", "HEAD"]),
-      currentSourceTreeSha256: sourceTreeSha256(),
-      currentPythonLockSha256: sha256(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")),
-      retainedApkSha256: sha256(readFileSync(APK)),
-      installedApkSha256: sha256(readFileSync(installedCopy)),
-      retainedSignatureSha256: signature,
-      deviceIdentitySha256,
+    installedApkSha256 = pullInstalledApkSha256({
+      adb,
+      serial,
+      installedPath,
+      expectedByteCount: retainedApkBytes.length,
     });
-  } finally {
-    rmSync(temporary, { recursive: true, force: true });
+  } catch {
+    fail("current_identity_invalid");
   }
+  const signatureOutput = command(apksigner, ["verify", "--print-certs", APK]);
+  const signature = signatureOutput.match(/certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u)?.[1]
+    ?.replaceAll(":", "").toLowerCase();
+  if (signature === undefined || !HASH.test(signature)) fail("signature_unreadable");
+  return Object.freeze({
+    currentHead: command("git", ["rev-parse", "HEAD"]),
+    currentSourceTreeSha256: sourceTreeSha256(),
+    currentPythonLockSha256: sha256(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")),
+    retainedApkSha256: sha256(retainedApkBytes),
+    installedApkSha256,
+    retainedSignatureSha256: signature,
+    deviceIdentitySha256,
+  });
 }
 
 function matchingArtifactIdentity(ownerManifest, acceptanceManifest) {

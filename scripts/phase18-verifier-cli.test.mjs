@@ -209,14 +209,38 @@ function createBenchmarkWorkspace({ invalidMarker = false } = {}) {
   const markerPath = path.join(root, "artifacts", "benchmark-logcat-count.txt");
   const pidPath = path.join(root, "artifacts", "benchmark-pid-count.txt");
   const noncePath = path.join(root, "artifacts", "benchmark-nonce.txt");
-  const measurementPayload = invalidMarker
-    ? { run_nonce: "wrong", source: "installed-route-log", measurements: [], measurement_context: {} }
-    : {
-      run_nonce: "",
+  const payloadPrefix = path.join(root, "artifacts", "benchmark-cold-payload");
+  const processIds = [6201, 6202, 6203, 6204, 6205];
+  const finalMeasurements = benchmarkMeasurements();
+  const coldStartSamples = processIds.map((process_id, index) => ({
+    value: finalMeasurements.python_cold_start_ms[index],
+    observed_at_monotonic_ms: 80_000 + index,
+    operation: "native-runtime:python-cold-start",
+    process_id,
+    sequence: index + 1,
+  }));
+  writeFileSync(pidPath, `${processIds.join("\n")}\n`);
+  for (let index = 0; index < processIds.length; index += 1) {
+    const sequence = index + 1;
+    const complete = sequence === 5;
+    writeFileSync(`${payloadPrefix}-${sequence}.json`, JSON.stringify({
+      run_nonce: invalidMarker && sequence === 1 ? "wrong" : "__NONCE__",
+      process_id: processIds[index],
       source: "installed-route-log",
-      measurements: benchmarkMeasurements(),
-      measurement_context: benchmarkMeasurementContext(deviceIdentitySha256),
-    };
+      status: complete ? "passed" : "REVIEW_REQUIRED",
+      review_required: complete ? [] : ["python_cold_start_ms:minimum_samples_missing"],
+      cold_start_handshake: {
+        next_sequence: complete ? null : sequence + 1,
+        samples: coldStartSamples.slice(0, sequence),
+      },
+      measurements: complete
+        ? finalMeasurements
+        : { python_cold_start_ms: finalMeasurements.python_cold_start_ms.slice(0, sequence) },
+      measurement_context: complete
+        ? benchmarkMeasurementContext(deviceIdentitySha256)
+        : { profile: "physical-arm64" },
+    }));
+  }
   const sdkRoot = createFakeAndroidSdk(root, {
     packageName: PACKAGE,
     retainedSignatureSha256,
@@ -231,13 +255,8 @@ if [ "$1" = "-s" ]; then
   shift 2
 fi
 if [ "$1" = "shell" ] && [ "$2" = "pidof" ] && [ "$3" = "$package_name" ]; then
-  count=0
-  [ -f "${pidPath}" ] && count=$(cat "${pidPath}")
-  count=$((count + 1))
-  printf '%s' "$count" > "${pidPath}"
-  if [ "$count" -gt 1 ]; then
-    printf '4242\\n'
-  fi
+  sequence=$(cat "${markerPath}")
+  sed -n "\${sequence}p" "${pidPath}"
   exit 0
 fi
 if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
@@ -253,30 +272,28 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "$pack
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "exec-out" ] && [ "$2" = "cat" ] && [ "$3" = "/data/app/phase18/base.apk" ]; then
-  cat "${installedApkPath}"
+if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
+  cp "${installedApkPath}" "$3"
   exit 0
 fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "force-stop" ]; then
+  exit 0
+fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
-  nonce=$(printf '%s' "$8" | sed -n 's/.*nonce=\\([a-f0-9]*\\).*/\\1/p')
+  sequence=$(printf '%s' "$8" | sed -n 's/.*coldStartSequence=\\([1-5]\\).*/\\1/p')
+  nonce=$(printf '%s' "$8" | sed -n 's/.*nonce=\\([a-f0-9]\\{32\\}\\).*/\\1/p')
+  printf '%s' "$sequence" > "${markerPath}"
   printf '%s' "$nonce" > "${noncePath}"
   exit 0
 fi
 if [ "$1" = "logcat" ] && [ "$2" = "--pid" ] && [ "$4" = "-d" ]; then
-  count=0
-  [ -f "${markerPath}" ] && count=$(cat "${markerPath}")
-  count=$((count + 1))
-  printf '%s' "$count" > "${markerPath}"
-  if [ "$count" -eq 1 ]; then
-    printf 'still waiting\\n'
-  else
-    nonce=""
-    [ -f "${noncePath}" ] && nonce=$(cat "${noncePath}")
-    printf 'I GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:%s\\n' "$(printf '%s' '${JSON.stringify(measurementPayload)}' | sed "s/\\\"run_nonce\\\":\\\"\\\"/\\\"run_nonce\\\":\\\"$nonce\\\"/")"
-  fi
+  sequence=$(cat "${markerPath}")
+  nonce=$(cat "${noncePath}")
+  payload=$(sed "s/__NONCE__/$nonce/g" "${payloadPrefix}-$sequence.json")
+  printf 'I GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:%s\\n' "$payload"
   exit 0
 fi
 `,
@@ -382,8 +399,8 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "$pack
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "exec-out" ] && [ "$2" = "cat" ] && [ "$3" = "/data/app/phase18/base.apk" ]; then
-  cat "${installedApkPath}"
+if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
+  cp "${installedApkPath}" "$3"
   exit 0
 fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
@@ -610,8 +627,8 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "$pack
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "exec-out" ] && [ "$2" = "cat" ] && [ "$3" = "/data/app/phase18/base.apk" ]; then
-  cat "${installedApkPath}"
+if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
+  cp "${installedApkPath}" "$3"
   exit 0
 fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
@@ -1019,10 +1036,6 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "${PAC
 fi
 if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
   cp "${installedApkPath}" "$3"
-  exit 0
-fi
-if [ "$1" = "exec-out" ] && [ "$2" = "cat" ] && [ "$3" = "/data/app/phase18/base.apk" ]; then
-  cat "${installedApkPath}"
   exit 0
 fi
 exit 1

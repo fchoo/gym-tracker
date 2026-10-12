@@ -69,6 +69,25 @@ function manifest() {
   };
 }
 
+function completedColdStartContext(finalProcessId, finalNonce, values) {
+  const processIds = Array.from({ length: 5 }, (_, index) => finalProcessId - 4 + index);
+  const samples = processIds.map((process_id, index) => ({
+    value: values[index],
+    observed_at_monotonic_ms: 50_000 + index,
+    operation: "native-runtime:python-cold-start",
+    process_id,
+    sequence: index + 1,
+  }));
+  return {
+    cold_start_handshake: { next_sequence: null, samples },
+    cold_start_runs: processIds.map((process_id, index) => ({
+      process_id,
+      run_nonce: index === 4 ? finalNonce : String(index + 1).repeat(32),
+      sequence: index + 1,
+    })),
+  };
+}
+
 function evidence(overrides = {}) {
   const measurements = Object.fromEntries(
     PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, samples(metric, 1)]),
@@ -97,10 +116,14 @@ function evidence(overrides = {}) {
       sample_labels,
     },
     producer_context: {
+      ...completedColdStartContext(123, "c".repeat(32), measurements.python_cold_start_ms),
       kind: "installed-route-log",
       marker: "GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:",
+      process_id: 123,
+      review_required: [],
       run_nonce: "c".repeat(32),
       source_pid: 123,
+      status: "passed",
     },
     skipped: 0,
     ...overrides,
@@ -343,6 +366,9 @@ test("execute follows the installed-route benchmark path in-process", { concurre
   const markerPath = path.resolve("artifacts/benchmark-logcat-count.txt");
   const pidPath = path.resolve("artifacts/benchmark-pid-count.txt");
   const noncePath = path.resolve("artifacts/benchmark-nonce.txt");
+  const payloadPrefix = path.resolve("artifacts/benchmark-cold-payload");
+  const coldStartProcessIds = [5201, 5202, 5203, 5204, 5205];
+  const payloadPaths = coldStartProcessIds.map((_, index) => `${payloadPrefix}-${index + 1}.json`);
   const retainedApkBytes = Buffer.from("benchmark-apk");
   const deviceFacts = {
     serial: "PHASE18BENCH",
@@ -369,6 +395,36 @@ test("execute follows the installed-route benchmark path in-process", { concurre
     mkdirSync(artifactRoot, { recursive: true });
     writeFileSync(apkPath, retainedApkBytes);
     writeFileSync(installedApkPath, retainedApkBytes);
+    writeFileSync(pidPath, `${coldStartProcessIds.join("\n")}\n`);
+    const finalMeasurements = benchmarkMeasurements();
+    const coldStartSamples = coldStartProcessIds.map((process_id, index) => ({
+      value: finalMeasurements.python_cold_start_ms[index],
+      observed_at_monotonic_ms: 70_000 + index,
+      operation: "native-runtime:python-cold-start",
+      process_id,
+      sequence: index + 1,
+    }));
+    for (let index = 0; index < payloadPaths.length; index += 1) {
+      const sequence = index + 1;
+      const complete = sequence === 5;
+      writeFileSync(payloadPaths[index], JSON.stringify({
+        run_nonce: "__NONCE__",
+        process_id: coldStartProcessIds[index],
+        source: "installed-route-log",
+        status: complete ? "passed" : "REVIEW_REQUIRED",
+        review_required: complete ? [] : ["python_cold_start_ms:minimum_samples_missing"],
+        cold_start_handshake: {
+          next_sequence: complete ? null : sequence + 1,
+          samples: coldStartSamples.slice(0, sequence),
+        },
+        measurements: complete
+          ? finalMeasurements
+          : { python_cold_start_ms: finalMeasurements.python_cold_start_ms.slice(0, sequence) },
+        measurement_context: complete
+          ? benchmarkMeasurementContext(deviceIdentitySha256)
+          : { profile: "physical-arm64" },
+      }));
+    }
     writeFileSync(path.join(artifactRoot, "build.json"), `${JSON.stringify({
       schema_version: 1,
       suite: "phase18-garmin-acceptance",
@@ -393,11 +449,8 @@ if [ "$1" = "-s" ]; then
   shift 2
 fi
 if [ "$1" = "shell" ] && [ "$2" = "pidof" ] && [ "$3" = "com.fchoo.gymtracker.devtest" ]; then
-  count=0
-  [ -f "${pidPath}" ] && count=$(cat "${pidPath}")
-  count=$((count + 1))
-  printf '%s' "$count" > "${pidPath}"
-  if [ "$count" -gt 1 ]; then printf '4242\\n'; fi
+  sequence=$(cat "${markerPath}")
+  sed -n "\${sequence}p" "${pidPath}"
   exit 0
 fi
 if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
@@ -413,34 +466,28 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "com.f
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "exec-out" ] && [ "$2" = "cat" ] && [ "$3" = "/data/app/phase18/base.apk" ]; then
-  cat "${installedApkPath}"
+if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
+  cp "${installedApkPath}" "$3"
   exit 0
 fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "force-stop" ]; then
+  exit 0
+fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
-  nonce=$(printf '%s' "$8" | sed -n 's/.*nonce=\\([a-f0-9]*\\).*/\\1/p')
+  sequence=$(printf '%s' "$8" | sed -n 's/.*coldStartSequence=\\([1-5]\\).*/\\1/p')
+  nonce=$(printf '%s' "$8" | sed -n 's/.*nonce=\\([a-f0-9]\\{32\\}\\).*/\\1/p')
+  printf '%s' "$sequence" > "${markerPath}"
   printf '%s' "$nonce" > "${noncePath}"
   exit 0
 fi
 if [ "$1" = "logcat" ] && [ "$2" = "--pid" ] && [ "$4" = "-d" ]; then
-  count=0
-  [ -f "${markerPath}" ] && count=$(cat "${markerPath}")
-  count=$((count + 1))
-  printf '%s' "$count" > "${markerPath}"
-  if [ "$count" -eq 1 ]; then
-    printf 'waiting\\n'
-  else
-    nonce=$(cat "${noncePath}")
-    printf 'I GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:%s\\n' "$(printf '%s' '${JSON.stringify({
-      run_nonce: "",
-      source: "installed-route-log",
-      measurements: benchmarkMeasurements(),
-      measurement_context: benchmarkMeasurementContext(deviceIdentitySha256),
-    })}' | sed "s/\\\"run_nonce\\\":\\\"\\\"/\\\"run_nonce\\\":\\\"$nonce\\\"/")"
-  fi
+  sequence=$(cat "${markerPath}")
+  nonce=$(cat "${noncePath}")
+  payload=$(sed "s/__NONCE__/$nonce/g" "${payloadPrefix}-$sequence.json")
+  printf 'I GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:%s\\n' "$payload"
   exit 0
 fi
 exit 1
@@ -497,6 +544,7 @@ printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
     rmSync(markerPath, { force: true });
     rmSync(pidPath, { force: true });
     rmSync(noncePath, { force: true });
+    for (const payloadPath of payloadPaths) rmSync(payloadPath, { force: true });
   }
 });
 
@@ -598,6 +646,7 @@ test("focused coverage gate registers every Phase 18 integrity-critical module",
     "scripts/phase18-garmin-proof.test.mjs",
     "scripts/phase18-build-manifest.test.mjs",
     "scripts/phase18-device-identity.test.mjs",
+    "scripts/phase18-installed-apk.test.mjs",
     "scripts/phase18-garmin-acceptance.test.mjs",
     "scripts/phase18-garmin-adversarial.test.mjs",
     "scripts/run-phase18-python-coverage.test.mjs",
@@ -617,6 +666,7 @@ test("focused coverage gate registers every Phase 18 integrity-critical module",
     "scripts/benchmark-phase18-garmin.mjs",
     "scripts/phase18-build-manifest.mjs",
     "scripts/phase18-device-identity.mjs",
+    "scripts/phase18-installed-apk.mjs",
     "scripts/phase18-language-coverage.mjs",
     "scripts/phase18-privacy-scan.mjs",
     "scripts/run-phase18-kotlin-coverage.mjs",

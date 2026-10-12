@@ -154,8 +154,8 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
-if [ "$1" = "exec-out" ] && [ "$2" = "cat" ]; then
-  cat '${path.resolve(APK_PATH)}'
+if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
+  cp '${path.resolve(APK_PATH)}' "$3"
   exit 0
 fi
 exit 0
@@ -539,7 +539,6 @@ test("Phase 18 runner executes ordered login, restore, rotation, and privacy che
         if (args[2] === "shell" && args[3] === "pm" && args[4] === "path") {
           return "package:/data/app/phase18/base.apk\n";
         }
-        if (args[2] === "exec-out" && args[3] === "cat") return workspace.fixture.apkBytes;
         if (args[2] === "logcat" && args[3] === "-c") return "";
         if (args[2] === "shell" && args[3] === "am" && args[4] === "start") return "";
         if (args[2] === "shell" && args[3] === "am" && args[4] === "force-stop") return "";
@@ -623,7 +622,6 @@ test("Phase 18 runner records bounded review reports for technical stop, rotatio
           if (args[2] === "shell" && args[3] === "pm" && args[4] === "path") {
             return "package:/data/app/phase18/base.apk\n";
           }
-          if (args[2] === "exec-out" && args[3] === "cat") return workspace.fixture.apkBytes;
           if (args[2] === "logcat" && args[3] === "-c") return "";
           if (args[2] === "shell" && args[3] === "am" && args[4] === "start") return "";
           if (args[2] === "shell" && args[3] === "am" && args[4] === "force-stop") return "";
@@ -734,7 +732,6 @@ test("Phase 18 runner rejects device selection, malformed device identity, manif
           if (args[2] === "shell" && args[3] === "pm" && args[4] === "path") {
             return "package:/data/app/phase18/base.apk\n";
           }
-          if (args[2] === "exec-out" && args[3] === "cat") return workspace.fixture.apkBytes;
           if (args[2] === "logcat" && args[3] === "-c") return "";
           if (args[2] === "shell" && args[3] === "am" && args[4] === "start") return "";
           if (args[2] === "shell" && args[3] === "am" && args[4] === "force-stop") return "";

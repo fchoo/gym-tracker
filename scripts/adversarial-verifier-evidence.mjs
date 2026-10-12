@@ -25,6 +25,7 @@ import {
 } from "./node-evidence-utils.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
 const MANIFEST = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/build.json`;
 const FINAL_EVIDENCE = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/final-evidence.json`;
@@ -303,7 +304,7 @@ function retainedSignatureSha256(apkPath) {
   return digest;
 }
 
-function installedIdentity() {
+function installedIdentity(expectedByteCount) {
   const adb = resolveAndroidTool("adb");
   const devices = commandText(adb, ["devices"])
     .split("\n")
@@ -318,9 +319,13 @@ function installedIdentity() {
   const model = adbText("shell", "getprop", "ro.product.model");
   const installedPath = adbText("shell", "pm", "path", PACKAGE).replace(/^package:/u, "");
   if (abi !== "arm64-v8a" || !installedPath.startsWith("/data/app/")) fail("installed_identity_invalid");
-  const installedBytes = command(adb, ["-s", serial, "exec-out", "cat", installedPath]);
   return Object.freeze({
-    installedApkSha256: createHash("sha256").update(installedBytes).digest("hex"),
+    installedApkSha256: pullInstalledApkSha256({
+      adb,
+      serial,
+      installedPath,
+      expectedByteCount,
+    }),
     deviceIdentitySha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
   });
 }
@@ -336,7 +341,7 @@ export function resolvePhase18GarminAdversarialCurrentIdentity(
     currentPythonLockSha256: createHash("sha256").update(readFileSync(PYTHON_LOCK)).digest("hex"),
     retainedApkSha256: createHash("sha256").update(apkBytes).digest("hex"),
     retainedSignatureSha256: retainedSignatureSha256(apkPath),
-    ...installedIdentity(),
+    ...installedIdentity(apkBytes.length),
     rawReportSha256: createHash("sha256").update(rawReportBytes).digest("hex"),
     nativeReportSha256: createHash("sha256").update(readFileSync(NATIVE_REPORT)).digest("hex"),
     privacyReportSha256: createHash("sha256").update(readFileSync(PRIVACY_REPORT)).digest("hex"),

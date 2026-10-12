@@ -21,6 +21,7 @@ import {
 } from "./node-evidence-utils.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 
 const MANIFEST = "artifacts/native/phase18-garmin-acceptance/build.json";
 const EVIDENCE = "artifacts/native/phase18-garmin-acceptance/benchmark.json";
@@ -30,6 +31,9 @@ const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const NONCE = /^[a-f0-9]{32}$/u;
 const PACKAGE = "com.fchoo.gymtracker.devtest";
+const COLD_START_SAMPLE_COUNT = 5;
+const COLD_START_OPERATION = "native-runtime:python-cold-start";
+const COLD_START_REVIEW = "python_cold_start_ms:minimum_samples_missing";
 const FORBIDDEN_KEY = /(?:^|_)(?:account|activity_id|authorization|ciphertext|cookie|credentials?|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|secret|serial|token|url)(?:$|_)/iu;
 const FORBIDDEN_ROUTE_KEY = /(?:^|_)route(?:$|_points?$)/iu;
 const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/iu;
@@ -117,6 +121,59 @@ function exactPositiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+function validColdStartSample(sample, expectedSequence) {
+  return exactKeys(sample, [
+    "observed_at_monotonic_ms",
+    "operation",
+    "process_id",
+    "sequence",
+    "value",
+  ])
+    && Number.isFinite(sample.value)
+    && sample.value >= 0
+    && Number.isFinite(sample.observed_at_monotonic_ms)
+    && sample.observed_at_monotonic_ms >= 0
+    && sample.operation === COLD_START_OPERATION
+    && exactPositiveInteger(sample.process_id)
+    && sample.sequence === expectedSequence;
+}
+
+function validCollectedColdStartContext(evidence) {
+  const context = evidence?.producer_context;
+  const handshake = context?.cold_start_handshake;
+  const runs = context?.cold_start_runs;
+  const samples = handshake?.samples;
+  if (
+    !exactKeys(handshake, ["next_sequence", "samples"])
+    || handshake.next_sequence !== null
+    || !Array.isArray(samples)
+    || samples.length !== COLD_START_SAMPLE_COUNT
+    || !Array.isArray(runs)
+    || runs.length !== COLD_START_SAMPLE_COUNT
+  ) return false;
+  for (let index = 0; index < COLD_START_SAMPLE_COUNT; index += 1) {
+    const sequence = index + 1;
+    const sample = samples[index];
+    const run = runs[index];
+    if (
+      !validColdStartSample(sample, sequence)
+      || !exactKeys(run, ["process_id", "run_nonce", "sequence"])
+      || run.sequence !== sequence
+      || run.process_id !== sample.process_id
+      || !regexMatch(NONCE, run.run_nonce)
+    ) return false;
+  }
+  return new Set(runs.map(({ process_id }) => process_id)).size === COLD_START_SAMPLE_COUNT
+    && new Set(runs.map(({ run_nonce }) => run_nonce)).size === COLD_START_SAMPLE_COUNT
+    && context.process_id === runs.at(-1).process_id
+    && context.source_pid === runs.at(-1).process_id
+    && context.run_nonce === runs.at(-1).run_nonce
+    && isDeepStrictEqual(
+      evidence.measurements?.python_cold_start_ms,
+      samples.map(({ value }) => value),
+    );
+}
+
 export function validatePhase18GarminBenchmarkEvidence(evidence, manifest, baseline, baselineBytes) {
   privacySafe(evidence);
   const invalidEnvelope = [
@@ -153,11 +210,28 @@ export function validatePhase18GarminBenchmarkEvidence(evidence, manifest, basel
     !exactKeys(baseline.metrics, PHASE18_GARMIN_BENCHMARK_METRICS),
     !exactKeys(evidence.measurements, PHASE18_GARMIN_BENCHMARK_METRICS),
     !exactKeys(evidence.measurement_context, ["commands", "device_identity_sha256", "profile", "sample_labels"]),
-    !exactKeys(evidence.producer_context, ["kind", "marker", "run_nonce", "source_pid"]),
+    !exactKeys(evidence.producer_context, [
+      "cold_start_handshake",
+      "cold_start_runs",
+      "kind",
+      "marker",
+      "process_id",
+      "review_required",
+      "run_nonce",
+      "source_pid",
+      "status",
+    ]),
     evidence.producer_context.kind !== "installed-route-log",
     evidence.producer_context.marker !== BENCHMARK_MARKER,
     !regexMatch(NONCE, evidence.producer_context.run_nonce),
     !exactPositiveInteger(evidence.producer_context.source_pid),
+    !exactPositiveInteger(evidence.producer_context.process_id),
+    evidence.producer_context.process_id !== evidence.producer_context.source_pid,
+    evidence.producer_context.status !== "passed",
+    !Array.isArray(evidence.producer_context.review_required),
+    evidence.producer_context.review_required?.length !== 0,
+    evidence.status !== evidence.producer_context.status,
+    !validCollectedColdStartContext(evidence),
     evidence.measurement_context.profile !== "physical-arm64",
     evidence.measurement_context.device_identity_sha256 !== evidence.identity.device_identity_sha256,
     !exactKeys(evidence.measurement_context.commands, PHASE18_GARMIN_BENCHMARK_METRICS),
@@ -274,11 +348,22 @@ export function resolvePhase18GarminBenchmarkCurrentIdentity() {
   const model = adbText("shell", "getprop", "ro.product.model");
   const installedPath = adbText("shell", "pm", "path", PACKAGE).replace(/^package:/u, "");
   if (abi !== "arm64-v8a" || !installedPath.startsWith("/data/app/")) fail("device_identity_invalid");
-  const installedBytes = command(adb, ["-s", serial, "exec-out", "cat", installedPath]);
   const apkPath = path.join(process.cwd(), "artifacts/native/phase18-garmin-acceptance/gym-tracker-phase18-garmin-acceptance-devtest.apk");
   const retainedBytes = readFileSync(apkPath);
   const apkSha256 = createHash("sha256").update(retainedBytes).digest("hex");
-  const installedApkSha256 = createHash("sha256").update(installedBytes).digest("hex");
+  let installedApkSha256;
+  let installedApkPullFailed = false;
+  try {
+    installedApkSha256 = pullInstalledApkSha256({
+      adb,
+      serial,
+      installedPath,
+      expectedByteCount: retainedBytes.length,
+    });
+  } catch {
+    installedApkPullFailed = true;
+  }
+  if (installedApkPullFailed) fail("installed_apk_mismatch");
   if (installedApkSha256 !== apkSha256) fail("installed_apk_mismatch");
   return Object.freeze({
     base_head: commandText("git", ["rev-parse", "HEAD"]),
@@ -294,62 +379,174 @@ export function resolvePhase18GarminBenchmarkCurrentIdentity() {
   });
 }
 
-function parseBenchmarkMarker(payload, expectedNonce) {
+function parseBenchmarkMarker(
+  payload,
+  expectedNonce,
+  expectedProcessId,
+  expectedSequence,
+  priorSamples,
+) {
+  const expectedComplete = expectedSequence === COLD_START_SAMPLE_COUNT;
+  const samples = payload?.cold_start_handshake?.samples;
+  const sampleList = Array.isArray(samples) ? samples : [];
   const invalidPayload = [
     payload === null,
     typeof payload !== "object",
     Array.isArray(payload),
-    payload.run_nonce !== expectedNonce,
-    payload.source !== "installed-route-log",
-    payload.measurements === null,
-    typeof payload.measurements !== "object",
-    Array.isArray(payload.measurements),
-    payload.measurement_context === null,
-    typeof payload.measurement_context !== "object",
-    Array.isArray(payload.measurement_context),
+    !exactKeys(payload, [
+      "measurement_context",
+      "measurements",
+      "cold_start_handshake",
+      "process_id",
+      "review_required",
+      "run_nonce",
+      "source",
+      "status",
+    ]),
+    !regexMatch(NONCE, payload?.run_nonce),
+    payload?.run_nonce !== expectedNonce,
+    payload?.process_id !== expectedProcessId,
+    payload?.source !== "installed-route-log",
+    payload?.status !== (expectedComplete ? "passed" : "REVIEW_REQUIRED"),
+    !Array.isArray(payload?.review_required),
+    !isDeepStrictEqual(
+      payload?.review_required,
+      expectedComplete ? [] : [COLD_START_REVIEW],
+    ),
+    !exactKeys(payload?.cold_start_handshake, ["next_sequence", "samples"]),
+    payload?.cold_start_handshake?.next_sequence !== (
+      expectedComplete ? null : expectedSequence + 1
+    ),
+    !Array.isArray(samples),
+    sampleList.length !== expectedSequence,
+    !isDeepStrictEqual(sampleList.slice(0, -1), priorSamples),
+    !validColdStartSample(sampleList.at(-1), expectedSequence),
+    sampleList.at(-1)?.process_id !== expectedProcessId,
+    new Set(sampleList.map(({ process_id }) => process_id)).size !== expectedSequence,
+    !isDeepStrictEqual(
+      payload?.measurements?.python_cold_start_ms,
+      sampleList.map(({ value }) => value),
+    ),
+    payload?.measurements === null,
+    typeof payload?.measurements !== "object",
+    Array.isArray(payload?.measurements),
+    payload?.measurement_context === null,
+    typeof payload?.measurement_context !== "object",
+    Array.isArray(payload?.measurement_context),
   ].some(Boolean);
   if (invalidPayload) fail("producer_invalid");
   return Object.freeze({
+    process_id: payload.process_id,
+    review_required: Object.freeze([...payload.review_required]),
+    run_nonce: payload.run_nonce,
+    status: payload.status,
+    cold_start_handshake: Object.freeze({
+      next_sequence: payload.cold_start_handshake.next_sequence,
+      samples: Object.freeze(payload.cold_start_handshake.samples.map((sample) =>
+        Object.freeze({ ...sample })
+      )),
+    }),
     measurements: Object.freeze(payload.measurements),
     measurement_context: Object.freeze(payload.measurement_context),
   });
 }
 
+function benchmarkMarkerFromPidLog(
+  log,
+  expectedNonce,
+  expectedProcessId,
+  expectedSequence,
+  priorSamples,
+) {
+  const lines = log
+    .split(/\r?\n/u)
+    .filter((entry) => entry.includes(BENCHMARK_MARKER));
+  if (lines.length === 0) return null;
+  if (lines.length !== 1) fail("producer_cardinality_invalid");
+  const line = lines[0];
+  let payload;
+  try {
+    payload = JSON.parse(
+      line.slice(line.indexOf(BENCHMARK_MARKER) + BENCHMARK_MARKER.length),
+    );
+  } catch {
+    fail("producer_invalid");
+  }
+  return parseBenchmarkMarker(
+    payload,
+    expectedNonce,
+    expectedProcessId,
+    expectedSequence,
+    priorSamples,
+  );
+}
+
 export function collectInstalledMeasurements() {
   const adb = resolveAndroidTool("adb");
-  const runNonce = randomBytes(16).toString("hex");
-  execFileSync(adb, ["logcat", "-c"], { stdio: "ignore" });
-  execFileSync(adb, [
-    "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
-    `gymtracker-devtest://__phase18-garmin-acceptance?mode=benchmark&confirmation=${PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION}&nonce=${runNonce}`,
-    PACKAGE,
-  ], { stdio: "ignore" });
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    const pid = commandText(adb, ["shell", "pidof", PACKAGE]);
-    if (!/^\d+$/u.test(pid)) {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
-      continue;
+  const coldStartRuns = [];
+  let coldStartSamples = Object.freeze([]);
+  let collected;
+  for (let sequence = 1; sequence <= COLD_START_SAMPLE_COUNT; sequence += 1) {
+    const runNonce = randomBytes(16).toString("hex");
+    const encodedPriorSamples = coldStartSamples.length === 0
+      ? ""
+      : `&coldStartSamples=${encodeURIComponent(JSON.stringify(coldStartSamples))}`;
+    const route = `gymtracker-devtest://__phase18-garmin-acceptance?mode=benchmark&confirmation=${PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION}&nonce=${runNonce}&coldStartSequence=${sequence}${encodedPriorSamples}`;
+    execFileSync(adb, ["logcat", "-c"], { stdio: "ignore" });
+    execFileSync(adb, ["shell", "am", "force-stop", PACKAGE], { stdio: "ignore" });
+    execFileSync(adb, [
+      "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
+      route,
+      PACKAGE,
+    ], { stdio: "ignore" });
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      const pid = commandText(adb, ["shell", "pidof", PACKAGE]);
+      if (!/^\d+$/u.test(pid)) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+        continue;
+      }
+      const log = execFileSync(adb, ["logcat", "--pid", pid, "-d"], { encoding: "utf8" });
+      const parsed = benchmarkMarkerFromPidLog(
+        log,
+        runNonce,
+        Number(pid),
+        sequence,
+        coldStartSamples,
+      );
+      if (parsed === null) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+        continue;
+      }
+      coldStartRuns.push(Object.freeze({
+        sequence,
+        process_id: Number(pid),
+        run_nonce: runNonce,
+      }));
+      coldStartSamples = parsed.cold_start_handshake.samples;
+      if (sequence === COLD_START_SAMPLE_COUNT) {
+        collected = Object.freeze({
+          producer_context: Object.freeze({
+            cold_start_handshake: parsed.cold_start_handshake,
+            cold_start_runs: Object.freeze(coldStartRuns),
+            kind: "installed-route-log",
+            marker: BENCHMARK_MARKER,
+            process_id: parsed.process_id,
+            review_required: parsed.review_required,
+            run_nonce: parsed.run_nonce,
+            source_pid: Number(pid),
+            status: parsed.status,
+          }),
+          measurements: parsed.measurements,
+          measurement_context: parsed.measurement_context,
+        });
+        break;
+      }
+      break;
     }
-    const log = execFileSync(adb, ["logcat", "--pid", pid, "-d"], { encoding: "utf8" });
-    const line = log.split(/\r?\n/u).find((entry) => entry.includes(BENCHMARK_MARKER));
-    if (line !== undefined) {
-      return Object.freeze({
-        producer_context: Object.freeze({
-          kind: "installed-route-log",
-          marker: BENCHMARK_MARKER,
-          run_nonce: runNonce,
-          source_pid: Number(pid),
-        }),
-        ...parseBenchmarkMarker(
-          JSON.parse(line.slice(line.indexOf(BENCHMARK_MARKER) + BENCHMARK_MARKER.length)),
-          runNonce,
-        ),
-      });
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    if (coldStartSamples.length !== sequence) fail("collector_timeout");
   }
-  fail("collector_timeout");
+  return collected;
 }
 
 export function executePhase18GarminBenchmark(args = process.argv.slice(2), dependencies = {}) {
@@ -379,7 +576,7 @@ export function executePhase18GarminBenchmark(args = process.argv.slice(2), depe
     suite: "phase18-garmin-acceptance",
     producer: "phase18-garmin-benchmark/v2",
     producer_context: Object.freeze(collected.producer_context),
-    status: "passed",
+    status: collected.producer_context.status,
     identity: Object.freeze({
       ...identity,
       fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
