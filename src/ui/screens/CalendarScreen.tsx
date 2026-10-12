@@ -463,7 +463,11 @@ export function CalendarScreen({
   useEffect(() => {
     if (returnFocusGeneration === 0) return;
     const retained = calendarReturnRef.current;
-    if (retained === null) return;
+    calendarReturnRef.current = null;
+    if (retained === null) {
+      setRetryGeneration((generation) => generation + 1);
+      return;
+    }
 
     const restoredTransition = Object.freeze({
       ...calendarTransitionRef.current,

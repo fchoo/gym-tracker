@@ -526,6 +526,87 @@ describe("CalendarScreen", () => {
     await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeReturn));
   });
 
+  it("refreshes on root refocus before any detail visit", async () => {
+    const loadCalendarRange = jest.fn(async () => range);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+    const callsBeforeRefocus = loadCalendarRange.mock.calls.length;
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeRefocus));
+    expect(screen.getByText("August 2026")).toBeOnTheScreen();
+  });
+
+  it("consumes detail return state once and keeps the owner's later month on root refocus", async () => {
+    const loadCalendarRange = jest.fn(async () => completedStrengthRange);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await measureAugustFocusedRows();
+    await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
+    await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    expect(await screen.findByText("August 2026")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+    expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+    const callsBeforeRootReturn = loadCalendarRange.mock.calls.length;
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={2}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeRootReturn));
+    expect(screen.getByText("September 2026")).toBeOnTheScreen();
+    expect(screen.queryByText("August 2026")).toBeNull();
+  });
+
   it("retains the last good month during refresh and retries the exact failed range", async () => {
     let rejectNextRange: ((error: Error) => void) | undefined;
     const loadCalendarRange = jest.fn() as jest.MockedFunction<CalendarReadPort["loadCalendarRange"]>;
