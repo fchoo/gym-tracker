@@ -4,6 +4,7 @@ import type {
 } from "../history";
 import type {
   MetricIdentity,
+  MetricExposure,
   MetricTarget,
 } from "../metrics";
 
@@ -262,6 +263,20 @@ export type ProgressStrengthDashboardProjection = Readonly<{
   facts: readonly ProgressRecord[];
 }>;
 
+/** Effective Strength facts retain the metric boundary and revision fence used
+ * to decide whether a pending recommendation is still actionable. */
+export type ProgressStrengthFactInput = Readonly<{
+  record: ProgressRecord;
+  metricExposure: MetricExposure;
+  effectiveRevision: number;
+  targetRevision: number;
+  recommendation?: Readonly<{
+    status: "pending" | "accepted" | "rejected" | "invalidated" | "superseded";
+    sourceRevision: number;
+    targetRevision: number;
+  }>;
+}>;
+
 export type ProgressDashboardProjection =
   | ProgressAllDashboardProjection
   | ProgressStrengthDashboardProjection
@@ -274,7 +289,8 @@ export type ProgressDashboardInput = Readonly<{
     targets: readonly ProgressGoalRevision[];
   }>;
   strength?: Readonly<{
-    facts: readonly ProgressRecord[];
+    facts?: readonly ProgressRecord[];
+    candidates?: readonly ProgressStrengthFactInput[];
   }>;
   goals?: readonly ProgressGoalRevision[];
 }>;

@@ -6,6 +6,7 @@ import type {
   ProgressRunningEffort,
   ProgressRunningGoal,
 } from "./contracts";
+import { projectStrengthComparableFacts } from "./periodProjection";
 
 function validIdentifier(value: string): boolean {
   return value.trim() === value && value.length > 0;
@@ -17,7 +18,7 @@ function validPositiveInteger(value: number): boolean {
 
 function compareGoals(left: ProgressGoalRevision, right: ProgressGoalRevision): number {
   return left.sourceOrder - right.sourceOrder
-    || (left.targetLocalDate ?? "\\uffff").localeCompare(right.targetLocalDate ?? "\\uffff")
+    || (left.targetLocalDate ?? "\uFFFF").localeCompare(right.targetLocalDate ?? "\uFFFF")
     || left.sport.localeCompare(right.sport)
     || left.targetId.localeCompare(right.targetId)
     || left.revision - right.revision;
@@ -134,7 +135,9 @@ export function projectProgressDashboard(input: ProgressDashboardInput): Progres
     return runningProjection(input.running ?? { activities: [], targets: [] });
   }
   if (input.sport === "Strength") {
-    const facts = input.strength?.facts ?? [];
+    const facts = input.strength?.candidates === undefined
+      ? input.strength?.facts ?? []
+      : projectStrengthComparableFacts(input.strength.candidates);
     return Object.freeze({
       sport: "Strength" as const,
       state: facts.length === 0 ? "empty" as const : facts.length === 1 ? "sparse" as const : "ready" as const,
