@@ -2,7 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { addLocalDays, parseLocalDate, type LocalDate } from "../../domains/scheduling";
-import { weekdayForLocalDate } from "../../domains/scheduling/localDate";
+import {
+  addLocalMonthsClamped,
+  calendarGridForMonth,
+  startOfLocalMonth,
+} from "../../domains/scheduling/localDate";
 import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
 import { CalendarWeekRow } from "../calendar/CalendarWeekRow";
 import { IconAction, ScreenHeader, SkeletonBlock } from "../components";
@@ -27,32 +31,16 @@ type CalendarScreenProps = Readonly<{
   settingsActionNativeID?: string;
 }>;
 
-function startOfMonth(value: LocalDate): LocalDate {
-  return parseLocalDate(`${value.slice(0, 8)}01`);
-}
-
 function monthLabel(value: LocalDate): string {
   return `${MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? ""} ${value.slice(0, 4)}`;
 }
 
-function mondayGridStart(value: LocalDate): LocalDate {
-  const weekday = weekdayForLocalDate(value);
-  const mondayOffset = weekday === "Sunday" ? 6 : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].indexOf(weekday);
-  return addLocalDays(value, -mondayOffset);
-}
-
-function sixWeekGrid(value: LocalDate): readonly LocalDate[] {
-  const start = mondayGridStart(startOfMonth(value));
-  return Array.from({ length: 42 }, (_, offset) => addLocalDays(start, offset));
-}
-
 function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate | null {
-  const year = Number(value.slice(0, 4));
-  const month = Number(value.slice(5, 7)) + direction;
-  const nextYear = month === 0 ? year - 1 : month === 13 ? year + 1 : year;
-  const nextMonth = month === 0 ? 12 : month === 13 ? 1 : month;
-  if (nextYear < 1 || nextYear > 9_999) return null;
-  return parseLocalDate(`${String(nextYear).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01`);
+  try {
+    return startOfLocalMonth(addLocalMonthsClamped(value, direction));
+  } catch {
+    return null;
+  }
 }
 
 export function CalendarScreen({
@@ -67,10 +55,11 @@ export function CalendarScreen({
 }: CalendarScreenProps) {
   const { colors } = useAppTheme();
   const parsedToday = parseLocalDate(today);
-  const [month, setMonth] = useState(() => startOfMonth(parseLocalDate(initialDate)));
+  const [month, setMonth] = useState(() => startOfLocalMonth(parseLocalDate(initialDate)));
   const [selectedDate, setSelectedDate] = useState(() => parseLocalDate(initialDate));
   const [range, setRange] = useState<CalendarRange | null>(null);
-  const grid = useMemo(() => sixWeekGrid(month), [month]);
+  const weekRows = useMemo(() => calendarGridForMonth(month), [month]);
+  const grid = useMemo(() => weekRows.flat(), [weekRows]);
   const rangeInput = useMemo(() => ({
     startLocalDate: grid[0]!,
     endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 1),
@@ -124,7 +113,7 @@ export function CalendarScreen({
           </View>
           <View accessibilityLabel="Calendar month grid" style={styles.grid}>
             <View style={styles.weekdayRow}>{MONDAY_FIRST.map((day) => <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>{day}</Text>)}</View>
-            {[0, 1, 2, 3, 4, 5].map((row) => <CalendarWeekRow dates={grid.slice(row * 7, row * 7 + 7)} eventsByDate={eventsByDate} key={grid[row * 7]} month={month} onPressDate={(date, events) => { setSelectedDate(date); const first = events[0]; if (first !== undefined) onOpenEvent(first.destination); }} selectedDate={selectedDate} today={parsedToday} />)}
+            {weekRows.map((dates) => <CalendarWeekRow dates={dates} eventsByDate={eventsByDate} key={dates[0]} month={month} onPressDate={(date, events) => { setSelectedDate(date); const first = events[0]; if (first !== undefined) onOpenEvent(first.destination); }} selectedDate={selectedDate} today={parsedToday} />)}
           </View>
         </>
       )}

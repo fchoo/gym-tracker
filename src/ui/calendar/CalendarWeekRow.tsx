@@ -7,6 +7,11 @@ import {
 } from "react-native";
 
 import type { LocalDate } from "../../domains/scheduling";
+import {
+  calendarDayAccessibilityLabel,
+  calendarDayPresentation,
+  orderedCalendarEvents,
+} from "../../domains/history/calendar";
 import type { CalendarEvent } from "./calendarPorts";
 import { FocusablePressable } from "../components";
 import { radius, sizes, typeScale, useAppTheme } from "../theme";
@@ -18,16 +23,6 @@ const MONTH_NAMES = [
 
 function fullDate(value: LocalDate): string {
   return `${Number(value.slice(8, 10))} ${MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? ""} ${value.slice(0, 4)}`;
-}
-
-function statusLabel(status: CalendarEvent["status"]): string {
-  switch (status) {
-    case "completed": return "Complete";
-    case "partial": return "Partial";
-    case "planned": return "Planned";
-    case "imported": return "Imported";
-    case "matched": return "Matched";
-  }
 }
 
 export function CalendarWeekRow({
@@ -50,17 +45,17 @@ export function CalendarWeekRow({
   return (
     <View style={styles.row} testID="calendar-week-row">
       {dates.map((date) => {
-        const events = eventsByDate.get(date) ?? [];
+        const events = orderedCalendarEvents(eventsByDate.get(date) ?? []);
+        const presentation = calendarDayPresentation(events);
         const outsideMonth = date.slice(0, 7) !== month.slice(0, 7);
         const selected = date === selectedDate;
-        const label = [
-          fullDate(date),
-          date === today ? "today" : null,
-          outsideMonth ? "outside month" : null,
-          events.length === 0 ? "No workout" : `${events.length} scheduled or imported event${events.length === 1 ? "" : "s"}`,
-          ...events.flatMap((event) => [event.title, event.sport === "strength" ? "Strength" : "Running", statusLabel(event.status), event.sourceLabel]),
-          selected ? "selected" : null,
-        ].filter((value): value is string => value !== null).join(". ");
+        const label = calendarDayAccessibilityLabel({
+          date: fullDate(date),
+          events,
+          isOutsideMonth: outsideMonth,
+          isSelected: selected,
+          isToday: date === today,
+        });
 
         return (
           <FocusablePressable
@@ -81,7 +76,7 @@ export function CalendarWeekRow({
           >
             <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{Number(date.slice(8, 10))}</Text>
             <View style={styles.events}>
-              {events.slice(0, 2).map((event) => (
+              {presentation.visualEvents.map((event) => (
                 <Text
                   accessible={false}
                   key={event.id}
