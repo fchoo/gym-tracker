@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -39,5 +39,34 @@ describe("RunningHistorySheet", () => {
 
     await fireEvent.press(rendered.getByLabelText("Close 2.4 km best efforts"));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a persisted target in no-effort state and makes retry a full 48dp action", async () => {
+    const noEffortGoal: ProgressRunningGoal = Object.freeze({ ...goal, history: Object.freeze([]) });
+    const empty = await render(<AppearanceProvider><RunningHistorySheet goal={noEffortGoal} onClose={jest.fn()} rangeLabel="All time" visible /></AppearanceProvider>);
+    expect(empty.getByText("No effort recorded")).toBeTruthy();
+    expect(empty.getByText("Target")).toBeTruthy();
+    expect(empty.getByText("11:00")).toBeTruthy();
+
+    const retry = jest.fn();
+    const failed = await render(<AppearanceProvider><RunningHistorySheet goal={goal} onClose={jest.fn()} onRetry={retry} rangeLabel="All time" state="source_error" visible /></AppearanceProvider>);
+    const retryAction = failed.getByRole("button", { name: "Retry history" });
+    expect(retryAction).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(retryAction);
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses stale final values while rebuilding and restores the invoking focus on cancellation", async () => {
+    const focus = jest.fn();
+    const restoreFocusRef = { current: { focus } as never };
+    const onClose = jest.fn();
+    const rendered = await render(<AppearanceProvider><RunningHistorySheet goal={goal} onClose={onClose} rangeLabel="All time" restoreFocusRef={restoreFocusRef} state="rebuilding" visible /></AppearanceProvider>);
+    expect(rendered.getByText("Updating progress")).toBeTruthy();
+    expect(rendered.queryByText("10:54")).toBeNull();
+    expect(rendered.queryByRole("button", { name: "Open source" })).toBeNull();
+
+    await fireEvent.press(rendered.getByLabelText("Close 2.4 km best efforts"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(focus).toHaveBeenCalledTimes(1));
   });
 });
