@@ -170,10 +170,14 @@ export function CalendarScreen({
   }> | null>(null);
   const weekRows = useMemo(() => calendarGridForMonth(month), [month]);
   const grid = useMemo(() => weekRows.flat(), [weekRows]);
-  const rangeInput = useMemo(() => ({
-    startLocalDate: grid[0]!,
-    endLocalDateExclusive: addLocalDays(grid[grid.length - 1]!, 8),
-  }), [grid]);
+  const rangeInput = useMemo(() => {
+    const previousPanel = calendarGridForMonth(nextMonth(month, -1) ?? month).flat();
+    const nextPanel = calendarGridForMonth(nextMonth(month, 1) ?? month).flat();
+    return {
+      startLocalDate: previousPanel[0] ?? grid[0]!,
+      endLocalDateExclusive: addLocalDays(nextPanel[nextPanel.length - 1] ?? grid[grid.length - 1]!, 8),
+    };
+  }, [grid, month]);
 
   const currentDiagnosticState = useCallback(() => {
     if (diagnostics === undefined) return null;

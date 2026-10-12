@@ -189,8 +189,50 @@ describe("CalendarScreen", () => {
       "strength-session-1",
     );
     expect(loadCalendarRange).toHaveBeenCalledWith({
-      startLocalDate: "2026-07-27",
-      endLocalDateExclusive: "2026-09-14",
+      startLocalDate: "2026-06-29",
+      endLocalDateExclusive: "2026-10-12",
+    });
+  });
+
+  it("keeps events at both adjacent-panel outer boundaries in the rendered previews", async () => {
+    const boundaryRange = Object.freeze({
+      events: Object.freeze([
+        Object.freeze({
+          ...range.events[0],
+          id: "previous-boundary",
+          localDate: "2026-06-29",
+          title: "Previous boundary session",
+          destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: "previous-boundary" }),
+        }),
+        Object.freeze({
+          ...range.events[0],
+          id: "next-boundary",
+          localDate: "2026-10-04",
+          title: "Next boundary session",
+          destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: "next-boundary" }),
+        }),
+      ]),
+    }) as CalendarRange;
+    const loadCalendarRange = jest.fn(async () => boundaryRange);
+
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-event-chip-previous-boundary", { includeHiddenElements: true })).toBeOnTheScreen();
+      expect(screen.getByTestId("calendar-event-chip-next-boundary", { includeHiddenElements: true })).toBeOnTheScreen();
+    });
+    expect(loadCalendarRange).toHaveBeenCalledWith({
+      startLocalDate: "2026-06-29",
+      endLocalDateExclusive: "2026-10-12",
     });
   });
 
@@ -442,8 +484,8 @@ describe("CalendarScreen", () => {
     expect(await screen.findByText("August 2026")).toBeOnTheScreen();
     await waitFor(() => {
       expect(loadCalendarRange).toHaveBeenLastCalledWith({
-        startLocalDate: "2026-07-27",
-        endLocalDateExclusive: "2026-09-14",
+        startLocalDate: "2026-06-29",
+        endLocalDateExclusive: "2026-10-12",
       });
     });
     expect(onOpenEvent).toHaveBeenCalledTimes(1);
@@ -523,8 +565,8 @@ describe("CalendarScreen", () => {
 
     await waitFor(() => {
       expect(loadCalendarRange).toHaveBeenLastCalledWith({
-        startLocalDate: "2026-08-31",
-        endLocalDateExclusive: "2026-10-12",
+        startLocalDate: "2026-07-27",
+        endLocalDateExclusive: "2026-11-09",
       });
     });
   });
