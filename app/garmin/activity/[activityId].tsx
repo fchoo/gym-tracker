@@ -18,13 +18,16 @@ import {
 } from "expo-crypto";
 
 import {
-  parseGarminRootOrigin,
   type GarminRootOrigin,
 } from "../../../src/bootstrap/garminImportRuntime";
 import {
   parseImportedActivityLocalId,
   type ImportedActivityDetailReadResult,
 } from "../../../src/domains/activities/activityDetails";
+import {
+  parseCalendarRouteOrigin,
+  parseScalarRouteParam,
+} from "../../../src/navigation/routeOrigin";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
 import { CalendarImportedActivityRouteAdapter } from "../../../src/ui/calendar/CalendarRouteAdapters";
 import { GarminRouteShell } from "../../../src/ui/garmin/GarminRouteShell";
@@ -42,10 +45,6 @@ type ActivityDetailRouteInput = Readonly<{
   returnToken?: string;
 }>;
 
-function scalar(value: string | readonly string[] | undefined): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
 function hasRevisionReview(
   state: ImportedActivityDetailScreenState,
 ): state is Extract<
@@ -53,16 +52,6 @@ function hasRevisionReview(
   Readonly<{ kind: "revision_review"; review: unknown }>
 > {
   return state.kind === "revision_review" && "review" in state;
-}
-
-function validRouteContext(origin: unknown, returnToken: unknown): boolean {
-  if (origin !== undefined && origin !== "workout" && origin !== "calendar" && origin !== "library" && origin !== "progress") {
-    return false;
-  }
-  if (returnToken === undefined) return true;
-  return origin === "calendar"
-    && typeof returnToken === "string"
-    && CALENDAR_RETURN_TOKEN.test(returnToken);
 }
 
 export function createImportedActivityDetailHref(input: ActivityDetailRouteInput): Href {
@@ -208,17 +197,26 @@ export default function ImportedActivityDetailRoute() {
     origin?: string | readonly string[];
     returnToken?: string | readonly string[];
   }>;
-  const rawActivityId = scalar(params.activityId);
-  const origin = parseGarminRootOrigin(scalar(params.origin));
-  const returnToken = scalar(params.returnToken);
-  const activityId = useMemo(
-    () => validRouteContext(origin, returnToken)
-      ? parseImportedActivityLocalId(rawActivityId)
-      : null,
-    [origin, rawActivityId, returnToken],
-  );
-  if (origin === "calendar") {
+  const parsedOrigin = parseCalendarRouteOrigin(params.origin, {
+    absentManagementOrigin: "workout",
+    managementOrigins: ["workout", "library", "progress"] as const,
+  });
+  const parsedActivityId = parseScalarRouteParam(params.activityId);
+  const parsedReturnToken = parseScalarRouteParam(params.returnToken);
+  const validReturnToken = parsedReturnToken.kind === "absent"
+    || (parsedOrigin.kind === "calendar"
+      && parsedReturnToken.kind === "value"
+      && CALENDAR_RETURN_TOKEN.test(parsedReturnToken.value));
+  const activityId = parsedOrigin.kind === "invalid"
+    || parsedActivityId.kind !== "value"
+    || !validReturnToken
+    ? null
+    : parseImportedActivityLocalId(parsedActivityId.value);
+  if (parsedOrigin.kind === "invalid" || !validReturnToken) {
+    return <CalendarImportedActivityRouteAdapter activityId={null} onBack={() => router.back()} />;
+  }
+  if (parsedOrigin.kind === "calendar") {
     return <CalendarImportedActivityRouteAdapter activityId={activityId} onBack={() => router.back()} />;
   }
-  return <ManagementImportedActivityDetailRoute activityId={activityId} origin={origin} />;
+  return <ManagementImportedActivityDetailRoute activityId={activityId} origin={parsedOrigin.origin} />;
 }

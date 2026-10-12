@@ -525,7 +525,7 @@ export function ImportedActivityDetailScreen({
         />
       )}
     </>
-  ), [headingRef, matchActionRef, onAcceptRevision, onKeepRevision, onMatch, onRetry, requestBack, stackedLaps, state]);
+  ), [headingRef, matchActionRef, mode, onAcceptRevision, onKeepRevision, onMatch, onRetry, requestBack, stackedLaps, state]);
   return (
     <>
       <AdaptiveScreen

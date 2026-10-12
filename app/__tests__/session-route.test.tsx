@@ -84,6 +84,17 @@ describe("SessionDetailRoute", () => {
     expect(mockGetSessionDetail).not.toHaveBeenCalled();
   });
 
+  it.each(["unknown", ["calendar"]] as const)(
+    "rejects untrusted origin %p without acquiring either runtime",
+    async (origin) => {
+      mockParams = { sessionId: "calendar-session", origin };
+      await render(<SessionDetailRoute />);
+      expect(await screen.findByText("Workout details unavailable")).toBeOnTheScreen();
+      expect(mockGetSessionDetail).not.toHaveBeenCalled();
+      expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
+    },
+  );
+
   it("retains management commands outside the explicit Calendar origin", async () => {
     mockParams = { sessionId: "calendar-session" };
     mockGetSessionDetail.mockResolvedValue(detail);

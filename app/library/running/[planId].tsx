@@ -2,11 +2,24 @@ import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 
 import { useRunningPlanRuntime } from "../../../src/bootstrap/runningPlanRuntime";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
+import { parseCalendarRouteOrigin, parseScalarRouteParam } from "../../../src/navigation/routeOrigin";
 import { CalendarRunningPlanRouteAdapter } from "../../../src/ui/calendar/CalendarRouteAdapters";
+import { EmptyState, ScreenHeader, SecondaryAction } from "../../../src/ui/components";
+import { AdaptiveScreen } from "../../../src/ui/layout/AdaptiveScreen";
 import { RunningPlanDetailScreen } from "../../../src/ui/screens/RunningPlanDetailScreen";
 
 function routeId(value: string | string[] | undefined): string | null {
-  return typeof value === "string" && value.trim() !== "" ? value : null;
+  const parsed = parseScalarRouteParam(value);
+  return parsed.kind === "value" ? parsed.value : null;
+}
+
+function RunningPlanRouteUnavailable() {
+  return <>
+    <Stack.Screen options={{ gestureEnabled: false }} />
+    <AdaptiveScreen
+      primary={<><ScreenHeader backAction={() => router.back()} density="deep" eyebrow="RUNNING" title="Running plan" /><EmptyState body="This route is invalid or no longer available." heading="Running plan not found" primaryAction={<SecondaryAction label="Go back" onPress={() => router.back()} />} /></>}
+    />
+  </>;
 }
 
 function ManagementRunningPlanDetailRoute({ planId }: Readonly<{ planId: string }>) {
@@ -45,9 +58,12 @@ export default function RunningPlanDetailRoute() {
     planId?: string | string[];
   }>();
   const planId = routeId(rawPlanId);
-  const calendarOrigin = routeId(rawOrigin) === "calendar";
-  if (planId === null) return null;
-  if (calendarOrigin) {
+  const origin = parseCalendarRouteOrigin(rawOrigin, {
+    absentManagementOrigin: "library",
+    managementOrigins: ["library"] as const,
+  });
+  if (planId === null || origin.kind === "invalid") return <RunningPlanRouteUnavailable />;
+  if (origin.kind === "calendar") {
     return <>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <CalendarRunningPlanRouteAdapter planId={planId} onBack={() => router.back()} />

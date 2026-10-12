@@ -12,8 +12,22 @@ import {
 } from "@jest/globals";
 import React from "react";
 
+import { AppearanceProvider } from "../../src/ui/theme";
+
 const mockBack = jest.fn();
 const mockPush = jest.fn();
+const mockUseRunningPlanRuntime = jest.fn(() => ({
+  commitScheduleCollisionChoice: jest.fn(),
+  confirmLifecycle: jest.fn(),
+  createId: (kind: string) => `${kind}:request`,
+  loadPlan: jest.fn(),
+  previewLifecycle: jest.fn(),
+  previewScheduleCollision: jest.fn(),
+  previewScheduleCollisionForPlan: jest.fn(),
+}));
+let mockParams: Readonly<{ planId?: string | readonly string[]; origin?: string | readonly string[] }> = {
+  planId: "running-plan:tempo-01",
+};
 let mockScreenProps: Readonly<Record<string, unknown>> = {};
 
 jest.mock("expo-router", () => ({
@@ -22,20 +36,12 @@ jest.mock("expo-router", () => ({
     back: (...args: readonly unknown[]) => mockBack(...args),
     push: (...args: readonly unknown[]) => mockPush(...args),
   },
-  useLocalSearchParams: () => ({ planId: "running-plan:tempo-01" }),
+  useLocalSearchParams: () => mockParams,
 }));
 
 jest.mock("../../src/bootstrap/runningPlanRuntime", () => ({
   useCalendarRunningPlanReadPort: () => ({ loadPlan: jest.fn() }),
-  useRunningPlanRuntime: () => ({
-    commitScheduleCollisionChoice: jest.fn(),
-    confirmLifecycle: jest.fn(),
-    createId: (kind: string) => `${kind}:request`,
-    loadPlan: jest.fn(),
-    previewLifecycle: jest.fn(),
-    previewScheduleCollision: jest.fn(),
-    previewScheduleCollisionForPlan: jest.fn(),
-  }),
+  useRunningPlanRuntime: () => mockUseRunningPlanRuntime(),
 }));
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
@@ -87,7 +93,9 @@ describe("Running plan contextual Garmin route", () => {
   beforeEach(() => {
     mockBack.mockReset();
     mockPush.mockReset();
+    mockUseRunningPlanRuntime.mockClear();
     mockScreenProps = {};
+    mockParams = { planId: "running-plan:tempo-01" };
   });
 
   it("pushes the shared Garmin root once with only origin library", async () => {
@@ -116,4 +124,14 @@ describe("Running plan contextual Garmin route", () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  it.each(["unknown", ["calendar"]] as const)(
+    "fails closed for untrusted origin %p without acquiring management authority",
+    async (origin) => {
+      mockParams = { planId: "running-plan:tempo-01", origin };
+      await render(<AppearanceProvider><RunningPlanDetailRoute /></AppearanceProvider>);
+      expect(screen.getByText("Running plan not found")).toBeOnTheScreen();
+      expect(mockUseRunningPlanRuntime).not.toHaveBeenCalled();
+    },
+  );
 });

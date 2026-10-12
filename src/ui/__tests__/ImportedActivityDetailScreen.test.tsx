@@ -89,6 +89,34 @@ describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
     expect(props.onMatch).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: /edit|delete|remove|replace/u })).toBeNull();
   });
+
+  it("removes management actions when a reused screen changes to Calendar mode", async () => {
+    const onMatch = jest.fn();
+    const rendered = await render(
+      <AppearanceProvider>
+        <ImportedActivityDetailScreen
+          mode="management"
+          onBack={jest.fn()}
+          onMatch={onMatch}
+          onRetry={jest.fn()}
+          state={{ kind: "ready", detail: outdoorDetail }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Match to scheduled workout" })).toBeOnTheScreen();
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <ImportedActivityDetailScreen
+          mode="calendar"
+          onBack={jest.fn()}
+          onRetry={jest.fn()}
+          state={{ kind: "ready", detail: outdoorDetail }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "Match to scheduled workout" })).toBeNull();
+  });
 });
 
 describe("ImportedActivityDetailScreen missing-channel and reflow matrix", () => {

@@ -15,6 +15,11 @@ import type {
   SessionDetail,
 } from "../../src/domains/workout";
 import {
+  parseCalendarRouteOrigin,
+  parseScalarRouteParam,
+  type RouteParam,
+} from "../../src/navigation/routeOrigin";
+import {
   EmptyState,
   PrimaryAction,
   ScreenHeader,
@@ -30,14 +35,17 @@ import {
   SessionDetailScreen,
 } from "../../src/ui/screens/SessionDetailScreen";
 
-type RouteParam = string | readonly string[] | undefined;
-
 function exactRouteParam(value: RouteParam): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  const parsed = parseScalarRouteParam(value);
+  return parsed.kind === "value" ? parsed.value : null;
 }
 
-function isCalendarOrigin(value: RouteParam): boolean {
-  return value === "calendar";
+function SessionRouteUnavailable() {
+  return (
+    <AdaptiveScreen
+      primary={<><ScreenHeader backAction={() => router.back()} title="Workout details" /><EmptyState body="This workout route is invalid or no longer available." heading="Workout details unavailable" primaryAction={<PrimaryAction label="Go back" onPress={() => router.back()} />} /></>}
+    />
+  );
 }
 
 function ManagementSessionDetailRoute({ sessionId }: Readonly<{ sessionId: string }>) {
@@ -138,13 +146,18 @@ function ManagementSessionDetailRoute({ sessionId }: Readonly<{ sessionId: strin
 }
 
 export default function SessionDetailRoute() {
-  const { sessionId, origin } = useLocalSearchParams() as Readonly<{
+  const { sessionId, origin: rawOrigin } = useLocalSearchParams() as Readonly<{
     sessionId?: RouteParam;
     origin?: RouteParam;
   }>;
   const resolvedSessionId = exactRouteParam(sessionId);
+  const origin = parseCalendarRouteOrigin(rawOrigin, {
+    absentManagementOrigin: "direct",
+    managementOrigins: ["progress"] as const,
+  });
 
-  if (isCalendarOrigin(origin)) {
+  if (origin.kind === "invalid") return <SessionRouteUnavailable />;
+  if (origin.kind === "calendar") {
     return (
       <CalendarSessionDetailRouteAdapter
         onBack={() => router.back()}
@@ -152,5 +165,7 @@ export default function SessionDetailRoute() {
       />
     );
   }
-  return <ManagementSessionDetailRoute sessionId={resolvedSessionId ?? "unknown"} />;
+  return resolvedSessionId === null
+    ? <SessionRouteUnavailable />
+    : <ManagementSessionDetailRoute sessionId={resolvedSessionId} />;
 }
