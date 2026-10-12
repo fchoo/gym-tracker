@@ -1,5 +1,13 @@
 import type { PlannedStrengthOccurrenceDetail } from "../domains/workout";
 import { addLocalDays, parseLocalDate } from "../domains/scheduling";
+import { commitBodyweightCommand } from "../domains/bodyweight/commands";
+import type {
+  BodyweightCommand,
+  BodyweightEntryState,
+  BodyweightTransition,
+} from "../domains/bodyweight/contracts";
+import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
+import { createBodyweightRepository } from "../platform/sqlite/repositories/bodyweightRepository";
 import {
   createTrainingCalendarRepository,
   type TrainingCalendarRange,
@@ -14,6 +22,8 @@ export type TrainingFoundationRuntimePort = Readonly<{
     startLocalDate: string;
     endLocalDateExclusive: string;
   }>): Promise<TrainingCalendarRange>;
+  loadBodyweightHistory(ownerId: string): Promise<readonly BodyweightEntryState[]>;
+  commitBodyweight(input: BodyweightCommand): Promise<BodyweightTransition>;
 }>;
 
 /** Query-only cross-domain handoff for later Today and Calendar consumers. */
@@ -24,6 +34,7 @@ export function createTrainingFoundationRuntimePort(kernel: SqliteKernel): Train
     throw new Error("planned_strength_occurrence_loader_unavailable");
   }
   const calendar = createTrainingCalendarRepository(kernel);
+  const bodyweight = createBodyweightRepository(kernel);
   return Object.freeze({
     loadPlannedStrengthOccurrence: (occurrenceId) =>
       loadPlannedStrengthOccurrence(occurrenceId),
@@ -35,5 +46,7 @@ export function createTrainingFoundationRuntimePort(kernel: SqliteKernel): Train
       });
     },
     loadCalendarRange: (input) => calendar.loadRange(input),
+    loadBodyweightHistory: (ownerId) => bodyweight.history(ownerId),
+    commitBodyweight: (input) => commitBodyweightCommand(bodyweight, input, runtimeSha256),
   });
 }

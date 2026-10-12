@@ -8,7 +8,7 @@ import { AppearanceProvider } from "../theme";
 describe("BodyweightEditorSheet", () => {
   it("keeps a local decimal draft and submits canonical grams once", async () => {
     const onSave = jest.fn(async () => undefined);
-    render(
+    await render(
       <AppearanceProvider>
         <BodyweightEditorSheet
           expectedRevision={0}
@@ -23,8 +23,8 @@ describe("BodyweightEditorSheet", () => {
 
     expect(screen.getByText("Add bodyweight")).toBeOnTheScreen();
     expect(screen.getByText("Optional measurement. It never changes workout targets automatically.")).toBeOnTheScreen();
-    fireEvent.changeText(screen.getByLabelText("Bodyweight, kg"), "62.5");
-    fireEvent.press(screen.getByRole("button", { name: "Save entry" }));
+    await fireEvent.changeText(screen.getByLabelText("Bodyweight, kg"), "62.5");
+    await fireEvent.press(screen.getByRole("button", { name: "Save entry" }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledWith({
