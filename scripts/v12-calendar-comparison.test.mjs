@@ -8,6 +8,12 @@ import test from "node:test";
 import { PNG } from "pngjs";
 
 import {
+  V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
+  V12_CALENDAR_REQUIRED_CASE_IDS,
+  V12_CALENDAR_STATIC_CONFIGURATIONS,
+} from "./v12-calendar-case-registry.mjs";
+
+import {
   compareV12Calendar,
   validateV12CalendarComparison,
   validateV12CalendarReferenceMap,
@@ -35,6 +41,7 @@ function completeFixture() {
     prototype_revision: 18,
     source_manifest_sha256: "a".repeat(64),
     host_only_fixture: true,
+    case_registry: V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
     captures: [{
       id: "calendar-month-light-390",
       requirement_ids: ["CAL-01"],
@@ -83,6 +90,7 @@ test("Calendar comparison creates individually hashed artifacts while keeping na
     const result = compareV12Calendar({ map: fixture.map, run: fixture.run, outputDirectory: path.join(fixture.directory, "comparison") });
     assert.equal(result.status, "REVIEW_REQUIRED");
     assert.equal(result.records.length, 1);
+    assert.deepEqual(result.case_results.map(({ id }) => id), V12_CALENDAR_REQUIRED_CASE_IDS);
     assert.match(result.records[0].overlay.sha256, /^[a-f0-9]{64}$/u);
     assert.doesNotMatch(JSON.stringify(result), /PASS|serial|token|email/u);
     assert.equal(validateV12CalendarComparison(result), true);
@@ -146,6 +154,37 @@ test("Calendar map requires a unique exact Revision 18 reference and Light/Dark/
       value.case_ledger = missing === "Light" ? [] : [{ id: missing, capture_ids: [value.captures[0].id], theme: missing === "Dark" ? "Dark" : "Light", motion: missing === "reduced-motion" ? "reduced" : "normal", input: missing === "accessibility" ? "keyboard" : "touch", viewport: "390x844" }];
       assert.throws(() => validateV12CalendarReferenceMap(value));
     }
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test("Calendar reference coverage is bound to the exact source-owned 64-configuration and state registry", () => {
+  assert.equal(V12_CALENDAR_STATIC_CONFIGURATIONS.length, 64);
+  assert.equal(new Set(V12_CALENDAR_STATIC_CONFIGURATIONS.map(({ id }) => id)).size, 64);
+  assert.deepEqual(
+    new Set(V12_CALENDAR_STATIC_CONFIGURATIONS.map(({ viewport }) => viewport.width)),
+    new Set([360, 390, 600, 840, 800, 844, 960, 1080]),
+  );
+  assert.ok(V12_CALENDAR_REQUIRED_CASE_IDS.includes("state:calendar-loading-month"));
+  assert.ok(V12_CALENDAR_REQUIRED_CASE_IDS.includes("state:calendar-rest-day"));
+  assert.ok(V12_CALENDAR_REQUIRED_CASE_IDS.includes("state:calendar-query-error-retry"));
+  assert.ok(V12_CALENDAR_REQUIRED_CASE_IDS.includes("input:dpad"));
+
+  const fixture = completeFixture();
+  try {
+    assert.equal(validateV12CalendarReferenceMap(fixture.map), true);
+    const incomplete = structuredClone(fixture.map);
+    incomplete.case_registry.sha256 = "0".repeat(64);
+    assert.throws(() => validateV12CalendarReferenceMap(incomplete), /case_registry_invalid/u);
+
+    const result = compareV12Calendar({
+      map: fixture.map,
+      run: fixture.run,
+      outputDirectory: path.join(fixture.directory, "matrix"),
+    });
+    result.case_results.pop();
+    assert.throws(() => validateV12CalendarComparison(result), /case_result_set_invalid/u);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }
