@@ -53,7 +53,13 @@ internal interface GarminAtomicWriter {
   fun remove(target: File)
 }
 
-internal class AndroidGarminAtomicWriter : GarminAtomicWriter {
+internal class AndroidGarminAtomicWriter(
+  private val renameFile: (File, File) -> Unit = { source, destination ->
+    Os.rename(source.absolutePath, destination.absolutePath)
+  },
+  private val deleteFile: (File) -> Boolean = { file -> file.delete() },
+  private val syncDirectory: (File) -> Unit = ::fsyncGarminDirectory,
+) : GarminAtomicWriter {
   override fun replace(target: File, bytes: ByteArray, verify: (File) -> Unit) {
     val parent = target.parentFile ?: throw GarminTokenStoreException("garmin_token_write_failed")
     if ((!parent.exists() && !parent.mkdirs()) || !parent.isDirectory) {
@@ -71,10 +77,10 @@ internal class AndroidGarminAtomicWriter : GarminAtomicWriter {
         output.fd.sync()
       }
       verify(temporary)
-      Os.rename(temporary.absolutePath, target.absolutePath)
+      renameFile(temporary, target)
       target.setReadable(true, true)
       target.setWritable(true, true)
-      fsyncDirectory(parent)
+      syncDirectory(parent)
     } catch (error: GarminTokenStoreException) {
       throw error
     } catch (_: Throwable) {
@@ -85,40 +91,46 @@ internal class AndroidGarminAtomicWriter : GarminAtomicWriter {
   }
 
   override fun remove(target: File) {
-    if (!target.exists()) return
     val parent = target.parentFile ?: throw GarminTokenStoreException("garmin_token_clear_failed")
     val tombstone = File(parent, ".${target.name}.deleted")
+    if (!target.exists() && !tombstone.exists()) return
     try {
-      if (tombstone.exists() && !tombstone.delete()) {
+      if (tombstone.exists()) {
+        deleteTombstone(tombstone, parent)
+      }
+      if (target.exists()) {
+        renameFile(target, tombstone)
+        syncDirectory(parent)
+        deleteTombstone(tombstone, parent)
+      }
+      if (target.exists() || tombstone.exists()) {
         throw GarminTokenStoreException("garmin_token_clear_failed")
       }
-      Os.rename(target.absolutePath, tombstone.absolutePath)
-      fsyncDirectory(parent)
-      val deleted = !tombstone.exists() || tombstone.delete()
-      if (!deleted || tombstone.exists()) {
-        throw GarminTokenStoreException("garmin_token_clear_failed")
-      }
-      fsyncDirectory(parent)
-    } catch (error: GarminTokenStoreException) {
-      throw error
     } catch (_: Throwable) {
       throw GarminTokenStoreException("garmin_token_clear_failed")
     }
   }
 
-  private fun fsyncDirectory(directory: File) {
-    var descriptor: java.io.FileDescriptor? = null
-    try {
-      descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
-      Os.fsync(descriptor)
-    } catch (_: Throwable) {
-      throw GarminTokenStoreException("garmin_token_write_failed")
-    } finally {
-      if (descriptor != null) {
-        try {
-          Os.close(descriptor)
-        } catch (_: Throwable) {
-        }
+  private fun deleteTombstone(tombstone: File, parent: File) {
+    if (!deleteFile(tombstone) || tombstone.exists()) {
+      throw GarminTokenStoreException("garmin_token_clear_failed")
+    }
+    syncDirectory(parent)
+  }
+}
+
+private fun fsyncGarminDirectory(directory: File) {
+  var descriptor: java.io.FileDescriptor? = null
+  try {
+    descriptor = Os.open(directory.absolutePath, OsConstants.O_RDONLY, 0)
+    Os.fsync(descriptor)
+  } catch (_: Throwable) {
+    throw GarminTokenStoreException("garmin_token_write_failed")
+  } finally {
+    if (descriptor != null) {
+      try {
+        Os.close(descriptor)
+      } catch (_: Throwable) {
       }
     }
   }
@@ -175,6 +187,7 @@ internal class GarminTokenStore(
   private val cipher: GarminTokenCipher = AndroidKeystoreGarminTokenCipher(),
   private val atomicWriter: GarminAtomicWriter = AndroidGarminAtomicWriter(),
   private val beforeCommit: () -> Unit = {},
+  private val readFileBytes: (File) -> ByteArray = { file -> file.readBytes() },
 ) : GarminSessionStore {
   private val recordFile = File(root, "garmin-di-session.bin")
 
@@ -237,17 +250,22 @@ internal class GarminTokenStore(
 
   override fun recordIdentity(): Map<String, Any?> {
     if (!recordFile.exists()) return mapOf("present" to false, "version" to RECORD_VERSION)
-    val digest = MessageDigest.getInstance("SHA-256")
-      .digest(recordFile.readBytes())
-      .joinToString("") { byte -> "%02x".format(byte) }
-    return mapOf("present" to true, "version" to RECORD_VERSION, "sha256" to digest)
+    val recordBytes = readFileBytes(recordFile)
+    return try {
+      val digest = MessageDigest.getInstance("SHA-256")
+        .digest(recordBytes)
+        .joinToString("") { byte -> "%02x".format(byte) }
+      mapOf("present" to true, "version" to RECORD_VERSION, "sha256" to digest)
+    } finally {
+      recordBytes.fill(0)
+    }
   }
 
   internal fun recordFileForTest(): File = recordFile
 
   private fun readRecord(file: File): ByteArray {
     return try {
-      val bytes = file.readBytes()
+      val bytes = readFileBytes(file)
       try {
         if (bytes.size < RECORD_MAGIC.size + 4 + 1 + 4 + NONCE_BYTES + GCM_TAG_BYTES) {
           throw GarminTokenStoreException("sign_in_required")

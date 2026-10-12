@@ -159,18 +159,62 @@ class GarminTokenStoreTest {
   }
 
   @Test
-  fun `clear fails closed when tombstone deletion leaves encrypted bytes on disk`() {
+  fun `clear retries a tombstone left by rename success and delete failure`() {
     val root = temporaryFolder.newFolder("clear-tombstone-failure")
-    val store = GarminTokenStore(root, JvmAesGcmCipher(), TombstoneDeleteFailWriter())
+    val fileOperations = DeleteFailOnceFileOperations()
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), fileOperations.writer())
     store.replace("synthetic-di-session".toByteArray())
+    val live = store.recordFileForTest()
+    val tombstone = File(root, ".garmin-di-session.bin.deleted")
+    fileOperations.syncedDirectories.clear()
 
     val error = assertThrows(GarminTokenStoreException::class.java) {
       store.clear()
     }
 
     assertEquals("garmin_token_clear_failed", error.code)
-    assertFalse(store.recordFileForTest().exists())
-    assertTrue(File(root, ".garmin-di-session.bin.deleted").exists())
+    assertFalse(live.exists())
+    assertTrue(tombstone.exists())
+    assertTrue(tombstone.length() > 0L)
+    assertEquals(listOf(root), fileOperations.syncedDirectories)
+
+    store.clear()
+
+    assertFalse(live.exists())
+    assertFalse(tombstone.exists())
+    assertEquals(listOf(root, root), fileOperations.syncedDirectories)
+
+    store.clear()
+    assertFalse(live.exists())
+    assertFalse(tombstone.exists())
+    assertEquals(listOf(root, root), fileOperations.syncedDirectories)
+  }
+
+  @Test
+  fun `clear preserves live and tombstone files when stale tombstone deletion fails then recovers`() {
+    val root = temporaryFolder.newFolder("clear-live-and-tombstone")
+    val fileOperations = DeleteFailOnceFileOperations()
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), fileOperations.writer())
+    store.replace("synthetic-di-session".toByteArray())
+    val live = store.recordFileForTest()
+    val tombstone = File(root, ".garmin-di-session.bin.deleted")
+    live.copyTo(tombstone)
+    fileOperations.syncedDirectories.clear()
+
+    val error = assertThrows(GarminTokenStoreException::class.java) {
+      store.clear()
+    }
+
+    assertEquals("garmin_token_clear_failed", error.code)
+    assertTrue(live.exists())
+    assertTrue(tombstone.exists())
+    assertTrue(fileOperations.syncedDirectories.isEmpty())
+
+    store.clear()
+
+    assertFalse(live.exists())
+    assertFalse(tombstone.exists())
+    assertEquals(listOf(root, root, root), fileOperations.syncedDirectories)
   }
 
   @Test
@@ -241,6 +285,57 @@ class GarminTokenStoreTest {
     assertEquals(1L, worker.generationForTest())
     assertEquals("connected", (worker.connectionState()["data"] as Map<*, *>)["kind"])
     assertEquals(listOf("login", "connectionState"), dispatcher.calls.map { it.first })
+  }
+
+  @Test
+  fun `worker logout retry succeeds only after stranded encrypted bytes are deleted`() {
+    val root = temporaryFolder.newFolder("worker-logout-tombstone-retry")
+    val store = GarminTokenStore(root, JvmAesGcmCipher(), DeleteFailOnceFileOperations().writer())
+    val dispatcher = RecordingDispatcher(
+      ArrayDeque(
+        listOf(
+          success(1, mapOf("kind" to "connected", "account_namespace" to "account-fixture")),
+          success(2, mapOf("kind" to "disconnected")),
+        )
+      )
+    )
+    dispatcher.pendingTokens = "first-session".toByteArray()
+    val worker = GarminClientWorker(dispatcher, store)
+    worker.login("owner", "synthetic-secret")
+    val tombstone = File(root, ".garmin-di-session.bin.deleted")
+
+    val first = assertThrows(GarminWorkerException::class.java) { worker.logout() }
+
+    assertEquals("garmin_token_clear_failed", first.code)
+    assertTrue(tombstone.exists())
+    assertEquals(1L, worker.generationForTest())
+    assertEquals(listOf("login"), dispatcher.calls.map { it.first })
+    assertTrue(dispatcher.lastReturnedTokens?.all { it == 0.toByte() } == true)
+
+    val retry = worker.logout()
+
+    assertEquals("ok", retry["status"])
+    assertEquals(2L, worker.generationForTest())
+    assertFalse(store.recordFileForTest().exists())
+    assertFalse(tombstone.exists())
+    assertEquals(listOf("login", "logout"), dispatcher.calls.map { it.first })
+  }
+
+  @Test
+  fun `record identity zeroes the encrypted file buffer after hashing`() {
+    val root = temporaryFolder.newFolder("identity-buffer-zeroing")
+    val cipher = JvmAesGcmCipher()
+    GarminTokenStore(root, cipher, JvmAtomicWriter()).replace("synthetic-di-session".toByteArray())
+    lateinit var observedBytes: ByteArray
+    val store = GarminTokenStore(
+      root,
+      cipher,
+      JvmAtomicWriter(),
+      readFileBytes = { file -> file.readBytes().also { observedBytes = it } },
+    )
+
+    assertEquals(true, store.recordIdentity()["present"])
+    assertTrue(observedBytes.all { it == 0.toByte() })
   }
 
   @Test
@@ -1189,21 +1284,29 @@ private class VerifyThenFailWriter : GarminAtomicWriter {
   override fun remove(target: File) = JvmAtomicWriter().remove(target)
 }
 
-private class TombstoneDeleteFailWriter : GarminAtomicWriter {
-  override fun replace(target: File, bytes: ByteArray, verify: (File) -> Unit) =
-    JvmAtomicWriter().replace(target, bytes, verify)
+private class DeleteFailOnceFileOperations {
+  private var failNextDelete = true
+  val syncedDirectories = mutableListOf<File>()
 
-  override fun remove(target: File) {
-    if (!target.exists()) return
-    val tombstone = File(target.parentFile, ".${target.name}.deleted")
-    Files.move(
-      target.toPath(),
-      tombstone.toPath(),
-      StandardCopyOption.ATOMIC_MOVE,
-      StandardCopyOption.REPLACE_EXISTING,
-    )
-    throw GarminTokenStoreException("garmin_token_clear_failed")
-  }
+  fun writer() = AndroidGarminAtomicWriter(
+    renameFile = { source, destination ->
+      Files.move(
+        source.toPath(),
+        destination.toPath(),
+        StandardCopyOption.ATOMIC_MOVE,
+        StandardCopyOption.REPLACE_EXISTING,
+      )
+    },
+    deleteFile = { target ->
+      if (failNextDelete) {
+        failNextDelete = false
+        false
+      } else {
+        Files.deleteIfExists(target.toPath())
+      }
+    },
+    syncDirectory = { directory -> syncedDirectories += directory },
+  )
 }
 
 private class JvmAesGcmCipher : GarminTokenCipher {
