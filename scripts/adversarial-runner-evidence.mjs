@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { pullInstalledApkSha256 } from "./phase18-installed-apk.mjs";
 import {
   choose,
   cliArgValue,
@@ -29,6 +30,8 @@ const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const RUN_NONCE = /^[a-f0-9]{32}$/u;
 const NATIVE_REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
+const COLLECTOR_OWNED = Symbol("phase18-garmin-adversarial-collector-owned");
+const TEST_FIXTURE_LABEL = "phase18-garmin-adversarial-test-collector/v1";
 const FORBIDDEN_KEY = /(?:^|_)(?:account_namespace|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
 const FORBIDDEN_VALUE = /(?:https?:\/\/|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|\bauthorization\b|\bbearer\b|\bciphertext\b|\bcredentials?\b|\bmfa(?:[_ -]?code)?\b|\bpassword\b|\btoken\b)/iu;
 const PRIVATE_FILENAME = /(?:^|[\\/])[^\\/]+\.(?:csv|fit|gpx|json|tcx)(?:$|[?#])/iu;
@@ -45,6 +48,14 @@ const MANIFEST_KEYS = [
   "signature_sha256",
   "source_tree_sha256",
   "suite",
+];
+const CURRENT_IDENTITY_KEYS = [
+  "currentHead",
+  "currentPythonLockSha256",
+  "currentSourceTreeSha256",
+  "deviceIdentitySha256",
+  "retainedApkSha256",
+  "retainedSignatureSha256",
 ];
 const PHASE18_GARMIN_ADVERSARIAL_CASE_IDS = Object.freeze([
   "PH18-ADV-RESTORE",
@@ -152,6 +163,8 @@ export function createPhase18GarminAdversarialRawReport(input) {
     suite: "phase18-garmin-adversarial",
     status: input.status,
     manifest: Object.freeze({ ...input.manifest }),
+    current_identity: Object.freeze({ ...input.current_identity }),
+    producer_context: Object.freeze({ ...input.producer_context }),
     case_ids: PHASE18_GARMIN_ADVERSARIAL_CASE_IDS,
     cases: Object.freeze(input.cases.map((entry) => Object.freeze({ ...entry }))),
     native_report: Object.freeze({ ...input.native_report }),
@@ -179,6 +192,81 @@ function sha256Bytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function serializedNativeReport(report) {
+  return Buffer.from(`${JSON.stringify(report, null, 2)}\n`);
+}
+
+function currentIdentitySha256(identity) {
+  return sha256Bytes(Buffer.from(JSON.stringify(Object.fromEntries(
+    CURRENT_IDENTITY_KEYS.map((key) => [key, identity?.[key]]),
+  ))));
+}
+
+function collectedCases(cases) {
+  return cases.map((entry) => Object.freeze({
+    ...entry,
+    provenance: entry.status === "passed" ? "native-exact-artifact" : "unexpected",
+  }));
+}
+
+function fixtureSha256(context) {
+  return sha256Bytes(Buffer.from(JSON.stringify({
+    label: TEST_FIXTURE_LABEL,
+    current_identity_sha256: context.current_identity_sha256,
+    device_identity_sha256: context.device_identity_sha256,
+    installed_apk_sha256: context.installed_apk_sha256,
+    native_report_sha256: context.native_report_sha256,
+    run_nonce: context.run_nonce,
+    source_pid: context.source_pid,
+  })));
+}
+
+function collectorOwned(report, logcat, producerContext) {
+  return Object.freeze({
+    [COLLECTOR_OWNED]: true,
+    report: Object.freeze(report),
+    logcat,
+    nativeReportBytes: serializedNativeReport(report),
+    producerContext: Object.freeze(producerContext),
+  });
+}
+
+export function createPhase18GarminAdversarialTestCollectorFixture(input) {
+  const runNonce = input?.run_nonce;
+  const sourcePid = input?.source_pid;
+  const source = input?.report;
+  if (!RUN_NONCE.test(runNonce ?? "") || !Number.isSafeInteger(sourcePid) || sourcePid <= 0) {
+    fail("collector_fixture_invalid");
+  }
+  const report = {
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    run_nonce: runNonce,
+    current_identity: source?.current_identity,
+    cases: Array.isArray(source?.cases)
+      ? source.cases.map((entry) => ({
+        ...entry,
+        status: "TECHNICAL_REVIEW_REQUIRED",
+        provenance: "unexpected",
+      }))
+      : source?.cases,
+  };
+  const nativeReportSha256 = sha256Bytes(serializedNativeReport(report));
+  const context = {
+    kind: "test-collector-fixture",
+    marker: NATIVE_REPORT_MARKER,
+    package: PACKAGE,
+    run_nonce: runNonce,
+    source_pid: sourcePid,
+    device_identity_sha256: report?.current_identity?.deviceIdentitySha256,
+    installed_apk_sha256: report?.current_identity?.retainedApkSha256,
+    native_report_sha256: nativeReportSha256,
+    current_identity_sha256: currentIdentitySha256(report?.current_identity),
+    fixture_sha256: null,
+  };
+  context.fixture_sha256 = fixtureSha256(context);
+  return collectorOwned(report, input.logcat ?? TEST_FIXTURE_LABEL, context);
+}
+
 function nativeReportFromPidLog(logcat, expectedNonce, expectedDeviceIdentitySha256) {
   const lines = logcat
     .split(/\r?\n/u)
@@ -196,6 +284,9 @@ function nativeReportFromPidLog(logcat, expectedNonce, expectedDeviceIdentitySha
   }
   if (!RUN_NONCE.test(report?.run_nonce ?? "") || report.run_nonce !== expectedNonce) {
     fail("native_report_nonce_invalid");
+  }
+  if (!exactKeys(report, ["cases", "current_identity", "run_nonce", "status"])) {
+    fail("native_report_schema_invalid");
   }
   if (report?.current_identity?.deviceIdentitySha256 !== expectedDeviceIdentitySha256) {
     fail("native_report_device_identity_invalid");
@@ -219,6 +310,19 @@ export function collectInstalledNativeReport() {
     apiLevel: adbText("shell", "getprop", "ro.build.version.sdk"),
     model: adbText("shell", "getprop", "ro.product.model"),
   });
+  const installedPath = adbText("shell", "pm", "path", PACKAGE).replace(/^package:/u, "");
+  const installedByteCount = Number(adbText("shell", "stat", "-c", "%s", installedPath));
+  if (!installedPath.startsWith("/data/app/")
+    || !Number.isSafeInteger(installedByteCount)
+    || installedByteCount <= 0) {
+    fail("installed_apk_invalid");
+  }
+  const installedApkSha256 = pullInstalledApkSha256({
+    adb: "adb",
+    serial,
+    installedPath,
+    expectedByteCount: installedByteCount,
+  });
   const runNonce = randomBytes(16).toString("hex");
   adb(["logcat", "-c"], { stdio: "ignore" });
   adb(["shell", "am", "force-stop", PACKAGE], { stdio: "ignore" });
@@ -237,7 +341,22 @@ export function collectInstalledNativeReport() {
     const logcat = adb(["logcat", "--pid", processId, "-d"], { encoding: "utf8" });
     const report = nativeReportFromPidLog(logcat, runNonce, deviceIdentitySha256);
     if (report !== null) {
-      return { report, logcat, deviceIdentitySha256 };
+      if (report?.current_identity?.retainedApkSha256 !== installedApkSha256) {
+        fail("native_report_apk_identity_invalid");
+      }
+      const nativeReportSha256 = sha256Bytes(serializedNativeReport(report));
+      return collectorOwned(report, logcat, {
+        kind: "installed-route-log",
+        marker: NATIVE_REPORT_MARKER,
+        package: PACKAGE,
+        run_nonce: runNonce,
+        source_pid: Number(processId),
+        device_identity_sha256: deviceIdentitySha256,
+        installed_apk_sha256: installedApkSha256,
+        native_report_sha256: nativeReportSha256,
+        current_identity_sha256: currentIdentitySha256(report.current_identity),
+        fixture_sha256: null,
+      });
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
   }
@@ -246,14 +365,10 @@ export function collectInstalledNativeReport() {
 
 function validateRecord(record, manifest) {
   privacySafe(record);
+  if (!exactKeys(record.current_identity, CURRENT_IDENTITY_KEYS)) {
+    fail("record_invalid");
+  }
   const invalid = [
-    !exactKeys(record, [
-      "cases",
-      "current_identity",
-      "native_report",
-      "privacy_scan",
-      "status",
-    ]),
     !["passed", "TECHNICAL_REVIEW_REQUIRED"].includes(record.status),
     !Array.isArray(record.cases),
     record.cases.length !== PHASE18_GARMIN_ADVERSARIAL_CASE_IDS.length,
@@ -261,14 +376,28 @@ function validateRecord(record, manifest) {
       record.cases.map(({ id }) => id),
       PHASE18_GARMIN_ADVERSARIAL_CASE_IDS,
     ),
-    !exactKeys(record.current_identity, [
-      "currentHead",
-      "currentSourceTreeSha256",
-      "currentPythonLockSha256",
-      "retainedApkSha256",
-      "retainedSignatureSha256",
-      "deviceIdentitySha256",
-    ]),
+    !regexMatch(HEAD, record.current_identity.currentHead),
+    !regexMatch(HASH, record.current_identity.currentSourceTreeSha256),
+    !regexMatch(HASH, record.current_identity.currentPythonLockSha256),
+    !regexMatch(HASH, record.current_identity.retainedApkSha256),
+    !regexMatch(HASH, record.current_identity.retainedSignatureSha256),
+    !regexMatch(HASH, record.current_identity.deviceIdentitySha256),
+    !["installed-route-log", "test-collector-fixture"].includes(record.producer_context.kind),
+    record.producer_context.marker !== NATIVE_REPORT_MARKER,
+    record.producer_context.package !== PACKAGE,
+    !regexMatch(RUN_NONCE, record.producer_context.run_nonce),
+    !Number.isSafeInteger(record.producer_context.source_pid),
+    record.producer_context.source_pid <= 0,
+    !regexMatch(HASH, record.producer_context.device_identity_sha256),
+    !regexMatch(HASH, record.producer_context.installed_apk_sha256),
+    !regexMatch(HASH, record.producer_context.native_report_sha256),
+    !regexMatch(HASH, record.producer_context.current_identity_sha256),
+    record.producer_context.device_identity_sha256
+      !== record.current_identity.deviceIdentitySha256,
+    record.producer_context.installed_apk_sha256 !== record.current_identity.retainedApkSha256,
+    record.producer_context.native_report_sha256 !== record.native_report.sha256,
+    record.producer_context.current_identity_sha256
+      !== currentIdentitySha256(record.current_identity),
     !exactKeys(record.native_report, ["path", "sha256"]),
     record.native_report.path !== `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`,
     !regexMatch(HASH, record.native_report.sha256),
@@ -297,21 +426,26 @@ export function executePhase18GarminAdversarialRunner(
   const privacyWriter = choose(dependencies.writePrivacyReport, writeJson);
   const collectNativeReport = choose(dependencies.collectNativeReport, collectInstalledNativeReport);
   const collected = collectNativeReport();
+  if (collected?.[COLLECTOR_OWNED] !== true) fail("collector_provenance_invalid");
   const record = collected.report;
   privacySafe(record);
   privacySafe(collected.logcat);
-  nativeWriter(NATIVE_REPORT, record);
-  const nativeReportSha256 = sha256Bytes(Buffer.from(`${JSON.stringify(record, null, 2)}\n`));
+  const expectedNativeReportBytes = serializedNativeReport(record);
+  if (!Buffer.isBuffer(collected.nativeReportBytes)
+    || !collected.nativeReportBytes.equals(expectedNativeReportBytes)) {
+    fail("collector_provenance_invalid");
+  }
+  const nativeReportSha256 = sha256Bytes(collected.nativeReportBytes);
   const privacyReport = Object.freeze({
     status: "passed",
     scanned_artifact_count: 2,
   });
-  privacyWriter(PRIVACY_REPORT, privacyReport);
   const privacyReportSha256 = sha256Bytes(Buffer.from(`${JSON.stringify(privacyReport, null, 2)}\n`));
   const boundRecord = {
     status: record.status,
-    cases: record.cases,
+    cases: collectedCases(record.cases),
     current_identity: record.current_identity,
+    producer_context: collected.producerContext,
     native_report: { path: NATIVE_REPORT, sha256: nativeReportSha256 },
     privacy_scan: {
       status: "passed",
@@ -325,10 +459,14 @@ export function executePhase18GarminAdversarialRunner(
     signatureSha256: boundRecord.current_identity.retainedSignatureSha256,
   });
   validateRecord(boundRecord, manifest);
+  nativeWriter(NATIVE_REPORT, record);
+  privacyWriter(PRIVACY_REPORT, privacyReport);
   const report = createPhase18GarminAdversarialRawReport({
     manifest,
     cases: boundRecord.cases,
     status: boundRecord.status,
+    current_identity: boundRecord.current_identity,
+    producer_context: boundRecord.producer_context,
     native_report: boundRecord.native_report,
     privacy_scan: boundRecord.privacy_scan,
   });

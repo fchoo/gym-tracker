@@ -22,6 +22,7 @@ import {
   PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT,
   createPhase18GarminAdversarialRawReport,
   createPhase18GarminAdversarialRunnerPlan,
+  createPhase18GarminAdversarialTestCollectorFixture,
   executePhase18GarminAdversarialRunner,
 } from "./adversarial-runner-evidence.mjs";
 import {
@@ -246,7 +247,7 @@ printf '%s' '${apksignerOutput.replaceAll("'", "'\"'\"'")}'
   return sdkRoot;
 }
 
-function createRunnerAdb(root, payload) {
+function createRunnerAdb(root, payload, installedApk) {
   const scriptPath = path.join(root, "fake-bin", "adb");
   const noncePath = path.join(root, "fake-bin", "nonce");
   const markerPayload = JSON.stringify({ ...payload, run_nonce: "__NONCE__" })
@@ -267,6 +268,9 @@ if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
   esac
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then printf 'package:/data/app/phase18/base.apk\n'; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then printf '${Buffer.byteLength(installedApk)}\n'; exit 0; fi
+if [ "$1" = "pull" ]; then printf '%s' '${installedApk}' > "$3"; exit 0; fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
   exit 0
 fi
@@ -404,6 +408,23 @@ function validProofEvidence(current) {
 }
 
 function validAdversarialEvidence(current) {
+  const currentIdentity = {
+    currentHead: current.currentHead,
+    currentSourceTreeSha256: current.currentSourceTreeSha256,
+    currentPythonLockSha256: current.currentPythonLockSha256,
+    retainedApkSha256: current.retainedApkSha256,
+    retainedSignatureSha256: current.retainedSignatureSha256,
+    deviceIdentitySha256: current.deviceIdentitySha256,
+  };
+  const currentIdentitySha256 = digest(JSON.stringify({
+    currentHead: currentIdentity.currentHead,
+    currentPythonLockSha256: currentIdentity.currentPythonLockSha256,
+    currentSourceTreeSha256: currentIdentity.currentSourceTreeSha256,
+    deviceIdentitySha256: currentIdentity.deviceIdentitySha256,
+    retainedApkSha256: currentIdentity.retainedApkSha256,
+    retainedSignatureSha256: currentIdentity.retainedSignatureSha256,
+  }));
+  const nativeReportSha256 = current.nativeReportSha256 ?? HASH;
   return {
     schema_version: 1,
     suite: "phase18-garmin-adversarial",
@@ -412,14 +433,27 @@ function validAdversarialEvidence(current) {
     case_ids: createPhase18GarminAdversarialRunnerPlan().case_ids,
     cases: adversarialCases(),
     raw_report_sha256: current.rawReportSha256 ?? HASH,
+    current_identity: currentIdentity,
+    producer_context: {
+      kind: "installed-route-log",
+      marker: "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:",
+      package: PACKAGE,
+      run_nonce: "0123456789abcdef0123456789abcdef",
+      source_pid: 4242,
+      device_identity_sha256: currentIdentity.deviceIdentitySha256,
+      installed_apk_sha256: current.installedApkSha256 ?? currentIdentity.retainedApkSha256,
+      native_report_sha256: nativeReportSha256,
+      current_identity_sha256: currentIdentitySha256,
+      fixture_sha256: null,
+    },
     native_report: {
       path: ADVERSARIAL_NATIVE_REPORT,
-      sha256: HASH,
+      sha256: nativeReportSha256,
     },
     privacy_scan: {
       status: "passed",
       scanned_artifact_count: 4,
-      report_sha256: HASH,
+      report_sha256: current.privacyReportSha256 ?? HASH,
     },
   };
 }
@@ -835,6 +869,7 @@ test("adversarial runner writes native, privacy, and raw reports through default
   const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-runner-"));
   const originalPath = process.env.PATH;
   try {
+    const installedApk = "phase18-acceptance-helper-adversarial-apk";
     const deviceIdentitySha256 = digest(JSON.stringify({
       serial: "SERIAL",
       abi: "arm64-v8a",
@@ -845,7 +880,7 @@ test("adversarial runner writes native, privacy, and raw reports through default
       currentHead: "b".repeat(40),
       currentSourceTreeSha256: HASH,
       currentPythonLockSha256: HASH,
-      retainedApkSha256: HASH,
+      retainedApkSha256: digest(installedApk),
       retainedSignatureSha256: HASH,
       deviceIdentitySha256,
     };
@@ -855,13 +890,11 @@ test("adversarial runner writes native, privacy, and raw reports through default
       retainedBuildManifest(manifestIdentity, "phase18-garmin-adversarial"),
     );
     const runnerPayload = {
-      schema_version: 1,
-      suite: "phase18-garmin-adversarial",
       status: "passed",
       cases: adversarialCases(),
       current_identity: manifestIdentity,
     };
-    const binRoot = createRunnerAdb(root, runnerPayload);
+    const binRoot = createRunnerAdb(root, runnerPayload, installedApk);
     process.env.PATH = `${binRoot}:${originalPath ?? ""}`;
 
     const result = withProcessState({
@@ -909,10 +942,8 @@ test("adversarial runner and verifier hit record and validation error branches",
       writeNativeReport: () => {},
       writePrivacyReport: () => {},
       writeRawReport: () => {},
-      collectNativeReport: () => ({
+      collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
         report: {
-          schema_version: 1,
-          suite: "phase18-garmin-adversarial",
           status: "passed",
           cases: adversarialCases(),
           current_identity: {
@@ -923,29 +954,14 @@ test("adversarial runner and verifier hit record and validation error branches",
             deviceIdentitySha256: manifestIdentity.deviceIdentitySha256,
           },
         },
-        logcat: "bounded markers",
+        run_nonce: "0123456789abcdef0123456789abcdef",
+        source_pid: 4242,
       }),
     }),
     /phase18_garmin_adversarial_record_invalid/u,
   );
 
-  const exact = {
-    ...createPhase18GarminAdversarialRawReport({
-    manifest: adversarialManifest(manifestIdentity),
-    status: "passed",
-    cases: adversarialCases(),
-    native_report: {
-      path: ADVERSARIAL_NATIVE_REPORT,
-      sha256: HASH,
-    },
-    privacy_scan: {
-      status: "passed",
-      scanned_artifact_count: 4,
-      report_sha256: HASH,
-    },
-    }),
-    raw_report_sha256: HASH,
-  };
+  const exact = validAdversarialEvidence(manifestIdentity);
   assert.throws(
     () => validatePhase18GarminAdversarialEvidence({
       ...exact,
@@ -1009,10 +1025,9 @@ test("adversarial verifier resolves current identity and seals exact evidence th
   try {
     setupSourceRepo(root);
     const apkBytes = Buffer.from("adversarial-apk");
-    const nativeBytes = Buffer.from("native-report\n");
     const privacyBytes = Buffer.from("privacy-report\n");
     writeFile(root, ADVERSARIAL_APK, apkBytes);
-    writeFile(root, ADVERSARIAL_NATIVE_REPORT, nativeBytes);
+    writeFile(root, ADVERSARIAL_NATIVE_REPORT, "placeholder\n");
     writeFile(root, ADVERSARIAL_PRIVACY_REPORT, privacyBytes);
     const installedApkSource = writeFile(root, "artifacts/installed-adversarial.apk", apkBytes);
     const sdkRoot = createFakeSdk(root, {
@@ -1020,7 +1035,7 @@ test("adversarial verifier resolves current identity and seals exact evidence th
       apksignerOutput: "Signer #1 certificate SHA-256 digest: bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb:bb\n",
     });
 
-    const identity = withProcessState({
+    const preliminaryIdentity = withProcessState({
       cwd: root,
       env: {
         ANDROID_HOME: undefined,
@@ -1028,25 +1043,34 @@ test("adversarial verifier resolves current identity and seals exact evidence th
       },
     }, () => resolvePhase18GarminAdversarialCurrentIdentity(Buffer.from("raw-report")));
 
+    const currentIdentity = {
+      currentHead: preliminaryIdentity.currentHead,
+      currentSourceTreeSha256: preliminaryIdentity.currentSourceTreeSha256,
+      currentPythonLockSha256: preliminaryIdentity.currentPythonLockSha256,
+      retainedApkSha256: preliminaryIdentity.retainedApkSha256,
+      retainedSignatureSha256: preliminaryIdentity.retainedSignatureSha256,
+      deviceIdentitySha256: preliminaryIdentity.deviceIdentitySha256,
+    };
+    const nativeBytes = Buffer.from(`${JSON.stringify({
+      status: "passed",
+      run_nonce: "0123456789abcdef0123456789abcdef",
+      cases: adversarialCases(),
+      current_identity: currentIdentity,
+    }, null, 2)}\n`);
+    writeFile(root, ADVERSARIAL_NATIVE_REPORT, nativeBytes);
+    const identity = {
+      ...preliminaryIdentity,
+      nativeReportSha256: digest(nativeBytes),
+      privacyReportSha256: digest(privacyBytes),
+    };
+
     writeJson(
       root,
       ADVERSARIAL_MANIFEST,
       retainedBuildManifest(identity, "phase18-garmin-adversarial"),
     );
-    writeJson(root, ADVERSARIAL_RAW_REPORT, createPhase18GarminAdversarialRawReport({
-      manifest: adversarialManifest(identity),
-      status: "passed",
-      cases: adversarialCases(),
-      native_report: {
-        path: ADVERSARIAL_NATIVE_REPORT,
-        sha256: digest(nativeBytes),
-      },
-      privacy_scan: {
-        status: "passed",
-        scanned_artifact_count: 4,
-        report_sha256: digest(privacyBytes),
-      },
-    }));
+    const { raw_report_sha256: _rawReportSha256, ...rawReport } = validAdversarialEvidence(identity);
+    writeJson(root, ADVERSARIAL_RAW_REPORT, rawReport);
 
     const result = withProcessState({
       cwd: root,
@@ -1175,7 +1199,7 @@ test("adversarial verifier current identity fails closed on missing SDK tools an
 });
 
 test("adversarial verifier hits unknown-argument and default report identity branches", () => {
-  const current = {
+  const baseCurrent = {
     currentHead: "b".repeat(40),
     currentSourceTreeSha256: HASH,
     currentPythonLockSha256: HASH,
@@ -1184,26 +1208,27 @@ test("adversarial verifier hits unknown-argument and default report identity bra
     retainedSignatureSha256: HASH,
     deviceIdentitySha256: HASH,
     rawReportSha256: digest(Buffer.from("raw")),
-    nativeReportSha256: digest(Buffer.from("native")),
     privacyReportSha256: digest(Buffer.from("privacy")),
   };
-  const exact = {
-    ...createPhase18GarminAdversarialRawReport({
-    manifest: adversarialManifest(current),
-    status: "passed",
-    cases: adversarialCases(),
-    native_report: {
-      path: ADVERSARIAL_NATIVE_REPORT,
-      sha256: digest(Buffer.from("native")),
-    },
-    privacy_scan: {
-      status: "passed",
-      scanned_artifact_count: 4,
-      report_sha256: digest(Buffer.from("privacy")),
-    },
-    }),
-    raw_report_sha256: current.rawReportSha256,
+  const currentIdentity = {
+    currentHead: baseCurrent.currentHead,
+    currentSourceTreeSha256: baseCurrent.currentSourceTreeSha256,
+    currentPythonLockSha256: baseCurrent.currentPythonLockSha256,
+    retainedApkSha256: baseCurrent.retainedApkSha256,
+    retainedSignatureSha256: baseCurrent.retainedSignatureSha256,
+    deviceIdentitySha256: baseCurrent.deviceIdentitySha256,
   };
+  const nativeBytes = Buffer.from(`${JSON.stringify({
+    status: "passed",
+    run_nonce: "0123456789abcdef0123456789abcdef",
+    cases: adversarialCases(),
+    current_identity: currentIdentity,
+  }, null, 2)}\n`);
+  const current = {
+    ...baseCurrent,
+    nativeReportSha256: digest(nativeBytes),
+  };
+  const exact = validAdversarialEvidence(current);
   assert.throws(
     () => executePhase18GarminAdversarialVerifier([
       "--manifest", ADVERSARIAL_MANIFEST,
@@ -1220,11 +1245,13 @@ test("adversarial verifier hits unknown-argument and default report identity bra
     readJson: (filePath) => filePath === ADVERSARIAL_MANIFEST
       ? retainedBuildManifest(current, "phase18-garmin-adversarial")
       : exact,
-    readBytes: (filePath) => Buffer.from(
+    readBytes: (filePath) => filePath === ADVERSARIAL_NATIVE_REPORT
+      ? nativeBytes
+      : Buffer.from(
       filePath === ADVERSARIAL_RAW_REPORT
         ? "raw"
-        : filePath.endsWith("native-report.json") ? "native" : "privacy",
-    ),
+        : "privacy",
+      ),
     resolveCurrentIdentity: () => current,
   }), {
     status: "passed",

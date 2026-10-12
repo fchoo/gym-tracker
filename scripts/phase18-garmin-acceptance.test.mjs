@@ -184,6 +184,23 @@ function validAdversarialEvidence(current) {
     "3".repeat(64),
   ];
   const caseIds = createPhase18GarminAdversarialRunnerPlan().case_ids;
+  const currentIdentity = {
+    currentHead: current.currentHead,
+    currentSourceTreeSha256: current.currentSourceTreeSha256,
+    currentPythonLockSha256: current.currentPythonLockSha256,
+    retainedApkSha256: current.retainedApkSha256,
+    retainedSignatureSha256: current.retainedSignatureSha256,
+    deviceIdentitySha256: current.deviceIdentitySha256,
+  };
+  const currentIdentitySha256 = createHash("sha256").update(JSON.stringify({
+    currentHead: currentIdentity.currentHead,
+    currentPythonLockSha256: currentIdentity.currentPythonLockSha256,
+    currentSourceTreeSha256: currentIdentity.currentSourceTreeSha256,
+    deviceIdentitySha256: currentIdentity.deviceIdentitySha256,
+    retainedApkSha256: currentIdentity.retainedApkSha256,
+    retainedSignatureSha256: currentIdentity.retainedSignatureSha256,
+  })).digest("hex");
+  const nativeReportSha256 = current.nativeReportSha256 ?? HASH;
   return {
     schema_version: 1,
     suite: "phase18-garmin-adversarial",
@@ -233,14 +250,27 @@ function validAdversarialEvidence(current) {
       generation_before: index === 3 ? 7 : index === 4 ? 8 : index === 5 ? 20 : index >= 6 ? 30 : 7,
       generation_after: index === 3 ? 8 : index === 4 ? 8 : index === 5 ? 21 : index >= 6 ? 30 : 7,
     })),
+    current_identity: currentIdentity,
+    producer_context: {
+      kind: "installed-route-log",
+      marker: "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:",
+      package: "com.fchoo.gymtracker.devtest",
+      run_nonce: "0123456789abcdef0123456789abcdef",
+      source_pid: 4242,
+      device_identity_sha256: currentIdentity.deviceIdentitySha256,
+      installed_apk_sha256: current.installedApkSha256 ?? currentIdentity.retainedApkSha256,
+      native_report_sha256: nativeReportSha256,
+      current_identity_sha256: currentIdentitySha256,
+      fixture_sha256: null,
+    },
     native_report: {
       path: "artifacts/native/phase18-garmin-adversarial/native-report.json",
-      sha256: HASH,
+      sha256: nativeReportSha256,
     },
     privacy_scan: {
       status: "passed",
       scanned_artifact_count: 4,
-      report_sha256: HASH,
+      report_sha256: current.privacyReportSha256 ?? HASH,
     },
   };
 }

@@ -272,6 +272,10 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "$pack
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then
+  printf '${retainedApkBytes.length}\\n'
+  exit 0
+fi
 if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
   cp "${installedApkPath}" "$3"
   exit 0
@@ -397,6 +401,10 @@ if [ "$1" = "install" ]; then
 fi
 if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "$package_name" ]; then
   printf 'package:/data/app/phase18/base.apk\\n'
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then
+  printf '${retainedApkBytes.length}\\n'
   exit 0
 fi
 if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
@@ -627,6 +635,10 @@ if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "$pack
   printf 'package:/data/app/phase18/base.apk\\n'
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then
+  printf '${retainedApkBytes.length}\\n'
+  exit 0
+fi
 if [ "$1" = "pull" ] && [ "$2" = "/data/app/phase18/base.apk" ]; then
   cp "${installedApkPath}" "$3"
   exit 0
@@ -749,6 +761,23 @@ function createAdversarialEvidence(identity) {
     "3".repeat(64),
   ];
   const caseIds = createPhase18GarminAdversarialRunnerPlan().case_ids;
+  const currentIdentity = {
+    currentHead: identity.currentHead,
+    currentSourceTreeSha256: identity.currentSourceTreeSha256,
+    currentPythonLockSha256: identity.currentPythonLockSha256,
+    retainedApkSha256: identity.retainedApkSha256,
+    retainedSignatureSha256: identity.retainedSignatureSha256,
+    deviceIdentitySha256: identity.deviceIdentitySha256,
+  };
+  const currentIdentitySha256 = digest(JSON.stringify({
+    currentHead: currentIdentity.currentHead,
+    currentPythonLockSha256: currentIdentity.currentPythonLockSha256,
+    currentSourceTreeSha256: currentIdentity.currentSourceTreeSha256,
+    deviceIdentitySha256: currentIdentity.deviceIdentitySha256,
+    retainedApkSha256: currentIdentity.retainedApkSha256,
+    retainedSignatureSha256: currentIdentity.retainedSignatureSha256,
+  }));
+  const nativeReportSha256 = identity.nativeReportSha256 ?? HASH;
   return {
     schema_version: 1,
     suite: "phase18-garmin-adversarial",
@@ -798,14 +827,27 @@ function createAdversarialEvidence(identity) {
       generation_before: index === 3 ? 7 : index === 4 ? 8 : index === 5 ? 20 : index >= 6 ? 30 : 7,
       generation_after: index === 3 ? 8 : index === 4 ? 8 : index === 5 ? 21 : index >= 6 ? 30 : 7,
     })),
+    current_identity: currentIdentity,
+    producer_context: {
+      kind: "installed-route-log",
+      marker: "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:",
+      package: PACKAGE,
+      run_nonce: "0123456789abcdef0123456789abcdef",
+      source_pid: 4242,
+      device_identity_sha256: currentIdentity.deviceIdentitySha256,
+      installed_apk_sha256: identity.installedApkSha256 ?? currentIdentity.retainedApkSha256,
+      native_report_sha256: nativeReportSha256,
+      current_identity_sha256: currentIdentitySha256,
+      fixture_sha256: null,
+    },
     native_report: {
       path: `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`,
-      sha256: HASH,
+      sha256: nativeReportSha256,
     },
     privacy_scan: {
       status: "passed",
       scanned_artifact_count: 4,
-      report_sha256: HASH,
+      report_sha256: identity.privacyReportSha256 ?? HASH,
     },
   };
 }
@@ -883,9 +925,15 @@ function createAcceptanceWorkspace({
   delete proofRawReport.raw_report_sha256;
   const proofRawReportBytes = Buffer.from(`${JSON.stringify(proofRawReport, null, 2)}\n`);
   validProof.raw_report_sha256 = digest(proofRawReportBytes);
-  const adversarialNativeBytes = Buffer.from('{\n  "status": "passed"\n}\n');
+  const adversarialNativeBytes = Buffer.from(`${JSON.stringify({
+    status: validAdversarial.status,
+    run_nonce: validAdversarial.producer_context.run_nonce,
+    cases: validAdversarial.cases,
+    current_identity: validAdversarial.current_identity,
+  }, null, 2)}\n`);
   const adversarialPrivacyBytes = Buffer.from('{\n  "status": "passed",\n  "scanned_artifact_count": 4\n}\n');
   validAdversarial.native_report.sha256 = digest(adversarialNativeBytes);
+  validAdversarial.producer_context.native_report_sha256 = digest(adversarialNativeBytes);
   validAdversarial.privacy_scan.report_sha256 = digest(adversarialPrivacyBytes);
   const adversarialRawReport = structuredClone(validAdversarial);
   delete adversarialRawReport.raw_report_sha256;
@@ -1308,7 +1356,7 @@ test("acceptance runner CLI writes raw reports and rejects malformed records", (
   }
 });
 
-test("adversarial runner and verifier CLI seal exact native evidence without device execution", () => {
+test("adversarial runner rejects the legacy fake-SDK PASS report before sealing", () => {
   const workspace = createAdversarialRunnerWorkspace();
   try {
     const run = runVerifier(adversarialRunnerScript, workspace.root, [
@@ -1319,25 +1367,8 @@ test("adversarial runner and verifier CLI seal exact native evidence without dev
       "--execute",
       "--phase20-native-checkpoint",
     ], workspace.env);
-    assert.equal(run.status, 0, run.stderr || run.stdout);
-    const missingFinal = runVerifier(adversarialScript, workspace.root, [
-      "--manifest",
-      ADVERSARIAL_MANIFEST,
-    ], workspace.env);
-    assert.notEqual(missingFinal.status, 0);
-    assert.match(missingFinal.stderr, /ENOENT|no such file|final-evidence/iu);
-    const seal = runVerifier(adversarialScript, workspace.root, [
-      "--manifest",
-      ADVERSARIAL_MANIFEST,
-      "--seal",
-      "--phase20-native-checkpoint",
-    ], workspace.env);
-    assert.equal(seal.status, 0, seal.stderr || seal.stdout);
-    const verify = runVerifier(adversarialScript, workspace.root, [
-      "--manifest",
-      ADVERSARIAL_MANIFEST,
-    ], workspace.env);
-    assert.equal(verify.status, 0, verify.stderr || verify.stdout);
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /phase18_garmin_adversarial_native_report_schema_invalid/u);
   } finally {
     workspace.cleanup();
   }

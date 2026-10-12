@@ -24,6 +24,7 @@ import {
 } from "./acceptance-verifier-evidence.mjs";
 import {
   collectInstalledNativeReport,
+  createPhase18GarminAdversarialTestCollectorFixture,
   executePhase18GarminAdversarialRunnerCli,
 } from "./adversarial-runner-evidence.mjs";
 import {
@@ -361,6 +362,23 @@ function adversarialEvidence(current) {
     "3".repeat(64),
     "3".repeat(64),
   ];
+  const currentIdentity = {
+    currentHead: current.currentHead,
+    currentSourceTreeSha256: current.currentSourceTreeSha256,
+    currentPythonLockSha256: current.currentPythonLockSha256,
+    retainedApkSha256: current.retainedApkSha256,
+    retainedSignatureSha256: current.retainedSignatureSha256,
+    deviceIdentitySha256: current.deviceIdentitySha256,
+  };
+  const currentIdentitySha256 = createHash("sha256").update(JSON.stringify({
+    currentHead: currentIdentity.currentHead,
+    currentPythonLockSha256: currentIdentity.currentPythonLockSha256,
+    currentSourceTreeSha256: currentIdentity.currentSourceTreeSha256,
+    deviceIdentitySha256: currentIdentity.deviceIdentitySha256,
+    retainedApkSha256: currentIdentity.retainedApkSha256,
+    retainedSignatureSha256: currentIdentity.retainedSignatureSha256,
+  })).digest("hex");
+  const nativeReportSha256 = current.nativeReportSha256 ?? HASH;
   return {
     schema_version: 1,
     suite: "phase18-garmin-adversarial",
@@ -410,7 +428,20 @@ function adversarialEvidence(current) {
       generation_before: index === 3 ? 7 : index === 4 ? 8 : index === 5 ? 20 : index >= 6 ? 30 : 7,
       generation_after: index === 3 ? 8 : index === 4 ? 8 : index === 5 ? 21 : index >= 6 ? 30 : 7,
     })),
-    native_report: { path: "artifacts/native/phase18-garmin-adversarial/native-report.json", sha256: HASH },
+    current_identity: currentIdentity,
+    producer_context: {
+      kind: "installed-route-log",
+      marker: "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:",
+      package: "com.fchoo.gymtracker.devtest",
+      run_nonce: "0123456789abcdef0123456789abcdef",
+      source_pid: 4242,
+      device_identity_sha256: currentIdentity.deviceIdentitySha256,
+      installed_apk_sha256: current.installedApkSha256 ?? currentIdentity.retainedApkSha256,
+      native_report_sha256: nativeReportSha256,
+      current_identity_sha256: currentIdentitySha256,
+      fixture_sha256: null,
+    },
+    native_report: { path: "artifacts/native/phase18-garmin-adversarial/native-report.json", sha256: nativeReportSha256 },
     privacy_scan: { status: "passed", scanned_artifact_count: 4, report_sha256: HASH },
   };
 }
@@ -894,7 +925,6 @@ test("acceptance verifier uses on-disk JSON and default owner verifiers without 
       report: proofRawReport,
       rawReportBytes: proofRawReportBytes,
     });
-    const nativeReportBytes = Buffer.from('{"status":"passed"}\n');
     const adversarialPrivacyBytes = Buffer.from('{"status":"passed","scanned_artifact_count":4}\n');
     const adversarialFinalBase = adversarialEvidence({
       currentHead: current.currentHead,
@@ -911,7 +941,15 @@ test("acceptance verifier uses on-disk JSON and default owner verifiers without 
       adversarialFinalBase,
     );
     assert.match(ignoredRawHash, /^[a-f0-9]{64}$/u);
-    adversarialRawReport.native_report.sha256 = createHash("sha256").update(nativeReportBytes).digest("hex");
+    const nativeReportBytes = Buffer.from(`${JSON.stringify({
+      status: adversarialRawReport.status,
+      run_nonce: adversarialRawReport.producer_context.run_nonce,
+      cases: adversarialRawReport.cases,
+      current_identity: adversarialRawReport.current_identity,
+    }, null, 2)}\n`);
+    const nativeReportSha256 = createHash("sha256").update(nativeReportBytes).digest("hex");
+    adversarialRawReport.native_report.sha256 = nativeReportSha256;
+    adversarialRawReport.producer_context.native_report_sha256 = nativeReportSha256;
     adversarialRawReport.privacy_scan.report_sha256 = createHash("sha256").update(adversarialPrivacyBytes).digest("hex");
     const adversarialRawReportBytes = Buffer.from(`${JSON.stringify(adversarialRawReport, null, 2)}\n`);
     const adversarialFinalEvidence = {
@@ -1227,8 +1265,6 @@ test("adversarial runner default IO paths and native collector stay bounded", ()
     privacyReportSha256: HASH,
   }).cases;
   const collectedReport = {
-    schema_version: 1,
-    suite: "phase18-garmin-adversarial",
     status: "passed",
     cases: exactCases,
     current_identity: current,
@@ -1249,13 +1285,14 @@ test("adversarial runner default IO paths and native collector stay bounded", ()
       "--execute",
       "--phase20-native-checkpoint",
     ], {
-      collectNativeReport: () => ({
+      collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
         report: collectedReport,
-        logcat: "bounded native result markers only",
+        run_nonce: "0123456789abcdef0123456789abcdef",
+        source_pid: 4242,
       }),
-    }).stdout.includes("\"status\":\"passed\""), true);
-    assert.equal(JSON.parse(readFileSync(path.resolve(rawReportPath), "utf8")).status, "passed");
-    assert.equal(JSON.parse(readFileSync(path.resolve(nativeReportPath), "utf8")).status, "passed");
+    }).stdout.includes("\"status\":\"TECHNICAL_REVIEW_REQUIRED\""), true);
+    assert.equal(JSON.parse(readFileSync(path.resolve(rawReportPath), "utf8")).status, "TECHNICAL_REVIEW_REQUIRED");
+    assert.equal(JSON.parse(readFileSync(path.resolve(nativeReportPath), "utf8")).status, "TECHNICAL_REVIEW_REQUIRED");
     assert.equal(JSON.parse(readFileSync(path.resolve(privacyReportPath), "utf8")).status, "passed");
     rmSync(path.resolve(rawReportPath), { force: true });
     rmSync(path.resolve(nativeReportPath), { force: true });
@@ -1273,9 +1310,10 @@ test("adversarial runner default IO paths and native collector stay bounded", ()
     "--phase20-native-checkpoint",
   ], {
     readJson: () => retainedAdversarialManifest(),
-    collectNativeReport: () => ({
+    collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
       report: { ...collectedReport, cases: collectedReport.cases.slice(1) },
-      logcat: "bounded native result markers only",
+      run_nonce: "0123456789abcdef0123456789abcdef",
+      source_pid: 4242,
     }),
     writeNativeReport: () => {},
     writePrivacyReport: () => {},
@@ -1288,6 +1326,8 @@ test("adversarial runner default IO paths and native collector stay bounded", ()
   try {
     const adbPath = path.join(root, "adb");
     const noncePath = path.join(root, "nonce");
+    const installedApk = "phase18-helper-adversarial-apk";
+    const installedApkSha256 = createHash("sha256").update(installedApk).digest("hex");
     const hostDeviceIdentitySha256 = createHash("sha256").update(JSON.stringify({
       serial: "SERIAL",
       abi: "arm64-v8a",
@@ -1299,6 +1339,7 @@ test("adversarial runner default IO paths and native collector stay bounded", ()
       current_identity: {
         ...collectedReport.current_identity,
         deviceIdentitySha256: hostDeviceIdentitySha256,
+        retainedApkSha256: installedApkSha256,
       },
       run_nonce: "__NONCE__",
     };
@@ -1318,6 +1359,9 @@ if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
   esac
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then printf 'package:/data/app/phase18/base.apk\n'; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then printf '${Buffer.byteLength(installedApk)}\n'; exit 0; fi
+if [ "$1" = "pull" ]; then printf '%s' '${installedApk}' > "$3"; exit 0; fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
   for argument in "$@"; do

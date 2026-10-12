@@ -10,6 +10,7 @@ import {
   collectInstalledNativeReport,
   createPhase18GarminAdversarialRawReport,
   createPhase18GarminAdversarialRunnerPlan,
+  createPhase18GarminAdversarialTestCollectorFixture,
   executePhase18GarminAdversarialRunner,
   executePhase18GarminAdversarialRunnerCli,
   parsePhase18GarminAdversarialRunnerArgs,
@@ -30,10 +31,11 @@ const RAW_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/raw-report.json`
 const FINAL_EVIDENCE = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/final-evidence.json`;
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
-const NATIVE_BYTES = Buffer.from("native report\n");
 const PRIVACY_BYTES = Buffer.from("privacy report\n");
-const NATIVE_HASH = createHash("sha256").update(NATIVE_BYTES).digest("hex");
 const PRIVACY_HASH = createHash("sha256").update(PRIVACY_BYTES).digest("hex");
+const RUN_NONCE = "0123456789abcdef0123456789abcdef";
+const COLLECTOR_APK_TEXT = "phase18-adversarial-apk";
+const COLLECTOR_APK_HASH = createHash("sha256").update(COLLECTOR_APK_TEXT).digest("hex");
 
 function captureCli(fn, argv) {
   const originalArgv = process.argv;
@@ -170,11 +172,50 @@ function cases() {
   }));
 }
 
+const CURRENT_IDENTITY = Object.freeze({
+  currentHead: HEAD,
+  currentSourceTreeSha256: HASH,
+  currentPythonLockSha256: HASH,
+  retainedApkSha256: HASH,
+  retainedSignatureSha256: HASH,
+  deviceIdentitySha256: HASH,
+});
+const NATIVE_REPORT = Object.freeze({
+  status: "passed",
+  run_nonce: RUN_NONCE,
+  cases: cases(),
+  current_identity: CURRENT_IDENTITY,
+});
+const NATIVE_BYTES = Buffer.from(`${JSON.stringify(NATIVE_REPORT, null, 2)}\n`);
+const NATIVE_HASH = createHash("sha256").update(NATIVE_BYTES).digest("hex");
+const CURRENT_IDENTITY_HASH = createHash("sha256").update(JSON.stringify({
+  currentHead: CURRENT_IDENTITY.currentHead,
+  currentPythonLockSha256: CURRENT_IDENTITY.currentPythonLockSha256,
+  currentSourceTreeSha256: CURRENT_IDENTITY.currentSourceTreeSha256,
+  deviceIdentitySha256: CURRENT_IDENTITY.deviceIdentitySha256,
+  retainedApkSha256: CURRENT_IDENTITY.retainedApkSha256,
+  retainedSignatureSha256: CURRENT_IDENTITY.retainedSignatureSha256,
+})).digest("hex");
+const PRODUCER_CONTEXT = Object.freeze({
+  kind: "installed-route-log",
+  marker: "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:",
+  package: "com.fchoo.gymtracker.devtest",
+  run_nonce: RUN_NONCE,
+  source_pid: 4242,
+  device_identity_sha256: HASH,
+  installed_apk_sha256: HASH,
+  native_report_sha256: NATIVE_HASH,
+  current_identity_sha256: CURRENT_IDENTITY_HASH,
+  fixture_sha256: null,
+});
+
 function rawEvidence(overrides = {}) {
   return createPhase18GarminAdversarialRawReport({
     manifest: manifest(),
     status: "passed",
     cases: cases(),
+    current_identity: CURRENT_IDENTITY,
+    producer_context: PRODUCER_CONTEXT,
     native_report: {
       path: `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/native-report.json`,
       sha256: NATIVE_HASH,
@@ -360,6 +401,64 @@ test("verifier rejects the retired single-digest always-zero mock shape", () => 
   );
 });
 
+test("verifier rejects collector context and sequential digest tampering", () => {
+  const missingContextKey = structuredClone(evidence());
+  delete missingContextKey.producer_context.marker;
+  assert.throws(
+    () => validatePhase18GarminAdversarialEvidence(missingContextKey),
+    /phase18_garmin_adversarial_evidence_producer_context_invalid/u,
+  );
+
+  const callerLabeledFixture = structuredClone(evidence());
+  callerLabeledFixture.producer_context.fixture_sha256 = HASH;
+  assert.throws(
+    () => validatePhase18GarminAdversarialEvidence(callerLabeledFixture),
+    /phase18_garmin_adversarial_evidence_producer_context_invalid/u,
+  );
+
+  const brokenSequence = structuredClone(evidence());
+  brokenSequence.cases[3].history_digest_before = "0".repeat(64);
+  brokenSequence.cases[3].history_digest_after = "0".repeat(64);
+  assert.throws(
+    () => validatePhase18GarminAdversarialEvidence(brokenSequence),
+    /phase18_garmin_adversarial_evidence_case_invalid/u,
+  );
+});
+
+test("verifier rejects every collector identity and observation drift", () => {
+  const mutations = [
+    (value) => { value.current_identity.currentHead = "c".repeat(40); },
+    (value) => { value.current_identity.currentSourceTreeSha256 = "c".repeat(64); },
+    (value) => { value.current_identity.currentPythonLockSha256 = "c".repeat(64); },
+    (value) => { value.current_identity.retainedApkSha256 = "c".repeat(64); },
+    (value) => { value.current_identity.retainedSignatureSha256 = "c".repeat(64); },
+    (value) => { value.current_identity.deviceIdentitySha256 = "c".repeat(64); },
+    (value) => { value.current_identity.deviceIdentitySha256 = "invalid"; },
+    (value) => { value.producer_context.kind = "caller-json"; },
+    (value) => { value.producer_context.marker = "wrong-marker"; },
+    (value) => { value.producer_context.package = "com.example.wrong"; },
+    (value) => { value.producer_context.run_nonce = "invalid"; },
+    (value) => { value.producer_context.source_pid = "4242"; },
+    (value) => { value.producer_context.source_pid = 0; },
+    (value) => { value.producer_context.device_identity_sha256 = "invalid"; },
+    (value) => { value.producer_context.installed_apk_sha256 = "invalid"; },
+    (value) => { value.producer_context.native_report_sha256 = "invalid"; },
+    (value) => { value.producer_context.current_identity_sha256 = "invalid"; },
+    (value) => { value.producer_context.device_identity_sha256 = "c".repeat(64); },
+    (value) => { value.producer_context.installed_apk_sha256 = "c".repeat(64); },
+    (value) => { value.producer_context.native_report_sha256 = "c".repeat(64); },
+    (value) => { value.producer_context.current_identity_sha256 = "c".repeat(64); },
+  ];
+  for (const mutate of mutations) {
+    const changed = structuredClone(evidence());
+    mutate(changed);
+    assert.throws(
+      () => validatePhase18GarminAdversarialEvidence(changed),
+      /phase18_garmin_adversarial_evidence_producer_context_invalid/u,
+    );
+  }
+});
+
 test("unexpected real failures remain TECHNICAL_REVIEW_REQUIRED and cannot be rewritten as expected passes", () => {
   const exact = evidence();
   const unexpectedCases = exact.cases.map((entry, index) => index === 10
@@ -421,11 +520,47 @@ test("privacy scan rejects credentials, identity, provider data, URLs, filenames
   assert.equal(assertPhase18GarminAdversarialPrivacySafe(evidence()), true);
 });
 
-test("Phase 20 runner validates before writing and never writes final evidence", () => {
+test("Phase 20 runner rejects an unowned collector payload before writing evidence", () => {
   const exact = evidence();
   const writes = [];
   const nativeWrites = [];
   const privacyWrites = [];
+  assert.throws(
+    () => executePhase18GarminAdversarialRunner([
+      "--manifest", MANIFEST,
+      "--record", RECORD,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ], {
+      readJson: () => retainedManifest(),
+      collectNativeReport: () => ({
+        report: {
+          status: exact.status,
+          cases: exact.cases,
+          current_identity: CURRENT_IDENTITY,
+        },
+        logcat: "bounded native result markers only",
+      }),
+      writeNativeReport: (...args) => nativeWrites.push(args),
+      writePrivacyReport: (...args) => privacyWrites.push(args),
+      writeRawReport: (report) => writes.push(report),
+    }),
+    /phase18_garmin_adversarial_collector_provenance_invalid/u,
+  );
+  assert.equal(writes.length, 0);
+  assert.equal(nativeWrites.length, 0);
+  assert.equal(privacyWrites.length, 0);
+});
+
+test("test-labeled collector fixtures exercise the pipeline without proving PASS", () => {
+  const writes = [];
+  const nativeWrites = [];
+  const privacyWrites = [];
+  const fixture = createPhase18GarminAdversarialTestCollectorFixture({
+    report: NATIVE_REPORT,
+    run_nonce: RUN_NONCE,
+    source_pid: 4242,
+  });
   const result = executePhase18GarminAdversarialRunner([
     "--manifest", MANIFEST,
     "--record", RECORD,
@@ -433,38 +568,106 @@ test("Phase 20 runner validates before writing and never writes final evidence",
     "--phase20-native-checkpoint",
   ], {
     readJson: () => retainedManifest(),
-    collectNativeReport: () => ({
-      report: {
-        schema_version: 1,
-        suite: "phase18-garmin-adversarial",
-        status: exact.status,
-        cases: exact.cases,
-        current_identity: {
-          currentHead: HEAD,
-          currentSourceTreeSha256: HASH,
-          currentPythonLockSha256: HASH,
-          retainedApkSha256: HASH,
-          retainedSignatureSha256: HASH,
-          deviceIdentitySha256: HASH,
-        },
-      },
-      logcat: "bounded native result markers only",
-    }),
+    collectNativeReport: () => fixture,
     writeNativeReport: (...args) => nativeWrites.push(args),
     writePrivacyReport: (...args) => privacyWrites.push(args),
     writeRawReport: (report) => writes.push(report),
   });
-  assert.deepEqual(result, { status: "passed", final_evidence_written: false });
-  assert.equal(writes.length, 1);
+  assert.deepEqual(result, {
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    final_evidence_written: false,
+  });
   assert.equal(nativeWrites.length, 1);
   assert.equal(privacyWrites.length, 1);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].producer_context.kind, "test-collector-fixture");
+  assert.ok(writes[0].cases.every((entry) => entry.provenance === "unexpected"));
   assert.deepEqual(validatePhase18GarminAdversarialEvidence({
     ...writes[0],
     raw_report_sha256: HASH,
   }), {
-    status: "passed",
+    status: "TECHNICAL_REVIEW_REQUIRED",
     cases: 16,
   });
+  const reviewRawBytes = Buffer.from(`${JSON.stringify(writes[0], null, 2)}\n`);
+  const reviewNativeBytes = Buffer.from(`${JSON.stringify(nativeWrites[0][1], null, 2)}\n`);
+  assert.equal(createPhase18GarminAdversarialFinalEvidence({
+    manifest: writes[0].manifest,
+    report: writes[0],
+    rawReportBytes: reviewRawBytes,
+    nativeReportBytes: reviewNativeBytes,
+  }).status, "TECHNICAL_REVIEW_REQUIRED");
+  const spoofedPass = structuredClone(writes[0]);
+  spoofedPass.status = "passed";
+  spoofedPass.cases = spoofedPass.cases.map((entry) => ({
+    ...entry,
+    status: "passed",
+    provenance: "native-exact-artifact",
+  }));
+  assert.throws(
+    () => validatePhase18GarminAdversarialEvidence({
+      ...spoofedPass,
+      raw_report_sha256: HASH,
+    }),
+    /phase18_garmin_adversarial_evidence_producer_context_invalid/u,
+  );
+  for (const mutate of [
+    (value) => { value.producer_context.fixture_sha256 = "invalid"; },
+    (value) => { value.producer_context.fixture_sha256 = "c".repeat(64); },
+    (value) => {
+      value.cases[0].status = "passed";
+      value.cases[0].provenance = "native-exact-artifact";
+    },
+  ]) {
+    const changed = structuredClone(writes[0]);
+    mutate(changed);
+    assert.throws(
+      () => validatePhase18GarminAdversarialEvidence({
+        ...changed,
+        raw_report_sha256: HASH,
+      }),
+      /phase18_garmin_adversarial_evidence_producer_context_invalid/u,
+    );
+  }
+});
+
+test("test collector fixtures reject invalid labels and corrupted native bytes", () => {
+  for (const input of [
+    undefined,
+    { report: NATIVE_REPORT, run_nonce: "invalid", source_pid: 4242 },
+    { report: NATIVE_REPORT, run_nonce: RUN_NONCE, source_pid: "4242" },
+    { report: NATIVE_REPORT, run_nonce: RUN_NONCE, source_pid: 0 },
+  ]) {
+    assert.throws(
+      () => createPhase18GarminAdversarialTestCollectorFixture(input),
+      /phase18_garmin_adversarial_collector_fixture_invalid/u,
+    );
+  }
+  const incomplete = createPhase18GarminAdversarialTestCollectorFixture({
+    report: { current_identity: CURRENT_IDENTITY },
+    run_nonce: RUN_NONCE,
+    source_pid: 4242,
+  });
+  assert.equal(incomplete.report.cases, undefined);
+
+  const corrupted = createPhase18GarminAdversarialTestCollectorFixture({
+    report: NATIVE_REPORT,
+    run_nonce: RUN_NONCE,
+    source_pid: 4242,
+  });
+  corrupted.nativeReportBytes.fill(0);
+  assert.throws(
+    () => executePhase18GarminAdversarialRunner([
+      "--manifest", MANIFEST,
+      "--record", RECORD,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ], {
+      readJson: () => retainedManifest(),
+      collectNativeReport: () => corrupted,
+    }),
+    /phase18_garmin_adversarial_collector_provenance_invalid/u,
+  );
 });
 
 test("runner rejects private native records before any raw report write", () => {
@@ -478,24 +681,16 @@ test("runner rejects private native records before any raw report write", () => 
       "--phase20-native-checkpoint",
     ], {
       readJson: () => retainedManifest(),
-      collectNativeReport: () => ({
+      collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
         report: {
-          schema_version: 1,
-          suite: "phase18-garmin-adversarial",
           status: exact.status,
           cases: exact.cases.map((entry, index) => index === 6
             ? { ...entry, token: "synthetic-private-value" }
             : entry),
-          current_identity: {
-            currentHead: HEAD,
-            currentSourceTreeSha256: HASH,
-            currentPythonLockSha256: HASH,
-            retainedApkSha256: HASH,
-            retainedSignatureSha256: HASH,
-            deviceIdentitySha256: HASH,
-          },
+          current_identity: CURRENT_IDENTITY,
         },
-        logcat: "bounded native result markers only",
+        run_nonce: RUN_NONCE,
+        source_pid: 4242,
       }),
       writeRawReport: (report) => writes.push(report),
     }),
@@ -517,15 +712,13 @@ test("native collector scopes one selected device, package PID, and cryptographi
     model: "Phase 18 Device",
   })).digest("hex");
   const report = {
-    schema_version: 1,
-    suite: "phase18-garmin-adversarial",
     status: "passed",
     cases: cases(),
     current_identity: {
       currentHead: HEAD,
       currentSourceTreeSha256: HASH,
       currentPythonLockSha256: HASH,
-      retainedApkSha256: HASH,
+      retainedApkSha256: COLLECTOR_APK_HASH,
       retainedSignatureSha256: HASH,
       deviceIdentitySha256: hostDeviceIdentitySha256,
     },
@@ -549,6 +742,9 @@ if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
   esac
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then printf 'package:/data/app/phase18/base.apk\n'; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then printf '${Buffer.byteLength(COLLECTOR_APK_TEXT)}\n'; exit 0; fi
+if [ "$1" = "pull" ]; then printf '%s' '${COLLECTOR_APK_TEXT}' > "$3"; exit 0; fi
 if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "force-stop" ]; then exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
@@ -609,6 +805,13 @@ test("native collector rejects ambiguous device selection and mismatched report 
   const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-binding-"));
   const adbPath = path.join(root, "adb");
   const payloadPath = path.join(root, "payload.json");
+  const noncePath = path.join(root, "nonce.txt");
+  const hostDeviceIdentitySha256 = createHash("sha256").update(JSON.stringify({
+    serial: "DEVICE_A",
+    abi: "arm64-v8a",
+    apiLevel: "36",
+    model: "Phase 18 Device",
+  })).digest("hex");
   try {
     writeExecutable(adbPath, `#!/bin/sh
 if [ "$1" = "devices" ]; then
@@ -639,10 +842,20 @@ if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
   case "$3" in ro.product.cpu.abi) printf 'arm64-v8a\n' ;; ro.build.version.sdk) printf '36\n' ;; ro.product.model) printf 'Phase 18 Device\n' ;; esac
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then printf 'package:/data/app/phase18/base.apk\n'; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then printf '${Buffer.byteLength(COLLECTOR_APK_TEXT)}\n'; exit 0; fi
+if [ "$1" = "pull" ]; then printf '%s' '${COLLECTOR_APK_TEXT}' > "$3"; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
+  for argument in "$@"; do
+    case "$argument" in *nonce=*) value="\${argument##*nonce=}"; printf '%s' "\${value%%&*}" > "${noncePath}" ;; esac
+  done
+  exit 0
+fi
 if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '4242\n'; exit 0; fi
 if [ "$1" = "logcat" ] && [ "$2" = "--pid" ]; then
+  nonce=$(cat "${noncePath}")
   printf 'GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:'
-  cat "${payloadPath}"
+  sed "s/__NONCE__/$nonce/g" "${payloadPath}"
   printf '\n'
   exit 0
 fi
@@ -651,6 +864,45 @@ exit 0
     assert.throws(
       () => collectInstalledNativeReport(),
       /phase18_garmin_adversarial_native_report_nonce_invalid/u,
+    );
+    const exactReport = {
+      status: "passed",
+      cases: cases(),
+      current_identity: {
+        ...CURRENT_IDENTITY,
+        retainedApkSha256: COLLECTOR_APK_HASH,
+        deviceIdentitySha256: "0".repeat(64),
+      },
+      run_nonce: "__NONCE__",
+    };
+    writeFileSync(payloadPath, JSON.stringify({
+      ...exactReport,
+      current_identity: {
+        ...exactReport.current_identity,
+        deviceIdentitySha256: hostDeviceIdentitySha256,
+      },
+      unexpected: true,
+    }));
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_schema_invalid/u,
+    );
+    writeFileSync(payloadPath, JSON.stringify(exactReport));
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_device_identity_invalid/u,
+    );
+    writeFileSync(payloadPath, JSON.stringify({
+      ...exactReport,
+      current_identity: {
+        ...exactReport.current_identity,
+        deviceIdentitySha256: hostDeviceIdentitySha256,
+        retainedApkSha256: HASH,
+      },
+    }));
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_apk_identity_invalid/u,
     );
     writeFileSync(payloadPath, "null");
     assert.throws(
@@ -661,6 +913,21 @@ exit 0
     assert.throws(
       () => collectInstalledNativeReport(),
       /phase18_garmin_adversarial_native_report_nonce_invalid/u,
+    );
+    writeExecutable(adbPath, `#!/bin/sh
+if [ "$1" = "devices" ]; then printf 'List of devices attached\nDEVICE_A\tdevice\n'; exit 0; fi
+if [ "$1" = "-s" ]; then shift 2; fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in ro.product.cpu.abi) printf 'arm64-v8a\n' ;; ro.build.version.sdk) printf '36\n' ;; ro.product.model) printf 'Phase 18 Device\n' ;; esac
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ]; then printf 'package:/data/app/phase18/base.apk\n'; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then printf '0\n'; exit 0; fi
+exit 0
+`);
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_installed_apk_invalid/u,
     );
   } finally {
     if (originalPath === undefined) delete process.env.PATH;
@@ -697,6 +964,9 @@ if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
   case "$3" in ro.product.cpu.abi) printf 'arm64-v8a\n' ;; ro.build.version.sdk) printf '36\n' ;; ro.product.model) printf 'Phase 18 Device\n' ;; esac
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then printf 'package:/data/app/phase18/base.apk\n'; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then printf '${Buffer.byteLength(COLLECTOR_APK_TEXT)}\n'; exit 0; fi
+if [ "$1" = "pull" ]; then printf '%s' '${COLLECTOR_APK_TEXT}' > "$3"; exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
   for argument in "$@"; do
     case "$argument" in
@@ -749,22 +1019,15 @@ test("runner rejects privacy-unsafe free-form strings and native collection time
       "--phase20-native-checkpoint",
     ], {
       readJson: () => retainedManifest(),
-      collectNativeReport: () => ({
+      collectNativeReport: () => createPhase18GarminAdversarialTestCollectorFixture({
         report: {
-          schema_version: 1,
-          suite: "phase18-garmin-adversarial",
           status: "passed",
           cases: cases(),
-          current_identity: {
-            currentHead: HEAD,
-            currentSourceTreeSha256: HASH,
-            currentPythonLockSha256: HASH,
-            retainedApkSha256: HASH,
-            retainedSignatureSha256: HASH,
-            deviceIdentitySha256: HASH,
-          },
+          current_identity: CURRENT_IDENTITY,
         },
         logcat: "owner@example.invalid",
+        run_nonce: RUN_NONCE,
+        source_pid: 4242,
       }),
     }),
     /phase18_garmin_adversarial_record_privacy_invalid/u,
@@ -785,6 +1048,9 @@ if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
   case "$3" in ro.product.cpu.abi) printf 'arm64-v8a\n' ;; ro.build.version.sdk) printf '36\n' ;; ro.product.model) printf 'Phase 18 Device\n' ;; esac
   exit 0
 fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then printf 'package:/data/app/phase18/base.apk\n'; exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "stat" ]; then printf '${Buffer.byteLength(COLLECTOR_APK_TEXT)}\n'; exit 0; fi
+if [ "$1" = "pull" ]; then printf '%s' '${COLLECTOR_APK_TEXT}' > "$3"; exit 0; fi
 if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then
   count=0
   [ -f "${pidCountPath}" ] && count=$(cat "${pidCountPath}")
@@ -940,6 +1206,7 @@ test("adversarial sealing rejects raw report identity and schema drift", () => {
       manifest: manifest({ apk_sha256: "c".repeat(64) }),
       report: raw,
       rawReportBytes,
+      nativeReportBytes: NATIVE_BYTES,
     }),
     /phase18_garmin_adversarial_evidence_report_identity_invalid/u,
   );
@@ -948,9 +1215,83 @@ test("adversarial sealing rejects raw report identity and schema drift", () => {
       manifest: raw.manifest,
       report: { ...raw, unexpected: true },
       rawReportBytes,
+      nativeReportBytes: NATIVE_BYTES,
     }),
     /phase18_garmin_adversarial_evidence_report_schema_invalid/u,
   );
+});
+
+test("adversarial sealing rejects raw reports without collector-owned context", () => {
+  const raw = rawEvidence();
+  const contextFree = structuredClone(raw);
+  delete contextFree.current_identity;
+  delete contextFree.producer_context;
+  assert.throws(
+    () => createPhase18GarminAdversarialFinalEvidence({
+      manifest: contextFree.manifest,
+      report: contextFree,
+      rawReportBytes: Buffer.from(`${JSON.stringify(contextFree, null, 2)}\n`),
+      nativeReportBytes: NATIVE_BYTES,
+    }),
+    /phase18_garmin_adversarial_evidence_(?:producer_context|report_(?:schema|provenance))_invalid/u,
+  );
+});
+
+test("adversarial sealing rejects missing, malformed, and mismatched native report bytes", () => {
+  const seal = (report, nativeReportBytes) => createPhase18GarminAdversarialFinalEvidence({
+    manifest: report.manifest,
+    report,
+    rawReportBytes: Buffer.from(`${JSON.stringify(report, null, 2)}\n`),
+    nativeReportBytes,
+  });
+  assert.throws(
+    () => seal(rawEvidence(), "not-bytes"),
+    /phase18_garmin_adversarial_evidence_report_provenance_invalid/u,
+  );
+
+  const malformedBytes = Buffer.from("{malformed\n");
+  const malformed = structuredClone(rawEvidence());
+  const malformedHash = createHash("sha256").update(malformedBytes).digest("hex");
+  malformed.native_report.sha256 = malformedHash;
+  malformed.producer_context.native_report_sha256 = malformedHash;
+  assert.throws(
+    () => seal(malformed, malformedBytes),
+    /phase18_garmin_adversarial_evidence_report_provenance_invalid/u,
+  );
+
+  const mismatchedBytes = Buffer.from(`${JSON.stringify({
+    ...NATIVE_REPORT,
+    run_nonce: "f".repeat(32),
+  }, null, 2)}\n`);
+  const mismatched = structuredClone(rawEvidence());
+  const mismatchedHash = createHash("sha256").update(mismatchedBytes).digest("hex");
+  mismatched.native_report.sha256 = mismatchedHash;
+  mismatched.producer_context.native_report_sha256 = mismatchedHash;
+  assert.throws(
+    () => seal(mismatched, mismatchedBytes),
+    /phase18_garmin_adversarial_evidence_report_provenance_invalid/u,
+  );
+
+  const nativeMutations = [
+    (value) => { value.unexpected = true; },
+    (value) => { value.status = "TECHNICAL_REVIEW_REQUIRED"; },
+    (value) => { value.current_identity.currentHead = "c".repeat(40); },
+    (value) => { value.cases = "not-an-array"; },
+    (value) => { value.cases[0].stage = "wrong-stage"; },
+  ];
+  for (const mutate of nativeMutations) {
+    const nativeReport = structuredClone(NATIVE_REPORT);
+    mutate(nativeReport);
+    const nativeBytes = Buffer.from(`${JSON.stringify(nativeReport, null, 2)}\n`);
+    const changed = structuredClone(rawEvidence());
+    const hash = createHash("sha256").update(nativeBytes).digest("hex");
+    changed.native_report.sha256 = hash;
+    changed.producer_context.native_report_sha256 = hash;
+    assert.throws(
+      () => seal(changed, nativeBytes),
+      /phase18_garmin_adversarial_evidence_report_provenance_invalid/u,
+    );
+  }
 });
 
 test("adversarial CLI helpers emit bounded stdout and stderr", () => {

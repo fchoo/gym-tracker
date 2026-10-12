@@ -34,7 +34,30 @@ const PRIVACY_REPORT = `${PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT}/privacy-repo
 const PYTHON_LOCK = "modules/garmin-connect/python/garmin-python-lock.json";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const HASH = /^[a-f0-9]{64}$/u;
+const NONCE = /^[a-f0-9]{32}$/u;
 const SAFE_TEXT = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
+const NATIVE_REPORT_MARKER = "GYM_TRACKER_PHASE18_GARMIN_ADVERSARIAL_REPORT:";
+const TEST_FIXTURE_LABEL = "phase18-garmin-adversarial-test-collector/v1";
+const CURRENT_IDENTITY_KEYS = Object.freeze([
+  "currentHead",
+  "currentPythonLockSha256",
+  "currentSourceTreeSha256",
+  "deviceIdentitySha256",
+  "retainedApkSha256",
+  "retainedSignatureSha256",
+]);
+const PRODUCER_CONTEXT_KEYS = Object.freeze([
+  "current_identity_sha256",
+  "device_identity_sha256",
+  "fixture_sha256",
+  "installed_apk_sha256",
+  "kind",
+  "marker",
+  "native_report_sha256",
+  "package",
+  "run_nonce",
+  "source_pid",
+]);
 const EXPECTED_CODES = Object.freeze([
   "completed",
   "completed",
@@ -114,6 +137,81 @@ export function assertPhase18GarminAdversarialPrivacySafe(value, context = "") {
 
 function validInteger(value, maximum = Number.MAX_SAFE_INTEGER) {
   return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+}
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function currentIdentitySha256(identity) {
+  return sha256Bytes(Buffer.from(JSON.stringify(Object.fromEntries(
+    CURRENT_IDENTITY_KEYS.map((key) => [key, identity[key]]),
+  ))));
+}
+
+function fixtureSha256(context) {
+  return sha256Bytes(Buffer.from(JSON.stringify({
+    label: TEST_FIXTURE_LABEL,
+    current_identity_sha256: context.current_identity_sha256,
+    device_identity_sha256: context.device_identity_sha256,
+    installed_apk_sha256: context.installed_apk_sha256,
+    native_report_sha256: context.native_report_sha256,
+    run_nonce: context.run_nonce,
+    source_pid: context.source_pid,
+  })));
+}
+
+function collectorCases(cases) {
+  return cases.map((entry) => ({
+    ...entry,
+    provenance: entry.status === "passed" ? "native-exact-artifact" : "unexpected",
+  }));
+}
+
+function validateProducerContext(evidence) {
+  const identity = evidence.current_identity;
+  const context = evidence.producer_context;
+  const manifest = evidence.manifest;
+  if (!exactKeys(identity, CURRENT_IDENTITY_KEYS)
+    || !exactKeys(context, PRODUCER_CONTEXT_KEYS)) {
+    fail("producer_context_invalid");
+  }
+  const invalid = [
+    !regexMatch(/^[a-f0-9]{40}$/u, identity.currentHead),
+    !CURRENT_IDENTITY_KEYS.slice(1).every((key) => regexMatch(HASH, identity[key])),
+    identity.currentHead !== manifest.base_head,
+    identity.currentSourceTreeSha256 !== manifest.source_tree_sha256,
+    identity.currentPythonLockSha256 !== manifest.python_lock_sha256,
+    identity.retainedApkSha256 !== manifest.apk_sha256,
+    identity.retainedSignatureSha256 !== manifest.signature_sha256,
+    identity.deviceIdentitySha256 !== manifest.device_identity_sha256,
+    !["installed-route-log", "test-collector-fixture"].includes(context.kind),
+    context.marker !== NATIVE_REPORT_MARKER,
+    context.package !== PACKAGE,
+    !regexMatch(NONCE, context.run_nonce),
+    !Number.isSafeInteger(context.source_pid),
+    context.source_pid <= 0,
+    !regexMatch(HASH, context.device_identity_sha256),
+    !regexMatch(HASH, context.installed_apk_sha256),
+    !regexMatch(HASH, context.native_report_sha256),
+    !regexMatch(HASH, context.current_identity_sha256),
+    context.device_identity_sha256 !== identity.deviceIdentitySha256,
+    context.installed_apk_sha256 !== identity.retainedApkSha256,
+    context.native_report_sha256 !== evidence.native_report.sha256,
+    context.current_identity_sha256 !== currentIdentitySha256(identity),
+  ].some(Boolean);
+  if (invalid) fail("producer_context_invalid");
+  if (context.kind === "test-collector-fixture") {
+    if (!regexMatch(HASH, context.fixture_sha256)
+      || context.fixture_sha256 !== fixtureSha256(context)
+      || evidence.status !== "TECHNICAL_REVIEW_REQUIRED"
+      || evidence.cases.some((entry) => entry.status !== "TECHNICAL_REVIEW_REQUIRED"
+        || entry.provenance !== "unexpected")) {
+      fail("producer_context_invalid");
+    }
+  } else if (context.fixture_sha256 !== null) {
+    fail("producer_context_invalid");
+  }
 }
 
 function expectedStage(id) {
@@ -215,9 +313,11 @@ export function validatePhase18GarminAdversarialEvidence(evidence) {
     !exactKeys(evidence, [
       "case_ids",
       "cases",
+      "current_identity",
       "manifest",
       "native_report",
       "privacy_scan",
+      "producer_context",
       "raw_report_sha256",
       "schema_version",
       "status",
@@ -250,6 +350,7 @@ export function validatePhase18GarminAdversarialEvidence(evidence) {
     !regexMatch(HASH, evidence.privacy_scan.report_sha256),
   ].some(Boolean);
   if (invalidIdentity) fail("identity_invalid");
+  validateProducerContext(evidence);
   evidence.cases.forEach((entry, index) => validateCase(entry, plan.case_ids[index], index));
   validateDigestAndGenerationRelationships(evidence.cases);
   const expectedStatus = evidence.cases.some(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED")
@@ -261,6 +362,8 @@ export function validatePhase18GarminAdversarialEvidence(evidence) {
 
 export function validatePhase18GarminAdversarialCurrentIdentity(evidence, current) {
   const manifest = evidence?.manifest;
+  const identity = evidence?.current_identity;
+  const context = evidence?.producer_context;
   const invalid = [
     manifest?.base_head !== current.currentHead,
     manifest?.source_tree_sha256 !== current.currentSourceTreeSha256,
@@ -272,6 +375,15 @@ export function validatePhase18GarminAdversarialCurrentIdentity(evidence, curren
     evidence?.raw_report_sha256 !== current.rawReportSha256,
     evidence?.native_report?.sha256 !== current.nativeReportSha256,
     evidence?.privacy_scan?.report_sha256 !== current.privacyReportSha256,
+    identity?.currentHead !== current.currentHead,
+    identity?.currentSourceTreeSha256 !== current.currentSourceTreeSha256,
+    identity?.currentPythonLockSha256 !== current.currentPythonLockSha256,
+    identity?.retainedApkSha256 !== current.retainedApkSha256,
+    identity?.retainedSignatureSha256 !== current.retainedSignatureSha256,
+    identity?.deviceIdentitySha256 !== current.deviceIdentitySha256,
+    context?.device_identity_sha256 !== current.deviceIdentitySha256,
+    context?.installed_apk_sha256 !== current.installedApkSha256,
+    context?.native_report_sha256 !== current.nativeReportSha256,
   ].some(Boolean);
   if (invalid) fail("current_identity_invalid");
   return true;
@@ -390,6 +502,27 @@ function writeFinalEvidence(evidence) {
   writeFileSync(FINAL_EVIDENCE, `${JSON.stringify(evidence, null, 2)}\n`, { flag: "wx" });
 }
 
+function validateNativeReportBinding(evidence, nativeReportBytes) {
+  if (!Buffer.isBuffer(nativeReportBytes)
+    || sha256Bytes(nativeReportBytes) !== evidence?.native_report?.sha256) {
+    fail("report_provenance_invalid");
+  }
+  let nativeReport;
+  try {
+    nativeReport = JSON.parse(nativeReportBytes.toString("utf8"));
+  } catch {
+    fail("report_provenance_invalid");
+  }
+  if (!exactKeys(nativeReport, ["cases", "current_identity", "run_nonce", "status"])
+    || nativeReport.run_nonce !== evidence.producer_context.run_nonce
+    || nativeReport.status !== evidence.status
+    || !isDeepStrictEqual(nativeReport.current_identity, evidence.current_identity)
+    || !Array.isArray(nativeReport.cases)
+    || !isDeepStrictEqual(collectorCases(nativeReport.cases), evidence.cases)) {
+    fail("report_provenance_invalid");
+  }
+}
+
 export function createPhase18GarminAdversarialFinalEvidence(input) {
   assertPhase18GarminAdversarialPrivacySafe(input.report);
   if (!isDeepStrictEqual(input.manifest, input.report?.manifest)) {
@@ -398,9 +531,11 @@ export function createPhase18GarminAdversarialFinalEvidence(input) {
   if (!exactKeys(input.report, [
     "case_ids",
     "cases",
+    "current_identity",
     "manifest",
     "native_report",
     "privacy_scan",
+    "producer_context",
     "schema_version",
     "status",
     "suite",
@@ -410,6 +545,7 @@ export function createPhase18GarminAdversarialFinalEvidence(input) {
     raw_report_sha256: createHash("sha256").update(input.rawReportBytes).digest("hex"),
   });
   validatePhase18GarminAdversarialEvidence(evidence);
+  validateNativeReportBinding(evidence, input.nativeReportBytes);
   return evidence;
 }
 
@@ -424,6 +560,7 @@ export function executePhase18GarminAdversarialVerifier(
   const retainedManifest = jsonReader(MANIFEST);
   const persistedFinalEvidence = options.seal ? undefined : jsonReader(FINAL_EVIDENCE);
   const rawReportBytes = bytesReader(PHASE18_GARMIN_ADVERSARIAL_RAW_REPORT);
+  const nativeReportBytes = bytesReader(NATIVE_REPORT);
   const current = choose(
     dependencies.resolveCurrentIdentity,
     resolvePhase18GarminAdversarialCurrentIdentity,
@@ -438,15 +575,17 @@ export function executePhase18GarminAdversarialVerifier(
       manifest,
       report: JSON.parse(Buffer.from(rawReportBytes).toString("utf8")),
       rawReportBytes,
+      nativeReportBytes,
     })
     : persistedFinalEvidence;
   if (!isDeepStrictEqual(evidence?.manifest, manifest)) fail("report_identity_invalid");
-  const nativeReportSha256 = createHash("sha256").update(bytesReader(NATIVE_REPORT)).digest("hex");
+  const nativeReportSha256 = sha256Bytes(nativeReportBytes);
   const privacyReportSha256 = createHash("sha256").update(bytesReader(PRIVACY_REPORT)).digest("hex");
   if (evidence?.native_report?.sha256 !== nativeReportSha256
     || evidence?.privacy_scan?.report_sha256 !== privacyReportSha256) {
     fail("report_identity_invalid");
   }
+  if (!options.seal) validateNativeReportBinding(evidence, nativeReportBytes);
   const result = validatePhase18GarminAdversarialEvidence(evidence);
   validatePhase18GarminAdversarialCurrentIdentity(evidence, current);
   if (options.seal) finalWriter(evidence, FINAL_EVIDENCE);
