@@ -323,6 +323,10 @@ async function queryRange(
            ON schedule.id = opportunity.schedule_id
           AND schedule.plan_id = opportunity.plan_id
           AND schedule.lifecycle = 'active'
+         JOIN running_session_slots slot
+           ON slot.id = opportunity.slot_id
+          AND slot.plan_id = opportunity.plan_id
+          AND slot.retired_at_ms IS NULL
          JOIN running_session_revisions session ON session.id = opportunity.session_revision_id AND session.plan_id = opportunity.plan_id
          LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'running' AND projection.selected_opportunity_id = opportunity.id
           AND NOT EXISTS (
@@ -340,7 +344,7 @@ async function queryRange(
           )
         WHERE schedule.lifecycle = 'active'
           AND COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
-        ORDER BY local_date, opportunity.slot_id, opportunity.id`, [input.start, input.end],
+        ORDER BY local_date, slot.ordinal, opportunity.id`, [input.start, input.end],
     ),
     reader.queryAll<ImportedRow>(
       `SELECT activity.id, activity.source, identity.source_kind, identity.account_namespace,

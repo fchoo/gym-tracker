@@ -214,6 +214,50 @@ async function seedImportedActivity(kernel: SqliteKernel): Promise<void> {
   });
 }
 
+async function seedRunningIntent(kernel: SqliteKernel): Promise<void> {
+  const sessionDefinition = (id: string, kind: "recovery" | "tempo") => JSON.stringify({
+    version: 1, id, rootId: `${kind}-root`, planId: "running-plan", sessionKind: kind,
+    revision: 1, createdAtMs: 1,
+    phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }],
+    contextual: kind === "tempo" ? { format: "continuous", work: { durationMs: 60_000 } } : {},
+  });
+  await kernel.write(async (transaction) => {
+    await transaction.execute(`INSERT INTO plans
+      (id, origin, name, days_per_week, is_active, revision, plan_kind)
+      VALUES ('running-plan', 'custom', '10K plan', 2, 1, 1, 'running'),
+             ('inactive-running-plan', 'custom', 'Old Running plan', 1, 0, 1, 'running')`);
+    await transaction.execute(`INSERT INTO running_plans (plan_id, status, revision, created_at_ms)
+      VALUES ('running-plan', 'ready', 1, 1), ('inactive-running-plan', 'ready', 1, 1)`);
+    await transaction.execute(`INSERT INTO running_session_revisions
+      (id, plan_id, session_kind, revision, definition_json, created_at_ms)
+      VALUES ('recovery-revision', 'running-plan', 'recovery', 1, ?, 1),
+             ('tempo-revision', 'running-plan', 'tempo', 1, ?, 1),
+             ('inactive-revision', 'inactive-running-plan', 'recovery', 1, ?, 1)`,
+    [sessionDefinition("recovery-revision", "recovery"), sessionDefinition("tempo-revision", "tempo"), JSON.stringify({
+      version: 1, id: "inactive-revision", rootId: "inactive-root", planId: "inactive-running-plan", sessionKind: "recovery",
+      revision: 1, createdAtMs: 1, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }], contextual: {},
+    })]);
+    await transaction.execute(`INSERT INTO running_session_slots
+      (id, plan_id, weekday, ordinal, session_revision_id, revision, retired_at_ms)
+      VALUES ('z-slot', 'running-plan', 'Monday', 0, 'recovery-revision', 1, NULL),
+             ('a-slot', 'running-plan', 'Monday', 1, 'tempo-revision', 1, NULL),
+             ('inactive-slot', 'inactive-running-plan', 'Monday', 0, 'inactive-revision', 1, NULL)`);
+    await transaction.execute(`INSERT INTO owned_plan_schedules
+      (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind)
+      VALUES ('running-schedule', 'running-plan', 'active', 1, 1, NULL, 'running'),
+             ('inactive-running-schedule', 'inactive-running-plan', 'inactive', 1, 1, 2, 'running')`);
+    await transaction.execute(`INSERT INTO owned_plan_schedule_versions
+      (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms)
+      VALUES ('running-version', 'running-schedule', 1, '2026-11-01', 'weekday', 'Asia/Singapore', NULL, 1),
+             ('inactive-running-version', 'inactive-running-schedule', 1, '2026-11-01', 'weekday', 'Asia/Singapore', NULL, 1)`);
+    await transaction.execute(`INSERT INTO running_opportunities
+      (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date, timezone, session_revision_id, state, created_at_ms)
+      VALUES ('running-z-first', 'running-plan', 'running-schedule', 'running-version', 'z-slot', '2026-11-01', 'Asia/Singapore', 'recovery-revision', 'planned', 1),
+             ('running-a-second', 'running-plan', 'running-schedule', 'running-version', 'a-slot', '2026-11-01', 'Asia/Singapore', 'tempo-revision', 'planned', 1),
+             ('running-inactive', 'inactive-running-plan', 'inactive-running-schedule', 'inactive-running-version', 'inactive-slot', '2026-11-01', 'Asia/Singapore', 'inactive-revision', 'planned', 1)`);
+  });
+}
+
 describe("training calendar repository with real SQLite", () => {
   it("projects active intent, distinguishes rest from empty, and rejects consumed non-events", async () => {
     const kernel = await open();
@@ -270,5 +314,21 @@ describe("training calendar repository with real SQLite", () => {
     ]);
     expect(result.events.some(({ id }) => id === "strength-voided")).toBe(false);
     expect(result.days.map(({ kind }) => kind)).toEqual(["empty", "events", "empty"]);
+  });
+
+  it("preserves source-defined Running slot order and excludes inactive schedule intent", async () => {
+    const kernel = await open();
+    await seedRunningIntent(kernel);
+
+    const result = await createTrainingCalendarRepository(kernel).loadRange({
+      startLocalDate: "2026-11-01",
+      endLocalDateExclusive: "2026-11-02",
+    });
+
+    expect(result.events.map(({ id }) => id)).toEqual(["running-z-first", "running-a-second"]);
+    expect(result.events.map(({ displaySummary }) => displaySummary)).toEqual([
+      "Recovery session planned",
+      "Tempo session planned",
+    ]);
   });
 });
