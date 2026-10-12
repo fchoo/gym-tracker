@@ -318,7 +318,7 @@ function adversarialCases() {
     call_count: expectedCalls[index],
     automatic_retry_count: 0,
     retry_after_ms: id === "PH18-ADV-429" ? 900_000 : 0,
-    source_write_count: 0,
+    source_write_count: index === 2 ? 3 : 0,
     connection_state: index === 3 || index === 5
       ? "disconnected"
       : index === 4 ? "sign-in-required" : "connected",
@@ -328,9 +328,12 @@ function adversarialCases() {
         ? `${id === "PH18-ADV-PARTIAL-PAGE" ? "partial" : "failure"}-${expectedCodes[index].replaceAll("_", "-")}`
         : index === 5 ? "failure-stale-generation" : "idle",
     session_digest: sessionDigests[index] ?? "4".repeat(64),
-    history_digest: "5".repeat(64),
-    source_digest: "6".repeat(64),
-    match_digest: "7".repeat(64),
+    history_digest_before: (index <= 2 ? "5" : "8").repeat(64),
+    history_digest_after: (index < 2 ? "5" : "8").repeat(64),
+    source_digest_before: (index <= 2 ? "6" : "9").repeat(64),
+    source_digest_after: (index < 2 ? "6" : "9").repeat(64),
+    match_digest_before: "7".repeat(64),
+    match_digest_after: "7".repeat(64),
     generation_before: index === 3 ? 7 : index === 4 ? 8 : index === 5 ? 20 : index >= 6 ? 30 : 7,
     generation_after: index === 3 ? 8 : index === 4 ? 8 : index === 5 ? 21 : index >= 6 ? 30 : 7,
   }));
@@ -964,7 +967,7 @@ test("adversarial runner and verifier hit record and validation error branches",
     () => validatePhase18GarminAdversarialEvidence({
       ...exact,
       cases: exact.cases.map((entry, index) => index === 0
-        ? { ...entry, history_digest: "8".repeat(64) }
+        ? { ...entry, history_digest_after: "0".repeat(64) }
         : entry),
     }),
     /phase18_garmin_adversarial_evidence_case_invalid/u,

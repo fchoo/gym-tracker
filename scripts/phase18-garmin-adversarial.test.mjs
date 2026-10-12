@@ -134,6 +134,11 @@ function cases() {
     "1".repeat(64), "2".repeat(64), "2".repeat(64),
     "3".repeat(64), "3".repeat(64), "3".repeat(64),
   ];
+  const historyBefore = "5".repeat(64);
+  const historyAfterRead = "8".repeat(64);
+  const sourceBefore = "6".repeat(64);
+  const sourceAfterRead = "9".repeat(64);
+  const matchDigest = "7".repeat(64);
   return createPhase18GarminAdversarialRunnerPlan().case_ids.map((id, index) => ({
     id,
     status: "passed",
@@ -144,7 +149,7 @@ function cases() {
     call_count: expectedCalls[index],
     automatic_retry_count: 0,
     retry_after_ms: id === "PH18-ADV-429" ? 900_000 : 0,
-    source_write_count: 0,
+    source_write_count: index === 2 ? 3 : 0,
     connection_state: index === 3 || index === 5
       ? "disconnected"
       : index === 4 ? "sign-in-required" : "connected",
@@ -154,9 +159,12 @@ function cases() {
         ? `${id === "PH18-ADV-PARTIAL-PAGE" ? "partial" : "failure"}-${expectedCodes[index].replaceAll("_", "-")}`
         : index === 5 ? "failure-stale-generation" : "idle",
     session_digest: sessionDigests[index] ?? "4".repeat(64),
-    history_digest: "5".repeat(64),
-    source_digest: "6".repeat(64),
-    match_digest: "7".repeat(64),
+    history_digest_before: index <= 2 ? historyBefore : historyAfterRead,
+    history_digest_after: index < 2 ? historyBefore : historyAfterRead,
+    source_digest_before: index <= 2 ? sourceBefore : sourceAfterRead,
+    source_digest_after: index < 2 ? sourceBefore : sourceAfterRead,
+    match_digest_before: matchDigest,
+    match_digest_after: matchDigest,
     generation_before: index === 3 ? 7 : index === 4 ? 8 : index === 5 ? 20 : index >= 6 ? 30 : 7,
     generation_after: index === 3 ? 8 : index === 4 ? 8 : index === 5 ? 21 : index >= 6 ? 30 : 7,
   }));
@@ -324,6 +332,32 @@ test("verifier accepts only the exact ordered expected-injection contract", () =
       /phase18_garmin_adversarial_evidence_/u,
     );
   }
+});
+
+test("verifier rejects the retired single-digest always-zero mock shape", () => {
+  const exact = evidence();
+  const legacyCases = exact.cases.map((entry) => {
+    const {
+      history_digest_before: _historyBefore,
+      history_digest_after: _historyAfter,
+      source_digest_before: _sourceBefore,
+      source_digest_after: _sourceAfter,
+      match_digest_before: _matchBefore,
+      match_digest_after: _matchAfter,
+      ...legacy
+    } = entry;
+    return {
+      ...legacy,
+      source_write_count: 0,
+      history_digest: "5".repeat(64),
+      source_digest: "6".repeat(64),
+      match_digest: "7".repeat(64),
+    };
+  });
+  assert.throws(
+    () => validatePhase18GarminAdversarialEvidence({ ...exact, cases: legacyCases }),
+    /phase18_garmin_adversarial_evidence_case_invalid/u,
+  );
 });
 
 test("unexpected real failures remain TECHNICAL_REVIEW_REQUIRED and cannot be rewritten as expected passes", () => {

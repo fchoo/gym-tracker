@@ -84,13 +84,16 @@ const CASE_KEYS = Object.freeze([
   "duration_ms",
   "generation_after",
   "generation_before",
-  "history_digest",
+  "history_digest_after",
+  "history_digest_before",
   "id",
-  "match_digest",
+  "match_digest_after",
+  "match_digest_before",
   "provenance",
   "retry_after_ms",
   "session_digest",
-  "source_digest",
+  "source_digest_after",
+  "source_digest_before",
   "source_write_count",
   "stage",
   "status",
@@ -135,16 +138,30 @@ function validateCase(entry, id, index) {
     || !validInteger(entry.generation_before)
     || !validInteger(entry.generation_after)
     || !regexMatch(HASH, entry.session_digest)
-    || !regexMatch(HASH, entry.history_digest)
-    || !regexMatch(HASH, entry.source_digest)
-    || !regexMatch(HASH, entry.match_digest)
+    || !regexMatch(HASH, entry.history_digest_before)
+    || !regexMatch(HASH, entry.history_digest_after)
+    || !regexMatch(HASH, entry.source_digest_before)
+    || !regexMatch(HASH, entry.source_digest_after)
+    || !regexMatch(HASH, entry.match_digest_before)
+    || !regexMatch(HASH, entry.match_digest_after)
     || entry.call_count !== EXPECTED_CALLS[index]
     || entry.automatic_retry_count !== 0
     || entry.retry_after_ms !== (id === "PH18-ADV-429" ? 900_000 : 0)
-    || entry.source_write_count !== 0
     || entry.connection_state !== EXPECTED_CONNECTIONS[index]
     || entry.sync_state !== EXPECTED_SYNC_STATES[index]
   ) fail("case_invalid");
+
+  const readImport = id === "PH18-ADV-READ";
+  const invalidDatabaseEvidence = readImport
+    ? entry.source_write_count <= 0
+      || entry.history_digest_before === entry.history_digest_after
+      || entry.source_digest_before === entry.source_digest_after
+      || entry.match_digest_before !== entry.match_digest_after
+    : entry.source_write_count !== 0
+      || entry.history_digest_before !== entry.history_digest_after
+      || entry.source_digest_before !== entry.source_digest_after
+      || entry.match_digest_before !== entry.match_digest_after;
+  if (invalidDatabaseEvidence) fail("case_invalid");
 
   if (entry.status === "passed") {
     if (
@@ -158,13 +175,14 @@ function validateCase(entry, id, index) {
 }
 
 function validateDigestAndGenerationRelationships(cases) {
-  const [first] = cases;
-  for (const entry of cases) {
-    if (
-      entry.history_digest !== first.history_digest
-      || entry.source_digest !== first.source_digest
-      || entry.match_digest !== first.match_digest
-    ) fail("case_invalid");
+  for (let index = 1; index < cases.length; index += 1) {
+    const previous = cases[index - 1];
+    const entry = cases[index];
+    if (entry.history_digest_before !== previous.history_digest_after
+      || entry.source_digest_before !== previous.source_digest_after
+      || entry.match_digest_before !== previous.match_digest_after) {
+      fail("case_invalid");
+    }
   }
   if (
     cases[0].session_digest === cases[1].session_digest
