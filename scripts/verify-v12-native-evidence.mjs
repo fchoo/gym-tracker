@@ -12,6 +12,7 @@ import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { V12_CALENDAR_ROUTE_JOURNEY_IDS } from "./v12-calendar-case-registry.mjs";
+import { exactKeys } from "./node-evidence-utils.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -33,7 +34,12 @@ function fail(code) {
   throw new Error(`v12_calendar_evidence_${code}`);
 }
 
+function schema(value, keys, location) {
+  if (!exactKeys(value, keys)) fail(`privacy_schema_invalid:${location}`);
+}
+
 function descriptor(value, code) {
+  schema(value, value?.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], code);
   if (typeof value?.path !== "string"
     || value.path.length === 0
     || path.isAbsolute(value.path)
@@ -72,9 +78,15 @@ function noPrivateData(value, location = "evidence") {
 }
 
 function validateIdentity(evidence) {
+  schema(evidence.manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "apk", "installed_apk", "device", "report_sha256"], "manifest");
+  schema(evidence.manifest.js_bundle, ["embedded"], "manifest.js_bundle");
+  schema(evidence.manifest.apk, ["path", "sha256", "size_bytes"], "manifest.apk");
+  schema(evidence.manifest.installed_apk, ["sha256", "matches_retained_apk"], "manifest.installed_apk");
+  schema(evidence.manifest.device, ["identity_sha256"], "manifest.device");
   validateV12CalendarManifest(evidence.manifest);
   const identity = evidence.identity;
   const manifest = evidence.manifest;
+  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
   if (!HEAD.test(identity?.base_head ?? "")
     || !HASH.test(identity?.source_tree_sha256 ?? "")
     || !HASH.test(identity?.source_manifest_sha256 ?? "")
@@ -96,6 +108,8 @@ function validateIdentity(evidence) {
 function validateFunctionalCases(evidence, fixtureMode) {
   exactIds("functional_case", evidence.functional_cases, CALENDAR_NATIVE_CASE_IDS);
   for (const entry of evidence.functional_cases) {
+    schema(entry, ["id", "status", "native_execution", "artifact", "observations"], "functional_case");
+    schema(entry.observations, ["synthetic", "timestamps_ms", "geometry_monotonic", "semantics_monotonic", "focus_ring_dp", "focus_clearance_dp"], "functional_case.observations");
     if (!ALLOWED_RESULTS.has(entry.status)
       || entry.native_execution !== evidence.native_execution
       || !monotonic(entry.observations?.timestamps_ms)
@@ -114,6 +128,8 @@ function validateRouteJourneys(evidence) {
   exactIds("route_journey", evidence.route_journeys, CALENDAR_ROUTE_JOURNEY_IDS);
   const activationKinds = new Set();
   for (const entry of evidence.route_journeys) {
+    schema(entry, ["id", "status", "execution", "activation", "actual_route", "actual_loader", "back_restored", "focus", "durable_identity_sha256", "source_digest_before", "source_digest_after", "command_ledger", "artifact"], "route_journey");
+    schema(entry.focus, ["ring_dp", "clearance_dp"], "route_journey.focus");
     if (entry.status !== "PASS"
       || entry.execution !== "host-component"
       || entry.actual_route !== true
@@ -136,6 +152,9 @@ function validateRouteJourneys(evidence) {
 function validateDeviations(evidence) {
   exactIds("deviation", evidence.deviations, REQUIRED_DEVIATIONS);
   for (const entry of evidence.deviations) {
+    schema(entry, entry.technical_status === "FAIL"
+      ? ["id", "owner_decision", "owner_decision_date", "technical_status", "evidence_complete", "classification", "evidence_hashes", "measured_reason_code"]
+      : ["id", "owner_decision", "owner_decision_date", "technical_status", "evidence_complete", "classification", "evidence_hashes"], "deviation");
     if (entry.owner_decision !== "accepted"
       || entry.owner_decision_date !== "2026-10-07"
       || !ALLOWED_RESULTS.has(entry.technical_status)) fail("deviation_invalid");
@@ -199,6 +218,7 @@ function derivedStatus(evidence) {
 }
 
 export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
+  schema(evidence, ["schema_version", "suite", "run_id", "host_only_fixture", "native_execution", "status", "all_pass", "acceptance_owner", "manifest", "identity", "functional_cases", "route_journeys", "deviations", "comparison", "diagnostics", "artifacts"], "evidence");
   if (evidence?.schema_version !== 1
     || evidence.suite !== "v1.2-calendar"
     || (evidence.host_only_fixture === true
@@ -214,6 +234,7 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
   validateDeviations(evidence);
   validateComparison(evidence, referenceMap(root));
   if (fixtureMode) {
+    schema(evidence.diagnostics, ["native_execution", "status", "acceptance_owner"], "diagnostics");
     if (evidence.diagnostics?.native_execution !== "NOT_RUN"
       || evidence.diagnostics?.status !== "REVIEW_REQUIRED"
       || evidence.diagnostics?.acceptance_owner !== "phase20"
@@ -222,6 +243,8 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
     validateV12CalendarDiagnostics(evidence.diagnostics, evidence.manifest);
   }
   noPrivateData(evidence);
+  schema(evidence.artifacts, ["manifest", "report", "comparison", "diagnostics"], "artifacts");
+  for (const [name, artifact] of Object.entries(evidence.artifacts)) descriptor(artifact, `artifacts.${name}`);
   const status = derivedStatus(evidence);
   if (evidence.status !== status || evidence.all_pass !== (status === "PASS")) fail("aggregate_status_mismatch");
   return Object.freeze({

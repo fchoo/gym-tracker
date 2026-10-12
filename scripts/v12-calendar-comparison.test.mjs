@@ -212,6 +212,27 @@ test("Calendar map requires a unique exact Revision 18 reference and Light/Dark/
   }
 });
 
+test("Calendar comparison rejects unknown privacy-bearing fields in maps, traces, and results", () => {
+  const fixture = completeFixture();
+  try {
+    for (const [location, mutate] of [
+      ["map", (value) => { value.map.captures[0].workout_name = "Alice private rehab session"; }],
+      ["trace", (value) => { value.run.captures[0].trace.samples[0].local_date = "2026-10-13"; }],
+      ["semantics", (value) => { value.run.captures[0].semantics.activity_id = "private-activity"; }],
+    ]) {
+      const value = structuredClone(fixture);
+      mutate(value);
+      assert.throws(() => compareV12Calendar({
+        map: value.map,
+        run: value.run,
+        outputDirectory: path.join(fixture.directory, `privacy-${location}`),
+      }), /privacy_schema_invalid/u);
+    }
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
 test("Calendar reference coverage is bound to the exact source-owned 64-configuration and state registry", () => {
   assert.equal(V12_CALENDAR_STATIC_CONFIGURATIONS.length, 64);
   assert.equal(new Set(V12_CALENDAR_STATIC_CONFIGURATIONS.map(({ id }) => id)).size, 64);

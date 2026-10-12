@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
+import { exactKeys } from "./node-evidence-utils.mjs";
 
 const ROOT = process.cwd();
 const RESULT_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:";
@@ -21,6 +22,10 @@ export const V12_CALENDAR_DIAGNOSTIC_TARGETS = Object.freeze({
 
 function fail(code) {
   throw new Error(`v12_calendar_diagnostics_${code}`);
+}
+
+function schema(value, keys, location) {
+  if (!exactKeys(value, keys)) fail(`privacy_schema_invalid:${location}`);
 }
 
 function finiteNonNegative(value, code) {
@@ -65,6 +70,7 @@ function identityFromManifest(manifest) {
 }
 
 function validateIdentity(identity, manifest) {
+  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256"], "identity");
   if (!HEAD.test(identity?.base_head ?? "")
     || !HASH.test(identity?.source_tree_sha256 ?? "")
     || !HASH.test(identity?.source_manifest_sha256 ?? "")
@@ -83,6 +89,7 @@ function validateIdentity(identity, manifest) {
 }
 
 function validateRaw(raw) {
+  schema(raw, ["producer", "native_execution", "query_samples", "interaction_samples"], "raw");
   if (raw?.producer !== "v12-calendar-native-diagnostics/v1" || raw.native_execution !== "EXECUTED") fail("producer_invalid");
   const queries = raw.query_samples;
   const interactions = raw.interaction_samples;
@@ -91,10 +98,12 @@ function validateRaw(raw) {
   exactSequence(queries, "query_sequence_invalid");
   exactSequence(interactions, "interaction_sequence_invalid");
   for (const sample of queries) {
+    schema(sample, ["sequence", "duration_ms", "source_backed", "event_count", "plan_count", "imported_count"], "query_sample");
     finiteNonNegative(sample.duration_ms, "query_duration_invalid");
     if (sample.source_backed !== true || sample.synthetic === true || sample.fabricated === true || !Number.isInteger(sample.event_count) || sample.event_count < 0 || !Number.isInteger(sample.plan_count) || sample.plan_count < 0 || !Number.isInteger(sample.imported_count) || sample.imported_count < 0) fail("query_sample_invalid");
   }
   for (const sample of interactions) {
+    schema(sample, ["sequence", "kind", "complete", "frame_work_ms", "missed_frames", "refresh_rate_hz", "profiler_overhead_ms"], "interaction_sample");
     if (sample.kind !== "drag-expand-collapse" || sample.complete !== true || sample.synthetic === true || sample.fabricated === true || !Array.isArray(sample.frame_work_ms) || sample.frame_work_ms.length === 0) fail("interaction_sample_invalid");
     sample.frame_work_ms.forEach((value) => finiteNonNegative(value, "frame_work_invalid"));
     if (!Number.isInteger(sample.missed_frames) || sample.missed_frames < 0) fail("missed_frames_invalid");
@@ -133,6 +142,9 @@ export function createV12CalendarDiagnostics({ manifest, raw }) {
 }
 
 export function validateV12CalendarDiagnostics(evidence, manifest) {
+  schema(evidence, ["schema_version", "suite", "producer", "native_execution", "acceptance_owner", "identity", "targets", "measurements", "summary"], "evidence");
+  schema(evidence?.measurements, ["query_samples", "interaction_samples"], "measurements");
+  schema(evidence?.summary, ["query_p95_ms", "frame_work_p95_ms", "missed_frames", "refresh_rates_hz", "profiler_overhead_max_ms"], "summary");
   if (evidence?.schema_version !== 1
     || evidence.suite !== "v1.2-calendar"
     || evidence.producer !== "v12-calendar-native-diagnostics/v1"

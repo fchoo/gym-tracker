@@ -280,9 +280,20 @@ test("Calendar evidence rejects unsafe paths, symlinks, replaced bytes, and priv
     symlinkSync(externalFile, path.join(root, descriptor.path));
     assert.throws(() => verifyV12CalendarArtifactSet([descriptor], { root }), /artifact_path_invalid/u);
 
-    const privateEvidence = fixture();
-    privateEvidence.route_journeys[0].employee_email = "owner@example.com";
-    assert.throws(() => validateV12CalendarEvidence(privateEvidence), /privacy_unsafe/u);
+    const privateFields = [
+      ["workout_name", "Alice private rehab session"],
+      ["plan_name", "Private marathon plan"],
+      ["local_date", "2026-10-13"],
+      ["activity_id", "garmin-owner-real-id-123"],
+      ["account_namespace", "owner-account"],
+      ["route", "encoded-private-route"],
+      ["employee_email", "owner@example.com"],
+    ];
+    for (const [key, value] of privateFields) {
+      const privateEvidence = fixture();
+      privateEvidence.route_journeys[0][key] = value;
+      assert.throws(() => validateV12CalendarEvidence(privateEvidence), /privacy_schema_invalid/u);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(external, { recursive: true, force: true });
@@ -320,6 +331,22 @@ test("Calendar diagnostics reject deferred, fabricated, incomplete, recomputed-s
     const evidence = clone(valid);
     mutate(evidence);
     assert.throws(() => validateV12CalendarDiagnostics(evidence, manifest()));
+  }
+});
+
+test("Calendar diagnostics reject every unknown or privacy-bearing field instead of relying on keywords", () => {
+  const rawFields = [
+    ["workout_name", "Alice private rehab session"],
+    ["plan_name", "Private marathon plan"],
+    ["local_date", "2026-10-13"],
+    ["activity_id", "garmin-owner-real-id-123"],
+    ["account_namespace", "owner-account"],
+    ["route", "encoded-private-route"],
+  ];
+  for (const [key, value] of rawFields) {
+    const raw = rawDiagnostics();
+    raw.query_samples[0][key] = value;
+    assert.throws(() => createV12CalendarDiagnostics({ manifest: manifest(), raw }), /privacy_schema_invalid/u);
   }
 });
 

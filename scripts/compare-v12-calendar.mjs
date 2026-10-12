@@ -11,6 +11,7 @@ import {
   V12_CALENDAR_REQUIRED_CASE_IDS,
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
+import { exactKeys } from "./node-evidence-utils.mjs";
 
 const ROOT = process.cwd();
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -23,6 +24,9 @@ const canonical = (value) => JSON.stringify(value, Object.keys(value ?? {}).sort
 
 function fail(code) { throw new Error(`v12_calendar_${code}`); }
 function finite(value) { return typeof value === "number" && Number.isFinite(value); }
+function schema(value, keys, location) {
+  if (!exactKeys(value, keys)) fail(`privacy_schema_invalid:${location}`);
+}
 function safePath(value, root = ROOT, allowExternal = false) {
   if (typeof value !== "string" || value.length === 0) fail("path_invalid");
   const resolved = path.resolve(value);
@@ -41,7 +45,16 @@ function scanPrivate(value) {
   else if (value && typeof value === "object") Object.entries(value).forEach(([key, child]) => { if (PRIVATE_FIELDS.test(key)) fail("privacy_leak"); scanPrivate(child); });
 }
 function assertTrace(trace) {
+  schema(trace, Object.hasOwn(trace ?? {}, "schemaVersion")
+    ? ["schemaVersion", "stage", "synthetic", "samples"]
+    : ["synthetic", "samples"], "trace");
   if (trace?.synthetic !== true || !Array.isArray(trace.samples)) fail("trace_invalid");
+  for (const sample of trace.samples) {
+    const evidenceKeys = Object.hasOwn(sample ?? {}, "elapsedMs") ? ["elapsedMs", "synthetic"] : [];
+    if (sample?.kind === "drag") schema(sample, ["kind", "dx", "viewportWidth", "transformX", "semanticOffset", "titleOffset", ...evidenceKeys], "trace.drag");
+    else if (sample?.kind === "release") schema(sample, ["kind", "dx", "viewportWidth", "semanticOffset", "titleOffset", ...evidenceKeys], "trace.release");
+    else fail("trace_invalid");
+  }
   const samples = trace.samples.filter((sample) => sample?.kind === "drag");
   const markers = [0.249, 0.25, 0.251].map((marker) => samples.find((sample) => finite(sample.dx) && finite(sample.viewportWidth) && Math.abs(Math.abs(sample.dx) / sample.viewportWidth - marker) < 0.00001));
   if (markers.some((sample) => sample === undefined)) fail("trace_25_percent_missing");
@@ -58,6 +71,7 @@ function assertTrace(trace) {
     || release.titleOffset !== direction) fail("trace_25_percent_semantic");
 }
 function assertSemantics(semantics) {
+  schema(semantics, ["focus_ring_dp", "focus_clearance_dp", "authority", "target"], "semantics");
   if (semantics?.focus_ring_dp !== 3 || semantics?.focus_clearance_dp !== 4 || semantics?.authority !== "read-only" || typeof semantics?.target !== "string") fail("semantic_mismatch");
 }
 function assertLedger(map) {
@@ -66,11 +80,13 @@ function assertLedger(map) {
   const hasDark = map.case_ledger.some((entry) => entry.theme === "Dark");
   const hasAccessibility = map.case_ledger.some((entry) => entry.input === "keyboard" || entry.input === "dpad");
   const hasReducedMotion = map.case_ledger.some((entry) => entry.motion === "reduced");
+  for (const entry of map.case_ledger) schema(entry, ["id", "capture_ids", "theme", "motion", "input", "viewport"], "case_ledger");
   if (!hasLight || !hasDark || !hasAccessibility || !hasReducedMotion) fail("ledger_required_case_missing");
 }
 
 function assertCaseResults(entries, nativeExecution) {
   if (nativeExecution === "NOT_RUN") {
+    schema(entries, ["status", "native_execution", "required_case_count"], "case_results");
     if (entries?.status !== "REVIEW_REQUIRED"
       || entries.native_execution !== "NOT_RUN"
       || entries.required_case_count !== V12_CALENDAR_REQUIRED_CASE_IDS.length) fail("case_result_invalid");
@@ -80,13 +96,16 @@ function assertCaseResults(entries, nativeExecution) {
     || entries.length !== V12_CALENDAR_REQUIRED_CASE_IDS.length
     || entries.some((entry, index) => entry?.id !== V12_CALENDAR_REQUIRED_CASE_IDS[index])) fail("case_result_set_invalid");
   for (const entry of entries) {
+    schema(entry, ["id", "status", "native_execution", "artifact"], "case_result");
     if (!CASE_RESULTS.has(entry.status) || entry.native_execution !== nativeExecution) fail("case_result_invalid");
+    schema(entry.artifact, entry.artifact?.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], "case_result.artifact");
     if (!SHA256.test(entry.artifact?.sha256 ?? "")) fail("case_result_invalid");
   }
   return entries.map(({ status }) => status);
 }
 
 function assertIdentity(identity) {
+  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256", "report_sha256"], "identity");
   if (!/^[a-f0-9]{40}$/u.test(identity?.base_head ?? "")
     || !SHA256.test(identity?.source_tree_sha256 ?? "")
     || !SHA256.test(identity?.source_manifest_sha256 ?? "")
@@ -98,20 +117,27 @@ function assertIdentity(identity) {
 }
 
 export function validateV12CalendarReferenceMap(map, options = {}) {
+  schema(map, map?.host_only_fixture === true
+    ? ["schema_version", "prototype_revision", "source_manifest_sha256", "host_only_fixture", "case_registry", "captures", "case_ledger"]
+    : ["schema_version", "prototype_revision", "source_manifest", "source_manifest_sha256", "case_registry", "captures", "case_ledger"], "reference_map");
   if (map?.schema_version !== 1 || map.prototype_revision !== 18 || !SHA256.test(map.source_manifest_sha256 ?? "") || !Array.isArray(map.captures) || map.captures.length === 0) fail("map_invalid");
   try { validateV12CalendarCaseRegistryDescriptor(map.case_registry); }
   catch { fail("case_registry_invalid"); }
   const ids = new Set();
   for (const capture of map.captures) {
+    schema(capture, ["id", "requirement_ids", "reference", "configuration"], "reference_capture");
     if (typeof capture?.id !== "string" || ids.has(capture.id) || !Array.isArray(capture.requirement_ids) || capture.requirement_ids.length === 0 || capture.requirement_ids.some((id) => !/^CAL-\d+$/u.test(id))) fail("map_capture_invalid");
     ids.add(capture.id);
     const reference = capture.reference;
+    schema(reference, ["path", "sha256", "width", "height"], "reference_descriptor");
     if (!reference || !SHA256.test(reference.sha256 ?? "") || !Number.isInteger(reference.width) || !Number.isInteger(reference.height) || reference.width < 1 || reference.height < 1) fail("map_reference_invalid");
     if (options.verifyFiles) {
       const info = pngInfo(safePath(reference.path, ROOT, options.allowExternal === true));
       if (info.sha256 !== reference.sha256 || info.width !== reference.width || info.height !== reference.height) fail("reference_stale");
     }
     const configuration = capture.configuration;
+    schema(configuration, ["theme", "viewport", "orientation", "font_scale", "motion", "input", "fixture"], "reference_configuration");
+    schema(configuration?.viewport, ["width", "height"], "reference_viewport");
     if (!configuration || !["Light", "Dark", "System"].includes(configuration.theme) || !finite(configuration.viewport?.width) || !finite(configuration.viewport?.height) || !["portrait", "landscape"].includes(configuration.orientation) || !finite(configuration.font_scale) || !["normal", "reduced"].includes(configuration.motion) || !["touch", "keyboard", "dpad"].includes(configuration.input) || typeof configuration.fixture !== "string") fail("configuration_invalid");
   }
   assertLedger(map);
@@ -146,6 +172,7 @@ function imageArtifacts(referenceBytes, nativeBytes, output) {
 
 export function compareV12Calendar({ map, run, outputDirectory }) {
   validateV12CalendarReferenceMap(map, { verifyFiles: true, allowExternal: map.host_only_fixture === true });
+  schema(run, ["schema_version", "run_id", "identity", "source_tree_sha256", "source_manifest_sha256", "status", "captures"], "run");
   if (run?.schema_version !== 1 || run.status !== "NOT_RUN" || run.run_id !== "phase16-host-deferred" || run.source_manifest_sha256 !== map.source_manifest_sha256 || !SHA256.test(run.source_tree_sha256 ?? "") || !Array.isArray(run.captures)) fail("run_identity_invalid");
   assertIdentity(run.identity);
   if (run.identity.source_tree_sha256 !== run.source_tree_sha256 || run.identity.source_manifest_sha256 !== run.source_manifest_sha256) fail("run_identity_invalid");
@@ -157,10 +184,12 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
   mkdirSync(destination, { recursive: true });
   const records = [];
   for (const capture of run.captures) {
+    schema(capture, ["id", "native", "trace", "semantics", "classification", "differences"], "run_capture");
     const mapped = mapById.get(capture.id);
     if (!mapped) fail("capture_unknown");
     if (capture.classification !== "REVIEW_REQUIRED" || !Array.isArray(capture.differences)) fail("classification_invalid");
     assertTrace(capture.trace); assertSemantics(capture.semantics);
+    schema(capture.native, ["path", "sha256", "width", "height"], "native_descriptor");
     const referenceFile = safePath(mapped.reference.path, ROOT, map.host_only_fixture === true);
     const nativeFile = safePath(capture.native?.path, ROOT, map.host_only_fixture === true);
     const referenceInfo = pngInfo(referenceFile); const nativeInfo = pngInfo(nativeFile);
@@ -184,6 +213,7 @@ export function compareV12Calendar({ map, run, outputDirectory }) {
 }
 
 export function validateV12CalendarComparison(result, options = {}) {
+  schema(result, ["schema_version", "suite", "mode", "run_id", "status", "native_execution", "phase20_deferred", "identity", "case_registry", "case_results", "records"], "comparison");
   const host = result?.mode === "host-deferred";
   const live = result?.mode === "live-executed";
   if (result?.schema_version !== 2
@@ -202,10 +232,21 @@ export function validateV12CalendarComparison(result, options = {}) {
   catch { fail("case_registry_invalid"); }
   const statuses = assertCaseResults(result.case_results, result.native_execution);
   for (const record of result.records) {
+    const nested = Object.hasOwn(record, "artifacts");
+    schema(record, nested
+      ? ["id", "classification", "differences", "artifacts", ...(record.classification === "accepted_deviation" ? ["deviation_id"] : [])]
+      : ["schema_version", "id", "requirement_ids", "classification", "differences", "reference", "native", "overlay", "difference", "mask", "source_manifest_sha256", "source_tree_sha256", "record"], "comparison_record");
     if (!RECORD_CLASSIFICATIONS.has(record.classification) || !Array.isArray(record.differences)) fail("classification_invalid");
-    if (record.differences.some((difference) => difference?.explained !== true)) fail("difference_unexplained");
+    for (const difference of record.differences) {
+      schema(difference, ["kind", "explained"], "comparison_difference");
+      if (difference.explained !== true) fail("difference_unexplained");
+    }
     const artifacts = record.artifacts ?? record;
-    for (const field of ["reference", "native", "overlay", "difference", "mask", "record"]) if (!SHA256.test(artifacts[field]?.sha256 ?? "")) fail("artifact_hash_invalid");
+    if (nested) schema(artifacts, ["reference", "native", "overlay", "difference", "mask", "record"], "comparison_artifacts");
+    for (const field of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      schema(artifacts[field], artifacts[field]?.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], `comparison_${field}`);
+      if (!SHA256.test(artifacts[field]?.sha256 ?? "")) fail("artifact_hash_invalid");
+    }
     statuses.push(record.classification === "accepted_deviation" ? "REVIEW_REQUIRED" : record.classification);
   }
   const expectedStatus = statuses.includes("FAIL") ? "FAIL" : statuses.includes("REVIEW_REQUIRED") ? "REVIEW_REQUIRED" : "PASS";
