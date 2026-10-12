@@ -90,6 +90,10 @@ function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
     entry.native_execution = "EXECUTED";
     entry.observations.synthetic = false;
   });
+  evidence.route_journeys.forEach((entry) => {
+    entry.focus.clearance_dp = 4;
+    entry.focus.measurement_status = "EXECUTED";
+  });
   evidence.deviations.forEach((entry) => {
     entry.technical_status = "PASS";
     entry.evidence_complete = true;
@@ -184,6 +188,7 @@ test("Calendar evidence fixture carries the exact native, route, comparison, and
   assert.equal(result.all_pass, false);
   assert.equal(evidence.native_execution, "NOT_RUN");
   assert.equal(evidence.acceptance_owner, "phase20");
+  assert.equal(evidence.route_journeys.every(({ focus }) => focus.clearance_dp === null && focus.measurement_status === "NOT_RUN"), true);
 });
 
 test("Calendar evidence rejects missing, duplicate, stale, mutating, non-monotonic, and weak-focus records", () => {

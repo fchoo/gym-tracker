@@ -188,6 +188,10 @@ function liveEvidence() {
     entry.native_execution = "EXECUTED";
     entry.observations.synthetic = false;
   });
+  evidence.route_journeys.forEach((entry) => {
+    entry.focus.clearance_dp = 4;
+    entry.focus.measurement_status = "EXECUTED";
+  });
   evidence.deviations.forEach((entry) => {
     entry.technical_status = "PASS";
     entry.evidence_complete = true;

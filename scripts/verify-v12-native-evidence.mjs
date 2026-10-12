@@ -96,13 +96,16 @@ function validateFunctionalCases(evidence, fixtureMode) {
   }
 }
 
-function validateRouteJourneys(evidence) {
+function validateRouteJourneys(evidence, fixtureMode) {
   exactIds("route_journey", evidence.route_journeys, CALENDAR_ROUTE_JOURNEY_IDS);
   const activationKinds = new Set();
   for (const entry of evidence.route_journeys) {
     schema(entry, ["id", "status", "execution", "activation", "actual_route", "actual_loader", "back_restored", "focus", "durable_identity_sha256", "source_digest_before", "source_digest_after", "command_ledger", "artifact"], "route_journey");
-    schema(entry.focus, ["ring_dp", "clearance_dp"], "route_journey.focus");
-    if ([entry.status !== "PASS", entry.execution !== "host-component", entry.actual_route !== true, entry.actual_loader !== true, entry.back_restored !== true, entry.focus.ring_dp !== 3, entry.focus.clearance_dp !== 4, !HASH.test(entry.durable_identity_sha256), !HASH.test(entry.source_digest_before), entry.source_digest_after !== entry.source_digest_before, !Array.isArray(entry.command_ledger), Array.isArray(entry.command_ledger) && entry.command_ledger.length !== 0, !["touch", "keyboard"].includes(entry.activation)].some(Boolean)) fail("route_journey_invalid");
+    schema(entry.focus, ["ring_dp", "clearance_dp", "measurement_status"], "route_journey.focus");
+    const focusInvalid = fixtureMode
+      ? entry.focus.clearance_dp !== null || entry.focus.measurement_status !== "NOT_RUN"
+      : entry.focus.clearance_dp !== 4 || entry.focus.measurement_status !== "EXECUTED";
+    if ([entry.status !== "PASS", entry.execution !== "host-component", entry.actual_route !== true, entry.actual_loader !== true, entry.back_restored !== true, entry.focus.ring_dp !== 3, focusInvalid, !HASH.test(entry.durable_identity_sha256), !HASH.test(entry.source_digest_before), entry.source_digest_after !== entry.source_digest_before, !Array.isArray(entry.command_ledger), Array.isArray(entry.command_ledger) && entry.command_ledger.length !== 0, !["touch", "keyboard"].includes(entry.activation)].some(Boolean)) fail("route_journey_invalid");
     activationKinds.add(entry.activation);
     descriptor(entry.artifact, "route_journey_artifact");
   }
@@ -176,7 +179,7 @@ export function validateV12CalendarEvidence(evidence, { root = ROOT } = {}) {
   if (fixtureMode !== (evidence.native_execution === "NOT_RUN")) fail("fixture_mode_invalid");
   validateIdentity(evidence);
   validateFunctionalCases(evidence, fixtureMode);
-  validateRouteJourneys(evidence);
+  validateRouteJourneys(evidence, fixtureMode);
   validateDeviations(evidence);
   validateComparison(evidence, referenceMap(root));
   if (fixtureMode) {
