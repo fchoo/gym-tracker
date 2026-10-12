@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -29,6 +29,7 @@ import { calendarTrackMetrics } from "./CalendarWeekRow";
 const EASING = Easing.bezier(0.22, 0.8, 0.3, 1);
 const SLOP_DP = 7;
 const HORIZONTAL_INTENT_RATIO = 1.15;
+const SETTLE_FALLBACK_GRACE_MS = 32;
 
 type PanelOffset = -1 | 0 | 1;
 
@@ -207,6 +208,11 @@ export function CalendarMonthViewport({
   const touchStartY = useSharedValue(0);
   const panEnabled = useSharedValue(!disabled && calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
+  const monthCompletionRef = useRef<Readonly<{
+    activeEpoch: number | null;
+    deliveredEpoch: number | null;
+    timer: ReturnType<typeof setTimeout> | null;
+  }>>({ activeEpoch: null, deliveredEpoch: null, timer: null });
   const diagnosticSequenceStarted = useRef(false);
   const diagnosticSequenceExpanded = useRef(false);
   const lastWidth = useRef(0);
@@ -219,29 +225,64 @@ export function CalendarMonthViewport({
     onInteractionDiagnosticStart?.();
   };
 
+  const cancelMonthCompletion = useCallback(() => {
+    const current = monthCompletionRef.current;
+    if (current.timer !== null) clearTimeout(current.timer);
+    monthCompletionRef.current = Object.freeze({
+      activeEpoch: null,
+      deliveredEpoch: current.deliveredEpoch,
+      timer: null,
+    });
+  }, []);
+
+  const publishMonthCompletion = useCallback((epoch: number) => {
+    const current = monthCompletionRef.current;
+    if (current.activeEpoch !== epoch || current.deliveredEpoch === epoch) return;
+    if (current.timer !== null) clearTimeout(current.timer);
+    monthCompletionRef.current = Object.freeze({
+      activeEpoch: epoch,
+      deliveredEpoch: epoch,
+      timer: null,
+    });
+    onComplete(epoch);
+  }, [onComplete]);
+
   useEffect(() => () => {
     mounted.current = false;
+    cancelMonthCompletion();
     cancelAnimation(pointerX);
-  }, [pointerX]);
+  }, [cancelMonthCompletion, pointerX]);
 
   useEffect(() => {
-    if (command?.kind !== "settle-month") return;
+    cancelMonthCompletion();
+    if (command?.kind !== "settle-month") return undefined;
     const width = viewportWidth.value;
     if (width <= 0) {
-      onComplete(command.epoch);
-      return;
+      monthCompletionRef.current = Object.freeze({ activeEpoch: command.epoch, deliveredEpoch: null, timer: null });
+      publishMonthCompletion(command.epoch);
+      return undefined;
     }
     completionEpoch.value = command.epoch;
+    const timer = setTimeout(
+      () => publishMonthCompletion(command.epoch),
+      command.durationMs + SETTLE_FALLBACK_GRACE_MS,
+    );
+    monthCompletionRef.current = Object.freeze({
+      activeEpoch: command.epoch,
+      deliveredEpoch: null,
+      timer,
+    });
     cancelAnimation(pointerX);
     pointerX.value = withTiming(command.toOffset * width, {
       duration: command.durationMs,
       easing: EASING,
     }, (finished) => {
       if (finished && completionEpoch.value === command.epoch) {
-        scheduleOnRN(onComplete, command.epoch);
+        scheduleOnRN(publishMonthCompletion, command.epoch);
       }
     });
-  }, [command, completionEpoch, onCancel, onComplete, pointerX, viewportWidth]);
+    return cancelMonthCompletion;
+  }, [cancelMonthCompletion, command, completionEpoch, pointerX, publishMonthCompletion, viewportWidth]);
 
   useEffect(() => {
     if (command?.kind !== "settle-week") return;

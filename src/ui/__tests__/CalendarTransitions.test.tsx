@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { View } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
+import * as Reanimated from "react-native-reanimated";
 
 import type { LocalDate } from "../../domains/scheduling";
 
@@ -141,6 +142,50 @@ describe("Calendar semantic transitions", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith(1);
     panSpy.mockRestore();
+  });
+
+  it("falls back after a lost settle callback and ignores its late duplicate", async () => {
+    jest.useFakeTimers();
+    let animationCompletion: ((finished: boolean) => void) | undefined;
+    const timing = jest.spyOn(Reanimated, "withTiming").mockImplementation((toValue, _config, callback) => {
+      animationCompletion = callback;
+      return toValue as never;
+    });
+    const onComplete = jest.fn();
+    try {
+      const common = {
+        focusedWeek: null,
+        month: "2026-11-01" as LocalDate,
+        onCancel: jest.fn(),
+        onComplete,
+        onPreview: jest.fn(),
+        onRelease: jest.fn(),
+        renderMonth: () => <View />,
+        renderWeek: () => <View />,
+        transition: Object.freeze({ ...initial(), currentMonthId: "2026-12", phase: "settling" as const, epoch: 1 }),
+      } as const;
+      const rendered = await render(<CalendarMonthViewport {...common} command={null} />);
+      await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", {
+        nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } },
+      });
+      await rendered.rerender(
+        <CalendarMonthViewport
+          {...common}
+          command={{ kind: "settle-month", epoch: 1, fromOffset: -0.25, toOffset: -1, durationMs: 240, easing: [0.22, 0.8, 0.3, 1] }}
+        />,
+      );
+      expect(onComplete).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(272);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      expect(onComplete).toHaveBeenCalledWith(1);
+      animationCompletion?.(true);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      rendered.unmount();
+    } finally {
+      timing.mockRestore();
+      jest.useRealTimers();
+    }
   });
 
   it("records one bounded interaction sample only after a committed drag expands and collapses", async () => {
