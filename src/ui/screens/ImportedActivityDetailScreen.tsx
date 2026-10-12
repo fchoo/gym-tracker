@@ -101,18 +101,20 @@ function DetailHeader({
   onAppearance,
   onBack,
   appearanceRef,
+  backRef,
   headingRef,
 }: Readonly<{
   onAppearance(): void;
   onBack(): void;
   appearanceRef: React.RefObject<View | null>;
+  backRef: React.RefObject<FocusTarget | null>;
   headingRef: React.RefObject<FocusTarget | null>;
 }>) {
   const { colors } = useAppTheme();
   return (
     <View style={styles.header} testID="activity-detail-three-column-header">
       <View style={styles.headerSide}>
-        <IconAction accessibilityLabel="Go back" icon="back" onPress={onBack} />
+        <IconAction accessibilityLabel="Go back" icon="back" onPress={onBack} ref={backRef} testID="activity-detail-back-action" />
       </View>
       <View
         accessibilityLabel="Activity detail"
@@ -121,6 +123,7 @@ function DetailHeader({
         focusable
         ref={headingRef}
         style={styles.headerTitleColumn}
+        testID="activity-detail-heading"
       >
         <Text
           numberOfLines={1}
@@ -485,13 +488,14 @@ export function ImportedActivityDetailScreen({
   const dimensions = useWindowDimensions();
   const stackedLaps = (width ?? dimensions.width) < 600 || dimensions.fontScale >= 2;
   const appearanceRef = useRef<View>(null);
+  const backRef = useRef<FocusTarget | null>(null);
   const matchActionRef = useRef<FocusTarget | null>(null);
   const headingRef = useRef<FocusTarget | null>(null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [revisionBusy, setRevisionBusy] = useState(false);
   useEffect(() => {
-    focusAccessible(headingRef);
-  }, []);
+    focusAccessible(mode === "calendar" ? backRef : headingRef);
+  }, [mode]);
   useEffect(() => {
     if (returnFocusMatchActionToken !== undefined) {
       focusAccessible(matchActionRef);
@@ -508,6 +512,7 @@ export function ImportedActivityDetailScreen({
     <>
       <DetailHeader
         appearanceRef={appearanceRef}
+        backRef={backRef}
         headingRef={headingRef}
         onAppearance={() => setAppearanceOpen(true)}
         onBack={requestBack}

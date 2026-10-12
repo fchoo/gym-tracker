@@ -2,6 +2,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -62,6 +63,20 @@ async function renderScreen(overrides: Partial<React.ComponentProps<typeof Impor
 }
 
 describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
+  it("moves Calendar-origin initial focus to Back", async () => {
+    await renderScreen({ mode: "calendar" });
+    await waitFor(() => {
+      expect(screen.getByTestId("activity-detail-back-action")).toHaveProp(
+        "hasTVPreferredFocus",
+        true,
+      );
+    });
+    expect(screen.getByTestId("activity-detail-heading")).not.toHaveProp(
+      "hasTVPreferredFocus",
+      true,
+    );
+  });
+
   it("renders factual summary, validated route alternative, optional HR, laps, and fidelity in order", async () => {
     await renderScreen();
 
