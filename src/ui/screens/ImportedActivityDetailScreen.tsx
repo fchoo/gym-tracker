@@ -60,8 +60,9 @@ export type ImportedActivityDetailScreenState =
 
 export type ImportedActivityDetailScreenProps = Readonly<{
   state: ImportedActivityDetailScreenState;
+  mode?: "management" | "calendar";
   onBack(): void;
-  onMatch(): void;
+  onMatch?(): void;
   onRetry(): void;
   onAcceptRevision?(): Promise<void>;
   onKeepRevision?(): Promise<void>;
@@ -299,7 +300,7 @@ function LapTable({ laps, stacked }: Readonly<{
 function ReadyDetail({ detail, matchActionRef, onMatch, stackedLaps }: Readonly<{
   detail: ImportedActivityDetail;
   matchActionRef: React.RefObject<View | null>;
-  onMatch(): void;
+  onMatch?: () => void;
   stackedLaps: boolean;
 }>) {
   const { colors } = useAppTheme();
@@ -335,7 +336,7 @@ function ReadyDetail({ detail, matchActionRef, onMatch, stackedLaps }: Readonly<
       )}
       <LapTable laps={detail.laps} stacked={stackedLaps} />
       <InlineNotice body={detail.fidelity.body} heading={detail.fidelity.heading} tone="neutral" />
-      <PrimaryAction label="Match to scheduled workout" onPress={onMatch} ref={matchActionRef} />
+      {onMatch === undefined ? null : <PrimaryAction label="Match to scheduled workout" onPress={onMatch} ref={matchActionRef} />}
     </>
   );
 }
@@ -346,12 +347,14 @@ function NonReadyDetail({
   onRetry,
   onAcceptRevision,
   onKeepRevision,
+  readOnly,
 }: Readonly<{
   onBusyChange?(busy: boolean): void;
   state: Exclude<ImportedActivityDetailScreenState, Readonly<{ kind: "ready" }>>;
   onRetry(): void;
   onAcceptRevision?: () => Promise<void>;
   onKeepRevision?: () => Promise<void>;
+  readOnly: boolean;
 }>) {
   const { colors } = useAppTheme();
   const [busy, setBusy] = useState<"accept" | "keep" | null>(null);
@@ -436,7 +439,7 @@ function NonReadyDetail({
               tone="error"
             />
           )}
-          <PrimaryAction
+          {readOnly ? null : <PrimaryAction
             busy={busy === "accept"}
             disabled={busy !== null || onAcceptRevision === undefined}
             label="Use updated facts"
@@ -448,8 +451,8 @@ function NonReadyDetail({
                 setResolution(error instanceof Error && error.message === "stale" ? "stale" : "save_failure");
               }).finally(() => setBusy(null));
             }}
-          />
-          <SecondaryAction
+          />}
+          {readOnly ? null : <SecondaryAction
             disabled={busy !== null || onKeepRevision === undefined}
             label="Keep current facts"
             onPress={() => {
@@ -460,7 +463,7 @@ function NonReadyDetail({
                 setResolution(error instanceof Error && error.message === "stale" ? "stale" : "save_failure");
               }).finally(() => setBusy(null));
             }}
-          />
+          />}
           <SecondaryAction disabled={busy !== null} label="Retry activity details" onPress={onRetry} />
         </View>
       );
@@ -469,6 +472,7 @@ function NonReadyDetail({
 
 export function ImportedActivityDetailScreen({
   state,
+  mode = "management",
   onBack,
   onMatch,
   onRetry,
@@ -509,11 +513,12 @@ export function ImportedActivityDetailScreen({
         onBack={requestBack}
       />
       {state.kind === "ready" ? (
-        <ReadyDetail detail={state.detail} matchActionRef={matchActionRef} onMatch={onMatch} stackedLaps={stackedLaps} />
+        <ReadyDetail detail={state.detail} matchActionRef={matchActionRef} {...(mode === "calendar" ? {} : { onMatch })} stackedLaps={stackedLaps} />
       ) : (
         <NonReadyDetail
           onBusyChange={setRevisionBusy}
           onRetry={onRetry}
+          readOnly={mode === "calendar"}
           state={state}
           {...(onAcceptRevision === undefined ? {} : { onAcceptRevision })}
           {...(onKeepRevision === undefined ? {} : { onKeepRevision })}

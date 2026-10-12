@@ -9,6 +9,7 @@ const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const SHA256 = /^[a-f0-9]{64}$/u;
+const GIT_HEAD = /^[a-f0-9]{40}$/u;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
 export const V12_CALENDAR_DIAGNOSTIC_STAGES = Object.freeze([
@@ -23,7 +24,7 @@ export const V12_CALENDAR_DIAGNOSTIC_STAGES = Object.freeze([
 ]);
 
 export function validateV12CalendarManifest(manifest, current = {}) {
-  if (manifest?.schema_version !== 1 || manifest.suite !== "v1.2-calendar" || manifest.profile !== "development-test" || manifest.package !== PACKAGE || manifest.js_bundle?.embedded !== true || !SHA256.test(manifest.base_head ?? "") || !SHA256.test(manifest.source_tree_sha256 ?? "") || !SHA256.test(manifest.apk?.sha256 ?? "") || manifest.installed_apk?.matches_retained_apk !== true || manifest.installed_apk?.sha256 !== manifest.apk.sha256 || !SHA256.test(manifest.device?.identity_sha256 ?? "")) throw new Error("v12_calendar_manifest_invalid");
+  if (manifest?.schema_version !== 1 || manifest.suite !== "v1.2-calendar" || manifest.profile !== "development-test" || manifest.package !== PACKAGE || manifest.js_bundle?.embedded !== true || !GIT_HEAD.test(manifest.base_head ?? "") || !SHA256.test(manifest.source_tree_sha256 ?? "") || !SHA256.test(manifest.source_manifest_sha256 ?? "") || !SHA256.test(manifest.apk?.sha256 ?? "") || manifest.installed_apk?.matches_retained_apk !== true || manifest.installed_apk?.sha256 !== manifest.apk.sha256 || !SHA256.test(manifest.device?.identity_sha256 ?? "") || !SHA256.test(manifest.report_sha256 ?? "")) throw new Error("v12_calendar_manifest_invalid");
   if (current.head !== undefined && manifest.base_head !== current.head) throw new Error("v12_calendar_manifest_stale_head");
   if (current.source !== undefined && manifest.source_tree_sha256 !== current.source) throw new Error("v12_calendar_manifest_stale_source");
   return true;

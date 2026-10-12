@@ -11,9 +11,27 @@ function routeId(value: string | string[] | undefined): string | null {
 export default function RunningPlanDetailRoute() {
   const runtime = useRunningPlanRuntime();
   const appRuntime = useWorkoutAppRuntime();
-  const { planId: rawPlanId } = useLocalSearchParams<{ planId?: string | string[] }>();
+  const {
+    origin: rawOrigin,
+    planId: rawPlanId,
+  } = useLocalSearchParams<{
+    origin?: string | string[];
+    planId?: string | string[];
+  }>();
   const planId = routeId(rawPlanId);
+  const calendarOrigin = routeId(rawOrigin) === "calendar";
   if (planId === null) return null;
+  if (calendarOrigin) {
+    return <>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <RunningPlanDetailScreen
+        loadPlan={runtime.loadPlan}
+        mode="calendar"
+        onBack={() => router.back()}
+        planId={planId}
+      />
+    </>;
+  }
   return <>
     <Stack.Screen options={{ gestureEnabled: false }} />
     <RunningPlanDetailScreen

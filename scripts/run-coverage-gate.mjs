@@ -144,6 +144,7 @@ const integrityCriticalFiles = [
   "src/platform/garmin/garminSyncCoordinator.ts",
   "src/bootstrap/garminImportRuntime.tsx",
   "src/bootstrap/phase18GarminBenchmarkRuntime.ts",
+  "src/bootstrap/phase16CalendarTestControls.ts",
   "src/ui/calendar/calendarTransitionController.ts",
   "src/ui/garmin/useGarminConnectionController.ts",
   "src/domains/bodyweight/commands.ts",

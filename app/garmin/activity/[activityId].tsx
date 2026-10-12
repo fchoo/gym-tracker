@@ -187,14 +187,19 @@ export default function ImportedActivityDetailRoute() {
   return (
     <GarminRouteShell origin={origin}>
       <ImportedActivityDetailScreen
-        onAcceptRevision={() => resolveRevision("accept")}
         onBack={() => router.back()}
-        onKeepRevision={() => resolveRevision("keep")}
-        onMatch={match}
+        mode={origin === "calendar" ? "calendar" : "management"}
         onRetry={() => {
           setState({ kind: "loading" });
           setAttempt((current) => current + 1);
         }}
+        {...(origin === "calendar"
+          ? {}
+          : {
+              onAcceptRevision: () => resolveRevision("accept"),
+              onKeepRevision: () => resolveRevision("keep"),
+              onMatch: match,
+            })}
         {...(matchReturnFocusToken === undefined
           ? {}
           : {
