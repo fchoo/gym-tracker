@@ -201,14 +201,14 @@ silently select a different transport.
   4. Each agenda event is one accessible full-width target and routes by real identity: Strength history to read-only Active-shaped detail, planned Strength to occurrence preview, planned Running to its plan, and imported Running to Garmin detail.
   5. Back restores the expanded date/week and trigger focus; loading, empty, stale/error, and retry states never invent sessions, while correction, resume, revision history, and removal remain available only in their separate management contexts.
 
-**Plans**: 4/7 plans executed
+**Plans**: 7 plans
 
 Plans:
 
-- [x] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and implement accepted DEV-01/DEV-02 contracts.
-- [x] 16-02-PLAN.md — Build the source-backed full-height month grid, Calendar key, encodings, focus, and query states.
-- [x] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
-- [x] 16-04-PLAN.md — Implement UI-thread 1:1 month drag and measured expand/collapse/adjacent motion.
+- [ ] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and implement accepted DEV-01/DEV-02 contracts.
+- [ ] 16-02-PLAN.md — Build the source-backed full-height month grid, Calendar key, encodings, focus, and query states.
+- [ ] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
+- [ ] 16-04-PLAN.md — Implement UI-thread 1:1 month drag and measured expand/collapse/adjacent motion.
 - [ ] 16-05-PLAN.md — Complete compact agenda routing and Calendar-owned Back/scroll/focus restoration.
 - [ ] 16-06-PLAN.md — Capture diagnostic native geometry and mapped Revision 18 overlay/difference artifacts.
 - [ ] 16-07-PLAN.md — Integrate real Phase 17/18 destinations, seal evidence, and hand performance diagnostics to Phase 20.
@@ -337,7 +337,7 @@ Plans:
 | 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 16/16 | Complete    | 2026-10-08 |
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 12/12 | Host complete; native deferred | 2026-10-12 |
 | 15. Workout Parity | 15-workout-parity | 13/13 | Host complete; native deferred | 2026-10-12 |
-| 16. Calendar Parity | 16-calendar-parity | 4/7 | In Progress|  |
+| 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
 | 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; native deferred | 2026-10-12 |
 | 18. Garmin Account Sync | 18-garmin-import | 14/14 | Complete    | 2026-10-12 |
 | 19. Progress Parity | 19-progress-parity | 0/10 | Not started | - |
