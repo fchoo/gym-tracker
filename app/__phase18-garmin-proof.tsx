@@ -28,11 +28,16 @@ type ScreenState =
 
 type AttendedStep = "login" | "mfa";
 
-function emitCases(cases: readonly Phase18GarminProofCase[]): void {
-  for (const result of cases) {
-    console.log(`${PHASE18_GARMIN_PROOF_RESULT_MARKER}${JSON.stringify(result)}`);
-  }
-}
+type BoundedAuthAction =
+  | Readonly<{
+    kind: "halt" | "read";
+    cases: readonly Phase18GarminProofCase[];
+  }>
+  | Readonly<{
+    kind: "mfa";
+    cases: readonly Phase18GarminProofCase[];
+    challengeHandle: string;
+  }>;
 
 function Phase18GarminProofContent({ operation }: Readonly<{
   operation: "login" | "restore";
@@ -59,27 +64,64 @@ function Phase18GarminProofContent({ operation }: Readonly<{
   const operationGenerationRef = React.useRef(0);
   const restoreStarted = React.useRef(false);
 
-  const clearPassword = React.useCallback(() => {
+  const operationIsCurrent = React.useCallback((generation: number) => (
+    mountedRef.current && generation === operationGenerationRef.current
+  ), []);
+
+  const setScreenStateForGeneration = React.useCallback((
+    generation: number,
+    nextState: ScreenState,
+  ): boolean => {
+    if (!operationIsCurrent(generation)) return false;
+    setState(nextState);
+    return true;
+  }, [operationIsCurrent]);
+
+  const setAttendedStepForGeneration = React.useCallback((
+    generation: number,
+    nextStep: AttendedStep,
+  ): boolean => {
+    if (!operationIsCurrent(generation)) return false;
+    setAttendedStep(nextStep);
+    return true;
+  }, [operationIsCurrent]);
+
+  const emitCasesForGeneration = React.useCallback((
+    generation: number,
+    cases: readonly Phase18GarminProofCase[],
+  ): boolean => {
+    for (const result of cases) {
+      if (!operationIsCurrent(generation)) return false;
+      console.log(`${PHASE18_GARMIN_PROOF_RESULT_MARKER}${JSON.stringify(result)}`);
+    }
+    return operationIsCurrent(generation);
+  }, [operationIsCurrent]);
+
+  const clearPassword = React.useCallback((generation?: number) => {
     passwordInputRef.current?.clear();
     passwordRef.current = "";
-    if (mountedRef.current) {
+    if (generation === undefined
+      ? mountedRef.current
+      : operationIsCurrent(generation)) {
       setHasPassword(false);
       setPasswordInputVersion((current) => current + 1);
     }
-  }, []);
+  }, [operationIsCurrent]);
 
-  const clearMfa = React.useCallback(() => {
+  const clearMfa = React.useCallback((generation?: number) => {
     mfaCodeInputRef.current?.clear();
     mfaCodeRef.current = "";
-    if (mountedRef.current) {
+    if (generation === undefined
+      ? mountedRef.current
+      : operationIsCurrent(generation)) {
       setHasMfaCode(false);
       setMfaInputVersion((current) => current + 1);
     }
-  }, []);
+  }, [operationIsCurrent]);
 
-  const clearAllSecrets = React.useCallback(() => {
-    clearPassword();
-    clearMfa();
+  const clearAllSecrets = React.useCallback((generation?: number) => {
+    clearPassword(generation);
+    clearMfa(generation);
     challengeHandleRef.current = null;
   }, [clearMfa, clearPassword]);
 
@@ -92,62 +134,116 @@ function Phase18GarminProofContent({ operation }: Readonly<{
     };
   }, [clearAllSecrets]);
 
-  const finishRead = React.useCallback(async (): Promise<ScreenState> => {
-    const result = await harness.readOneActivity();
-    emitCases([result]);
-    return result.status === "passed"
-      ? "complete"
-      : "technical_review_required";
-  }, [harness]);
+  const finishRead = React.useCallback(async (generation: number) => {
+    try {
+      const result = await harness.readOneActivity();
+      if (!emitCasesForGeneration(generation, [result])) return;
+      setScreenStateForGeneration(
+        generation,
+        result.status === "passed" ? "complete" : "technical_review_required",
+      );
+    } catch {
+      setScreenStateForGeneration(generation, "technical_review_required");
+    }
+  }, [emitCasesForGeneration, harness, setScreenStateForGeneration]);
 
   React.useEffect(() => {
     if (operation !== "restore" || restoreStarted.current) return;
     restoreStarted.current = true;
     const generation = ++operationGenerationRef.current;
     void harness.restoreAndRefresh().then((cases) => {
-      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
-      emitCases(cases);
-      setState(cases.every(({ status }) => status === "passed")
-        ? "complete"
-        : "technical_review_required");
+      if (!emitCasesForGeneration(generation, cases)) return;
+      setScreenStateForGeneration(
+        generation,
+        cases.every(({ status }) => status === "passed")
+          ? "complete"
+          : "technical_review_required",
+      );
     }).catch(() => {
-      if (mountedRef.current && generation === operationGenerationRef.current) {
-        setState("technical_review_required");
-      }
+      setScreenStateForGeneration(generation, "technical_review_required");
     });
-  }, [harness, operation]);
+  }, [emitCasesForGeneration, harness, operation, setScreenStateForGeneration]);
+
+  const finishLogin = React.useCallback(async (
+    generation: number,
+    credentials: Readonly<{ email: string; password: string }>,
+  ): Promise<BoundedAuthAction | null> => {
+    try {
+      const result = await harness.login(credentials);
+      if (!operationIsCurrent(generation)) return null;
+      if (result.next === "halt" || result.next === "read") {
+        return Object.freeze({ kind: result.next, cases: result.cases });
+      }
+      return Object.freeze({
+        kind: "mfa" as const,
+        cases: result.cases,
+        challengeHandle: result.next.challengeHandle,
+      });
+    } catch {
+      return operationIsCurrent(generation)
+        ? Object.freeze({ kind: "halt" as const, cases: Object.freeze([]) })
+        : null;
+    } finally {
+      clearPassword(generation);
+      clearMfa(generation);
+      challengeHandleRef.current = null;
+    }
+  }, [clearMfa, clearPassword, harness, operationIsCurrent]);
+
+  const finishMfa = React.useCallback(async (
+    generation: number,
+    challengeHandle: string,
+    mfaCode: string,
+  ): Promise<BoundedAuthAction | null> => {
+    try {
+      const result = await harness.resumeMfa(challengeHandle, mfaCode);
+      if (!operationIsCurrent(generation)) return null;
+      return Object.freeze({ kind: result.next, cases: result.cases });
+    } catch {
+      return operationIsCurrent(generation)
+        ? Object.freeze({ kind: "halt" as const, cases: Object.freeze([]) })
+        : null;
+    } finally {
+      clearPassword(generation);
+      clearMfa(generation);
+      challengeHandleRef.current = null;
+    }
+  }, [clearMfa, clearPassword, harness, operationIsCurrent]);
 
   const submitLogin = React.useCallback(() => {
     const password = passwordRef.current;
     if (state !== "login" || email.length === 0 || password.length === 0) return;
     const generation = ++operationGenerationRef.current;
-    setAttendedStep("login");
-    setState("working");
+    setAttendedStepForGeneration(generation, "login");
+    setScreenStateForGeneration(generation, "working");
+    if (!operationIsCurrent(generation)) return;
     setEmail("");
-    void (async () => {
-      let nextState: ScreenState = "technical_review_required";
-      try {
-        const result = await harness.login({ email, password });
-        if (!mountedRef.current || generation !== operationGenerationRef.current) return;
-        emitCases(result.cases);
-        if (result.next === "halt") {
-          nextState = "technical_review_required";
-        } else if (result.next === "read") {
-          nextState = await finishRead();
-        } else {
-          challengeHandleRef.current = result.next.challengeHandle;
-          nextState = "mfa";
-        }
-      } catch {
-        nextState = "technical_review_required";
-      } finally {
-        clearPassword();
+    void finishLogin(generation, { email, password }).then((nextAction) => {
+      if (nextAction === null || !operationIsCurrent(generation)) return;
+      if (!emitCasesForGeneration(generation, nextAction.cases)) return;
+      if (nextAction.kind === "read") {
+        void finishRead(generation);
+        return;
       }
-      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
-      if (nextState === "mfa") setAttendedStep("mfa");
-      setState(nextState);
-    })();
-  }, [clearPassword, email, finishRead, harness, state]);
+      if (nextAction.kind === "mfa") {
+        if (!operationIsCurrent(generation)) return;
+        challengeHandleRef.current = nextAction.challengeHandle;
+        setAttendedStepForGeneration(generation, "mfa");
+        setScreenStateForGeneration(generation, "mfa");
+        return;
+      }
+      setScreenStateForGeneration(generation, "technical_review_required");
+    });
+  }, [
+    email,
+    emitCasesForGeneration,
+    finishLogin,
+    finishRead,
+    operationIsCurrent,
+    setAttendedStepForGeneration,
+    setScreenStateForGeneration,
+    state,
+  ]);
 
   const submitMfa = React.useCallback(() => {
     const challengeHandle = challengeHandleRef.current;
@@ -156,34 +252,34 @@ function Phase18GarminProofContent({ operation }: Readonly<{
       return;
     }
     const generation = ++operationGenerationRef.current;
-    setAttendedStep("mfa");
-    setState("working");
-    void (async () => {
-      let nextState: ScreenState = "technical_review_required";
-      try {
-        const result = await harness.resumeMfa(challengeHandle, mfaCode);
-        if (!mountedRef.current || generation !== operationGenerationRef.current) return;
-        emitCases(result.cases);
-        nextState = result.next === "halt"
-          ? "technical_review_required"
-          : await finishRead();
-      } catch {
-        nextState = "technical_review_required";
-      } finally {
-        clearMfa();
-        challengeHandleRef.current = null;
+    setAttendedStepForGeneration(generation, "mfa");
+    setScreenStateForGeneration(generation, "working");
+    void finishMfa(generation, challengeHandle, mfaCode).then((nextAction) => {
+      if (nextAction === null || !operationIsCurrent(generation)) return;
+      if (!emitCasesForGeneration(generation, nextAction.cases)) return;
+      if (nextAction.kind === "read") {
+        void finishRead(generation);
+        return;
       }
-      if (!mountedRef.current || generation !== operationGenerationRef.current) return;
-      setState(nextState);
-    })();
-  }, [clearMfa, finishRead, harness, state]);
+      setScreenStateForGeneration(generation, "technical_review_required");
+    });
+  }, [
+    emitCasesForGeneration,
+    finishMfa,
+    finishRead,
+    operationIsCurrent,
+    setAttendedStepForGeneration,
+    setScreenStateForGeneration,
+    state,
+  ]);
 
   const cancel = React.useCallback(() => {
-    operationGenerationRef.current += 1;
-    clearAllSecrets();
+    const generation = ++operationGenerationRef.current;
+    clearAllSecrets(generation);
+    if (!operationIsCurrent(generation)) return;
     setEmail("");
-    setState("cancelled");
-  }, [clearAllSecrets]);
+    setScreenStateForGeneration(generation, "cancelled");
+  }, [clearAllSecrets, operationIsCurrent, setScreenStateForGeneration]);
 
   const loginVisible = state === "login"
     || (state === "working" && attendedStep === "login" && operation === "login");

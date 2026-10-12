@@ -1,8 +1,10 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
@@ -11,6 +13,48 @@ import type { createProductionPhase18GarminProofHarness } from "../../src/bootst
 import Phase18GarminProofRoute from "../__phase18-garmin-proof";
 
 type ProofHarness = ReturnType<typeof createProductionPhase18GarminProofHarness>;
+type CapturedRef = { current: unknown };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function captureProofRefs(): CapturedRef[] {
+  const refs: CapturedRef[] = [];
+  const useRef = React.useRef;
+  jest.spyOn(React, "useRef").mockImplementation(((initialValue: unknown) => {
+    const ref = useRef(initialValue) as CapturedRef;
+    if (!refs.includes(ref)) refs.push(ref);
+    return ref;
+  }) as typeof React.useRef);
+  return refs;
+}
+
+function requiredProofRefs(refs: readonly CapturedRef[]) {
+  const passwordInput = refs[0];
+  const mfaInput = refs[1];
+  const password = refs[2];
+  const mfaCode = refs[3];
+  const challenge = refs[4];
+  if (passwordInput === undefined || mfaInput === undefined
+    || password === undefined || mfaCode === undefined
+    || challenge === undefined) {
+    throw new Error("phase18_proof_secret_refs_missing");
+  }
+  return { challenge, mfaCode, mfaInput, password, passwordInput };
+}
+
+function spyOnNativeClear(ref: CapturedRef) {
+  const input = ref.current as { clear?: () => void } | null;
+  if (input === null || typeof input.clear !== "function") {
+    throw new Error("phase18_proof_native_input_ref_missing");
+  }
+  return jest.spyOn(input as { clear(): void }, "clear");
+}
 
 const CONFIRMATION = "VERIFY-PHASE18-GARMIN-REAL-ACCOUNT";
 let mockParams: Readonly<{ confirmation?: string; operation?: string }> = {
@@ -126,7 +170,7 @@ describe("Phase18GarminProofRoute secret lifetime", () => {
     expect(await screen.findByText("cancelled")).toBeOnTheScreen();
     expect(JSON.stringify(screen.toJSON())).not.toContain("cancelled-password");
 
-    rendered.unmount();
+    await rendered.unmount();
     resolveLogin({
       cases: [{ id: "PH18-LOGIN", status: "passed", duration_ms: 1 }],
       next: { kind: "mfa", challengeHandle: "late-private-challenge" },
@@ -134,6 +178,108 @@ describe("Phase18GarminProofRoute secret lifetime", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it("ends the login secret scope before a held activity read and cancels late read output", async () => {
+    const refs = captureProofRefs();
+    const read = deferred<Awaited<ReturnType<ProofHarness["readOneActivity"]>>>();
+    mockLogin.mockResolvedValue({
+      cases: [{ id: "PH18-LOGIN", status: "passed", duration_ms: 1 }],
+      next: "read",
+    });
+    mockReadOneActivity.mockImplementation(() => read.promise);
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await render(<Phase18GarminProofRoute />);
+    const proofRefs = requiredProofRefs(refs);
+    const passwordNativeClear = spyOnNativeClear(proofRefs.passwordInput);
+    await fireEvent.changeText(screen.getByLabelText("Garmin email"), "owner@example.invalid");
+    await fireEvent.changeText(screen.getByLabelText("Garmin password"), "held-login-password");
+    passwordNativeClear.mockClear();
+    await fireEvent.press(screen.getByRole("button", { name: "Sign in to Garmin proof" }));
+
+    await waitFor(() => expect(mockReadOneActivity).toHaveBeenCalledTimes(1));
+    expect(passwordNativeClear).toHaveBeenCalledTimes(1);
+    expect(proofRefs.password.current).toBe("");
+    expect(proofRefs.mfaCode.current).toBe("");
+    expect(proofRefs.challenge.current).toBeNull();
+    expect(log).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel Garmin proof" }));
+    expect(await screen.findByText("cancelled")).toBeOnTheScreen();
+    await act(async () => {
+      read.resolve({
+        id: "PH18-READ",
+        status: "passed",
+        duration_ms: 1,
+        count: 1,
+        result_sha256: "b".repeat(64),
+      });
+      await read.promise;
+    });
+
+    expect(screen.getByText("cancelled")).toBeOnTheScreen();
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(log.mock.calls)).not.toContain("PH18-READ");
+    log.mockRestore();
+  });
+
+  it("ends the MFA secret scope before a held activity read and suppresses output after unmount", async () => {
+    const refs = captureProofRefs();
+    const read = deferred<Awaited<ReturnType<ProofHarness["readOneActivity"]>>>();
+    mockLogin.mockResolvedValue({
+      cases: [{ id: "PH18-LOGIN", status: "passed", duration_ms: 1 }],
+      next: { kind: "mfa", challengeHandle: "private-challenge-handle" },
+    });
+    mockResumeMfa.mockResolvedValue({
+      cases: [{
+        id: "PH18-MFA",
+        status: "passed",
+        duration_ms: 1,
+        outcome: "completed",
+      }],
+      next: "read",
+    });
+    mockReadOneActivity.mockImplementation(() => read.promise);
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const rendered = await render(<Phase18GarminProofRoute />);
+    const proofRefs = requiredProofRefs(refs);
+    const passwordNativeClear = spyOnNativeClear(proofRefs.passwordInput);
+    await fireEvent.changeText(screen.getByLabelText("Garmin email"), "owner@example.invalid");
+    await fireEvent.changeText(screen.getByLabelText("Garmin password"), "held-mfa-password");
+    passwordNativeClear.mockClear();
+    await fireEvent.press(screen.getByRole("button", { name: "Sign in to Garmin proof" }));
+    expect(await screen.findByText("mfa")).toBeOnTheScreen();
+    expect(passwordNativeClear).toHaveBeenCalledTimes(1);
+
+    const mfaNativeClear = spyOnNativeClear(proofRefs.mfaInput);
+    await fireEvent.changeText(screen.getByLabelText("Garmin MFA code"), "654321");
+    mfaNativeClear.mockClear();
+    await fireEvent.press(screen.getByRole("button", { name: "Continue Garmin proof" }));
+
+    await waitFor(() => expect(mockReadOneActivity).toHaveBeenCalledTimes(1));
+    expect(mfaNativeClear).toHaveBeenCalledTimes(1);
+    expect(proofRefs.password.current).toBe("");
+    expect(proofRefs.mfaCode.current).toBe("");
+    expect(proofRefs.challenge.current).toBeNull();
+    expect(log).toHaveBeenCalledTimes(2);
+
+    await rendered.unmount();
+    await act(async () => {
+      read.resolve({
+        id: "PH18-READ",
+        status: "passed",
+        duration_ms: 1,
+        count: 1,
+        result_sha256: "c".repeat(64),
+      });
+      await read.promise;
+    });
+
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(log.mock.calls)).not.toContain("PH18-READ");
     log.mockRestore();
   });
 
