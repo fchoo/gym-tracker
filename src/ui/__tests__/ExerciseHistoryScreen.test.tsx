@@ -258,4 +258,50 @@ describe("ExerciseHistoryScreen", () => {
     expect(screen.queryByRole("button", { name: "Relative" })).not.toBeOnTheScreen();
     expect(screen.getByText("45 kg × 9")).toBeOnTheScreen();
   });
+
+  it.each([
+    ["updating", "Updating exercise history", "Refresh exercise history"],
+    ["unavailable", "Exercise history unavailable", "Retry exercise history"],
+  ] as const)("keeps Back and a retry action for coarse %s freshness", async (
+    freshness,
+    heading,
+    retryLabel,
+  ) => {
+    const onBack = jest.fn();
+    const loadExerciseHistory = jest.fn(async () => history({
+      freshness,
+      segments: [],
+      warmupVisits: [],
+    }));
+    await renderHistory({ loadExerciseHistory, onBack });
+
+    expect(await screen.findByRole("header", { name: heading })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: retryLabel }));
+    expect(loadExerciseHistory).toHaveBeenCalledTimes(2);
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps corrected effective rows factual and makes missing source identity explicit", async () => {
+    const projection = history();
+    const segment = projection.segments[0]!;
+    await renderHistory({
+      loadExerciseHistory: jest.fn(async () => ({
+        ...projection,
+        segments: [{
+          ...segment,
+          comparableSets: segment.comparableSets.map((set, index) => ({
+            ...set,
+            historyStatus: index === 0 ? "corrected_effective" as const : "accepted_current" as const,
+            sourceRevision: index === 0 ? 3 : undefined,
+          })),
+        }],
+      })),
+    });
+
+    await fireEvent.press(await screen.findByRole("button", { name: "Show history data" }));
+    expect(screen.getByText("Corrected effective fact")).toBeOnTheScreen();
+    expect(screen.getAllByText("Source unavailable").length).toBeGreaterThan(0);
+    expect(screen.queryByText("0 kg")).not.toBeOnTheScreen();
+  });
 });
