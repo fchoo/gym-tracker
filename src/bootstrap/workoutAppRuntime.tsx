@@ -416,7 +416,13 @@ import {
   assertPhase17FamilyCRegistry,
   createPhase17FamilyCFixtureDriver,
 } from "./phase17FamilyCFixture";
-import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
+import {
+  createRunningPlanRuntimePort,
+  type RunningPlanRuntimePort,
+  type RunningTargetMutationInput,
+  type RunningTargetMutationResult,
+} from "./runningPlanRuntime";
+import type { RunningPlanAggregate } from "../domains/running/contracts";
 import {
   createTrainingFoundationRuntimePort,
   type TrainingFoundationRuntimePort,
@@ -802,7 +808,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
   listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
   resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
-  loadImportedActivityDetail(activityId: string): Promise<ImportedActivityDetailReadResult>;
+  loadImportedActivityDetail(activityId: string, expectedSourceRevision?: number): Promise<ImportedActivityDetailReadResult>;
   loadRunningActivityMatch(activityId: string): Promise<RunningActivityMatchReadResult>;
   confirmActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
   unmatchActivityMatch(candidate: RunningActivityMatchCandidate): Promise<RunningActivityMatchResult>;
@@ -850,7 +856,13 @@ type RuntimeValue = RuntimeState & Readonly<{
     dashboard?: ProgressDashboardProjection | null;
     refresh?: ProgressRefreshMetadata;
     diagnostic?: ProgressProjectionDiagnostic;
+    runningTargetSources?: readonly RunningPlanAggregate[];
   }>>;
+  progressRunningTargetRuntime: Readonly<{
+    createId(kind: string): string;
+    loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
+    saveRunningTarget(input: RunningTargetMutationInput): Promise<RunningTargetMutationResult>;
+  }>;
   openRestNotificationSettings(): Promise<void>;
   readRestAlertPreferences(): RestAlertPreferences;
   setRestAlertPreferences(
@@ -1113,6 +1125,7 @@ type RuntimeServices = Readonly<{
   importedActivities: ReturnType<typeof createImportedActivityRepository>;
   garminSyncSummaries: ReturnType<typeof createGarminSyncSummaryRepository>;
   progressRepository: ReturnType<typeof createProgressRepository>;
+  runningPlans: RunningPlanRuntimePort;
   kernel: SqliteKernel;
   librarySearchRepository: ReturnType<typeof createLibrarySearchRepository>;
   lifecycle: ReturnType<typeof createWorkoutLifecycle>;
@@ -2370,6 +2383,17 @@ export function WorkoutAppRuntimeProvider({
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       },
     });
+    const runningPlans = createRunningPlanRuntimePort(kernel, {
+      nowMs: dependencies.nowMs,
+      randomUUID: () => {
+        const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+        return randomUUID();
+      },
+      sha256: (value) => {
+        const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+        return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+      },
+    });
     const schedules = dependencies.createScheduleRuntime?.(kernel, ownedPlans)
       ?? Object.freeze({
         actOnToday: async () => {
@@ -2448,6 +2472,7 @@ export function WorkoutAppRuntimeProvider({
       importedActivities: createImportedActivityRepository(kernel),
       garminSyncSummaries: createGarminSyncSummaryRepository(kernel),
       progressRepository: createProgressRepository(progressSnapshotKernel(kernel)),
+      runningPlans,
       kernel,
       librarySearchRepository,
       lifecycle,
@@ -2910,6 +2935,7 @@ export function WorkoutAppRuntimeProvider({
 
   const loadImportedActivityDetail = useCallback(async (
     activityId: string,
+    expectedSourceRevision?: number,
   ): Promise<ImportedActivityDetailReadResult> => {
     const localActivityId = parseImportedActivityLocalId(activityId);
     if (localActivityId === null) return Object.freeze({ kind: "missing" });
@@ -2943,6 +2969,9 @@ export function WorkoutAppRuntimeProvider({
       return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
     }
     const row = rows[0]!;
+    if (expectedSourceRevision !== undefined && row.aggregate_revision !== expectedSourceRevision) {
+      return Object.freeze({ kind: "projection_error", code: "accepted_payload_unavailable" });
+    }
     if (row.pending_revision_count > 0) {
       return Object.freeze({ kind: "revision_review" });
     }
@@ -3147,10 +3176,32 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [requireServices]);
 
-  const loadProgress = useCallback((input: Readonly<{
+  const loadProgress = useCallback(async (input: Readonly<{
+    sport?: ProgressSport;
     period: ProgressPeriod;
     nowLocalDate: string;
-  }>) => requireServices().progressRepository.load(input), [requireServices]);
+  }>) => {
+    const services = requireServices();
+    const { sourceFacts, ...snapshot } = await services.progressRepository.load(input);
+    if (input.sport !== "Running" || sourceFacts?.running.kind !== "available") {
+      return Object.freeze(snapshot);
+    }
+    const planIds = [...new Set(sourceFacts.running.goals.map(({ planId }) => planId))];
+    const plans = await Promise.all(planIds.map((planId) => services.runningPlans.loadPlan(planId)));
+    return Object.freeze({
+      ...snapshot,
+      runningTargetSources: Object.freeze(plans.filter(
+        (plan): plan is RunningPlanAggregate => plan !== null && plan.lifecycle !== "archived",
+      )),
+    });
+  }, [requireServices]);
+
+  const progressRunningTargetRuntime = useMemo(() => Object.freeze({
+    createId: (kind: string) => requireServices().runningPlans.createId(kind),
+    loadPlan: (planId: string) => requireServices().runningPlans.loadPlan(planId),
+    saveRunningTarget: (input: RunningTargetMutationInput) =>
+      requireServices().runningPlans.saveRunningTarget(input),
+  }), [requireServices]);
 
   const listRemovedHistorySessions = useCallback(() =>
     requireServices().historyRepository.listRemovedSessions(),
@@ -5117,6 +5168,7 @@ export function WorkoutAppRuntimeProvider({
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
+    progressRunningTargetRuntime,
     keepCurrentTarget: keepWorkoutTarget,
     keepCompletedWorkoutPlanAsIs: keepCompletedPlanAsIs,
     chooseTimeZone: (choice, detectedDeviceTimeZone) =>
@@ -5273,6 +5325,7 @@ export function WorkoutAppRuntimeProvider({
     listRemovedHistorySessions,
     loadExerciseMetricHistory,
     loadProgress,
+    progressRunningTargetRuntime,
     initialize,
     keepWorkoutTarget,
     listLibraryRecentExercises,

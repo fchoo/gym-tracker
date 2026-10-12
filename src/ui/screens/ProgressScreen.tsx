@@ -3,7 +3,13 @@ import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { ProgressPeriod, ProgressProjectionDiagnostic, ProgressProjectionFreshness } from "../../domains/progress";
 import type { ProgressDashboardProjection, ProgressRunningGoal, ProgressSport } from "../../domains/progress/contracts";
+import type { RunningPlanAggregate } from "../../domains/running/contracts";
+import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
 import { EmptyState, FocusablePressable, IconAction, InlineNotice, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
+import { RunningHistorySheet } from "../components/RunningHistorySheet";
+import { RunningTargetSheet } from "../components/RunningTargetSheet";
+import type { FactualHistorySource } from "../components/FactualHistoryChart";
+import { useOptionalSemanticToast } from "../components/SemanticToast";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import type { RootFocusTarget } from "../shell/rootFocus";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
@@ -14,6 +20,7 @@ type ProgressSnapshot = Readonly<{
   sport?: ProgressSport;
   dashboard?: ProgressDashboardProjection | null;
   diagnostic?: ProgressProjectionDiagnostic;
+  runningTargetSources?: readonly RunningPlanAggregate[];
 }>;
 
 export type ProgressScreenProps = Readonly<{
@@ -22,7 +29,10 @@ export type ProgressScreenProps = Readonly<{
   loadProgress(input: Readonly<{ sport: ProgressSport; period: ProgressPeriod; nowLocalDate: string }>): Promise<ProgressSnapshot>;
   onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
+  onOpenRunningSource?(source: FactualHistorySource, returnFocusToken: string): void;
   onOpenSettings?(): void;
+  runningTargetRuntime?: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
+  returnFocusVersion?: number;
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
@@ -110,7 +120,22 @@ function SegmentedControls<T extends string>({
   );
 }
 
-function RunningRoot({ dashboard, onRetry }: Readonly<{ dashboard: Extract<ProgressDashboardProjection, { sport: "Running" }>; onRetry(): void }>) {
+function distanceLabel(distanceMeters: number): string {
+  if (distanceMeters === 2_400) return "2.4 km";
+  if (distanceMeters === 10_000) return "10 km";
+  if (distanceMeters === 21_097) return "Half Marathon";
+  return `${distanceMeters} m`;
+}
+
+function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget, onRetry, targetAvailable, targetTriggerRef }: Readonly<{
+  dashboard: Extract<ProgressDashboardProjection, { sport: "Running" }>;
+  historyTriggerRef: React.RefObject<View | null>;
+  onOpenHistory(goal: ProgressRunningGoal): void;
+  onOpenTarget(distanceMeters: number): void;
+  onRetry(): void;
+  targetAvailable: boolean;
+  targetTriggerRef: React.RefObject<View | null>;
+}>) {
   const { colors } = useAppTheme();
   const goal = dashboard.goals.find((candidate) => candidate.distanceMeters === 2400) ?? dashboard.goals[0];
   if (goal === undefined) return <View style={styles.content}>
@@ -138,6 +163,10 @@ function RunningRoot({ dashboard, onRetry }: Readonly<{ dashboard: Extract<Progr
           <Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`200 m · ${formatDuration(Math.round(goal.target!.durationSeconds / 12))}`}</Text>
         </View>}
         <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Evidence · ${goal.evidenceCount} accepted imported ${goal.evidenceCount === 1 ? "activity" : "activities"}`}</Text>
+        <View style={styles.actions}>
+          <FocusablePressable accessibilityLabel={`Open history for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenHistory(goal)} ref={historyTriggerRef} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
+          {targetAvailable ? <FocusablePressable accessibilityLabel={`Set target for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenTarget(goal.distanceMeters)} ref={targetTriggerRef} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Set target</Text></FocusablePressable> : null}
+        </View>
       </View>
       <View style={styles.goalRows}>
         <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text>
@@ -148,9 +177,8 @@ function RunningRoot({ dashboard, onRetry }: Readonly<{ dashboard: Extract<Progr
   );
 }
 
-function DashboardContent({ dashboard, onRetry, onOpenExercise, onSelectSport }: Readonly<{ dashboard: ProgressDashboardProjection; onRetry(): void; onOpenExercise(exerciseId: string, exerciseName: string): void; onSelectSport(sport: ProgressSport): void }>) {
+function DashboardContent({ dashboard, onRetry, onOpenExercise, onSelectSport }: Readonly<{ dashboard: Exclude<ProgressDashboardProjection, { sport: "Running" }>; onRetry(): void; onOpenExercise(exerciseId: string, exerciseName: string): void; onSelectSport(sport: ProgressSport): void }>) {
   const { colors } = useAppTheme();
-  if (dashboard.sport === "Running") return <RunningRoot dashboard={dashboard} onRetry={onRetry} />;
   if (dashboard.state === "empty") {
     return <EmptyState body="Completed, accepted source facts appear here when they establish a comparable goal. Missing facts are not shown as zero." heading="No progress history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
   }
@@ -169,13 +197,18 @@ function DashboardContent({ dashboard, onRetry, onOpenExercise, onSelectSport }:
   return <View style={styles.content}><View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Strength progress</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`${dashboard.facts.length} comparable completed ${dashboard.facts.length === 1 ? "fact" : "facts"} in this range.`}</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Targets and gaps appear only for compatible saved metrics.</Text></View>{dashboard.facts.map((fact) => <FocusablePressable accessibilityLabel={`Open exercise history for ${fact.exerciseName}`} accessibilityRole="button" focusable key={`${fact.exerciseId}:${fact.setId}`} onPress={() => onOpenExercise(fact.exerciseId, fact.exerciseName)} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{fact.exerciseName}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Target unavailable</Text></FocusablePressable>)}</View>;
 }
 
-export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSettings = () => undefined, width, headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
+export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, returnFocusVersion = 0, width, headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
   const [sport, setSport] = useState<ProgressSport>("All");
   const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const requestRef = useRef(0);
+  const historyTriggerRef = useRef<View>(null);
+  const targetTriggerRef = useRef<View>(null);
+  const [historyGoal, setHistoryGoal] = useState<ProgressRunningGoal | null>(null);
+  const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
+  const semanticToast = useOptionalSemanticToast();
   const adaptiveWidth = width === undefined ? {} : { width };
 
   useEffect(() => {
@@ -191,6 +224,11 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     });
   }, [loadProgress, nowLocalDate, period, retry, sport, workoutRefreshGeneration]);
 
+  useEffect(() => {
+    if (returnFocusVersion === 0) return;
+    requestAnimationFrame(() => historyTriggerRef.current?.focus?.());
+  }, [returnFocusVersion]);
+
   const header = <>
     <ScreenHeader {...(headingRef === undefined ? {} : { ref: headingRef as React.Ref<View> })} action={<IconAction accessibilityHint="Opens App Settings" accessibilityLabel="Open App Settings" icon="settings" nativeID={settingsActionNativeID} onPress={onOpenSettings} ref={settingsActionRef as React.Ref<View>} />} title="Progress" />
     <SegmentedControls<ProgressSport> label="Progress sport" onChange={setSport} role="tab" selected={sport} values={SPORTS} />
@@ -201,13 +239,59 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   if (failed) content = <EmptyState body="Your saved workouts and targets were not changed. Retry loading progress." heading="Progress could not be loaded" primaryAction={<PrimaryAction label="Retry loading progress" onPress={() => setRetry((current) => current + 1)} />} />;
   else if (snapshot === null) content = <View accessibilityLabel="Loading progress" accessibilityRole="progressbar" style={styles.content}><SkeletonBlock height={180} testID="progress-skeleton" /></View>;
   else if (snapshot.freshness !== "current" || snapshot.dashboard === null || snapshot.dashboard === undefined) content = <View style={styles.content}><InlineNotice body={rebuildText(snapshot.diagnostic)} heading="Updating progress" tone="neutral" />{retryAction}</View>;
-  else content = <DashboardContent dashboard={snapshot.dashboard} onOpenExercise={onOpenExercise} onRetry={() => setRetry((current) => current + 1)} onSelectSport={setSport} />;
+  else if (snapshot.dashboard.sport === "Running") {
+    const runningDashboard = snapshot.dashboard;
+    const primaryDistance = runningDashboard.goals[0]?.distanceMeters;
+    content = <RunningRoot
+      dashboard={runningDashboard}
+      historyTriggerRef={historyTriggerRef}
+      onOpenHistory={(goal) => { setTargetDistanceMeters(null); setHistoryGoal(goal); }}
+      onOpenTarget={(distanceMeters) => { setHistoryGoal(null); setTargetDistanceMeters(distanceMeters); }}
+      onRetry={() => setRetry((current) => current + 1)}
+      targetAvailable={runningTargetRuntime !== undefined && primaryDistance !== undefined && (snapshot.runningTargetSources ?? []).some(({ goal }) => goal.goalDistanceMeters === primaryDistance)}
+      targetTriggerRef={targetTriggerRef}
+    />;
+  } else content = <DashboardContent dashboard={snapshot.dashboard} onOpenExercise={onOpenExercise} onRetry={() => setRetry((current) => current + 1)} onSelectSport={setSport} />;
 
-  return <AdaptiveScreen {...adaptiveWidth} primary={<View style={styles.screen}>{header}{content}</View>} testID="progress-screen" />;
+  const rangeLabel = PERIODS.find(({ value }) => value === period)?.label ?? period;
+  const targetSources = targetDistanceMeters === null
+    ? []
+    : (snapshot?.runningTargetSources ?? []).filter(({ goal }) => goal.goalDistanceMeters === targetDistanceMeters);
+
+  return <>
+    <AdaptiveScreen {...adaptiveWidth} primary={<View style={styles.screen}>{header}{content}</View>} testID="progress-screen" />
+    <RunningHistorySheet
+      goal={historyGoal}
+      onClose={() => setHistoryGoal(null)}
+      {...(onOpenRunningSource === undefined ? {} : {
+        onOpenSource: (source: FactualHistorySource) => onOpenRunningSource(
+          source,
+          `running-history:${historyGoal?.distanceMeters ?? 0}`,
+        ),
+      })}
+      rangeLabel={rangeLabel}
+      restoreFocusRef={historyTriggerRef}
+      visible={historyGoal !== null}
+    />
+    {runningTargetRuntime === undefined ? null : <RunningTargetSheet
+      key={`running-target-${targetDistanceMeters ?? "closed"}`}
+      onClose={() => setTargetDistanceMeters(null)}
+      onSaved={(saved) => {
+        setRetry((current) => current + 1);
+        semanticToast?.enqueue({ message: `${distanceLabel(saved.goal.goalDistanceMeters)} target saved.` });
+      }}
+      restoreFocusRef={targetTriggerRef}
+      runtime={runningTargetRuntime}
+      sources={targetSources}
+      todayLocalDate={nowLocalDate}
+      visible={targetDistanceMeters !== null && targetSources.length > 0}
+    />}
+  </>;
 }
 
 const styles = StyleSheet.create({
   content: { gap: space[4] },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   factRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderTopWidth: StyleSheet.hairlineWidth, gap: space[2], paddingVertical: space[2] },
   goalAction: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: sizes.minimumTarget, padding: space[2] },
   goalRows: { gap: space[2] },

@@ -17,13 +17,13 @@ const runningTargetSource: RunningPlanAggregate = Object.freeze({
   lifecycle: "active",
   createdAtMs: 1,
   goal: {
-    version: 1,
+    version: 1 as const,
     id: "running-goal-2400",
     planId: "running-plan-2400",
     revision: 2,
     goalDistanceMeters: 2_400,
     targetDurationMs: 660_000,
-    trainingDays: ["Monday"],
+    trainingDays: ["Monday" as const],
     createdAtMs: 1,
   },
   sessions: [],
@@ -256,7 +256,7 @@ describe("ProgressScreen", () => {
     expect(onOpenRunningSource).toHaveBeenCalledWith({
       activityId: "activity-best",
       sourceRevision: 3,
-    });
+    }, "running-history:2400");
 
     await fireEvent.press(screen.getByRole("button", { name: "Close 2.4 km best efforts" }));
     expect(screen.getByRole("tab", { name: "Running" })).toHaveProp(

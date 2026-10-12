@@ -24,7 +24,7 @@ import { AppearanceProvider } from "../../src/ui/theme";
 const mockBack = jest.fn();
 const mockPush = jest.fn();
 const mockLoadImportedActivityDetail = jest.fn<
-  (activityId: string) => Promise<ImportedActivityDetailReadResult>
+  (activityId: string, sourceRevision?: number) => Promise<ImportedActivityDetailReadResult>
 >();
 const mockLoadGarminRevisionReview = jest.fn<
   (activityId: string) => Promise<GarminRevisionReviewDetail | null>
@@ -34,6 +34,7 @@ let mockParams: Readonly<{
   activityId?: string | readonly string[];
   origin?: string | readonly string[];
   returnToken?: string | readonly string[];
+  sourceRevision?: string | readonly string[];
 }> = {};
 let mockShellProps: Readonly<Record<string, unknown>> = {};
 let pendingLoads: Array<Readonly<{
@@ -188,6 +189,18 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     },
   );
 
+  it("loads the exact accepted revision requested by Progress", async () => {
+    mockParams = {
+      activityId: "activity-local-01",
+      origin: "progress",
+      sourceRevision: "7",
+    };
+    await renderRoute();
+
+    await waitFor(() => expect(mockLoadImportedActivityDetail)
+      .toHaveBeenCalledWith("activity-local-01", 7));
+  });
+
   it("retries the same validated local ID after a bounded projection failure", async () => {
     await renderRoute();
 
@@ -268,6 +281,21 @@ describe("createImportedActivityDetailHref calendar producer contract", () => {
       });
     },
   );
+
+  it("binds a Progress source link to its accepted local revision", () => {
+    expect(createImportedActivityDetailHref({
+      activityId: "activity-local-01",
+      origin: "progress",
+      sourceRevision: 7,
+    })).toEqual({
+      pathname: "/garmin/activity/[activityId]",
+      params: {
+        activityId: "activity-local-01",
+        origin: "progress",
+        sourceRevision: "7",
+      },
+    });
+  });
 
   it.each([
     { activityId: "987654321", origin: "calendar" },

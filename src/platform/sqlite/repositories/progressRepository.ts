@@ -824,7 +824,7 @@ export function createProgressRepository(
       return Object.freeze({
         period: input.period,
         freshness: "current",
-        ...(sport === undefined ? { sourceFacts } : {}),
+        sourceFacts,
         projection,
         ...(sport === undefined ? {} : {
           sport,

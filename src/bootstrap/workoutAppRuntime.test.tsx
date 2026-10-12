@@ -1751,7 +1751,9 @@ describe("WorkoutAppRuntimeProvider", () => {
       queryAll,
       readSnapshot: jest.fn(async (
         query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
-      ) => query({ queryAll })),
+      ) => query({
+        queryAll: queryAll as unknown as SqliteTransactionExecutor["queryAll"],
+      })),
     } as unknown as SqliteKernel;
     const repository = runtimeRepository([noPlanView], [null]);
     let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
@@ -1771,7 +1773,18 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
     expect(progress.runningTargetSources).toEqual([targetSource]);
     expect(progress).not.toHaveProperty("sourceFacts");
-    expect(captured!.progressRunningTargetRuntime).toBe(progressRunningTargetRuntime);
+    expect(captured!.progressRunningTargetRuntime.createId("running-target-save"))
+      .toBe("running-target-save:request");
+    await expect(captured!.progressRunningTargetRuntime.loadPlan("running-plan-2400"))
+      .resolves.toBe(targetSource);
+    await expect(captured!.progressRunningTargetRuntime.saveRunningTarget({
+      planId: "running-plan-2400",
+      requestId: "running-target-save:request",
+      expectedSourceRevision: 4,
+      goalDistanceMeters: 2_400,
+      targetDurationMs: 660_000,
+      trainingDays: ["Monday"],
+    })).resolves.toEqual({ outcome: "committed", plan: targetSource });
   });
 
   it("keeps the development expiry bridge unavailable until launch is trusted", async () => {
