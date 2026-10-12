@@ -7,6 +7,7 @@ import {
   crossesMonthBoundary,
   transitionCalendar,
 } from "../calendar/calendarTransitionController";
+import { calendarPanelTranslate } from "../calendar/CalendarMonthViewport";
 
 const initial = (reducedMotion = false) => createCalendarTransitionState({
   currentMonthId: "2026-11",
@@ -15,6 +16,22 @@ const initial = (reducedMotion = false) => createCalendarTransitionState({
 });
 
 describe("Calendar semantic transitions", () => {
+  it("maps every panel to measured width plus the clamped pointer displacement", () => {
+    const width = 400;
+
+    for (const dx of [-100, -99.6, 99.6, 100, 100.4, -100.4]) {
+      const clamped = clampMonthDrag(dx, width);
+      expect(calendarPanelTranslate(0, dx, width)).toBe(clamped);
+      expect(calendarPanelTranslate(-1, dx, width)).toBe(-width + clamped);
+      expect(calendarPanelTranslate(1, dx, width)).toBe(width + clamped);
+    }
+
+    expect(crossesMonthBoundary(-99.6, width)).toBe(false);
+    expect(crossesMonthBoundary(-100, width)).toBe(true);
+    expect(crossesMonthBoundary(100, width)).toBe(true);
+    expect(crossesMonthBoundary(100.4, width)).toBe(true);
+  });
+
   it("uses inclusive distance-only month settling with a one-panel clamp and immediate preview title", () => {
     const state = initial();
     const preview = transitionCalendar(state, {
