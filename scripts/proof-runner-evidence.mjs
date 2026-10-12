@@ -205,10 +205,10 @@ export function parsePhase18GarminProofMarker(line) {
   const invalidMarker = [
     !exactKeys(parsed, Object.keys(parsed ?? {}).filter((key) => allowedKeys.includes(key))),
     !Object.keys(parsed ?? {}).every((key) => allowedKeys.includes(key)),
-    !PHASE18_GARMIN_PROOF_CASE_IDS.includes(parsed.id),
-    !Number.isSafeInteger(parsed.duration_ms),
-    parsed.duration_ms < 0,
-    !["passed", "TECHNICAL_REVIEW_REQUIRED"].includes(parsed.status),
+    !PHASE18_GARMIN_PROOF_CASE_IDS.includes(parsed?.id),
+    !Number.isSafeInteger(parsed?.duration_ms),
+    parsed?.duration_ms < 0,
+    !["passed", "TECHNICAL_REVIEW_REQUIRED"].includes(parsed?.status),
   ].some(Boolean);
   if (invalidMarker) fail("marker_invalid");
   const invalidTechnicalReviewCode = parsed.status === "TECHNICAL_REVIEW_REQUIRED"
@@ -232,6 +232,10 @@ function defaultNative(program, args, options = {}) {
     maxBuffer: 512 * 1024 * 1024,
     ...options,
   });
+}
+
+function defaultSleep(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
 function commandText(native, program, args) {
@@ -320,16 +324,18 @@ function markersFromLog(log) {
   return [...byId.values()];
 }
 
-function waitForCase(native, adb, serial, target) {
-  const deadline = Date.now() + PROOF_TIMEOUT_MS;
-  while (Date.now() < deadline) {
+function waitForCase(native, adb, serial, target, dependencies = {}) {
+  const now = dependencies.now ?? Date.now;
+  const sleep = dependencies.sleep ?? defaultSleep;
+  const deadline = now() + PROOF_TIMEOUT_MS;
+  while (now() < deadline) {
     const log = readProofLog(native, adb, serial);
     const cases = markersFromLog(log);
     const failure = cases.find(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED");
     if (failure !== undefined || cases.some(({ id }) => id === target)) {
       return Object.freeze({ log, cases: Object.freeze(cases) });
     }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1_000);
+    sleep(1_000);
   }
   fail(`case_timeout:${target}`);
 }
@@ -499,7 +505,7 @@ export function executePhase18GarminProofRunner(
 
     adbText(native, adb, device.serial, "logcat", "-c");
     launchRoute(native, adb, device.serial, "login");
-    const login = waitForCase(native, adb, device.serial, "PH18-READ");
+    const login = waitForCase(native, adb, device.serial, "PH18-READ", dependencies);
     const loginFailure = login.cases.some(
       ({ status }) => status === "TECHNICAL_REVIEW_REQUIRED",
     );
@@ -514,12 +520,18 @@ export function executePhase18GarminProofRunner(
       adbText(native, adb, device.serial, "shell", "am", "force-stop", PACKAGE);
       adbText(native, adb, device.serial, "logcat", "-c");
       launchRoute(native, adb, device.serial, "restore");
-      restore = waitForCase(native, adb, device.serial, "PH18-REFRESH");
+      restore = waitForCase(native, adb, device.serial, "PH18-REFRESH", dependencies);
       if (!restore.cases.some(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED")) {
         adbText(native, adb, device.serial, "shell", "am", "force-stop", PACKAGE);
         adbText(native, adb, device.serial, "logcat", "-c");
         launchRoute(native, adb, device.serial, "restore");
-        const rotatedRestore = waitForCase(native, adb, device.serial, "PH18-REFRESH");
+        const rotatedRestore = waitForCase(
+          native,
+          adb,
+          device.serial,
+          "PH18-REFRESH",
+          dependencies,
+        );
         if (rotatedRestore.cases.some(({ status }) => status === "TECHNICAL_REVIEW_REQUIRED")
           || !rotatedRestore.cases.some(({ id, status }) => id === "PH18-RESTART" && status === "passed")) {
           fail("rotated_session_restore_failed");
