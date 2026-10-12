@@ -2,7 +2,9 @@ import type {
   HistoryProjectionPeriodInput,
 } from "../history";
 import {
+  areMetricExposuresComparable,
   compareMetricObservations,
+  isMetricExposureEligible,
 } from "../metrics";
 import {
   parseMetricIdentity,
@@ -24,9 +26,55 @@ import type {
   ProgressRecord,
   ProgressScheduledOpportunity,
   ProgressSourceReference,
+  ProgressStrengthFactInput,
   ProgressTrendRow,
   ProgressWindow,
 } from "./contracts";
+
+function validRevision(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function candidateOrder(left: ProgressStrengthFactInput, right: ProgressStrengthFactInput): number {
+  return left.record.localDate.localeCompare(right.record.localDate)
+    || left.record.sessionId.localeCompare(right.record.sessionId)
+    || left.record.setId.localeCompare(right.record.setId);
+}
+
+/**
+ * Produces the candidate list shared by Strength dashboard/chart consumers.
+ * Effective source revisions stay authoritative; no UI code replays metric
+ * eligibility or recommendation-fence logic.
+ */
+export function projectStrengthComparableFacts(
+  candidates: readonly ProgressStrengthFactInput[],
+): readonly ProgressRecord[] {
+  const accepted: ProgressStrengthFactInput[] = [];
+  const firstByMetric = new Map<string, ProgressStrengthFactInput>();
+  for (const candidate of candidates.toSorted(candidateOrder)) {
+    if (!validRevision(candidate.effectiveRevision) || !validRevision(candidate.targetRevision)) {
+      continue;
+    }
+    const recommendation = candidate.recommendation;
+    if (recommendation?.status === "pending"
+      && (recommendation.sourceRevision !== candidate.effectiveRevision
+        || recommendation.targetRevision !== candidate.targetRevision)) {
+      continue;
+    }
+    if (!isMetricExposureEligible(candidate.metricExposure)) {
+      continue;
+    }
+    const key = `${candidate.record.exerciseId}\u0000${candidate.record.identityKey}`;
+    const first = firstByMetric.get(key);
+    if (first !== undefined
+      && !areMetricExposuresComparable(first.metricExposure, candidate.metricExposure)) {
+      continue;
+    }
+    firstByMetric.set(key, first ?? candidate);
+    accepted.push(candidate);
+  }
+  return Object.freeze(accepted.map(({ record }) => Object.freeze({ ...record })));
+}
 
 type ExposureGroup = Readonly<{
   exerciseId: string;
