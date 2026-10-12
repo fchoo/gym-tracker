@@ -400,17 +400,42 @@ describe("restore preflight", () => {
       .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it("accepts the current v7 schema-40 archive for preflight", async () => {
+  it.each([
+    [7, 40],
+    [7, 41],
+    [8, 42],
+    [9, 43],
+    [9, 44],
+  ])("accepts logical format v%i at its explicit schema-%i compatibility boundary", async (version, schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
-        version: 7,
-        schemaVersion: 40,
+        version: version as LogicalBackupSnapshot["version"],
+        schemaVersion,
         tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
       })) },
-      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-40-v7" }),
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => `schema-${schemaVersion}-v${version}` }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" }))
       .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([
+    [7, 42],
+    [8, 41],
+    [8, 43],
+    [9, 42],
+    [9, 45],
+  ])("rejects logical format v%i outside its explicit schema-%i compatibility boundary", async (version, schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: version as LogicalBackupSnapshot["version"],
+        schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported-mapping" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
   });
 
   describe("v6 active plan and schedule topology", () => {

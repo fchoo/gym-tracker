@@ -103,7 +103,12 @@ describe("logical backup contract", () => {
     ]));
     expect(logicalBackupTablesForVersion(7)).not.toContain("custom_exercise_mutation_receipts");
     expect(logicalBackupTablesForVersion(8)).toContain("custom_exercise_mutation_receipts");
-    expect(logicalBackupTablesForVersion(8)).not.toContain("imported_activity_revision_proposals");
+    for (const version of [1, 2, 3, 4, 5, 6, 7, 8] as const) {
+      expect(logicalBackupTablesForVersion(version)).not.toEqual(expect.arrayContaining([
+        "imported_activity_revision_proposals",
+        "imported_activity_revision_decisions",
+      ]));
+    }
     expect(logicalBackupTablesForVersion(9)).toEqual(expect.arrayContaining([
       "imported_activity_revision_proposals",
       "imported_activity_revision_decisions",
@@ -314,7 +319,7 @@ describe("logical backup contract", () => {
   });
 
   it.each([
-    ["an unsupported snapshot version", snapshot({ version: 7 })],
+    ["an unsupported snapshot version", snapshot({ version: 10 })],
     ["an unknown root field", snapshot({ rawDatabasePath: "/private/data.db" })],
     ["an unknown table", snapshot({
       tables: { sqlite_master: [] },

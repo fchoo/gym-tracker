@@ -144,9 +144,9 @@ function validPassword(value: string): boolean {
   }
 }
 
-// v23-v27 add bookkeeping or trigger-only schema changes; archives remain the
-// Phase 11 portable graph, so archived schema-22 and current snapshots restore.
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40] as const);
+// Keep every emitted producer schema explicit. Trigger-only schemas remain on
+// their prior format; a format bump is required when the archived graph grows.
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
@@ -267,8 +267,12 @@ async function validateRows(
   const schemaVersionSupported = (
     LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]
   ).includes(snapshot.schemaVersion);
-  const formatMatchesSchema = snapshot.version === 7
-    ? snapshot.schemaVersion === 40
+  const formatMatchesSchema = snapshot.version === 9
+    ? snapshot.schemaVersion === 43 || snapshot.schemaVersion === 44
+    : snapshot.version === 8
+      ? snapshot.schemaVersion === 42
+    : snapshot.version === 7
+      ? snapshot.schemaVersion === 40 || snapshot.schemaVersion === 41
     : snapshot.version === 6
       ? snapshot.schemaVersion >= 36 && snapshot.schemaVersion <= 39
     : snapshot.version === 5

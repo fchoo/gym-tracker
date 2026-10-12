@@ -152,6 +152,7 @@ export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
     "schedule_collision_outcomes", "schedule_collision_receipts",
     "schedule_collision_projections",
     "custom_exercise_mutation_receipts",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -167,6 +168,7 @@ export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
     "running_activity_match_events", "running_activity_match_receipts",
     "schedule_collision_outcomes", "schedule_collision_receipts",
     "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -180,6 +182,7 @@ export const LOGICAL_BACKUP_V4_TABLES = Object.freeze(
     "running_activity_match_events", "running_activity_match_receipts",
     "schedule_collision_outcomes", "schedule_collision_receipts",
     "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -192,6 +195,7 @@ export const LOGICAL_BACKUP_V5_TABLES = Object.freeze(
     "running_activity_match_events", "running_activity_match_receipts",
     "schedule_collision_outcomes", "schedule_collision_receipts",
     "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -202,6 +206,7 @@ export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
     "schedule_collision_outcomes",
     "schedule_collision_receipts",
     "schedule_collision_projections",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -209,6 +214,7 @@ export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
 export const LOGICAL_BACKUP_V7_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => ![
     "running_current_matches", "custom_exercise_mutation_receipts",
+    "imported_activity_revision_proposals", "imported_activity_revision_decisions",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 

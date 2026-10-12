@@ -21,6 +21,14 @@ import {
   LOGICAL_BACKUP_FORMAT_VERSION,
 } from "../../src/domains/portability/backupContracts";
 import {
+  createBackupEnvelopeCodec,
+  type BackupEnvelopeCryptoPort,
+} from "../../src/domains/portability/backupFormat";
+import {
+  createRestoreCommands,
+  createRestorePreflightStore,
+} from "../../src/domains/portability/restoreCommands";
+import {
   createLogicalRestoreRepository,
 } from "../../src/platform/sqlite/repositories/logicalRestoreRepository";
 import {
@@ -32,6 +40,11 @@ import {
 import {
   createRestoreReconciliationRepository,
 } from "../../src/platform/sqlite/repositories/restoreReconciliationRepository";
+import {
+  createSqliteRestoreCandidateProbe,
+  createSqliteRestoreRetainedReferencePort,
+  createSqliteRestoreSchemaPort,
+} from "../../src/platform/sqlite/repositories/restorePreflightAdapters";
 import {
   type ExerciseCatalog,
   parseExerciseCatalog,
@@ -112,6 +125,24 @@ const directories = new Set<string>();
 const kernels = new Set<SqliteKernel>();
 const sha256 = async (value: string): Promise<string> =>
   createHash("sha256").update(value).digest("hex");
+
+function crypto(): BackupEnvelopeCryptoPort {
+  return {
+    async deriveKey() { return { key: new Uint8Array(32).fill(7) }; },
+    async encrypt(input) {
+      return {
+        ciphertext: input.plaintext.map((value) => value ^ 0xaa),
+        tag: new Uint8Array(16).fill(input.aad.byteLength & 0xff),
+      };
+    },
+    async decrypt(input) {
+      if (!input.tag.every((value) => value === (input.aad.byteLength & 0xff))) {
+        throw new Error("auth");
+      }
+      return input.ciphertext.map((value) => value ^ 0xaa);
+    },
+  };
+}
 
 afterEach(async () => {
   await Promise.all([...kernels].map((kernel) => kernel.close()));
@@ -346,7 +377,7 @@ async function canonicalState(kernel: SqliteKernel): Promise<unknown> {
 }
 
 describe("clean install logical restore", () => {
-  it("restores source facts and rebuilt derivatives onto a clean host database without database backup contamination", async () => {
+  it("collects, encrypts, preflights, restores, and reads back a current schema-44 backup on a clean host database", async () => {
     const catalog = await acceptedCatalog();
     const bundledExercise = catalog.exercises.find(({ source }) =>
       source.upstreamId !== null
@@ -392,6 +423,16 @@ describe("clean install logical restore", () => {
       createdAtMs: 1,
       snapshotId: "clean-install-archive",
     });
+    expect(archive).toEqual(expect.objectContaining({
+      version: 9,
+      schemaVersion: 44,
+    }));
+    const encryptedArchive = await createBackupEnvelopeCodec(crypto()).seal({
+      snapshot: archive,
+      password: new TextEncoder().encode("owner-password"),
+      salt: new Uint8Array(16).fill(1),
+      nonce: new Uint8Array(12).fill(2),
+    });
     expect(archive.tables.exercise_owner_preferences).toEqual([{
       archived: 0,
       exercise_id: bundledExerciseId,
@@ -432,7 +473,7 @@ describe("clean install logical restore", () => {
       version: LOGICAL_BACKUP_FORMAT_VERSION,
       snapshotId: "clean-install-empty-owner-state",
       createdAtMs: 1,
-      schemaVersion: 42,
+      schemaVersion: 44,
       manifest: {
         catalogReferenceCount: 0,
         rowCounts: expect.any(Object),
@@ -451,8 +492,33 @@ describe("clean install logical restore", () => {
         .filter(([table]) => table !== "portable_owner_identity")
         .every(([, count]) => count === 0),
     ).toBe(true);
-    await expect(createLogicalRestoreRepository(clean, { nowMs: () => 2 })
-      .restore(archive)).resolves.toEqual({ state: "rebuild_pending" });
+    const restoreCommands = createRestoreCommands({
+      crypto: crypto(),
+      files: { readSelectedArchiveAtMost: async () => encryptedArchive },
+      kdf: {
+        derive: async () => ({
+          algorithm: "argon2id",
+          bytes: new Uint8Array(32).fill(7),
+          durationMs: 1,
+          provider: "Bouncy Castle",
+          providerVersion: "1.85.2",
+        }),
+      },
+      schema: createSqliteRestoreSchemaPort(clean),
+      retainedReferences: createSqliteRestoreRetainedReferencePort(clean),
+      candidateProbe: createSqliteRestoreCandidateProbe(),
+      restorer: createLogicalRestoreRepository(clean, { nowMs: () => 2 }),
+      store: createRestorePreflightStore({ tokenFactory: () => "schema-44-clean-install" }),
+    });
+    const preflight = await restoreCommands.preflightSecureRestore({
+      password: "owner-password",
+    });
+    expect(preflight).toEqual(expect.objectContaining({ outcome: "ready" }));
+    if (preflight.outcome !== "ready") throw new Error("restore_not_ready");
+    await expect(restoreCommands.commitSecureRestore({
+      confirmation: "REPLACE",
+      token: preflight.token,
+    })).resolves.toEqual({ state: "rebuild_pending" });
     await expect(rebuild(clean, true)).resolves.toMatchObject({
       outcome: "retryable_failure",
       state: "rebuild_pending",
