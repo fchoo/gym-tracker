@@ -62,6 +62,18 @@ export function calendarAgendaMotion(command: Readonly<{
   });
 }
 
+export function calendarDragDiagnosticMonths(
+  currentMonth: LocalDate,
+  previousMonth: LocalDate,
+  nextMonth: LocalDate,
+  titlePanel: PanelOffset,
+): Readonly<{ semanticMonth: string; titleMonth: string }> {
+  return Object.freeze({
+    semanticMonth: currentMonth.slice(0, 7),
+    titleMonth: (titlePanel === 1 ? nextMonth : titlePanel === -1 ? previousMonth : currentMonth).slice(0, 7),
+  });
+}
+
 function Panel({
   children,
   offset,
@@ -320,8 +332,7 @@ export function CalendarMonthViewport({
         const bit = 1 << index;
         if (progress >= marker && (diagnosticThresholdMask.value & bit) === 0) {
           diagnosticThresholdMask.value |= bit;
-          const semanticMonth = (nextPanel === 1 ? nextMonth : nextPanel === -1 ? previousMonth : month).slice(0, 7);
-          const titleMonth = (nextPanel === 1 ? nextMonth : nextPanel === -1 ? previousMonth : month).slice(0, 7);
+          const { semanticMonth, titleMonth } = calendarDragDiagnosticMonths(month, previousMonth, nextMonth, nextPanel);
           scheduleOnRN(recordPhase16CalendarDrag, { dx, viewportWidth: width, transformX: dx, semanticMonth, titleMonth });
         }
       }

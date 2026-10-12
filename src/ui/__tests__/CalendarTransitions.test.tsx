@@ -19,6 +19,7 @@ import {
   calendarWeekGeometryForGeneration,
   CalendarMonthViewport,
   calendarAgendaMotion,
+  calendarDragDiagnosticMonths,
 } from "../calendar/CalendarMonthViewport";
 import { calendarTrackMetrics } from "../calendar/CalendarWeekRow";
 
@@ -37,6 +38,15 @@ describe("Calendar semantic transitions", () => {
   it("keeps week rows opaque and applies the contract timing only to the agenda", () => {
     expect(calendarAgendaMotion({ phase: "expand", agendaDelayMs: 70, agendaDurationMs: 170 })).toEqual({ delayMs: 70, durationMs: 170, opacity: 1 });
     expect(calendarAgendaMotion({ phase: "collapse", agendaDelayMs: 0, agendaDurationMs: 140 })).toEqual({ delayMs: 0, durationMs: 140, opacity: 0 });
+  });
+
+  it("previews only the title month while drag semantics remain committed", () => {
+    const current = "2026-11-01" as LocalDate;
+    const previous = "2026-10-01" as LocalDate;
+    const next = "2026-12-01" as LocalDate;
+    expect(calendarDragDiagnosticMonths(current, previous, next, 1)).toEqual({ semanticMonth: "2026-11", titleMonth: "2026-12" });
+    expect(calendarDragDiagnosticMonths(current, previous, next, -1)).toEqual({ semanticMonth: "2026-11", titleMonth: "2026-10" });
+    expect(calendarDragDiagnosticMonths(current, previous, next, 0)).toEqual({ semanticMonth: "2026-11", titleMonth: "2026-11" });
   });
 
   it("keeps a second pan from invalidating an active settle", () => {
