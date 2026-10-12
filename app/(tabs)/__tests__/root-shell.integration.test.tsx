@@ -180,6 +180,10 @@ const mockRuntime = {
     month: input.month,
     selectedDate: input.selectedDate,
   })),
+  loadCalendarRange: jest.fn(async () => Object.freeze({
+    days: Object.freeze([]),
+    events: Object.freeze([]),
+  })),
   loadLibrary: jest.fn(async () => librarySnapshot),
   listLibraryRecentExercises: jest.fn(async () => []),
   searchLibraryExercises: jest.fn(async () => ({
@@ -305,6 +309,9 @@ jest.mock("expo-router", () => {
 });
 
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
+  useCalendarRangeReadPort: () => Object.freeze({
+    loadCalendarRange: mockRuntime.loadCalendarRange,
+  }),
   useWorkoutAppRuntime: () => mockRuntime,
 }));
 
