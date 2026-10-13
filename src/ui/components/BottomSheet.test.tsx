@@ -5,6 +5,8 @@ import {
   waitFor,
 } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { AccessibilityInfo, Dimensions, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -15,7 +17,7 @@ import {
   useBottomSheetFocusRegistration,
 } from "./bottomSheetFocus";
 import { FocusablePressable } from "./index";
-import { AppearanceProvider } from "../theme";
+import { AppearanceProvider, radius, sizes } from "../theme";
 
 const mockRequestAndroidViewFocus = jest.fn<
   (nativeID: string) => Promise<boolean>
@@ -75,6 +77,73 @@ describe("BottomSheet", () => {
       screen: { fontScale: 1, height: 900, scale: 1, width: 800 },
       window: { fontScale: 1, height: 900, scale: 1, width: 800 },
     });
+  });
+
+  it("keeps its frame-owned close action independent from the component barrel", () => {
+    const source = readFileSync(resolve(__dirname, "BottomSheet.tsx"), "utf8");
+
+    expect(source).not.toMatch(/from\s+["']\.\/index["']/u);
+  });
+
+  it("keeps the frame close action keyboard-safe, focus-visible, and exactly 48dp", async () => {
+    const cancel = jest.fn();
+    const rendered = await render(
+      <SheetTestProviders>
+        <BottomSheet heading="Keyboard safe" onCancel={cancel} visible>
+          <Text>Sheet body</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    const closeAction = screen.getByTestId("bottom-sheet-close-action");
+    expect(closeAction).toHaveProp("accessibilityLabel", "Close keyboard safe");
+    expect(closeAction).toHaveProp("accessibilityRole", "button");
+    expect(closeAction).toHaveProp("accessibilityState", {
+      busy: false,
+      disabled: false,
+      selected: false,
+    });
+    expect(closeAction).toHaveProp("focusable", true);
+    expect(closeAction).toHaveStyle({
+      borderRadius: radius.full,
+      height: sizes.minimumTarget,
+      minHeight: sizes.minimumTarget,
+      minWidth: sizes.minimumTarget,
+      width: sizes.minimumTarget,
+    });
+    const [closeIcon] = closeAction.queryAll((node) => node.type === "RNSVGSvgView");
+    expect(closeIcon?.props.height).toBe(sizes.icon);
+    expect(closeIcon?.props.strokeWidth).toBe(2);
+
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Tab", preventDefault: jest.fn() },
+    });
+    expect(closeAction).toHaveProp("hasTVPreferredFocus", true);
+    await fireEvent(closeAction, "focus");
+    expect(closeAction).toHaveStyle({
+      outlineColor: "#195FAE",
+      outlineOffset: sizes.focusClearance,
+      outlineWidth: sizes.focusRing,
+    });
+    await fireEvent(closeAction, "keyDown", { nativeEvent: { key: "Enter" } });
+    expect(cancel).toHaveBeenCalledTimes(1);
+
+    await rendered.rerender(
+      <SheetTestProviders>
+        <BottomSheet cancelDisabled heading="Keyboard safe" onCancel={cancel} visible>
+          <Text>Sheet body</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+    const disabledCloseAction = screen.getByTestId("bottom-sheet-close-action");
+    expect(disabledCloseAction).toHaveProp("accessibilityState", {
+      busy: false,
+      disabled: true,
+      selected: false,
+    });
+    expect(disabledCloseAction).toHaveProp("focusable", false);
+    await fireEvent(disabledCloseAction, "keyDown", { nativeEvent: { key: " " } });
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it("moves focus to its semantic heading, or to the supplied safe action", async () => {

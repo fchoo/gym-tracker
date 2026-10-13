@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef } from "react";
+import { X } from "lucide-react-native";
 import {
   AccessibilityInfo,
   Animated,
@@ -19,10 +20,10 @@ import {
 } from "react-native";
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
-import { IconAction } from "./index";
 import {
   BottomSheetFocusContext,
   type BottomSheetFocusableRef,
+  useBottomSheetFocusRegistration,
 } from "./bottomSheetFocus";
 import { AndroidEscapeBoundary } from "./AndroidEscapeBoundary";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
@@ -59,6 +60,90 @@ const BottomSheetCancellationContext = React.createContext<(() => void) | undefi
 );
 function closeLabelFor(heading: string, cancelLabel?: string): string {
   return cancelLabel ?? `Close ${heading.toLocaleLowerCase()}`;
+}
+
+function BottomSheetCloseAction({
+  accessibilityLabel,
+  disabled = false,
+  onPress,
+}: Readonly<{
+  accessibilityLabel: string;
+  disabled?: boolean;
+  onPress(): void;
+}>) {
+  const { colors } = useAppTheme();
+  const [focused, setFocused] = React.useState(false);
+  const [preferredFocus, setPreferredFocus] = React.useState(false);
+  const nativeRef = useRef<View | null>(null);
+  const focusRegistration = useBottomSheetFocusRegistration();
+  const focusableRef = useRef({
+    focus: () => undefined,
+  }) as BottomSheetFocusableRef;
+  const busy = false;
+  const isDisabled = disabled || busy;
+
+  focusableRef.current = {
+    focus: () => {
+      setPreferredFocus(true);
+      nativeRef.current?.setNativeProps?.({ hasTVPreferredFocus: true });
+      nativeRef.current?.focus?.();
+    },
+  };
+
+  useEffect(() => {
+    if (focusRegistration === null || isDisabled) {
+      return;
+    }
+    return focusRegistration.register(focusableRef);
+  }, [focusRegistration, focusableRef, isDisabled]);
+
+  return (
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      accessibilityState={{ busy, disabled: isDisabled, selected: false }}
+      disabled={isDisabled}
+      focusable={!isDisabled}
+      hasTVPreferredFocus={preferredFocus}
+      {...({
+        onKeyDown: (event: NativeSyntheticEvent<{ key?: string }>) => {
+          if (!isDisabled && (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " ")) {
+            onPress();
+          }
+        },
+      } as unknown as React.ComponentProps<typeof Pressable>)}
+      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true);
+        setPreferredFocus(false);
+        focusRegistration?.onFocus(focusableRef);
+      }}
+      onPress={onPress}
+      ref={nativeRef}
+      style={({ pressed }) => [
+        styles.closeAction,
+        {
+          backgroundColor: pressed ? colors.surfaceSubtle : "transparent",
+          borderColor: colors.divider,
+          opacity: isDisabled ? 0.62 : 1,
+          outlineColor: colors.focusRing,
+          outlineOffset: focused ? sizes.focusClearance : 0,
+          outlineStyle: "solid",
+          outlineWidth: focused ? sizes.focusRing : 0,
+        },
+      ]}
+      testID="bottom-sheet-close-action"
+    >
+      <X
+        accessibilityElementsHidden
+        accessible={false}
+        color={colors.textPrimary}
+        importantForAccessibility="no-hide-descendants"
+        size={sizes.icon}
+        strokeWidth={2}
+      />
+    </Pressable>
+  );
 }
 
 /** Lets sheet content invoke the frame-owned no-write cancellation path. */
@@ -348,10 +433,9 @@ export function BottomSheet({
                             {heading}
                           </Text>
                         </View>
-                        <IconAction
+                        <BottomSheetCloseAction
                           accessibilityLabel={resolvedCancelLabel}
                           disabled={cancelDisabled}
-                          icon="clear"
                           onPress={cancel}
                         />
                       </View>
@@ -407,6 +491,16 @@ const styles = StyleSheet.create({
     minHeight: BOTTOM_SHEET_HEADER_MIN_HEIGHT,
     paddingHorizontal: space[4],
     paddingTop: space[2],
+  },
+  closeAction: {
+    alignItems: "center",
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: sizes.minimumTarget,
+    justifyContent: "center",
+    minHeight: sizes.minimumTarget,
+    minWidth: sizes.minimumTarget,
+    width: sizes.minimumTarget,
   },
   scroll: { flexShrink: 1, maxHeight: "82%" },
   content: { gap: space[4], padding: space[4], paddingTop: space[2] },

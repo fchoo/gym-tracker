@@ -83,10 +83,13 @@ describe("PlannedWorkoutDetailScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Retry preview" }));
     expect(await screen.findByText("Workout preview unavailable")).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByText("Workout preview unavailable").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
-    expect(screen.getAllByRole("button", { name: "Back to Calendar agenda" })[0]).toHaveProp("hasTVPreferredFocus", true);
-    expect(screen.getAllByRole("button", { name: "Back to Calendar agenda" })).toHaveLength(2);
+    const headerBackActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
+    const missingStateActions = screen.getAllByRole("button", { name: "Back to Calendar" });
+    expect(headerBackActions).toHaveLength(1);
+    expect(headerBackActions[0]).toHaveProp("hasTVPreferredFocus", true);
+    expect(missingStateActions).toHaveLength(1);
     expect(loadOccurrence).toHaveBeenLastCalledWith("stale-occurrence");
-    await fireEvent.press(screen.getAllByRole("button", { name: "Back to Calendar agenda" })[1]!);
+    await fireEvent.press(missingStateActions[0]!);
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 

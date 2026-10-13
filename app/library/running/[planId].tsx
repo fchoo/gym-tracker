@@ -24,7 +24,7 @@ function RunningPlanRouteUnavailable({ calendar = false }: Readonly<{ calendar?:
   return <>
     <Stack.Screen options={{ gestureEnabled: false }} />
     <AdaptiveScreen
-      primary={<><ScreenHeader backAction={() => router.back()} density="deep" eyebrow="RUNNING" title="Running plan" {...(calendar ? { backActionLabel: "Back to Calendar agenda", backActionRef, titleStyle: calendarTypeScale.heading as TextStyle } : {})} /><EmptyState body="This route is invalid or no longer available." heading="Running plan not found" {...(calendar ? { headingStyle: calendarTypeScale.heading as TextStyle } : {})} primaryAction={<SecondaryAction label={calendar ? "Back to Calendar agenda" : "Go back"} onPress={() => router.back()} />} /></>}
+      primary={<><ScreenHeader backAction={() => router.back()} density="deep" eyebrow="RUNNING" title="Running plan" {...(calendar ? { backActionLabel: "Back to Calendar agenda", backActionRef, titleStyle: calendarTypeScale.heading as TextStyle } : {})} /><EmptyState body="This route is invalid or no longer available." heading="Running plan not found" {...(calendar ? { headingStyle: calendarTypeScale.heading as TextStyle } : {})} primaryAction={<SecondaryAction label={calendar ? "Back to Calendar" : "Go back"} onPress={() => router.back()} />} /></>}
     />
   </>;
 }

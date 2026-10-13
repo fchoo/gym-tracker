@@ -50,7 +50,7 @@ function CalendarSessionUnavailable({ onBack }: Readonly<{ onBack(): void }>) {
         bodyStyle={calendarTypeScale.body as TextStyle}
         heading="Workout details unavailable"
         headingStyle={calendarTypeScale.heading as TextStyle}
-        primaryAction={<PrimaryAction label="Back to Calendar agenda" onPress={onBack} />}
+        primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />}
       />
     </CalendarSessionStateShell>
   );

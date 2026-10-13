@@ -45,14 +45,19 @@ describe("RunningPlanDetailScreen", () => {
     ["error", async () => { throw new Error("sqlite unavailable"); }, "Running plan could not be loaded"],
     ["missing", async () => null, "Running plan not found"],
   ] as [string, () => Promise<RunningPlanAggregate | null>, string][])("keeps Back as the Calendar entry target in the %s state", async (state, loadPlan, expectedText) => {
-    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" sessionId="session-2" loadPlan={loadPlan} mode="calendar" onBack={jest.fn()} /></AppearanceProvider>);
+    const onBack = jest.fn();
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" sessionId="session-2" loadPlan={loadPlan} mode="calendar" onBack={onBack} /></AppearanceProvider>);
     expect(await screen.findByText(expectedText)).toBeOnTheScreen();
-    const backActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
-    expect(backActions[0]).toHaveProp("hasTVPreferredFocus", true);
-    expect(backActions).toHaveLength(state === "missing" ? 2 : 1);
+    const headerBackActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
+    expect(headerBackActions).toHaveLength(1);
+    expect(headerBackActions[0]).toHaveProp("hasTVPreferredFocus", true);
     expect(StyleSheet.flatten(screen.getByText("Running plan").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
     if (state === "missing") {
       expect(StyleSheet.flatten(screen.getByText("Running plan not found").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+      const missingStateActions = screen.getAllByRole("button", { name: "Back to Calendar" });
+      expect(missingStateActions).toHaveLength(1);
+      await fireEvent.press(missingStateActions[0]!);
+      expect(onBack).toHaveBeenCalledTimes(1);
     }
   });
 

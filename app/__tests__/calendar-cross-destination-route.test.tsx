@@ -366,9 +366,11 @@ describe("Calendar cross-destination routes", () => {
     expect(await detail.findByText("Running plan not found")).toBeOnTheScreen();
     expect(mockLoadRunningPlan).toHaveBeenCalledWith(runningPlan.id, "running-session-revision:removed");
     expect(detail.queryByText("Calendar tempo plan")).toBeNull();
-    expect(detail.getAllByRole("button", { name: "Back to Calendar agenda" })).toHaveLength(2);
+    expect(detail.getAllByRole("button", { name: "Back to Calendar agenda" })).toHaveLength(1);
+    const missingStateActions = detail.getAllByRole("button", { name: "Back to Calendar" });
+    expect(missingStateActions).toHaveLength(1);
 
-    await fireEvent.press(detail.getAllByRole("button", { name: "Back to Calendar agenda" })[1]!);
+    await fireEvent.press(missingStateActions[0]!);
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
