@@ -24,9 +24,13 @@ import {
 } from "./benchmark-v12-interactions.mjs";
 import {
   v12CalendarCaseEvidenceBinding,
-  v12CalendarCaseEvidencePaths,
   validateV12CalendarComparison,
 } from "./compare-v12-calendar.mjs";
+import {
+  createV12CalendarCaseEvidenceBundle,
+  produceV12CalendarCaseEvidence,
+  validateV12CalendarCaseSupportBytes,
+} from "./v12-calendar-case-evidence.mjs";
 import {
   V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_REQUIRED_CASES,
@@ -94,43 +98,50 @@ function rawDiagnostics() {
   };
 }
 
+function passingCaseObservations(requiredCase, binding, runId, startedAt) {
+  return binding.measured.input_motion.map(({ input, motion }, observationIndex) => ({
+    input,
+    motion,
+    started_at: new Date(Date.parse(startedAt) + observationIndex * 10).toISOString(),
+    finished_at: new Date(Date.parse(startedAt) + observationIndex * 10 + 5).toISOString(),
+    functional: { assertions: [{ id: "functional-result", expected: true, actual: true }] },
+    trace: { samples: [{ sequence: 1, elapsed_ms: 1, expected_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:trace`), actual_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:trace`) }] },
+    measurement: { samples: [{ sequence: 1, value: 1, unit: "ratio", minimum: 1, maximum: 1 }] },
+    capture: { captures: [{ path: `artifacts/native/v1.2/${runId}/captures/${requiredCase.case_sha256}/${input}-${motion}.png`, expected_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:capture`), actual_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:capture`), size_bytes: 1 }] },
+  }));
+}
+
 function completeCaseResult(requiredCase, runId, identity, index) {
   const binding = v12CalendarCaseEvidenceBinding(requiredCase);
-  const requiredCount = binding.measured.input_motion.length;
-  const paths = v12CalendarCaseEvidencePaths(requiredCase, runId);
-  const record = (kind, withSamples = false) => ({
-    passed: requiredCount,
-    failed: 0,
-    skipped: 0,
-    ...(withSamples ? { sample_count: requiredCount } : {}),
-    artifact: { path: paths[kind], sha256: "a".repeat(64) },
-  });
   const startedAt = new Date(Date.UTC(2026, 9, 13, 0, 0, index * 2)).toISOString();
   const finishedAt = new Date(Date.parse(startedAt) + 1_000).toISOString();
-  return {
+  const execution = {
+    schema_version: 1,
+    producer: "v12-calendar-native-case/v1",
+    run_id: runId,
+    package: identity.package,
+    build_profile: "development-test",
+    source_tree_sha256: identity.source_tree_sha256,
+    device_identity_sha256: identity.device_identity_sha256,
+    started_at: startedAt,
+    finished_at: finishedAt,
+  };
+  const observations = passingCaseObservations(requiredCase, binding, runId, startedAt);
+  const bundle = createV12CalendarCaseEvidenceBundle({ requiredCase, execution, observations });
+  const result = {
     id: requiredCase.id,
     case_sha256: requiredCase.case_sha256,
     native_execution: "EXECUTED",
     binding,
-    execution: {
-      schema_version: 1,
-      producer: "v12-calendar-native-case/v1",
-      run_id: runId,
-      package: identity.package,
-      build_profile: "development-test",
-      source_tree_sha256: identity.source_tree_sha256,
-      device_identity_sha256: identity.device_identity_sha256,
-      started_at: startedAt,
-      finished_at: finishedAt,
-    },
-    records: {
-      functional: record("functional"),
-      trace: record("trace", true),
-      measurement: record("measurement", true),
-      capture: record("capture"),
-    },
+    execution,
+    records: bundle.records,
     artifact: { path: `artifacts/native/v1.2/${runId}/cases/${requiredCase.case_sha256}.json`, sha256: "a".repeat(64) },
   };
+  Object.defineProperty(result, "supportBytes", {
+    value: Object.fromEntries(Object.entries(bundle.artifacts).map(([kind, artifact]) => [kind, artifact.bytes])),
+    enumerable: false,
+  });
+  return result;
 }
 
 function caseSupportArtifacts(entry) {
@@ -214,9 +225,9 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
     evidence.identity.source_tree_sha256 = currentIdentity.source;
     evidence.comparison.identity.base_head = currentIdentity.head;
     evidence.comparison.identity.source_tree_sha256 = currentIdentity.source;
-    evidence.comparison.case_results.forEach((entry) => {
-      entry.execution.source_tree_sha256 = currentIdentity.source;
-    });
+    evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
+      completeCaseResult(entry, evidence.run_id, evidence.identity, index)
+    ));
     evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
   }
   const runDirectory = path.join(root, "artifacts/native/v1.2", evidence.run_id);
@@ -247,7 +258,9 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
   for (const entry of evidence.functional_cases) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
   for (const entry of evidence.route_journeys) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
   for (const entry of evidence.comparison.case_results) {
-    for (const artifact of caseSupportArtifacts(entry)) writeDescriptor(root, artifact);
+    for (const [kind, record] of Object.entries(entry.records)) {
+      writeDescriptor(root, record.artifact, entry.supportBytes[kind]);
+    }
     writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
   }
 
@@ -334,6 +347,119 @@ test("all 96 live case records bind measured configuration and source-owned inpu
       && new Set(entry.binding.measured.input_motion.map(({ input, motion }) => `${input}:${motion}`)).size === requiredCombinations.size
       && entry.binding.measured.input_motion.every(({ input, motion }) => requiredCombinations.has(`${input}:${motion}`))
   )), true);
+});
+
+test("the production case producer writes immutable configuration-bound support bytes", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-case-producer-"));
+  try {
+    const requiredCase = V12_CALENDAR_REQUIRED_CASES[0];
+    const binding = v12CalendarCaseEvidenceBinding(requiredCase);
+    const runId = "phase20-20261013T101010Z-abcdef123456";
+    const startedAt = "2026-10-13T10:10:10.000Z";
+    const execution = {
+      schema_version: 1,
+      producer: "v12-calendar-native-case/v1",
+      run_id: runId,
+      package: "com.fchoo.gymtracker.devtest",
+      build_profile: "development-test",
+      source_tree_sha256: "b".repeat(64),
+      device_identity_sha256: "d".repeat(64),
+      started_at: startedAt,
+      finished_at: "2026-10-13T10:10:11.000Z",
+    };
+    const result = produceV12CalendarCaseEvidence({
+      root,
+      requiredCase,
+      execution,
+      observations: passingCaseObservations(requiredCase, binding, runId, startedAt),
+    });
+
+    assert.equal(result.records.functional.passed, binding.measured.input_motion.length);
+    assert.equal(result.records.trace.sample_count, binding.measured.input_motion.length);
+    assert.match(readFileSync(path.join(root, result.records.functional.artifact.path), "utf8"), /<testsuite/u);
+    assert.equal(JSON.parse(readFileSync(path.join(root, result.records.trace.artifact.path), "utf8")).case_sha256, requiredCase.case_sha256);
+    assert.throws(() => produceV12CalendarCaseEvidence({
+      root,
+      requiredCase,
+      execution,
+      observations: passingCaseObservations(requiredCase, binding, runId, startedAt),
+    }), /EEXIST/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("case support rejects malformed source records and derives every outcome from their bytes", () => {
+  const requiredCase = V12_CALENDAR_REQUIRED_CASES[0];
+  const binding = v12CalendarCaseEvidenceBinding(requiredCase);
+  const runId = "phase20-20261013T111111Z-abcdef123456";
+  const startedAt = "2026-10-13T11:11:11.000Z";
+  const execution = {
+    schema_version: 1,
+    producer: "v12-calendar-native-case/v1",
+    run_id: runId,
+    package: "com.fchoo.gymtracker.devtest",
+    build_profile: "development-test",
+    source_tree_sha256: "b".repeat(64),
+    device_identity_sha256: "d".repeat(64),
+    started_at: startedAt,
+    finished_at: "2026-10-13T11:11:12.000Z",
+  };
+  const observations = passingCaseObservations(requiredCase, binding, runId, startedAt);
+  const create = (overrides = {}) => createV12CalendarCaseEvidenceBundle({
+    requiredCase: overrides.requiredCase ?? requiredCase,
+    execution: overrides.execution ?? execution,
+    observations: overrides.observations ?? observations,
+  });
+
+  assert.throws(() => create({ execution: { ...execution, unexpected: true } }), /schema_invalid:execution/u);
+  assert.throws(() => create({ execution: { ...execution, schema_version: 2 } }), /execution_invalid/u);
+  assert.throws(() => create({ requiredCase: { ...requiredCase, binding: { ...requiredCase.binding, configuration_id: "missing" } } }), /case_result_binding_invalid/u);
+  assert.throws(() => create({ observations: observations.slice(1) }), /record_set_invalid/u);
+  assert.throws(() => create({ observations: observations.map((value, index) => index === 0 ? { ...value, input: "keyboard" } : value) }), /record_identity_invalid/u);
+
+  const malformedEvidence = [
+    ["functional", { assertions: null }, /functional\.assertions/u],
+    ["functional", { assertions: [{ id: "?", expected: true, actual: true }] }, /functional\.assertion/u],
+    ["trace", { samples: null }, /trace\.samples/u],
+    ["trace", { samples: [{ sequence: 0, elapsed_ms: 1, expected_sha256: "b".repeat(64), actual_sha256: "b".repeat(64) }] }, /trace\.sample/u],
+    ["measurement", { samples: null }, /measurement\.samples/u],
+    ["measurement", { samples: [{ sequence: 0, value: 1, unit: "ratio", minimum: 1, maximum: 1 }] }, /measurement\.sample/u],
+    ["capture", { captures: null }, /capture\.captures/u],
+    ["capture", { captures: [{ path: null, expected_sha256: "b".repeat(64), actual_sha256: "b".repeat(64), size_bytes: 1 }] }, /capture\.item/u],
+  ];
+  for (const [kind, evidence, expected] of malformedEvidence) {
+    const mutated = clone(observations);
+    mutated[0][kind] = evidence;
+    assert.throws(() => create({ observations: mutated }), expected);
+  }
+
+  const reviewObservations = clone(observations);
+  reviewObservations[0].functional.assertions = [];
+  const review = create({ observations: reviewObservations });
+  assert.equal(review.records.functional.skipped, 1);
+  assert.match(review.artifacts.functional.bytes.toString("utf8"), /<skipped/u);
+  const failedObservations = clone(observations);
+  failedObservations[0].functional.assertions[0].actual = false;
+  const failed = create({ observations: failedObservations });
+  assert.equal(failed.records.functional.failed, 1);
+  assert.match(failed.artifacts.functional.bytes.toString("utf8"), /<failure/u);
+
+  const bundle = create();
+  const caseResult = {
+    execution,
+    records: clone(bundle.records),
+  };
+  const bytesByKind = Object.fromEntries(Object.entries(bundle.artifacts).map(([kind, value]) => [kind, value.bytes]));
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.alloc(0) } }), /content_invalid/u);
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, functional: Buffer.from(bytesByKind.functional.toString("utf8").replace(/<system-out>[^<]+/u, "<system-out>eA==")) } }), /schema_invalid/u);
+  const invalidPayload = clone(bundle.artifacts.trace.payload);
+  invalidPayload.producer = "untrusted";
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.from(stableCanonicalJson(invalidPayload)) } }), /content_invalid/u);
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.concat([bytesByKind.trace, Buffer.from(" ")]) } }), /content_invalid/u);
+  const mismatchedResult = clone(caseResult);
+  mismatchedResult.records.trace.passed = 0;
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult: mismatchedResult, bytesByKind }), /content_invalid/u);
 });
 
 test("Calendar evidence rejects missing, duplicate, stale, mutating, non-monotonic, and weak-focus records", () => {
@@ -458,6 +584,34 @@ test("the final CLI verifier accepts a complete live comparison on the same run 
       route_journeys: 8,
       comparisons: 14,
     });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the final CLI verifier rejects hashed arbitrary case-support bytes", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-arbitrary-case-support-"));
+  try {
+    const { evidence, manifestPath } = materializeLiveEvidence(root);
+    const caseResult = evidence.comparison.case_results[0];
+    for (const record of Object.values(caseResult.records)) {
+      writeDescriptor(root, record.artifact, Buffer.from(`bounded:${record.artifact.path}`));
+    }
+    writeJsonDescriptor(root, caseResult.artifact, withoutArtifact(caseResult));
+    writeJsonDescriptor(root, evidence.artifacts.comparison, evidence.comparison);
+    writeFileSync(
+      path.join(root, path.dirname(manifestPath), "evidence/calendar-evidence.json"),
+      `${JSON.stringify(evidence, null, 2)}\n`,
+    );
+
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", manifestPath, "--automated-only"],
+      root,
+      currentIdentity: {
+        head: evidence.manifest.base_head,
+        source: evidence.manifest.source_tree_sha256,
+      },
+    }), /case_support_(?:content|schema)_invalid/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

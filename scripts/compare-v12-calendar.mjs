@@ -9,16 +9,19 @@ import { PNG } from "pngjs";
 import {
   V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
-  V12_CALENDAR_INPUT_IDS,
-  V12_CALENDAR_MOTION_IDS,
   V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
-  V12_CALENDAR_STATIC_CONFIGURATIONS,
   validateV12CalendarCaseLedgerDescriptor,
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
 import { exactKeys } from "./node-evidence-utils.mjs";
 import { V12_CALENDAR_DIAGNOSTIC_STAGES } from "./run-v12-maestro.mjs";
+import {
+  V12_CALENDAR_CASE_EVIDENCE_PRODUCER as CASE_EVIDENCE_PRODUCER,
+  V12_CALENDAR_CASE_RECORD_FILES as CASE_RECORD_FILES,
+  v12CalendarCaseEvidenceBinding,
+  v12CalendarCaseEvidencePaths,
+} from "./v12-calendar-case-evidence.mjs";
 import {
   createExclusiveDirectory,
   ensureV12CalendarDirectory,
@@ -29,14 +32,7 @@ import {
 
 const ROOT = process.cwd();
 const SHA256 = /^[a-f0-9]{64}$/u;
-const CASE_EVIDENCE_PRODUCER = "v12-calendar-native-case/v1";
 const MAX_COMMAND_RATIO_DELTA = 0.03;
-const CASE_RECORD_FILES = Object.freeze({
-  functional: "functional.junit.xml",
-  trace: "trace.json",
-  measurement: "measurement.json",
-  capture: "capture-manifest.json",
-});
 const RECORD_CLASSIFICATIONS = new Set(["PASS", "FAIL", "REVIEW_REQUIRED", "accepted_deviation"]);
 const SEMANTIC_TARGETS = new Set(["calendar-month", "calendar-key", "calendar-agenda", "calendar-strength-detail"]);
 const SYNTHETIC_FIXTURES = new Set(["synthetic-calendar-month-v1", "synthetic-calendar-key-v1", "synthetic-calendar-agenda-v1", "synthetic-calendar-focus-v1", "synthetic-calendar-planned-detail-v1", "synthetic-calendar-accessibility-v1", "synthetic-calendar-system-light-v1", "synthetic-calendar-system-dark-v1"]);
@@ -174,60 +170,7 @@ function assertLedger(map) {
   catch { fail("ledger_required_case_missing"); }
 }
 
-function caseConfiguration(requiredCase) {
-  const configuration = V12_CALENDAR_STATIC_CONFIGURATIONS.find(
-    ({ id }) => id === requiredCase.binding.configuration_id,
-  );
-  if (configuration === undefined) fail("case_result_binding_invalid");
-  return configuration;
-}
-
-export function v12CalendarCaseEvidenceBinding(requiredCase) {
-  const configuration = caseConfiguration(requiredCase);
-  let inputMotion;
-  if (requiredCase.kind === "configuration") {
-    inputMotion = V12_CALENDAR_INPUT_IDS.flatMap((input) => (
-      V12_CALENDAR_MOTION_IDS.map((motion) => ({ input, motion }))
-    ));
-  } else if (requiredCase.kind === "input") {
-    inputMotion = V12_CALENDAR_MOTION_IDS.map((motion) => ({
-      input: requiredCase.binding.input,
-      motion,
-    }));
-  } else if (requiredCase.kind === "motion") {
-    inputMotion = V12_CALENDAR_INPUT_IDS.map((input) => ({
-      input,
-      motion: requiredCase.binding.motion,
-    }));
-  } else {
-    inputMotion = [{
-      input: requiredCase.binding.input,
-      motion: requiredCase.binding.motion,
-    }];
-  }
-  return {
-    requested: requiredCase.binding,
-    measured: {
-      configuration: {
-        id: configuration.id,
-        appearance: configuration.appearance,
-        os_scheme: configuration.os_scheme,
-        viewport: configuration.viewport,
-        orientation: configuration.orientation,
-        font_scale: configuration.font_scale,
-      },
-      state_id: requiredCase.binding.state_id,
-      input_motion: inputMotion,
-    },
-  };
-}
-
-export function v12CalendarCaseEvidencePaths(requiredCase, runId) {
-  const root = `artifacts/native/v1.2/${runId}/case-support/${requiredCase.case_sha256}`;
-  return Object.fromEntries(
-    Object.entries(CASE_RECORD_FILES).map(([kind, file]) => [kind, `${root}/${file}`]),
-  );
-}
+export { v12CalendarCaseEvidenceBinding, v12CalendarCaseEvidencePaths };
 
 function assertCaseRecord(record, kind, requiredCount, requiredCase, runId) {
   const countKeys = ["passed", "failed", "skipped"];
