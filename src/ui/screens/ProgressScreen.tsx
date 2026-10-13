@@ -106,7 +106,7 @@ function SegmentedControls<T extends string>({
     }
   };
   return (
-    <View accessibilityLabel={label} accessibilityRole={role === "tab" ? "tablist" : "radiogroup"} style={styles.segmented}>
+    <View accessibilityLabel={label} accessibilityRole={role === "tab" ? "tablist" : "radiogroup"} style={[styles.segmented, { backgroundColor: colors.surface, borderColor: colors.divider }]}>
       {values.map((item, index) => {
         const isSelected = item.value === selected;
         return (
@@ -130,10 +130,10 @@ function SegmentedControls<T extends string>({
             ref={(node) => { if (node === null) itemRefs.current.delete(item.value); else itemRefs.current.set(item.value, node); }}
             style={({ pressed }: { pressed: boolean }) => [
               styles.segment,
-              { backgroundColor: isSelected ? colors.action : colors.surface, borderColor: isSelected ? colors.focusRing : colors.divider, opacity: pressed ? 0.78 : 1 },
+              { backgroundColor: isSelected ? colors.textPrimary : "transparent", opacity: pressed ? 0.78 : 1 },
             ]}
           >
-            <Text style={[typeScale.bodyStrong as TextStyle, { color: isSelected ? colors.onAction : colors.textPrimary }]}>{item.label}</Text>
+            <Text style={[typeScale.bodyStrong as TextStyle, { color: isSelected ? colors.paper : colors.textPrimary }]}>{item.label}</Text>
           </FocusablePressable>
         );
       })}
@@ -294,7 +294,7 @@ function RunningRoot({ dashboard, historyActionRefs, onOpenHistory, onOpenTarget
           <Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`200 m · ${goal.pacing.per200m.replace("/200 m", "")}`}</Text>
         </View>}
         <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Evidence · ${goal.evidenceCount} accepted imported ${goal.evidenceCount === 1 ? "activity" : "activities"}`}</Text>
-        <FactualHistoryChart series={runningGoalToFactualSeries(goal, rangeLabel)} />
+        <FactualHistoryChart series={runningGoalToFactualSeries(goal, rangeLabel)} showSummaryFacts={false} />
         <View style={styles.actions}>
           <FocusablePressable accessibilityLabel={`Open history for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenHistory(goal, heroHistoryToken)} ref={(node) => { if (node === null) historyActionRefs.current.delete(heroHistoryToken); else historyActionRefs.current.set(heroHistoryToken, node); }} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
           {targetSources.length > 0 ? <FocusablePressable accessibilityLabel={`Edit target for ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenTarget(goal.distanceMeters)} ref={(node) => { if (node === null) targetTriggerRefs.current.delete(goal.distanceMeters); else targetTriggerRefs.current.set(goal.distanceMeters, node); }} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Set target</Text></FocusablePressable> : null}
@@ -380,6 +380,7 @@ function StrengthGoalHero({ goal, heading, historyActionRef, onOpenHistory, onOp
       onOpenSource={onOpenSource}
       registerSourceAction={registerSourceAction}
       series={strengthSeries(goal, rangeLabel)}
+      showSummaryFacts={false}
     />
     <FocusablePressable accessibilityLabel={`Open exercise history for ${goal.exerciseName}`} accessibilityRole="button" focusable onPress={onOpenHistory} ref={historyActionRef} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
   </View>;
@@ -457,6 +458,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, historyActionRefs, on
           if (node === null) returnActionRefs.current.delete(token); else returnActionRefs.current.set(token, node);
         }}
         series={runningGoalToFactualSeries(goal, rangeLabel)}
+        showSummaryFacts={false}
       /><FocusablePressable accessibilityLabel={`Open history for nearest Running ${distanceLabel(goal.distanceMeters)}`} accessibilityRole="button" focusable onPress={() => onOpenRunningHistory(goal, historyToken)} ref={(node) => { if (node === null) historyActionRefs.current.delete(historyToken); else historyActionRefs.current.set(historyToken, node); }} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable></View>
       <ActiveGoalRows goals={dashboard.activeGoals} onSelectSport={onSelectSport} />
       <PlannedNext value={dashboard.plannedNext} />
@@ -828,8 +830,8 @@ const styles = StyleSheet.create({
   hero: { borderTopWidth: 2, gap: space[2], marginTop: 18, paddingTop: space[4] },
   pacing: { gap: space[1] },
   screen: { gap: space[4], maxWidth: 960, width: "100%" },
-  segment: { alignItems: "center", borderRadius: radius.emphasized, borderWidth: StyleSheet.hairlineWidth, flex: 1, justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[1] },
-  segmented: { flexDirection: "row", gap: 3 },
+  segment: { alignItems: "center", borderRadius: 9, borderWidth: 0, flex: 1, justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[1] },
+  segmented: { borderRadius: 13, borderWidth: 1, flexDirection: "row", gap: 3, padding: 3 },
   supplementaryAction: { alignItems: "center", justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[2] },
   supplementaryActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });

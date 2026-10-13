@@ -248,9 +248,10 @@ export type FactualHistoryChartProps = Readonly<{
   registerSourceAction?: (source: FactualHistorySource, node: View | null) => void;
   series: ProgressFactualSeries;
   formatValue?: (value: number | null) => string;
+  showSummaryFacts?: boolean;
 }>;
 
-export function FactualHistoryChart({ formatValue, onOpenSource, registerSourceAction, series }: FactualHistoryChartProps) {
+export function FactualHistoryChart({ formatValue, onOpenSource, registerSourceAction, series, showSummaryFacts = true }: FactualHistoryChartProps) {
   const { colors } = useAppTheme();
   const { fontScale, height, width } = useWindowDimensions();
   const [dataVisible, setDataVisible] = useState(false);
@@ -288,19 +289,19 @@ export function FactualHistoryChart({ formatValue, onOpenSource, registerSourceA
 
   if (facts.length === 0) {
     return <View accessibilityLabel={label} accessible style={styles.empty}>
-      {positiveFinite(target) ? <View style={styles.facts} testID="factual-history-facts"><Fact label="Target" value={formatFactualDuration(target)} /></View> : null}
+      {showSummaryFacts && positiveFinite(target) ? <View style={styles.facts} testID="factual-history-facts"><Fact label="Target" value={formatFactualDuration(target)} /></View> : null}
       <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>No effort recorded</Text>
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Import or accept a {formatDistance(series.distanceMeters)} effort to establish a benchmark. No zero result is plotted.</Text>
     </View>;
   }
 
   return <View style={styles.container} testID="factual-history-chart">
-    <View style={[styles.facts, showStackedFacts ? styles.factsStacked : undefined]} testID="factual-history-facts">
+    {showSummaryFacts ? <View style={[styles.facts, showStackedFacts ? styles.factsStacked : undefined]} testID="factual-history-facts">
       <Fact label="Latest" value={valueText(latest?.valueSeconds ?? null)} />
       <Fact label="Best" value={valueText(best?.valueSeconds ?? null)} />
       <Fact label="Target" value={valueText(target)} />
       <Fact label="Gap" value={gap === null ? "—" : atTarget ? "At target" : `${valueText(gap)} ${series.fasterIsLower ? best!.valueSeconds! < target! ? "faster" : "slower" : best!.valueSeconds! > target! ? "higher" : "lower"}`} />
-    </View>
+    </View> : null}
     <View accessible accessibilityLabel={label} style={styles.chartSummary}>
       <Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Personal history</Text>
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${series.rangeLabel} · ${facts.length} evidence ${facts.length === 1 ? "point" : "points"} · ${directionLabel}`}</Text>

@@ -215,6 +215,8 @@ describe("ProgressScreen", () => {
     expect(screen.getByText("400 m · 1:50")).toBeOnTheScreen();
     expect(screen.getByText("200 m · 0:55")).toBeOnTheScreen();
     expect(screen.getByText("Evidence · 2 accepted imported activities")).toBeOnTheScreen();
+    expect(screen.getAllByTestId("progress-hero-facts")).toHaveLength(1);
+    expect(screen.queryByTestId("factual-history-facts")).toBeNull();
     expect(screen.getByRole("tab", { name: "Running" }))
       .toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
     expect(screen.getByRole("button", { name: "All time" }))
@@ -226,8 +228,20 @@ describe("ProgressScreen", () => {
 
     const all = screen.getByRole("tab", { name: "All" });
     const running = screen.getByRole("tab", { name: "Running" });
+    expect(screen.getByLabelText("Progress sport")).toHaveStyle({
+      borderRadius: 13,
+      borderWidth: 1,
+      gap: 3,
+      padding: 3,
+    });
+    expect(screen.getByLabelText("Progress range")).toHaveStyle({
+      borderRadius: 13,
+      borderWidth: 1,
+      gap: 3,
+      padding: 3,
+    });
     expect(all).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
-    expect(all).toHaveStyle({ minHeight: 48 });
+    expect(all).toHaveStyle({ borderRadius: 9, borderWidth: 0, minHeight: 48 });
     expect(screen.getByRole("button", { name: "4 weeks" })).toHaveStyle({ minHeight: 48 });
 
     await fireEvent(running, "keyDown", { nativeEvent: { key: "Home", preventDefault: jest.fn() } });
