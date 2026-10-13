@@ -716,6 +716,19 @@ describe("ProgressScreen", () => {
     expect(screen.getByRole("button", { name: "4 weeks" })).toHaveStyle({ minHeight: 48 });
   });
 
+  it.each([
+    { fontScale: 1, direction: "row", divider: { borderLeftWidth: 1 } },
+    { fontScale: 2, direction: "column", divider: { borderLeftWidth: 0, borderTopWidth: 1 } },
+  ] as const)("renders Latest, Best, and Target cells at font scale $fontScale", async ({ fontScale, direction, divider }) => {
+    await renderProgress(undefined, { fontScale, width: 390 });
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+
+    expect(await screen.findByTestId("progress-hero-facts")).toHaveStyle({ flexDirection: direction });
+    expect(screen.getByTestId("progress-hero-fact-latest")).toHaveStyle({ flex: 1 });
+    expect(screen.getByTestId("progress-hero-fact-best")).toHaveStyle({ ...divider, flex: 1 });
+    expect(screen.getByTestId("progress-hero-fact-target")).toHaveStyle({ ...divider, flex: 1 });
+  });
+
   it("safely dismisses an open target editor before switching roots", async () => {
     const saveRunningTarget = jest.fn(async () => ({ outcome: "committed" as const, plan: runningTargetSource }));
     const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
