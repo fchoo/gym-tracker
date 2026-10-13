@@ -146,7 +146,7 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     });
     await settleNextLoad({ kind: "ready", detail });
     expect(screen.getByText("Outdoor run")).toBeTruthy();
-    fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
