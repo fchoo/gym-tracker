@@ -1,6 +1,6 @@
 appId: com.fchoo.gymtracker.devtest
-name: Phase 16 Calendar diagnostic trace contract
-tags: [calendar-tracer, native-only, development-test, phase-16]
+name: Phase 16 Calendar diagnostic trace contract retained for Phase 20 observation
+tags: [calendar-tracer, native-only, development-test, phase-16, phase-20, observe-only]
 ---
 - assertTrue: ${PHASE16_CALENDAR_STAGE != null}
 - assertTrue: ${PHASE16_CALENDAR_FIXTURE_ID == 'synthetic-calendar-v1'}
@@ -164,3 +164,6 @@ tags: [calendar-tracer, native-only, development-test, phase-16]
       - pressKey: ENTER
       - assertVisible: "Collapse day and return to month"
 - takeScreenshot: "calendar-${PHASE16_CALENDAR_STAGE}"
+# Phase 20's shard binds the emitted Phase 16 source trace to timestamps,
+# geometry, semantic order, callback generation, focused-week and motion fields.
+# This screenshot is supplemental only and can never close an NV-CAL case alone.
