@@ -1,4 +1,6 @@
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
+import { useEffect, useRef } from "react";
+import { View, type TextStyle } from "react-native";
 
 import { useRunningPlanRuntime } from "../../../src/bootstrap/runningPlanRuntime";
 import { useWorkoutAppRuntime } from "../../../src/bootstrap/workoutAppRuntime";
@@ -7,17 +9,22 @@ import { CalendarRunningPlanRouteAdapter } from "../../../src/ui/calendar/Calend
 import { EmptyState, ScreenHeader, SecondaryAction } from "../../../src/ui/components";
 import { AdaptiveScreen } from "../../../src/ui/layout/AdaptiveScreen";
 import { RunningPlanDetailScreen } from "../../../src/ui/screens/RunningPlanDetailScreen";
+import { calendarTypeScale } from "../../../src/ui/theme";
 
 function routeId(value: string | string[] | undefined): string | null {
   const parsed = parseScalarRouteParam(value);
   return parsed.kind === "value" ? parsed.value : null;
 }
 
-function RunningPlanRouteUnavailable() {
+function RunningPlanRouteUnavailable({ calendar = false }: Readonly<{ calendar?: boolean }>) {
+  const backActionRef = useRef<View>(null);
+  useEffect(() => {
+    if (calendar) backActionRef.current?.focus?.();
+  }, [calendar]);
   return <>
     <Stack.Screen options={{ gestureEnabled: false }} />
     <AdaptiveScreen
-      primary={<><ScreenHeader backAction={() => router.back()} density="deep" eyebrow="RUNNING" title="Running plan" /><EmptyState body="This route is invalid or no longer available." heading="Running plan not found" primaryAction={<SecondaryAction label="Go back" onPress={() => router.back()} />} /></>}
+      primary={<><ScreenHeader backAction={() => router.back()} density="deep" eyebrow="RUNNING" title="Running plan" {...(calendar ? { backActionLabel: "Back to Calendar agenda", backActionRef, titleStyle: calendarTypeScale.heading as TextStyle } : {})} /><EmptyState body="This route is invalid or no longer available." heading="Running plan not found" {...(calendar ? { headingStyle: calendarTypeScale.heading as TextStyle } : {})} primaryAction={<SecondaryAction label={calendar ? "Back to Calendar agenda" : "Go back"} onPress={() => router.back()} />} /></>}
     />
   </>;
 }
@@ -65,9 +72,10 @@ export default function RunningPlanDetailRoute() {
     absentManagementOrigin: "library",
     managementOrigins: ["library"] as const,
   });
-  if (planId === null || origin.kind === "invalid") return <RunningPlanRouteUnavailable />;
+  if (origin.kind === "invalid") return <RunningPlanRouteUnavailable />;
+  if (planId === null) return <RunningPlanRouteUnavailable calendar={origin.kind === "calendar"} />;
   if (origin.kind === "calendar") {
-    if (sessionId === null) return <RunningPlanRouteUnavailable />;
+    if (sessionId === null) return <RunningPlanRouteUnavailable calendar />;
     return <>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <CalendarRunningPlanRouteAdapter planId={planId} sessionId={sessionId} onBack={() => router.back()} />

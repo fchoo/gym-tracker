@@ -44,10 +44,16 @@ describe("RunningPlanDetailScreen", () => {
     ["loading", () => new Promise<RunningPlanAggregate | null>(() => undefined), "Loading Running plan"],
     ["error", async () => { throw new Error("sqlite unavailable"); }, "Running plan could not be loaded"],
     ["missing", async () => null, "Running plan not found"],
-  ] as [string, () => Promise<RunningPlanAggregate | null>, string][])("keeps Back as the Calendar entry target in the %s state", async (_state, loadPlan, expectedText) => {
+  ] as [string, () => Promise<RunningPlanAggregate | null>, string][])("keeps Back as the Calendar entry target in the %s state", async (state, loadPlan, expectedText) => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" sessionId="session-2" loadPlan={loadPlan} mode="calendar" onBack={jest.fn()} /></AppearanceProvider>);
     expect(await screen.findByText(expectedText)).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+    const backActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
+    expect(backActions[0]).toHaveProp("hasTVPreferredFocus", true);
+    expect(backActions).toHaveLength(state === "missing" ? 2 : 1);
+    expect(StyleSheet.flatten(screen.getByText("Running plan").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    if (state === "missing") {
+      expect(StyleSheet.flatten(screen.getByText("Running plan not found").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    }
   });
 
   it("loads and renders only the exact Calendar-scheduled session revision", async () => {
@@ -60,7 +66,7 @@ describe("RunningPlanDetailScreen", () => {
     expect(StyleSheet.flatten(screen.getByText("10000 m").props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
     expect(screen.queryByText("Monday · Recovery")).toBeNull();
     expect(loadPlan).toHaveBeenCalledWith("running-1", "session-2");
-    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+    expect(screen.getByRole("button", { name: "Back to Calendar agenda" }).props.hasTVPreferredFocus).toBe(true);
   });
 
   it("activates the one Garmin handoff without replacing loaded plan facts", async () => {

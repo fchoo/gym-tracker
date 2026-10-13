@@ -132,9 +132,11 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
               />
               <View style={styles.copy}>
                 <Text numberOfLines={undefined} style={[calendarTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{event.title}</Text>
-                <Text numberOfLines={undefined} style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>{event.displaySummary}</Text>
-                <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{`${sport} · ${status}`}</Text>
-                <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{event.sourceLabel}</Text>
+                <Text numberOfLines={undefined} style={[calendarTypeScale.body as TextStyle, styles.detail, { color: colors.textSecondary }]} testID={`calendar-agenda-detail-${event.id}`}>{event.displaySummary}</Text>
+                <View style={styles.metadata} testID={`calendar-agenda-metadata-${event.id}`}>
+                  <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{`${sport} · ${status}`}</Text>
+                  <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{event.sourceLabel}</Text>
+                </View>
               </View>
               <View
                 style={styles.disclosure}
@@ -157,10 +159,12 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
 
 const styles = StyleSheet.create({
   content: { paddingBottom: space[4] },
-  copy: { flex: 1, gap: 2, minWidth: 0 },
+  copy: { flex: 1, minWidth: 0 },
+  detail: { marginTop: 3 },
   disclosure: { alignSelf: "flex-start", height: 24, width: 24 },
   empty: { borderWidth: 1, gap: space[1], padding: 10 },
-  rail: { borderRadius: 2, height: 62, width: 5 },
+  metadata: { columnGap: space[2], flexDirection: "row", flexWrap: "wrap", marginTop: space[1], rowGap: 3 },
+  rail: { alignSelf: "stretch", borderRadius: 2, minHeight: 62, width: 5 },
   row: { alignItems: "flex-start", borderBottomWidth: 1, borderWidth: 0, flexDirection: "row", gap: 10, minHeight: 82, paddingRight: 10, paddingVertical: 10 },
   scroll: { flex: 1, minHeight: 0 },
 });

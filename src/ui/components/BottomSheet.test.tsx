@@ -6,7 +6,7 @@ import {
 } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
-import { AccessibilityInfo, Dimensions, Text, View } from "react-native";
+import { AccessibilityInfo, Dimensions, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { BottomSheet } from "./BottomSheet";
@@ -109,6 +109,30 @@ describe("BottomSheet", () => {
     );
 
     expect(safeActionFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the shared inset by default and supports an exact scoped inset", async () => {
+    const rendered = await render(
+      <SheetTestProviders>
+        <BottomSheet heading="Default sheet" onCancel={jest.fn()} visible>
+          <Text>Default body</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    expect(screen.getByTestId("bottom-sheet-header")).toHaveStyle({ paddingHorizontal: 16 });
+    expect(StyleSheet.flatten(screen.getByTestId("bottom-sheet-scroll").props.contentContainerStyle)).toMatchObject({ padding: 16, paddingTop: 8 });
+
+    await rendered.rerender(
+      <SheetTestProviders>
+        <BottomSheet heading="Calendar key" horizontalInset={14} onCancel={jest.fn()} visible>
+          <Text>Calendar body</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    expect(screen.getByTestId("bottom-sheet-header")).toHaveStyle({ paddingHorizontal: 14 });
+    expect(StyleSheet.flatten(screen.getByTestId("bottom-sheet-scroll").props.contentContainerStyle)).toMatchObject({ paddingHorizontal: 14 });
   });
 
   it("uses one no-write cancellation path for close, Back, Escape, and scrim, then restores the exact trigger", async () => {

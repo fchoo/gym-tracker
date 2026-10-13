@@ -419,6 +419,8 @@ describe("CalendarScreen", () => {
       fontSize: 22,
       fontWeight: "800",
     });
+    expect(screen.getByTestId("bottom-sheet-header")).toHaveStyle({ paddingHorizontal: 14 });
+    expect(StyleSheet.flatten(screen.getByTestId("bottom-sheet-scroll").props.contentContainerStyle)).toMatchObject({ paddingHorizontal: 14 });
     expect(screen.getByText("Color identifies the activity. Fill and border style identify its status."))
       .toBeOnTheScreen();
     expect(screen.getByText("ACTIVITY")).toBeOnTheScreen();
@@ -942,6 +944,11 @@ describe("CalendarScreen", () => {
       expect(StyleSheet.flatten(scroll.props.contentContainerStyle).minHeight).toBe(618);
       const agendaRow = await screen.findByTestId("calendar-agenda-event-strength-opportunity-1");
       expect(agendaRow).toBeOnTheScreen();
+      const agendaRailStyle = StyleSheet.flatten(screen.getByTestId("calendar-agenda-rail-strength-opportunity-1").props.style);
+      expect(agendaRailStyle).toMatchObject({ alignSelf: "stretch", minHeight: 62, width: 5 });
+      expect(agendaRailStyle.height).toBeUndefined();
+      expect(screen.getByTestId("calendar-agenda-detail-strength-opportunity-1")).toHaveStyle({ marginTop: 3 });
+      expect(screen.getByTestId("calendar-agenda-metadata-strength-opportunity-1")).toHaveStyle({ columnGap: 8, marginTop: 4, rowGap: 3 });
       await fireEvent.press(agendaRow);
       expect(onOpenEvent).toHaveBeenCalledWith(range.events[0]!.destination, "strength-opportunity-1");
     } finally {

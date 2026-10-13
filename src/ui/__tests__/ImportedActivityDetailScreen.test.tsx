@@ -68,7 +68,7 @@ describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
   it("moves Calendar-origin initial focus to Back", async () => {
     await renderScreen({ mode: "calendar" });
     await waitFor(() => {
-      expect(screen.getByTestId("activity-detail-back-action")).toHaveProp(
+      expect(screen.getByRole("button", { name: "Back to Calendar agenda" })).toHaveProp(
         "hasTVPreferredFocus",
         true,
       );
@@ -135,6 +135,21 @@ describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
     expect(screen.queryByRole("button", { name: "Match to scheduled workout" })).toBeNull();
     expect(StyleSheet.flatten(screen.getByTestId("activity-detail-title-text").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
     expect(StyleSheet.flatten(screen.getByText("2026-10-04").props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
+  });
+
+  it.each([
+    [{ kind: "loading" } as const, "Loading activity details"],
+    [{ kind: "missing" } as const, "Activity not found"],
+    [{ kind: "projection_error", code: "accepted_payload_unavailable" } as const, "Activity details unavailable"],
+  ])("keeps the Calendar Back label and heading role in the %s path", async (state, expectedText) => {
+    await renderScreen({ mode: "calendar", state });
+
+    expect(screen.getByText(expectedText)).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Back to Calendar agenda" })).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByTestId("activity-detail-title-text").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    if (state.kind !== "loading") {
+      expect(StyleSheet.flatten(screen.getByText(expectedText).props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    }
   });
 });
 
@@ -285,6 +300,10 @@ describe("ImportedActivityDetailScreen route states and shared shell", () => {
       await renderScreen({ state, onRetry });
 
       expect(screen.getByText(heading)).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Go back" })).toBeOnTheScreen();
+      if (state.kind === "missing") {
+        expect(StyleSheet.flatten(screen.getByText(heading).props.style)).toMatchObject({ fontSize: 20, fontWeight: "800" });
+      }
       expect(screen.queryByText("5.00 km")).toBeNull();
       expect(screen.queryByText("152 bpm")).toBeNull();
       expect(screen.queryByTestId("activity-detail-route")).toBeNull();

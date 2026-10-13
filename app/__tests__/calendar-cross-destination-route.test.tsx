@@ -339,7 +339,7 @@ describe("Calendar cross-destination routes", () => {
     expect(detail.queryByRole("button", { name: "Edit running plan" })).toBeNull();
     expect(detail.queryByRole("button", { name: "Review archive" })).toBeNull();
 
-    await fireEvent.press(detail.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(detail.getByRole("button", { name: "Back to Calendar agenda" }));
 
     expect(mockBack).toHaveBeenCalledTimes(1);
     await waitFor(() => {
@@ -366,9 +366,9 @@ describe("Calendar cross-destination routes", () => {
     expect(await detail.findByText("Running plan not found")).toBeOnTheScreen();
     expect(mockLoadRunningPlan).toHaveBeenCalledWith(runningPlan.id, "running-session-revision:removed");
     expect(detail.queryByText("Calendar tempo plan")).toBeNull();
-    expect(detail.getByRole("button", { name: "Back to Calendar" })).toBeOnTheScreen();
+    expect(detail.getAllByRole("button", { name: "Back to Calendar agenda" })).toHaveLength(2);
 
-    await fireEvent.press(detail.getByRole("button", { name: "Back to Calendar" }));
+    await fireEvent.press(detail.getAllByRole("button", { name: "Back to Calendar agenda" })[1]!);
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
@@ -419,7 +419,7 @@ describe("Calendar cross-destination routes", () => {
         params: { occurrenceId: "strength-occurrence:planned", origin: "calendar" },
         Route: CalendarPlannedWorkoutRoute,
         loaded: "Planned preview · read only",
-        back: "Go back",
+        back: "Back to Calendar agenda",
       },
       {
         eventId: "calendar-event:running/tempo",
@@ -427,7 +427,7 @@ describe("Calendar cross-destination routes", () => {
         params: { origin: "calendar", planId: runningPlan.id, sessionId: "running-session-revision:calendar" },
         Route: RunningPlanDetailRoute,
         loaded: "Saved Running goal, benchmark, and schedule facts. Activation stays separate.",
-        back: "Go back",
+        back: "Back to Calendar agenda",
       },
       {
         eventId: "calendar-event:activity-outdoor",
@@ -435,7 +435,7 @@ describe("Calendar cross-destination routes", () => {
         params: { activityId: "activity-local-outdoor", origin: "calendar" },
         Route: ImportedActivityDetailRoute,
         loaded: "Activity detail",
-        back: "Go back",
+        back: "Back to Calendar agenda",
       },
       {
         eventId: "calendar-event:activity-treadmill",
@@ -443,7 +443,7 @@ describe("Calendar cross-destination routes", () => {
         params: { activityId: "activity-local-treadmill", origin: "calendar" },
         Route: ImportedActivityDetailRoute,
         loaded: "Activity detail",
-        back: "Go back",
+        back: "Back to Calendar agenda",
       },
     ] as const;
 
@@ -512,7 +512,7 @@ describe("Calendar cross-destination routes", () => {
     expect(await detail.findByText("Activity removed")).toBeOnTheScreen();
     expect(mockLoadActivity).toHaveBeenCalledWith("activity-local-removed");
     expect(detail.queryByText("Outdoor run")).toBeNull();
-    await fireEvent.press(detail.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(detail.getByRole("button", { name: "Back to Calendar agenda" }));
     Object.values(mockMutationCommands).forEach((command) => expect(command).not.toHaveBeenCalled());
   });
 });

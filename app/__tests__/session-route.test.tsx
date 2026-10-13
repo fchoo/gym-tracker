@@ -52,11 +52,11 @@ jest.mock("../../src/ui/screens/SessionDetailScreen", () => ({
 jest.mock("../../src/ui/components", () => {
   const ReactImplementation = require("react") as typeof import("react");
   const { Pressable, Text } = require("react-native") as typeof import("react-native");
-  const MockScreenHeader = ({ backActionRef, title, titleStyle }: { backActionRef?: React.Ref<unknown>; title: string; titleStyle?: StyleProp<TextStyle> }) => {
+  const MockScreenHeader = ({ backActionLabel = "Go back", backActionRef, title, titleStyle }: { backActionLabel?: string; backActionRef?: React.Ref<unknown>; title: string; titleStyle?: StyleProp<TextStyle> }) => {
     const fallbackRef = ReactImplementation.useRef<unknown>(null);
     const [preferred, setPreferred] = ReactImplementation.useState(false);
     ReactImplementation.useImperativeHandle(backActionRef ?? fallbackRef, () => ({ focus: () => setPreferred(true) }), []);
-    return <><Pressable accessibilityLabel="Go back" accessibilityRole="button" hasTVPreferredFocus={preferred} /><Text style={titleStyle}>{title}</Text></>;
+    return <><Pressable accessibilityLabel={backActionLabel} accessibilityRole="button" hasTVPreferredFocus={preferred} /><Text style={titleStyle}>{title}</Text></>;
   };
   return {
     EmptyState: ({ heading, headingStyle, primaryAction }: { heading: string; headingStyle?: StyleProp<TextStyle>; primaryAction?: React.ReactNode }) => <><Text style={headingStyle}>{heading}</Text>{primaryAction}</>,
@@ -99,7 +99,7 @@ describe("SessionDetailRoute", () => {
     await waitFor(() => expect(screen.getByText("Workout details unavailable")).toBeOnTheScreen());
     expect(StyleSheet.flatten(screen.getByText("Workout details").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
     expect(StyleSheet.flatten(screen.getByText("Workout details unavailable").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
-    expect(screen.getByRole("button", { name: "Go back" })).toHaveProp("hasTVPreferredFocus", true);
+    expect(screen.getAllByRole("button", { name: "Back to Calendar agenda" })[0]).toHaveProp("hasTVPreferredFocus", true);
     expect(mockLoadCalendarSessionDetail).not.toHaveBeenCalled();
   });
 
@@ -107,7 +107,7 @@ describe("SessionDetailRoute", () => {
     mockLoadCalendarSessionDetail.mockImplementation(() => new Promise(() => undefined));
     await render(<SessionDetailRoute />);
     expect(screen.getByText("Workout details")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Go back" })).toHaveProp("hasTVPreferredFocus", true);
+    expect(screen.getByRole("button", { name: "Back to Calendar agenda" })).toHaveProp("hasTVPreferredFocus", true);
   });
 
   it.each(["unknown", ["calendar"]] as const)(
@@ -129,7 +129,7 @@ describe("SessionDetailRoute", () => {
 
     expect(await screen.findByText("Workout details could not be loaded")).toBeOnTheScreen();
     expect(screen.queryByText("Workout details unavailable")).toBeNull();
-    expect(screen.getByRole("button", { name: "Go back" })).toHaveProp("hasTVPreferredFocus", true);
+    expect(screen.getByRole("button", { name: "Back to Calendar agenda" })).toHaveProp("hasTVPreferredFocus", true);
     await fireEvent.press(screen.getByRole("button", { name: "Retry workout details" }));
     expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
     expect(mockLoadCalendarSessionDetail).toHaveBeenNthCalledWith(1, "calendar-session");

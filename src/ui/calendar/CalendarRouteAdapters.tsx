@@ -34,7 +34,7 @@ function CalendarSessionStateShell({
     <AdaptiveScreen
       primary={
         <>
-          <ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout details" titleStyle={calendarTypeScale.heading as TextStyle} />
+          <ScreenHeader backAction={onBack} backActionLabel="Back to Calendar agenda" backActionRef={backActionRef} title="Workout details" titleStyle={calendarTypeScale.heading as TextStyle} />
           {children}
         </>
       }
@@ -50,7 +50,7 @@ function CalendarSessionUnavailable({ onBack }: Readonly<{ onBack(): void }>) {
         bodyStyle={calendarTypeScale.body as TextStyle}
         heading="Workout details unavailable"
         headingStyle={calendarTypeScale.heading as TextStyle}
-        primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />}
+        primaryAction={<PrimaryAction label="Back to Calendar agenda" onPress={onBack} />}
       />
     </CalendarSessionStateShell>
   );

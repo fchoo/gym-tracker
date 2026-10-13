@@ -1,6 +1,7 @@
 import { act, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 import { parseLocalDate } from "../../domains/scheduling/localDate";
 import { AppearanceProvider } from "../theme";
@@ -46,9 +47,17 @@ describe("CalendarAgenda factual copy", () => {
       paddingVertical: 10,
     });
     expect(screen.getByTestId("calendar-agenda-rail-completed")).toHaveStyle({
+      alignSelf: "stretch",
       borderRadius: 2,
-      height: 62,
+      minHeight: 62,
       width: 5,
+    });
+    expect(StyleSheet.flatten(screen.getByTestId("calendar-agenda-rail-completed").props.style).height).toBeUndefined();
+    expect(screen.getByTestId("calendar-agenda-detail-completed")).toHaveStyle({ marginTop: 3 });
+    expect(screen.getByTestId("calendar-agenda-metadata-completed")).toHaveStyle({
+      columnGap: 8,
+      marginTop: 4,
+      rowGap: 3,
     });
     expect(screen.getByTestId("calendar-agenda-disclosure-completed")).toHaveStyle({
       alignSelf: "flex-start",

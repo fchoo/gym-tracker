@@ -87,7 +87,7 @@ export function WorkoutSessionPresentation({
                 style={styles.disclosure}
               >
                 <View style={styles.copy}>
-                  <Text accessibilityRole="header" style={[(typography === "calendar" ? calendarTypeScale.bodyStrong : workoutTypeScale.bodyStrong) as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
+                  <Text accessibilityRole="header" style={[(typography === "calendar" ? calendarTypeScale.heading : workoutTypeScale.bodyStrong) as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
                   <Text style={[(typography === "calendar" ? calendarTypeScale.metadata : workoutTypeScale.secondary) as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
                 </View>
                 {typography === "calendar" ? (

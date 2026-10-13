@@ -39,7 +39,7 @@ describe("PlannedWorkoutDetailScreen", () => {
 
   it("keeps Back as the preferred entry target while the exact occurrence is loading", async () => {
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={() => new Promise(() => undefined)} onBack={jest.fn()} /></AppearanceProvider>);
-    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+    expect(screen.getByRole("button", { name: "Back to Calendar agenda" }).props.hasTVPreferredFocus).toBe(true);
     expect(StyleSheet.flatten(screen.getByText("Workout preview").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
   });
 
@@ -47,7 +47,7 @@ describe("PlannedWorkoutDetailScreen", () => {
     const timing = jest.spyOn(Animated, "timing");
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={jest.fn(async () => occurrence)} onBack={jest.fn()} /></AppearanceProvider>);
     expect(await screen.findByText("Planned preview · read only")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+    expect(screen.getByRole("button", { name: "Back to Calendar agenda" }).props.hasTVPreferredFocus).toBe(true);
     expect(screen.getByRole("header", { name: "Full Body A" })).toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "Bench press" })).toBeOnTheScreen();
     expect(screen.getByText("0 of 1 sets")).toBeOnTheScreen();
@@ -79,13 +79,14 @@ describe("PlannedWorkoutDetailScreen", () => {
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="stale-occurrence" loadOccurrence={loadOccurrence} onBack={onBack} /></AppearanceProvider>);
     expect(await screen.findByText("Workout preview could not be loaded")).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByText("Workout preview could not be loaded").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
-    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+    expect(screen.getByRole("button", { name: "Back to Calendar agenda" }).props.hasTVPreferredFocus).toBe(true);
     await fireEvent.press(screen.getByRole("button", { name: "Retry preview" }));
     expect(await screen.findByText("Workout preview unavailable")).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByText("Workout preview unavailable").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
-    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Back to Calendar agenda" })[0]).toHaveProp("hasTVPreferredFocus", true);
+    expect(screen.getAllByRole("button", { name: "Back to Calendar agenda" })).toHaveLength(2);
     expect(loadOccurrence).toHaveBeenLastCalledWith("stale-occurrence");
-    await fireEvent.press(screen.getByRole("button", { name: "Back to Calendar" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Back to Calendar agenda" })[1]!);
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
