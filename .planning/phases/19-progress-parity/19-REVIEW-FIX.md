@@ -1,174 +1,84 @@
 ---
 phase: 19-progress-parity
-fixed_at: 2026-10-13T02:24:28Z
+fixed_at: 2026-10-13T14:17:01Z
 review_path: .planning/phases/19-progress-parity/19-REVIEW.md
-security_path: .planning/phases/19-progress-parity/19-SECURITY.md
-ui_review_path: .planning/phases/19-progress-parity/19-UI-REVIEW.md
-verification_path: .planning/phases/19-progress-parity/19-VERIFICATION.md
-iteration: 1
-findings_in_scope: 24
-fixed: 24
+iteration: 2
+findings_in_scope: 3
+fixed: 3
 skipped: 0
 status: all_fixed
 ---
 
 # Phase 19: Code Review Fix Report
 
-**Fixed at:** 2026-10-13T02:24:28Z
-**Source reviews:** `19-REVIEW.md`, `19-SECURITY.md`, `19-UI-REVIEW.md`, `19-VERIFICATION.md`
-**Iteration:** 1
+**Fixed at:** 2026-10-13T14:17:01Z
+**Source review:** `.planning/phases/19-progress-parity/19-REVIEW.md`
+**Iteration:** 2
 
 **Summary:**
 
-- Findings in scope: 24
-- Fixed: 24
+- Findings in scope: 3
+- Fixed: 3
 - Skipped: 0
-- Native execution: not run, as required; Phase 20 ownership is unchanged
+- UI review retained: 24/24, zero BLOCKER/WARNING/FLAG findings
+- Security review retained: 41/41 threats closed
+- Native execution: `NOT_RUN`, as required; Phase 20 ownership is unchanged
 
 ## Fixed Issues
 
-### CR-01: Running periods and complete All-time data
+### CR-01: Editing a retained target after a non-CAS failure permanently reuses the failed request identity
 
-**Files modified:** `src/platform/sqlite/repositories/progressRepository.ts`, `tests/sqlite-host/progressRepository.test.ts`
-**Commit:** `707ba616`
-**Applied fix:** Applied the selected owner-local Running window to accepted activity reads and replaced semantic `LIMIT 500` truncation with deterministic snapshot-local paging to completion. Added 501-row and out-of-range behavior tests proving the latest fact and complete history remain available.
+**Status:** fixed: requires human verification
+**Files modified:** `src/ui/components/RunningTargetSheet.tsx`, `src/bootstrap/runningPlanRuntime.test.tsx`
+**Commit:** `0ea34509`
+**Applied fix:** Bound each retained target request ID to a canonical fingerprint of every mutation field. An unchanged retry keeps the exact request identity for lost-acknowledgement replay; changing any draft field allocates a new request identity, while a prior ambiguous commit is still fenced by the stale source revision and authoritative reload path. Added a real sheet/runtime regression covering pre-commit failure, retained edit, new request, and committed read-back.
 
-### CR-02: Active-plan and current-target authority
+### CR-02: Production All ordering never supplies factual ordering metadata for Strength goals
 
-**Files modified:** `src/domains/progress/contracts.ts`, `src/domains/progress/dashboardProjection.ts`, `src/platform/sqlite/repositories/progressRepository.ts`
-**Commit:** `bb6ea670`
-**Applied fix:** Retained plan identity, active lifecycle, and current-goal identity; excluded inactive/archived goals; resolved current Target independently from target-at-effort history; and projected target-only and non-2.4 km states without relabelling.
+**Status:** fixed: requires human verification
+**Files modified:** `src/domains/progress/dashboardProjection.ts`, `src/platform/sqlite/repositories/progressRepository.ts`, `tests/sqlite-host/progressRepository.test.ts`
+**Commits:** `cdd8dfe5`, `2e0164d4`
+**Applied fix:** Reused one stable semantic Strength goal identity in both projection grouping and repository ordering. The repository now emits a complete cross-sport order from persisted Strength completion times and Running goal creation times inside the same SQLite snapshot, then passes those declarations to the existing source-order/date/stable-identity comparator. A real-SQLite test proves both Strength-first and Running-first outcomes from changed factual ordering, including the legacy missing-source-revision path.
 
-### CR-03: One coherent SQLite snapshot
+### CR-03: Activating an All active-goal row drops keyboard/D-pad focus
 
-**Files modified:** `src/platform/sqlite/repositories/progressRepository.ts`, `src/platform/sqlite/repositories/runningPlanRepository.ts`, `src/bootstrap/workoutAppRuntime.tsx`
-**Commit:** `707ba616`
-**Applied fix:** Moved active Running aggregate reads into the repository snapshot and removed post-snapshot runtime composition. Dashboard facts and target-editor source revisions now originate from one coherent read transaction.
-
-### CR-04: Complete All, Strength, and Running hierarchy
-
-**Files modified:** `src/domains/progress/contracts.ts`, `src/domains/progress/dashboardProjection.ts`, `src/ui/screens/ProgressScreen.tsx`
-**Commit:** `bb6ea670`
-**Applied fix:** Added typed Latest, Best, Target, Gap, status, evidence, factual history, source identity, active-goal, sparse, one-effort, and target-only projections. All three roots now render factual heroes and charts instead of placeholder text; Running also renders goals and Best efforts.
-
-### CR-05: Bounded automatic refresh
-
+**Status:** fixed: requires human verification
 **Files modified:** `src/ui/screens/ProgressScreen.tsx`, `src/ui/__tests__/ProgressScreen.test.tsx`
-**Commit:** `17328e93`
-**Applied fix:** Threaded repository refresh metadata to the screen and scheduled exactly the declared 250/1000/4000 ms attempts while Updating. Selection changes and unmount cancel obsolete timers; current/unavailable and max-attempt states terminate polling.
-
-### CR-06: Durable recommendation receipts for every caller
-
-**Files modified:** `src/platform/sqlite/repositories/workoutOutcomeRepository.ts`, `src/bootstrap/workoutAppRuntime.tsx`, `tests/integration/load-reps.test.ts`
-**Commit:** `80e80943`
-**Applied fix:** Routed completion and Progress Keep/Use through one fenced command builder. Current-schema decisions always persist SHA-256-bound receipts, including superseded outcomes, and replay by recommendation identity after acknowledgement loss or process relaunch.
-
-### CR-07: Recommendation receipts survive merge
-
-**Files modified:** `src/domains/portability/mergePlan.ts`, `src/domains/portability/mergePlan.test.ts`, `tests/sqlite-host/logicalMergeRepository.test.ts`
-**Commit:** `a49d9d79`
-**Applied fix:** Materialized both legacy and owned receipt tables with remapped recommendation foreign keys, collision-safe keep-both request IDs, validated hashes/decisions/results, and rewritten bounded result identities. Pure-planner and real-SQLite merge tests prove retained read-back.
-
-### CR-08: Exact exercise-history source revision reaches its destination
-
-**Files modified:** `app/session/[sessionId].tsx`, `src/bootstrap/workoutAppRuntime.tsx`, `src/platform/sqlite/repositories/workoutOutcomeRepository.ts`, `tests/integration/workout-outcomes.test.ts`
-**Commit:** `2147e216`
-**Applied fix:** Parsed and validated positive Progress source revisions, loaded the exact effective session revision in one snapshot, and failed closed for mismatch, correction, removal, or missing source. Destination route tests cover all four states.
-
-### CR-13: Strength chart direction and target equality
-
-**Files modified:** `src/ui/components/FactualHistoryChart.tsx`, `src/ui/__tests__/FactualHistoryChart.test.tsx`
-**Commit:** `d7030c20`
-**Applied fix:** Made better values move upward for both lower-is-better and higher-is-better metrics and rendered exact equality as `At target`.
-
-### WR-01: Preserve visual extrema and target crossings
-
-**Files modified:** `src/ui/components/FactualHistoryChart.tsx`, `src/ui/__tests__/FactualHistoryChart.test.tsx`
-**Commit:** `d7030c20`
-**Applied fix:** Separated mandatory semantic points from discretionary spacing samples. First, last, Best, Latest, local extrema, and target-crossing points are never dropped; the visual set may exceed the nominal cap when semantics require it.
-
-### WR-02: Consistent duration formatting
-
-**Files modified:** `src/ui/components/FactualHistoryChart.tsx`, `src/ui/screens/ProgressScreen.tsx`
-**Commit:** `d7030c20`
-**Applied fix:** Reused one hour-aware formatter across root/history presentation and covered 59:59, 1:00:00, and 23:59:59 boundaries.
-
-### WR-03: Fence target and recommendation success feedback
-
-**Files modified:** `src/ui/screens/ProgressScreen.tsx`, `src/ui/components/RunningTargetSheet.tsx`, `src/ui/__tests__/ProgressScreen.test.tsx`
-**Commit:** `eaba8482`
-**Applied fix:** Root success feedback now requires a non-obsolete matching authoritative read-back. Committed target refresh failures retain inline recovery and retry only the read. Superseded recommendations render the stale state and never produce a success toast.
-
-### WR-04: Replace placeholder/proxy tests with outcomes
-
-**Files modified:** `src/domains/progress/dashboardProjection.test.ts`, `tests/sqlite-host/progressRepository.test.ts`, `src/ui/__tests__/ProgressScreen.test.tsx`, `app/__tests__/session-route.test.tsx`
-**Commits:** `bb6ea670`, `2147e216`, `87cc13fb`
-**Applied fix:** Tests now assert period-specific facts, 501-row completion, active/current targets, target-only states, complete All/Strength hierarchy, bounded refresh, exact source revisions, and owner-visible sparse/recovery behavior.
-
-### PRO-05 / PRO-12: Authoritative 2.4 km target and editable distance
-
-**Files modified:** `src/domains/running/contracts.ts`, `src/bootstrap/runningPlanRuntime.tsx`, `src/ui/components/RunningTargetSheet.tsx`
-**Commit:** `52739cc0`
-**Applied fix:** The production Running goal parser establishes the owner-approved 2.4 km 11:00 target when no later owner revision exists. One active source plan now accepts explicit 2.4 km, 10 km, or Half Marathon revisions, while the sheet maintains independent distance drafts and leaves longer targets unset until entry.
-
-### T-19-08-04 and exact focus/48dp return paths
-
-**Files modified:** `tests/integration/bodyweight-history.test.ts`, `src/ui/components/RecommendationSurface.tsx`, `src/ui/components/FactualHistoryChart.tsx`, `src/ui/screens/ProgressScreen.tsx`
-**Commit:** `d71cd628`
-**Applied fix:** Bodyweight isolation now compares SHA-256 digests of exact protected target, recommendation, import, session, exercise, and set rows instead of counts. Recommendation and history source actions are 48dp and restore exact invoking focus; Settings-to-Bodyweight returns to its exact action.
-
-## Security Threat Closure
-
-| Threat | Closure evidence |
-|---|---|
-| T-19-01-04 | Complete Running/Strength data is paged to completion; chart data is owner-pageable and untruncated. |
-| T-19-02-01 | Dashboard facts and active Running target sources share one SQLite snapshot. |
-| T-19-02-03 | Range predicates, snapshot-local paging, complete data pages, and bounded retries are behavior-tested. |
-| T-19-03-02 | Gap, comparator, current target, and Running pacing are prepared below the screen boundary. |
-| T-19-03-04 | Generation changes cancel obsolete reads; 250/1000/4000 ms fallback is bounded and terminal. |
-| T-19-04-03 | Semantic SVG sampling is bounded where possible; complete data uses 100-row UI pages without truncation. |
-| T-19-04-04 | UI continues to receive typed display facts and opaque local source IDs/revisions only. |
-| T-19-07-02 | Every production Keep/Use path writes a canonical SHA-256 durable receipt and supports relaunch replay. |
-| T-19-07-04 | Superseded results remain non-success and cannot emit target-updated feedback. |
-| T-19-08-04 | Exact protected-state byte/value digests prove bodyweight commands do not alter protected graphs. |
-| T-19-09-02 | Recommendation and target messages require committed/already-committed authoritative read-back. |
-
-## Verification
-
-Verification ran in the isolated worktree `/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p19-fix-data-live` on `agent-phase19-fix-data`. The worktree used a temporary read-only `node_modules` symlink to the orchestrator checkout only for dependency resolution; source, index, commits, and outputs remained isolated.
-
-- `npm run typecheck`: passed
-- `npm run lint`: passed, boundary check across 428 files
-- `npm run check:boundaries`: passed, boundary check across 428 files
-- Unit host: 149 suites / 2,426 tests passed
-- Components/routes host: 98 suites / 912 tests passed
-- SQLite host: 29 suites / 595 tests passed
-- Integration host: 34 suites / 504 tests passed
-- Exact Phase 19 integrity gate after coverage remediation: 310 suites / 4,438 tests passed
-- Integrity coverage: 19 files, exactly 100% statements / branches / functions / lines
-- `git diff --check`: passed
-- Android/Gradle/APK, adb, emulator/device, Maestro, native evidence, native benchmark: `NOT_RUN`
-
-## Atomic Commits
-
-- `707ba616` — CR-01 / CR-03 pageable coherent Progress reads
-- `bb6ea670` — CR-02 / CR-04 factual goal hierarchy
-- `80e80943` — CR-06 durable recommendation receipts
-- `a49d9d79` — CR-07 merge receipt preservation
-- `2147e216` — CR-08 exact workout source revisions
-- `d7030c20` — CR-13 / WR-01 / WR-02 factual chart correction
-- `17328e93` — CR-05 bounded automatic refresh
-- `eaba8482` — WR-03 target/recommendation success fencing
-- `52739cc0` — PRO-05 / PRO-12 authoritative editable Running distance
-- `d71cd628` — T-19-08-04 protected digests and exact focus
-- `87cc13fb` — exact defensive Progress coverage
+**Commit:** `c0566a3a`
+**Applied fix:** Added a versioned external focus request to the sport segmented control. Activating an All active-goal row closes local surfaces, retains the selected range, switches sport, marks only the exact destination tab as preferred, and focuses its native ref after the selected render commits. The component regression asserts the destination tab's selected and preferred-focus state.
 
 ## Skipped Issues
 
 None.
 
+## Verification
+
+Verification ran in the specified isolated worktree `/Users/bytedance/Documents/personal/gym_tracker/.trae/worktrees/p19-fix5-live` on `agent-phase19-fix5`. Dependencies were resolved through a temporary worktree-local symlink to `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/node_modules`; the symlink is excluded from source identity and removed before handoff.
+
+- TDD RED: each of the three new regressions failed against the pre-fix behavior before its source change.
+- Focused GREEN: Running runtime 15/15, Running target sheet 9/9, Progress screen 33/33, Progress projection/repository unit 20/20, and real-SQLite Progress repository 28/28.
+- Canonical Phase 19 host collector: PASS at `2e0164d40f0cf5116776fdb03d971d1f71605062`; source tree SHA-256 `a3cf97a8b80fe529b363c3ea19935187a033e7a50388ed2dabe5e593f05f2c88`.
+- Full host/UI matrix: 312/312 suites and 4,612/4,612 tests passed across unit, components, SQLite-host, and integration projects.
+- Integrity coverage: 25 owners and four changed-line scopes; 100% statements, branches, functions, and lines.
+- Phase 19 evidence: all seven retained host commands PASS; 18/18 PRO records PASS; independent retained-manifest verification PASS.
+- Production benchmark: PASS with exact 20/100/20/100/20/100 sample counts; useful-content max 8.380 ms, review-open p95 4.040 ms, targeted-rebuild max 19.963 ms, range-query p95 4.642 ms, chart-render p95 0.154 ms, and JS-task max 0.099 ms.
+- TypeScript: PASS.
+- Boundary scan: PASS across 429 files.
+- Diff check: PASS.
+- Multi-distance target, portability, receipt, evidence-identity, privacy, and benchmark invariants remain covered by the canonical matrix.
+- Phase 19 UI review: 24/24 remains clean after source audit and focused interaction coverage.
+- Phase 19 security review: 41/41 threats remain closed; no new SQL, external-input, logging, secret, or command-execution boundary was introduced.
+- Android/Gradle/APK, adb, emulator/device, Maestro, native screenshots, and native benchmark: `NOT_RUN`.
+
+## Scope Confirmation
+
+- No Phase 16 files modified.
+- No `19-REVIEW.md`, `19-UI-REVIEW.md`, or `19-SECURITY.md` edits.
+- No shared component or Phase 14 files modified.
+- No push, deployment, APK build, or native execution performed.
+
 ---
 
-_Fixed: 2026-10-13T02:24:28Z_
+_Fixed: 2026-10-13T14:17:01Z_
 _Fixer: TRAE (gsd-code-fixer)_
-_Iteration: 1_
+_Iteration: 2_
