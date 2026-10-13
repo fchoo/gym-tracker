@@ -42,7 +42,11 @@ import {
   V12_CALENDAR_REQUIRED_CASE_IDS,
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
-import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
+import {
+  V12_MAESTRO_FLOW_CONTRACTS,
+  executeV12Maestro,
+  validateV12CalendarManifest,
+} from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { stableCanonicalJson } from "./v12-calendar-artifacts.mjs";
 import {
@@ -66,6 +70,32 @@ const fixture = () => JSON.parse(readFileSync(
   "scripts/fixtures/v12-calendar-evidence/complete.json",
   "utf8",
 ));
+
+function v12LiveManifest(runId = "phase20-20261014T000000Z-abcdef123456") {
+  return {
+    schema_version: 1,
+    run_id: runId,
+    mode: "live",
+    created_at: "2026-10-14T00:00:00Z",
+    source: {
+      head: "a".repeat(40), tree_sha256: "b".repeat(64), dirty: false,
+      package_json_sha256: "c".repeat(64), package_lock_sha256: "d".repeat(64),
+    },
+    planning: {
+      matrix_sha256: "e".repeat(64), requirements_sha256: "f".repeat(64),
+      source_manifest_sha256: "1".repeat(64), owner_brief_sha256: "2".repeat(64),
+      ui_spec_sha256: "3".repeat(64), deviations_sha256: "4".repeat(64),
+    },
+    prototype: { revision: 18, approval_sha256: "5".repeat(64), html_sha256: "6".repeat(64) },
+    fixtures: { registry_sha256: "7".repeat(64) },
+    build: {
+      profile: "development-test", package: "com.fchoo.gymtracker.devtest", version_name: "1.2.0", version_code: 12,
+      apk: { path: "artifacts/native/v1.2-acceptance/app.apk", sha256: "8".repeat(64), size_bytes: 1, page_alignment_verified: true, signature_sha256: "9".repeat(64), certificate_sha256: "a".repeat(64) },
+    },
+    device: { identity_sha256: "b".repeat(64), abi: "arm64-v8a", installed_apk_sha256: "8".repeat(64), settings_sha256: "c".repeat(64), restoration_sha256: "d".repeat(64) },
+    configuration: { id: "AP-L-C390-P-F100" },
+  };
+}
 
 function manifest() {
   return {
@@ -1321,4 +1351,64 @@ test("Calendar manifest, package commands, and focused integrity registration ar
     "v12-calendar-case-registry.mjs",
     "v12-calendar-artifacts.mjs",
   ]) assert.match(coverage, new RegExp(file.replaceAll(".", "\\."), "u"));
+});
+
+test("the generic v1.2 runner binds one synthetic shard without native execution or verdict authority", () => {
+  const manifest = v12LiveManifest();
+  const flowBytes = Buffer.from("appId: com.fchoo.gymtracker.devtest\n---\n- launchApp\n");
+  const sourceBytes = Buffer.from("export const source = 'fixed';\n");
+  const writes = new Map();
+  const result = executeV12Maestro([
+    "--run", manifest.run_id,
+    "--shard", "sqlite",
+  ], {
+    root: "/synthetic-root",
+    readJson: () => manifest,
+    readBytes: (file) => file.endsWith("sqlite.yaml") ? flowBytes : sourceBytes,
+    exists: () => true,
+    currentIdentity: {
+      head: manifest.source.head,
+      tree_sha256: manifest.source.tree_sha256,
+      package: manifest.build.package,
+      apk_sha256: manifest.build.apk.sha256,
+      installed_apk_sha256: manifest.device.installed_apk_sha256,
+      certificate_sha256: manifest.build.apk.certificate_sha256,
+      device_identity_sha256: manifest.device.identity_sha256,
+      settings_sha256: manifest.device.settings_sha256,
+      configuration_id: manifest.configuration.id,
+    },
+    adapter: {
+      snapshotSettings: () => ({ scheme: "light" }),
+      execute: () => ({ observations: [{ id: "synthetic-row", status: "observed" }] }),
+      restoreSettings: () => true,
+    },
+    writeImmutableJson: (file, value) => writes.set(file, value),
+  });
+  assert.equal(result.producer, "v12-maestro-runner/v1");
+  assert.equal(result.shard, "sqlite");
+  assert.equal(Object.hasOwn(result, "verdict"), false);
+  assert.equal(writes.size, 1);
+  assert.equal(V12_MAESTRO_FLOW_CONTRACTS.sqlite.flow, "maestro/v1.2/sqlite.yaml");
+
+  assert.throws(() => executeV12Maestro(["--run", manifest.run_id, "--shard", "sqlite"], {
+    root: "/synthetic-root", readJson: () => manifest,
+    readBytes: (file) => file.endsWith("sqlite.yaml") ? Buffer.from("drift") : sourceBytes,
+    exists: () => true,
+    currentIdentity: {
+      head: manifest.source.head, tree_sha256: manifest.source.tree_sha256, package: manifest.build.package,
+      apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256,
+      certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256,
+      settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id,
+    }, adapter: { snapshotSettings: () => ({}), execute: () => ({ observations: [] }), restoreSettings: () => true },
+  }), /v12_maestro_flow_hash_mismatch/u);
+});
+
+test("the v1.2 build branch publishes bounded identity fields without changing historical manifest schemas", () => {
+  const script = readFileSync("scripts/build-current-native-test-apk.sh", "utf8");
+  assert.match(script, /v1\.2-acceptance/u);
+  assert.match(script, /certificate_sha256/u);
+  assert.match(script, /installed_apk_sha256/u);
+  assert.match(script, /settings_sha256/u);
+  assert.match(script, /restoration_sha256/u);
+  assert.match(script, /manifest_version: 2/u);
 });
