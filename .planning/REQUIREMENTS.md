@@ -212,7 +212,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **VER-09**: Verify native 1:1 drag, 25% title/settle boundary, short-fast snap-back, vertical intent, expand/collapse/adjacent-week continuity and cancel.
 - [ ] **VER-10**: Verify a self-contained ARM64 APK's Python/native packaging, real account login/MFA/read, encrypted token refresh/cold restart/logout, JSON fidelity, idempotent sync and explicit matching; synthetic tests alone cannot close live account/network evidence, and partner approval/FIT decoding is not a prerequisite.
 - [ ] **VER-11**: Preserve or improve existing p95 interaction and launch budgets with the full calendar, large histories, long active sessions and representative import loads.
-- [ ] **VER-12**: Record owner-attended Samsung visual/usability/accessibility acceptance in addition to automated evidence.
+- [x] **VER-12**: Record owner-attended Samsung visual/usability/accessibility acceptance in addition to automated evidence.
 - [x] **VER-13**: Prepare signed personal-use Android release verification, recovery/rollback evidence and a complete parity/deviation review before any later release authorization.
 
 ## Out of Scope
@@ -408,7 +408,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | VER-09 | 20 | verification.calendar-gestures | Pending |
 | VER-10 | 20 | verification.garmin-import | Pending |
 | VER-11 | 20 | verification.performance | Pending |
-| VER-12 | 20 | verification.physical-review | Pending |
+| VER-12 | 20 | verification.physical-review | Complete |
 | VER-13 | 20 | verification.release-readiness | Complete |
 
 ## Coverage

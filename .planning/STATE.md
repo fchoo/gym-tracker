@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENT
 current_phase: 20
 current_phase_name: Native Acceptance
 status: executing
-stopped_at: Completed 20-06-PLAN.md
-last_updated: "2026-10-13T22:22:10.295Z"
+stopped_at: Completed 20-07-PLAN.md; next 20-08 host/freeze/build gate
+last_updated: "2026-10-13T22:46:53.924Z"
 last_activity: 2026-10-14
-last_activity_desc: Phase 20 Wave 2 complete; Plan 20-06 ready
-state_head: 0c95a18cf8d43d35b6f7c636da2f28d9a81aaac5
+last_activity_desc: Plan 20-07 complete; Plan 20-08 is next for the host/freeze/build gate
+state_head: fa8e351ed094dbea0f9ccb5c990d2eb30e125719
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 98
-  completed_plans: 92
+  completed_plans: 93
   percent: 50
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 20 (Native Acceptance) — EXECUTING
-Plan: 7 of 12
+Plan: 8 of 12
 Status: Ready to execute
-Last activity: 2026-10-14 — Phase 20 Wave 2 complete; Plan 20-06 ready
+Last activity: 2026-10-14 — Plan 20-07 complete; Plan 20-08 is next for the host/freeze/build gate
 
 Progress: [█████░░░░░] 50%
 
@@ -111,6 +111,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P14 | 12m | 3 tasks | 11 files |
 | Phase 20 P01 | 3m | 2 tasks | 4 files |
 | Phase 20 P06 | 7m | 2 tasks | 5 files |
+| Phase 20 P07 | 6m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -258,6 +259,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 20]: Phase 20: Live manifests bind source, prototype, fixture, build, APK, device, and configuration identity; pre-build fixtures are explicit and non-live.
 - [Phase 20]: Phase 20: Only the final v1.2 validator derives row verdicts and seals final evidence; producers remain observation-only.
 - [Phase 20]: Phase 20: Accepted exceptions remain non-PASS and can support conditional readiness only with an explicit reviewed policy.
+- [Phase 20]: Phase 20: Samsung attended observations are identity-bound and observation-only; N4/release-authority inheritance is rejected.
+- [Phase 20]: Phase 20: Readiness preserves non-PASS evidence and can be conditional only under reviewed accepted-exception policy with safe rollback boundaries.
 
 ### Pending Owner Review
 
@@ -282,7 +285,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-13T22:22:10.033Z
-Stopped at: Completed 20-06-PLAN.md
+Last session: 2026-10-13T22:46:53.657Z
+Stopped at: Completed 20-07-PLAN.md; next 20-08 host/freeze/build gate
 Resume file: None
-Next action: Execute the existing Phase 20 plans directly; build/install/final artifact delivery remains blocked until every native acceptance gate passes.
+Next action: Execute Plan 20-08 host/freeze/build gate; build/install/final artifact delivery remains blocked until every native acceptance gate passes.
