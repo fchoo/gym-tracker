@@ -400,12 +400,18 @@ function strengthGap(best: ScalarMetric, target: number | null): string {
   return `Gap · ${formatScalar(best.valueFormat, Math.abs(difference))} ${better ? "better than target" : "behind target"}`;
 }
 
+export function progressStrengthGoalId(
+  record: Pick<ProgressRecord, "comparatorKey" | "exerciseId" | "identityKey">,
+): string {
+  return `${record.exerciseId}\u0000${record.identityKey}\u0000${record.comparatorKey}`;
+}
+
 function strengthGoals(facts: readonly ProgressRecord[]): readonly ProgressStrengthGoal[] {
   const groups = new Map<string, ParsedStrengthFact[]>();
   for (const record of facts) {
     const parsed = parseStrengthFact(record);
     if (parsed === null) continue;
-    const key = `${record.exerciseId}\u0000${record.identityKey}\u0000${record.comparatorKey}`;
+    const key = progressStrengthGoalId(record);
     const values = groups.get(key) ?? [];
     values.push(parsed);
     groups.set(key, values);
