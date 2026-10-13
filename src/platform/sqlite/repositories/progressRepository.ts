@@ -14,6 +14,7 @@ import {
 import type {
   ProgressDashboardProjection,
   ProgressGoalRevision,
+  ProgressPlannedNext,
   ProgressRunningActivityFact,
   ProgressRefreshMetadata,
   ProgressSport,
@@ -132,6 +133,26 @@ type DashboardRunningActivityRow = Readonly<{
   started_at_ms: number;
   aggregate_json: string;
   aggregate_revision: number;
+}>;
+
+type PlannedStrengthRow = Readonly<{
+  opportunity_id: string;
+  opportunity_revision: number;
+  local_date: string;
+  plan_id: string;
+  plan_name: string;
+  plan_day_id: string;
+  plan_day_name: string;
+}>;
+
+type PlannedRunningRow = Readonly<{
+  opportunity_id: string;
+  source_revision: number;
+  local_date: string;
+  plan_id: string;
+  plan_name: string;
+  session_revision_id: string;
+  session_kind: string;
 }>;
 
 type BodyweightFactRow = Readonly<{
@@ -601,6 +622,136 @@ async function loadRunningTargetSources(
   ));
 }
 
+function plannedActivityName(kind: string): string | null {
+  if (!["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"].includes(kind)) {
+    return null;
+  }
+  return kind.split("_").map((word) => `${word[0]!.toUpperCase()}${word.slice(1)}`).join(" ");
+}
+
+async function loadPlannedNext(
+  executor: SqliteReadTransactionExecutor,
+  nowLocalDate: string,
+): Promise<readonly ProgressPlannedNext[]> {
+  const [strengthRows, runningRows] = await Promise.all([
+    executor.queryAll<PlannedStrengthRow>(
+      `SELECT opportunity.id AS opportunity_id,
+              opportunity.revision AS opportunity_revision,
+              opportunity.local_date,
+              plan.id AS plan_id,
+              plan.name AS plan_name,
+              day.id AS plan_day_id,
+              day.name AS plan_day_name
+         FROM owned_plan_schedule_opportunities opportunity
+         JOIN owned_plan_schedules schedule
+           ON schedule.id = opportunity.schedule_id
+          AND schedule.lifecycle = 'active'
+          AND schedule.plan_kind = 'strength'
+         JOIN owned_plan_schedule_versions version
+           ON version.id = opportunity.schedule_version_id
+          AND version.schedule_id = schedule.id
+         JOIN plans plan
+           ON plan.id = schedule.plan_id
+          AND plan.plan_kind = 'strength'
+          AND plan.is_active = 1
+         JOIN plan_days day
+           ON day.id = opportunity.plan_day_id
+          AND day.plan_id = plan.id
+        WHERE opportunity.state = 'pending'
+          AND opportunity.local_date >= ?
+          AND version.version_number = (
+            SELECT MAX(current_version.version_number)
+              FROM owned_plan_schedule_versions current_version
+             WHERE current_version.schedule_id = schedule.id
+               AND current_version.effective_local_date <= opportunity.local_date
+          )
+        ORDER BY opportunity.local_date, opportunity.id
+        LIMIT 1`,
+      [nowLocalDate],
+    ),
+    executor.queryAll<PlannedRunningRow>(
+      `SELECT opportunity.id AS opportunity_id,
+              session.revision AS source_revision,
+              opportunity.local_date,
+              plan.id AS plan_id,
+              plan.name AS plan_name,
+              session.id AS session_revision_id,
+              session.session_kind
+         FROM running_opportunities opportunity
+         JOIN running_plans running
+           ON running.plan_id = opportunity.plan_id
+          AND running.status != 'retired'
+         JOIN plans plan
+           ON plan.id = opportunity.plan_id
+          AND plan.plan_kind = 'running'
+          AND plan.is_active = 1
+         JOIN owned_plan_schedules schedule
+           ON schedule.id = opportunity.schedule_id
+          AND schedule.plan_id = opportunity.plan_id
+          AND schedule.lifecycle = 'active'
+          AND schedule.plan_kind = 'running'
+         JOIN owned_plan_schedule_versions version
+           ON version.id = opportunity.schedule_version_id
+          AND version.schedule_id = schedule.id
+         JOIN running_session_slots slot
+           ON slot.id = opportunity.slot_id
+          AND slot.plan_id = opportunity.plan_id
+          AND slot.retired_at_ms IS NULL
+         JOIN running_session_revisions session
+           ON session.id = opportunity.session_revision_id
+          AND session.plan_id = opportunity.plan_id
+        WHERE opportunity.state = 'planned'
+          AND opportunity.local_date >= ?
+          AND version.version_number = (
+            SELECT MAX(current_version.version_number)
+              FROM owned_plan_schedule_versions current_version
+             WHERE current_version.schedule_id = schedule.id
+               AND current_version.effective_local_date <= opportunity.local_date
+          )
+        ORDER BY opportunity.local_date, opportunity.id
+        LIMIT 1`,
+      [nowLocalDate],
+    ),
+  ]);
+  const strength = strengthRows.flatMap((row) =>
+    isLocalDate(row.local_date)
+    && positiveSafeInteger(row.opportunity_revision)
+    && [row.opportunity_id, row.plan_id, row.plan_name, row.plan_day_id, row.plan_day_name]
+      .every((value) => typeof value === "string" && value.trim() !== "")
+      ? [Object.freeze({
+          sport: "Strength" as const,
+          sourceOpportunityId: row.opportunity_id,
+          sourceRevision: row.opportunity_revision,
+          localDate: row.local_date,
+          planId: row.plan_id,
+          planName: row.plan_name,
+          activityId: row.plan_day_id,
+          activityName: row.plan_day_name,
+        })]
+      : []
+  );
+  const running = runningRows.flatMap((row) => {
+    const activityName = plannedActivityName(row.session_kind);
+    return isLocalDate(row.local_date)
+      && positiveSafeInteger(row.source_revision)
+      && activityName !== null
+      && [row.opportunity_id, row.plan_id, row.plan_name, row.session_revision_id]
+        .every((value) => typeof value === "string" && value.trim() !== "")
+      ? [Object.freeze({
+          sport: "Running" as const,
+          sourceOpportunityId: row.opportunity_id,
+          sourceRevision: row.source_revision,
+          localDate: row.local_date,
+          planId: row.plan_id,
+          planName: row.plan_name,
+          activityId: row.session_revision_id,
+          activityName,
+        })]
+      : [];
+  });
+  return Object.freeze([...strength, ...running]);
+}
+
 function stringValue(
   source: Record<string, unknown> | null,
   key: string,
@@ -802,6 +953,7 @@ export function createProgressRepository(
         sourceFacts,
         dashboardFacts,
         runningTargetSources,
+        plannedNext,
       ] = await Promise.all([
         executor.queryAll<PeriodInputRow>(
           `SELECT local_date, completed_exercises, planned_exercises,
@@ -866,6 +1018,7 @@ export function createProgressRepository(
         loadSourceFacts(executor),
         loadDashboardFacts(executor, input),
         sport === "Running" ? loadRunningTargetSources(executor) : Promise.resolve(Object.freeze([])),
+        loadPlannedNext(executor, input.nowLocalDate),
       ]);
       const recommendations = [
         ...legacyRecommendationRows,
@@ -918,6 +1071,7 @@ export function createProgressRepository(
           },
           strength: { facts: dashboardStrengthFacts },
           goals: dashboardFacts.goals,
+          plannedNext,
         })
       );
       return Object.freeze({
@@ -941,5 +1095,6 @@ export const __progressRepositoryTestOnly = Object.freeze({
   dashboardGoalFromRow,
   exposureFromRow,
   loadRunningTargetSources,
+  loadPlannedNext,
   progressRecordFromExposure,
 });

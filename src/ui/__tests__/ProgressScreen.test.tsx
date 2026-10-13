@@ -157,6 +157,44 @@ async function renderProgress(
 }
 
 describe("ProgressScreen", () => {
+  it("renders source-backed Planned next content on All, Strength, and Running", async () => {
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: {
+        ...dashboardFor(input.sport),
+        plannedNext: input.sport === "Running" ? {
+          sport: "Running" as const,
+          sourceOpportunityId: "running-next",
+          sourceRevision: 3,
+          localDate: "2026-08-27",
+          planId: "running-plan",
+          planName: "5K base",
+          activityId: "running-tempo-v3",
+          activityName: "Tempo",
+        } : {
+          sport: "Strength" as const,
+          sourceOpportunityId: "strength-next",
+          sourceRevision: 2,
+          localDate: "2026-08-26",
+          planId: "strength-plan",
+          planName: "Full body",
+          activityId: "strength-day",
+          activityName: "Workout A",
+        },
+      },
+    }));
+    await renderProgress(loadProgress as never);
+
+    expect(await screen.findByRole("header", { name: "Planned next" })).toBeOnTheScreen();
+    expect(screen.getByText("Strength · Workout A · 2026-08-26")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    expect(await screen.findByText("Strength · Workout A · 2026-08-26")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    expect(await screen.findByText("Running · Tempo · 2026-08-27")).toBeOnTheScreen();
+  });
+
   it("renders one accepted 2.4 km Running path with exact factual evidence and pacing", async () => {
     const loadProgress = await renderProgress();
 

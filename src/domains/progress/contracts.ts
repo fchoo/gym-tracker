@@ -255,10 +255,22 @@ export type ProgressRunningGoal = Readonly<{
   pacing: RunningPacing | null;
 }>;
 
+export type ProgressPlannedNext = Readonly<{
+  sport: "Strength" | "Running";
+  sourceOpportunityId: string;
+  sourceRevision: number;
+  localDate: string;
+  planId: string;
+  planName: string;
+  activityId: string;
+  activityName: string;
+}>;
+
 export type ProgressRunningDashboardProjection = Readonly<{
   sport: "Running";
   state: ProgressReadState;
   goals: readonly ProgressRunningGoal[];
+  plannedNext?: ProgressPlannedNext | null;
   absenceReason?: ProgressAbsenceReason;
 }>;
 
@@ -267,6 +279,7 @@ export type ProgressAllDashboardProjection = Readonly<{
   state: ProgressReadState;
   primaryGoal: ProgressAllGoal | null;
   activeGoals: readonly ProgressAllGoal[];
+  plannedNext?: ProgressPlannedNext | null;
 }>;
 
 export type ProgressStrengthValueFormat =
@@ -317,6 +330,7 @@ export type ProgressStrengthDashboardProjection = Readonly<{
   state: ProgressReadState;
   facts: readonly ProgressRecord[];
   goals: readonly ProgressStrengthGoal[];
+  plannedNext?: ProgressPlannedNext | null;
 }>;
 
 /** Effective Strength facts retain the metric boundary and revision fence used
@@ -349,6 +363,7 @@ export type ProgressDashboardInput = Readonly<{
     candidates?: readonly ProgressStrengthFactInput[];
   }>;
   goals?: readonly ProgressGoalRevision[];
+  plannedNext?: readonly ProgressPlannedNext[];
 }>;
 
 /**

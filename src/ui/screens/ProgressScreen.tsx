@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEve
 
 import type { ProgressPeriod, ProgressPeriodProjection, ProgressProjectionDiagnostic, ProgressProjectionFreshness, ProgressRecommendationReview } from "../../domains/progress";
 import type { RecommendationDecisionResult } from "../../domains/progression";
-import type { ProgressDashboardProjection, ProgressRefreshMetadata, ProgressRunningGoal, ProgressSport, ProgressStrengthGoal, ProgressStrengthValueFormat } from "../../domains/progress/contracts";
+import type { ProgressDashboardProjection, ProgressPlannedNext, ProgressRefreshMetadata, ProgressRunningGoal, ProgressSport, ProgressStrengthGoal, ProgressStrengthValueFormat } from "../../domains/progress/contracts";
 import { runningTargetForDistance, type RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
 import type { ProgressBodyweightEntry, ProgressBodyweightSaveInput } from "../../bootstrap/workoutAppRuntime";
@@ -141,6 +141,16 @@ function distanceLabel(distanceMeters: number): string {
   return `${distanceMeters} m`;
 }
 
+function PlannedNext({ value }: Readonly<{ value: ProgressPlannedNext | null | undefined }>) {
+  const { colors } = useAppTheme();
+  if (value === null || value === undefined) return null;
+  return <View style={styles.goalRows} testID="progress-planned-next">
+    <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Planned next</Text>
+    <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${value.sport} · ${value.activityName} · ${value.localDate}`}</Text>
+    <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{value.planName}</Text>
+  </View>;
+}
+
 function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget, onRetry, rangeLabel, targetSources, targetTriggerRefs }: Readonly<{
   dashboard: Extract<ProgressDashboardProjection, { sport: "Running" }>;
   historyTriggerRef: React.RefObject<View | null>;
@@ -179,6 +189,7 @@ function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget
     <InlineNotice body="Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation." heading="Garmin imported" tone="neutral" />
     <EmptyState body="Goals can remain saved, but no zero chart or direction is shown until a Garmin activity is imported." heading="No imported running efforts yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
     <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text>{goalRow(2_400)}{goalRow(10_000)}{goalRow(21_097)}</View>
+    <PlannedNext value={dashboard.plannedNext} />
   </View>;
   const target = goal.target === null ? "Target unset" : formatFactualDuration(goal.target.durationSeconds);
   const latest = goal.latest === null ? "—" : `${formatFactualDuration(goal.latest.durationSeconds)} elapsed`;
@@ -219,6 +230,7 @@ function RunningRoot({ dashboard, historyTriggerRef, onOpenHistory, onOpenTarget
           return <Text key={distance} style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{`${distanceLabel(distance)} · ${candidate?.best === null || candidate?.best === undefined ? "No effort recorded" : formatFactualDuration(candidate.best.durationSeconds)}`}</Text>;
         })}
       </View>
+      <PlannedNext value={dashboard.plannedNext} />
     </View>
   );
 }
@@ -303,9 +315,12 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
 }>) {
   const { colors } = useAppTheme();
   if (dashboard.state === "empty") {
-    return dashboard.sport === "Strength"
-      ? <EmptyState body="Complete comparable working sets to establish personal history." heading="No comparable Strength history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
-      : <EmptyState body="Completed Strength history and accepted Running efforts will appear here after you train or import an activity." heading="No progress history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
+    return <View style={styles.content}>
+      {dashboard.sport === "Strength"
+        ? <EmptyState body="Complete comparable working sets to establish personal history." heading="No comparable Strength history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
+        : <EmptyState body="Completed Strength history and accepted Running efforts will appear here after you train or import an activity." heading="No progress history yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />}
+      <PlannedNext value={dashboard.plannedNext} />
+    </View>;
   }
   if (dashboard.state === "unavailable") {
     return <InlineNotice body="The requested progress facts are unavailable. Reload to try again." heading="Progress is temporarily unavailable" tone="error" />;
@@ -326,12 +341,14 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
         />
         <FocusablePressable accessibilityLabel="Open Strength goal" accessibilityRole="button" focusable onPress={() => onSelectSport("Strength")} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Open Strength goal</Text></FocusablePressable>
         <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Active goals</Text>{dashboard.activeGoals.map((entry) => <Text key={`${entry.sport}:${entry.sport === "Strength" ? entry.goal.goalId : entry.goal.distanceMeters}`} style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{entry.sport === "Strength" ? `${entry.goal.exerciseName} · ${entry.goal.target?.label ?? "Target unset"} · ${entry.goal.status}` : `${distanceLabel(entry.goal.distanceMeters)} · ${entry.goal.target === null ? "Target unset" : formatFactualDuration(entry.goal.target.durationSeconds)} · ${entry.goal.gap}`}</Text>)}</View>
+        <PlannedNext value={dashboard.plannedNext} />
       </View>;
     }
     const goal = primaryGoal.goal;
     return <View style={styles.content}>
       {dashboard.state === "sparse" ? <InlineNotice body={goal.evidenceCount === 0 ? "Complete or import a comparable result to calculate Best and Gap." : "One comparable result is not enough to call a trend."} heading={goal.evidenceCount === 0 ? "Target saved" : "More data needed"} tone="attention" /> : null}
       <View style={[styles.hero, { borderTopColor: colors.textPrimary }]}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Nearest active goal</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`Running · ${distanceLabel(goal.distanceMeters)}`}</Text><View style={[styles.factRow, { borderColor: colors.divider }]}><Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`Latest · ${goal.latest === null ? "—" : formatFactualDuration(goal.latest.durationSeconds)}`}</Text><Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`Best · ${goal.best === null ? "—" : formatFactualDuration(goal.best.durationSeconds)}`}</Text><Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`Target · ${goal.target === null ? "Target unset" : formatFactualDuration(goal.target.durationSeconds)}`}</Text></View><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{goal.gap}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Evidence · ${goal.evidenceCount} accepted imported ${goal.evidenceCount === 1 ? "activity" : "activities"}`}</Text><FactualHistoryChart series={runningGoalToFactualSeries(goal, rangeLabel)} /><FocusablePressable accessibilityLabel="Open Running goal" accessibilityRole="button" focusable onPress={() => onSelectSport("Running")} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Open Running goal</Text></FocusablePressable></View>
+      <PlannedNext value={dashboard.plannedNext} />
     </View>;
   }
   const primary = dashboard.goals[0];
@@ -357,6 +374,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
       <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Exercise progress</Text>
       {dashboard.goals.map((goal) => <FocusablePressable accessibilityLabel={`Open exercise history for ${goal.exerciseName}`} accessibilityRole="button" focusable key={goal.goalId} onPress={() => onOpenExercise(goal.exerciseId, goal.exerciseName, `progress:Strength:${period}:exercise:${goal.exerciseId}`)} ref={(node) => { if (node === null) exerciseActionRefs.current.delete(goal.exerciseId); else exerciseActionRefs.current.set(goal.exerciseId, node); }} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{goal.exerciseName}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Latest ${goal.latest.label} · ${goal.target?.label ?? "Target unset"} · ${goal.status}`}</Text></FocusablePressable>)}
     </View>
+    <PlannedNext value={dashboard.plannedNext} />
   </View>;
 }
 
