@@ -151,8 +151,23 @@ describe("CalendarRoute", () => {
     const rendered = await render(<CalendarRoute />);
 
     await fireEvent.press(screen.getByRole("button", { name: "Complete Calendar diagnostics" }));
-    expect(info).toHaveBeenCalledTimes(1);
-    expect(info.mock.calls[0]?.[0]).toMatch(/^GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:/u);
+    expect(info.mock.calls.length).toBeGreaterThan(1);
+    expect(info.mock.calls.every(([line]) => (
+      typeof line === "string"
+      && line.startsWith("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:")
+      && line.length < 2_200
+    ))).toBe(true);
+    const chunks = info.mock.calls.map(([line]) => JSON.parse(
+      (line as string).slice("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:".length),
+    ) as { sequence: number; total: number; payload: string });
+    expect(chunks.map(({ sequence }) => sequence)).toEqual(
+      Array.from({ length: chunks.length }, (_, index) => index + 1),
+    );
+    expect(chunks.every(({ total }) => total === chunks.length)).toBe(true);
+    expect(JSON.parse(chunks.map(({ payload }) => payload).join(""))).toEqual(expect.objectContaining({
+      producer: "v12-calendar-native-diagnostics/v1",
+      native_execution: "EXECUTED",
+    }));
 
     mockLocalSearchParams = {
       phase16CalendarDiagnostics: ["true"],
