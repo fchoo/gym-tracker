@@ -272,12 +272,14 @@ function strengthSeries(goal: ProgressStrengthGoal, rangeLabel: string): Progres
   });
 }
 
-function StrengthGoalHero({ goal, heading, onOpenHistory, onOpenSource, rangeLabel }: Readonly<{
+function StrengthGoalHero({ goal, heading, historyActionRef, onOpenHistory, onOpenSource, rangeLabel, registerSourceAction }: Readonly<{
   goal: ProgressStrengthGoal;
   heading: string;
+  historyActionRef(node: View | null): void;
   onOpenHistory(): void;
   onOpenSource(source: FactualHistorySource): void;
   rangeLabel: string;
+  registerSourceAction(source: FactualHistorySource, node: View | null): void;
 }>) {
   const { colors } = useAppTheme();
   return <View style={[styles.hero, { borderTopColor: colors.textPrimary }]}>
@@ -293,13 +295,14 @@ function StrengthGoalHero({ goal, heading, onOpenHistory, onOpenSource, rangeLab
     <FactualHistoryChart
       formatValue={(value) => formatStrengthValue(goal.valueFormat, value)}
       onOpenSource={onOpenSource}
+      registerSourceAction={registerSourceAction}
       series={strengthSeries(goal, rangeLabel)}
     />
-    <FocusablePressable accessibilityLabel={`Open exercise history for ${goal.exerciseName}`} accessibilityRole="button" focusable onPress={onOpenHistory} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
+    <FocusablePressable accessibilityLabel={`Open exercise history for ${goal.exerciseName}`} accessibilityRole="button" focusable onPress={onOpenHistory} ref={historyActionRef} style={[styles.goalAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Open history</Text></FocusablePressable>
   </View>;
 }
 
-function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendation, onOpenExercise, onOpenSession, onRetry, onSelectSport, period, rangeLabel, recommendationSourceRefs, recommendations, staleRecommendation }: Readonly<{
+function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendation, onOpenExercise, onOpenSession, onRetry, onSelectSport, period, rangeLabel, recommendationSourceRefs, recommendations, returnActionRefs, staleRecommendation }: Readonly<{
   dashboard: Exclude<ProgressDashboardProjection, { sport: "Running" }>;
   exerciseActionRefs: React.MutableRefObject<Map<string, View>>;
   onDecideRecommendation?: ((recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target") => Promise<unknown>) | undefined;
@@ -311,6 +314,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
   rangeLabel: string;
   recommendationSourceRefs: React.MutableRefObject<Map<string, View>>;
   recommendations: readonly ProgressRecommendationReview[];
+  returnActionRefs: React.MutableRefObject<Map<string, View>>;
   staleRecommendation: ProgressRecommendationReview | null;
 }>) {
   const { colors } = useAppTheme();
@@ -330,14 +334,21 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
     if (primaryGoal === null) return <EmptyState body="Add a persisted goal and comparable completed history to show the nearest active goal." heading="No active goal yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />;
     if (primaryGoal.sport === "Strength") {
       const goal = primaryGoal.goal;
+      const historyToken = `progress:All:${period}:hero-history:${goal.exerciseId}:${goal.latest.sourceRevision ?? 0}`;
       return <View style={styles.content}>
         {dashboard.state === "sparse" ? <InlineNotice body="One comparable result is not enough to call a trend." heading="More data needed" tone="attention" /> : null}
         <StrengthGoalHero
           goal={goal}
           heading="Nearest active goal"
-          onOpenHistory={() => onOpenExercise(goal.exerciseId, goal.exerciseName, `progress:Strength:${period}:exercise:${goal.exerciseId}`)}
-          onOpenSource={(source) => { if ("sessionId" in source) onOpenSession(source.sessionId, `progress:All:${period}:source:${source.sessionId}`, source.sourceRevision); }}
+          historyActionRef={(node) => { if (node === null) returnActionRefs.current.delete(historyToken); else returnActionRefs.current.set(historyToken, node); }}
+          onOpenHistory={() => onOpenExercise(goal.exerciseId, goal.exerciseName, historyToken)}
+          onOpenSource={(source) => { if ("sessionId" in source) onOpenSession(source.sessionId, `progress:All:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`, source.sourceRevision ?? undefined); }}
           rangeLabel={rangeLabel}
+          registerSourceAction={(source, node) => {
+            if (!("sessionId" in source)) return;
+            const token = `progress:All:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`;
+            if (node === null) returnActionRefs.current.delete(token); else returnActionRefs.current.set(token, node);
+          }}
         />
         <FocusablePressable accessibilityLabel="Open Strength goal" accessibilityRole="button" focusable onPress={() => onSelectSport("Strength")} style={[styles.goalAction, { borderColor: colors.divider }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Open Strength goal</Text></FocusablePressable>
         <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Active goals</Text>{dashboard.activeGoals.map((entry) => <Text key={`${entry.sport}:${entry.sport === "Strength" ? entry.goal.goalId : entry.goal.distanceMeters}`} style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>{entry.sport === "Strength" ? `${entry.goal.exerciseName} · ${entry.goal.target?.label ?? "Target unset"} · ${entry.goal.status}` : `${distanceLabel(entry.goal.distanceMeters)} · ${entry.goal.target === null ? "Target unset" : formatFactualDuration(entry.goal.target.durationSeconds)} · ${entry.goal.gap}`}</Text>)}</View>
@@ -352,10 +363,17 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
     </View>;
   }
   const primary = dashboard.goals[0];
+  const primaryHistoryToken = primary === undefined
+    ? null
+    : `progress:Strength:${period}:hero-history:${primary.exerciseId}:${primary.latest.sourceRevision ?? 0}`;
   return <View style={styles.content}>
     {dashboard.state === "sparse" ? <InlineNotice body="One comparable result is not enough to call a trend." heading="More data needed" tone="attention" /> : null}
     {staleRecommendation === null ? null : <InlineNotice body="The current target was not changed. Progress was reloaded from saved facts." heading="Recommendation no longer applies" tone="attention" />}
-    {primary === undefined ? null : <StrengthGoalHero goal={primary} heading="Strength progress" onOpenHistory={() => onOpenExercise(primary.exerciseId, primary.exerciseName, `progress:Strength:${period}:exercise:${primary.exerciseId}`)} onOpenSource={(source) => { if ("sessionId" in source) onOpenSession(source.sessionId, `progress:Strength:${period}:source:${source.sessionId}`, source.sourceRevision); }} rangeLabel={rangeLabel} />}
+    {primary === undefined || primaryHistoryToken === null ? null : <StrengthGoalHero goal={primary} heading="Strength progress" historyActionRef={(node) => { if (node === null) returnActionRefs.current.delete(primaryHistoryToken); else returnActionRefs.current.set(primaryHistoryToken, node); }} onOpenHistory={() => onOpenExercise(primary.exerciseId, primary.exerciseName, primaryHistoryToken)} onOpenSource={(source) => { if ("sessionId" in source) onOpenSession(source.sessionId, `progress:Strength:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`, source.sourceRevision ?? undefined); }} rangeLabel={rangeLabel} registerSourceAction={(source, node) => {
+      if (!("sessionId" in source)) return;
+      const token = `progress:Strength:${period}:hero-source:${source.sessionId}:${source.sourceRevision ?? 0}`;
+      if (node === null) returnActionRefs.current.delete(token); else returnActionRefs.current.set(token, node);
+    }} />}
     {recommendations.length === 0 ? null : <View style={styles.goalRows}>
       <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Needs review</Text>
       {recommendations.map((recommendation) => <RecommendationSurface
@@ -396,6 +414,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const exerciseActionRefs = useRef(new Map<string, View>());
   const recommendationSourceRefs = useRef(new Map<string, View>());
   const runningSourceActionRefs = useRef(new Map<string, View>());
+  const returnActionRefs = useRef(new Map<string, View>());
   const scrollOffsetRef = useRef(0);
   const [historyGoal, setHistoryGoal] = useState<ProgressRunningGoal | null>(null);
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
@@ -456,7 +475,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     const exerciseMatch = /^progress:Strength:[A-Za-z0-9_]+:exercise:([A-Za-z0-9._:-]{1,128})$/u.exec(returnFocusToken);
     const recommendationMatch = /^progress:Strength:[A-Za-z0-9_]+:recommendation:([A-Za-z0-9._:-]{1,128})$/u.exec(returnFocusToken);
     const runningSourceMatch = /^running-history:\d+:([A-Za-z0-9._:-]{1,128}):(\d+)$/u.exec(returnFocusToken);
-    const target = exerciseMatch === null
+    const target = returnActionRefs.current.get(returnFocusToken) ?? (exerciseMatch === null
       ? recommendationMatch !== null
         ? recommendationSourceRefs.current.get(recommendationMatch[1]!) ?? null
         : runningSourceMatch !== null
@@ -466,7 +485,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
             : returnFocusToken.startsWith("running-history:")
               ? historyTriggerRef.current
               : null
-      : exerciseActionRefs.current.get(exerciseMatch[1]!) ?? null;
+      : exerciseActionRefs.current.get(exerciseMatch[1]!) ?? null);
     requestAnimationFrame(() => target?.focus?.());
   }, [returnFocusToken, returnFocusVersion]);
 
@@ -553,6 +572,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     rangeLabel={rangeLabel}
     recommendationSourceRefs={recommendationSourceRefs}
     recommendations={snapshot.projection?.recommendations ?? []}
+    returnActionRefs={returnActionRefs}
     staleRecommendation={staleRecommendation}
   />;
 
