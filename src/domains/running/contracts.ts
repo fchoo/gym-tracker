@@ -216,8 +216,19 @@ export type RunningPlanAggregate = Readonly<{
   lifecycle: "inactive" | "active" | "archived";
   createdAtMs: number;
   goal: RunningGoal;
+  /** Latest durable goal revision for each distance-keyed target root. Older
+   * aggregate fixtures omit this field and are interpreted as a single root. */
+  currentTargets?: readonly RunningGoal[];
   sessions: readonly RunningPlanSession[];
 }>;
+
+export function runningTargetForDistance(
+  aggregate: RunningPlanAggregate,
+  distanceMeters: number,
+): RunningGoal | undefined {
+  return (aggregate.currentTargets ?? [aggregate.goal])
+    .find((goal) => goal.goalDistanceMeters === distanceMeters);
+}
 
 function runningQuantity(value: { distanceMeters: number } | { durationMs: number }): string {
   return "distanceMeters" in value
@@ -307,6 +318,13 @@ export function parseRunningPlanAggregate(input: unknown): RunningPlanAggregate 
   ) throw new RunningBoundaryError("validation", "running_goal_invalid");
   const goal = parseRunningGoal(aggregate.goal);
   if (goal.planId !== aggregate.id) throw new RunningBoundaryError("validation", "running_goal_invalid");
+  const currentTargets = (aggregate.currentTargets ?? [goal]).map(parseRunningGoal);
+  if (
+    currentTargets.length === 0
+    || currentTargets.some((target) => target.planId !== aggregate.id)
+    || new Set(currentTargets.map(({ goalDistanceMeters }) => goalDistanceMeters)).size !== currentTargets.length
+    || !currentTargets.some((target) => target.id === goal.id)
+  ) throw new RunningBoundaryError("validation", "running_goal_invalid");
   const slotKeys = new Set<string>();
   const sessionRoots = new Set<string>();
   for (const entry of aggregate.sessions) {
@@ -325,9 +343,14 @@ export function parseRunningPlanAggregate(input: unknown): RunningPlanAggregate 
     if (slotKeys.has(key)) throw new RunningBoundaryError("validation", "running_session_invalid");
     slotKeys.add(key);
   }
-  return Object.freeze({ ...aggregate, goal, sessions: Object.freeze(aggregate.sessions.map((entry) => Object.freeze({
-    slot: Object.freeze({ ...entry.slot }), session: parseRunningSessionRevision(entry.session),
-  }))) });
+  return Object.freeze({
+    ...aggregate,
+    goal,
+    currentTargets: Object.freeze(currentTargets.map((target) => Object.freeze({ ...target }))),
+    sessions: Object.freeze(aggregate.sessions.map((entry) => Object.freeze({
+      slot: Object.freeze({ ...entry.slot }), session: parseRunningSessionRevision(entry.session),
+    }))),
+  });
 }
 
 export type RunningReadiness = Readonly<{

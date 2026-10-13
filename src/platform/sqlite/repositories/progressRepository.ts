@@ -481,6 +481,8 @@ async function loadDashboardFacts(
               CASE WHEN goal.id = (
                 SELECT current_goal.id FROM running_goals current_goal
                  WHERE current_goal.plan_id = goal.plan_id
+                   AND CAST(json_extract(current_goal.goal_json, '$.goalDistanceMeters') AS INTEGER)
+                     = CAST(json_extract(goal.goal_json, '$.goalDistanceMeters') AS INTEGER)
                  ORDER BY current_goal.revision DESC,
                           current_goal.created_at_ms DESC,
                           current_goal.id DESC

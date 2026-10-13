@@ -4,7 +4,7 @@ import { StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEve
 import type { ProgressPeriod, ProgressPeriodProjection, ProgressProjectionDiagnostic, ProgressProjectionFreshness, ProgressRecommendationReview } from "../../domains/progress";
 import type { RecommendationDecisionResult } from "../../domains/progression";
 import type { ProgressDashboardProjection, ProgressRefreshMetadata, ProgressRunningGoal, ProgressSport, ProgressStrengthGoal, ProgressStrengthValueFormat } from "../../domains/progress/contracts";
-import type { RunningPlanAggregate } from "../../domains/running/contracts";
+import { runningTargetForDistance, type RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
 import type { ProgressBodyweightEntry, ProgressBodyweightSaveInput } from "../../bootstrap/workoutAppRuntime";
 import { EmptyState, FocusablePressable, IconAction, InlineNotice, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
@@ -580,13 +580,18 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
       onSaved={async (saved) => {
         const readBack = await readProgress(false);
         const targetSource = readBack?.runningTargetSources?.find(({ id }) => id === saved.id);
+        const savedTarget = runningTargetForDistance(saved, targetDistanceMeters ?? 2_400);
+        const sourceTarget = targetSource === undefined
+          ? undefined
+          : runningTargetForDistance(targetSource, targetDistanceMeters ?? 2_400);
         if (readBack === null
           || targetSource === undefined
           || targetSource.revision !== saved.revision
-          || targetSource.goal.revision !== saved.goal.revision) {
+          || savedTarget === undefined
+          || sourceTarget?.revision !== savedTarget.revision) {
           throw new Error("running_target_root_readback_obsolete");
         }
-        semanticToast?.enqueue({ message: `${distanceLabel(saved.goal.goalDistanceMeters)} target saved.` });
+        semanticToast?.enqueue({ message: `${distanceLabel(savedTarget.goalDistanceMeters)} target saved.` });
       }}
       restoreFocusRef={{ current: targetDistanceMeters === null ? null : targetTriggerRefs.current.get(targetDistanceMeters) ?? null }}
       runtime={runningTargetRuntime}

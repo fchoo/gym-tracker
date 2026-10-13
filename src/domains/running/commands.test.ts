@@ -106,6 +106,9 @@ describe("Running source graph commands", () => {
       ...input, expectedPlanRevision: 0,
     })).rejects.toThrow("running_command_revision_invalid");
     await expect(saveRunningTarget(repository, {
+      ...input, expectedGoalRevision: -1,
+    })).rejects.toThrow("running_command_revision_invalid");
+    await expect(saveRunningTarget(repository, {
       ...input, goal: { ...input.goal, planId: "other-plan" },
     })).rejects.toThrow("running_target_invalid");
     await expect(saveRunningTarget(repository, {

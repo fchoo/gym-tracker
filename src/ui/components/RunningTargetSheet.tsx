@@ -8,7 +8,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS, type RunningPlanAggregate } from "../../domains/running/contracts";
+import { DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS, runningTargetForDistance, type RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
 import { BottomSheet } from "./BottomSheet";
 import { FocusablePressable, InlineNotice, PrimaryAction, SecondaryAction } from "./index";
@@ -77,27 +77,28 @@ function isFutureDate(value: string, today: string): boolean {
 }
 
 function draftFrom(source: RunningPlanAggregate, distanceMeters: number): Draft {
-  const isCurrentDistance = source.goal.goalDistanceMeters === distanceMeters;
+  const currentTarget = runningTargetForDistance(source, distanceMeters);
   return Object.freeze({
-    targetTime: formatTime(isCurrentDistance
-      ? source.goal.targetDurationMs
+    targetTime: formatTime(currentTarget !== undefined
+      ? currentTarget.targetDurationMs
       : distanceMeters === 2_400
         ? DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS
         : undefined),
-    targetDate: isCurrentDistance ? source.goal.targetLocalDate ?? "" : "",
-    trainingDays: [...source.goal.trainingDays],
+    targetDate: currentTarget?.targetLocalDate ?? "",
+    trainingDays: [...(currentTarget?.trainingDays ?? source.goal.trainingDays)],
     expectedSourceRevision: source.revision,
   });
 }
 
 function benchmarkLabel(source: RunningPlanAggregate, distanceMeters: number): string {
-  const benchmark = source.goal.benchmarks === undefined
-    ? source.goal.benchmark?.distanceMeters === distanceMeters ? source.goal.benchmark : undefined
+  const target = runningTargetForDistance(source, distanceMeters) ?? source.goal;
+  const benchmark = target.benchmarks === undefined
+    ? target.benchmark?.distanceMeters === distanceMeters ? target.benchmark : undefined
     : distanceMeters === 2_400
-      ? source.goal.benchmarks.twoPointFourKm
+      ? target.benchmarks.twoPointFourKm
       : distanceMeters === 10_000
-        ? source.goal.benchmarks.tenKilometres
-        : source.goal.benchmarks.halfMarathon;
+        ? target.benchmarks.tenKilometres
+        : target.benchmarks.halfMarathon;
   if (benchmark === undefined) return "No benchmark yet";
   const provenance = benchmark.source.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   return `${formatTime(benchmark.durationMs)} · ${provenance} · ${benchmark.localDate}`;

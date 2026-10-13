@@ -9,6 +9,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { canonicalRunningRequestHash, saveRunningTarget, type SaveRunningTargetInput } from "../../src/domains/running/commands";
+import { runningTargetForDistance } from "../../src/domains/running/contracts";
+import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
+import { runtimeSha256 } from "../../src/platform/crypto/runtimeSha256";
 import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedStatement, configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
@@ -86,6 +89,81 @@ describe("Running target source receipts", () => {
     await expect(saveRunningTarget(repository, { ...input, requestId: "target-stale", requestSha256: "b".repeat(64) })).rejects.toThrow("sqlite_transaction_failed");
     await expect(repository.readAggregate(source.id)).resolves.toMatchObject({ revision: 2, goal: { revision: 2, targetDurationMs: 660_000, trainingDays: ["Monday", "Thursday"] } });
     await expect(kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_goals WHERE plan_id = ?", [source.id])).resolves.toEqual([{ count: 2 }]);
+  });
+
+  it("preserves current targets for 2.4 km, 10 km, and Half Marathon across runtime recreation", async () => {
+    const kernel = await targetKernel();
+    const repository = createRunningPlanRepository(kernel);
+    const source = {
+      version: 1 as const, id: "distance-target-running", name: "Distance targets", revision: 1,
+      active: false as const, lifecycle: "inactive" as const, createdAtMs: 1,
+      goal: {
+        version: 1 as const, id: "distance-target-goal-1", planId: "distance-target-running",
+        revision: 1, goalDistanceMeters: 2_400, trainingDays: ["Monday" as const], createdAtMs: 1,
+      },
+      sessions: [],
+    };
+    await repository.createInactiveAggregate({
+      requestId: "distance-target-create",
+      requestSha256: "c".repeat(64),
+      plan: source,
+    });
+
+    let nowMs = 2;
+    let identity = 0;
+    const recreateRuntime = () => createRunningPlanRuntimePort(kernel, {
+      nowMs: () => nowMs++,
+      randomUUID: () => `distance-${++identity}`,
+      sha256: runtimeSha256,
+    });
+    const save = async (distanceMeters: number, targetDurationMs: number, requestId: string) => {
+      const runtime = recreateRuntime();
+      const before = await runtime.loadPlan(source.id);
+      expect(before).not.toBeNull();
+      await runtime.saveRunningTarget({
+        planId: source.id,
+        requestId,
+        expectedSourceRevision: before!.revision,
+        goalDistanceMeters: distanceMeters,
+        targetDurationMs,
+        trainingDays: ["Monday", "Thursday"],
+      });
+      return recreateRuntime().loadPlan(source.id);
+    };
+
+    const afterTwoPointFour = await save(2_400, 650_000, "save-2400");
+    expect(runningTargetForDistance(afterTwoPointFour!, 2_400)).toMatchObject({
+      revision: 2,
+      targetDurationMs: 650_000,
+    });
+
+    const afterTenKilometres = await save(10_000, 3_000_000, "save-10000");
+    expect(runningTargetForDistance(afterTenKilometres!, 2_400)).toMatchObject({
+      revision: 2,
+      targetDurationMs: 650_000,
+    });
+    expect(runningTargetForDistance(afterTenKilometres!, 10_000)).toMatchObject({
+      revision: 1,
+      targetDurationMs: 3_000_000,
+    });
+
+    const afterHalfMarathon = await save(21_097, 7_200_000, "save-half-marathon");
+    expect(runningTargetForDistance(afterHalfMarathon!, 2_400)).toMatchObject({
+      revision: 2,
+      targetDurationMs: 650_000,
+    });
+    expect(runningTargetForDistance(afterHalfMarathon!, 10_000)).toMatchObject({
+      revision: 1,
+      targetDurationMs: 3_000_000,
+    });
+    expect(runningTargetForDistance(afterHalfMarathon!, 21_097)).toMatchObject({
+      revision: 1,
+      targetDurationMs: 7_200_000,
+    });
+    await expect(kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM running_goals WHERE plan_id = ?",
+      [source.id],
+    )).resolves.toEqual([{ count: 4 }]);
   });
 });
 

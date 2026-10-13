@@ -195,11 +195,17 @@ export async function readRunningPlanAggregate(
         [planId],
       );
       if (plan === undefined) return null;
-      const [goalRow] = await executor.queryAll<{ goal_json: string }>(
+      const goalRows = await executor.queryAll<{ goal_json: string }>(
         `SELECT goal_json FROM running_goals WHERE plan_id = ?
-         ORDER BY revision DESC, created_at_ms DESC, id DESC LIMIT 1`, [planId],
+         ORDER BY revision DESC, created_at_ms DESC, id DESC`, [planId],
       );
-      if (goalRow === undefined) return null;
+      if (goalRows.length === 0) return null;
+      const parsedGoals = goalRows.map(({ goal_json }) => parseRunningGoal(JSON.parse(goal_json)));
+      const currentTargets = parsedGoals.filter((goal, index) =>
+        parsedGoals.findIndex(({ goalDistanceMeters }) =>
+          goalDistanceMeters === goal.goalDistanceMeters
+        ) === index
+      );
       const rows = await executor.queryAll<RunningAggregateRow>(
         `SELECT slot_revision.id AS slot_id, slot_root.id AS slot_root_id, slot_root.weekday,
                 slot_revision.revision AS slot_revision, slot_revision.ordinal, session.definition_json
@@ -230,7 +236,7 @@ export async function readRunningPlanAggregate(
     active: plan.is_active === 1,
     lifecycle: lifecycleFromFacts(plan.status, plan.is_active),
     createdAtMs: plan.created_at_ms,
-    goal: parseRunningGoal(JSON.parse(goalRow.goal_json)), sessions,
+    goal: parsedGoals[0], currentTargets, sessions,
   });
 }
 
@@ -482,6 +488,23 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
         );
         if (plan === undefined || plan.plan_kind !== "running" || plan.revision !== input.expectedPlanRevision) {
           throw new Error("running_plan_revision_conflict");
+        }
+        if (input.targetCommand === true) {
+          const [currentGoalRow] = await transaction.queryAll<{ goal_json: string }>(
+            `SELECT goal_json FROM running_goals
+              WHERE plan_id = ?
+                AND CAST(json_extract(goal_json, '$.goalDistanceMeters') AS INTEGER) = ?
+              ORDER BY revision DESC, created_at_ms DESC, id DESC
+              LIMIT 1`,
+            [input.planId, input.goal.goalDistanceMeters],
+          );
+          const currentGoalRevision = currentGoalRow === undefined
+            ? 0
+            : parseRunningGoal(JSON.parse(currentGoalRow.goal_json)).revision;
+          if (input.expectedGoalRevision === undefined
+            || currentGoalRevision !== input.expectedGoalRevision) {
+            throw new Error("running_target_revision_conflict");
+          }
         }
         for (const session of input.sessions) {
           const [root] = await transaction.queryAll<{ current_revision: number; plan_id: string }>(

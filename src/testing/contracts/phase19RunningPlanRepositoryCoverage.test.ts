@@ -165,7 +165,7 @@ describe("Phase 19 Running repository defensive coverage", () => {
       requestId: "save", requestSha256: "a".repeat(64), operation: "edit" as const,
       planId: "plan", expectedPlanRevision: 1, createdAtMs: 2,
       goal: { ...plan.goal, id: "goal-2", revision: 2, createdAtMs: 2 },
-      sessions: [], slots: [], targetCommand: true,
+      sessions: [], slots: [], targetCommand: true, expectedGoalRevision: 1,
     };
     const receiptConflict = createRunningPlanRepository(kernel((sql) =>
       sql.includes("running_plan_receipts") ? [{ request_sha256: "other", operation: "edit", plan_id: "plan", expected_plan_revision: 1, result_json: "{}" }] : []) as never);
@@ -178,6 +178,7 @@ describe("Phase 19 Running repository defensive coverage", () => {
     const missingTarget = createRunningPlanRepository(kernel((sql) => {
       if (sql.includes("running_plan_receipts")) return [];
       if (sql.includes("FROM plans plan JOIN running_plans")) return [{ revision: 1, plan_kind: "running", is_active: 0, status: "ready" }];
+      if (sql.includes("CAST(json_extract")) return [{ goal_json: JSON.stringify(plan.goal) }];
       return [];
     }) as never);
     await expect(missingTarget.saveSourceGraph(sourceInput as never)).rejects.toThrow("running_target_readback_missing");
