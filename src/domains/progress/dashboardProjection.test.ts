@@ -436,4 +436,68 @@ describe("projectProgressDashboard", () => {
     expect(__dashboardProjectionTestOnly.plannedNextFor("All", sameDay))
       .toMatchObject({ sourceOpportunityId: "running-a" });
   });
+
+  it("selects and orders All goals by persisted factual order instead of array position", () => {
+    const targetJson = JSON.stringify({
+      version: 1, profile: "load_reps", loadGrams: 40_000,
+      minReps: 8, maxReps: 10, incrementGrams: 2_500, perSide: false,
+    });
+    const strengthFact = (setId: string, localDate: string) => ({
+      exerciseId: "back-squat", exerciseName: "Back Squat",
+      identityKey: "load_reps:1:1", comparatorKey: "identity",
+      sessionId: `session-${setId}`, setId, localDate, sourceRevision: 1,
+      targetJson,
+      observationJson: JSON.stringify({
+        version: 1, profile: "load_reps", loadGrams: 40_000,
+        reps: 8, source: "manual",
+      }),
+    });
+    const strengthGoalId = "back-squat\u0000load_reps:1:1\u0000identity";
+    const projection = projectProgressDashboard({
+      sport: "All",
+      goals: [{
+        targetId: strengthGoalId,
+        planId: "strength-plan",
+        sport: "Strength",
+        targetDurationSeconds: 1,
+        targetLocalDate: "2026-10-20",
+        effectiveAtMs: 1,
+        revision: 3,
+        sourceOrder: 4,
+        lifecycle: "active",
+        active: true,
+        current: true,
+      }],
+      strength: { facts: [
+        strengthFact("one", "2026-10-01"),
+        strengthFact("two", "2026-10-08"),
+      ] },
+      running: {
+        activities: [accepted2400, { ...accepted2400, activityId: "later", sourceIdentity: "later", sourceRevision: 2, startedAtMs: 2_000, localDate: "2026-10-08", durationSeconds: 640 }],
+        targets: [{
+          targetId: "running-target",
+          planId: "running-plan",
+          sport: "Running",
+          distanceMeters: 2_400,
+          targetDurationSeconds: 660,
+          targetLocalDate: "2026-10-25",
+          effectiveAtMs: 1,
+          revision: 2,
+          sourceOrder: 1,
+          lifecycle: "active",
+          active: true,
+          current: true,
+        }],
+      },
+    });
+
+    expect(projection).toMatchObject({
+      sport: "All",
+      primaryGoal: { sport: "Running", goal: { distanceMeters: 2_400 } },
+      activeGoals: [
+        { sport: "Running", goal: { distanceMeters: 2_400 } },
+        { sport: "Strength", goal: { goalId: strengthGoalId } },
+      ],
+    });
+  });
 });
