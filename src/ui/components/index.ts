@@ -55,6 +55,7 @@ import {
 } from "../theme";
 import {
   useBottomSheetFocusRegistration,
+  useFocusClearance,
   type BottomSheetFocusableRef,
 } from "./bottomSheetFocus";
 import { BottomSheet } from "./BottomSheet";
@@ -87,6 +88,7 @@ export {
   type NavigationRowIcon,
   type NavigationRowProps,
 } from "./NavigationRow";
+export { FocusClearanceProvider } from "./bottomSheetFocus";
 
 type ActionProps = Readonly<{
   label: string;
@@ -136,15 +138,6 @@ const h = React.createElement;
 type FocusablePressableProps = PressableProps & Readonly<{
   onKeyDown?: (event: { nativeEvent: { key: string } }) => void;
 }>;
-
-const FocusClearanceContext = React.createContext<number>(sizes.focusClearance);
-
-export function FocusClearanceProvider({ children, clearance }: Readonly<{
-  children: React.ReactNode;
-  clearance: number;
-}>) {
-  return h(FocusClearanceContext.Provider, { value: clearance }, children);
-}
 
 type ContentCardProps = Readonly<{
   children: React.ReactNode;
@@ -250,7 +243,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
     ref,
   ) {
     const { colors } = useAppTheme();
-    const focusClearance = React.useContext(FocusClearanceContext);
+    const focusClearance = useFocusClearance();
     const [focused, setFocused] = useState(false);
     const [preferredFocus, setPreferredFocus] = useState(false);
     const focusRegistration = useBottomSheetFocusRegistration();

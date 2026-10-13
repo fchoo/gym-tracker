@@ -24,6 +24,7 @@ import {
   BottomSheetFocusContext,
   type BottomSheetFocusableRef,
   useBottomSheetFocusRegistration,
+  useFocusClearance,
 } from "./bottomSheetFocus";
 import { AndroidEscapeBoundary } from "./AndroidEscapeBoundary";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
@@ -72,6 +73,7 @@ function BottomSheetCloseAction({
   onPress(): void;
 }>) {
   const { colors } = useAppTheme();
+  const focusClearance = useFocusClearance();
   const [focused, setFocused] = React.useState(false);
   const [preferredFocus, setPreferredFocus] = React.useState(false);
   const nativeRef = useRef<View | null>(null);
@@ -127,7 +129,7 @@ function BottomSheetCloseAction({
           borderColor: colors.divider,
           opacity: isDisabled ? 0.62 : 1,
           outlineColor: colors.focusRing,
-          outlineOffset: focused ? sizes.focusClearance : 0,
+          outlineOffset: focused ? focusClearance : 0,
           outlineStyle: "solid",
           outlineWidth: focused ? sizes.focusRing : 0,
         },

@@ -16,7 +16,7 @@ import {
   BottomSheetFocusContext,
   useBottomSheetFocusRegistration,
 } from "./bottomSheetFocus";
-import { FocusablePressable } from "./index";
+import { FocusablePressable, FocusClearanceProvider } from "./index";
 import { AppearanceProvider, radius, sizes } from "../theme";
 
 const mockRequestAndroidViewFocus = jest.fn<
@@ -144,6 +144,39 @@ describe("BottomSheet", () => {
     expect(disabledCloseAction).toHaveProp("focusable", false);
     await fireEvent(disabledCloseAction, "keyDown", { nativeEvent: { key: " " } });
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies default and provider-scoped focus clearance to the frame close action", async () => {
+    const defaultSheet = await render(
+      <SheetTestProviders>
+        <BottomSheet heading="Default clearance" onCancel={jest.fn()} visible>
+          <Text>Sheet body</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent(screen.getByTestId("bottom-sheet-close-action"), "focus");
+    expect(screen.getByTestId("bottom-sheet-close-action")).toHaveStyle({
+      outlineOffset: 4,
+      outlineWidth: 3,
+    });
+    await defaultSheet.unmount();
+
+    await render(
+      <SheetTestProviders>
+        <FocusClearanceProvider clearance={3}>
+          <BottomSheet heading="Scoped clearance" onCancel={jest.fn()} visible>
+            <Text>Sheet body</Text>
+          </BottomSheet>
+        </FocusClearanceProvider>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent(screen.getByTestId("bottom-sheet-close-action"), "focus");
+    expect(screen.getByTestId("bottom-sheet-close-action")).toHaveStyle({
+      outlineOffset: 3,
+      outlineWidth: 3,
+    });
   });
 
   it("moves focus to its semantic heading, or to the supplied safe action", async () => {
