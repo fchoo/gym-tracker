@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Check, Minus } from "lucide-react-native";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { presentSessionDetail } from "../../domains/workout/workoutPresentation";
@@ -95,7 +96,17 @@ export function CalendarReadOnlyWorkout({
                     <Text style={[calendarTypeScale.numeric as TextStyle, styles.setCell, { color: colors.textPrimary }]}>{set.kind === "warmup" ? `W${set.ordinal + 1}` : String(set.ordinal + 1).padStart(2, "0")}</Text>
                     <Text style={[calendarTypeScale.numeric as TextStyle, styles.setCell, { color: colors.textSecondary }]}>{set.previous ?? "—"}</Text>
                     <Text style={[calendarTypeScale.numeric as TextStyle, styles.setCell, { color: colors.textPrimary }]}>{set.result ?? set.target}</Text>
-                    <Text style={[calendarTypeScale.metadata as TextStyle, styles.setCell, { color: colors.textSecondary }]}>{set.status === "completed" ? "✓ Complete" : "— Not completed"}</Text>
+                    <View
+                      style={[styles.setCell, styles.setState]}
+                      testID={`calendar-read-only-set-${set.id}-state`}
+                    >
+                      {set.status === "completed"
+                        ? <Check accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
+                        : <Minus accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />}
+                      <Text style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>
+                        {set.status === "completed" ? "Complete" : "Not completed"}
+                      </Text>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -118,6 +129,7 @@ const styles = StyleSheet.create({
   setCell: { flex: 1, minWidth: 0 },
   setHeader: { flexDirection: "row", gap: space[2], minHeight: 28 },
   setRow: { alignItems: "center", flexDirection: "row", gap: space[2], minHeight: 48, paddingVertical: space[1] },
+  setState: { alignItems: "center", flexDirection: "row", gap: space[1] },
   setTable: { gap: space[1], paddingHorizontal: space[4], paddingVertical: space[2] },
   summary: { gap: space[2], paddingVertical: space[4] },
 });
