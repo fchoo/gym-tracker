@@ -1,13 +1,13 @@
 # Phase 19 — UI Review
 
-**Audited:** 2026-10-13
+**Audited:** 2026-10-14
 **Baseline:** Approved Phase 19 UI-SPEC → owner decisions/brief → v1.2 source precedence → approved Revision 18 JSON/HTML
-**Source:** Current merged `fchoo/UX-revamp` at `efb0e4ba`
-**Screenshots:** Not captured — no web dev server answered on 3000, 5173, or 8080; native/device screenshots are explicitly Phase 20-owned and carry no Phase 19 score penalty
-**Scope:** Progress All/Strength/Running roots, factual goal ordering, history/source drill-downs, retained focus, selectors/heroes, charts, target/recommendation/settings/bodyweight sheets, responsive/accessibility/recovery source
-**Excluded:** Unrelated dirty Phase 14 evidence and concurrent Phase 16 artifacts; this audit edits only this report
+**Source:** Exact current merged `fchoo/UX-revamp` HEAD `d97ea569fc6f8671df94f68e64635c55d06864aa`
+**Screenshots:** Current implementation screenshots not captured — no dev server answered on 3000, 5173, or 8080. Android/device screenshots remain explicitly Phase 20-owned and carry no Phase 19 score penalty.
+**Scope:** All six UI pillars; all prior Phase 19 findings; `867c369c` leaf focus-clearance fix; 3dp ring/offset; focus trap/return; keyboard/D-pad/Back/Escape/scrim; 48dp close; 16dp default sheet inset; 82% cap; typography; responsive layouts; exact history/source routes
+**Excluded:** Unrelated dirty Phase 14 evidence and concurrent Phase 16/19 review documents. This audit changes only this report.
 
-Revision 18 source hashes match the approved UI-SPEC exactly: HTML `b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96`, approval JSON `b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf`.
+Revision 18 source identity remains exact: HTML `b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96`, approval JSON `b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf`, and focused audit `3d121af24fe92907ab035ab49f50473107043bcd9ea126722d5d2132ece7c048`. The approved `19-UI-SPEC.md` remains byte-identical (`199e9b8bc1f0c9cea221008dd8a30f1dae0cad78537e73af6a84058f57212390`).
 
 ---
 
@@ -15,52 +15,49 @@ Revision 18 source hashes match the approved UI-SPEC exactly: HTML `b5ddbad88fd4
 
 | Pillar | Score | Key Finding |
 |---|---:|---|
-| 1. Copywriting | 4/4 | Exact factual, empty, unavailable, retry, decision, and destructive-action copy is present; no prohibited generic CTA remains in the audited surfaces. |
-| 2. Visuals | 4/4 | All three roots implement the approved factual hierarchy with one nonduplicated three-cell hero, enclosing segmented frames, source-backed charts, and complete drill-downs. |
-| 3. Color | 4/4 | Shared Light/Dark tokens preserve the 60/30/10 hierarchy, orange Strength identity, blue Running/navigation identity, green facts, yellow goals, and destructive-only red. |
-| 4. Typography | 4/4 | Phase 19 surfaces use declared Archivo/IBM Plex Mono roles, 14/16/20sp sizes, 400/800 weights, tabular numeric values, and no private 18sp declaration. |
-| 5. Spacing | 4/4 | Shared spacing, the approved 3dp/18dp local exceptions, 3dp focus offset, 48dp targets, responsive fact cells, and the full 82% sheet cap all match contract. |
-| 6. Experience Design | 4/4 | Goal authority, every history/source path, exact focus return, neutral validation, D-pad, Back/Escape, landscape, 200% text, recovery, and reduced motion are source-tested. |
+| 1. Copywriting | 4/4 | Exact factual, recovery, decision, destructive, sheet-close, and source-route copy remains contract-specific. |
+| 2. Visuals | 4/4 | Revision 18 hierarchy, selector/hero/chart composition, 16dp sheet alignment, 82% cap, and frame-owned close remain exact. |
+| 3. Color | 4/4 | Light/Dark semantic allocation and the close action's neutral/focus colors remain disciplined and non-color-equivalent. |
+| 4. Typography | 4/4 | Progress and sheet surfaces retain declared Archivo/IBM Plex Mono roles with no private type declarations. |
+| 5. Spacing | 4/4 | Progress now renders the required 3dp ring with 3dp offset while retaining 48dp targets, 16dp inset, 24dp corners, and 82% cap. |
+| 6. Experience Design | 4/4 | Focus trap/return, keyboard/D-pad, Back/Escape/scrim, source routes, recovery, large text, and responsive behaviors are source-tested. |
 
 **Overall: 24/24**
 
-**Classification:** **PASS — zero BLOCKER, WARNING, or FLAG findings.**
+**Classification:** **PASS — 0 BLOCKER, 0 WARNING, 0 REGISTRY FLAG.**
 
-The required 24/24, no-BLOCK/FLAG gate is met. Phase 20 still owns native screenshots and device execution; that planned deferral is not a Phase 19 defect.
+The required 24/24, zero-BLOCKER/WARNING/FLAG certification gate is met at exact current HEAD. Native screenshots/device execution remain Phase 20-only and were not scored down.
 
 ---
 
 ## Top 3 Priority Fixes
 
-None remain. The three former priority groups were re-tested and are closed:
+None remain. The three final certification risks were freshly re-tested and are closed:
 
-1. **All factual authority and Running drill-down — CLOSED.** Persisted source order now selects the nearest goal deterministically; every Active goal is actionable; a Running focal goal opens history and exact accepted-source revision, then restores the precise invoker.
-2. **Selector/hero composition — CLOSED.** Sport/range controls use one approved enclosing segmented frame, the hero owns one Latest/Best/Target row, and embedded charts suppress the former duplicate fact strip.
-3. **Shared state-shell and token drift — CLOSED.** Exact copy, sport colors, declared type roles, 3dp focus offset, complete 82% sheet cap, neutral initial target validation, and distance D-pad interaction are implemented and tested.
+1. **Scoped close-action focus geometry — CLOSED.** `BottomSheetCloseAction` consumes the cycle-free `useFocusClearance()` leaf hook; default sheets retain 4dp while every Progress-owned sheet inherits the scoped 3dp value and renders a 3dp ring with 3dp offset (`BottomSheet.tsx:24-28,65-147`; `bottomSheetFocus.ts:15-29`; `ProgressScreen.tsx:730`; `BottomSheet.test.tsx:149-179`).
+2. **Public sheet behavior after cycle removal — CLOSED.** Frame-owned close remains 48dp, keyboard/D-pad reachable, trapped, disabled when required, and routed through the same no-write close/Back/Escape/scrim cancellation and exact-focus-return path (`BottomSheet.tsx:65-147,284-366,382-462,497-506`).
+3. **Shared leaf/coverage classification — CLOSED.** The provider export remains public through `components/index.ts`, both generic focusables and the sheet close consume the same leaf context, and the valid integrity-registry entry adds no runtime authority or UI drift.
 
 ---
 
-## Prior BLOCK/FLAG Re-test Ledger
+## Current-HEAD Re-test Ledger
 
-| Prior area | Verdict | Current merged evidence |
+| Area | Verdict | Current-HEAD evidence |
 |---|---|---|
-| Complete All/Strength/Running roots | **PASS** | Running renders evidence notice, hero, pacing, goals, Best efforts and planned-next; Strength renders factual hero/chart/reviews/exercises; All renders either factual sport branch plus Active goals (`ProgressScreen.tsx:275-325,365-505`). |
-| Nearest active goal ordering | **PASS** | `compareGoals` orders by persisted `sourceOrder`, explicit target date, sport, plan/target identity and revision; All sorts before selecting `primaryGoal` (`dashboardProjection.ts:34-40,490-505`). The adversarial cross-sport reorder case passes (`dashboardProjection.test.ts:440-501`). |
-| All → Running history/source completion | **PASS** | All-Running supplies history, exact accepted activity/revision source callbacks, stable tokens, and ref registration (`ProgressScreen.tsx:454-470`). The end-to-end host interaction and return-focus case passes (`ProgressScreen.test.tsx:492-559`). |
-| Every Active goal is actionable | **PASS** | `ActiveGoalRows` uses 48dp focusable buttons for both sports and selects the corresponding sport while retaining range (`ProgressScreen.tsx:204-230,450-471`). |
-| Exact drill-down/focus graph | **PASS** | Stable maps resolve hero, row, recommendation, Running source, target and deep-route tokens (`ProgressScreen.tsx:587-604,714-760`); component tests cover All/Strength/Running source and exact invoker return. |
-| Segmented-control composition | **PASS** | Both groups have one surface/border, 13dp radius, 3dp padding/gap, and borderless 9dp choices (`ProgressScreen.tsx:85-141,842-843`); semantics and Home/End behavior pass. |
-| Nonduplicated hero facts | **PASS** | `HeroFactRow` is the single Latest/Best/Target owner and root charts receive `showSummaryFacts={false}` (`ProgressScreen.tsx:161-183,293-305,379-392,458-469`). |
-| Three-cell facts / fontScale 2 | **PASS** | Normal layout is three equal cells with 1dp dividers; fontScale 2 stacks the same complete facts (`ProgressScreen.tsx:543-544,831-835`; `ProgressScreen.test.tsx:859-870`). |
-| Unavailable versus Updating copy | **PASS** | Unavailable renders `Progress could not be loaded`, unchanged-facts assurance, and `Retry loading progress`; only rebuilding renders `Updating progress` (`ProgressScreen.tsx:72-82,663-666`). |
-| Strength/Running identity colors | **PASS** | Strength hero/rows use orange; Running evidence/navigation use the blue action/focus token; actual history and goal line remain green/yellow (`ProgressScreen.tsx:224-236,376-393`; `FactualHistoryChart.tsx:311-324`). |
-| Declared typography roles | **PASS** | Labels/prose use Archivo roles and data/date/time/target values use IBM Plex Mono roles; no raw `fontSize`, `fontFamily`, or `fontWeight` declaration remains in audited Phase 19 surfaces (`theme/index.ts:69-135`; `ProgressScreen.tsx:179-180`; `FactualHistoryChart.tsx:238-243,332-336`). |
-| 3dp outline offset | **PASS** | Phase 19 scopes `FocusClearanceProvider` to 3dp and every `FocusablePressable` consumes the contextual offset (`ProgressScreen.tsx:705-825`; `components/index.ts:140-147,239-336`). Focused selector assertion passes at 3dp. |
-| Full 82% sheet cap | **PASS** | The complete frame, including header and safe-area padding, has `maxHeight: "82%"` and clips/scrolls content inside it (`BottomSheet.tsx:306-368,388-404`). Target-sheet and shared-frame tests assert the surface cap. |
-| 48dp interactive targets | **PASS** | Shared minimum is 48dp; selectors, source actions, disclosures, rows, days, fields and retries consume it (`theme/index.ts:49-63`; `FactualHistoryChart.tsx:345-357`; `RunningTargetSheet.tsx:370-380`). |
-| Neutral unset-target validation | **PASS** | Validation is interaction-gated and resets on distance changes; an unset distance stays neutral until blur/save (`RunningTargetSheet.tsx:132,147-180,249-250,268-301`). |
-| Distance/day keyboard interaction | **PASS** | Distance tabs and weekdays support Left/Right/Home/End plus Enter/Space with wrapped focus where required (`RunningTargetSheet.tsx:268-337`); host interaction tests pass. |
-| Landscape / Back / Escape / reduced motion | **PASS** | Shared sheet computes bounded compact-landscape body height, routes Modal Back, Escape, close and scrim through one safe cancellation path, traps traversal, and removes translation at reduced motion (`BottomSheet.tsx:86-94,108-165,229-271,285-368`). |
+| Leaf focus-clearance architecture | **PASS** | `FocusClearanceProvider` and `useFocusClearance` live in `bottomSheetFocus.ts`; neither BottomSheet nor the shared focusable needs a barrel-cycle import (`bottomSheetFocus.ts:15-29`; `components/index.ts:55-91,243-326`). |
+| Default versus Progress-scoped focus | **PASS** | Regression tests assert default `4/3` offset/ring and Progress-scoped `3/3`; Progress wraps roots and sheets in `clearance={3}` (`BottomSheet.test.tsx:149-179`; `ProgressScreen.tsx:730-850`). |
+| Default sheet inset | **PASS** | Phase 19 passes no `horizontalInset`, retaining shared 16dp header/content padding (`BottomSheet.tsx:205-207,426-456,489-508`; `BottomSheet.test.tsx:185-207`). |
+| Complete 82% cap | **PASS** | The full frame remains bottom-anchored with 24dp top corners, 1dp border, and `maxHeight: "82%"`; the scroll body remains bounded inside it (`BottomSheet.tsx:402-462,482-508`). |
+| Frame-owned close semantics | **PASS** | Close has a specific accessible label/role/state, is disabled when cancellation is disabled, and invokes the frame-owned cancellation path (`BottomSheet.tsx:65-147,324-366,426-442`). |
+| Close-action target | **PASS** | Height, width, and minimum dimensions are exactly 48dp; icon size is 24dp with 2dp stroke (`BottomSheet.tsx:139-146,497-506`; `BottomSheet.test.tsx:88-117`). |
+| Focus trap and exact return | **PASS** | Close registers with the sheet trap; traversal wraps, cancellation restores the exact invoker, and native-ID fallback remains (`BottomSheet.tsx:79-100,241-366`; `BottomSheet.test.tsx:209-453`). |
+| Keyboard/D-pad/Back/Escape/scrim | **PASS** | Enter/Space activates close, disabled close ignores activation, arrows/Tab stay inside the modal, and Modal Back/Escape/scrim use one no-write path (`BottomSheet.tsx:102-147,324-366,380-462`). |
+| Typography and color | **PASS** | Heading remains `screenTitle`; local close uses semantic `textPrimary`, `divider`, `surfaceSubtle`, and `focusRing`; no raw type or private color was introduced (`BottomSheet.tsx:125-146,426-442`). |
+| Responsive/large-text sheet behavior | **PASS** | Compact landscape retains measured height and scroll space while frame/header/content stay reachable (`BottomSheet.tsx:178-207,402-462`; `BottomSheet.test.tsx:375-453`). |
+| Edited target retries | **PASS** | Changed retained drafts rotate request identity while exact retries retain their receipt (`RunningTargetSheet.tsx:97-106,204-218`; `runningPlanRuntime.test.tsx:205-268`). |
+| Goal ordering and Active-goal focus | **PASS** | Persisted cross-sport ordering remains deterministic and Active-goal activation transfers focus to the selected tab while retaining range (`progressRepository.test.ts:1448-1524`; `ProgressScreen.test.tsx:282-315`). |
+| Drill-down/source graph | **PASS** | Running/Strength histories, accepted source revisions, recommendations, target/settings/bodyweight sheets, and exact invoker return remain covered (`ProgressScreen.test.tsx:446-984`; `garmin-activity-route.test.tsx`). |
+| Selector/hero/large-text composition | **PASS** | One framed selector per group, one Latest/Best/Target owner, one scroll owner at required widths, and fontScale 2 stacking remain unchanged (`ProgressScreen.tsx:85-190,853-870`; `ProgressScreen.test.tsx:232-260,854-879`). |
 
 ---
 
@@ -68,65 +65,64 @@ None remain. The three former priority groups were re-tested and are closed:
 
 ### Pillar 1: Copywriting (4/4)
 
-- **PASS — Contract copy is exact and state-specific.** All/Strength/Running labels, ranges, `Nearest active goal`, `Personal history`, `Open history`, `Evidence`, `Running goals`, `Best efforts`, `Garmin imported`, fixed/unset goal language, and sport-specific empty states match the approved contract (`ProgressScreen.tsx:72-82,204-325,417-505,651-666`).
-- **PASS — Mutation/recovery language names the task and consequence.** Target, recommendation and bodyweight surfaces use `Save target`, `Discard target changes`, `Keep target unchanged`, `Use target`, explicit stale/failure assurances, and row-specific bodyweight actions (`RunningTargetSheet.tsx:254-350`; `RecommendationSurface.tsx:245-307`; `BodyweightHistorySheet.tsx:91-170`).
-- **PASS — String scan found no prohibited generic `Submit`, `Click Here`, `OK`, `Done`, `Success`, `Apply`, or `Continue` CTA in the audited Phase 19 surfaces.**
+- **PASS — Phase 19 copy remains exact and task-specific.** Sport/range labels, factual states, recovery actions, target/recommendation/bodyweight consequences, close labels, and source-route copy match the approved contract.
+- **PASS — Calendar wording remains isolated.** Calendar-specific missing/Back copy does not enter Progress management or exact-revision routes.
+- **PASS — Generic-label scan is clean.** No prohibited bare `Submit`, `OK`, `Done`, `Success`, `Apply`, `Continue`, `Cancel`, or `Save` CTA exists in the audited Phase 19 surfaces.
 
 ### Pillar 2: Visuals (4/4)
 
-- **PASS — The approved focal hierarchy is complete.** Each root has one factual hero rather than decorative cards; All follows persisted nearest-goal authority, Strength uses orange identity, and Running starts with its accepted-import evidence notice (`ProgressScreen.tsx:233-325,365-505`).
-- **PASS — Selector and hero composition match Revision 18.** One 13dp enclosing frame owns three equal choices at the approved 3dp gap; the hero begins after 18dp with a 2dp rule; its only fact row is Latest/Best/Target and Gap remains written separately (`ProgressScreen.tsx:85-183,828-845`).
-- **PASS — The chart remains supporting evidence.** Straight green source segments, outlined points, dashed yellow target segments, written summary, semantic label, complete pageable data, and exact source actions share one typed series (`FactualHistoryChart.tsx:254-342`).
+- **PASS — Revision 18 hierarchy and composition are unchanged.** Header/actions, selectors, one factual hero, evidence/history, sport sections, and planned-next order remain intact.
+- **PASS — Shared sheet composition remains exact.** Default 16dp alignment, 24dp top corners, 82% complete-frame cap, semantic heading, circular trailing close, and scroll body are preserved (`BottomSheet.tsx:402-508`).
+- **PASS — Close icon matches the shared visual vocabulary.** It remains an outlined 24dp X at 2dp stroke inside a 48dp target, with decorative SVG hidden from accessibility (`BottomSheet.tsx:139-147,497-506`).
 
 ### Pillar 3: Color (4/4)
 
-- **PASS — Shared token allocation is disciplined.** The audited references are dominated by neutral text/surfaces (`textPrimary` 57, `textSecondary` 44, `divider` 11), with restrained focus/action blue (12 combined), orange Strength identity (2), green factual history (1), yellow goal/attention (3), and destructive-only red (5).
-- **PASS — Sport and semantic meanings are not color-only.** Strength/Running identity accompanies written sport labels; green history accompanies factual values/status; yellow uses a dashed goal line plus `Goal <value>`/attention copy; destructive color appears with explicit bodyweight/error language (`ProgressScreen.tsx:204-236,365-393`; `FactualHistoryChart.tsx:305-337`).
-- **PASS — No private Phase 19 hex/rgb color was found.** The sole hard-coded color in the audited shared surface is the approved 68% black sheet scrim (`BottomSheet.tsx:378-404`).
+- **PASS — Phase 19 token allocation remains disciplined.** Neutral surfaces/copy dominate; blue remains focus/navigation/Running identity, orange Strength identity, green factual history, yellow goals/attention, and red destructive/error only.
+- **PASS — Close states use semantic tokens.** Pressed, border, icon, disabled, and focus states use `surfaceSubtle`, `divider`, `textPrimary`, and `focusRing`; the only hard-coded shared-sheet color remains the approved 68% black scrim (`BottomSheet.tsx:125-146,472-508`).
 
 ### Pillar 4: Typography (4/4)
 
-- **PASS — Declared roles are used consistently.** Archivo owns prose, labels, controls and headings; IBM Plex Mono owns dates, times, targets, chart/table values and bodyweight data (`theme/index.ts:69-135`; `ProgressScreen.tsx:161-183`; `FactualHistoryChart.tsx:238-243,327-338`).
-- **PASS — The former 18sp private input is gone.** Bodyweight and target inputs now consume `bodyNumeric`; audited surfaces contain no raw typography declaration and use the declared 14/16/20sp roles with only 400/800 weights (`BodyweightEditorSheet.tsx:109-142`; `RunningTargetSheet.tsx:357-380`).
-- **PASS — Labels and values are separate text nodes.** Hero labels use Archivo body roles while values use tabular IBM Plex Mono, preserving wrapping and semantic clarity at large text (`ProgressScreen.tsx:170-181`).
+- **PASS — Declared roles remain intact.** Phase 19 consumes the approved Archivo/IBM Plex Mono 14/16/20sp roles and 400/800 weights with tabular numeric values.
+- **PASS — The focus fix adds no type drift.** The frame heading remains `typeScale.screenTitle`, and the icon-only close exposes a semantic accessible label instead of hidden text (`BottomSheet.tsx:426-442`).
 
 ### Pillar 5: Spacing (4/4)
 
-- **PASS — Reusable spacing stays on the shared 4/8/16/24/32/48/64dp scale.** The only Phase 19 layout exceptions are the oracle-backed 3dp segmented gap/padding and 18dp hero separation; 9/13dp selector radii are component geometry (`ProgressScreen.tsx:828-845`; `theme/index.ts:34-63`).
-- **PASS — Focus and target geometry is exact.** Progress focusables receive a 3dp outline with 3dp contextual offset, and required actions are at least 48dp (`ProgressScreen.tsx:705-825`; `components/index.ts:239-336`).
-- **PASS — Sheet height is bounded at the complete surface.** The 82% frame cap includes header/safe-area content, while the inner body scrolls and compact landscape receives a measured numeric bound (`BottomSheet.tsx:86-94,306-404`).
+- **PASS — Layout spacing remains contract-compliant.** Phase 19 retains the shared 4/8/16/24/32/48/64dp scale, approved 3dp selector and 18dp hero exceptions, 16dp sheet inset, 48dp controls, 24dp corners, and 82% cap.
+- **PASS — Focus geometry is now exact.** Under Progress, both ring width and outline offset resolve to 3dp through the shared leaf context (`BottomSheet.tsx:76,125-135`; `bottomSheetFocus.ts:15-29`; `ProgressScreen.tsx:730`; `BottomSheet.test.tsx:149-179`).
+- **PASS — Default behavior is preserved.** Sheets outside a scoped provider retain the shared 4dp default clearance; the fix does not globally mutate existing roots.
 
 ### Pillar 6: Experience Design (4/4)
 
-- **PASS — All goal authority and task completion are deterministic.** Cross-sport goals are selected by persisted source order and tie-breakers, every Active goal changes sport without losing range, and Running heroes/Best efforts reach the correct history and exact accepted source revision (`dashboardProjection.ts:34-40,490-505`; `ProgressScreen.tsx:204-230,275-325,428-473`).
-- **PASS — State coverage remains honest.** Loading, empty, sparse, target-only, missing effort, rebuild, unavailable, stale, mutation failure and retry states preserve source facts and never synthesize zero (`ProgressScreen.tsx:275-325,417-426,663-666`; `RunningTargetSheet.tsx:170-250,340-350`).
-- **PASS — Accessibility interactions are source-complete.** Sport/range and target/day groups expose selected state and keyboard movement; source/history controls are 48dp; deep routes and sheets restore exact invoking focus; Modal Back, Escape, scrim and close share no-write dismissal (`ProgressScreen.tsx:85-141,587-604,705-760`; `RunningTargetSheet.tsx:268-337`; `BottomSheet.tsx:229-368`).
-- **PASS — Responsive and motion contracts are implemented.** Four required widths retain one scroll owner; facts stack at fontScale 2; chart/sheets adapt in landscape; reduced motion removes translation while preserving state, focus and callbacks (`ProgressScreen.test.tsx:845-870`; `FactualHistoryChart.tsx:254-310`; `BottomSheet.tsx:86-144`). Native visual confirmation remains Phase 20-owned without penalty.
+- **PASS — Public sheet behavior is preserved.** Frame close, heading focus, trap/wrap, exact trigger return, inert background, IME-safe scrolling, disabled state, Enter/Space, D-pad/Tab, Back, Escape, and scrim all remain executable.
+- **PASS — Prior Phase 19 behaviors remain closed.** Retry identity, goal ordering, Active-goal focus transfer, all history/source drill-downs, recovery, mutation fencing, responsive widths, fontScale 2, and reduced motion pass.
+- **PASS — The former warning is regression-protected.** One test proves default 4dp; a separate provider-scoped test proves Progress's required 3dp/3dp geometry, so the source contract and test oracle now agree.
 
 ---
 
 ## Host Evidence Run
 
-- **PASS:** 9 focused Phase 19 component/route suites, 85 tests.
-- **PASS:** Shared `BottomSheet` suite, 9 tests covering heading focus, one no-write close/Back/Escape/scrim path, exact trigger restoration, focus trapping, keyboard/D-pad traversal, and keyboard-safe geometry.
-- **PASS:** `dashboardProjection` unit suite, 13 tests including persisted cross-sport nearest-goal ordering.
-- **PASS:** Total targeted audit run: 11 suites, 107 tests.
+- **PASS:** Expanded Phase 19/shared component and route matrix: **17 suites, 234 tests**.
+- **PASS:** Final fix5 runtime/domain suites: **2 suites, 28 tests**.
+- **PASS:** Real-SQLite Progress repository suite: **1 suite, 28 tests**.
+- **PASS:** Total targeted current-HEAD certification: **20 suite invocations, 290 tests**.
 - **PASS:** `npm run typecheck`.
-- **PASS:** `npm run check:boundaries` across 429 files.
-- **Not run by design:** Android build/install, APK/device identity, native screenshots, native semantic/focus/input execution, fontScale 2 captures, landscape captures, and attended checks. Phase 20 owns those and no Phase 19 score was deducted.
+- **PASS:** `npm run check:boundaries` across **430 files**.
+- **PASS:** Screenshot `.gitignore` gate present; no screenshot binary was added.
+- **Registry audit:** Not applicable — `components.json` is absent and UI-SPEC declares zero third-party registry blocks.
+- **Not run by design:** Android build/install, APK/device identity, native screenshots, native semantic/focus/input execution, fontScale 2 captures, landscape captures, and attended checks. Phase 20 owns those and no score was deducted for their absence.
 
 ## Files Audited
 
-- Authority: `.planning/v1.2-OWNER-DECISIONS.md`, `.planning/v1.2-OWNER-BRIEF.md`, `.planning/design/v1.2-SOURCE-PRECEDENCE.md`, Phase 19 CONTEXT/UI-SPEC/prior UI review/final review-fix chain, Phase 19 PLAN/SUMMARY artifacts, Revision 18 `approved.json`, rendered Progress source, and focused Revision 18 audit.
-- Root/domain/runtime: `app/(tabs)/progress.tsx`, `src/ui/screens/ProgressScreen.tsx`, `src/domains/progress/contracts.ts`, `src/domains/progress/dashboardProjection.ts`, `src/platform/sqlite/repositories/progressRepository.ts`, `src/bootstrap/workoutAppRuntime.tsx`, `src/bootstrap/runningPlanRuntime.tsx`.
-- Histories/routes: `FactualHistoryChart.tsx`, `RunningHistorySheet.tsx`, `ExerciseHistoryScreen.tsx`, `app/exercise-history/[exerciseId].tsx`, `app/session/[sessionId].tsx`, `app/garmin/activity/[activityId].tsx`.
-- Decisions/settings: `RunningTargetSheet.tsx`, `RecommendationSurface.tsx`, `ProgressSettingsSheet.tsx`, `BodyweightHistorySheet.tsx`, `BodyweightEditorSheet.tsx`.
-- Shared UI: `BottomSheet.tsx`, `src/ui/components/index.ts`, `AdaptiveScreen.tsx`, `src/ui/theme/index.ts`.
-- Evidence: focused component/route/domain tests named in Host Evidence Run. Registry audit was not applicable because `components.json` is absent and UI-SPEC declares no third-party registries.
+- Authority: Phase 19 CONTEXT/UI-SPEC/PLAN/SUMMARY/VERIFICATION/prior UI review, v1.2 owner/source-precedence documents, Revision 18 JSON/HTML/focused audit.
+- Phase 19 UI: `ProgressScreen.tsx`, `FactualHistoryChart.tsx`, `RunningHistorySheet.tsx`, `RunningTargetSheet.tsx`, `RecommendationSurface.tsx`, `ProgressSettingsSheet.tsx`, `BodyweightHistorySheet.tsx`, `BodyweightEditorSheet.tsx`, `ExerciseHistoryScreen.tsx`, and route adapters.
+- Shared/current-HEAD UI: `BottomSheet.tsx`, `BottomSheet.test.tsx`, `bottomSheetFocus.ts`, `src/ui/components/index.ts`, `AdaptiveScreen.tsx`, `src/ui/theme/index.ts`.
+- Current-head delta: `867c369c`, merge `d97ea569`, and `scripts/phase19-integrity-coverage.json`.
+- Evidence: the 20 suite invocations above plus static copy/color/type/spacing/focus/registry scans.
 
 ## Recommendation Count
 
-- Priority fixes: 0
+- Priority issues: 0
 - Minor recommendations: 0
 - BLOCKER findings: 0
-- WARNING/FLAG findings: 0
+- WARNING findings: 0
+- REGISTRY FLAG findings: 0
