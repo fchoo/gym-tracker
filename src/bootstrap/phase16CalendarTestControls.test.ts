@@ -7,6 +7,7 @@ import {
   createPhase16CalendarTestControls,
   PHASE16_CALENDAR_DIAGNOSTICS_CHUNK_MARKER,
   PHASE16_CALENDAR_TRACE_SAMPLE_MARKER,
+  phase16CalendarGestureDriver,
   phase16CalendarDiagnosticsRequestFromNativeContract,
   phase16CalendarStageFromNativeContract,
   readPhase16CalendarActiveTrace,
@@ -34,6 +35,38 @@ test("Phase 16 Calendar controls require the exact development-test identity and
   expect(createPhase16CalendarTestControls({ ...developmentIdentity, stage: "unknown" })).toBeNull();
 });
 
+test("Phase 16 stage drivers expose one continuous retreat and a pointer-cancel path", () => {
+  expect(phase16CalendarGestureDriver("drag-retreat")).toEqual([
+    { kind: "drag", dxRatio: -0.251, commandedRatio: 0.251 },
+    { kind: "drag", dxRatio: -0.1, commandedRatio: 0.1 },
+    { kind: "release", dxRatio: -0.1 },
+  ]);
+  expect(phase16CalendarGestureDriver("drag-cancel")).toEqual([
+    { kind: "drag", dxRatio: -0.18, commandedRatio: 0.18 },
+    { kind: "cancel" },
+  ]);
+  expect(phase16CalendarGestureDriver("drag-forward-25")).toBeNull();
+  expect(phase16CalendarGestureDriver(undefined)).toBeNull();
+});
+
+test.each([
+  ["drag-forward-10", 0.1],
+  ["drag-forward-24_9", 0.249],
+  ["drag-forward-25", 0.25],
+  ["drag-forward-25_1", 0.251],
+  ["drag-forward-release-below", 0.249],
+  ["drag-forward-release-exact", 0.25],
+  ["drag-forward-release-above", 0.251],
+  ["drag-fast-subthreshold", 0.1],
+  ["drag-retreat", 0.1],
+  ["drag-cancel", 0.18],
+] as [Parameters<typeof createPhase16CalendarTestControls>[0]["stage"], number][])("records %s release command identity independently of measured dx", (stage, commandedRatio) => {
+  let now = 1_800_000_000_000;
+  const controls = createPhase16CalendarTestControls({ ...developmentIdentity, stage, nowMs: () => ++now });
+  controls?.recordRelease({ dx: -64.8, viewportWidth: 360, semanticOffset: 0, titleOffset: 0 });
+  expect(controls?.trace().samples[0]).toEqual(expect.objectContaining({ commandedRatio }));
+});
+
 test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only", () => {
   const controls = createPhase16CalendarTestControls({
     ...developmentIdentity,
@@ -42,7 +75,7 @@ test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only
     nowMs: (() => { let now = 1_800_000_000_000; return () => ++now; })(),
   });
   expect(controls).not.toBeNull();
-  controls?.recordDrag({ dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 });
+  controls?.recordDrag({ commandedRatio: 0.25, dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 });
   controls?.recordFocus({ selected: { y: 112, height: 64 }, following: { y: 176, height: 64 }, destination: { selectedY: 0, followingY: 296 } });
   expect(controls?.trace()).toEqual(expect.objectContaining({
     stage: "drag-forward-25",
@@ -54,7 +87,7 @@ test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only
     },
     synthetic: true,
     samples: [
-      expect.objectContaining({ kind: "drag", elapsedMs: 1, semanticOffset: 0, titleOffset: 1 }),
+      expect.objectContaining({ kind: "drag", commandedRatio: 0.25, elapsedMs: 1, semanticOffset: 0, titleOffset: 1 }),
       expect.objectContaining({ kind: "focus", focusRingWidthDp: 3, focusClearanceDp: 4 }),
     ],
   }));
@@ -66,7 +99,7 @@ test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only
     stage: "drag-forward-release-exact",
     nowMs: (() => { let now = 1_800_000_010_000; return () => ++now; })(),
   });
-  legacyInputControls?.recordDrag({ dx: -90, viewportWidth: 360, transformX: -90, semanticMonth: "2026-10", titleMonth: "2026-11" });
+  legacyInputControls?.recordDrag({ commandedRatio: 0.25, dx: -90, viewportWidth: 360, transformX: -90, semanticMonth: "2026-10", titleMonth: "2026-11" });
   legacyInputControls?.recordRelease({ dx: -90, viewportWidth: 360, semanticMonth: "2026-11", titleMonth: "2026-11" });
   expect(legacyInputControls?.trace().samples.map(({ semanticOffset, titleOffset }) => [semanticOffset, titleOffset])).toEqual([[0, 1], [1, 1]]);
 });
@@ -75,12 +108,13 @@ test("Phase 16 Calendar controls reject unsafe samples and retain no global reco
   let now = 1_800_000_000_000;
   const controls = createPhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-cancel", nowMs: () => now });
   expect(controls).not.toBeNull();
-  expect(() => controls?.recordDrag({ dx: Number.NaN, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 })).toThrow("phase16_calendar_diagnostic_number_invalid");
-  expect(() => controls?.recordDrag({ dx: 100_001, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 })).toThrow("phase16_calendar_diagnostic_number_invalid");
-  expect(() => controls?.recordDrag({ dx: 0, viewportWidth: 360, transformX: 0, semanticOffset: 2, titleOffset: 0 })).toThrow("phase16_calendar_diagnostic_offset_invalid");
-  expect(() => controls?.recordDrag({ dx: 0, viewportWidth: 360, transformX: 0, semanticMonth: "October", titleMonth: "2026-10" })).toThrow("phase16_calendar_diagnostic_month_invalid");
-  expect(() => controls?.recordDrag({ dx: 0, viewportWidth: 360, transformX: 0, semanticMonth: "2026-13", titleMonth: "2026-10" })).toThrow("phase16_calendar_diagnostic_month_invalid");
-  now = 1_600_000_000_000;
+  expect(() => controls?.recordDrag({ commandedRatio: 0.1, dx: Number.NaN, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 })).toThrow("phase16_calendar_diagnostic_number_invalid");
+  expect(() => controls?.recordDrag({ commandedRatio: 0.1, dx: 100_001, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 })).toThrow("phase16_calendar_diagnostic_number_invalid");
+  expect(() => controls?.recordDrag({ commandedRatio: 0.1, dx: 0, viewportWidth: 360, transformX: 0, semanticOffset: 2, titleOffset: 0 })).toThrow("phase16_calendar_diagnostic_offset_invalid");
+  expect(() => controls?.recordDrag({ commandedRatio: 0.1, dx: 0, viewportWidth: 360, transformX: 0, semanticMonth: "October", titleMonth: "2026-10" })).toThrow("phase16_calendar_diagnostic_month_invalid");
+  expect(() => controls?.recordDrag({ commandedRatio: 0.1, dx: 0, viewportWidth: 360, transformX: 0, semanticMonth: "2026-13", titleMonth: "2026-10" })).toThrow("phase16_calendar_diagnostic_month_invalid");
+  expect(() => controls?.recordDrag({ commandedRatio: 2, dx: 0, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 })).toThrow("phase16_calendar_diagnostic_ratio_invalid");
+  now = 1_799_999_999_999;
   expect(() => controls?.recordCancel()).toThrow("phase16_calendar_diagnostic_clock_invalid");
 
   let clock = 1_800_000_100_000;
@@ -88,7 +122,7 @@ test("Phase 16 Calendar controls reject unsafe samples and retain no global reco
   const emitted: string[] = [];
   try {
     configurePhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-cancel", traceNonce: "p16trace-global-1", emitLine: (line) => emitted.push(line) });
-    recordPhase16CalendarDrag({ dx: 0, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 });
+    recordPhase16CalendarDrag({ commandedRatio: 0.1, dx: 0, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 });
     recordPhase16CalendarRelease({ dx: 0, viewportWidth: 360, semanticOffset: 0, titleOffset: 0 });
     recordPhase16CalendarFocus({ selected: { y: 0, height: 64 }, following: { y: 64, height: 64 }, destination: { selectedY: 0, followingY: 296 } });
     recordPhase16CalendarCancel();
@@ -195,14 +229,20 @@ test("Phase 16 diagnostics producer rejects incomplete, overflowing, and malform
   expect(() => invalidStream?.exportResult()).toThrow("phase16_calendar_diagnostics_stream_invalid");
 });
 
-test("Phase 16 Calendar controls reject repeated timestamps and a trace buffer beyond its bounded capacity", () => {
+test("Phase 16 Calendar controls derive collision-free sequence timestamps and bound the trace", () => {
+  expect(() => createPhase16CalendarTestControls({
+    ...developmentIdentity,
+    stage: "drag-cancel",
+    nowMs: () => 1_600_000_000_000,
+  })).toThrow("phase16_calendar_diagnostic_clock_invalid");
   const repeatedTimestamp = createPhase16CalendarTestControls({
     ...developmentIdentity,
     stage: "drag-cancel",
     nowMs: () => 1_800_000_000_000,
   });
   repeatedTimestamp?.recordCancel();
-  expect(() => repeatedTimestamp?.recordCancel()).toThrow("phase16_calendar_diagnostic_clock_invalid");
+  repeatedTimestamp?.recordCancel();
+  expect(repeatedTimestamp?.trace().samples.map(({ elapsedMs }) => elapsedMs)).toEqual([0, 1]);
 
   let now = 1_800_000_100_000;
   const boundedTrace = createPhase16CalendarTestControls({

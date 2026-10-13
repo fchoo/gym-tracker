@@ -147,6 +147,7 @@ describe("CalendarRoute", () => {
       phase16CalendarDiagnostics: "true",
       querySamples: "100",
       interactionSamples: "100",
+      diagnosticStreamId: "p16diag-route-test-1",
     };
     const rendered = await render(<CalendarRoute />);
 
@@ -159,11 +160,12 @@ describe("CalendarRoute", () => {
     ))).toBe(true);
     const chunks = info.mock.calls.map(([line]) => JSON.parse(
       (line as string).slice("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:".length),
-    ) as { sequence: number; total: number; payload: string });
+    ) as { stream_id: string; sequence: number; total: number; payload: string });
     expect(chunks.map(({ sequence }) => sequence)).toEqual(
       Array.from({ length: chunks.length }, (_, index) => index + 1),
     );
     expect(chunks.every(({ total }) => total === chunks.length)).toBe(true);
+    expect(chunks.every(({ stream_id }) => stream_id === "p16diag-route-test-1")).toBe(true);
     expect(JSON.parse(chunks.map(({ payload }) => payload).join(""))).toEqual(expect.objectContaining({
       producer: "v12-calendar-native-diagnostics/v1",
       native_execution: "EXECUTED",

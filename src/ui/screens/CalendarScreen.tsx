@@ -14,6 +14,7 @@ import { addLocalDays, parseLocalDate, type LocalDate } from "../../domains/sche
 import type {
   Phase16CalendarDiagnosticsProducer,
   Phase16CalendarDiagnosticsRequest,
+  Phase16CalendarStage,
 } from "../../bootstrap/phase16CalendarTestControls";
 import {
   addLocalMonthsClamped,
@@ -58,6 +59,7 @@ const NOOP = () => undefined;
 
 type CalendarScreenProps = Readonly<{
   diagnostics?: Phase16CalendarDiagnosticsRuntime;
+  diagnosticStage?: Phase16CalendarStage;
   initialDate: string;
   loadCalendarRange: CalendarReadPort["loadCalendarRange"];
   onOpenEvent(destination: CalendarEventDestination, returnEventId?: string): void;
@@ -97,6 +99,7 @@ function monthIdDate(monthId: string): LocalDate {
 
 export function CalendarScreen({
   diagnostics,
+  diagnosticStage,
   initialDate,
   loadCalendarRange,
   onOpenEvent,
@@ -757,6 +760,7 @@ export function CalendarScreen({
               <CalendarMonthViewport
                 agenda={agendaRegion}
                 command={calendarCommand}
+                {...(diagnosticStage === undefined ? {} : { diagnosticStage })}
                 disabled={interactionDisabled}
                 fontScale={fontScale}
                 focusedWeek={focusedWeek}

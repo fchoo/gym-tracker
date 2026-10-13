@@ -1,11 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import React from "react";
 import { View } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
 import * as Reanimated from "react-native-reanimated";
 
 import type { LocalDate } from "../../domains/scheduling";
+import {
+  clearPhase16CalendarTestControls,
+  configurePhase16CalendarTestControls,
+  readPhase16CalendarActiveTrace,
+} from "../../bootstrap/phase16CalendarTestControls";
 
 import {
   CalendarTransitionError,
@@ -234,6 +242,67 @@ describe("Calendar semantic transitions", () => {
     handlers.onFinalize?.();
     expect(onCancel).toHaveBeenCalledTimes(1);
     panSpy.mockRestore();
+  });
+
+  it.each([
+    ["drag-retreat", ["drag", "drag", "release"]],
+    ["drag-cancel", ["drag", "cancel"]],
+  ] as ["drag-retreat" | "drag-cancel", readonly ("drag" | "release" | "cancel")[]][])("drives %s through the mounted gesture callbacks as one trace", async (diagnosticStage, expectedKinds) => {
+    const now = 1_800_000_000_000;
+    configurePhase16CalendarTestControls({
+      packageName: "com.fchoo.gymtracker.devtest",
+      buildProfile: "development-test",
+      nativeContractsEnabled: true,
+      suite: "phase16-calendar",
+      stage: diagnosticStage,
+      nowMs: () => now,
+      traceNonce: `p16trace-${diagnosticStage}`,
+      emitLine: () => undefined,
+    });
+    const onCancel = jest.fn();
+    const onPreview = jest.fn();
+    const onRelease = jest.fn();
+    try {
+      await render(
+        <CalendarMonthViewport
+          command={null}
+          diagnosticStage={diagnosticStage}
+          focusedWeek={null}
+          month={"2026-11-01" as LocalDate}
+          onCancel={onCancel}
+          onComplete={jest.fn()}
+          onPreview={onPreview}
+          onRelease={onRelease}
+          renderMonth={() => <View />}
+          renderWeek={() => <View />}
+          transition={initial()}
+        />,
+      );
+      await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", {
+        nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } },
+      });
+      const trace = readPhase16CalendarActiveTrace();
+      expect(trace?.samples.map(({ kind }) => kind)).toEqual(expectedKinds);
+      expect(trace?.samples.map(({ elapsedMs }) => elapsedMs)).toEqual(expectedKinds.map((_, index) => index));
+      const validator = pathToFileURL(path.resolve("scripts/compare-v12-calendar.mjs")).href;
+      expect(execFileSync(process.execPath, [
+        "--input-type=module",
+        "--eval",
+        `import { validateV12CalendarStageTrace } from ${JSON.stringify(validator)}; process.stdout.write(String(validateV12CalendarStageTrace(JSON.parse(process.argv[1]))));`,
+        JSON.stringify(trace),
+      ], { encoding: "utf8" })).toBe("true");
+      if (diagnosticStage === "drag-retreat") {
+        expect(onPreview).toHaveBeenNthCalledWith(1, -100.4, 400);
+        expect(onPreview).toHaveBeenNthCalledWith(2, -40, 400);
+        expect(onRelease).toHaveBeenCalledTimes(1);
+        expect(onCancel).not.toHaveBeenCalled();
+      } else {
+        expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(onRelease).not.toHaveBeenCalled();
+      }
+    } finally {
+      clearPhase16CalendarTestControls();
+    }
   });
 
   it("records one bounded interaction sample only after a committed drag expands and collapses", async () => {

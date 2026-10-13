@@ -65,6 +65,7 @@ export default function CalendarRoute() {
     phase16CalendarDiagnostics?: string | string[];
     querySamples?: string | string[];
     interactionSamples?: string | string[];
+    diagnosticStreamId?: string | string[];
   }>();
   const phase16Stage = phase16CalendarStage(routeParams.phase16CalendarStage);
   const extra = Constants.expoConfig?.extra;
@@ -77,6 +78,7 @@ export default function CalendarRoute() {
   const diagnosticsEnabled = scalarRouteParam(routeParams.phase16CalendarDiagnostics);
   const diagnosticsQuerySamples = scalarRouteParam(routeParams.querySamples);
   const diagnosticsInteractionSamples = scalarRouteParam(routeParams.interactionSamples);
+  const diagnosticsStreamId = scalarRouteParam(routeParams.diagnosticStreamId);
   const diagnosticsRequest = React.useMemo(() => phase16CalendarDiagnosticsRequestFromNativeContract({
     ...nativeIdentity,
     enabled: diagnosticsEnabled,
@@ -87,7 +89,8 @@ export default function CalendarRoute() {
     ...nativeIdentity,
     request: diagnosticsRequest,
     emitLine: (line) => console.info(line),
-  }), [diagnosticsRequest, nativeIdentity.buildProfile, nativeIdentity.nativeContractsEnabled, nativeIdentity.packageName, nativeIdentity.suite]);
+    ...(diagnosticsStreamId === undefined ? {} : { streamId: diagnosticsStreamId }),
+  }), [diagnosticsRequest, diagnosticsStreamId, nativeIdentity.buildProfile, nativeIdentity.nativeContractsEnabled, nativeIdentity.packageName, nativeIdentity.suite]);
   const diagnosticsRuntime = React.useMemo(() => diagnosticsProducer === null || diagnosticsRequest === null
     ? undefined
     : Object.freeze({ producer: diagnosticsProducer, request: diagnosticsRequest }), [diagnosticsProducer, diagnosticsRequest]);
@@ -134,7 +137,7 @@ export default function CalendarRoute() {
     }
   }, []));
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     configurePhase16CalendarTestControls({
       ...nativeIdentity,
       stage: phase16Stage,
@@ -144,6 +147,7 @@ export default function CalendarRoute() {
 
   return (
     <CalendarScreen
+      {...(phase16Stage === undefined ? {} : { diagnosticStage: phase16Stage })}
       initialDate={initialDate}
       {...(diagnosticsRuntime === undefined ? {} : { diagnostics: diagnosticsRuntime })}
       loadCalendarRange={calendarRead.loadCalendarRange}

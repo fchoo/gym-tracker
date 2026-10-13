@@ -132,10 +132,10 @@ function completeFixture() {
           sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
           synthetic: true,
           samples: [
-            { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
-            { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
-            { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
-            { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
+            { kind: "drag", commandedRatio: 0.249, dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
+            { kind: "drag", commandedRatio: 0.25, dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
+            { kind: "drag", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
+            { kind: "release", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
           ],
         },
         semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" },
@@ -154,8 +154,8 @@ function traceForStage(stage) {
     sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
     synthetic: true,
   };
-  const drag = (dx, titleOffset, elapsedMs = 1) => ({ kind: "drag", dx, viewportWidth: 100, transformX: dx, semanticOffset: 0, titleOffset, elapsedMs, synthetic: true });
-  const release = (dx, offset, elapsedMs = 2) => ({ kind: "release", dx, viewportWidth: 100, semanticOffset: offset, titleOffset: offset, elapsedMs, synthetic: true });
+  const drag = (dx, titleOffset, elapsedMs = 1) => ({ kind: "drag", commandedRatio: Math.abs(dx) / 100, dx, viewportWidth: 100, transformX: dx, semanticOffset: 0, titleOffset, elapsedMs, synthetic: true });
+  const release = (dx, offset, elapsedMs = 2) => ({ kind: "release", commandedRatio: Math.abs(dx) / 100, dx, viewportWidth: 100, semanticOffset: offset, titleOffset: offset, elapsedMs, synthetic: true });
   const focus = (elapsedMs) => ({ kind: "focus", selected: { y: 10, height: 48 }, following: { y: 58, height: 48 }, destination: { selectedY: 0, followingY: 200 }, focusRingWidthDp: 3, focusClearanceDp: 4, elapsedMs, synthetic: true });
   const threshold = {
     "drag-forward-10": [-10, 0], "drag-forward-24_9": [-24.9, 0], "drag-forward-25": [-25, 1], "drag-forward-25_1": [-25.1, 1],
@@ -371,6 +371,17 @@ test("Calendar comparison keeps committed semantics stable while the title previ
   }
 });
 
+test("threshold traces bind the commanded marker separately from quantized measured dx", () => {
+  const trace = traceForStage("drag-forward-24_9");
+  trace.samples[0].commandedRatio = 0.249;
+  trace.samples[0].dx = -25.3;
+  trace.samples[0].transformX = -25.3;
+  trace.samples[1].commandedRatio = 0.249;
+  trace.samples[1].dx = -25.3;
+
+  assert.equal(validateV12CalendarStageTrace(trace), true);
+});
+
 test("every Calendar diagnostic stage has a truthful stage-specific trace schema", () => {
   for (const stage of V12_CALENDAR_DIAGNOSTIC_STAGES) {
     assert.equal(validateV12CalendarStageTrace(traceForStage(stage)), true, stage);
@@ -389,15 +400,16 @@ test("every Calendar diagnostic stage has a truthful stage-specific trace schema
   };
   reject("drag-forward-10", (trace) => { trace.samples = []; }, /trace_invalid/u);
   reject("drag-forward-10", (trace) => { trace.samples[1].viewportWidth = 0; }, /trace_invalid/u);
+  reject("drag-forward-10", (trace) => { trace.samples[0].dx = -20; trace.samples[0].transformX = -20; }, /trace_invalid/u);
   reject("drag-forward-10", (trace) => { trace.samples[0].kind = "unknown"; }, /trace_invalid/u);
   reject("drag-forward-10", (trace) => { trace.samples[0].synthetic = false; }, /trace_invalid/u);
   reject("drag-forward-10", (trace) => { trace.samples[0].elapsedMs = -1; }, /trace_invalid/u);
   reject("drag-forward-10", (trace) => { trace.samples[1].elapsedMs = 1; }, /trace_time_invalid/u);
   reject("drag-forward-10", (trace) => { trace.samples[1].semanticOffset = 1; }, /trace_stage_semantic_invalid/u);
-  reject("drag-forward-release-below", (trace) => { trace.samples[0].dx = -25; }, /trace_stage_semantic_invalid/u);
+  reject("drag-forward-release-below", (trace) => { trace.samples[0].commandedRatio = 0.25; }, /trace_stage_semantic_invalid/u);
   reject("drag-fast-subthreshold", (trace) => { trace.samples[0].semanticOffset = 1; }, /trace_stage_semantic_invalid/u);
   reject("drag-retreat", (trace) => { trace.samples[0].titleOffset = 0; }, /trace_stage_semantic_invalid/u);
-  reject("drag-cancel", (trace) => { trace.samples = [{ kind: "release", dx: -10, viewportWidth: 100, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true }]; }, /trace_stage_sample_missing/u);
+  reject("drag-cancel", (trace) => { trace.samples = [{ kind: "release", commandedRatio: 0.1, dx: -10, viewportWidth: 100, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true }]; }, /trace_stage_sample_missing/u);
   reject("week-expand-first-row", (trace) => { trace.samples = [{ kind: "cancel", elapsedMs: 1, synthetic: true }]; }, /trace_stage_sample_missing/u);
   reject("adjacent-week", (trace) => { trace.samples.pop(); }, /trace_stage_sample_missing/u);
   reject("rapid-reverse-input", (trace) => { trace.samples.pop(); }, /trace_stage_sample_missing/u);

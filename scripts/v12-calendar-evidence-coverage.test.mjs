@@ -17,10 +17,12 @@ import test from "node:test";
 import { PNG } from "pngjs";
 
 import {
+  createV12CalendarDiagnosticDrivePlan,
   createV12CalendarDiagnostics,
   encodeV12CalendarDiagnosticsResult,
   executeV12CalendarDiagnostics,
   extractV12CalendarDiagnosticsResult,
+  parseV12CalendarDeviceSize,
   parseV12CalendarDiagnosticsArgs,
   runV12CalendarAdb,
   runV12CalendarDiagnosticsCli,
@@ -76,6 +78,7 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const fixture = () => JSON.parse(readFileSync("scripts/fixtures/v12-calendar-evidence/complete.json", "utf8"));
 const comparisonFixturePath = "scripts/fixtures/v12-calendar-comparison/complete.json";
+const DIAGNOSTIC_STREAM_ID = "p16diag-bbbbbbbbbbbb-dddddddddddd";
 
 function manifest() {
   return {
@@ -198,10 +201,10 @@ function comparisonFixture() {
     sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
     synthetic: true,
     samples: [
-      { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
-      { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
-      { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
-      { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
+      { kind: "drag", commandedRatio: 0.249, dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
+      { kind: "drag", commandedRatio: 0.25, dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
+      { kind: "drag", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
+      { kind: "release", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
     ],
   };
   return {
@@ -330,6 +333,7 @@ test("diagnostic argument, adb, and marker helpers reject every malformed bounda
   const encoded = encodeV12CalendarDiagnosticsResult({ ok: true });
   assert.deepEqual(extractV12CalendarDiagnosticsResult(`noise\n${encoded.join("\n")}`), { ok: true });
   assert.throws(() => encodeV12CalendarDiagnosticsResult({ ok: true }, "Alice"), /result_stream_invalid/u);
+  assert.throws(() => extractV12CalendarDiagnosticsResult(encoded.join("\n"), "p16diag-wrong-stream"), /result_stream_identity_invalid/u);
   assert.throws(() => extractV12CalendarDiagnosticsResult("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:{"), /result_json_invalid/u);
   const malformedChunk = JSON.parse(encoded[0].split(":").slice(1).join(":"));
   for (const mutate of [
@@ -361,6 +365,16 @@ test("diagnostic argument, adb, and marker helpers reject every malformed bounda
     spawn: (...args) => { invocation = args; return { status: 0, stdout: " ok \n" }; },
   }), "ok");
   assert.deepEqual(invocation, [fakeAdb, ["-s", "serial", "devices"], { cwd: "/repo", encoding: "utf8" }]);
+  assert.deepEqual(parseV12CalendarDeviceSize("Physical size: 1080x2400\nOverride size: 720x1600"), { width: 720, height: 1600 });
+  assert.throws(() => parseV12CalendarDeviceSize("unknown"), /device_size_invalid/u);
+  const drivePlan = createV12CalendarDiagnosticDrivePlan({ querySamples: 101, interactionSamples: 102, width: 1080, height: 2400 });
+  const driveSwipes = drivePlan.filter((args) => args[1] === "input" && args[2] === "swipe");
+  assert.equal(driveSwipes.length, 102);
+  assert.equal(driveSwipes.filter((args) => args[5] === "432").length, 100);
+  assert.equal(driveSwipes.filter((args) => args[5] === "648").length, 2);
+  assert.ok(drivePlan.length <= 1 + 500 * 6);
+  assert.throws(() => createV12CalendarDiagnosticDrivePlan({ querySamples: 99, interactionSamples: 100, width: 1080, height: 2400 }), /drive_count_invalid/u);
+  assert.throws(() => createV12CalendarDiagnosticDrivePlan({ querySamples: 100, interactionSamples: 100, width: 0, height: 2400 }), /device_size_invalid/u);
 });
 
 test("diagnostic validators exercise every exact-schema and numeric branch", () => {
@@ -430,7 +444,7 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
   try {
     writeFileSync(path.join(root, "build.json"), JSON.stringify(manifest()));
     const raw = rawDiagnostics();
-    const logs = encodeV12CalendarDiagnosticsResult(raw).join("\n");
+    const logs = encodeV12CalendarDiagnosticsResult(raw, DIAGNOSTIC_STREAM_ID).join("\n");
     const calls = [];
     const result = await executeV12CalendarDiagnostics(["--manifest", "build.json"], {
       root,
@@ -439,7 +453,11 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       serial: "hashed-outside-evidence",
       now: () => 0,
       wait: async () => undefined,
-      adb: (...args) => { calls.push(args); return args[1] === "-d" ? logs : ""; },
+      adb: (...args) => {
+        calls.push(args);
+        if (args[0] === "shell" && args[1] === "wm") return "Physical size: 1080x2400";
+        return args[1] === "-d" ? logs : "";
+      },
     });
     assert.deepEqual(result, {
       output: "diagnostics/calendar.json",
@@ -447,7 +465,11 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       interaction_samples: 100,
       acceptance_owner: "phase20",
     });
-    assert.equal(calls.length, 3);
+    assert.equal(calls.filter((args) => args[0] === "shell" && args[1] === "input" && args[2] === "swipe").length, 100);
+    assert.equal(calls.filter((args) => args[0] === "shell" && args[1] === "input" && args[2] === "tap").length, 100);
+    assert.equal(calls.filter((args) => args[0] === "shell" && args[1] === "input" && args[2] === "keyevent").length, 100);
+    assert.match(calls.find((args) => args[0] === "shell" && args[1] === "am")?.join(" ") ?? "", /diagnosticStreamId=p16diag-/u);
+    assert.ok(calls.find((args) => args[0] === "shell" && args[1] === "wm" && args[2] === "size"));
     assert.equal(readFileSync(path.join(root, result.output), "utf8").includes("Alice"), false);
     const cli = captureIo();
     assert.equal(await runV12CalendarDiagnosticsCli(["--manifest", "build.json", "--output", "diagnostics/cli.json"], cli.io, {
@@ -456,7 +478,9 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       source: manifest().source_tree_sha256,
       now: () => 0,
       wait: async () => undefined,
-      adb: (...args) => args[1] === "-d" ? logs : "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm"
+        ? "Physical size: 1080x2400"
+        : args[1] === "-d" ? logs : "",
       write: writeFileSync,
     }), 0);
     assert.match(cli.stdout[0], /"acceptance_owner":"phase20"/u);
@@ -478,18 +502,22 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       source: manifest().source_tree_sha256,
       now: (() => { const values = [0, 600_001]; return () => values.shift() ?? 600_001; })(),
       wait: async () => undefined,
-      adb: () => "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm" ? "Physical size: 1080x2400" : "",
     };
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json"], dependencies), /result_missing/u);
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--output", "../escape.json"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm"
+        ? "Physical size: 1080x2400"
+        : args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics(), DIAGNOSTIC_STREAM_ID).join("\n") : "",
     }), /output_path_invalid/u);
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--query-samples", "101"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm"
+        ? "Physical size: 1080x2400"
+        : args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics(), DIAGNOSTIC_STREAM_ID).join("\n") : "",
     }), /requested_sample_count_mismatch/u);
   } finally {
     rmSync(failureRoot, { recursive: true, force: true });
@@ -510,9 +538,10 @@ test("diagnostic execution default adapters read git identity, adb output, clock
     const adbDirectory = path.join(sdkRoot, "platform-tools");
     mkdirSync(adbDirectory, { recursive: true });
     const counterPath = path.join(sdkRoot, "counter");
-    const raw = encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\\n").replaceAll("'", "");
+    const streamId = `p16diag-${current.source_tree_sha256.slice(0, 12)}-${current.device.identity_sha256.slice(0, 12)}`;
+    const raw = encodeV12CalendarDiagnosticsResult(rawDiagnostics(), streamId).join("\\n").replaceAll("'", "");
     const adbPath = path.join(adbDirectory, "adb");
-    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%b\\n' '${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
+    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"shell wm size"*) printf '%s\\n' 'Physical size: 1080x2400' ;;\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%b\\n' '${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
     chmodSync(adbPath, 0o755);
     process.env.ANDROID_HOME = sdkRoot;
     process.env.ANDROID_SERIAL = "local-test-device";
@@ -564,6 +593,14 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   assert.throws(() => validateV12CalendarFlow(`${flow}\n# October 2026`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(`${flow}\n# phase16CalendarReducedMotion=true`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_STAGE == 'drag-forward-10'", "PHASE16_CALENDAR_STAGE == 'missing'")), /stage_missing/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace(
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:",
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:\n      - swipe: { start: \"70%, 45%\", end: \"40%, 45%\", duration: 240 }",
+  )), /flow_stage_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace(
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:",
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:\n      - pressKey: BACK",
+  )), /flow_stage_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("takeScreenshot", "capture")), /capture_missing/u);
   const runnerPlan = createV12CalendarRunnerPlan(valid);
   assert.equal(runnerPlan.stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);

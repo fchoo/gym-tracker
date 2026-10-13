@@ -30,6 +30,7 @@ import {
 const ROOT = process.cwd();
 const SHA256 = /^[a-f0-9]{64}$/u;
 const CASE_EVIDENCE_PRODUCER = "v12-calendar-native-case/v1";
+const MAX_COMMAND_RATIO_DELTA = 0.03;
 const CASE_RECORD_FILES = Object.freeze({
   functional: "functional.junit.xml",
   trace: "trace.json",
@@ -118,11 +119,11 @@ export function validateV12CalendarStageTrace(trace) {
   if (trace.samples.length === 0) fail("trace_invalid");
   for (const sample of trace.samples) {
     if (sample.kind === "drag") {
-      schema(sample, ["kind", "dx", "viewportWidth", "transformX", "semanticOffset", "titleOffset", "elapsedMs", "synthetic"], "trace.drag");
-      if (![sample.dx, sample.viewportWidth, sample.transformX].every(finite) || sample.viewportWidth <= 0) fail("trace_invalid");
+      schema(sample, ["kind", "commandedRatio", "dx", "viewportWidth", "transformX", "semanticOffset", "titleOffset", "elapsedMs", "synthetic"], "trace.drag");
+      if (![sample.commandedRatio, sample.dx, sample.viewportWidth, sample.transformX].every(finite) || sample.commandedRatio < 0 || sample.commandedRatio > 1 || sample.viewportWidth <= 0 || Math.abs(ratio(sample) - sample.commandedRatio) > MAX_COMMAND_RATIO_DELTA) fail("trace_invalid");
     } else if (sample.kind === "release") {
-      schema(sample, ["kind", "dx", "viewportWidth", "semanticOffset", "titleOffset", "elapsedMs", "synthetic"], "trace.release");
-      if (![sample.dx, sample.viewportWidth].every(finite) || sample.viewportWidth <= 0) fail("trace_invalid");
+      schema(sample, ["kind", "commandedRatio", "dx", "viewportWidth", "semanticOffset", "titleOffset", "elapsedMs", "synthetic"], "trace.release");
+      if (![sample.commandedRatio, sample.dx, sample.viewportWidth].every(finite) || sample.commandedRatio < 0 || sample.commandedRatio > 1 || sample.viewportWidth <= 0 || Math.abs(ratio(sample) - sample.commandedRatio) > MAX_COMMAND_RATIO_DELTA) fail("trace_invalid");
     }
     else if (sample.kind === "cancel") schema(sample, ["kind", "elapsedMs", "synthetic"], "trace.cancel");
     else if (sample.kind === "focus") {
@@ -137,18 +138,18 @@ export function validateV12CalendarStageTrace(trace) {
   if (trace.samples.some((sample, index) => index > 0 && sample.elapsedMs <= trace.samples[index - 1].elapsedMs)) fail("trace_time_invalid");
   const threshold = THRESHOLD_STAGES[trace.stage];
   if (threshold !== undefined) {
-    const sample = trace.samples.find((entry) => entry.kind === "drag" && finite(entry.dx) && finite(entry.viewportWidth) && Math.abs(ratio(entry) - threshold.marker) < 0.00001);
+    const sample = trace.samples.find((entry) => entry.kind === "drag" && entry.commandedRatio === threshold.marker);
     if (sample === undefined) fail("trace_stage_sample_missing");
     if ([Math.sign(sample.dx) * -1 !== threshold.direction, sample.semanticOffset !== 0, sample.titleOffset !== threshold.title, sample.transformX !== sample.dx].some(Boolean)) fail("trace_stage_semantic_invalid");
     const release = trace.samples.find((entry) => entry.kind === "release");
-    if (release === undefined || Math.abs(ratio(release) - threshold.marker) >= 0.00001 || release.semanticOffset !== threshold.title || release.titleOffset !== threshold.title) fail("trace_stage_semantic_invalid");
+    if (release === undefined || release.commandedRatio !== threshold.marker || release.semanticOffset !== threshold.title || release.titleOffset !== threshold.title) fail("trace_stage_semantic_invalid");
     return true;
   }
   const releases = trace.samples.filter(({ kind }) => kind === "release");
   if (trace.stage.includes("release-")) {
     const expected = trace.stage.endsWith("below") ? 0 : trace.stage.startsWith("drag-forward") ? 1 : -1;
-    const boundary = trace.stage.endsWith("below") ? (value) => value < 0.25 : trace.stage.endsWith("exact") ? (value) => Math.abs(value - 0.25) < 0.00001 : (value) => value > 0.25;
-    if (releases.length !== 1 || !boundary(ratio(releases[0])) || releases[0].semanticOffset !== expected || releases[0].titleOffset !== expected) fail("trace_stage_semantic_invalid");
+    const marker = trace.stage.endsWith("below") ? 0.249 : trace.stage.endsWith("exact") ? 0.25 : 0.251;
+    if (releases.length !== 1 || releases[0].commandedRatio !== marker || releases[0].semanticOffset !== expected || releases[0].titleOffset !== expected) fail("trace_stage_semantic_invalid");
   } else if (trace.stage === "drag-fast-subthreshold") {
     if (releases.length !== 1 || ratio(releases[0]) >= 0.25 || releases[0].semanticOffset !== 0) fail("trace_stage_semantic_invalid");
   } else if (trace.stage === "drag-retreat") {
@@ -483,7 +484,7 @@ function fixtureInput(file) {
   const hash = sha256(bytes);
   const map = { schema_version: 1, prototype_revision: 18, source_manifest_sha256: fixture.source_manifest_sha256, host_only_fixture: true, case_registry: V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, captures: [{ id: "calendar-month-light-390", requirement_ids: ["CAL-01"], reference: { path: reference, sha256: hash, width: 1, height: 1 }, configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" } }], case_ledger: V12_CALENDAR_CASE_LEDGER_DESCRIPTOR };
   const identity = { base_head: "a".repeat(40), source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, reference_map_sha256: v12CalendarReferenceMapSha256(map), package: "com.fchoo.gymtracker.devtest", apk_sha256: "c".repeat(64), installed_apk_sha256: "c".repeat(64), device_identity_sha256: "d".repeat(64), report_sha256: "e".repeat(64) };
-  const run = { schema_version: 1, run_id: "phase16-host-deferred", identity, source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, status: "NOT_RUN", captures: [{ id: "calendar-month-light-390", native: { path: native, sha256: hash, width: 1, height: 1 }, trace: { schemaVersion: 1, stage: "drag-forward-25_1", traceNonce: "p16trace-host-1", sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" }, synthetic: true, samples: [{ kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true }, { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true }, { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true }, { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true }] }, semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" }, classification: "REVIEW_REQUIRED", differences: [] }] };
+  const run = { schema_version: 1, run_id: "phase16-host-deferred", identity, source_tree_sha256: fixture.source_tree_sha256, source_manifest_sha256: fixture.source_manifest_sha256, status: "NOT_RUN", captures: [{ id: "calendar-month-light-390", native: { path: native, sha256: hash, width: 1, height: 1 }, trace: { schemaVersion: 1, stage: "drag-forward-25_1", traceNonce: "p16trace-host-1", sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" }, synthetic: true, samples: [{ kind: "drag", commandedRatio: 0.249, dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true }, { kind: "drag", commandedRatio: 0.25, dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true }, { kind: "drag", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true }, { kind: "release", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true }] }, semantics: { focus_ring_dp: 3, focus_clearance_dp: 4, authority: "read-only", target: "calendar-month" }, classification: "REVIEW_REQUIRED", differences: [] }] };
   return { directory, map, run };
 }
 

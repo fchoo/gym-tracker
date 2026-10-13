@@ -661,9 +661,11 @@ test("Calendar diagnostics and live verification reject symlinked parent directo
     const currentManifest = manifest();
     writeFileSync(path.join(root, "build.json"), `${JSON.stringify(currentManifest)}\n`);
     const raw = rawDiagnostics();
-    const adb = (...args) => args[0] === "logcat" && args[1] === "-d"
-      ? encodeV12CalendarDiagnosticsResult(raw).join("\n")
-      : "";
+    const adb = (...args) => args[0] === "shell" && args[1] === "wm"
+      ? "Physical size: 1080x2400"
+      : args[0] === "logcat" && args[1] === "-d"
+        ? encodeV12CalendarDiagnosticsResult(raw, "p16diag-bbbbbbbbbbbb-dddddddddddd").join("\n")
+        : "";
     await assert.rejects(
       executeV12CalendarDiagnostics([
         "--manifest", "build.json",
