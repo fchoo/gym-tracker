@@ -194,8 +194,21 @@ type RecommendationSourceSessionRow = Readonly<{
 }>;
 
 type RecommendationDecisionReceiptRow = Readonly<{
+  request_id: string;
   request_sha256: string;
+  recommendation_id: string;
+  decision: RecommendationDecision;
   result_json: string;
+}>;
+
+type CompleteRecommendationDecisionInput = Readonly<{
+  recommendationId: string;
+  decidedAtMs: number;
+  requestId: string;
+  decision: RecommendationDecision;
+  expectedEvidenceVersion: number;
+  expectedSourceRevision: number;
+  expectedTargetRevision: number;
 }>;
 
 async function supportsOwnedRecommendations(
@@ -403,18 +416,23 @@ async function pendingRecommendation(
   return owned === undefined ? null : { ...owned, target_graph: "owned" };
 }
 
-function explicitDecisionEnvelope(input: RecommendationDecisionInput): boolean {
-  return input.requestId !== undefined
-    || input.decision !== undefined
-    || input.expectedEvidenceVersion !== undefined
-    || input.expectedSourceRevision !== undefined
-    || input.expectedTargetRevision !== undefined;
-}
-
 function receiptTable(graph: RecommendationRow["target_graph"]): string {
   return graph === "owned"
     ? "owned_progression_recommendation_decision_receipts"
     : "progression_recommendation_decision_receipts";
+}
+
+async function supportsRecommendationDecisionReceipts(
+  executor: QueryExecutor,
+): Promise<boolean> {
+  const [row] = await executor.queryAll<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM sqlite_master
+      WHERE type = 'table' AND name IN (
+        'progression_recommendation_decision_receipts',
+        'owned_progression_recommendation_decision_receipts'
+      )`,
+  );
+  return row?.count === 2;
 }
 
 async function readRecommendationDecisionReceipt(
@@ -422,13 +440,13 @@ async function readRecommendationDecisionReceipt(
   requestId: string,
 ): Promise<RecommendationDecisionReceiptRow | null> {
   const [legacy] = await executor.queryAll<RecommendationDecisionReceiptRow>(
-    `SELECT request_sha256, result_json
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
      FROM progression_recommendation_decision_receipts
      WHERE request_id = ?`,
     [requestId],
   );
   const [owned] = await executor.queryAll<RecommendationDecisionReceiptRow>(
-    `SELECT request_sha256, result_json
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
      FROM owned_progression_recommendation_decision_receipts
      WHERE request_id = ?`,
     [requestId],
@@ -437,6 +455,31 @@ async function readRecommendationDecisionReceipt(
     throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
   }
   return legacy ?? owned ?? null;
+}
+
+async function readRecommendationDecisionReceiptByRecommendation(
+  executor: QueryExecutor,
+  recommendationId: string,
+): Promise<RecommendationDecisionReceiptRow | null> {
+  const legacy = await executor.queryAll<RecommendationDecisionReceiptRow>(
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
+       FROM progression_recommendation_decision_receipts
+      WHERE recommendation_id = ?
+      ORDER BY request_id`,
+    [recommendationId],
+  );
+  const owned = await executor.queryAll<RecommendationDecisionReceiptRow>(
+    `SELECT request_id, request_sha256, recommendation_id, decision, result_json
+       FROM owned_progression_recommendation_decision_receipts
+      WHERE recommendation_id = ?
+      ORDER BY request_id`,
+    [recommendationId],
+  );
+  const receipts = [...legacy, ...owned];
+  if (receipts.length > 1) {
+    throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+  }
+  return receipts[0] ?? null;
 }
 
 function resultFromReceipt(value: string): RecommendationDecisionResult {
@@ -453,10 +496,7 @@ function resultFromReceipt(value: string): RecommendationDecisionResult {
   };
 }
 
-function requestIdFor(input: RecommendationDecisionInput, decision: RecommendationDecision): string {
-  if (input.requestId === undefined) {
-    throw new WorkoutOutcomeConflictError("recommendation_request_identity_missing");
-  }
+function requestIdFor(input: CompleteRecommendationDecisionInput): string {
   return input.requestId;
 }
 
@@ -472,37 +512,57 @@ async function recommendationIdFor(
 }
 
 async function requestHashFor(
-  input: RecommendationDecisionInput,
-  decision: RecommendationDecision,
-  recommendation: RecommendationRow,
+  input: CompleteRecommendationDecisionInput,
 ): Promise<string> {
   return runtimeSha256(canonicalRecommendationDecisionRequest({
     recommendationId: input.recommendationId,
-    requestId: requestIdFor(input, decision),
-    decision,
-    expectedEvidenceVersion: input.expectedEvidenceVersion ?? recommendation.evidence_version,
-    expectedSourceRevision: input.expectedSourceRevision ?? recommendation.source_revision,
-    expectedTargetRevision: input.expectedTargetRevision ?? recommendation.target_revision,
+    requestId: requestIdFor(input),
+    decision: input.decision,
+    expectedEvidenceVersion: input.expectedEvidenceVersion,
+    expectedSourceRevision: input.expectedSourceRevision,
+    expectedTargetRevision: input.expectedTargetRevision,
     decidedAtMs: input.decidedAtMs,
   }));
 }
 
-function requestFencesMatch(
+async function completeDecisionInput(
   input: RecommendationDecisionInput,
+  decision: RecommendationDecision,
+  recommendation: RecommendationRow,
+): Promise<CompleteRecommendationDecisionInput> {
+  const requestId = input.requestId ?? `recommendation_decision_${await runtimeSha256(JSON.stringify({
+    decision,
+    evidenceVersion: recommendation.evidence_version,
+    recommendationId: recommendation.id,
+    sourceRevision: recommendation.source_revision,
+    targetRevision: recommendation.target_revision,
+  }))}`;
+  const completed = Object.freeze({
+    recommendationId: input.recommendationId,
+    decidedAtMs: input.decidedAtMs,
+    requestId,
+    decision,
+    expectedEvidenceVersion: input.expectedEvidenceVersion ?? recommendation.evidence_version,
+    expectedSourceRevision: input.expectedSourceRevision ?? recommendation.source_revision,
+    expectedTargetRevision: input.expectedTargetRevision ?? recommendation.target_revision,
+  });
+  validateRecommendationDecisionInput(completed, decision);
+  return completed;
+}
+
+function requestFencesMatch(
+  input: CompleteRecommendationDecisionInput,
   recommendation: RecommendationRow,
 ): boolean {
-  return !explicitDecisionEnvelope(input) || (
-    input.expectedEvidenceVersion === recommendation.evidence_version
+  return input.expectedEvidenceVersion === recommendation.evidence_version
     && input.expectedSourceRevision === recommendation.source_revision
-    && input.expectedTargetRevision === recommendation.target_revision
-  );
+    && input.expectedTargetRevision === recommendation.target_revision;
 }
 
 async function persistRecommendationDecisionReceipt(
   transaction: SqliteTransactionExecutor,
   recommendation: RecommendationRow,
-  input: RecommendationDecisionInput,
-  decision: RecommendationDecision,
+  input: CompleteRecommendationDecisionInput,
   requestSha256: string,
   result: RecommendationDecisionResult,
 ): Promise<RecommendationDecisionResult> {
@@ -511,10 +571,10 @@ async function persistRecommendationDecisionReceipt(
       (request_id, request_sha256, recommendation_id, decision, result_json, committed_at_ms)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
-      requestIdFor(input, decision),
+      requestIdFor(input),
       requestSha256,
       recommendation.id,
-      decision,
+      input.decision,
       JSON.stringify(result),
       input.decidedAtMs,
     ],
@@ -2255,6 +2315,43 @@ export function createWorkoutOutcomeRepository(
 ): WorkoutOutcomeRepository & ProgressionRepository {
   const repository: WorkoutOutcomeRepository & ProgressionRepository = {
     getSessionDetail: (sessionId) => loadSessionDetail(kernel, sessionId),
+    getSessionDetailAtRevision: async (sessionId, sourceRevision) => {
+      if (!Number.isSafeInteger(sourceRevision) || sourceRevision <= 0) {
+        throw new WorkoutOutcomeConflictError("workout_source_revision_invalid");
+      }
+      const load = async (executor: QueryExecutor) => {
+        const [source] = await executor.queryAll<{
+          effective_revision: number;
+          lifecycle: string;
+        }>(
+          `SELECT COALESCE(overlay.effective_revision, session.revision) AS effective_revision,
+                  CASE WHEN overlay.lifecycle IS NOT NULL THEN overlay.lifecycle
+                       WHEN session.status = 'voided' THEN 'voided'
+                       ELSE 'active' END AS lifecycle
+             FROM workout_sessions session
+             LEFT JOIN history_session_overlays overlay ON overlay.session_id = session.id
+            WHERE session.id = ?`,
+          [sessionId],
+        );
+        if (source === undefined) {
+          throw new WorkoutOutcomeConflictError("workout_session_not_found");
+        }
+        if (source.lifecycle !== "active") {
+          throw new WorkoutOutcomeConflictError("workout_source_removed");
+        }
+        if (source.effective_revision !== sourceRevision) {
+          throw new WorkoutOutcomeConflictError("workout_source_revision_mismatch");
+        }
+        const detail = await loadSessionDetail(executor, sessionId);
+        if (detail.revision !== sourceRevision) {
+          throw new WorkoutOutcomeConflictError("workout_source_revision_mismatch");
+        }
+        return detail;
+      };
+      return kernel.readSnapshot === undefined
+        ? load(kernel)
+        : kernel.readSnapshot((executor) => load(executor));
+    },
 
     finishCompleted: (input) =>
       kernel.write((transaction) =>
@@ -2516,8 +2613,9 @@ export function createWorkoutOutcomeRepository(
       const decision = "use_target" as const;
       validateRecommendationDecisionInput(input, decision);
       return kernel.write(async (transaction) => {
-        if (explicitDecisionEnvelope(input)) {
-          const requestId = requestIdFor(input, decision);
+        const receiptSupport = await supportsRecommendationDecisionReceipts(transaction);
+        if (receiptSupport && input.requestId !== undefined) {
+          const requestId = input.requestId;
           const receipt = await readRecommendationDecisionReceipt(transaction, requestId);
           if (receipt !== null) {
             const requestSha256 = await runtimeSha256(
@@ -2537,6 +2635,15 @@ export function createWorkoutOutcomeRepository(
             return resultFromReceipt(receipt.result_json);
           }
         }
+        const priorDecision = receiptSupport
+          ? await readRecommendationDecisionReceiptByRecommendation(transaction, input.recommendationId)
+          : null;
+        if (priorDecision !== null) {
+          if (priorDecision.decision !== decision) {
+            throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+          }
+          return resultFromReceipt(priorDecision.result_json);
+        }
         const recommendation = await pendingRecommendation(
           transaction,
           input.recommendationId,
@@ -2546,18 +2653,16 @@ export function createWorkoutOutcomeRepository(
             "recommendation_decision_conflict",
           );
         }
-        const requestSha256 = explicitDecisionEnvelope(input)
-          ? await requestHashFor(input, decision, recommendation)
-          : "";
-        const commit = (result: RecommendationDecisionResult) => explicitDecisionEnvelope(input)
+        const command = await completeDecisionInput(input, decision, recommendation);
+        const requestSha256 = await requestHashFor(command);
+        const commit = (result: RecommendationDecisionResult) => receiptSupport
           ? persistRecommendationDecisionReceipt(
-              transaction,
-              recommendation,
-              input,
-              decision,
-              requestSha256,
-              result,
-            )
+            transaction,
+            recommendation,
+            command,
+            requestSha256,
+            result,
+          )
           : Promise.resolve(result);
         const graph = recommendation.target_graph;
         const recommendationTableName = recommendationTable(graph);
@@ -2580,7 +2685,7 @@ export function createWorkoutOutcomeRepository(
           });
         };
         if (
-          !requestFencesMatch(input, recommendation)
+          !requestFencesMatch(command, recommendation)
           ||
           recommendation.evidence_version !== ACTIONABLE_RECOMMENDATION_EVIDENCE_VERSION
           || recommendation.rule_type !== "load_reps"
@@ -2732,8 +2837,9 @@ export function createWorkoutOutcomeRepository(
       const decision = "keep_current_target" as const;
       validateRecommendationDecisionInput(input, decision);
       return kernel.write(async (transaction) => {
-        if (explicitDecisionEnvelope(input)) {
-          const requestId = requestIdFor(input, decision);
+        const receiptSupport = await supportsRecommendationDecisionReceipts(transaction);
+        if (receiptSupport && input.requestId !== undefined) {
+          const requestId = input.requestId;
           const receipt = await readRecommendationDecisionReceipt(transaction, requestId);
           if (receipt !== null) {
             const requestSha256 = await runtimeSha256(
@@ -2753,6 +2859,15 @@ export function createWorkoutOutcomeRepository(
             return resultFromReceipt(receipt.result_json);
           }
         }
+        const priorDecision = receiptSupport
+          ? await readRecommendationDecisionReceiptByRecommendation(transaction, input.recommendationId)
+          : null;
+        if (priorDecision !== null) {
+          if (priorDecision.decision !== decision) {
+            throw new WorkoutOutcomeConflictError("recommendation_request_identity_conflict");
+          }
+          return resultFromReceipt(priorDecision.result_json);
+        }
         const recommendation = await pendingRecommendation(
           transaction,
           input.recommendationId,
@@ -2762,20 +2877,18 @@ export function createWorkoutOutcomeRepository(
             "recommendation_decision_conflict",
           );
         }
-        const requestSha256 = explicitDecisionEnvelope(input)
-          ? await requestHashFor(input, decision, recommendation)
-          : "";
-        const commit = (result: RecommendationDecisionResult) => explicitDecisionEnvelope(input)
+        const command = await completeDecisionInput(input, decision, recommendation);
+        const requestSha256 = await requestHashFor(command);
+        const commit = (result: RecommendationDecisionResult) => receiptSupport
           ? persistRecommendationDecisionReceipt(
-              transaction,
-              recommendation,
-              input,
-              decision,
-              requestSha256,
-              result,
-            )
+            transaction,
+            recommendation,
+            command,
+            requestSha256,
+            result,
+          )
           : Promise.resolve(result);
-        if (!requestFencesMatch(input, recommendation)) {
+        if (!requestFencesMatch(command, recommendation)) {
           const superseded = await transaction.execute(
             `UPDATE ${recommendationTable(recommendation.target_graph)}
              SET status = 'superseded', decided_at_ms = ?

@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from "@jest/globals";
 
-import { createProgressRepository } from "./progressRepository";
+import { __progressRepositoryTestOnly, createProgressRepository } from "./progressRepository";
 import type {
   SqliteReadTransactionExecutor,
   SqliteSnapshotKernel,
@@ -22,6 +22,64 @@ function snapshotKernel(
 }
 
 describe("progress repository factual source reads", () => {
+  it("covers defensive source revision, goal parsing, and active-plan cardinality branches", async () => {
+    const row = {
+      id: "goal",
+      plan_id: "plan",
+      revision: 1,
+      created_at_ms: 1,
+      is_current: 1,
+      goal_json: JSON.stringify({
+        version: 1,
+        id: "goal",
+        planId: "plan",
+        revision: 1,
+        goalDistanceMeters: 10_000,
+        targetDurationMs: 660_001,
+        targetLocalDate: "2026-12-01",
+        trainingDays: ["Monday"],
+        createdAtMs: 1,
+      }),
+    };
+    expect(__progressRepositoryTestOnly.dashboardGoalFromRow(row, 0)).toMatchObject({
+      targetDurationSeconds: null,
+      targetLocalDate: "2026-12-01",
+    });
+    expect(__progressRepositoryTestOnly.dashboardGoalFromRow({
+      ...row,
+      goal_json: "{",
+    }, 0)).toBeNull();
+    const exposure = __progressRepositoryTestOnly.exposureFromRow({
+      exercise_id: "bench",
+      identity_key: "load_reps:1:1",
+      comparator_key: "identity",
+      session_id: "session",
+      local_date: "2026-11-01",
+      set_id: "set",
+      set_ordinal: 0,
+      completed_at_ms: 1,
+      target_json: "{}",
+      observation_json: "{}",
+    }, new Map([["session\u0000set", {
+      exerciseId: "bench",
+      exerciseName: "Bench Press",
+      sessionId: "session",
+      sourceRevision: undefined,
+    } as never]]));
+    expect(exposure.sourceRevision).toBeNull();
+    expect(__progressRepositoryTestOnly.progressRecordFromExposure(exposure))
+      .toMatchObject({ sourceRevision: null });
+    const { sourceRevision: _sourceRevision, ...withoutSourceRevision } = exposure;
+    expect(__progressRepositoryTestOnly.progressRecordFromExposure(withoutSourceRevision))
+      .not.toHaveProperty("sourceRevision");
+
+    const executor = {
+      queryAll: jest.fn(async () => [{ plan_id: "one" }, { plan_id: "two" }]),
+    } as unknown as SqliteReadTransactionExecutor;
+    await expect(__progressRepositoryTestOnly.loadRunningTargetSources(executor))
+      .rejects.toThrow("progress_running_active_plan_invalid");
+  });
+
   it("requires the source-coherent snapshot kernel", () => {
     expect(() => createProgressRepository({ queryAll: jest.fn() } as never))
       .toThrow("progress_snapshot_kernel_required");

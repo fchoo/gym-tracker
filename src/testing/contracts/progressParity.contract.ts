@@ -204,7 +204,8 @@ async function probeRequirementOutcome(
       return { sport: result.dashboard.sport, state: result.dashboard.state };
     }
     case "progress-pro04-running":
-      invariant(input.goal.latest.durationSeconds === 660, "progress_contract_running_invalid");
+      invariant(input.goal.latest !== null && input.goal.latest.durationSeconds === 660,
+        "progress_contract_running_invalid");
       return { distanceMeters: input.goal.distanceMeters, latest: input.goal.latest.durationSeconds };
     case "progress-pro05-fixed-goal":
       invariant(input.pacing.target === "11:00", "progress_contract_fixed_goal_invalid");
@@ -231,10 +232,12 @@ async function probeRequirementOutcome(
       return refresh;
     }
     case "progress-pro09-history-sheet":
-      invariant(input.goal.evidenceCount === 1, "progress_contract_history_evidence_invalid");
+      invariant(input.goal.latest !== null && input.goal.evidenceCount === 1,
+        "progress_contract_history_evidence_invalid");
       return { evidenceCount: input.goal.evidenceCount, sourceRevision: input.goal.latest.sourceRevision };
     case "progress-pro10-exercise-history":
-      invariant(input.goal.latest.sourceRevision === 1, "progress_contract_source_revision_invalid");
+      invariant(input.goal.latest !== null && input.goal.latest.sourceRevision === 1,
+        "progress_contract_source_revision_invalid");
       return { sourceRevision: input.goal.latest.sourceRevision };
     case "progress-pro11-relative-view": {
       const relative = projectRelativeStrength({
@@ -400,6 +403,16 @@ async function runRunningReadTargetReplay(
     ...createEnvelope,
     requestSha256: canonicalRunningRequestHash(createEnvelope),
   });
+  await runtime.kernel.write(async (transaction) => {
+    await transaction.execute(
+      "UPDATE plans SET is_active = 1 WHERE id = ?",
+      [sourcePlan.id],
+    );
+    await transaction.execute(
+      "UPDATE owned_plan_schedules SET lifecycle = 'active', deactivated_at_ms = NULL WHERE plan_id = ?",
+      [sourcePlan.id],
+    );
+  });
   await seedAcceptedRunningFact(runtime.kernel);
 
   let snapshots = 0;
@@ -421,16 +434,18 @@ async function runRunningReadTargetReplay(
   });
   invariant(read.dashboard?.sport === "Running", "progress_running_projection_missing");
   const goal = read.dashboard.goals[0];
+  const latest = goal?.latest;
+  const currentTarget = goal?.target;
   invariant(read.dashboard.state === "sparse" && read.dashboard.goals.length === 1,
     "progress_running_projection_invalid");
   invariant(goal?.distanceMeters === 2_400
-    && goal.latest.durationSeconds === 660
-    && goal.latest.sourceRevision === 1
-    && goal.target?.durationSeconds === 660,
+    && latest?.durationSeconds === 660
+    && latest.sourceRevision === 1
+    && currentTarget?.durationSeconds === 660,
   "progress_running_facts_invalid");
   const pacing = deriveRunningPacing({
     distanceMeters: goal.distanceMeters,
-    targetDurationSeconds: goal.target.durationSeconds,
+    targetDurationSeconds: currentTarget.durationSeconds,
   });
   invariant(pacing.target === "11:00" && pacing.pacePerKm === "4:35/km"
     && pacing.per400m === "1:50/400 m" && pacing.per200m === "0:55/200 m",
@@ -492,7 +507,7 @@ async function runRunningReadTargetReplay(
         caseId,
         requirement,
         schemaVersion: migrations.at(-1)?.version,
-        sourceRevision: goal.latest.sourceRevision,
+        sourceRevision: latest.sourceRevision,
         goalRevision: sourcePlan.goal.revision,
       })),
       projection: await sha256(canonicalJson({
@@ -500,8 +515,8 @@ async function runRunningReadTargetReplay(
         requirement,
         state: read.dashboard.state,
         distanceMeters: goal.distanceMeters,
-        durationSeconds: goal.latest.durationSeconds,
-        targetSeconds: goal.target.durationSeconds,
+        durationSeconds: latest.durationSeconds,
+        targetSeconds: currentTarget.durationSeconds,
         pacing,
         requirementProbe,
       })),

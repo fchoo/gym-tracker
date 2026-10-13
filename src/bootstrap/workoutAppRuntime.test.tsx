@@ -1735,6 +1735,7 @@ describe("WorkoutAppRuntimeProvider", () => {
         goals: [],
         absenceReason: "no_factual_points",
       },
+      runningTargetSources: [],
     });
     expect(readSnapshot).toHaveBeenCalledTimes(1);
   });
@@ -1828,14 +1829,31 @@ describe("WorkoutAppRuntimeProvider", () => {
       })),
     }) as unknown as RunningPlanRuntimePort;
     mockedCreateRunningPlanRuntimePort.mockImplementationOnce(() => progressRunningTargetRuntime);
-    const queryAll = jest.fn(async (sql: string) => sql.includes("SELECT DISTINCT goal.plan_id")
-      ? [
-        { plan_id: "invalid plan id" },
-        { plan_id: "running-plan-missing" },
-        { plan_id: "running-plan-archived" },
-        { plan_id: "running-plan-2400" },
-      ]
-      : []);
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("SELECT plan.id AS plan_id") && sql.includes("JOIN running_plans")) {
+        return [{ plan_id: "running-plan-2400" }];
+      }
+      if (sql.includes("SELECT plan.id, plan.name, plan.revision, running.created_at_ms")) {
+        return [{
+          id: targetSource.id,
+          name: targetSource.name,
+          revision: targetSource.revision,
+          created_at_ms: targetSource.createdAtMs,
+          is_active: 1,
+          status: "ready",
+        }];
+      }
+      if (sql.includes("FROM running_goals")) {
+        return [{
+          id: "running-goal-2400",
+          plan_id: "running-plan-2400",
+          revision: 2,
+          goal_json: JSON.stringify(targetSource.goal),
+          created_at_ms: 1,
+        }];
+      }
+      return [];
+    });
     const kernel = {
       close: jest.fn(async () => undefined),
       queryAll,
@@ -1974,7 +1992,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       expectedSourceRevision: 4,
       expectedTargetRevision: 3,
       recommendationId: "recommendation-1",
-      requestId: expect.stringMatching(/^progress-recommendation-use:/u),
+      requestId: expect.stringMatching(/^recommendation-use:/u),
     }));
   });
 
@@ -2111,7 +2129,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       .rejects.toThrow();
     await expect(captured!.progressRecommendationRuntime.decide(pending, "keep_current_target"))
       .resolves.toMatchObject({ status: "rejected" });
-    expect(fenceCalls() - callsBeforeKeep).toBe(1);
+    expect(fenceCalls() - callsBeforeKeep).toBe(2);
 
   });
 
@@ -4981,9 +4999,20 @@ describe("WorkoutAppRuntimeProvider", () => {
       Array.from({ length: 12 }, () => activation),
     );
     const outcomeRepository = runtimeOutcomeRepository();
+    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM progression_recommendations")
+      ? [{ evidence_version: 2, source_revision: 1, target_revision: 1, status: "pending" }]
+      : []);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (
+        query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
+      ) => query({ queryAll: queryAll as unknown as SqliteTransactionExecutor["queryAll"] })),
+    } as unknown as SqliteKernel;
     await render(
       <RuntimeHarness dependencies={dependencies(repository, {
         createOutcomeRepository: () => outcomeRepository,
+        openKernel: jest.fn(async () => kernel),
       })} />,
     );
     await waitFor(() => {
@@ -5005,6 +5034,20 @@ describe("WorkoutAppRuntimeProvider", () => {
       expect(outcomeRepository.recordExerciseEffort).toHaveBeenCalledTimes(1);
       expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledTimes(1);
       expect(outcomeRepository.keepCurrentTarget).toHaveBeenCalledTimes(1);
+      expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledWith(expect.objectContaining({
+        decision: "use_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 1,
+        requestId: expect.stringMatching(/^recommendation-use:/u),
+      }));
+      expect(outcomeRepository.keepCurrentTarget).toHaveBeenCalledWith(expect.objectContaining({
+        decision: "keep_current_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 1,
+        requestId: expect.stringMatching(/^recommendation-keep:/u),
+      }));
     });
   });
 

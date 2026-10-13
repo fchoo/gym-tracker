@@ -406,6 +406,7 @@ function bestRecord(group: ExposureGroup): ProgressRecord {
     sessionId: best.sessionId,
     setId: best.setId,
     localDate: best.localDate,
+    sourceRevision: best.sourceRevision ?? null,
     targetJson: best.targetJson,
     observationJson: best.observationJson,
   });

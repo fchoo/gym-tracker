@@ -27,10 +27,14 @@ import {
 } from "../../../domains/metrics";
 import {
   parseRunningGoal,
+  type RunningPlanAggregate,
 } from "../../../domains/running/contracts";
 import {
   loadEffectiveHistoryProjectionSessions,
 } from "./historyRepository";
+import {
+  readRunningPlanAggregate,
+} from "./runningPlanRepository";
 import {
   ACTIONABLE_RECOMMENDATION_EVIDENCE_VERSION,
   parseActionableRecommendationEvidence,
@@ -119,6 +123,10 @@ type RunningGoalFactRow = Readonly<{
   created_at_ms: number;
 }>;
 
+type DashboardRunningGoalRow = RunningGoalFactRow & Readonly<{
+  is_current: number;
+}>;
+
 type DashboardRunningActivityRow = Readonly<{
   id: string;
   started_at_ms: number;
@@ -166,6 +174,7 @@ export type ProgressRepositoryRead = Readonly<{
   refresh?: ProgressRefreshMetadata;
   diagnostic?: ProgressProjectionDiagnostic;
   sourceFacts?: ProgressSourceFacts;
+  runningTargetSources?: readonly RunningPlanAggregate[];
 }>;
 
 export type ProgressRepository = Readonly<{
@@ -180,6 +189,22 @@ export type ProgressRepository = Readonly<{
 const ALL_PERIOD_SUBJECT_ID = 'history-subject/v1:["period","all"]';
 const ALL_TIME_PAGE_SIZE = 500;
 const BOUNDED_REFRESH_BACKOFF_MS = Object.freeze([250, 1_000, 4_000] as const);
+
+async function readAllPages<Row extends Record<string, unknown>>(
+  executor: SqliteReadTransactionExecutor,
+  sql: string,
+  parameters: readonly (null | number | string | Uint8Array)[] = [],
+): Promise<readonly Row[]> {
+  const rows: Row[] = [];
+  for (let offset = 0; ; offset += ALL_TIME_PAGE_SIZE) {
+    const page = await executor.queryAll<Row>(
+      `${sql}\nLIMIT ? OFFSET ?`,
+      [...parameters, ALL_TIME_PAGE_SIZE, offset],
+    );
+    rows.push(...page);
+    if (page.length < ALL_TIME_PAGE_SIZE) return Object.freeze(rows);
+  }
+}
 
 function refreshMetadata(generation: number, terminal: ProgressProjectionFreshness): ProgressRefreshMetadata {
   return Object.freeze({
@@ -295,8 +320,29 @@ function exposureFromRow(
     setId: row.set_id,
     setOrdinal: row.set_ordinal,
     completedAtMs: row.completed_at_ms,
+    sourceRevision: Number.isSafeInteger(effectiveSet.sourceRevision)
+      && Number(effectiveSet.sourceRevision) > 0
+      ? effectiveSet.sourceRevision!
+      : null,
     targetJson: row.target_json,
     observationJson: row.observation_json,
+  });
+}
+
+function progressRecordFromExposure(exposure: ProgressComparableExposure) {
+  return Object.freeze({
+    exerciseId: exposure.exerciseId,
+    exerciseName: exposure.exerciseName,
+    identityKey: exposure.identityKey,
+    comparatorKey: exposure.comparatorKey,
+    sessionId: exposure.sessionId,
+    setId: exposure.setId,
+    localDate: exposure.localDate,
+    ...(exposure.sourceRevision === undefined ? {} : {
+      sourceRevision: exposure.sourceRevision,
+    }),
+    targetJson: exposure.targetJson,
+    observationJson: exposure.observationJson,
   });
 }
 
@@ -328,31 +374,25 @@ async function loadSourceFacts(
   executor: SqliteReadTransactionExecutor,
 ): Promise<ProgressSourceFacts> {
   const [activityRows, goalRows, bodyweightRows] = await Promise.all([
-    executor.queryAll<RunningActivityFactRow>(
+    readAllPages<RunningActivityFactRow>(executor,
       `SELECT activity.id, activity.started_at_ms, activity.aggregate_json, match.opportunity_id
          FROM imported_activities activity
          JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
          LEFT JOIN running_activity_current_matches match ON match.activity_id = activity.id
         WHERE lifecycle.removal_state = 'active'
-        ORDER BY activity.started_at_ms, activity.id
-        LIMIT ?`,
-      [ALL_TIME_PAGE_SIZE],
+        ORDER BY activity.started_at_ms, activity.id`,
     ),
-    executor.queryAll<RunningGoalFactRow>(
+    readAllPages<RunningGoalFactRow>(executor,
       `SELECT id, plan_id, revision, goal_json, created_at_ms
-         FROM running_goals ORDER BY plan_id, revision, id
-         LIMIT ?`,
-      [ALL_TIME_PAGE_SIZE],
+         FROM running_goals ORDER BY plan_id, revision, id`,
     ),
-    executor.queryAll<BodyweightFactRow>(
+    readAllPages<BodyweightFactRow>(executor,
       `SELECT entry.id, entry.owner_id, entry.current_revision, measurement.local_date, measurement.timezone, measurement.grams
          FROM bodyweight_entries entry
          JOIN bodyweight_entry_events measurement ON measurement.entry_id = entry.id
           AND measurement.revision = entry.current_revision
         WHERE entry.lifecycle = 'active' AND measurement.local_date IS NOT NULL
-        ORDER BY measurement.local_date DESC, entry.id
-        LIMIT ?`,
-      [ALL_TIME_PAGE_SIZE],
+        ORDER BY measurement.local_date DESC, entry.id`,
     ),
   ]);
   const activities = activityRows.flatMap((row) => {
@@ -415,12 +455,13 @@ function evidenceFromAggregate(
 
 async function loadDashboardFacts(
   executor: SqliteReadTransactionExecutor,
+  input: Readonly<{ period: ProgressPeriod; nowLocalDate: string }>,
 ): Promise<Readonly<{
   activities: readonly ProgressRunningActivityFact[];
   goals: readonly ProgressGoalRevision[];
 }>> {
   const [activityRows, goalRows] = await Promise.all([
-    executor.queryAll<DashboardRunningActivityRow>(
+    readAllPages<DashboardRunningActivityRow>(executor,
       `SELECT activity.id, activity.started_at_ms, activity.aggregate_json,
               lifecycle.aggregate_revision
          FROM imported_activities activity
@@ -429,16 +470,29 @@ async function loadDashboardFacts(
         WHERE identity.removal_state = 'active'
           AND lifecycle.removal_state = 'active'
           AND identity.aggregate_revision = lifecycle.aggregate_revision
-        ORDER BY activity.started_at_ms, activity.id
-        LIMIT ?`,
-      [ALL_TIME_PAGE_SIZE],
+          AND (? IS NULL OR json_extract(activity.aggregate_json, '$.confirmed_local_date') >= ?)
+          AND json_extract(activity.aggregate_json, '$.confirmed_local_date') <= ?
+        ORDER BY activity.started_at_ms, activity.id`,
+      [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), input.nowLocalDate],
     ),
-    executor.queryAll<RunningGoalFactRow>(
-      `SELECT id, plan_id, revision, goal_json, created_at_ms
-         FROM running_goals
-         ORDER BY created_at_ms, id
-         LIMIT ?`,
-      [ALL_TIME_PAGE_SIZE],
+    readAllPages<DashboardRunningGoalRow>(executor,
+      `SELECT goal.id, goal.plan_id, goal.revision, goal.goal_json,
+              goal.created_at_ms,
+              CASE WHEN goal.id = (
+                SELECT current_goal.id FROM running_goals current_goal
+                 WHERE current_goal.plan_id = goal.plan_id
+                 ORDER BY current_goal.revision DESC,
+                          current_goal.created_at_ms DESC,
+                          current_goal.id DESC
+                 LIMIT 1
+              ) THEN 1 ELSE 0 END AS is_current
+         FROM running_goals goal
+         JOIN running_plans running ON running.plan_id = goal.plan_id
+         JOIN plans plan ON plan.id = goal.plan_id
+        WHERE plan.plan_kind = 'running'
+          AND plan.is_active = 1
+          AND running.status != 'retired'
+         ORDER BY goal.created_at_ms, goal.id`,
     ),
   ]);
   const activities = activityRows.flatMap((row) => {
@@ -477,32 +531,72 @@ async function loadDashboardFacts(
     })];
   });
   const goals = goalRows.flatMap((row, sourceOrder) => {
-    try {
-      const goal = parseRunningGoal(JSON.parse(row.goal_json));
-      if (
-        goal.planId !== row.plan_id
-        || goal.revision !== row.revision
-        || !positiveSafeInteger(goal.goalDistanceMeters)
-      ) return [];
-      const targetDurationSeconds = goal.targetDurationMs === undefined
-        ? null
-        : goal.targetDurationMs > 0 && goal.targetDurationMs % 1_000 === 0
-          ? goal.targetDurationMs / 1_000
-          : null;
-      return [Object.freeze({
-        targetId: row.id,
-        sport: "Running" as const,
-        distanceMeters: goal.goalDistanceMeters,
-        targetDurationSeconds,
-        effectiveAtMs: row.created_at_ms,
-        revision: row.revision,
-        sourceOrder,
-      })];
-    } catch {
-      return [];
-    }
+    const goal = dashboardGoalFromRow(row, sourceOrder);
+    return goal === null ? [] : [goal];
   });
   return Object.freeze({ activities: Object.freeze(activities), goals: Object.freeze(goals) });
+}
+
+function dashboardGoalFromRow(
+  row: DashboardRunningGoalRow,
+  sourceOrder: number,
+): ProgressGoalRevision | null {
+  try {
+    const goal = parseRunningGoal(JSON.parse(row.goal_json));
+    if (
+      goal.planId !== row.plan_id
+      || goal.revision !== row.revision
+      || !positiveSafeInteger(goal.goalDistanceMeters)
+    ) return null;
+    const targetDurationSeconds = goal.targetDurationMs === undefined
+      ? null
+      : goal.targetDurationMs > 0 && goal.targetDurationMs % 1_000 === 0
+        ? goal.targetDurationMs / 1_000
+        : null;
+    return Object.freeze({
+      targetId: row.id,
+      planId: row.plan_id,
+      sport: "Running" as const,
+      distanceMeters: goal.goalDistanceMeters,
+      targetDurationSeconds,
+      ...(goal.targetLocalDate === undefined ? {} : {
+        targetLocalDate: goal.targetLocalDate,
+      }),
+      effectiveAtMs: row.created_at_ms,
+      revision: row.revision,
+      sourceOrder,
+      lifecycle: "active" as const,
+      active: true,
+      current: row.is_current === 1,
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function loadRunningTargetSources(
+  executor: SqliteReadTransactionExecutor,
+): Promise<readonly RunningPlanAggregate[]> {
+  const rows = await executor.queryAll<{ plan_id: string }>(
+    `SELECT plan.id AS plan_id
+       FROM plans plan
+       JOIN running_plans running ON running.plan_id = plan.id
+       JOIN owned_plan_schedules schedule
+         ON schedule.plan_id = plan.id AND schedule.lifecycle = 'active'
+      WHERE plan.plan_kind = 'running'
+        AND plan.is_active = 1
+        AND running.status != 'retired'
+      ORDER BY plan.id`,
+  );
+  if (rows.length > 1) throw new Error("progress_running_active_plan_invalid");
+  const sources = await Promise.all(rows.map(({ plan_id }) =>
+    readRunningPlanAggregate(executor, plan_id)
+  ));
+  return Object.freeze(sources.filter(
+    (source): source is RunningPlanAggregate => source !== null
+      && source.active
+      && source.lifecycle === "active",
+  ));
 }
 
 function stringValue(
@@ -705,6 +799,7 @@ export function createProgressRepository(
         sourceSessions,
         sourceFacts,
         dashboardFacts,
+        runningTargetSources,
       ] = await Promise.all([
         executor.queryAll<PeriodInputRow>(
           `SELECT local_date, completed_exercises, planned_exercises,
@@ -716,26 +811,24 @@ export function createProgressRepository(
            ORDER BY local_date`,
           [ALL_PERIOD_SUBJECT_ID, rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate)],
         ),
-        executor.queryAll<ComparableExposureRow>(
+        readAllPages<ComparableExposureRow>(executor,
           `SELECT exercise_id, identity_key, comparator_key, session_id,
                   local_date, set_id, set_ordinal, completed_at_ms,
                   target_json, observation_json
            FROM history_projection_comparable_exposures
            WHERE (? IS NULL OR local_date >= ?)
            ORDER BY exercise_id, identity_key, comparator_key, completed_at_ms,
-                    session_id, set_ordinal, set_id
-           LIMIT ?`,
-          [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), ALL_TIME_PAGE_SIZE],
+                    session_id, set_ordinal, set_id`,
+          [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate)],
         ),
-        executor.queryAll<OpportunityRow>(
+        readAllPages<OpportunityRow>(executor,
           `SELECT id, local_date, outcome, session_id
            FROM owned_plan_schedule_opportunities
            WHERE state = 'consumed'
              AND outcome IS NOT NULL
              AND (? IS NULL OR local_date >= ?)
-           ORDER BY local_date, id
-           LIMIT ?`,
-          [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate), ALL_TIME_PAGE_SIZE],
+           ORDER BY local_date, id`,
+          [rangeStart(input.period, input.nowLocalDate), rangeStart(input.period, input.nowLocalDate)],
         ),
         executor.queryAll<RecommendationReviewRow>(
           `SELECT recommendation.id, recommendation.exercise_id,
@@ -769,7 +862,8 @@ export function createProgressRepository(
         ),
         loadEffectiveHistoryProjectionSessions(executor),
         loadSourceFacts(executor),
-        loadDashboardFacts(executor),
+        loadDashboardFacts(executor, input),
+        sport === "Running" ? loadRunningTargetSources(executor) : Promise.resolve(Object.freeze([])),
       ]);
       const recommendations = [
         ...legacyRecommendationRows,
@@ -810,6 +904,9 @@ export function createProgressRepository(
         })),
         recommendations,
       }));
+      const dashboardStrengthFacts = exposureRows.map((row) =>
+        progressRecordFromExposure(exposureFromRow(row, effectiveSetsById))
+      );
       const dashboard = sport === undefined ? undefined : withToSortedCompatibility(() =>
         projectProgressDashboard({
           sport,
@@ -817,7 +914,7 @@ export function createProgressRepository(
             activities: dashboardFacts.activities,
             targets: dashboardFacts.goals,
           },
-          strength: { facts: projection.records },
+          strength: { facts: dashboardStrengthFacts },
           goals: dashboardFacts.goals,
         })
       );
@@ -830,9 +927,17 @@ export function createProgressRepository(
           sport,
           dashboard,
           refresh: refreshMetadata(generation, "current"),
+          ...(sport === "Running" ? { runningTargetSources } : {}),
         }),
       }) as ProgressRepositoryRead;
       }) as Promise<ProgressRepositoryRead>;
     },
   });
 }
+
+export const __progressRepositoryTestOnly = Object.freeze({
+  dashboardGoalFromRow,
+  exposureFromRow,
+  loadRunningTargetSources,
+  progressRecordFromExposure,
+});

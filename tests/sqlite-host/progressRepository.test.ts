@@ -43,6 +43,7 @@ import {
   createSqliteKernel,
   type SqliteKernel,
   type SqliteSnapshotKernel,
+  type SqliteTransactionExecutor,
 } from "../../src/platform/sqlite/sqliteKernel";
 
 class Result<Row extends Record<string, unknown>>
@@ -323,7 +324,19 @@ async function seedAcceptedRunningActivity(
     startedAtMs: number;
   }>,
 ): Promise<void> {
-  await kernel.write(async (transaction) => {
+  await kernel.write((transaction) => insertAcceptedRunningActivity(transaction, input));
+}
+
+async function insertAcceptedRunningActivity(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    id: string;
+    aggregateRevision: number;
+    lifecycle: "active" | "removed";
+    localDate: string;
+    startedAtMs: number;
+  }>,
+): Promise<void> {
     await transaction.execute(
       `INSERT INTO imported_activities
         (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms)
@@ -374,7 +387,6 @@ async function seedAcceptedRunningActivity(
        VALUES (?, ?, ?, ?)`,
       [input.id, input.aggregateRevision, input.lifecycle, `${input.id}-event`],
     );
-  });
 }
 
 async function seedRecommendationGraph(kernel: SqliteKernel): Promise<void> {
@@ -592,6 +604,116 @@ describe("progress repository", () => {
     expect(JSON.stringify(result)).not.toContain("removed-running-2400");
   });
 
+  it("scopes Running facts to the selected period and pages All time without dropping the newest fact", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    await seedAcceptedRunningActivity(kernel, {
+      id: "old-running-2400",
+      aggregateRevision: 1,
+      lifecycle: "active",
+      localDate: "2026-01-01",
+      startedAtMs: 1,
+    });
+    await kernel.write(async (transaction) => {
+      for (let index = 0; index < 501; index += 1) {
+        await insertAcceptedRunningActivity(transaction, {
+          id: `paged-running-${String(index).padStart(3, "0")}`,
+          aggregateRevision: 1,
+          lifecycle: "active",
+          localDate: index === 500 ? "2026-08-24" : "2026-08-01",
+          startedAtMs: index + 10,
+        });
+      }
+    });
+    const repository = createProgressRepository(kernel);
+
+    const fourWeeks = await repository.load({
+      sport: "Running",
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    });
+    const allTime = await repository.load({
+      sport: "Running",
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(fourWeeks.dashboard).toMatchObject({
+      goals: [{
+        evidenceCount: 501,
+        latest: { activityId: "paged-running-500" },
+      }],
+    });
+    expect(allTime.dashboard).toMatchObject({
+      goals: [{
+        evidenceCount: 502,
+        latest: { activityId: "paged-running-500" },
+      }],
+    });
+  });
+
+  it("returns the active Running target source from the same coherent snapshot", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    await createRunningPlanRepository(kernel).createInactiveAggregate({
+      requestId: "create-active-progress-running",
+      requestSha256: "a".repeat(64),
+      plan: {
+        version: 1,
+        id: "active-progress-running",
+        name: "Active Progress Running",
+        revision: 1,
+        createdAtMs: 1,
+        goal: {
+          version: 1,
+          id: "active-progress-running-goal",
+          planId: "active-progress-running",
+          revision: 1,
+          goalDistanceMeters: 2_400,
+          targetDurationMs: 660_000,
+          trainingDays: ["Monday"],
+          createdAtMs: 1,
+        },
+        sessions: [],
+      },
+    });
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE plans SET is_active = 1 WHERE id = 'active-progress-running'",
+      );
+      await transaction.execute(
+        "UPDATE owned_plan_schedules SET lifecycle = 'active', deactivated_at_ms = NULL WHERE plan_id = 'active-progress-running'",
+      );
+    });
+    let snapshots = 0;
+    const snapshotKernel = {
+      ...kernel,
+      readSnapshot: async (query: unknown) => {
+        snapshots += 1;
+        return kernel.readSnapshot!(query as never);
+      },
+    } as unknown as SqliteSnapshotKernel;
+
+    const result = await createProgressRepository(snapshotKernel).load({
+      sport: "Running",
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(snapshots).toBe(1);
+    expect(result.runningTargetSources).toEqual([
+      expect.objectContaining({
+        id: "active-progress-running",
+        active: true,
+        lifecycle: "active",
+        goal: expect.objectContaining({
+          goalDistanceMeters: 2_400,
+          targetDurationMs: 660_000,
+        }),
+      }),
+    ]);
+  });
+
   const progressRanges: ReadonlyArray<readonly [ProgressPeriod, string | null]> = [
     ["4_weeks", "2026-07-28"],
     ["12_weeks", "2026-06-02"],
@@ -627,10 +749,12 @@ describe("progress repository", () => {
       sql.includes("history_projection_period_inputs")
       || sql.includes("history_projection_comparable_exposures")
       || sql.includes("owned_plan_schedule_opportunities")
+      || sql.includes("FROM imported_activities activity")
+        && sql.includes("identity.aggregate_revision = lifecycle.aggregate_revision")
     );
-    expect(boundedRows).toHaveLength(3);
+    expect(boundedRows).toHaveLength(4);
     for (const { sql, parameters } of boundedRows) {
-      expect(sql).toContain("local_date >= ?");
+      expect(sql).toMatch(/(?:local_date|confirmed_local_date'\)) >= \?/u);
       expect(parameters).toContain(expectedStart);
     }
     expect(queries.some(({ sql }) => /INSERT|UPDATE|DELETE/u.test(sql))).toBe(false);
@@ -1253,9 +1377,28 @@ describe("progress repository", () => {
         },
       });
     }
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE plans SET is_active = 1 WHERE id = 'plan-exact'",
+      );
+      await transaction.execute(
+        "UPDATE owned_plan_schedules SET lifecycle = 'active', deactivated_at_ms = NULL WHERE plan_id = 'plan-exact'",
+      );
+    });
     const result = await createProgressRepository(kernel).load({
       sport: "All", period: "all_time", nowLocalDate: "2026-08-24",
     });
-    expect(result.dashboard).toMatchObject({ sport: "All", state: "ready" });
+    expect(result.dashboard).toMatchObject({
+      sport: "All",
+      state: "sparse",
+      primaryGoal: {
+        sport: "Running",
+        goal: {
+          distanceMeters: 2_400,
+          target: { durationSeconds: 660 },
+          latest: null,
+        },
+      },
+    });
   });
 });

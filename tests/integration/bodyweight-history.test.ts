@@ -42,14 +42,33 @@ function command(overrides: Partial<BodyweightCommand> = {}): BodyweightCommand 
 }
 
 async function protectedDigest(kernel: SqliteKernel) {
-  return kernel.queryAll<{
-    plans: number;
-    runningGoals: number;
-    importedActivities: number;
-    sessions: number;
-    sets: number;
-    recommendations: number;
-  }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM running_goals) AS runningGoals, (SELECT count(*) FROM imported_activities) AS importedActivities, (SELECT count(*) FROM workout_sessions) AS sessions, (SELECT count(*) FROM session_sets) AS sets, (SELECT count(*) FROM progression_recommendations) AS recommendations");
+  const tables = [
+    "plans",
+    "plan_working_set_targets",
+    "owned_plan_working_set_targets",
+    "running_goals",
+    "progression_recommendations",
+    "owned_progression_recommendations",
+    "progression_recommendation_decision_receipts",
+    "owned_progression_recommendation_decision_receipts",
+    "imported_activities",
+    "imported_activity_identities",
+    "imported_activity_payloads",
+    "imported_activity_laps",
+    "workout_sessions",
+    "session_exercises",
+    "session_sets",
+  ] as const;
+  const protectedState: Array<Readonly<{ table: string; rows: readonly Record<string, unknown>[] }>> = [];
+  for (const table of tables) {
+    protectedState.push(Object.freeze({
+      table,
+      rows: await kernel.queryAll<Record<string, unknown>>(
+        `SELECT * FROM "${table}" ORDER BY rowid`,
+      ),
+    }));
+  }
+  return createHash("sha256").update(JSON.stringify(protectedState)).digest("hex");
 }
 
 describe("bodyweight source history", () => {

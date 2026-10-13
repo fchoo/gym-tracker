@@ -8,13 +8,14 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import type { RunningPlanAggregate } from "../../domains/running/contracts";
+import { DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS, type RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
 import { BottomSheet } from "./BottomSheet";
 import { FocusablePressable, InlineNotice, PrimaryAction, SecondaryAction } from "./index";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+const DISTANCES = [2_400, 10_000, 21_097] as const;
 type Weekday = (typeof WEEKDAYS)[number];
 type Draft = Readonly<{
   targetTime: string;
@@ -22,9 +23,10 @@ type Draft = Readonly<{
   trainingDays: readonly Weekday[];
   expectedSourceRevision: number;
 }>;
-type ErrorState = "save" | "stale" | null;
+type ErrorState = "save" | "stale" | "refresh" | null;
 
 export type RunningTargetSheetProps = Readonly<{
+  initialDistanceMeters?: number;
   visible: boolean;
   sources: readonly RunningPlanAggregate[];
   runtime: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
@@ -74,17 +76,28 @@ function isFutureDate(value: string, today: string): boolean {
     && candidate.getDate() === day && value > today;
 }
 
-function draftFrom(source: RunningPlanAggregate): Draft {
+function draftFrom(source: RunningPlanAggregate, distanceMeters: number): Draft {
+  const isCurrentDistance = source.goal.goalDistanceMeters === distanceMeters;
   return Object.freeze({
-    targetTime: formatTime(source.goal.targetDurationMs ?? (source.goal.goalDistanceMeters === 2400 ? 660_000 : undefined)),
-    targetDate: source.goal.targetLocalDate ?? "",
+    targetTime: formatTime(isCurrentDistance
+      ? source.goal.targetDurationMs
+      : distanceMeters === 2_400
+        ? DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS
+        : undefined),
+    targetDate: isCurrentDistance ? source.goal.targetLocalDate ?? "" : "",
     trainingDays: [...source.goal.trainingDays],
     expectedSourceRevision: source.revision,
   });
 }
 
-function benchmarkLabel(source: RunningPlanAggregate): string {
-  const benchmark = source.goal.benchmark;
+function benchmarkLabel(source: RunningPlanAggregate, distanceMeters: number): string {
+  const benchmark = source.goal.benchmarks === undefined
+    ? source.goal.benchmark?.distanceMeters === distanceMeters ? source.goal.benchmark : undefined
+    : distanceMeters === 2_400
+      ? source.goal.benchmarks.twoPointFourKm
+      : distanceMeters === 10_000
+        ? source.goal.benchmarks.tenKilometres
+        : source.goal.benchmarks.halfMarathon;
   if (benchmark === undefined) return "No benchmark yet";
   const provenance = benchmark.source.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   return `${formatTime(benchmark.durationMs)} · ${provenance} · ${benchmark.localDate}`;
@@ -97,6 +110,7 @@ function pacingLabel(durationMs: number | null, distanceMeters: number): string 
 }
 
 export function RunningTargetSheet({
+  initialDistanceMeters,
   onClose,
   onSaved,
   restoreFocusRef,
@@ -106,37 +120,45 @@ export function RunningTargetSheet({
   visible,
 }: RunningTargetSheetProps) {
   const { colors } = useAppTheme();
-  const [selectedPlanId, setSelectedPlanId] = useState(() => sources[0]?.id ?? "");
+  const [selectedDistanceMeters, setSelectedDistanceMeters] = useState(
+    () => initialDistanceMeters ?? 2_400,
+  );
   const draftsRef = useRef(new Map<string, Draft>());
   const requestIdsRef = useRef(new Map<string, string>());
   const [renderVersion, setRenderVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorState>(null);
+  const [committedPlan, setCommittedPlan] = useState<RunningPlanAggregate | null>(null);
   const targetRef = useRef<TextInput>(null);
   const dateRef = useRef<TextInput>(null);
   const dayRef = useRef<View>(null);
   const dayRefs = useRef(WEEKDAYS.map(() => React.createRef<View>()));
-  const source = sources.find((candidate) => candidate.id === selectedPlanId) ?? sources[0];
+  const source = sources.find(({ active, lifecycle }) => active && lifecycle === "active") ?? sources[0];
+  const draftKey = source === undefined ? "" : `${source.id}:${selectedDistanceMeters}`;
   const draft = source === undefined
     ? undefined
-    : draftsRef.current.get(source.id) ?? draftFrom(source);
+    : draftsRef.current.get(draftKey) ?? draftFrom(source, selectedDistanceMeters);
   const durationMs = draft === undefined ? null : parseTargetTime(draft.targetTime);
-  const pace = source === undefined ? null : pacingLabel(durationMs, source.goal.goalDistanceMeters);
+  const pace = source === undefined ? null : pacingLabel(durationMs, selectedDistanceMeters);
 
   useEffect(() => {
     if (!visible) return;
-    const next = sources[0];
+    const next = sources.find(({ active, lifecycle }) => active && lifecycle === "active") ?? sources[0];
     if (next === undefined) return;
-    setSelectedPlanId((current) => sources.some((candidate) => candidate.id === current) ? current : next.id);
-    for (const candidate of sources) {
-      if (!draftsRef.current.has(candidate.id)) draftsRef.current.set(candidate.id, draftFrom(candidate));
+    const initial = initialDistanceMeters ?? 2_400;
+    setSelectedDistanceMeters(initial);
+    for (const distanceMeters of DISTANCES) {
+      const key = `${next.id}:${distanceMeters}`;
+      if (!draftsRef.current.has(key)) {
+        draftsRef.current.set(key, draftFrom(next, distanceMeters));
+      }
     }
     setError(null);
-  }, [sources, visible]);
+  }, [initialDistanceMeters, sources, visible]);
 
   const update = (next: Partial<Draft>) => {
     if (source === undefined || draft === undefined) return;
-    draftsRef.current.set(source.id, Object.freeze({ ...draft, ...next }));
+    draftsRef.current.set(draftKey, Object.freeze({ ...draft, ...next }));
     setRenderVersion((value) => value + 1);
     setError(null);
   };
@@ -159,22 +181,45 @@ export function RunningTargetSheet({
     setBusy(true);
     setError(null);
     try {
-      const requestId = requestIdsRef.current.get(source.id) ?? runtime.createId("running-target-save");
-      requestIdsRef.current.set(source.id, requestId);
+      const requestId = requestIdsRef.current.get(draftKey) ?? runtime.createId("running-target-save");
+      requestIdsRef.current.set(draftKey, requestId);
       const saved = await runtime.saveRunningTarget({
         planId: source.id,
         requestId,
         expectedSourceRevision: draft.expectedSourceRevision,
-        goalDistanceMeters: source.goal.goalDistanceMeters,
+        goalDistanceMeters: selectedDistanceMeters,
         targetDurationMs: parsedDuration,
         targetLocalDate: draft.targetDate === "" ? undefined : draft.targetDate,
         trainingDays: [...draft.trainingDays],
       });
-      await onSaved?.(saved.plan);
-      requestIdsRef.current.delete(source.id);
+      try {
+        await onSaved?.(saved.plan);
+      } catch {
+        setCommittedPlan(saved.plan);
+        setError("refresh");
+        return;
+      }
+      requestIdsRef.current.delete(draftKey);
+      setCommittedPlan(null);
       onClose();
     } catch (cause) {
       setError(cause instanceof Error && cause.message.includes("revision_conflict") ? "stale" : "save");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryCommittedRefresh = async () => {
+    if (committedPlan === null || busy) return;
+    setBusy(true);
+    try {
+      await onSaved?.(committedPlan);
+      requestIdsRef.current.delete(`${committedPlan.id}:${committedPlan.goal.goalDistanceMeters}`);
+      setCommittedPlan(null);
+      setError(null);
+      onClose();
+    } catch {
+      setError("refresh");
     } finally {
       setBusy(false);
     }
@@ -186,8 +231,8 @@ export function RunningTargetSheet({
       const reloaded = await runtime.loadPlan(source.id);
       if (reloaded === null) return;
       // Preserve the draft for comparison; only its revision fence changes.
-      const current = draftsRef.current.get(source.id) ?? draftFrom(source);
-      draftsRef.current.set(source.id, Object.freeze({ ...current, expectedSourceRevision: reloaded.revision }));
+      const current = draftsRef.current.get(draftKey) ?? draftFrom(source, selectedDistanceMeters);
+      draftsRef.current.set(draftKey, Object.freeze({ ...current, expectedSourceRevision: reloaded.revision }));
       setError(null);
       setRenderVersion((value) => value + 1);
     } catch {
@@ -213,16 +258,16 @@ export function RunningTargetSheet({
         <View style={styles.content}>
           <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Distance</Text>
           <View accessibilityRole="tablist" style={styles.distances}>
-            {sources.map((candidate) => (
+            {DISTANCES.map((distanceMeters) => (
               <FocusablePressable
-                accessibilityLabel={distanceLabel(candidate.goal.goalDistanceMeters)}
+                accessibilityLabel={distanceLabel(distanceMeters)}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: candidate.id === source.id }}
-                key={candidate.id}
-                onPress={() => { setSelectedPlanId(candidate.id); setError(null); }}
-                style={[styles.distance, { backgroundColor: candidate.id === source.id ? colors.contentCardSelected : colors.surface, borderColor: colors.divider }]}
+                accessibilityState={{ selected: distanceMeters === selectedDistanceMeters }}
+                key={distanceMeters}
+                onPress={() => { setSelectedDistanceMeters(distanceMeters); setError(null); }}
+                style={[styles.distance, { backgroundColor: distanceMeters === selectedDistanceMeters ? colors.contentCardSelected : colors.surface, borderColor: colors.divider }]}
               >
-                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{distanceLabel(candidate.goal.goalDistanceMeters)}</Text>
+                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{distanceLabel(distanceMeters)}</Text>
               </FocusablePressable>
             ))}
           </View>
@@ -230,7 +275,7 @@ export function RunningTargetSheet({
           <Field label="Optional target date" inputRef={dateRef} value={draft.targetDate} onChangeText={(targetDate) => update({ targetDate })} error={dateError} placeholder="YYYY-MM-DD" />
           <View style={styles.fact}>
             <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Current benchmark</Text>
-            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{benchmarkLabel(source)}</Text>
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{benchmarkLabel(source, selectedDistanceMeters)}</Text>
           </View>
           <View style={styles.fact}>
             <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Available training days</Text>
@@ -272,6 +317,7 @@ export function RunningTargetSheet({
           </View>
           {error === "save" ? <InlineNotice action={<SecondaryAction label="Retry saving target" onPress={() => { void save(); }} />} body="Your current target is unchanged. Review the draft and try again." heading="Target was not saved" tone="error" /> : null}
           {error === "stale" ? <InlineNotice action={<SecondaryAction label="Reload target" onPress={() => { void reload(); }} />} body="Review the latest target before saving again." heading="Target changed since this sheet opened" tone="error" /> : null}
+          {error === "refresh" ? <InlineNotice action={<SecondaryAction label="Retry loading progress" onPress={() => { void retryCommittedRefresh(); }} />} body="The target was committed, but the root has not read the matching saved revision yet. Retrying will not submit the target again." heading="Target saved; Progress needs refreshing" tone="attention" /> : null}
           <View style={styles.actions}>
             <SecondaryAction disabled={busy} label="Discard target changes" onPress={onClose} />
             <PrimaryAction busy={busy} label="Save target" onPress={() => { void save(); }} />

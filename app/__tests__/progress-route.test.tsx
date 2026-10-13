@@ -17,8 +17,10 @@ const mockLoadProgress = jest.fn(async (input: { sport?: string; period: string 
       latest: { activityId: "latest", sourceIdentity: "opaque-latest", sourceRevision: 2, localDate: "2026-08-24", durationSeconds: 680, timeBasis: "elapsed" as const, evidence: "source_summary" as const },
       best: { activityId: "best", sourceIdentity: "opaque-best", sourceRevision: 1, localDate: "2026-08-17", durationSeconds: 650, timeBasis: "elapsed" as const, evidence: "source_laps" as const },
       target: { targetId: "target", durationSeconds: 660 }, targetAtDate: { targetId: "target", durationSeconds: 660 }, history: [{ effort: { activityId: "activity-local-01", sourceIdentity: "opaque-latest", sourceRevision: 2, localDate: "2026-08-24", durationSeconds: 680, timeBasis: "elapsed" as const, evidence: "source_summary" as const }, targetAtDate: { targetId: "target", durationSeconds: 660 } }], evidenceCount: 2,
+      gap: "Gap · 10 seconds ahead of target",
+      pacing: { target: "11:00", pacePerKm: "4:35/km", per400m: "1:50/400 m", per200m: "0:55/200 m" },
     }],
-  } : { sport: "All" as const, state: "empty" as const, primaryGoal: null },
+  } : { sport: "All" as const, state: "empty" as const, primaryGoal: null, activeGoals: [] },
 }));
 
 jest.mock("expo-router", () => ({
@@ -57,7 +59,7 @@ describe("ProgressRoute", () => {
     await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);
     await fireEvent.press(await screen.findByRole("tab", { name: "Running" }));
     await fireEvent.press(await screen.findByRole("button", { name: "Open history for 2.4 km" }));
-    await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Show history data" }).at(-1)!);
     await fireEvent.press(screen.getByRole("button", { name: "Open source" }));
 
     expect(mockPush).toHaveBeenCalledWith({
@@ -79,11 +81,28 @@ describe("ProgressRoute", () => {
         sport: "Strength" as const,
         state: "ready" as const,
         facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
-      } : { sport: "All" as const, state: "empty" as const, primaryGoal: null },
+        goals: [{
+          goalId: "bench",
+          exerciseId: "bench-press",
+          exerciseName: "Bench Press",
+          identityKey: "load_reps:1:1",
+          status: "improving" as const,
+          latest: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+          best: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+          target: { value: 60, label: "60 kg × 8" },
+          gap: "Gap · 2.5 kg better than target",
+          evidenceCount: 2,
+          fasterIsLower: false,
+          valueFormat: "kilograms" as const,
+          unitLabel: "kg",
+          directionLabel: "Higher comparable load is better.",
+          history: [{ value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2, targetAtDate: 60 }],
+        }],
+      } : { sport: "All" as const, state: "empty" as const, primaryGoal: null, activeGoals: [] },
     })) as never);
     await render(<AppearanceProvider><ProgressRoute /></AppearanceProvider>);
     await fireEvent.press(await screen.findByRole("tab", { name: "Strength" }));
-    await fireEvent.press(await screen.findByRole("button", { name: "Open exercise history for Bench Press" }));
+    await fireEvent.press((await screen.findAllByRole("button", { name: "Open exercise history for Bench Press" })).at(-1)!);
 
     expect(mockPush).toHaveBeenCalledWith({
       pathname: "/exercise-history/[exerciseId]",

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -30,7 +30,7 @@ const runningTargetSource: RunningPlanAggregate = Object.freeze({
   sessions: [],
 });
 
-const runningDashboard = (): ProgressDashboardProjection => ({
+const runningDashboard = (): Extract<ProgressDashboardProjection, { sport: "Running" }> => ({
   sport: "Running",
   state: "ready",
   goals: [{
@@ -80,8 +80,33 @@ const runningDashboard = (): ProgressDashboardProjection => ({
       targetAtDate: { targetId: "running-2400", durationSeconds: 660 },
     }],
     evidenceCount: 2,
+    gap: "Gap · 10 seconds ahead of target",
+    pacing: {
+      target: "11:00",
+      pacePerKm: "4:35/km",
+      per400m: "1:50/400 m",
+      per200m: "0:55/200 m",
+    },
   }],
 });
+
+const strengthGoal = {
+  goalId: "bench-press\u0000load_reps:1:1\u0000identity",
+  exerciseId: "bench-press",
+  exerciseName: "Bench Press",
+  identityKey: "load_reps:1:1",
+  status: "improving" as const,
+  latest: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+  best: { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2 },
+  target: { value: 60, label: "60 kg × 8" },
+  gap: "Gap · 2.5 kg better than target",
+  evidenceCount: 2,
+  fasterIsLower: false,
+  valueFormat: "kilograms" as const,
+  unitLabel: "kg",
+  directionLabel: "Higher comparable load is better.",
+  history: [{ value: 60, label: "60 kg × 8", localDate: "2026-08-17", sessionId: "session-41", sourceRevision: 1, targetAtDate: 60 }, { value: 62.5, label: "62.5 kg × 8", localDate: "2026-08-24", sessionId: "session-42", sourceRevision: 2, targetAtDate: 60 }],
+};
 
 const pendingReview: ProgressRecommendationReview = {
   id: "recommendation-bench-1",
@@ -102,8 +127,8 @@ function dashboardFor(sport: "All" | "Strength" | "Running"): ProgressDashboardP
   return sport === "Running"
     ? runningDashboard()
     : sport === "All"
-      ? { sport: "All", state: "empty", primaryGoal: null }
-      : { sport: "Strength", state: "empty", facts: [] };
+      ? { sport: "All", state: "empty", primaryGoal: null, activeGoals: [] }
+      : { sport: "Strength", state: "empty", facts: [], goals: [] };
 }
 
 async function renderProgress(
@@ -141,7 +166,7 @@ describe("ProgressScreen", () => {
     await waitFor(() => expect(loadProgress).toHaveBeenLastCalledWith({
       sport: "Running", period: "all_time", nowLocalDate: "2026-08-24",
     }));
-    expect(await screen.findByText("Running facts and best efforts come from accepted imported Garmin activities."))
+    expect(await screen.findByText("Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation."))
       .toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "2.4 km goal" })).toBeOnTheScreen();
     expect(screen.getByText("Latest · 11:20 elapsed")).toBeOnTheScreen();
@@ -203,10 +228,8 @@ describe("ProgressScreen", () => {
         ? {
           sport: "All" as const,
           state: "ready" as const,
-          primaryGoal: {
-            targetId: "running-2400", sport: "Running" as const, distanceMeters: 2400,
-            targetDurationSeconds: 660, effectiveAtMs: 1, revision: 2, sourceOrder: 0,
-          },
+          primaryGoal: { sport: "Running" as const, goal: runningDashboard().goals[0]! },
+          activeGoals: [{ sport: "Running" as const, goal: runningDashboard().goals[0]! }],
         }
         : runningDashboard(),
     }));
@@ -233,14 +256,14 @@ describe("ProgressScreen", () => {
       period: input.period as "4_weeks" | "12_weeks" | "all_time",
       freshness: "current" as const,
       dashboard: input.sport === "Strength"
-        ? { sport: "Strength" as const, state: "ready" as const, facts: [strengthFact] }
+        ? { sport: "Strength" as const, state: "ready" as const, facts: [strengthFact], goals: [{ ...strengthGoal, exerciseId: "back-squat", exerciseName: "Back Squat", goalId: "back-squat" }] }
         : { sport: "Running" as const, state: "empty" as const, goals: [] },
     }));
     await renderProgress(loadProgress as never);
 
     await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
     expect(await screen.findByText("Back Squat")).toBeOnTheScreen();
-    expect(screen.getByText("Target unavailable")).toBeOnTheScreen();
+    expect(screen.getByText("Latest 62.5 kg × 8 · 60 kg × 8 · improving")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
     expect(await screen.findByText("10 km · Target unset · No effort recorded · Set target")).toBeOnTheScreen();
     expect(screen.getByText("Half Marathon · Target unset · No effort recorded · Set target")).toBeOnTheScreen();
@@ -258,6 +281,76 @@ describe("ProgressScreen", () => {
     await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
   });
 
+  it("runs only the declared bounded automatic refresh backoff and stops at current", async () => {
+    jest.useFakeTimers();
+    try {
+      let call = 0;
+      const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => {
+        call += 1;
+        return call < 4 ? {
+          sport: input.sport,
+          period: input.period as "4_weeks" | "12_weeks" | "all_time",
+          freshness: "updating" as const,
+          dashboard: null,
+          refresh: {
+            generation: 7,
+            automaticRefresh: { maxAttempts: 3, backoffMs: [250, 1_000, 4_000], terminal: "updating" as const },
+          },
+        } : {
+          sport: input.sport,
+          period: input.period as "4_weeks" | "12_weeks" | "all_time",
+          freshness: "current" as const,
+          dashboard: dashboardFor(input.sport),
+          refresh: {
+            generation: 8,
+            automaticRefresh: { maxAttempts: 3, backoffMs: [250, 1_000, 4_000], terminal: "current" as const },
+          },
+        };
+      });
+      await renderProgress(loadProgress as never);
+      await act(async () => undefined);
+      expect(loadProgress).toHaveBeenCalledTimes(1);
+
+      for (const delay of [250, 1_000, 4_000]) {
+        await act(async () => {
+          jest.advanceTimersByTime(delay);
+          await Promise.resolve();
+        });
+      }
+      expect(loadProgress).toHaveBeenCalledTimes(4);
+      expect(screen.getByText("No progress history yet")).toBeOnTheScreen();
+      await act(async () => { jest.advanceTimersByTime(20_000); });
+      expect(loadProgress).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("cancels an obsolete automatic refresh when the selected sport changes", async () => {
+    jest.useFakeTimers();
+    try {
+      const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+        sport: input.sport,
+        period: input.period as "4_weeks" | "12_weeks" | "all_time",
+        freshness: input.sport === "All" ? "updating" as const : "current" as const,
+        dashboard: input.sport === "All" ? null : dashboardFor(input.sport),
+        refresh: {
+          generation: 1,
+          automaticRefresh: { maxAttempts: 3, backoffMs: [250, 1_000, 4_000], terminal: input.sport === "All" ? "updating" as const : "current" as const },
+        },
+      }));
+      await renderProgress(loadProgress as never);
+      await act(async () => undefined);
+      await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+      await act(async () => undefined);
+      expect(loadProgress).toHaveBeenCalledTimes(2);
+      await act(async () => { jest.advanceTimersByTime(10_000); });
+      expect(loadProgress).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("opens exact Running history evidence and retains sport and range on close", async () => {
     const onOpenRunningSource = jest.fn();
     await renderProgress(undefined, { onOpenRunningSource });
@@ -267,12 +360,14 @@ describe("ProgressScreen", () => {
     await fireEvent.press(await screen.findByRole("button", { name: "Open history for 2.4 km" }));
 
     expect(screen.getByRole("header", { name: "2.4 km best efforts" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
-    await fireEvent.press(screen.getAllByRole("button", { name: "Open source" })[0]!);
+    await fireEvent.press(screen.getAllByRole("button", { name: "Show history data" }).at(-1)!);
+    const sourceAction = screen.getAllByRole("button", { name: "Open source" })[0]!;
+    expect(sourceAction).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(sourceAction);
     expect(onOpenRunningSource).toHaveBeenCalledWith({
       activityId: "activity-best",
       sourceRevision: 3,
-    }, "running-history:2400");
+    }, "running-history:2400:activity-best:3");
 
     await fireEvent.press(screen.getByRole("button", { name: "Close 2.4 km best efforts" }));
     expect(screen.getByRole("tab", { name: "Running" })).toHaveProp(
@@ -285,6 +380,34 @@ describe("ProgressScreen", () => {
     );
   });
 
+  it("restores Running history source focus to the exact invoking row", async () => {
+    const onOpenRunningSource = jest.fn();
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: dashboardFor(input.sport),
+    }));
+    const props = {
+      loadProgress: loadProgress as never,
+      nowLocalDate: "2026-08-24",
+      onOpenExercise: jest.fn(),
+      onOpenSession: jest.fn(),
+      onOpenRunningSource,
+    };
+    const rendered = await render(<AppearanceProvider><ProgressScreen {...props} returnFocusVersion={0} /></AppearanceProvider>);
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Open history for 2.4 km" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Show history data" }).at(-1)!);
+    const sourceAction = screen.getAllByRole("button", { name: "Open source" })[0]!;
+    await fireEvent.press(sourceAction);
+    const token = "running-history:2400:activity-best:3";
+    expect(onOpenRunningSource).toHaveBeenCalledWith({ activityId: "activity-best", sourceRevision: 3 }, token);
+
+    await rendered.rerender(<AppearanceProvider><ProgressScreen {...props} returnFocusToken={token} returnFocusVersion={1} /></AppearanceProvider>);
+    await waitFor(() => expect(sourceAction).toHaveProp("hasTVPreferredFocus", true));
+  });
+
   it("refreshes from committed read-back before acknowledging a saved Running target", async () => {
     const saved = Object.freeze({
       ...runningTargetSource,
@@ -294,13 +417,17 @@ describe("ProgressScreen", () => {
         revision: 3,
       }),
     });
-    const saveRunningTarget = jest.fn(async () => ({ outcome: "committed" as const, plan: saved }));
+    let targetCommitted = false;
+    const saveRunningTarget = jest.fn(async () => {
+      targetCommitted = true;
+      return { outcome: "committed" as const, plan: saved };
+    });
     const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
       sport: input.sport,
       period: input.period as "4_weeks" | "12_weeks" | "all_time",
       freshness: "current" as const,
       dashboard: dashboardFor(input.sport),
-      runningTargetSources: input.sport === "Running" ? [runningTargetSource] : [],
+      runningTargetSources: input.sport === "Running" ? [targetCommitted ? saved : runningTargetSource] : [],
     }));
     await renderProgress(loadProgress as never, {
       runningTargetRuntime: {
@@ -328,6 +455,46 @@ describe("ProgressScreen", () => {
     expect(screen.getByText("2.4 km target saved.")).toBeOnTheScreen();
   });
 
+  it("keeps a committed target recovery inline when the root read-back is stale and retries without resubmitting", async () => {
+    const saved = Object.freeze({
+      ...runningTargetSource,
+      revision: 5,
+      goal: Object.freeze({ ...runningTargetSource.goal, revision: 3 }),
+    });
+    let runningReads = 0;
+    const saveRunningTarget = jest.fn(async () => ({ outcome: "committed" as const, plan: saved }));
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => {
+      if (input.sport === "Running") runningReads += 1;
+      return {
+        sport: input.sport,
+        period: input.period as "4_weeks" | "12_weeks" | "all_time",
+        freshness: "current" as const,
+        dashboard: dashboardFor(input.sport),
+        runningTargetSources: input.sport === "Running"
+          ? [runningReads >= 3 ? saved : runningTargetSource]
+          : [],
+      };
+    });
+    await renderProgress(loadProgress as never, {
+      runningTargetRuntime: {
+        createId: () => "running-target-save:request",
+        loadPlan: async () => runningTargetSource,
+        saveRunningTarget,
+      },
+    });
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Set target for 2.4 km" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save target" }));
+
+    expect(await screen.findByText("Target saved; Progress needs refreshing")).toBeOnTheScreen();
+    expect(screen.queryByText("2.4 km target saved.")).toBeNull();
+    expect(saveRunningTarget).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Retry loading progress" }));
+    await waitFor(() => expect(screen.getByText("2.4 km target saved.")).toBeOnTheScreen());
+    expect(saveRunningTarget).toHaveBeenCalledTimes(1);
+  });
+
   it("opens Strength history with retained context and commits an explicit recommendation once", async () => {
     const onOpenExercise = jest.fn();
     const decide = jest.fn(async () => ({ recommendationId: pendingReview.id, status: "accepted" as const }));
@@ -340,8 +507,9 @@ describe("ProgressScreen", () => {
         sport: "Strength" as const,
         state: "ready" as const,
         facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+        goals: [strengthGoal],
       } : dashboardFor(input.sport),
-      projection: { recommendations: committed ? [] : [pendingReview] },
+      projection: { recommendations: committed ? [{ ...pendingReview, status: "accepted" as const, lifecycle: "accepted" as const }] : [pendingReview] },
     }));
     decide.mockImplementation(async () => {
       committed = true;
@@ -353,7 +521,7 @@ describe("ProgressScreen", () => {
     });
 
     await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
-    await fireEvent.press(await screen.findByRole("button", { name: "Open exercise history for Bench Press" }));
+    await fireEvent.press((await screen.findAllByRole("button", { name: "Open exercise history for Bench Press" })).at(-1)!);
     expect(onOpenExercise).toHaveBeenCalledWith(
       "bench-press",
       "Bench Press",
@@ -368,6 +536,65 @@ describe("ProgressScreen", () => {
     await waitFor(() => expect(decide).toHaveBeenCalledWith(pendingReview, "use_target"));
     await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(3));
     expect(screen.getByText("Bench Press target updated to 62.5 kg × 6.")).toBeOnTheScreen();
+  });
+
+  it("never presents a superseded recommendation as successful", async () => {
+    let decided = false;
+    const decide = jest.fn(async () => {
+      decided = true;
+      return { recommendationId: pendingReview.id, status: "superseded" as const };
+    });
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "Strength"
+        ? { sport: "Strength" as const, state: "ready" as const, facts: [], goals: [strengthGoal] }
+        : dashboardFor(input.sport),
+      projection: {
+        recommendations: decided
+          ? [{ ...pendingReview, status: "superseded" as const, lifecycle: "superseded" as const }]
+          : [pendingReview],
+      },
+    }));
+    await renderProgress(loadProgress as never, { progressRecommendationRuntime: { decide } });
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Review target for Bench Press" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Use target" }));
+
+    expect((await screen.findAllByText("Recommendation no longer applies")).length).toBeGreaterThan(0);
+    expect(screen.getByText("The current target was not changed. Progress was reloaded from saved facts.")).toBeOnTheScreen();
+    expect(screen.queryByText("Bench Press target updated to 62.5 kg × 6.")).toBeNull();
+  });
+
+  it("restores recommendation source focus to the exact 48dp invoking control", async () => {
+    const onOpenSession = jest.fn();
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "Strength"
+        ? { sport: "Strength" as const, state: "ready" as const, facts: [], goals: [strengthGoal] }
+        : dashboardFor(input.sport),
+      projection: { recommendations: [pendingReview] },
+    }));
+    const props = {
+      loadProgress: loadProgress as never,
+      nowLocalDate: "2026-08-24",
+      onOpenExercise: jest.fn(),
+      onOpenSession,
+    };
+    const rendered = await render(<AppearanceProvider><ProgressScreen {...props} returnFocusVersion={0} /></AppearanceProvider>);
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Review target for Bench Press" }));
+    const sourceAction = screen.getByRole("button", { name: "Open source workout for Bench Press" });
+    expect(sourceAction).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(sourceAction);
+    const token = `progress:Strength:4_weeks:recommendation:${pendingReview.id}`;
+    expect(onOpenSession).toHaveBeenCalledWith("session-42", token);
+
+    await rendered.rerender(<AppearanceProvider><ProgressScreen {...props} returnFocusToken={token} returnFocusVersion={1} /></AppearanceProvider>);
+    await waitFor(() => expect(sourceAction).toHaveProp("hasTVPreferredFocus", true));
   });
 
   it("moves through Progress settings and saves bodyweight from authoritative read-back", async () => {
@@ -396,6 +623,25 @@ describe("ProgressScreen", () => {
       grams: 72_100,
     })));
     expect(screen.getByText("Bodyweight entry saved.")).toBeOnTheScreen();
+  });
+
+  it("returns from bodyweight history to the exact Settings invoker", async () => {
+    await renderProgress(undefined, {
+      progressBodyweightRuntime: {
+        createId: (kind) => `${kind}:request`,
+        loadHistory: jest.fn(async () => []),
+        save: jest.fn(async () => []),
+        delete: jest.fn(async () => []),
+      },
+    });
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    const bodyweightAction = screen.getByRole("button", { name: "Bodyweight history" });
+    await fireEvent.press(bodyweightAction);
+    await fireEvent.press(screen.getByRole("button", { name: "Close bodyweight" }));
+
+    expect(await screen.findByRole("header", { name: "Progress settings" })).toBeOnTheScreen();
+    const restoredBodyweightAction = screen.getByRole("button", { name: "Bodyweight history" });
+    await waitFor(() => expect(restoredBodyweightAction).toHaveProp("hasTVPreferredFocus", true));
   });
 
   it("requires confirmation and committed read-back before removing bodyweight", async () => {
@@ -510,6 +756,7 @@ describe("ProgressScreen", () => {
           sport: "Strength" as const,
           state: "ready" as const,
           facts: [{ exerciseId: "bench-press", exerciseName: "Bench Press", identityKey: "load_reps:1:1", comparatorKey: "identity", sessionId: "session-42", setId: "set-1", localDate: "2026-08-24", targetJson: "{}", observationJson: "{}" }],
+          goals: [strengthGoal],
         } : dashboardFor(input.sport),
       })) as never,
       nowLocalDate: "2026-08-24",
@@ -523,7 +770,7 @@ describe("ProgressScreen", () => {
       </AppearanceProvider>,
     );
     await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
-    const trigger = await screen.findByRole("button", { name: "Open exercise history for Bench Press" });
+    const trigger = (await screen.findAllByRole("button", { name: "Open exercise history for Bench Press" }))[1]!;
 
     await rendered.rerender(
       <AppearanceProvider reduceMotion store={createMemoryAppearanceStore("Dark")}>

@@ -189,6 +189,8 @@ export const RunningGoalV1Schema = z.strictObject({
 
 export type RunningGoal = z.infer<typeof RunningGoalV1Schema>;
 
+export const DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS = 660_000;
+
 /**
  * The authoring aggregate is the only Running shape exposed above the SQLite
  * boundary.  Session roots and slots deliberately remain source facts so a
@@ -230,7 +232,13 @@ export function parseRunningGoal(input: unknown): RunningGoal {
   if (!result.success) {
     throw new RunningBoundaryError("validation", "running_goal_invalid");
   }
-  return result.data;
+  return result.data.goalDistanceMeters === 2_400
+    && result.data.targetDurationMs === undefined
+    ? Object.freeze({
+        ...result.data,
+        targetDurationMs: DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS,
+      })
+    : result.data;
 }
 
 export function parseRunningPlanAggregate(input: unknown): RunningPlanAggregate {

@@ -1241,6 +1241,18 @@ describe("Plan 01-10 recommendation lifecycle", () => {
       recommendationId: "recommendation-1",
       status: "already_committed",
     });
+    await expect(acceptRecommendation({
+      repository,
+      input: {
+        ...input,
+        requestId: "recommendation-review-use-after-restart",
+        expectedTargetRevision: 2,
+        decidedAtMs: input.decidedAtMs + 1,
+      },
+    })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "already_committed",
+    });
     await expect(kernel.queryAll<{ revision: number }>(
       "SELECT revision FROM plan_working_set_targets WHERE id = ?",
       [targetId],
@@ -1445,6 +1457,20 @@ describe("Plan 01-10 recommendation lifecycle", () => {
       `SELECT load_grams, revision FROM plan_working_set_targets WHERE id = ?`,
       [targetId],
     )).toEqual([{ load_grams: 65_000, revision: 2 }]);
+    await expect(kernel.queryAll<{
+      request_sha256: string;
+      decision: string;
+      result_json: string;
+    }>(
+      `SELECT request_sha256, decision, result_json
+         FROM progression_recommendation_decision_receipts
+        WHERE recommendation_id = ?`,
+      ["recommendation-1"],
+    )).resolves.toEqual([expect.objectContaining({
+      request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      decision: "use_target",
+      result_json: expect.stringContaining('"superseded"'),
+    })]);
   });
 
   it("supersedes a legacy pending row instead of applying unverifiable evidence", async () => {
@@ -1739,6 +1765,9 @@ describe("Plan 01-10 recommendation lifecycle", () => {
         recommendationId: "recommendation-1",
         decidedAtMs: 1_786_854_001_000,
       },
-    })).rejects.toThrow("sqlite_transaction_failed");
+    })).resolves.toEqual({
+      recommendationId: "recommendation-1",
+      status: "already_committed",
+    });
   });
 });

@@ -1720,4 +1720,36 @@ describe("Plan 01-10 explicit workout outcomes", () => {
     await expect(repository.getSessionDetail("removed")).resolves
       .toMatchObject({ statusLabel: "Removed from history", readOnly: true });
   });
+
+  it("loads only the exact current Progress source revision and rejects corrected or removed state", async () => {
+    const kernel = await createKernel();
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO workout_sessions
+        (id, plan_id, plan_day_id, source, status, local_date, timezone,
+         started_at_ms, completed_at_ms, active_session_exercise_id,
+         active_set_id, revision)
+       VALUES ('progress-source', NULL, NULL, 'manual', 'completed', '2026-08-17',
+         'Asia/Singapore', 1000, 2000, NULL, NULL, 2)`,
+    ));
+    const repository = createWorkoutOutcomeRepository(kernel);
+
+    await expect(repository.getSessionDetailAtRevision?.("progress-source", 2))
+      .resolves.toMatchObject({ id: "progress-source", revision: 2 });
+    await expect(repository.getSessionDetailAtRevision?.("progress-source", 1))
+      .rejects.toMatchObject({ cause: expect.objectContaining({ message: "workout_source_revision_mismatch" }) });
+
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE workout_sessions SET revision = 3 WHERE id = 'progress-source'",
+    ));
+    await expect(repository.getSessionDetailAtRevision?.("progress-source", 2))
+      .rejects.toMatchObject({ cause: expect.objectContaining({ message: "workout_source_revision_mismatch" }) });
+
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE workout_sessions SET status = 'voided' WHERE id = 'progress-source'",
+    ));
+    await expect(repository.getSessionDetailAtRevision?.("progress-source", 3))
+      .rejects.toMatchObject({ cause: expect.objectContaining({ message: "workout_source_removed" }) });
+    await expect(repository.getSessionDetailAtRevision?.("progress-source", 0))
+      .rejects.toMatchObject({ message: "workout_source_revision_invalid" });
+  });
 });

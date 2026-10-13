@@ -168,10 +168,11 @@ async function assertRunningActivePair(transaction: SqliteTransactionExecutor): 
   }
 }
 
-export function createRunningPlanRepository(kernel: SqliteKernel) {
-  return Object.freeze({
-    async readAggregate(planId: string): Promise<RunningPlanAggregate | null> {
-      const [plan] = await kernel.queryAll<{
+export async function readRunningPlanAggregate(
+  executor: SqliteReadTransactionExecutor,
+  planId: string,
+): Promise<RunningPlanAggregate | null> {
+      const [plan] = await executor.queryAll<{
         id: string;
         name: string;
         revision: number;
@@ -185,12 +186,12 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
         [planId],
       );
       if (plan === undefined) return null;
-      const [goalRow] = await kernel.queryAll<{ goal_json: string }>(
+      const [goalRow] = await executor.queryAll<{ goal_json: string }>(
         `SELECT goal_json FROM running_goals WHERE plan_id = ?
          ORDER BY revision DESC, created_at_ms DESC, id DESC LIMIT 1`, [planId],
       );
       if (goalRow === undefined) return null;
-      const rows = await kernel.queryAll<{
+      const rows = await executor.queryAll<{
         slot_id: string; slot_root_id: string; weekday: RunningPlanSession["slot"]["weekday"];
         slot_revision: number; ordinal: number; definition_json: string;
       }>(
@@ -225,6 +226,12 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
         createdAtMs: plan.created_at_ms,
         goal: parseRunningGoal(JSON.parse(goalRow.goal_json)), sessions,
       });
+}
+
+export function createRunningPlanRepository(kernel: SqliteKernel) {
+  return Object.freeze({
+    async readAggregate(planId: string): Promise<RunningPlanAggregate | null> {
+      return readRunningPlanAggregate(kernel, planId);
     },
     async previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview> {
       return kernel.readSnapshot === undefined

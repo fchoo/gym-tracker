@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -61,6 +61,7 @@ export type FactualVisualProjection = Readonly<{
 const CHART_HEIGHT = 142;
 const CHART_WIDTH = 320;
 const MAX_VISUAL_POINTS = 120;
+const HISTORY_DATA_PAGE_SIZE = 100;
 
 function positiveFinite(value: number | null): value is number {
   return value !== null && Number.isFinite(value) && value > 0;
@@ -128,18 +129,16 @@ export function sampleFactualVisualPoints(
     ...localExtremaIndexes(points),
     ...targetCrossingIndexes(points),
   ]);
-  const spacing = Math.max(1, Math.ceil(points.length / maximum));
-  for (let index = 0; index < points.length; index += spacing) required.add(index);
-  const ordered = [...required].sort((left, right) => left - right);
-  if (ordered.length <= maximum) return ordered.map((index) => points[index]!);
-
-  const priority = new Set<number>([0, points.length - 1, best]);
-  const retained = ordered.filter((index) => priority.has(index));
-  for (const index of ordered) {
-    if (retained.length >= maximum) break;
-    if (!priority.has(index)) retained.push(index);
+  const semantic = [...required].sort((left, right) => left - right);
+  if (semantic.length >= maximum) {
+    return semantic.map((index) => points[index]!);
   }
-  return retained.sort((left, right) => left - right).map((index) => points[index]!);
+  const spacing = Math.max(1, Math.ceil(points.length / maximum));
+  for (let index = 0; index < points.length && required.size < maximum; index += spacing) {
+    required.add(index);
+  }
+  const ordered = [...required].sort((left, right) => left - right);
+  return ordered.slice(0, maximum).map((index) => points[index]!);
 }
 
 function contiguousRuns(
@@ -207,13 +206,18 @@ function statusText(point: ProgressFactualHistoryPoint): string {
   }
 }
 
-function chartPath(points: readonly PlotPoint[], valueFor: (point: ProgressFactualHistoryPoint) => number | null, minimum: number, maximum: number, sourceCount: number): string {
+export function factualChartY(value: number, minimum: number, maximum: number, fasterIsLower: boolean): number {
   const range = Math.max(1, maximum - minimum);
+  const normalized = (value - minimum) / range;
+  return 12 + (fasterIsLower ? normalized : 1 - normalized) * (CHART_HEIGHT - 32);
+}
+
+function chartPath(points: readonly PlotPoint[], valueFor: (point: ProgressFactualHistoryPoint) => number | null, minimum: number, maximum: number, sourceCount: number, fasterIsLower: boolean): string {
   const count = Math.max(1, sourceCount - 1);
   return points.map(({ point, sourceIndex }) => {
     const value = valueFor(point) ?? minimum;
     const x = 12 + (sourceIndex / count) * (CHART_WIDTH - 24);
-    const y = 12 + ((value - minimum) / range) * (CHART_HEIGHT - 32);
+    const y = factualChartY(value, minimum, maximum, fasterIsLower);
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   }).join(" ");
 }
@@ -241,14 +245,19 @@ function Fact({ label, value }: Readonly<{ label: string; value: string }>) {
 
 export type FactualHistoryChartProps = Readonly<{
   onOpenSource?: (source: FactualHistorySource) => void;
+  registerSourceAction?: (source: FactualHistorySource, node: View | null) => void;
   series: ProgressFactualSeries;
   formatValue?: (value: number | null) => string;
 }>;
 
-export function FactualHistoryChart({ formatValue, onOpenSource, series }: FactualHistoryChartProps) {
+export function FactualHistoryChart({ formatValue, onOpenSource, registerSourceAction, series }: FactualHistoryChartProps) {
   const { colors } = useAppTheme();
   const { fontScale, height, width } = useWindowDimensions();
   const [dataVisible, setDataVisible] = useState(false);
+  const [dataPage, setDataPage] = useState(1);
+  useEffect(() => {
+    setDataPage(1);
+  }, [series.points]);
   const facts = useMemo(() => series.points.filter(isPlotFact), [series.points]);
   const latest = facts.at(-1) ?? null;
   const best = facts.reduce<ProgressFactualHistoryPoint | null>((selected, candidate) => {
@@ -263,6 +272,7 @@ export function FactualHistoryChart({ formatValue, onOpenSource, series }: Factu
   const gap = best !== null && positiveFinite(best.valueSeconds) && positiveFinite(target)
     ? Math.abs(best.valueSeconds - target)
     : null;
+  const atTarget = gap === 0;
   const visual = useMemo(() => projectFactualVisualSeries(series), [series]);
   const allVisualPoints = visual.actualSegments.flatMap((segment) => segment);
   const values = allVisualPoints.flatMap(({ point }) => [point.valueSeconds, point.targetAtDateSeconds])
@@ -289,7 +299,7 @@ export function FactualHistoryChart({ formatValue, onOpenSource, series }: Factu
       <Fact label="Latest" value={valueText(latest?.valueSeconds ?? null)} />
       <Fact label="Best" value={valueText(best?.valueSeconds ?? null)} />
       <Fact label="Target" value={valueText(target)} />
-      <Fact label="Gap" value={gap === null ? "—" : `${valueText(gap)} ${series.fasterIsLower ? best!.valueSeconds! < target! ? "faster" : "slower" : best!.valueSeconds! > target! ? "higher" : "lower"}`} />
+      <Fact label="Gap" value={gap === null ? "—" : atTarget ? "At target" : `${valueText(gap)} ${series.fasterIsLower ? best!.valueSeconds! < target! ? "faster" : "slower" : best!.valueSeconds! > target! ? "higher" : "lower"}`} />
     </View>
     <View accessible accessibilityLabel={label} style={styles.chartSummary}>
       <Text style={[typeScale.body as TextStyle, { color: colors.textPrimary }]}>Personal history</Text>
@@ -299,12 +309,12 @@ export function FactualHistoryChart({ formatValue, onOpenSource, series }: Factu
     </View>
     <View style={[styles.chart, { borderColor: colors.line }]}>
       <Svg accessibilityElementsHidden height={CHART_HEIGHT} importantForAccessibility="no-hide-descendants" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} width="100%">
-        {visual.targetSegments.map((segment, index) => segment.length < 2 ? null : <Polyline fill="none" key={`target-${index}`} points={chartPath(segment, (point) => point.targetAtDateSeconds, minimum, maximum, series.points.length)} stroke={colors.yellow} strokeDasharray="7 5" strokeWidth={2} />)}
-        {visual.actualSegments.map((segment, index) => segment.length < 2 ? null : <Polyline fill="none" key={`actual-${index}`} points={chartPath(segment, (point) => point.valueSeconds, minimum, maximum, series.points.length)} stroke={colors.green} strokeWidth={2} />)}
+        {visual.targetSegments.map((segment, index) => segment.length < 2 ? null : <Polyline fill="none" key={`target-${index}`} points={chartPath(segment, (point) => point.targetAtDateSeconds, minimum, maximum, series.points.length, series.fasterIsLower)} stroke={colors.yellow} strokeDasharray="7 5" strokeWidth={2} />)}
+        {visual.actualSegments.map((segment, index) => segment.length < 2 ? null : <Polyline fill="none" key={`actual-${index}`} points={chartPath(segment, (point) => point.valueSeconds, minimum, maximum, series.points.length, series.fasterIsLower)} stroke={colors.green} strokeWidth={2} />)}
         {visual.actualSegments.flatMap((segment) => segment).map(({ point, sourceIndex }) => {
           const value = point.valueSeconds!;
           const x = 12 + (sourceIndex / Math.max(1, series.points.length - 1)) * (CHART_WIDTH - 24);
-          const y = 12 + ((value - minimum) / Math.max(1, maximum - minimum)) * (CHART_HEIGHT - 32);
+          const y = factualChartY(value, minimum, maximum, series.fasterIsLower);
           return <Circle cx={x} cy={y} fill={colors.paper} key={`${point.activityId}-${sourceIndex}`} r={4} stroke={colors.green} strokeWidth={2} />;
         })}
       </Svg>
@@ -315,7 +325,7 @@ export function FactualHistoryChart({ formatValue, onOpenSource, series }: Factu
     </FocusablePressable>
     {dataVisible ? <View accessibilityLabel="Factual history data" style={styles.data}>
       <Text accessibilityRole="header" style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>History data</Text>
-      {series.points.map((point, index) => {
+      {series.points.slice(0, dataPage * HISTORY_DATA_PAGE_SIZE).map((point, index) => {
         const source = sourceFor(point);
         return <View key={`${point.localDate}-${point.activityId ?? "unavailable"}-${index}`} style={[styles.dataRow, { borderColor: colors.line }]}>
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{longDate(point.localDate)}</Text>
@@ -323,9 +333,10 @@ export function FactualHistoryChart({ formatValue, onOpenSource, series }: Factu
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{positiveFinite(point.targetAtDateSeconds) ? `Target at date ${valueText(point.targetAtDateSeconds)}` : "Target unset"}</Text>
           {point.basisLabel ? <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{point.basisLabel}</Text> : null}
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{statusText(point)}</Text>
-          {source !== null && onOpenSource !== undefined ? <FocusablePressable accessibilityLabel="Open source" accessibilityRole="button" onPress={() => onOpenSource(source)} style={[styles.sourceAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text></FocusablePressable> : <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>}
+          {source !== null && onOpenSource !== undefined ? <FocusablePressable accessibilityLabel="Open source" accessibilityRole="button" onPress={() => onOpenSource(source)} ref={(node) => registerSourceAction?.(source, node)} style={[styles.sourceAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text></FocusablePressable> : <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>}
         </View>;
       })}
+      {dataPage * HISTORY_DATA_PAGE_SIZE < series.points.length ? <FocusablePressable accessibilityLabel="Show more history data" accessibilityRole="button" onPress={() => setDataPage((page) => page + 1)} style={[styles.disclosure, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Show more history data</Text></FocusablePressable> : null}
     </View> : null}
   </View>;
 }
