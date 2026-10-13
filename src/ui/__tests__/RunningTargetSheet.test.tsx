@@ -122,6 +122,24 @@ describe("RunningTargetSheet", () => {
     })));
   });
 
+  it("keeps an unset distance neutral until blur or save validation", async () => {
+    const view = await render(
+      <AppearanceProvider reduceMotion><RunningTargetSheet
+        onClose={jest.fn()}
+        runtime={{ createId: () => "request-1", saveRunningTarget: jest.fn() } as never}
+        sources={[source()]}
+        todayLocalDate="2026-10-12"
+        visible
+      /></AppearanceProvider>,
+    );
+
+    await fireEvent.press(view.getByRole("tab", { name: "10 km" }));
+    expect(view.getByLabelText("Target time")).toHaveProp("value", "");
+    expect(view.queryByText("Enter a valid target time.")).toBeNull();
+    await fireEvent(view.getByLabelText("Target time"), "blur");
+    expect(view.getByText("Enter a valid target time.")).toBeOnTheScreen();
+  });
+
   it("retains its complete draft and invokes no runtime save after invalid validation", async () => {
     const saveRunningTarget = jest.fn();
     const view = await render(
@@ -268,5 +286,22 @@ describe("RunningTargetSheet", () => {
       "accessibilityState",
       expect.objectContaining({ checked: true }),
     );
+
+    const twoPointFour = view.getByRole("tab", { name: "2.4 km" });
+    await fireEvent(twoPointFour, "keyDown", {
+      nativeEvent: { key: "ArrowRight", preventDefault: jest.fn() },
+    });
+    await waitFor(() => expect(view.getByRole("tab", { name: "10 km" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    ));
+    expect(view.getByRole("tab", { name: "10 km" })).toHaveProp("hasTVPreferredFocus", true);
+    await fireEvent(view.getByRole("tab", { name: "10 km" }), "keyDown", {
+      nativeEvent: { key: "End", preventDefault: jest.fn() },
+    });
+    await waitFor(() => expect(view.getByRole("tab", { name: "Half Marathon" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    ));
   });
 });
