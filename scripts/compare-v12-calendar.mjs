@@ -9,8 +9,11 @@ import { PNG } from "pngjs";
 import {
   V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
+  V12_CALENDAR_INPUT_IDS,
+  V12_CALENDAR_MOTION_IDS,
   V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
+  V12_CALENDAR_STATIC_CONFIGURATIONS,
   validateV12CalendarCaseLedgerDescriptor,
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
@@ -26,7 +29,13 @@ import {
 
 const ROOT = process.cwd();
 const SHA256 = /^[a-f0-9]{64}$/u;
-const CASE_RESULTS = new Set(["PASS", "FAIL", "REVIEW_REQUIRED"]);
+const CASE_EVIDENCE_PRODUCER = "v12-calendar-native-case/v1";
+const CASE_RECORD_FILES = Object.freeze({
+  functional: "functional.junit.xml",
+  trace: "trace.json",
+  measurement: "measurement.json",
+  capture: "capture-manifest.json",
+});
 const RECORD_CLASSIFICATIONS = new Set(["PASS", "FAIL", "REVIEW_REQUIRED", "accepted_deviation"]);
 const SEMANTIC_TARGETS = new Set(["calendar-month", "calendar-key", "calendar-agenda", "calendar-strength-detail"]);
 const SYNTHETIC_FIXTURES = new Set(["synthetic-calendar-month-v1", "synthetic-calendar-key-v1", "synthetic-calendar-agenda-v1", "synthetic-calendar-focus-v1", "synthetic-calendar-planned-detail-v1", "synthetic-calendar-accessibility-v1", "synthetic-calendar-system-light-v1", "synthetic-calendar-system-dark-v1"]);
@@ -164,22 +173,144 @@ function assertLedger(map) {
   catch { fail("ledger_required_case_missing"); }
 }
 
-function assertCaseResults(entries, nativeExecution, runId) {
+function caseConfiguration(requiredCase) {
+  const configuration = V12_CALENDAR_STATIC_CONFIGURATIONS.find(
+    ({ id }) => id === requiredCase.binding.configuration_id,
+  );
+  if (configuration === undefined) fail("case_result_binding_invalid");
+  return configuration;
+}
+
+export function v12CalendarCaseEvidenceBinding(requiredCase) {
+  const configuration = caseConfiguration(requiredCase);
+  let inputMotion;
+  if (requiredCase.kind === "configuration") {
+    inputMotion = V12_CALENDAR_INPUT_IDS.flatMap((input) => (
+      V12_CALENDAR_MOTION_IDS.map((motion) => ({ input, motion }))
+    ));
+  } else if (requiredCase.kind === "input") {
+    inputMotion = V12_CALENDAR_MOTION_IDS.map((motion) => ({
+      input: requiredCase.binding.input,
+      motion,
+    }));
+  } else if (requiredCase.kind === "motion") {
+    inputMotion = V12_CALENDAR_INPUT_IDS.map((input) => ({
+      input,
+      motion: requiredCase.binding.motion,
+    }));
+  } else {
+    inputMotion = [{
+      input: requiredCase.binding.input,
+      motion: requiredCase.binding.motion,
+    }];
+  }
+  return {
+    requested: requiredCase.binding,
+    measured: {
+      configuration: {
+        id: configuration.id,
+        appearance: configuration.appearance,
+        os_scheme: configuration.os_scheme,
+        viewport: configuration.viewport,
+        orientation: configuration.orientation,
+        font_scale: configuration.font_scale,
+      },
+      state_id: requiredCase.binding.state_id,
+      input_motion: inputMotion,
+    },
+  };
+}
+
+export function v12CalendarCaseEvidencePaths(requiredCase, runId) {
+  const root = `artifacts/native/v1.2/${runId}/case-support/${requiredCase.case_sha256}`;
+  return Object.fromEntries(
+    Object.entries(CASE_RECORD_FILES).map(([kind, file]) => [kind, `${root}/${file}`]),
+  );
+}
+
+function assertCaseRecord(record, kind, requiredCount, requiredCase, runId) {
+  const countKeys = ["passed", "failed", "skipped"];
+  schema(
+    record,
+    kind === "trace" || kind === "measurement"
+      ? [...countKeys, "sample_count", "artifact"]
+      : [...countKeys, "artifact"],
+    `case_result.records.${kind}`,
+  );
+  if (countKeys.some((key) => !Number.isSafeInteger(record[key]) || record[key] < 0)) {
+    fail("case_result_evidence_invalid");
+  }
+  if (record.passed + record.failed + record.skipped !== requiredCount) {
+    fail("case_result_evidence_invalid");
+  }
+  if (
+    (kind === "trace" || kind === "measurement")
+    && (!Number.isSafeInteger(record.sample_count) || record.sample_count < requiredCount)
+  ) fail("case_result_evidence_invalid");
+  schema(
+    record.artifact,
+    record.artifact?.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"],
+    `case_result.records.${kind}.artifact`,
+  );
+  const expectedPath = v12CalendarCaseEvidencePaths(requiredCase, runId)[kind];
+  if (normalizedPath(record.artifact.path) !== expectedPath || !SHA256.test(record.artifact.sha256)) {
+    fail("case_result_evidence_invalid");
+  }
+  if (
+    record.artifact.size_bytes !== undefined
+    && (!Number.isSafeInteger(record.artifact.size_bytes) || record.artifact.size_bytes < 1)
+  ) fail("case_result_evidence_invalid");
+  if (record.failed > 0) return "FAIL";
+  if (record.skipped > 0) return "REVIEW_REQUIRED";
+  return "PASS";
+}
+
+function validIsoTimestamp(value) {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function assertCaseResults(entries, nativeExecution, runId, identity) {
   if (nativeExecution === "NOT_RUN") {
     schema(entries, ["status", "native_execution", "required_case_count"], "case_results");
     if ([entries.status !== "REVIEW_REQUIRED", entries.native_execution !== "NOT_RUN", entries.required_case_count !== V12_CALENDAR_REQUIRED_CASE_IDS.length].some(Boolean)) fail("case_result_invalid");
     return ["REVIEW_REQUIRED"];
   }
   if ([!Array.isArray(entries), Array.isArray(entries) && entries.length !== V12_CALENDAR_REQUIRED_CASE_IDS.length, Array.isArray(entries) && entries.some((entry, index) => entry?.id !== V12_CALENDAR_REQUIRED_CASE_IDS[index])].some(Boolean)) fail("case_result_set_invalid");
+  const statuses = [];
   for (const [index, entry] of entries.entries()) {
-    schema(entry, ["id", "case_sha256", "status", "native_execution", "artifact"], "case_result");
+    schema(entry, ["id", "case_sha256", "native_execution", "binding", "execution", "records", "artifact"], "case_result");
     const requiredCase = V12_CALENDAR_REQUIRED_CASES[index];
-    if ([!CASE_RESULTS.has(entry.status), entry.native_execution !== nativeExecution, entry.case_sha256 !== requiredCase.case_sha256].some(Boolean)) fail("case_result_invalid");
+    if ([entry.native_execution !== nativeExecution, entry.case_sha256 !== requiredCase.case_sha256].some(Boolean)) fail("case_result_invalid");
+    const expectedBinding = v12CalendarCaseEvidenceBinding(requiredCase);
+    if (!isDeepStrictEqual(entry.binding, expectedBinding)) fail("case_result_binding_invalid");
+    schema(entry.execution, ["schema_version", "producer", "run_id", "package", "build_profile", "source_tree_sha256", "device_identity_sha256", "started_at", "finished_at"], "case_result.execution");
+    if ([
+      entry.execution.schema_version !== 1,
+      entry.execution.producer !== CASE_EVIDENCE_PRODUCER,
+      entry.execution.run_id !== runId,
+      entry.execution.package !== identity.package,
+      entry.execution.build_profile !== "development-test",
+      entry.execution.source_tree_sha256 !== identity.source_tree_sha256,
+      entry.execution.device_identity_sha256 !== identity.device_identity_sha256,
+      !validIsoTimestamp(entry.execution.started_at),
+      !validIsoTimestamp(entry.execution.finished_at),
+      Date.parse(entry.execution.finished_at) <= Date.parse(entry.execution.started_at),
+    ].some(Boolean)) fail("case_result_execution_invalid");
+    schema(entry.records, ["functional", "trace", "measurement", "capture"], "case_result.records");
+    const requiredCount = expectedBinding.measured.input_motion.length;
+    const recordStatuses = Object.keys(CASE_RECORD_FILES).map((kind) => (
+      assertCaseRecord(entry.records[kind], kind, requiredCount, requiredCase, runId)
+    ));
+    statuses.push(recordStatuses.includes("FAIL")
+      ? "FAIL"
+      : recordStatuses.includes("REVIEW_REQUIRED") ? "REVIEW_REQUIRED" : "PASS");
     schema(entry.artifact, entry.artifact.size_bytes === undefined ? ["path", "sha256"] : ["path", "sha256", "size_bytes"], "case_result.artifact");
     if (!SHA256.test(entry.artifact.sha256)) fail("case_result_invalid");
     if (normalizedPath(entry.artifact.path) !== `artifacts/native/v1.2/${runId}/cases/${entry.case_sha256}.json`) fail("path_invalid");
   }
-  return entries.map(({ status }) => status);
+  return statuses;
 }
 
 function assertIdentity(identity) {
@@ -319,7 +450,7 @@ export function validateV12CalendarComparison(result, options = {}) {
   catch { fail("case_registry_invalid"); }
   try { validateV12CalendarCaseLedgerDescriptor(result.case_ledger); }
   catch { fail("case_ledger_invalid"); }
-  const statuses = assertCaseResults(result.case_results, result.native_execution, result.run_id);
+  const statuses = assertCaseResults(result.case_results, result.native_execution, result.run_id, result.identity);
   for (const record of result.records) {
     schema(record, ["id", "classification", "differences", "artifacts", ...(record.classification === "accepted_deviation" ? ["deviation_id"] : [])], "comparison_record");
     if ([!RECORD_CLASSIFICATIONS.has(record.classification), !Array.isArray(record.differences)].some(Boolean)) fail("classification_invalid");

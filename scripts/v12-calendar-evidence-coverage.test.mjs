@@ -29,6 +29,8 @@ import {
 import {
   compareV12Calendar,
   executeV12CalendarComparisonFixture,
+  v12CalendarCaseEvidenceBinding,
+  v12CalendarCaseEvidencePaths,
   v12CalendarReferenceMapSha256,
   validateV12CalendarComparison,
   runV12CalendarComparisonCli,
@@ -114,6 +116,44 @@ function rawDiagnostics(count = 100) {
       refresh_rate_hz: index === 0 ? 90 : 60,
       profiler_overhead_ms: 0.1,
     })),
+  };
+}
+
+function completeCaseResult(requiredCase, runId, identity, index) {
+  const binding = v12CalendarCaseEvidenceBinding(requiredCase);
+  const requiredCount = binding.measured.input_motion.length;
+  const paths = v12CalendarCaseEvidencePaths(requiredCase, runId);
+  const record = (kind, withSamples = false) => ({
+    passed: requiredCount,
+    failed: 0,
+    skipped: 0,
+    ...(withSamples ? { sample_count: requiredCount } : {}),
+    artifact: { path: paths[kind], sha256: "a".repeat(64) },
+  });
+  const startedAt = new Date(Date.UTC(2026, 9, 13, 0, 0, index * 2)).toISOString();
+  return {
+    id: requiredCase.id,
+    case_sha256: requiredCase.case_sha256,
+    native_execution: "EXECUTED",
+    binding,
+    execution: {
+      schema_version: 1,
+      producer: "v12-calendar-native-case/v1",
+      run_id: runId,
+      package: identity.package,
+      build_profile: "development-test",
+      source_tree_sha256: identity.source_tree_sha256,
+      device_identity_sha256: identity.device_identity_sha256,
+      started_at: startedAt,
+      finished_at: new Date(Date.parse(startedAt) + 1_000).toISOString(),
+    },
+    records: {
+      functional: record("functional"),
+      trace: record("trace", true),
+      measurement: record("measurement", true),
+      capture: record("capture"),
+    },
+    artifact: { path: `artifacts/native/v1.2/${runId}/cases/${requiredCase.case_sha256}.json`, sha256: "a".repeat(64) },
   };
 }
 
@@ -215,13 +255,9 @@ function liveEvidence() {
   evidence.comparison.status = "PASS";
   evidence.comparison.identity = structuredClone(evidence.identity);
   evidence.comparison.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
-  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
-    id: entry.id,
-    case_sha256: entry.case_sha256,
-    status: "PASS",
-    native_execution: "EXECUTED",
-    artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
-  }));
+  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
+    completeCaseResult(entry, evidence.run_id, evidence.identity, index)
+  ));
   evidence.comparison.records.forEach((entry) => {
     entry.classification = "PASS";
     entry.differences = [];
@@ -1125,6 +1161,13 @@ test("shared comparison validation rejects malformed host and live envelopes", (
     ], (entry) => validateV12CalendarComparison(entry));
     assert.throws(() => validateV12CalendarComparison(host, { expectedRunId: "wrong" }), /result_identity_invalid/u);
     assert.throws(() => validateV12CalendarComparison(host, { expectedIdentity: { ...host.identity, report_sha256: "0".repeat(64) } }), /result_identity_invalid/u);
+    const failingHost = structuredClone(host);
+    failingHost.records[0].classification = "FAIL";
+    failingHost.status = "FAIL";
+    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      failingHost.records[0].artifacts[kind].path = `comparison/${failingHost.records[0].id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+    }
+    assert.throws(() => validateV12CalendarComparison(failingHost), /result_status_invalid/u);
 
     const live = structuredClone(host);
     live.mode = "live-executed";
@@ -1138,11 +1181,26 @@ test("shared comparison validation rejects malformed host and live envelopes", (
       live.records[0].artifacts[kind].path = `${artifactRoot}/comparison/${live.records[0].id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
     }
     live.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
-    live.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({ id: entry.id, case_sha256: entry.case_sha256, status: "PASS", native_execution: "EXECUTED", artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) } }));
+    live.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
+      completeCaseResult(entry, live.run_id, live.identity, index)
+    ));
     assert.equal(validateV12CalendarComparison(live), true);
     const explained = structuredClone(live);
     explained.records[0].differences = [{ kind: "visual", explained: true }];
     assert.equal(validateV12CalendarComparison(explained), true);
+    const failedCase = structuredClone(live);
+    failedCase.case_results[0].records.functional.passed -= 1;
+    failedCase.case_results[0].records.functional.failed = 1;
+    failedCase.status = "FAIL";
+    assert.equal(validateV12CalendarComparison(failedCase), true);
+    const reviewCase = structuredClone(live);
+    reviewCase.case_results[0].records.trace.passed -= 1;
+    reviewCase.case_results[0].records.trace.skipped = 1;
+    reviewCase.status = "REVIEW_REQUIRED";
+    assert.equal(validateV12CalendarComparison(reviewCase), true);
+    const sizedCaseEvidence = structuredClone(live);
+    sizedCaseEvidence.case_results[0].records.capture.artifact.size_bytes = 1;
+    assert.equal(validateV12CalendarComparison(sizedCaseEvidence), true);
     const unknownDifference = structuredClone(explained);
     unknownDifference.records[0].differences[0].kind = "private-route-data";
     assert.throws(() => validateV12CalendarComparison(unknownDifference), /privacy_schema_invalid/u);
@@ -1154,12 +1212,33 @@ test("shared comparison validation rejects malformed host and live envelopes", (
       (entry) => { entry.case_results = null; },
       (entry) => { entry.case_results.pop(); },
       (entry) => { entry.case_results[0].id = "wrong"; },
-      (entry) => { entry.case_results[0].status = "UNKNOWN"; },
+      (entry) => { entry.case_results[0].binding.measured.state_id = "wrong"; },
       (entry) => { entry.case_results[0].native_execution = "NOT_RUN"; },
+      (entry) => { entry.case_results[0].case_sha256 = "0".repeat(64); },
+      (entry) => { entry.case_results[0].execution.schema_version = 2; },
+      (entry) => { entry.case_results[0].execution.producer = "wrong"; },
+      (entry) => { entry.case_results[0].execution.run_id = "wrong"; },
+      (entry) => { entry.case_results[0].execution.package = "wrong"; },
+      (entry) => { entry.case_results[0].execution.build_profile = "release"; },
+      (entry) => { entry.case_results[0].execution.source_tree_sha256 = "0".repeat(64); },
+      (entry) => { entry.case_results[0].execution.device_identity_sha256 = "0".repeat(64); },
+      (entry) => { entry.case_results[0].execution.started_at = null; },
+      (entry) => { entry.case_results[0].execution.started_at = "not-a-date"; },
+      (entry) => { entry.case_results[0].execution.started_at = "2026-10-13"; },
+      (entry) => { entry.case_results[0].execution.finished_at = "2026-10-13T00:00:00.000Z"; },
+      (entry) => { entry.case_results[0].records.functional.passed = -1; },
+      (entry) => { entry.case_results[0].records.functional.passed -= 1; },
+      (entry) => { entry.case_results[0].records.trace.sample_count = 0; },
+      (entry) => { entry.case_results[0].records.trace.artifact.path = "wrong"; },
+      (entry) => { entry.case_results[0].records.trace.artifact.sha256 = "bad"; },
+      (entry) => { entry.case_results[0].records.capture.artifact.size_bytes = 0; },
       (entry) => { entry.case_results[0].artifact.sha256 = "bad"; },
-      (entry) => { entry.case_results[0].status = "FAIL"; },
-      (entry) => { entry.case_results[0].status = "REVIEW_REQUIRED"; },
+      (entry) => { entry.case_results[0].artifact.path = "wrong"; },
     ], (entry) => validateV12CalendarComparison(entry));
+    assert.throws(() => v12CalendarCaseEvidenceBinding({
+      kind: "state",
+      binding: { configuration_id: "missing", state_id: "state", input: "touch", motion: "normal" },
+    }), /case_result_binding_invalid/u);
   } finally {
     rmSync(value.directory, { recursive: true, force: true });
   }

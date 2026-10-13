@@ -23,6 +23,8 @@ import {
 
 import {
   compareV12Calendar,
+  v12CalendarCaseEvidenceBinding,
+  v12CalendarCaseEvidencePaths,
   v12CalendarReferenceMapSha256,
   validateV12CalendarStageTrace,
   validateV12CalendarComparison,
@@ -39,6 +41,44 @@ const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const image = new PNG({ width: 1, height: 1 });
 image.data.set([1, 2, 3, 255]);
 const png = PNG.sync.write(image);
+
+function completeCaseResult(requiredCase, runId, identity, index) {
+  const binding = v12CalendarCaseEvidenceBinding(requiredCase);
+  const requiredCount = binding.measured.input_motion.length;
+  const paths = v12CalendarCaseEvidencePaths(requiredCase, runId);
+  const record = (kind, withSamples = false) => ({
+    passed: requiredCount,
+    failed: 0,
+    skipped: 0,
+    ...(withSamples ? { sample_count: requiredCount } : {}),
+    artifact: { path: paths[kind], sha256: "f".repeat(64) },
+  });
+  const startedAt = new Date(Date.UTC(2026, 9, 13, 0, 0, index * 2)).toISOString();
+  return {
+    id: requiredCase.id,
+    case_sha256: requiredCase.case_sha256,
+    native_execution: "EXECUTED",
+    binding,
+    execution: {
+      schema_version: 1,
+      producer: "v12-calendar-native-case/v1",
+      run_id: runId,
+      package: identity.package,
+      build_profile: "development-test",
+      source_tree_sha256: identity.source_tree_sha256,
+      device_identity_sha256: identity.device_identity_sha256,
+      started_at: startedAt,
+      finished_at: new Date(Date.parse(startedAt) + 1_000).toISOString(),
+    },
+    records: {
+      functional: record("functional"),
+      trace: record("trace", true),
+      measurement: record("measurement", true),
+      capture: record("capture"),
+    },
+    artifact: { path: `artifacts/native/v1.2/${runId}/cases/${requiredCase.case_sha256}.json`, sha256: "f".repeat(64) },
+  };
+}
 
 function completeFixture() {
   const directory = mkdtempSync(path.join(tmpdir(), "v12-calendar-"));
@@ -274,13 +314,9 @@ test("the shared comparison schema accepts a complete identity-bound live PASS",
         record.artifacts[kind].path = `${artifactRoot}/comparison/${record.id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
       }
     });
-    result.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
-      id: entry.id,
-      case_sha256: entry.case_sha256,
-      status: "PASS",
-      native_execution: "EXECUTED",
-      artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "f".repeat(64) },
-    }));
+    result.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
+      completeCaseResult(entry, result.run_id, result.identity, index)
+    ));
     assert.equal(validateV12CalendarComparison(result, {
       expectedRunId: result.run_id,
       expectedIdentity: fixture.identity,

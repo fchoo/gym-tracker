@@ -188,8 +188,6 @@ function derivedStatus(evidence) {
   const failed = [
     evidence.functional_cases.some(({ status }) => status === "FAIL"),
     evidence.comparison.status === "FAIL",
-    Array.isArray(evidence.comparison.case_results)
-      && evidence.comparison.case_results.some(({ status }) => status === "FAIL"),
     evidence.comparison.records.some(({ classification }) => classification === "FAIL"),
     evidence.deviations.some(({ technical_status }) => technical_status === "FAIL"),
   ].some(Boolean);
@@ -198,8 +196,6 @@ function derivedStatus(evidence) {
     evidence.native_execution !== "EXECUTED",
     evidence.functional_cases.some(({ status }) => status === "REVIEW_REQUIRED"),
     evidence.comparison.status === "REVIEW_REQUIRED",
-    !Array.isArray(evidence.comparison.case_results)
-      || evidence.comparison.case_results.some(({ status }) => status === "REVIEW_REQUIRED"),
     evidence.comparison.records.some(({ classification }) => ["REVIEW_REQUIRED", "accepted_deviation"].includes(classification)),
     evidence.deviations.some(({ technical_status, classification }) => technical_status === "REVIEW_REQUIRED" || classification === "accepted_deviation"),
   ].some(Boolean);
@@ -290,6 +286,9 @@ function evidenceArtifactDescriptors(evidence) {
     ...evidence.functional_cases.map(({ artifact }) => artifact),
     ...evidence.route_journeys.map(({ artifact }) => artifact),
     ...evidence.comparison.case_results.map(({ artifact }) => artifact),
+    ...evidence.comparison.case_results.flatMap(({ records }) => (
+      Object.values(records).map(({ artifact }) => artifact)
+    )),
     ...evidence.comparison.records.flatMap((record) => {
       return ["reference", "native", "overlay", "difference", "mask", "record"].map((kind) => record.artifacts[kind]);
     }),
