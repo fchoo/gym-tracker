@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { StyleSheet, type StyleProp, type TextStyle } from "react-native";
 
 import { WorkoutOutcomeConflictError, type SessionDetail } from "../../src/domains/workout";
 
@@ -49,8 +50,20 @@ jest.mock("../../src/ui/screens/SessionDetailScreen", () => ({
   },
 }));
 jest.mock("../../src/ui/components", () => {
+  const ReactImplementation = require("react") as typeof import("react");
   const { Pressable, Text } = require("react-native") as typeof import("react-native");
-  return { EmptyState: ({ heading, primaryAction }: { heading: string; primaryAction?: React.ReactNode }) => <><Text>{heading}</Text>{primaryAction}</>, PrimaryAction: ({ label, onPress }: { label: string; onPress(): void }) => <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} />, ScreenHeader: () => null, SkeletonBlock: () => null };
+  const MockScreenHeader = ({ backActionRef, title, titleStyle }: { backActionRef?: React.Ref<unknown>; title: string; titleStyle?: StyleProp<TextStyle> }) => {
+    const fallbackRef = ReactImplementation.useRef<unknown>(null);
+    const [preferred, setPreferred] = ReactImplementation.useState(false);
+    ReactImplementation.useImperativeHandle(backActionRef ?? fallbackRef, () => ({ focus: () => setPreferred(true) }), []);
+    return <><Pressable accessibilityLabel="Go back" accessibilityRole="button" hasTVPreferredFocus={preferred} /><Text style={titleStyle}>{title}</Text></>;
+  };
+  return {
+    EmptyState: ({ heading, headingStyle, primaryAction }: { heading: string; headingStyle?: StyleProp<TextStyle>; primaryAction?: React.ReactNode }) => <><Text style={headingStyle}>{heading}</Text>{primaryAction}</>,
+    PrimaryAction: ({ label, onPress }: { label: string; onPress(): void }) => <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} />,
+    ScreenHeader: MockScreenHeader,
+    SkeletonBlock: () => null,
+  };
 });
 jest.mock("../../src/ui/layout/AdaptiveScreen", () => ({ AdaptiveScreen: ({ primary }: { primary: React.ReactNode }) => primary }));
 
@@ -84,7 +97,17 @@ describe("SessionDetailRoute", () => {
     mockParams = { sessionId: ["calendar-session", "other"], origin: "calendar" };
     await render(<SessionDetailRoute />);
     await waitFor(() => expect(screen.getByText("Workout details unavailable")).toBeOnTheScreen());
+    expect(StyleSheet.flatten(screen.getByText("Workout details").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByText("Workout details unavailable").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
+    expect(screen.getByRole("button", { name: "Go back" })).toHaveProp("hasTVPreferredFocus", true);
     expect(mockLoadCalendarSessionDetail).not.toHaveBeenCalled();
+  });
+
+  it("keeps Back as the preferred target while Calendar history is loading", async () => {
+    mockLoadCalendarSessionDetail.mockImplementation(() => new Promise(() => undefined));
+    await render(<SessionDetailRoute />);
+    expect(screen.getByText("Workout details")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Go back" })).toHaveProp("hasTVPreferredFocus", true);
   });
 
   it.each(["unknown", ["calendar"]] as const)(
@@ -106,6 +129,7 @@ describe("SessionDetailRoute", () => {
 
     expect(await screen.findByText("Workout details could not be loaded")).toBeOnTheScreen();
     expect(screen.queryByText("Workout details unavailable")).toBeNull();
+    expect(screen.getByRole("button", { name: "Go back" })).toHaveProp("hasTVPreferredFocus", true);
     await fireEvent.press(screen.getByRole("button", { name: "Retry workout details" }));
     expect(await screen.findByText("Calendar facts calendar-session")).toBeOnTheScreen();
     expect(mockLoadCalendarSessionDetail).toHaveBeenNthCalledWith(1, "calendar-session");

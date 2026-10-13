@@ -36,9 +36,24 @@ describe("CalendarAgenda factual copy", () => {
     );
     expect(screen.getByText("3 of 4 working sets completed")).toBeOnTheScreen();
     expect(screen.getByTestId("calendar-agenda-event-completed")).toHaveStyle({
+      alignItems: "flex-start",
       backgroundColor: "transparent",
       borderBottomWidth: 1,
       borderWidth: 0,
+      gap: 10,
+      minHeight: 82,
+      paddingRight: 10,
+      paddingVertical: 10,
+    });
+    expect(screen.getByTestId("calendar-agenda-rail-completed")).toHaveStyle({
+      borderRadius: 2,
+      height: 62,
+      width: 5,
+    });
+    expect(screen.getByTestId("calendar-agenda-disclosure-completed")).toHaveStyle({
+      alignSelf: "flex-start",
+      height: 24,
+      width: 24,
     });
     expect(screen.queryByText("Completed result")).toBeNull();
     expect(JSON.stringify(rendered.toJSON())).not.toMatch(/garmin_connect_account|owner-a/u);

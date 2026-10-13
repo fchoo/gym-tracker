@@ -1275,7 +1275,7 @@ test("shared comparison validation rejects malformed host and live envelopes", (
     assert.throws(() => v12CalendarCaseEvidenceBinding({
       kind: "state",
       binding: { configuration_id: "missing", state_id: "state", input: "touch", motion: "normal" },
-    }), /case_result_binding_invalid/u);
+    }), /case_registry_invalid/u);
   } finally {
     rmSync(value.directory, { recursive: true, force: true });
   }

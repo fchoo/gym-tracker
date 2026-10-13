@@ -280,7 +280,7 @@ export function validateV12CalendarPackageScripts(packageJson) {
   return true;
 }
 
-function evidenceArtifactDescriptors(evidence) {
+function evidenceArtifactDescriptors(evidence, sourceArtifacts = []) {
   return [
     evidence.manifest?.apk,
     evidence.artifacts?.manifest,
@@ -293,6 +293,7 @@ function evidenceArtifactDescriptors(evidence) {
     ...evidence.comparison.case_results.flatMap(({ records }) => (
       Object.values(records).map(({ artifact }) => artifact)
     )),
+    ...sourceArtifacts,
     ...evidence.comparison.records.flatMap((record) => {
       return ["reference", "native", "overlay", "difference", "mask", "record"].map((kind) => record.artifacts[kind]);
     }),
@@ -309,6 +310,7 @@ function retainedJson(root, descriptorValue, expected, code) {
 }
 
 function validateRetainedCaseSupport(root, caseResults) {
+  const sourceArtifacts = [];
   for (const [index, caseResult] of caseResults.entries()) {
     const requiredCase = V12_CALENDAR_REQUIRED_CASES[index];
     const bytesByKind = Object.fromEntries(Object.entries(caseResult.records).map(([kind, record]) => {
@@ -318,8 +320,19 @@ function validateRetainedCaseSupport(root, caseResults) {
       });
       return [kind, readFileSync(artifactPath)];
     }));
-    validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind });
+    const runRoot = path.resolve(root, liveRoot(caseResult.execution.run_id));
+    const validated = validateV12CalendarCaseSupportBytes({
+      requiredCase,
+      caseResult,
+      bytesByKind,
+      readArtifactBytes: (artifactPath) => readFileSync(resolveV12CalendarPath(
+        path.resolve(root, artifactPath),
+        { root: runRoot, mustExist: true },
+      )),
+    });
+    sourceArtifacts.push(...validated.sourceArtifacts);
   }
+  return sourceArtifacts;
 }
 
 function withoutArtifact(entry) {
@@ -378,7 +391,8 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
   const evidence = JSON.parse(readFileSync(safeEvidencePath, "utf8"));
   if ([evidence.host_only_fixture === true, !isDeepStrictEqual(evidence.manifest, manifest)].some(Boolean)) fail("live_evidence_identity_invalid");
   const result = validateV12CalendarEvidence(evidence, { root });
-  verifyV12CalendarArtifactSet(evidenceArtifactDescriptors(evidence), { root });
+  const sourceArtifacts = validateRetainedCaseSupport(root, evidence.comparison.case_results);
+  verifyV12CalendarArtifactSet(evidenceArtifactDescriptors(evidence, sourceArtifacts), { root });
   const comparisonPath = resolveV12CalendarPath(path.resolve(root, evidence.artifacts.comparison.path), { root, mustExist: true });
   const comparison = JSON.parse(readFileSync(comparisonPath, "utf8"));
   validateV12CalendarComparison(comparison, {
@@ -398,7 +412,6 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
   for (const entry of evidence.functional_cases) retainedJson(root, entry.artifact, withoutArtifact(entry), "functional_case");
   for (const entry of evidence.route_journeys) retainedJson(root, entry.artifact, withoutArtifact(entry), "route_journey");
   for (const entry of evidence.comparison.case_results) retainedJson(root, entry.artifact, withoutArtifact(entry), "case_result");
-  validateRetainedCaseSupport(root, evidence.comparison.case_results);
   const map = referenceMap(root, evidence.manifest.reference_map_sha256);
   const mappedById = new Map(map.captures.map((entry) => [entry.id, entry]));
   for (const record of evidence.comparison.records) {

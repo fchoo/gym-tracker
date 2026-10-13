@@ -78,6 +78,29 @@ export const V12_CALENDAR_INPUT_IDS = Object.freeze([
 
 export const V12_CALENDAR_MOTION_IDS = Object.freeze(["normal", "reduced"]);
 
+export const V12_CALENDAR_CASE_SUPPORT_EXPECTATIONS = Object.freeze({
+  functional: Object.freeze({
+    assertions: Object.freeze([
+      Object.freeze({ id: "functional-result", expected: true }),
+    ]),
+  }),
+  trace: Object.freeze({
+    schema_version: 1,
+    producer: "v12-calendar-native-trace/v1",
+    events: Object.freeze(["observation-started", "observation-finished"]),
+  }),
+  measurement: Object.freeze({
+    schema_version: 1,
+    producer: "v12-calendar-native-measurement/v1",
+    metrics: Object.freeze([
+      Object.freeze({ id: "viewport-width", unit: "dp", source: "viewport.width" }),
+      Object.freeze({ id: "viewport-height", unit: "dp", source: "viewport.height" }),
+      Object.freeze({ id: "font-scale", unit: "ratio", source: "font_scale" }),
+    ]),
+  }),
+  capture: Object.freeze({ format: "png", minimum_width_px: 1, minimum_height_px: 1 }),
+});
+
 const CANONICAL_CONFIGURATION_ID = "L-C390-P-F100";
 const CANONICAL_STATE_ID = "calendar-focused-week";
 

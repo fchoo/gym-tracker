@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
-import { describe, expect, it, jest } from "@jest/globals";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
-import { StyleSheet } from "react-native";
+import { Animated, StyleSheet } from "react-native";
 
 import type { SessionDetail } from "../../domains/workout";
 import { CalendarReadOnlyWorkout } from "../calendar/CalendarReadOnlyWorkout";
@@ -15,7 +15,10 @@ const detail = {
 } as unknown as SessionDetail;
 
 describe("CalendarReadOnlyWorkout", () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
   it("renders immutable completed facts and disclosure without management actions", async () => {
+    const timing = jest.spyOn(Animated, "timing");
     const onGoBack = jest.fn();
     await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={detail} onGoBack={onGoBack} /></AppearanceProvider>);
     expect(screen.getByText("Complete · read only")).toBeOnTheScreen();
@@ -26,20 +29,44 @@ describe("CalendarReadOnlyWorkout", () => {
     expect(StyleSheet.flatten(screen.getByText("2026-10-13").props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
     expect(StyleSheet.flatten(screen.getByRole("header", { name: "Bench press" }).props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 16, fontWeight: "800" });
     expect(StyleSheet.flatten(screen.getByTestId("calendar-read-only-set-set-1").props.style).flexDirection).toBe("row");
+    const completedState = screen.getByTestId("calendar-read-only-set-set-1-state");
+    expect(completedState).toHaveTextContent("Complete");
+    expect(completedState.children[0]).toHaveProp("accessible", false);
+    expect(completedState.children[0]).toHaveProp("height", 24);
+    expect(completedState.children[0]).toHaveProp("strokeWidth", 2);
+    expect(completedState.children[0]).toHaveProp("width", 24);
+    const incompleteState = screen.getByTestId("calendar-read-only-set-set-2-state");
+    expect(incompleteState).toHaveTextContent("Not completed");
+    expect(incompleteState.children[0]).toHaveProp("accessible", false);
+    expect(incompleteState.children[0]).toHaveProp("height", 24);
+    expect(incompleteState.children[0]).toHaveProp("strokeWidth", 2);
+    expect(incompleteState.children[0]).toHaveProp("width", 24);
+    expect(screen.queryByText("✓ Complete")).toBeNull();
+    expect(screen.queryByText("— Not completed")).toBeNull();
     expect(screen.queryByText("Correct workout")).toBeNull();
     expect(screen.queryByText("Resume workout")).toBeNull();
+    timing.mockClear();
+    await fireEvent.press(screen.getByRole("button", { name: /Bench press.*Collapse exercise/u }));
+    await waitFor(() => expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        duration: 160,
+        toValue: 0,
+        useNativeDriver: true,
+      })));
     fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
     expect(onGoBack).toHaveBeenCalledTimes(1);
   });
 
   it("keeps partial facts read-only and changes only local disclosure visibility", async () => {
     const partial = { ...detail, status: "partial" as const, statusLabel: "Partial", resumable: true };
-    await render(<AppearanceProvider><CalendarReadOnlyWorkout detail={partial} onGoBack={jest.fn()} /></AppearanceProvider>);
+    const timing = jest.spyOn(Animated, "timing");
+    await render(<AppearanceProvider reduceMotion><CalendarReadOnlyWorkout detail={partial} onGoBack={jest.fn()} /></AppearanceProvider>);
 
     expect(screen.getByText("Partial · read only")).toBeOnTheScreen();
     expect(screen.getByText(/Not completed/u)).toBeOnTheScreen();
     const disclosure = screen.getByRole("button", { name: /Bench press/u });
+    timing.mockClear();
     await fireEvent.press(disclosure);
+    expect(timing).not.toHaveBeenCalled();
     expect(screen.queryByText(/Not completed/u)).toBeNull();
     expect(disclosure).toHaveProp("accessibilityState", expect.objectContaining({ expanded: false }));
     expect(screen.queryByText("Resume workout")).toBeNull();

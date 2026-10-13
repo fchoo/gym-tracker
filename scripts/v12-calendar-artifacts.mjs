@@ -15,7 +15,7 @@ import path from "node:path";
 import { exactKeys } from "./node-evidence-utils.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
-const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+export const V12_CALENDAR_RUN_ID_PATTERN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const STAGE_ID = /^[a-z][a-z0-9_-]{2,63}$/u;
 
 function fail(code) {
@@ -106,7 +106,7 @@ export function writeExclusiveArtifact(file, bytes, options = {}) {
 }
 
 function runDirectory(root, runId) {
-  if (!RUN_ID.test(runId)) fail("run_id_invalid");
+  if (!V12_CALENDAR_RUN_ID_PATTERN.test(runId)) fail("run_id_invalid");
   return path.join(path.resolve(root), runId);
 }
 

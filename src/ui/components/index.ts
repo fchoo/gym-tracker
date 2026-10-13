@@ -743,11 +743,15 @@ export function SectionHeader({
 export function EmptyState({
   heading,
   body,
+  headingStyle,
+  bodyStyle,
   primaryAction,
   secondaryAction,
 }: Readonly<{
   heading: string;
   body: string;
+  headingStyle?: StyleProp<TextStyle>;
+  bodyStyle?: StyleProp<TextStyle>;
   primaryAction: React.ReactNode;
   secondaryAction?: React.ReactNode;
 }>) {
@@ -762,6 +766,7 @@ export function EmptyState({
         accessibilityRole: "header",
         style: [
           typeScale.sectionTitle as TextStyle,
+          headingStyle,
           { color: colors.textPrimary },
         ],
       },
@@ -772,6 +777,7 @@ export function EmptyState({
       {
         style: [
           typeScale.body as TextStyle,
+          bodyStyle,
           { color: colors.textSecondary },
         ],
       },

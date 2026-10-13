@@ -7,6 +7,7 @@ import type {
   WorkoutPresentationModel,
 } from "../../domains/workout/workoutPresentation";
 import { calendarTypeScale, space, workoutTypeScale, useAppTheme } from "../theme";
+import { CalendarDisclosureChevron } from "../calendar/CalendarDisclosureChevron";
 import { FocusablePressable } from "./index";
 import { WorkoutSetFactsRow } from "./WorkoutSetFactsRow";
 
@@ -89,7 +90,13 @@ export function WorkoutSessionPresentation({
                   <Text accessibilityRole="header" style={[(typography === "calendar" ? calendarTypeScale.bodyStrong : workoutTypeScale.bodyStrong) as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
                   <Text style={[(typography === "calendar" ? calendarTypeScale.metadata : workoutTypeScale.secondary) as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
                 </View>
-                {expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
+                {typography === "calendar" ? (
+                  <CalendarDisclosureChevron
+                    color={colors.textSecondary}
+                    expanded={expanded}
+                    testID={`calendar-exercise-disclosure-${exercise.id}`}
+                  />
+                ) : expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
               </FocusablePressable>
               <View style={styles.actions}>{renderExerciseAccessory?.(exercise, index)}</View>
             </View>

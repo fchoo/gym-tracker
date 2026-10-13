@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { View, type TextStyle } from "react-native";
 
 import {
   useCalendarActivityReadPort,
@@ -10,6 +11,7 @@ import { WorkoutOutcomeConflictError, type SessionDetail } from "../../domains/w
 import { EmptyState, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { GarminRouteShell } from "../garmin/GarminRouteShell";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
+import { calendarTypeScale } from "../theme";
 import {
   ImportedActivityDetailScreen,
   type ImportedActivityDetailScreenState,
@@ -18,20 +20,39 @@ import { PlannedWorkoutDetailScreen } from "../screens/PlannedWorkoutDetailScree
 import { RunningPlanDetailScreen } from "../screens/RunningPlanDetailScreen";
 import { CalendarReadOnlyWorkout } from "./CalendarReadOnlyWorkout";
 
-function CalendarSessionUnavailable({ onBack }: Readonly<{ onBack(): void }>) {
+function CalendarSessionStateShell({
+  children,
+  onBack,
+}: Readonly<{ children: React.ReactNode; onBack(): void }>) {
+  const backActionRef = useRef<View>(null);
+
+  useEffect(() => {
+    backActionRef.current?.focus?.();
+  }, []);
+
   return (
     <AdaptiveScreen
       primary={
         <>
-          <ScreenHeader backAction={onBack} title="Workout details" />
-          <EmptyState
-            body="This workout was removed or changed. Return to Calendar to refresh."
-            heading="Workout details unavailable"
-            primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />}
-          />
+          <ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout details" titleStyle={calendarTypeScale.heading as TextStyle} />
+          {children}
         </>
       }
     />
+  );
+}
+
+function CalendarSessionUnavailable({ onBack }: Readonly<{ onBack(): void }>) {
+  return (
+    <CalendarSessionStateShell onBack={onBack}>
+      <EmptyState
+        body="This workout was removed or changed. Return to Calendar to refresh."
+        bodyStyle={calendarTypeScale.body as TextStyle}
+        heading="Workout details unavailable"
+        headingStyle={calendarTypeScale.heading as TextStyle}
+        primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />}
+      />
+    </CalendarSessionStateShell>
   );
 }
 
@@ -76,13 +97,13 @@ export function CalendarSessionDetailRouteAdapter({
   if (state === "missing") return <CalendarSessionUnavailable onBack={onBack} />;
   if (state === "error") {
     return (
-      <AdaptiveScreen
-        primary={<><ScreenHeader backAction={onBack} title="Workout details" /><EmptyState body="Your saved workout was not changed. Try loading these details again." heading="Workout details could not be loaded" primaryAction={<PrimaryAction label="Retry workout details" onPress={() => setRetryGeneration((value) => value + 1)} />} /></>}
-      />
+      <CalendarSessionStateShell onBack={onBack}>
+        <EmptyState body="Your saved workout was not changed. Try loading these details again." bodyStyle={calendarTypeScale.body as TextStyle} heading="Workout details could not be loaded" headingStyle={calendarTypeScale.heading as TextStyle} primaryAction={<PrimaryAction label="Retry workout details" onPress={() => setRetryGeneration((value) => value + 1)} />} />
+      </CalendarSessionStateShell>
     );
   }
   if (state === "loading" || detail === null) {
-    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} title="Workout details" /><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></>} />;
+    return <CalendarSessionStateShell onBack={onBack}><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></CalendarSessionStateShell>;
   }
   return <CalendarReadOnlyWorkout detail={detail} onGoBack={onBack} />;
 }

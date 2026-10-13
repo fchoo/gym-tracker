@@ -126,14 +126,27 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
               ]}
               testID={`calendar-agenda-event-${event.id}`}
             >
-              <View style={[styles.rail, { backgroundColor: event.sport === "strength" ? colors.orange : colors.blue }]} />
+              <View
+                style={[styles.rail, { backgroundColor: event.sport === "strength" ? colors.orange : colors.blue }]}
+                testID={`calendar-agenda-rail-${event.id}`}
+              />
               <View style={styles.copy}>
                 <Text numberOfLines={undefined} style={[calendarTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{event.title}</Text>
                 <Text numberOfLines={undefined} style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>{event.displaySummary}</Text>
                 <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{`${sport} · ${status}`}</Text>
                 <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{event.sourceLabel}</Text>
               </View>
-              <ChevronRight accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
+              <View
+                style={styles.disclosure}
+                testID={`calendar-agenda-disclosure-${event.id}`}
+              >
+                <ChevronRight
+                  accessible={false}
+                  color={colors.textSecondary}
+                  size={24}
+                  strokeWidth={2}
+                />
+              </View>
             </FocusablePressable>
           );
         })}
@@ -144,9 +157,10 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
 
 const styles = StyleSheet.create({
   content: { paddingBottom: space[4] },
-  copy: { flex: 1, gap: 2, minWidth: 0, paddingVertical: 10 },
+  copy: { flex: 1, gap: 2, minWidth: 0 },
+  disclosure: { alignSelf: "flex-start", height: 24, width: 24 },
   empty: { borderWidth: 1, gap: space[1], padding: 10 },
-  rail: { alignSelf: "stretch", minHeight: 82, width: 5 },
-  row: { alignItems: "center", borderBottomWidth: 1, borderWidth: 0, flexDirection: "row", gap: 10, minHeight: 82, paddingRight: 10 },
+  rail: { borderRadius: 2, height: 62, width: 5 },
+  row: { alignItems: "flex-start", borderBottomWidth: 1, borderWidth: 0, flexDirection: "row", gap: 10, minHeight: 82, paddingRight: 10, paddingVertical: 10 },
   scroll: { flex: 1, minHeight: 0 },
 });

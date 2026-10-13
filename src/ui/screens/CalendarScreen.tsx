@@ -882,11 +882,12 @@ export function CalendarScreen({
           <BottomSheet
             cancelLabel="Close Calendar key"
             heading="Calendar key"
+            headingStyle={calendarTypeScale.heading as TextStyle}
             onCancel={() => setCalendarKeyOpen(false)}
             restoreFocusRef={infoActionRef}
             visible={isCalendarKeyOpen}
           >
-            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Color identifies the activity. Fill and border style identify its status.</Text>
+            <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>Color identifies the activity. Fill and border style identify its status.</Text>
             <View style={styles.keyGroup}>
               <Text style={[typeScale.label as TextStyle, styles.keyGroupTitle, { color: colors.textSecondary }]}>ACTIVITY</Text>
               <View style={styles.keyItems}>
@@ -903,14 +904,18 @@ export function CalendarScreen({
             <View style={styles.keyGroup}>
               <Text style={[typeScale.label as TextStyle, styles.keyGroupTitle, { color: colors.textSecondary }]}>STATUS</Text>
               <View style={styles.keyItems}>
-                <View style={[styles.statusKey, styles.completeKey, { backgroundColor: colorWithAlpha(colors.textPrimary, 0.14), borderColor: colors.textPrimary }]} testID="calendar-key-complete">
+                <View style={styles.statusKeyItem}>
+                  <View style={[styles.statusSwatch, styles.completeKey, { backgroundColor: colorWithAlpha(colors.textPrimary, 0.14), borderColor: colors.textPrimary }]} testID="calendar-key-complete" />
                   <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textPrimary }]}>Complete</Text>
                 </View>
-                <View style={[styles.statusKey, styles.partialKey, { borderColor: colors.textPrimary }]} testID="calendar-key-partial">
-                  <View style={[styles.keyPartialFill, { backgroundColor: colorWithAlpha(colors.textPrimary, 0.18) }]} testID="calendar-key-partial-fill" />
-                  <Text style={[calendarTypeScale.body as TextStyle, styles.keyText, { color: colors.textPrimary }]}>Partial</Text>
+                <View style={styles.statusKeyItem}>
+                  <View style={[styles.statusSwatch, styles.partialKey, { borderColor: colors.textPrimary }]} testID="calendar-key-partial">
+                    <View style={[styles.keyPartialFill, { backgroundColor: colorWithAlpha(colors.textPrimary, 0.18) }]} testID="calendar-key-partial-fill" />
+                  </View>
+                  <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textPrimary }]}>Partial</Text>
                 </View>
-                <View style={[styles.statusKey, styles.plannedKey, { borderColor: colors.textPrimary }]} testID="calendar-key-planned">
+                <View style={styles.statusKeyItem}>
+                  <View style={[styles.statusSwatch, styles.plannedKey, { borderColor: colors.textPrimary }]} testID="calendar-key-planned" />
                   <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textPrimary }]}>Planned</Text>
                 </View>
               </View>
@@ -926,13 +931,12 @@ export function CalendarScreen({
 const styles = StyleSheet.create({
   agendaRegion: { flex: 1, gap: 10, minHeight: 0 },
   activityKeyItem: { alignItems: "center", flexDirection: "row", gap: 4 },
-  activitySwatch: { height: 12, width: 12 },
+  activitySwatch: { borderRadius: 2, height: 8, width: 24 },
   agendaHeading: { borderBottomWidth: 2, gap: 4, minHeight: 62, paddingBottom: 8, paddingRight: 48, position: "relative" },
   collapseAction: { alignItems: "center", height: 48, justifyContent: "center", position: "absolute", right: 0, top: 0, width: 48 },
-  completeKey: { borderWidth: 1, paddingVertical: 4 },
+  completeKey: { borderWidth: 1 },
   gridRegion: { flex: 1, gap: 2, minHeight: 0 },
   keyPartialFill: { bottom: 0, left: 0, position: "absolute", top: 0, width: "50%" },
-  keyText: { zIndex: 1 },
   keyGroup: { gap: 8 },
   keyGroupTitle: { fontWeight: "800", letterSpacing: 0.6 },
   keyItems: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
@@ -941,11 +945,12 @@ const styles = StyleSheet.create({
   monthTitleSlot: { alignItems: "center", flex: 1, minWidth: 0 },
   monthTodaySlot: { width: 76 },
   navigation: { alignItems: "center", flexDirection: "row", gap: 3, minHeight: 52 },
-  partialKey: { borderStyle: "dotted", borderWidth: 2, paddingVertical: 3 },
-  plannedKey: { backgroundColor: "transparent", borderStyle: "dashed", borderWidth: 2, paddingVertical: 3 },
+  partialKey: { borderStyle: "dotted", borderWidth: 2 },
+  plannedKey: { backgroundColor: "transparent", borderStyle: "dashed", borderWidth: 2 },
   screen: { flex: 1, gap: 10 },
   skeletonMonth: { gap: 8 },
-  statusKey: { overflow: "hidden", paddingHorizontal: 8, position: "relative" },
+  statusKeyItem: { alignItems: "center", flexDirection: "row", gap: 4 },
+  statusSwatch: { height: 13, overflow: "hidden", position: "relative", width: 22 },
   todayAction: { alignItems: "center", borderRadius: 8, justifyContent: "center", minHeight: 48, paddingHorizontal: 8, width: 76 },
   todayLabel: { textAlign: "center" },
   weekday: { flex: 1, textAlign: "center" },
