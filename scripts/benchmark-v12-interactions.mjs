@@ -321,10 +321,85 @@ export async function executeV12CalendarDiagnostics(args = process.argv.slice(2)
   return Object.freeze({ output: path.relative(root, outputPath), query_samples: options.querySamples, interaction_samples: options.interactionSamples, acceptance_owner: "phase20" });
 }
 
-// Phase 20 expands this same source into the complete release/profile registry.
-export const V12_PERFORMANCE_BUDGETS = V12_CALENDAR_DIAGNOSTIC_TARGETS;
-export const validateV12PerformanceEvidence = validateV12CalendarDiagnostics;
-export const executeV12InteractionBenchmark = executeV12CalendarDiagnostics;
+/** Immutable before any Phase 20 native collection; later runs may only supply observations. */
+export const V12_PERFORMANCE_BUDGETS = Object.freeze({
+  warm_launch_to_interactive: Object.freeze({ minimum_samples: 20, maximum_ms: 1_000 }),
+  cold_launch_to_interactive: Object.freeze({ minimum_samples: 20, maximum_ms: 2_000 }),
+  root_switch_to_useful: Object.freeze({ minimum_samples_per_root: 100, maximum_p95_ms: 100 }),
+  committed_set_to_visible_dock: Object.freeze({ minimum_samples: 100, maximum_p95_ms: 150 }),
+  ordinary_js_task: Object.freeze({ minimum_samples: 100, maximum_ms: 50 }),
+  input_response: Object.freeze({ minimum_samples_per_path: 100, maximum_p95_ms: 50 }),
+  search_after_debounce: Object.freeze({ minimum_samples: 100, maximum_p95_ms: 100 }),
+  calendar_month_and_selection: Object.freeze({ minimum_samples: 100, maximum_p95_ms: 250 }),
+  progress_useful_content: Object.freeze({ minimum_samples: 20, maximum_ms: 500 }),
+  progress_review_open: Object.freeze({ minimum_samples: 100, maximum_p95_ms: 200 }),
+  progress_targeted_rebuild: Object.freeze({ minimum_samples: 20, maximum_ms: 500 }),
+  calendar_frame_work: Object.freeze({ minimum_sequences: 100, maximum_p95_ms: 16.67 }),
+  phase12_dirty_trigger: Object.freeze({ minimum_samples: 100, maximum_p95_ms: 16 }),
+  phase12_writer_occupancy: Object.freeze({ minimum_samples: 20, maximum_p95_ms: 1_000 }),
+  phase12_merge_preflight: Object.freeze({ minimum_samples: 10, maximum_p95_ms: 10_000, maximum_peak_growth_bytes: 192 * 1024 * 1024, required_snapshot_bytes: 24 * 1024 * 1024, required_rows: 100_000 }),
+  phase12_merge_materialization: Object.freeze({ minimum_samples: 5, maximum_p95_ms: 30_000 }),
+  garmin_sync_normalization: Object.freeze({ status: "REVIEW_REQUIRED", limit_source: "phase18-exact-artifact-baseline", fixture: "maximum-reviewed-garmin-json" }),
+});
+
+export const V12_PERFORMANCE_WORKLOAD = Object.freeze({
+  full_calendar: true,
+  set_count: 15_000,
+  correction_count: 200,
+  multi_plan_history: true,
+  maximum_reviewed_garmin_json: true,
+  merge_fixture: "phase12-24mib-100000-row",
+});
+
+export function nearestRankP95(values) {
+  if (!Array.isArray(values) || values.length === 0) fail("performance_samples_invalid");
+  return [...values].sort((left, right) => left - right)[Math.ceil(values.length * 0.95) - 1];
+}
+
+function validatePerformanceIdentity(actual, expected) {
+  const keys = ["base_head", "source_tree_sha256", "apk_sha256", "installed_apk_sha256", "package", "device_identity_sha256", "fixture_sha256"];
+  if (!actual || !expected || keys.some((key) => actual[key] !== expected[key])) fail("performance_identity_invalid");
+}
+
+function validatePerformanceSamples(values, minimum, label) {
+  if (!Array.isArray(values) || values.length < minimum || values.some((value) => !Number.isFinite(value) || value < 0)) fail(`performance_${label}_samples_invalid`);
+}
+
+/** Validates observations only; no status or verdict is accepted or emitted here. */
+export function validateV12PerformanceEvidence(evidence, expectedIdentity) {
+  if (evidence?.schema_version !== 1 || evidence.suite !== "v1.2-performance" || evidence.producer !== "v12-release-performance-collector/v1" || evidence.native_execution !== "EXECUTED" || Object.hasOwn(evidence, "verdict") || Object.hasOwn(evidence, "status")) fail("performance_envelope_invalid");
+  if (evidence.sample_origin !== "release-native-source-backed" || JSON.stringify(evidence.workload) !== JSON.stringify(V12_PERFORMANCE_WORKLOAD)) fail("performance_source_backing_invalid");
+  if (JSON.stringify(evidence.budgets) !== JSON.stringify(V12_PERFORMANCE_BUDGETS)) fail("performance_budgets_invalid");
+  validatePerformanceIdentity(evidence.identity, expectedIdentity);
+  const samples = evidence.samples;
+  validatePerformanceSamples(samples?.warm_launch_to_interactive_ms, V12_PERFORMANCE_BUDGETS.warm_launch_to_interactive.minimum_samples, "warm_launch");
+  validatePerformanceSamples(samples?.cold_launch_to_interactive_ms, V12_PERFORMANCE_BUDGETS.cold_launch_to_interactive.minimum_samples, "cold_launch");
+  const roots = samples?.root_switch_to_useful_ms;
+  if (!roots || typeof roots !== "object" || Object.keys(roots).length === 0) fail("performance_root_switch_samples_invalid");
+  const rootSummary = Object.fromEntries(Object.entries(roots).map(([root, values]) => {
+    validatePerformanceSamples(values, V12_PERFORMANCE_BUDGETS.root_switch_to_useful.minimum_samples_per_root, `root_switch_${root}`);
+    const p95 = nearestRankP95(values);
+    if (p95 > V12_PERFORMANCE_BUDGETS.root_switch_to_useful.maximum_p95_ms) fail("performance_root_switch_budget_exceeded");
+    return [root, Object.freeze({ samples: values.length, p95_ms: p95, max_ms: Math.max(...values) })];
+  }));
+  validatePerformanceSamples(samples?.committed_set_to_visible_dock_ms, V12_PERFORMANCE_BUDGETS.committed_set_to_visible_dock.minimum_samples, "committed_set_to_dock");
+  validatePerformanceSamples(samples?.ordinary_js_task_ms, V12_PERFORMANCE_BUDGETS.ordinary_js_task.minimum_samples, "ordinary_js_task");
+  const dockP95 = nearestRankP95(samples.committed_set_to_visible_dock_ms);
+  const jsMax = Math.max(...samples.ordinary_js_task_ms);
+  if (dockP95 > V12_PERFORMANCE_BUDGETS.committed_set_to_visible_dock.maximum_p95_ms || jsMax > V12_PERFORMANCE_BUDGETS.ordinary_js_task.maximum_ms) fail("performance_budget_exceeded");
+  return Object.freeze({
+    warm_launch_to_interactive: Object.freeze({ samples: samples.warm_launch_to_interactive_ms.length, max_ms: Math.max(...samples.warm_launch_to_interactive_ms) }),
+    cold_launch_to_interactive: Object.freeze({ samples: samples.cold_launch_to_interactive_ms.length, max_ms: Math.max(...samples.cold_launch_to_interactive_ms) }),
+    root_switch_to_useful: Object.freeze(rootSummary),
+    committed_set_to_visible_dock: Object.freeze({ samples: samples.committed_set_to_visible_dock_ms.length, p95_ms: dockP95, max_ms: Math.max(...samples.committed_set_to_visible_dock_ms) }),
+    ordinary_js_task: Object.freeze({ samples: samples.ordinary_js_task_ms.length, max_ms: jsMax }),
+  });
+}
+
+/** Native build/device collection is deliberately owned by a later Phase 20 execution plan. */
+export async function executeV12InteractionBenchmark() {
+  fail("performance_collection_deferred");
+}
 
 export async function runV12CalendarDiagnosticsCli(args = process.argv.slice(2), io = process, dependencies = {}) {
   try {
