@@ -32,6 +32,7 @@ import {
 import {
   ContentCard,
   EmptyState,
+  FocusClearanceProvider,
   FocusablePressable,
   PrimaryAction,
   ScreenHeader,
@@ -256,7 +257,7 @@ function LoadHistory({
   </View>;
 }
 
-export function ExerciseHistoryScreen({
+function ExerciseHistoryScreenContent({
   exerciseId,
   exerciseName,
   loadExerciseHistory,
@@ -480,6 +481,14 @@ export function ExerciseHistoryScreen({
       )}
       testID="exercise-history-screen"
     />
+  );
+}
+
+export function ExerciseHistoryScreen(props: ExerciseHistoryScreenProps) {
+  return (
+    <FocusClearanceProvider clearance={3}>
+      <ExerciseHistoryScreenContent {...props} />
+    </FocusClearanceProvider>
   );
 }
 
