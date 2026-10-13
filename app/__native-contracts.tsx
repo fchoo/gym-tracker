@@ -97,6 +97,12 @@ import {
   createExpoGoogleDriveBackupContractAdapter,
   runGoogleDriveBackupContract as verifyGoogleDriveBackupContract,
 } from "../src/testing/contracts/googleDriveBackup.contract";
+import {
+  createExpoV12AcceptanceSqliteContractAdapter,
+  runV12AcceptanceSqliteContracts,
+  V12_ACCEPTANCE_SQLITE_CASE_IDS,
+  type V12AcceptanceSqliteContractResult,
+} from "../src/testing/contracts/v12Acceptance.contract";
 
 const RESULT_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_RESULT:";
 const CASE_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_CASE:";
@@ -130,6 +136,7 @@ type NativeContractSuite =
   | "multi-plan-running"
   | "progress-parity"
   | "google-drive-backup"
+  | "v1.2-acceptance"
   | "sqlite-kernel";
 const configuredSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
 const defaultSuite: NativeContractSuite = configuredSuite === "phase19"
@@ -151,12 +158,13 @@ const defaultSuite: NativeContractSuite = configuredSuite === "phase19"
   || configuredSuite === "multi-plan-running"
   || configuredSuite === "progress-parity"
   || configuredSuite === "google-drive-backup"
+  || configuredSuite === "v1.2-acceptance"
   ? configuredSuite
   : "sqlite-kernel";
 
 function requestedPackagedSuite(
   value: string | string[] | undefined,
-): "migrations-effects" | "portable-merge" | "multi-plan-running" | "progress-parity" | "google-drive-backup" | undefined {
+): "migrations-effects" | "portable-merge" | "multi-plan-running" | "progress-parity" | "google-drive-backup" | "v1.2-acceptance" | undefined {
   const candidate = Array.isArray(value) ? value[0] : value;
   if (configuredSuite === "phase19" && candidate === "progress-parity") return "progress-parity";
   if (configuredSuite === "phase11" && candidate === "portable-merge") return "portable-merge";
@@ -169,7 +177,9 @@ function requestedPackagedSuite(
     return candidate;
   }
   return configuredSuite === "phase12" && candidate === "google-drive-backup"
-    ? "google-drive-backup" : undefined;
+    ? "google-drive-backup"
+    : configuredSuite === "v1.2-acceptance" && candidate === "v1.2-acceptance"
+    ? "v1.2-acceptance" : undefined;
 }
 
 function expectedCaseCountFor(suite: NativeContractSuite): number {
@@ -187,6 +197,7 @@ function expectedCaseCountFor(suite: NativeContractSuite): number {
   "multi-plan-running": MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
   "progress-parity": PROGRESS_PARITY_CONTRACT_CASES.length,
   "google-drive-backup": GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS.length,
+  "v1.2-acceptance": V12_ACCEPTANCE_SQLITE_CASE_IDS.length,
   "sqlite-kernel": 10,
   }[suite];
 }
@@ -224,7 +235,8 @@ type NativeContractResult =
   | MigrationsEffectsContractResult
   | PortableMergeContractResult
   | MultiPlanRunningContractResult
-  | ProgressParityContractResult;
+  | ProgressParityContractResult
+  | V12AcceptanceSqliteContractResult;
 
 type RouteState =
   | Readonly<{ status: "disabled" | "running" }>
@@ -521,6 +533,15 @@ export default function NativeSqliteContractsScreen() {
           return;
         }
 
+        if (selectedSuite === "v1.2-acceptance") {
+          const result = await runV12AcceptanceSqliteContracts(
+            await createExpoV12AcceptanceSqliteContractAdapter(runId),
+          );
+          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          setState({ status: "finished", result });
+          return;
+        }
+
         if (selectedSuite === "migrations-effects") {
           const result = await verifyMigrationsEffectsContract(
             await createExpoMigrationsEffectsContractAdapter(runId),
@@ -608,6 +629,8 @@ export default function NativeSqliteContractsScreen() {
       ? `Running ${expectedCaseCount} Phase 19 Progress parity SQLite contracts…`
       : selectedSuite === "google-drive-backup"
       ? `Running ${expectedCaseCount} Google Drive fake-port contracts…`
+      : selectedSuite === "v1.2-acceptance"
+      ? `Running ${expectedCaseCount} v1.2 aggregate SQLite contracts…`
       : "Running 10 SQLite integrity contracts…"
     : `${result?.passed ?? 0} / ${result?.total ?? expectedCaseCount} passed`;
 
@@ -641,6 +664,8 @@ export default function NativeSqliteContractsScreen() {
           ? "Phase 19 Progress Parity Contracts"
           : selectedSuite === "google-drive-backup"
           ? "Google Drive Backup Contracts"
+          : selectedSuite === "v1.2-acceptance"
+          ? "v1.2 Aggregate SQLite Acceptance"
           : "SQLite Kernel Contracts"}
       </Text>
       <Text

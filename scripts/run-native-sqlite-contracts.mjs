@@ -100,7 +100,8 @@ export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
         || requestedSuite === 'portable-merge'
         || requestedSuite === 'multi-plan-running'))
     || (manifestSuite === 'phase19' && requestedSuite === 'progress-parity')
-    || (manifestSuite === 'phase12' && requestedSuite === 'google-drive-backup');
+    || (manifestSuite === 'phase12' && requestedSuite === 'google-drive-backup')
+    || (manifestSuite === 'v1.2-acceptance' && requestedSuite === 'v1.2-acceptance');
 }
 
 async function deriveCaseIds(fileName, exportName) {
@@ -150,6 +151,10 @@ const PROGRESS_PARITY_CONTRACT_CASES = await deriveCaseIds(
 const GOOGLE_DRIVE_BACKUP_CASE_IDS = await deriveCaseIds(
   'googleDriveBackup.contract.ts',
   'GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS',
+);
+const V12_ACCEPTANCE_SQLITE_CASE_IDS = await deriveCaseIds(
+  'v12Acceptance.contract.ts',
+  'V12_ACCEPTANCE_SQLITE_CASE_IDS',
 );
 const PHASE2_FTS_CASE_IDS = await deriveCaseIds(
   'phase2Fts.contract.ts',
@@ -202,6 +207,7 @@ const supportedSuiteCases = {
   'multi-plan-running': MULTI_PLAN_RUNNING_CONTRACT_CASES,
   'progress-parity': PROGRESS_PARITY_CONTRACT_CASES,
   'google-drive-backup': GOOGLE_DRIVE_BACKUP_CASE_IDS,
+  'v1.2-acceptance': V12_ACCEPTANCE_SQLITE_CASE_IDS,
   'phase2': PHASE2_AGGREGATE_CASE_IDS,
   'phase2-content': PHASE2_CONTENT_CASE_IDS,
   'phase2-fts': PHASE2_FTS_CASE_IDS,
