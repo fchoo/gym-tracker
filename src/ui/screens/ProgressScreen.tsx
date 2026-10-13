@@ -83,12 +83,14 @@ function ProgressUnavailable({ onRetry }: Readonly<{ onRetry(): void }>) {
 }
 
 function SegmentedControls<T extends string>({
+  focusRequest,
   label,
   role,
   values,
   selected,
   onChange,
 }: Readonly<{
+  focusRequest?: Readonly<{ value: T; version: number }> | undefined;
   label: string;
   role: "tab" | "button";
   values: readonly Readonly<{ value: T; label: string }>[];
@@ -97,6 +99,10 @@ function SegmentedControls<T extends string>({
 }>) {
   const { colors } = useAppTheme();
   const itemRefs = useRef(new Map<T, View>());
+  useEffect(() => {
+    if (focusRequest?.value !== selected) return;
+    requestAnimationFrame(() => itemRefs.current.get(focusRequest.value)?.focus?.());
+  }, [focusRequest, selected]);
   const move = (index: number, key: string) => {
     const next = key === "Home" ? 0 : key === "End" ? values.length - 1 : key === "ArrowLeft" ? Math.max(0, index - 1) : key === "ArrowRight" ? Math.min(values.length - 1, index + 1) : index;
     if (next !== index || key === "Home" || key === "End") {
@@ -125,6 +131,7 @@ function SegmentedControls<T extends string>({
             accessibilityRole={role}
             accessibilityState={role === "tab" ? { selected: isSelected } : { selected: isSelected, checked: isSelected }}
             focusable
+            hasTVPreferredFocus={focusRequest?.value === item.value && isSelected}
             key={item.value}
             onPress={() => onChange(item.value)}
             ref={(node) => { if (node === null) itemRefs.current.delete(item.value); else itemRefs.current.set(item.value, node); }}
@@ -510,6 +517,10 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const { colors } = useAppTheme();
   const windowDimensions = useWindowDimensions();
   const [sport, setSport] = useState<ProgressSport>("All");
+  const [sportFocusRequest, setSportFocusRequest] = useState<Readonly<{
+    value: ProgressSport;
+    version: number;
+  }> | null>(null);
   const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
@@ -654,7 +665,14 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
       <FocusablePressable accessibilityLabel="Body metrics" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); void openBodyweight("body_metrics"); }} ref={bodyMetricsTriggerRef} style={styles.supplementaryAction}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Body metrics</Text></FocusablePressable>
       <FocusablePressable accessibilityLabel="Settings" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); setProgressSettingsVisible(true); }} ref={progressSettingsTriggerRef} style={styles.supplementaryAction}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Settings</Text></FocusablePressable>
     </View>}
-    <SegmentedControls<ProgressSport> label="Progress sport" onChange={(next) => { closeLocalSurfaces(); setSport(next); }} role="tab" selected={sport} values={SPORTS} />
+    <SegmentedControls<ProgressSport>
+      focusRequest={sportFocusRequest ?? undefined}
+      label="Progress sport"
+      onChange={(next) => { closeLocalSurfaces(); setSportFocusRequest(null); setSport(next); }}
+      role="tab"
+      selected={sport}
+      values={SPORTS}
+    />
     <SegmentedControls<ProgressPeriod> label="Progress range" onChange={(next) => { closeLocalSurfaces(); setPeriod(next); }} role="button" selected={period} values={PERIODS} />
   </>;
   const retryAction = <PrimaryAction label="Refresh progress" onPress={() => setRetry((current) => current + 1)} />;
@@ -688,7 +706,14 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     {...(onOpenRunningSource === undefined ? {} : { onOpenRunningSource })}
     onOpenSession={onOpenSession}
     onRetry={() => setRetry((current) => current + 1)}
-    onSelectSport={(next) => { closeLocalSurfaces(); setSport(next); }}
+    onSelectSport={(next) => {
+      closeLocalSurfaces();
+      setSportFocusRequest((current) => Object.freeze({
+        value: next,
+        version: (current?.version ?? 0) + 1,
+      }));
+      setSport(next);
+    }}
     period={period}
     rangeLabel={rangeLabel}
     recommendationSourceRefs={recommendationSourceRefs}

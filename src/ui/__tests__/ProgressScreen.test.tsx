@@ -279,7 +279,7 @@ describe("ProgressScreen", () => {
     expect(screen.queryByRole("header", { name: "Nearest active goal" })).not.toBeOnTheScreen();
   });
 
-  it("opens the factual All nearest active goal in its sport without changing the selected range", async () => {
+  it("moves an All active goal to its exact selected sport tab without changing range or dropping focus", async () => {
     const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
       sport: input.sport,
       period: input.period as "4_weeks" | "12_weeks" | "all_time",
@@ -289,18 +289,27 @@ describe("ProgressScreen", () => {
           sport: "All" as const,
           state: "ready" as const,
           primaryGoal: { sport: "Running" as const, goal: runningDashboard().goals[0]! },
-          activeGoals: [{ sport: "Running" as const, goal: runningDashboard().goals[0]! }],
+          activeGoals: [
+            { sport: "Running" as const, goal: runningDashboard().goals[0]! },
+            { sport: "Strength" as const, goal: strengthGoal },
+          ],
         }
-        : runningDashboard(),
+        : input.sport === "Strength"
+          ? dashboardFor("Strength")
+          : runningDashboard(),
     }));
     await renderProgress(loadProgress as never);
 
     expect(await screen.findByRole("header", { name: "Nearest active goal" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Open Running active goal 2.4 km" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Open Strength active goal Bench Press" }));
 
     await waitFor(() => expect(loadProgress).toHaveBeenLastCalledWith({
-      sport: "Running", period: "4_weeks", nowLocalDate: "2026-08-24",
+      sport: "Strength", period: "4_weeks", nowLocalDate: "2026-08-24",
     }));
+    expect(screen.getByRole("tab", { name: "Strength" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
+    expect(screen.getByRole("tab", { name: "Strength" }))
+      .toHaveProp("hasTVPreferredFocus", true);
     expect(screen.getByRole("button", { name: "4 weeks" }))
       .toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
   });
