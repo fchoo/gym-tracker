@@ -11,6 +11,7 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 import { AppearanceProvider } from "../../src/ui/theme";
 
@@ -25,7 +26,7 @@ const mockUseRunningPlanRuntime = jest.fn(() => ({
   previewScheduleCollision: jest.fn(),
   previewScheduleCollisionForPlan: jest.fn(),
 }));
-let mockParams: Readonly<{ planId?: string | readonly string[]; origin?: string | readonly string[] }> = {
+let mockParams: Readonly<{ planId?: string | readonly string[]; origin?: string | readonly string[]; sessionId?: string | readonly string[] }> = {
   planId: "running-plan:tempo-01",
 };
 let mockScreenProps: Readonly<Record<string, unknown>> = {};
@@ -123,6 +124,18 @@ describe("Running plan contextual Garmin route", () => {
 
     expect(mockBack).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("keeps an invalid Calendar session on the exact Calendar missing-state contract", async () => {
+    mockParams = { origin: "calendar", planId: "running-plan:tempo-01" };
+    await render(<AppearanceProvider><RunningPlanDetailRoute /></AppearanceProvider>);
+
+    expect(StyleSheet.flatten(screen.getByText("Running plan").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByText("Running plan not found").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    const backActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
+    expect(backActions).toHaveLength(2);
+    expect(backActions[0]).toHaveProp("hasTVPreferredFocus", true);
+    expect(mockUseRunningPlanRuntime).not.toHaveBeenCalled();
   });
 
   it.each(["unknown", ["calendar"]] as const)(

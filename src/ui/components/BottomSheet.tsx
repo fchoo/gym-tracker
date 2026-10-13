@@ -38,6 +38,7 @@ export type BottomSheetProps = Readonly<{
   visible: boolean;
   heading: string;
   headingStyle?: StyleProp<TextStyle>;
+  horizontalInset?: number | undefined;
   children?: React.ReactNode;
   onCancel: () => void;
   cancelDisabled?: boolean;
@@ -73,6 +74,7 @@ export function BottomSheet({
   visible,
   heading,
   headingStyle,
+  horizontalInset,
   children,
   onCancel,
   cancelDisabled = false,
@@ -113,6 +115,9 @@ export function BottomSheet({
     () => closeLabelFor(heading, cancelLabel),
     [cancelLabel, heading],
   );
+  const horizontalInsetStyle = horizontalInset === undefined
+    ? undefined
+    : { paddingHorizontal: horizontalInset };
 
   if (visible && depth > 0) {
     throw new Error("BottomSheet cannot be nested");
@@ -331,7 +336,7 @@ export function BottomSheet({
                       style={compactLandscape ? styles.compactLayout : undefined}
                       testID="bottom-sheet-layout"
                     >
-                      <View style={styles.header}>
+                      <View style={[styles.header, horizontalInsetStyle]} testID="bottom-sheet-header">
                         <View
                           accessible
                           accessibilityLabel={heading}
@@ -351,7 +356,7 @@ export function BottomSheet({
                         />
                       </View>
                       <ScrollView
-                        contentContainerStyle={[styles.content, contentStyle]}
+                        contentContainerStyle={[styles.content, horizontalInsetStyle, contentStyle]}
                         horizontal={false}
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator

@@ -129,7 +129,7 @@ function DetailHeader({
   return (
     <View style={styles.header} testID="activity-detail-three-column-header">
       <View style={styles.headerSide}>
-        <IconAction accessibilityLabel="Go back" icon="back" onPress={onBack} ref={backRef} testID="activity-detail-back-action" />
+        <IconAction accessibilityLabel={calendar ? "Back to Calendar agenda" : "Go back"} icon="back" onPress={onBack} ref={backRef} testID="activity-detail-back-action" />
       </View>
       <View
         accessibilityLabel="Activity detail"
@@ -377,6 +377,7 @@ function NonReadyDetail({
   readOnly: boolean;
 }>) {
   const { colors } = useAppTheme();
+  const calendar = React.useContext(CalendarTypographyContext);
   const [busy, setBusy] = useState<"accept" | "keep" | null>(null);
   const [resolution, setResolution] = useState<"stale" | "save_failure" | null>(null);
   useEffect(() => {
@@ -398,6 +399,7 @@ function NonReadyDetail({
         <EmptyState
           body="No accepted local activity exists for this route."
           heading="Activity not found"
+          {...(calendar ? { headingStyle: calendarTypeScale.heading as TextStyle } : {})}
           primaryAction={null}
         />
       );
@@ -406,6 +408,7 @@ function NonReadyDetail({
         <EmptyState
           body="This imported activity is no longer in active history. No prior facts are shown here."
           heading="Activity removed"
+          {...(calendar ? { headingStyle: calendarTypeScale.heading as TextStyle } : {})}
           primaryAction={null}
         />
       );
@@ -414,6 +417,7 @@ function NonReadyDetail({
         <EmptyState
           body="Accepted activity facts could not be projected. Raw source data is not used as a fallback."
           heading="Activity details unavailable"
+          {...(calendar ? { headingStyle: calendarTypeScale.heading as TextStyle } : {})}
           primaryAction={<PrimaryAction label="Retry activity details" onPress={onRetry} />}
         />
       );
@@ -423,6 +427,7 @@ function NonReadyDetail({
           <EmptyState
             body="Updated source facts are available, but the detailed comparison could not be loaded yet."
             heading="Source revision needs review"
+            {...(calendar ? { headingStyle: calendarTypeScale.heading as TextStyle } : {})}
             primaryAction={<PrimaryAction label="Retry activity details" onPress={onRetry} />}
           />
         );

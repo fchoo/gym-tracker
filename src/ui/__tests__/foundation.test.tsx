@@ -1248,6 +1248,27 @@ describe("Plan 01-02 route shell", () => {
 });
 
 describe("Plan 01-02 shared component vocabulary", () => {
+  it("supports a scoped Back label without changing the shared default", async () => {
+    const defaultBack = jest.fn();
+    const calendarBack = jest.fn();
+
+    await render(
+      <AppearanceProvider>
+        <ScreenHeader backAction={defaultBack} title="Default detail" />
+        <ScreenHeader
+          backAction={calendarBack}
+          backActionLabel="Back to Calendar agenda"
+          title="Calendar detail"
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
+    expect(defaultBack).toHaveBeenCalledTimes(1);
+    expect(calendarBack).toHaveBeenCalledTimes(1);
+  });
+
   it("covers actions, headers, empty states, notices, and root failure recovery", async () => {
     const retry = jest.fn();
     const secondary = jest.fn();

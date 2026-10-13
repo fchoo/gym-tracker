@@ -883,6 +883,7 @@ export function CalendarScreen({
             cancelLabel="Close Calendar key"
             heading="Calendar key"
             headingStyle={calendarTypeScale.heading as TextStyle}
+            horizontalInset={14}
             onCancel={() => setCalendarKeyOpen(false)}
             restoreFocusRef={infoActionRef}
             visible={isCalendarKeyOpen}
