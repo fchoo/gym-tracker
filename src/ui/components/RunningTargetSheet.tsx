@@ -9,7 +9,7 @@ import {
 } from "react-native";
 
 import { DEFAULT_TWO_POINT_FOUR_KM_TARGET_MS, runningTargetForDistance, type RunningPlanAggregate } from "../../domains/running/contracts";
-import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
+import type { RunningPlanRuntimePort, RunningTargetMutationInput } from "../../bootstrap/runningPlanRuntime";
 import { BottomSheet } from "./BottomSheet";
 import { FocusablePressable, InlineNotice, PrimaryAction, SecondaryAction } from "./index";
 import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
@@ -24,6 +24,10 @@ type Draft = Readonly<{
   expectedSourceRevision: number;
 }>;
 type ErrorState = "save" | "stale" | "refresh" | null;
+type RetainedRequestIdentity = Readonly<{
+  fingerprint: string;
+  requestId: string;
+}>;
 
 export type RunningTargetSheetProps = Readonly<{
   initialDistanceMeters?: number;
@@ -90,6 +94,17 @@ function draftFrom(source: RunningPlanAggregate, distanceMeters: number): Draft 
   });
 }
 
+function requestFingerprint(
+  input: Omit<RunningTargetMutationInput, "requestId">,
+): string {
+  return JSON.stringify({
+    ...input,
+    trainingDays: [...input.trainingDays].sort((left, right) =>
+      left.localeCompare(right)
+    ),
+  });
+}
+
 function benchmarkLabel(source: RunningPlanAggregate, distanceMeters: number): string {
   const target = runningTargetForDistance(source, distanceMeters) ?? source.goal;
   const benchmark = target.benchmarks === undefined
@@ -125,7 +140,7 @@ export function RunningTargetSheet({
     () => initialDistanceMeters ?? 2_400,
   );
   const draftsRef = useRef(new Map<string, Draft>());
-  const requestIdsRef = useRef(new Map<string, string>());
+  const requestIdsRef = useRef(new Map<string, RetainedRequestIdentity>());
   const [renderVersion, setRenderVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorState>(null);
@@ -186,17 +201,21 @@ export function RunningTargetSheet({
     setBusy(true);
     setError(null);
     try {
-      const requestId = requestIdsRef.current.get(draftKey) ?? runtime.createId("running-target-save");
-      requestIdsRef.current.set(draftKey, requestId);
-      const saved = await runtime.saveRunningTarget({
+      const targetInput = {
         planId: source.id,
-        requestId,
         expectedSourceRevision: draft.expectedSourceRevision,
         goalDistanceMeters: selectedDistanceMeters,
         targetDurationMs: parsedDuration,
         targetLocalDate: draft.targetDate === "" ? undefined : draft.targetDate,
         trainingDays: [...draft.trainingDays],
-      });
+      } satisfies Omit<RunningTargetMutationInput, "requestId">;
+      const fingerprint = requestFingerprint(targetInput);
+      const retainedRequest = requestIdsRef.current.get(draftKey);
+      const requestId = retainedRequest?.fingerprint === fingerprint
+        ? retainedRequest.requestId
+        : runtime.createId("running-target-save");
+      requestIdsRef.current.set(draftKey, Object.freeze({ fingerprint, requestId }));
+      const saved = await runtime.saveRunningTarget({ ...targetInput, requestId });
       try {
         await onSaved?.(saved.plan);
       } catch {

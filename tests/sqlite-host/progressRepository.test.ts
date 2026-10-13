@@ -1445,6 +1445,85 @@ describe("progress repository", () => {
     });
   });
 
+  it("orders production All goals by the complete persisted cross-sport declaration", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE plans SET is_active = 1 WHERE id = 'plan-1'",
+    ));
+    await createRunningPlanRepository(kernel).createInactiveAggregate({
+      requestId: "create-cross-sport-running",
+      requestSha256: "a".repeat(64),
+      plan: {
+        version: 1,
+        id: "cross-sport-running",
+        name: "Cross-sport Running",
+        revision: 1,
+        createdAtMs: 99,
+        goal: {
+          version: 1,
+          id: "cross-sport-running-goal",
+          planId: "cross-sport-running",
+          revision: 1,
+          goalDistanceMeters: 2_400,
+          targetDurationMs: 660_000,
+          targetLocalDate: "2027-12-31",
+          trainingDays: ["Monday"],
+          createdAtMs: 99,
+        },
+        sessions: [],
+      },
+    });
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE plans SET is_active = 1 WHERE id = 'cross-sport-running'",
+      );
+      await transaction.execute(
+        "UPDATE owned_plan_schedules SET lifecycle = 'active', deactivated_at_ms = NULL WHERE plan_id = 'cross-sport-running'",
+      );
+    });
+
+    const result = await createProgressRepository(kernel).load({
+      sport: "All", period: "all_time", nowLocalDate: "2026-08-24",
+    });
+
+    expect(result.dashboard).toMatchObject({
+      sport: "All",
+      primaryGoal: {
+        sport: "Strength",
+        goal: { goalId: "bench-press\u0000load_reps:1:1\u0000identity" },
+      },
+      activeGoals: [
+        { sport: "Strength", goal: { exerciseName: "Bench Press" } },
+        { sport: "Running", goal: { distanceMeters: 2_400 } },
+      ],
+    });
+
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE running_goals SET created_at_ms = 1 WHERE id = 'cross-sport-running-goal'",
+    ));
+    await expect(createProgressRepository(kernel).load({
+      sport: "All", period: "all_time", nowLocalDate: "2026-08-24",
+    })).resolves.toMatchObject({
+      dashboard: {
+        primaryGoal: { sport: "Running" },
+        activeGoals: [{ sport: "Running" }, { sport: "Strength" }],
+      },
+    });
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE running_goals SET created_at_ms = 99 WHERE id = 'cross-sport-running-goal'",
+      );
+      await transaction.execute(
+        "UPDATE workout_sessions SET revision = 0 WHERE id IN ('session-1', 'session-2')",
+      );
+    });
+    await expect(createProgressRepository(kernel).load({
+      sport: "All", period: "all_time", nowLocalDate: "2026-08-24",
+    })).resolves.toMatchObject({ dashboard: { primaryGoal: { sport: "Strength" } } });
+  });
+
   it("maps unset, exact, and non-second Running goal durations without fabrication", async () => {
     const kernel = await open();
     const repository = createRunningPlanRepository(kernel);

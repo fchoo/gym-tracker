@@ -10,11 +10,13 @@ import {
 } from "../../../domains/progress";
 import {
   projectProgressDashboard,
+  progressStrengthGoalId,
 } from "../../../domains/progress/dashboardProjection";
 import type {
   ProgressDashboardProjection,
   ProgressGoalRevision,
   ProgressPlannedNext,
+  ProgressRecord,
   ProgressRunningActivityFact,
   ProgressRefreshMetadata,
   ProgressSport,
@@ -365,6 +367,44 @@ function progressRecordFromExposure(exposure: ProgressComparableExposure) {
     targetJson: exposure.targetJson,
     observationJson: exposure.observationJson,
   });
+}
+
+function completeDashboardGoalOrder(
+  strengthFacts: readonly Readonly<{
+    fact: ProgressRecord;
+    effectiveAtMs: number;
+  }>[],
+  runningGoals: readonly ProgressGoalRevision[],
+): readonly ProgressGoalRevision[] {
+  const strengthOrder = new Map<string, ProgressGoalRevision>();
+  for (const { effectiveAtMs, fact } of strengthFacts) {
+    const targetId = progressStrengthGoalId(fact);
+    if (strengthOrder.has(targetId)) continue;
+    strengthOrder.set(targetId, Object.freeze({
+      targetId,
+      sport: "Strength" as const,
+      targetDurationSeconds: null,
+      effectiveAtMs,
+      revision: fact.sourceRevision ?? 1,
+      sourceOrder: 0,
+      lifecycle: "active" as const,
+      active: true,
+      current: true,
+    }));
+  }
+  const declarations = [
+    ...strengthOrder.values(),
+    ...runningGoals,
+  ];
+  const factualPositions = new Map(
+    [...new Set(declarations.map(({ effectiveAtMs }) => effectiveAtMs))]
+      .sort((left, right) => left - right)
+      .map((effectiveAtMs, sourceOrder) => [effectiveAtMs, sourceOrder]),
+  );
+  return Object.freeze(declarations.map((goal) => Object.freeze({
+    ...goal,
+    sourceOrder: factualPositions.get(goal.effectiveAtMs)!,
+  })));
 }
 
 function opportunityFromRow(row: OpportunityRow): ProgressScheduledOpportunity {
@@ -1062,6 +1102,13 @@ export function createProgressRepository(
       const dashboardStrengthFacts = exposureRows.map((row) =>
         progressRecordFromExposure(exposureFromRow(row, effectiveSetsById))
       );
+      const dashboardGoalOrder = completeDashboardGoalOrder(
+        dashboardStrengthFacts.map((fact, index) => Object.freeze({
+          fact,
+          effectiveAtMs: exposureRows[index]!.completed_at_ms,
+        })),
+        dashboardFacts.goals,
+      );
       const dashboard = sport === undefined ? undefined : withToSortedCompatibility(() =>
         projectProgressDashboard({
           sport,
@@ -1070,7 +1117,7 @@ export function createProgressRepository(
             targets: dashboardFacts.goals,
           },
           strength: { facts: dashboardStrengthFacts },
-          goals: dashboardFacts.goals,
+          goals: dashboardGoalOrder,
           plannedNext,
         })
       );
