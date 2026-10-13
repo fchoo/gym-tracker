@@ -5,17 +5,17 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENT
 current_phase: 20
 current_phase_name: Native Acceptance
 status: executing
-stopped_at: Phases 16 and 19 host gates complete; Phase 20 ready for execution
-last_updated: "2026-10-14T00:00:00.000Z"
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-10-13T21:25:35.131Z"
 last_activity: 2026-10-14
-last_activity_desc: Phases 16 and 19 passed final review, UI, Nyquist, security, and independent verification gates
-state_head: 0932f7c87a189e72db3f3a39e691644efddd9821
+last_activity_desc: Phase 20 execution started
+state_head: e432cddb1aa10ee9f64fbc95ada5759ab907963f
 progress:
   total_phases: 8
-  completed_phases: 7
+  completed_phases: 4
   total_plans: 98
-  completed_plans: 86
-  percent: 88
+  completed_plans: 87
+  percent: 50
 ---
 
 # Project State
@@ -29,12 +29,12 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 
 ## Current Position
 
-Phase: 20 — Native Acceptance
-Plan: Existing 12 converged plans ready for direct execution
-Status: Final comprehensive native checkpoint in progress
-Last activity: 2026-10-14 — Phases 16 and 19 passed all targeted host gates
+Phase: 20 (Native Acceptance) — EXECUTING
+Plan: 2 of 12
+Status: Ready to execute
+Last activity: 2026-10-14 — Phase 20 execution started
 
-Progress: [█████████░] 88%
+Progress: [█████░░░░░] 50%
 
 ## Delivery Model and Planning Gate
 
@@ -109,6 +109,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P12 | 28m 14s | 3 tasks | 20 files |
 | Phase 18 P13 | 13m 36s | 3 tasks | 8 files |
 | Phase 18 P14 | 12m | 3 tasks | 11 files |
+| Phase 20 P01 | 3m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -251,6 +252,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 18]: Phase 18 Garmin entries pass only closed origins; stack history retains source route, scroll, focus, and shared appearance state without return hrefs.
 - [Phase 18]: The Calendar activity-detail producer remains Phase 18-owned and accepts only origin=calendar, an opaque local activity ID, and an optional bounded return token.
 - [Phase 18]: The Phase 18 source audit checks executable tasks for stale topology while allowing explicit out-of-scope documentation.
+- [Phase 20]: Phase 20: Browser evidence preserves all 107 ordered Light/Dark occurrences; repeated names retain distinct BW IDs.
+- [Phase 20]: Phase 20: Ledger verdicts are validator-owned; producer output remains observation-only.
+- [Phase 20]: Phase 20: Live manifests bind source, prototype, fixture, build, APK, device, and configuration identity; pre-build fixtures are explicit and non-live.
 
 ### Pending Owner Review
 
@@ -275,7 +279,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-14T00:00:00.000Z
-Stopped at: Phases 16 and 19 host gates complete; Phase 20 ready for execution
+Last session: 2026-10-13T21:25:34.886Z
+Stopped at: Completed 20-01-PLAN.md
 Resume file: None
 Next action: Execute the existing Phase 20 plans directly; build/install/final artifact delivery remains blocked until every native acceptance gate passes.
