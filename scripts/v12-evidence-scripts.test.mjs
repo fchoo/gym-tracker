@@ -71,7 +71,7 @@ const fixture = () => JSON.parse(readFileSync(
   "utf8",
 ));
 
-function v12LiveManifest(runId = "phase20-20261014T000000Z-abcdef123456") {
+function v12LiveManifest(runId = "phase20-20261014T000000Z-aaaaaaaaaaaa") {
   return {
     schema_version: 1,
     run_id: runId,
@@ -1390,9 +1390,10 @@ test("the generic v1.2 runner binds one synthetic shard without native execution
   assert.equal(writes.size, 1);
   assert.equal(V12_MAESTRO_FLOW_CONTRACTS.sqlite.flow, "maestro/v1.2/sqlite.yaml");
 
+  let reads = 0;
   assert.throws(() => executeV12Maestro(["--run", manifest.run_id, "--shard", "sqlite"], {
     root: "/synthetic-root", readJson: () => manifest,
-    readBytes: (file) => file.endsWith("sqlite.yaml") ? Buffer.from("drift") : sourceBytes,
+    readBytes: (file) => file.endsWith("sqlite.yaml") && reads++ > 0 ? Buffer.from("drift") : (file.endsWith("sqlite.yaml") ? flowBytes : sourceBytes),
     exists: () => true,
     currentIdentity: {
       head: manifest.source.head, tree_sha256: manifest.source.tree_sha256, package: manifest.build.package,

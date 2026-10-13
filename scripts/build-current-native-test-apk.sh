@@ -189,6 +189,31 @@ installed_apk_sha256=$(sh scripts/hash-apk.sh "$installed_apk_copy")
 [ "$installed_apk_sha256" = "$apk_sha256" ] ||
   fail 'installed APK bytes do not match the retained APK.'
 
+certificate_sha256=''
+signature_sha256=''
+settings_sha256=''
+restoration_sha256=''
+if [ "$suite" = 'v1.2-acceptance' ]; then
+  apksigner_path="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+  [ -x "$apksigner_path" ] || fail "pinned apksigner is missing: $apksigner_path"
+  signature_report="$temporary_directory/apksigner-v12.txt"
+  "$apksigner_path" verify --verbose --print-certs "$apk_path" >"$signature_report"
+  grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$signature_report" >/dev/null ||
+    fail 'APK v2 signature verification failed.'
+  certificate_sha256=$(awk -F': ' '/certificate SHA-256 digest:/ { print $2; exit }' "$signature_report" | tr -d ':' | tr 'A-F' 'a-f')
+  [ "${#certificate_sha256}" -eq 64 ] || fail 'could not read the APK signer certificate SHA-256.'
+  signature_sha256=$(sh scripts/hash-apk.sh "$signature_report")
+  settings_sha256=$(
+    {
+      adb -s "$device_serial" shell settings get system font_scale
+      adb -s "$device_serial" shell settings get secure ui_night_mode
+      adb -s "$device_serial" shell settings get global animator_duration_scale
+    } | tr -d '\r' | shasum -a 256 | awk '{ print $1 }'
+  )
+  [ "${#settings_sha256}" -eq 64 ] || fail 'could not hash bounded device settings.'
+  restoration_sha256=$settings_sha256
+fi
+
 launch_component=''
 attempts=0
 while [ "$attempts" -lt 15 ]; do
@@ -236,6 +261,10 @@ BUILD_MANIFEST="$build_manifest" \
   DEVICE_IDENTITY_SHA256="$device_identity_sha256" \
   INSTALLED_APK_PATH="$installed_apk_path" \
   INSTALLED_APK_SHA256="$installed_apk_sha256" \
+  CERTIFICATE_SHA256="$certificate_sha256" \
+  SIGNATURE_SHA256="$signature_sha256" \
+  SETTINGS_SHA256="$settings_sha256" \
+  RESTORATION_SHA256="$restoration_sha256" \
   LAUNCH_COMPONENT="$launch_component" \
   BUILD_STARTED_AT="$build_started_at" \
   BUILD_FINISHED_AT="$build_finished_at" \
@@ -244,6 +273,7 @@ BUILD_MANIFEST="$build_manifest" \
 import { renameSync, writeFileSync } from 'node:fs';
 
 const privacyBoundedManifest = /^(?:phase14(?:-|$)|v1\.2-acceptance$)/u.test(process.env.SUITE ?? '');
+const v12EvidenceManifest = process.env.SUITE === 'v1.2-acceptance';
 const manifest = {
   schema_version: 1,
   suite: process.env.SUITE,
@@ -291,6 +321,19 @@ const manifest = {
   },
   started_at: process.env.BUILD_STARTED_AT,
   finished_at: process.env.BUILD_FINISHED_AT,
+  ...(v12EvidenceManifest ? {
+    v12_evidence_identity: {
+      manifest_version: 2,
+      retained_apk_sha256: process.env.APK_SHA256,
+      installed_apk_sha256: process.env.INSTALLED_APK_SHA256,
+      signature_sha256: process.env.SIGNATURE_SHA256,
+      certificate_sha256: process.env.CERTIFICATE_SHA256,
+      device_identity_sha256: process.env.DEVICE_IDENTITY_SHA256,
+      settings_sha256: process.env.SETTINGS_SHA256,
+      restoration_sha256: process.env.RESTORATION_SHA256,
+      config_state_sha256: process.env.SETTINGS_SHA256,
+    },
+  } : {}),
 };
 
 const temporaryPath = `${process.env.BUILD_MANIFEST}.tmp`;

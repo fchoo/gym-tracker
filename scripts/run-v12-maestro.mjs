@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { validateV12RunManifest as validateGenericV12RunManifest } from "./create-v12-run-manifest.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { exactKeys } from "./node-evidence-utils.mjs";
 import {
@@ -17,6 +18,116 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_HEAD = /^[a-f0-9]{40}$/u;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+
+const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+const V12_PACKAGE = "com.fchoo.gymtracker.devtest";
+
+export const V12_MAESTRO_FLOW_CONTRACTS = Object.freeze({
+  sqlite: Object.freeze({ flow: "maestro/v1.2/sqlite.yaml", sources: Object.freeze(["scripts/v12-sqlite-shard.mjs"]) }),
+  recovery: Object.freeze({ flow: "maestro/v1.2/recovery.yaml", sources: Object.freeze(["scripts/v12-recovery-shard.mjs"]) }),
+  garmin: Object.freeze({ flow: "maestro/v1.2/garmin-progress.yaml", sources: Object.freeze(["scripts/v12-garmin-shard.mjs"]) }),
+  calendar: Object.freeze({ flow: "maestro/v1.2/calendar.yaml", sources: Object.freeze(["scripts/v12-calendar-shard.mjs"]) }),
+  "multi-plan": Object.freeze({ flow: "maestro/v1.2/multi-plan.yaml", sources: Object.freeze(["scripts/capture-v12-visual.mjs"]) }),
+  workout: Object.freeze({ flow: "maestro/v1.2/workout.yaml", sources: Object.freeze(["scripts/capture-v12-visual.mjs"]) }),
+  "library-running": Object.freeze({ flow: "maestro/v1.2/library-running.yaml", sources: Object.freeze(["scripts/capture-v12-visual.mjs"]) }),
+  accessibility: Object.freeze({ flow: "maestro/v1.2/accessibility.yaml", sources: Object.freeze(["scripts/v12-accessibility-shard.mjs"]) }),
+});
+
+function genericFail(code) {
+  throw new Error(`v12_maestro_${code}`);
+}
+
+function exactGenericArguments(args) {
+  if (!Array.isArray(args) || args.length !== 4 || args[0] !== "--run" || args[2] !== "--shard"
+    || !V12_RUN_ID.test(args[1] ?? "") || !Object.hasOwn(V12_MAESTRO_FLOW_CONTRACTS, args[3] ?? "")) {
+    genericFail("arguments_invalid");
+  }
+  return Object.freeze({ runId: args[1], shard: args[3] });
+}
+
+function genericIdentityMatches(manifest, current) {
+  const expected = {
+    head: manifest.source.head,
+    tree_sha256: manifest.source.tree_sha256,
+    package: manifest.build.package,
+    apk_sha256: manifest.build.apk.sha256,
+    installed_apk_sha256: manifest.device.installed_apk_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256,
+    device_identity_sha256: manifest.device.identity_sha256,
+    settings_sha256: manifest.device.settings_sha256,
+    configuration_id: manifest.configuration.id,
+  };
+  if (Object.entries(expected).some(([key, value]) => current?.[key] !== value)) genericFail("identity_mismatch");
+}
+
+function containsVerdictAuthority(value) {
+  if (Array.isArray(value)) return value.some(containsVerdictAuthority);
+  if (value === null || typeof value !== "object") return false;
+  return Object.entries(value).some(([key, child]) => (
+    ["verdict", "readiness", "final_evidence", "seal"].includes(key) || containsVerdictAuthority(child)
+  ));
+}
+
+export function executeGenericV12Maestro(args = process.argv.slice(2), dependencies = {}) {
+  const { runId, shard } = exactGenericArguments(args);
+  const root = dependencies.root ?? ROOT;
+  const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
+  const manifestPath = `artifacts/native/v1.2/${runId}/run-manifest.json`;
+  const readJson = dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
+  const readBytes = dependencies.readBytes ?? ((file) => readFileSync(path.join(root, file)));
+  const exists = dependencies.exists ?? ((file) => existsSync(path.join(root, file)));
+  if (!exists(manifestPath) || !exists(contract.flow) || contract.sources.some((file) => !exists(file))) genericFail("artifact_missing");
+  const manifest = readJson(manifestPath);
+  try { validateGenericV12RunManifest(manifest); }
+  catch { genericFail("manifest_invalid"); }
+  if (manifest.run_id !== runId || manifest.mode !== "live" || manifest.build.package !== V12_PACKAGE) genericFail("manifest_invalid");
+  genericIdentityMatches(manifest, dependencies.currentIdentity);
+
+  const snapshot = () => Object.freeze({
+    flow_sha256: sha256(readBytes(contract.flow)),
+    source_sha256: Object.freeze(Object.fromEntries(contract.sources.map((file) => [file, sha256(readBytes(file))]))),
+  });
+  const before = snapshot();
+  const adapter = dependencies.adapter;
+  if (!adapter || typeof adapter.snapshotSettings !== "function" || typeof adapter.execute !== "function" || typeof adapter.restoreSettings !== "function") genericFail("adapter_invalid");
+  const settings = adapter.snapshotSettings();
+  let result;
+  let executionError;
+  try {
+    result = adapter.execute(Object.freeze({ run_id: runId, shard, flow: contract.flow, settings }));
+    if (containsVerdictAuthority(result)) genericFail("producer_verdict_forbidden");
+  } catch (error) {
+    executionError = error;
+  } finally {
+    if (adapter.restoreSettings(settings) !== true) genericFail("settings_restore_failed");
+  }
+  if (executionError !== undefined) throw executionError;
+  const after = snapshot();
+  if (before.flow_sha256 !== after.flow_sha256) genericFail("flow_hash_mismatch");
+  if (JSON.stringify(before.source_sha256) !== JSON.stringify(after.source_sha256)) genericFail("source_hash_mismatch");
+  const record = Object.freeze({
+    schema_version: 1,
+    producer: "v12-maestro-runner/v1",
+    run_id: runId,
+    shard,
+    identity: Object.freeze({
+      source_tree_sha256: manifest.source.tree_sha256,
+      apk_sha256: manifest.build.apk.sha256,
+      installed_apk_sha256: manifest.device.installed_apk_sha256,
+      certificate_sha256: manifest.build.apk.certificate_sha256,
+      device_identity_sha256: manifest.device.identity_sha256,
+      settings_sha256: manifest.device.settings_sha256,
+      configuration_id: manifest.configuration.id,
+    }),
+    flow_sha256: before.flow_sha256,
+    source_sha256: before.source_sha256,
+    observations: Object.freeze(structuredClone(result?.observations ?? [])),
+  });
+  const outputPath = `artifacts/native/v1.2/${runId}/shards/${shard}.json`;
+  if (typeof dependencies.writeImmutableJson === "function") dependencies.writeImmutableJson(outputPath, record);
+  else genericFail("writer_unavailable");
+  return record;
+}
 export const V12_CALENDAR_TRACE_SAMPLE_MARKER = "GYM_TRACKER_V12_CALENDAR_TRACE_SAMPLE:";
 
 export const V12_CALENDAR_DIAGNOSTIC_STAGES = Object.freeze([
@@ -187,6 +298,7 @@ export function recordV12CalendarRunnerStage({ root, runId, stageId, status, art
 }
 
 export function executeV12Maestro(args = process.argv.slice(2), dependencies = {}) {
+  if (args.includes("--run") || args.includes("--shard")) return executeGenericV12Maestro(args, dependencies);
   if (!args.includes("--diagnostic")) throw new Error("v12_calendar_diagnostic_flag_required");
   const manifestIndex = args.indexOf("--manifest");
   if ([manifestIndex < 0, manifestIndex >= 0 && args[manifestIndex + 1] === undefined].some(Boolean)) throw new Error("v12_calendar_manifest_required");
