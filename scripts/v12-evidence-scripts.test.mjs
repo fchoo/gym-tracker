@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { PNG } from "pngjs";
+
 import {
   V12_CALENDAR_DIAGNOSTIC_TARGETS,
   createV12CalendarDiagnostics,
@@ -30,9 +32,12 @@ import {
   createV12CalendarCaseEvidenceBundle,
   produceV12CalendarCaseEvidence,
   validateV12CalendarCaseSupportBytes,
+  v12CalendarCaseEvidencePaths,
+  v12CalendarCaseSourceArtifactPaths,
 } from "./v12-calendar-case-evidence.mjs";
 import {
   V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
+  V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
   V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
   validateV12CalendarCaseRegistryDescriptor,
@@ -49,7 +54,13 @@ import {
   verifyV12CalendarArtifactSet,
 } from "./verify-v12-native-evidence.mjs";
 
-const clone = (value) => structuredClone(value);
+const clone = (value) => {
+  const copy = structuredClone(value);
+  if (Array.isArray(value) && value.sourceBytes instanceof Map) {
+    Object.defineProperty(copy, "sourceBytes", { value: new Map(value.sourceBytes) });
+  }
+  return copy;
+};
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const fixture = () => JSON.parse(readFileSync(
   "scripts/fixtures/v12-calendar-evidence/complete.json",
@@ -98,17 +109,65 @@ function rawDiagnostics() {
   };
 }
 
-function passingCaseObservations(requiredCase, binding, runId, startedAt) {
-  return binding.measured.input_motion.map(({ input, motion }, observationIndex) => ({
-    input,
-    motion,
-    started_at: new Date(Date.parse(startedAt) + observationIndex * 10).toISOString(),
-    finished_at: new Date(Date.parse(startedAt) + observationIndex * 10 + 5).toISOString(),
-    functional: { assertions: [{ id: "functional-result", expected: true, actual: true }] },
-    trace: { samples: [{ sequence: 1, elapsed_ms: 1, expected_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:trace`), actual_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:trace`) }] },
-    measurement: { samples: [{ sequence: 1, value: 1, unit: "ratio", minimum: 1, maximum: 1 }] },
-    capture: { captures: [{ path: `artifacts/native/v1.2/${runId}/captures/${requiredCase.case_sha256}/${input}-${motion}.png`, expected_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:capture`), actual_sha256: hash(`${requiredCase.case_sha256}:${input}:${motion}:capture`), size_bytes: 1 }] },
-  }));
+function passingCaseObservations(
+  requiredCase,
+  binding,
+  runId,
+  startedAt,
+  sourceTreeSha256 = "b".repeat(64),
+) {
+  const sourceBytes = new Map();
+  const captureBytes = PNG.sync.write({
+    width: 1,
+    height: 1,
+    data: Buffer.from([0, 0, 0, 255]),
+  });
+  const descriptor = (artifactPath, bytes) => {
+    sourceBytes.set(artifactPath, bytes);
+    return { path: artifactPath, sha256: hash(bytes), size_bytes: bytes.length };
+  };
+  const observations = binding.measured.input_motion.map(({ input, motion }, observationIndex) => {
+    const paths = v12CalendarCaseSourceArtifactPaths(requiredCase, runId, input, motion);
+    const traceBytes = Buffer.from(stableCanonicalJson({
+      schema_version: 1,
+      producer: "v12-calendar-native-trace/v1",
+      run_id: runId,
+      case_sha256: requiredCase.case_sha256,
+      input,
+      motion,
+      source_tree_sha256: sourceTreeSha256,
+      samples: [
+        { sequence: 1, elapsed_ms: 1, event: "observation-started" },
+        { sequence: 2, elapsed_ms: 2, event: "observation-finished" },
+      ],
+    }));
+    const measurementBytes = Buffer.from(stableCanonicalJson({
+      schema_version: 1,
+      producer: "v12-calendar-native-measurement/v1",
+      run_id: runId,
+      case_sha256: requiredCase.case_sha256,
+      input,
+      motion,
+      source_tree_sha256: sourceTreeSha256,
+      samples: [
+        { sequence: 1, id: "viewport-width", value: binding.measured.configuration.viewport.width, unit: "dp" },
+        { sequence: 2, id: "viewport-height", value: binding.measured.configuration.viewport.height, unit: "dp" },
+        { sequence: 3, id: "font-scale", value: binding.measured.configuration.font_scale, unit: "ratio" },
+      ],
+    }));
+    return {
+      input,
+      motion,
+      started_at: new Date(Date.parse(startedAt) + observationIndex * 10).toISOString(),
+      finished_at: new Date(Date.parse(startedAt) + observationIndex * 10 + 5).toISOString(),
+      functional: { assertions: [{ id: "functional-result", actual: true }] },
+      trace: { artifact: descriptor(paths.trace, traceBytes) },
+      measurement: { artifact: descriptor(paths.measurement, measurementBytes) },
+      capture: { captures: [descriptor(paths.capture, captureBytes)] },
+    };
+  });
+  Object.defineProperty(observations, "sourceBytes", { value: sourceBytes });
+  return observations;
 }
 
 function completeCaseResult(requiredCase, runId, identity, index) {
@@ -126,8 +185,19 @@ function completeCaseResult(requiredCase, runId, identity, index) {
     started_at: startedAt,
     finished_at: finishedAt,
   };
-  const observations = passingCaseObservations(requiredCase, binding, runId, startedAt);
-  const bundle = createV12CalendarCaseEvidenceBundle({ requiredCase, execution, observations });
+  const observations = passingCaseObservations(
+    requiredCase,
+    binding,
+    runId,
+    startedAt,
+    execution.source_tree_sha256,
+  );
+  const bundle = createV12CalendarCaseEvidenceBundle({
+    requiredCase,
+    execution,
+    observations,
+    readArtifactBytes: (artifactPath) => observations.sourceBytes.get(artifactPath),
+  });
   const result = {
     id: requiredCase.id,
     case_sha256: requiredCase.case_sha256,
@@ -139,6 +209,10 @@ function completeCaseResult(requiredCase, runId, identity, index) {
   };
   Object.defineProperty(result, "supportBytes", {
     value: Object.fromEntries(Object.entries(bundle.artifacts).map(([kind, artifact]) => [kind, artifact.bytes])),
+    enumerable: false,
+  });
+  Object.defineProperty(result, "sourceBytes", {
+    value: observations.sourceBytes,
     enumerable: false,
   });
   return result;
@@ -174,6 +248,7 @@ function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
   evidence.comparison.run_id = evidence.run_id;
   evidence.comparison.phase20_deferred = false;
   evidence.comparison.identity = clone(evidence.identity);
+  evidence.comparison.case_registry = clone(V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR);
   evidence.comparison.case_ledger = clone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
   evidence.comparison.status = "PASS";
   evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
@@ -209,6 +284,20 @@ function writeDescriptor(root, descriptor, bytes = Buffer.from(`bounded:${descri
 
 function writeJsonDescriptor(root, descriptor, value) {
   writeDescriptor(root, descriptor, Buffer.from(stableCanonicalJson(value)));
+}
+
+function writeCaseSourceBytes(root, sourceBytes) {
+  for (const [artifactPath, bytes] of sourceBytes) {
+    const absolute = path.join(root, artifactPath);
+    mkdirSync(path.dirname(absolute), { recursive: true });
+    writeFileSync(absolute, bytes);
+  }
+}
+
+function replaceObservationSourceBytes(observations, descriptor, bytes) {
+  observations.sourceBytes.set(descriptor.path, bytes);
+  descriptor.sha256 = hash(bytes);
+  descriptor.size_bytes = bytes.length;
 }
 
 function withoutArtifact(entry) {
@@ -258,6 +347,7 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
   for (const entry of evidence.functional_cases) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
   for (const entry of evidence.route_journeys) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
   for (const entry of evidence.comparison.case_results) {
+    writeCaseSourceBytes(root, entry.sourceBytes);
     for (const [kind, record] of Object.entries(entry.records)) {
       writeDescriptor(root, record.artifact, entry.supportBytes[kind]);
     }
@@ -291,6 +381,31 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
   writeJsonDescriptor(root, evidence.artifacts.manifest, evidence.manifest);
   writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
   return { evidence, manifestPath: path.relative(root, manifestPath) };
+}
+
+function rewriteRetainedCaseSource(root, evidence, kind, replaceBytes) {
+  const caseResult = evidence.comparison.case_results[0];
+  const supportPath = path.join(root, caseResult.records[kind].artifact.path);
+  const supportPayload = JSON.parse(readFileSync(supportPath, "utf8"));
+  const sourceDescriptor = kind === "capture"
+    ? supportPayload.records[0].evidence.captures[0]
+    : supportPayload.records[0].evidence.artifact;
+  const sourcePath = path.join(root, sourceDescriptor.path);
+  const nextSourceBytes = replaceBytes(readFileSync(sourcePath));
+  writeFileSync(sourcePath, nextSourceBytes);
+  sourceDescriptor.sha256 = hash(nextSourceBytes);
+  sourceDescriptor.size_bytes = nextSourceBytes.length;
+  writeDescriptor(
+    root,
+    caseResult.records[kind].artifact,
+    Buffer.from(stableCanonicalJson(supportPayload)),
+  );
+  writeJsonDescriptor(root, caseResult.artifact, withoutArtifact(caseResult));
+  writeJsonDescriptor(root, evidence.artifacts.comparison, evidence.comparison);
+  writeFileSync(
+    path.join(root, `artifacts/native/v1.2/${evidence.run_id}/evidence/calendar-evidence.json`),
+    `${JSON.stringify(evidence, null, 2)}\n`,
+  );
 }
 
 test("Calendar evidence fixture carries the exact native, route, comparison, and owner-gate sets without claiming PASS", () => {
@@ -367,22 +482,24 @@ test("the production case producer writes immutable configuration-bound support 
       started_at: startedAt,
       finished_at: "2026-10-13T10:10:11.000Z",
     };
+    const observations = passingCaseObservations(requiredCase, binding, runId, startedAt);
+    writeCaseSourceBytes(root, observations.sourceBytes);
     const result = produceV12CalendarCaseEvidence({
       root,
       requiredCase,
       execution,
-      observations: passingCaseObservations(requiredCase, binding, runId, startedAt),
+      observations,
     });
 
     assert.equal(result.records.functional.passed, binding.measured.input_motion.length);
-    assert.equal(result.records.trace.sample_count, binding.measured.input_motion.length);
+    assert.equal(result.records.trace.sample_count, binding.measured.input_motion.length * 2);
     assert.match(readFileSync(path.join(root, result.records.functional.artifact.path), "utf8"), /<testsuite/u);
     assert.equal(JSON.parse(readFileSync(path.join(root, result.records.trace.artifact.path), "utf8")).case_sha256, requiredCase.case_sha256);
     assert.throws(() => produceV12CalendarCaseEvidence({
       root,
       requiredCase,
       execution,
-      observations: passingCaseObservations(requiredCase, binding, runId, startedAt),
+      observations,
     }), /EEXIST/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -438,6 +555,7 @@ test("the case producer rejects non-canonical run, case, and capture identities"
       requiredCase,
       execution,
       observations: privacyBearing,
+      readArtifactBytes: (artifactPath) => privacyBearing.sourceBytes.get(artifactPath),
     }), /schema_invalid:capture\.item/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -461,33 +579,193 @@ test("case support rejects malformed source records and derives every outcome fr
     finished_at: "2026-10-13T11:11:12.000Z",
   };
   const observations = passingCaseObservations(requiredCase, binding, runId, startedAt);
-  const create = (overrides = {}) => createV12CalendarCaseEvidenceBundle({
-    requiredCase: overrides.requiredCase ?? requiredCase,
-    execution: overrides.execution ?? execution,
-    observations: overrides.observations ?? observations,
-  });
+  const create = (overrides = {}) => {
+    const selectedObservations = overrides.observations ?? observations;
+    return createV12CalendarCaseEvidenceBundle({
+      requiredCase: overrides.requiredCase ?? requiredCase,
+      execution: overrides.execution ?? execution,
+      observations: selectedObservations,
+      readArtifactBytes: (artifactPath) => (
+        selectedObservations.sourceBytes ?? observations.sourceBytes
+      ).get(artifactPath),
+    });
+  };
 
   assert.throws(() => create({ execution: { ...execution, unexpected: true } }), /schema_invalid:execution/u);
   assert.throws(() => create({ execution: { ...execution, schema_version: 2 } }), /execution_invalid/u);
   assert.throws(() => create({ requiredCase: { ...requiredCase, binding: { ...requiredCase.binding, configuration_id: "missing" } } }), /case_registry_invalid/u);
   assert.throws(() => create({ observations: observations.slice(1) }), /record_set_invalid/u);
   assert.throws(() => create({ observations: observations.map((value, index) => index === 0 ? { ...value, input: "keyboard" } : value) }), /record_identity_invalid/u);
+  assert.throws(() => v12CalendarCaseSourceArtifactPaths(requiredCase, "bad-run", "touch", "normal"), /source_artifact_identity_invalid/u);
+  assert.throws(() => v12CalendarCaseSourceArtifactPaths(requiredCase, runId, "private-input", "normal"), /source_artifact_identity_invalid/u);
+  assert.throws(() => v12CalendarCaseSourceArtifactPaths(requiredCase, runId, "touch", "slow"), /source_artifact_identity_invalid/u);
+  assert.throws(() => v12CalendarCaseEvidencePaths(requiredCase, "bad-run"), /execution_invalid/u);
 
   const malformedEvidence = [
     ["functional", { assertions: null }, /functional\.assertions/u],
-    ["functional", { assertions: [{ id: "?", expected: true, actual: true }] }, /functional\.assertion/u],
-    ["trace", { samples: null }, /trace\.samples/u],
-    ["trace", { samples: [{ sequence: 0, elapsed_ms: 1, expected_sha256: "b".repeat(64), actual_sha256: "b".repeat(64) }] }, /trace\.sample/u],
-    ["measurement", { samples: null }, /measurement\.samples/u],
-    ["measurement", { samples: [{ sequence: 0, value: 1, unit: "ratio", minimum: 1, maximum: 1 }] }, /measurement\.sample/u],
+    ["functional", { assertions: [{ id: "?", actual: true }] }, /functional\.assertion/u],
+    ["trace", { artifact: null }, /trace\.artifact/u],
+    ["trace", { artifact: { path: "wrong", sha256: "b".repeat(64), size_bytes: 1 } }, /trace\.artifact/u],
+    ["measurement", { artifact: null }, /measurement\.artifact/u],
+    ["measurement", { artifact: { path: "wrong", sha256: "b".repeat(64), size_bytes: 1 } }, /measurement\.artifact/u],
     ["capture", { captures: null }, /capture\.captures/u],
-    ["capture", { captures: [{ path: null, expected_sha256: "b".repeat(64), actual_sha256: "b".repeat(64), size_bytes: 1 }] }, /capture\.item/u],
+    ["capture", { captures: [{ path: null, sha256: "b".repeat(64), size_bytes: 1 }] }, /capture\.item/u],
   ];
   for (const [kind, evidence, expected] of malformedEvidence) {
     const mutated = clone(observations);
     mutated[0][kind] = evidence;
     assert.throws(() => create({ observations: mutated }), expected);
   }
+
+  const tooManyAssertions = clone(observations);
+  tooManyAssertions[0].functional.assertions.push({ id: "functional-result", actual: true });
+  assert.throws(() => create({ observations: tooManyAssertions }), /functional\.assertions/u);
+
+  const selfCertified = clone(observations);
+  selfCertified[0].functional.assertions[0] = {
+    id: "functional-result",
+    expected: false,
+    actual: false,
+  };
+  assert.throws(() => create({ observations: selfCertified }), /functional\.assertion/u);
+
+  const unorderedTrace = clone(observations);
+  const traceDescriptor = unorderedTrace[0].trace.artifact;
+  const tracePayload = JSON.parse(unorderedTrace.sourceBytes.get(traceDescriptor.path).toString("utf8"));
+  tracePayload.samples = [
+    { sequence: 1, elapsed_ms: 9, event: "observation-started" },
+    { sequence: 1, elapsed_ms: 1, event: "observation-finished" },
+  ];
+  const unorderedTraceBytes = Buffer.from(stableCanonicalJson(tracePayload));
+  replaceObservationSourceBytes(unorderedTrace, traceDescriptor, unorderedTraceBytes);
+  assert.throws(() => create({ observations: unorderedTrace }), /trace\.sample_order/u);
+
+  const missingTrace = clone(observations);
+  missingTrace.sourceBytes.delete(missingTrace[0].trace.artifact.path);
+  assert.throws(() => create({ observations: missingTrace }), /source_artifact_missing/u);
+
+  const replacedTrace = clone(observations);
+  const replacedTracePath = replacedTrace[0].trace.artifact.path;
+  replacedTrace.sourceBytes.set(replacedTracePath, Buffer.from("replaced"));
+  assert.throws(() => create({ observations: replacedTrace }), /source_artifact_invalid/u);
+
+  const malformedMeasurement = clone(observations);
+  const measurementDescriptor = malformedMeasurement[0].measurement.artifact;
+  replaceObservationSourceBytes(
+    malformedMeasurement,
+    measurementDescriptor,
+    Buffer.from('{"schema_version":1}\n'),
+  );
+  assert.throws(() => create({ observations: malformedMeasurement }), /measurement\.source/u);
+
+  const invalidJsonTrace = clone(observations);
+  const invalidJsonTraceDescriptor = invalidJsonTrace[0].trace.artifact;
+  replaceObservationSourceBytes(
+    invalidJsonTrace,
+    invalidJsonTraceDescriptor,
+    Buffer.from("not-json"),
+  );
+  assert.throws(() => create({ observations: invalidJsonTrace }), /trace\.source/u);
+
+  const emptyTrace = clone(observations);
+  const emptyTraceDescriptor = emptyTrace[0].trace.artifact;
+  const emptyTracePayload = JSON.parse(
+    emptyTrace.sourceBytes.get(emptyTraceDescriptor.path).toString("utf8"),
+  );
+  emptyTracePayload.samples = [];
+  replaceObservationSourceBytes(
+    emptyTrace,
+    emptyTraceDescriptor,
+    Buffer.from(stableCanonicalJson(emptyTracePayload)),
+  );
+  assert.throws(() => create({ observations: emptyTrace }), /trace\.source/u);
+
+  const malformedCapture = clone(observations);
+  const captureDescriptor = malformedCapture[0].capture.captures[0];
+  replaceObservationSourceBytes(
+    malformedCapture,
+    captureDescriptor,
+    Buffer.from("not-a-png"),
+  );
+  assert.throws(() => create({ observations: malformedCapture }), /source_artifact_invalid:capture/u);
+
+  const semanticallyWrongMeasurement = clone(observations);
+  const semanticDescriptor = semanticallyWrongMeasurement[0].measurement.artifact;
+  const semanticPayload = JSON.parse(
+    semanticallyWrongMeasurement.sourceBytes.get(semanticDescriptor.path).toString("utf8"),
+  );
+  semanticPayload.samples[0].value += 1;
+  replaceObservationSourceBytes(
+    semanticallyWrongMeasurement,
+    semanticDescriptor,
+    Buffer.from(stableCanonicalJson(semanticPayload)),
+  );
+  assert.equal(create({ observations: semanticallyWrongMeasurement }).records.measurement.failed, 1);
+
+  const semanticallyWrongTrace = clone(observations);
+  const semanticTraceDescriptor = semanticallyWrongTrace[0].trace.artifact;
+  const semanticTracePayload = JSON.parse(
+    semanticallyWrongTrace.sourceBytes.get(semanticTraceDescriptor.path).toString("utf8"),
+  );
+  semanticTracePayload.samples[1].event = "observation-aborted";
+  replaceObservationSourceBytes(
+    semanticallyWrongTrace,
+    semanticTraceDescriptor,
+    Buffer.from(stableCanonicalJson(semanticTracePayload)),
+  );
+  assert.equal(create({ observations: semanticallyWrongTrace }).records.trace.failed, 1);
+
+  const extraTrace = clone(observations);
+  const extraTraceDescriptor = extraTrace[0].trace.artifact;
+  const extraTracePayload = JSON.parse(
+    extraTrace.sourceBytes.get(extraTraceDescriptor.path).toString("utf8"),
+  );
+  extraTracePayload.samples.push({ sequence: 3, elapsed_ms: 3, event: "observation-extra" });
+  replaceObservationSourceBytes(
+    extraTrace,
+    extraTraceDescriptor,
+    Buffer.from(stableCanonicalJson(extraTracePayload)),
+  );
+  assert.equal(create({ observations: extraTrace }).records.trace.failed, 1);
+
+  const invalidMeasurementSamples = clone(observations);
+  const invalidMeasurementDescriptor = invalidMeasurementSamples[0].measurement.artifact;
+  const invalidMeasurementPayload = JSON.parse(
+    invalidMeasurementSamples.sourceBytes.get(invalidMeasurementDescriptor.path).toString("utf8"),
+  );
+  invalidMeasurementPayload.samples = null;
+  replaceObservationSourceBytes(
+    invalidMeasurementSamples,
+    invalidMeasurementDescriptor,
+    Buffer.from(stableCanonicalJson(invalidMeasurementPayload)),
+  );
+  assert.throws(() => create({ observations: invalidMeasurementSamples }), /measurement\.source/u);
+
+  const invalidMeasurementUnit = clone(observations);
+  const invalidUnitDescriptor = invalidMeasurementUnit[0].measurement.artifact;
+  const invalidUnitPayload = JSON.parse(
+    invalidMeasurementUnit.sourceBytes.get(invalidUnitDescriptor.path).toString("utf8"),
+  );
+  invalidUnitPayload.samples[0].unit = "?";
+  replaceObservationSourceBytes(
+    invalidMeasurementUnit,
+    invalidUnitDescriptor,
+    Buffer.from(stableCanonicalJson(invalidUnitPayload)),
+  );
+  assert.throws(() => create({ observations: invalidMeasurementUnit }), /measurement\.sample/u);
+
+  const extraMeasurement = clone(observations);
+  const extraMeasurementDescriptor = extraMeasurement[0].measurement.artifact;
+  const extraMeasurementPayload = JSON.parse(
+    extraMeasurement.sourceBytes.get(extraMeasurementDescriptor.path).toString("utf8"),
+  );
+  extraMeasurementPayload.samples.push({ sequence: 4, id: "extra", value: 1, unit: "ratio" });
+  replaceObservationSourceBytes(
+    extraMeasurement,
+    extraMeasurementDescriptor,
+    Buffer.from(stableCanonicalJson(extraMeasurementPayload)),
+  );
+  assert.equal(create({ observations: extraMeasurement }).records.measurement.failed, 1);
 
   const reviewObservations = clone(observations);
   reviewObservations[0].functional.assertions = [];
@@ -506,15 +784,16 @@ test("case support rejects malformed source records and derives every outcome fr
     records: clone(bundle.records),
   };
   const bytesByKind = Object.fromEntries(Object.entries(bundle.artifacts).map(([kind, value]) => [kind, value.bytes]));
-  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.alloc(0) } }), /content_invalid/u);
-  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, functional: Buffer.from(bytesByKind.functional.toString("utf8").replace(/<system-out>[^<]+/u, "<system-out>eA==")) } }), /schema_invalid/u);
+  const readArtifactBytes = (artifactPath) => observations.sourceBytes.get(artifactPath);
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.alloc(0) }, readArtifactBytes }), /content_invalid/u);
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, functional: Buffer.from(bytesByKind.functional.toString("utf8").replace(/<system-out>[^<]+/u, "<system-out>eA==")) }, readArtifactBytes }), /schema_invalid/u);
   const invalidPayload = clone(bundle.artifacts.trace.payload);
   invalidPayload.producer = "untrusted";
-  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.from(stableCanonicalJson(invalidPayload)) } }), /content_invalid/u);
-  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.concat([bytesByKind.trace, Buffer.from(" ")]) } }), /content_invalid/u);
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.from(stableCanonicalJson(invalidPayload)) }, readArtifactBytes }), /content_invalid/u);
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind: { ...bytesByKind, trace: Buffer.concat([bytesByKind.trace, Buffer.from(" ")]) }, readArtifactBytes }), /content_invalid/u);
   const mismatchedResult = clone(caseResult);
   mismatchedResult.records.trace.passed = 0;
-  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult: mismatchedResult, bytesByKind }), /content_invalid/u);
+  assert.throws(() => validateV12CalendarCaseSupportBytes({ requiredCase, caseResult: mismatchedResult, bytesByKind, readArtifactBytes }), /content_invalid/u);
 });
 
 test("Calendar evidence rejects missing, duplicate, stale, mutating, non-monotonic, and weak-focus records", () => {
@@ -641,6 +920,75 @@ test("the final CLI verifier accepts a complete live comparison on the same run 
     });
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the final CLI verifier rejects a missing nested case capture", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-missing-case-capture-"));
+  try {
+    const { evidence, manifestPath } = materializeLiveEvidence(root);
+    const capturePayload = JSON.parse(
+      evidence.comparison.case_results[0].supportBytes.capture.toString("utf8"),
+    );
+    const capturePath = path.join(root, capturePayload.records[0].evidence.captures[0].path);
+    if (existsSync(capturePath)) unlinkSync(capturePath);
+
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", manifestPath, "--automated-only"],
+      root,
+      currentIdentity: {
+        head: evidence.manifest.base_head,
+        source: evidence.manifest.source_tree_sha256,
+      },
+    }), /source_artifact_(?:missing|invalid)|artifact_path_invalid/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the final CLI verifier rejects malformed capture bytes and unordered trace bytes", () => {
+  const scenarios = [
+    {
+      runId: "phase20-20261013T121212Z-abcdef123456",
+      kind: "capture",
+      replaceBytes: () => Buffer.from("not-a-png"),
+      expected: /source_artifact_invalid:capture/u,
+    },
+    {
+      runId: "phase20-20261013T131313Z-abcdef123456",
+      kind: "trace",
+      replaceBytes: (bytes) => {
+        const payload = JSON.parse(bytes.toString("utf8"));
+        payload.samples = [
+          { sequence: 1, elapsed_ms: 9, event: "observation-started" },
+          { sequence: 1, elapsed_ms: 1, event: "observation-finished" },
+        ];
+        return Buffer.from(stableCanonicalJson(payload));
+      },
+      expected: /trace\.sample_order/u,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const root = mkdtempSync(path.join(tmpdir(), `v12-calendar-${scenario.kind}-bytes-`));
+    try {
+      const { evidence, manifestPath } = materializeLiveEvidence(
+        root,
+        undefined,
+        scenario.runId,
+      );
+      rewriteRetainedCaseSource(root, evidence, scenario.kind, scenario.replaceBytes);
+      assert.throws(() => executeV12CalendarEvidenceVerifier({
+        args: ["--manifest", manifestPath, "--automated-only"],
+        root,
+        currentIdentity: {
+          head: evidence.manifest.base_head,
+          source: evidence.manifest.source_tree_sha256,
+        },
+      }), scenario.expected);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }
 });
 
