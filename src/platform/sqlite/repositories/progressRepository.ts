@@ -338,7 +338,9 @@ function progressRecordFromExposure(exposure: ProgressComparableExposure) {
     sessionId: exposure.sessionId,
     setId: exposure.setId,
     localDate: exposure.localDate,
-    sourceRevision: exposure.sourceRevision ?? null,
+    ...(exposure.sourceRevision === undefined ? {} : {
+      sourceRevision: exposure.sourceRevision,
+    }),
     targetJson: exposure.targetJson,
     observationJson: exposure.observationJson,
   });
@@ -529,39 +531,47 @@ async function loadDashboardFacts(
     })];
   });
   const goals = goalRows.flatMap((row, sourceOrder) => {
-    try {
-      const goal = parseRunningGoal(JSON.parse(row.goal_json));
-      if (
-        goal.planId !== row.plan_id
-        || goal.revision !== row.revision
-        || !positiveSafeInteger(goal.goalDistanceMeters)
-      ) return [];
-      const targetDurationSeconds = goal.targetDurationMs === undefined
-        ? null
-        : goal.targetDurationMs > 0 && goal.targetDurationMs % 1_000 === 0
-          ? goal.targetDurationMs / 1_000
-          : null;
-      return [Object.freeze({
-        targetId: row.id,
-        planId: row.plan_id,
-        sport: "Running" as const,
-        distanceMeters: goal.goalDistanceMeters,
-        targetDurationSeconds,
-        ...(goal.targetLocalDate === undefined ? {} : {
-          targetLocalDate: goal.targetLocalDate,
-        }),
-        effectiveAtMs: row.created_at_ms,
-        revision: row.revision,
-        sourceOrder,
-        lifecycle: "active" as const,
-        active: true,
-        current: row.is_current === 1,
-      })];
-    } catch {
-      return [];
-    }
+    const goal = dashboardGoalFromRow(row, sourceOrder);
+    return goal === null ? [] : [goal];
   });
   return Object.freeze({ activities: Object.freeze(activities), goals: Object.freeze(goals) });
+}
+
+function dashboardGoalFromRow(
+  row: DashboardRunningGoalRow,
+  sourceOrder: number,
+): ProgressGoalRevision | null {
+  try {
+    const goal = parseRunningGoal(JSON.parse(row.goal_json));
+    if (
+      goal.planId !== row.plan_id
+      || goal.revision !== row.revision
+      || !positiveSafeInteger(goal.goalDistanceMeters)
+    ) return null;
+    const targetDurationSeconds = goal.targetDurationMs === undefined
+      ? null
+      : goal.targetDurationMs > 0 && goal.targetDurationMs % 1_000 === 0
+        ? goal.targetDurationMs / 1_000
+        : null;
+    return Object.freeze({
+      targetId: row.id,
+      planId: row.plan_id,
+      sport: "Running" as const,
+      distanceMeters: goal.goalDistanceMeters,
+      targetDurationSeconds,
+      ...(goal.targetLocalDate === undefined ? {} : {
+        targetLocalDate: goal.targetLocalDate,
+      }),
+      effectiveAtMs: row.created_at_ms,
+      revision: row.revision,
+      sourceOrder,
+      lifecycle: "active" as const,
+      active: true,
+      current: row.is_current === 1,
+    });
+  } catch {
+    return null;
+  }
 }
 
 async function loadRunningTargetSources(
@@ -924,3 +934,10 @@ export function createProgressRepository(
     },
   });
 }
+
+export const __progressRepositoryTestOnly = Object.freeze({
+  dashboardGoalFromRow,
+  exposureFromRow,
+  loadRunningTargetSources,
+  progressRecordFromExposure,
+});
