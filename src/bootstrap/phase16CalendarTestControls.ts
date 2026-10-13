@@ -46,6 +46,7 @@ export type Phase16CalendarDiagnosticSample = Readonly<{
   dx?: number;
   viewportWidth?: number;
   transformX?: number;
+  commandedRatio?: number;
   semanticOffset?: -1 | 0 | 1;
   titleOffset?: -1 | 0 | 1;
   selected?: Readonly<{ y: number; height: number }>;
@@ -103,6 +104,45 @@ function safeOffset(value: number): -1 | 0 | 1 {
   return value;
 }
 
+function safeRatio(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error("phase16_calendar_diagnostic_ratio_invalid");
+  return value;
+}
+
+function commandedReleaseRatio(stage: Phase16CalendarStage, measuredRatio: number): number {
+  if (stage.endsWith("-10")) return 0.1;
+  if (stage.endsWith("-24_9") || stage.endsWith("release-below")) return 0.249;
+  if (stage.endsWith("-25") || stage.endsWith("release-exact")) return 0.25;
+  if (stage.endsWith("-25_1") || stage.endsWith("release-above")) return 0.251;
+  if (stage === "drag-fast-subthreshold" || stage === "drag-retreat") return 0.1;
+  return safeRatio(measuredRatio);
+}
+
+export type Phase16CalendarGestureDriverStep = Readonly<
+  | { kind: "drag"; dxRatio: number; commandedRatio: number }
+  | { kind: "release"; dxRatio: number }
+  | { kind: "cancel" }
+>;
+
+export function phase16CalendarGestureDriver(
+  stage: Phase16CalendarStage | undefined,
+): readonly Phase16CalendarGestureDriverStep[] | null {
+  if (stage === "drag-retreat") {
+    return Object.freeze([
+      Object.freeze({ kind: "drag" as const, dxRatio: -0.251, commandedRatio: 0.251 }),
+      Object.freeze({ kind: "drag" as const, dxRatio: -0.1, commandedRatio: 0.1 }),
+      Object.freeze({ kind: "release" as const, dxRatio: -0.1 }),
+    ]);
+  }
+  if (stage === "drag-cancel") {
+    return Object.freeze([
+      Object.freeze({ kind: "drag" as const, dxRatio: -0.18, commandedRatio: 0.18 }),
+      Object.freeze({ kind: "cancel" as const }),
+    ]);
+  }
+  return null;
+}
+
 function monthIndex(value: string): number {
   const match = /^(\d{4})-(\d{2})$/u.exec(value);
   const month = Number(match?.[2]);
@@ -125,7 +165,7 @@ export function phase16CalendarStageFromNativeContract(input: NativeContractIden
 }
 
 export type Phase16CalendarTestControls = Readonly<{
-  recordDrag(input: Phase16CalendarMonthSampleInput & Readonly<{ dx: number; viewportWidth: number; transformX: number }>): void;
+  recordDrag(input: Phase16CalendarMonthSampleInput & Readonly<{ commandedRatio: number; dx: number; viewportWidth: number; transformX: number }>): void;
   recordRelease(input: Phase16CalendarMonthSampleInput & Readonly<{ dx: number; viewportWidth: number }>): void;
   recordCancel(): void;
   recordFocus(input: Readonly<{ selected: Readonly<{ y: number; height: number }>; following: Readonly<{ y: number; height: number }>; destination: Readonly<{ selectedY: number; followingY: number }> }>): void;
@@ -168,8 +208,9 @@ export function createPhase16CalendarTestControls(input: NativeContractIdentity 
   };
   const append = (sample: Omit<Phase16CalendarDiagnosticSample, "elapsedMs" | "synthetic">) => {
     if (samples.length >= MAX_SAMPLES) throw new Error("phase16_calendar_diagnostic_overflow");
-    const elapsedMs = safeTimestamp(nowMs()) - startedAtMs;
-    if (elapsedMs <= lastElapsedMs) throw new Error("phase16_calendar_diagnostic_clock_invalid");
+    const observedElapsedMs = safeTimestamp(nowMs()) - startedAtMs;
+    if (observedElapsedMs < 0) throw new Error("phase16_calendar_diagnostic_clock_invalid");
+    const elapsedMs = Math.max(observedElapsedMs, lastElapsedMs + 1);
     lastElapsedMs = elapsedMs;
     const retained = Object.freeze({ ...sample, elapsedMs, synthetic: true });
     samples.push(retained);
@@ -192,12 +233,14 @@ export function createPhase16CalendarTestControls(input: NativeContractIdentity 
       dx: safeNumber(sample.dx),
       viewportWidth: safeNumber(sample.viewportWidth),
       transformX: safeNumber(sample.transformX),
+      commandedRatio: safeRatio(sample.commandedRatio),
       ...offsets(sample),
     }),
     recordRelease: (sample) => append({
       kind: "release",
       dx: safeNumber(sample.dx),
       viewportWidth: safeNumber(sample.viewportWidth),
+      commandedRatio: commandedReleaseRatio(stage, Math.abs(sample.dx) / sample.viewportWidth),
       ...offsets(sample),
     }),
     recordCancel: () => append({ kind: "cancel" }),
@@ -366,6 +409,7 @@ let activeControls: Phase16CalendarTestControls | null = null;
 /** Route composition calls this once; production and unknown identities always clear the recorder. */
 export function configurePhase16CalendarTestControls(input: NativeContractIdentity & Readonly<{
   stage: string | undefined;
+  nowMs?: () => number;
   traceNonce?: string;
   emitLine?: (line: string) => void;
 }>): void {
@@ -383,7 +427,7 @@ export function readPhase16CalendarActiveTrace(): Phase16CalendarTrace | null {
   return activeControls?.trace() ?? null;
 }
 
-export function recordPhase16CalendarDrag(input: Phase16CalendarMonthSampleInput & Readonly<{ dx: number; viewportWidth: number; transformX: number }>): void {
+export function recordPhase16CalendarDrag(input: Phase16CalendarMonthSampleInput & Readonly<{ commandedRatio: number; dx: number; viewportWidth: number; transformX: number }>): void {
   activeControls?.recordDrag(input);
 }
 

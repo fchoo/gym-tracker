@@ -34,9 +34,15 @@ function occurrenceWithTargets(
 }
 
 describe("PlannedWorkoutDetailScreen", () => {
+  it("keeps Back as the preferred entry target while the exact occurrence is loading", async () => {
+    await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={() => new Promise(() => undefined)} onBack={jest.fn()} /></AppearanceProvider>);
+    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+  });
+
   it("renders immutable planned targets with no session or mutation controls", async () => {
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={jest.fn(async () => occurrence)} onBack={jest.fn()} /></AppearanceProvider>);
     expect(await screen.findByText("Planned preview · read only")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
     expect(screen.getByRole("header", { name: "Full Body A" })).toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "Bench press" })).toBeOnTheScreen();
     expect(screen.getByText("0 of 1 sets")).toBeOnTheScreen();
@@ -59,8 +65,10 @@ describe("PlannedWorkoutDetailScreen", () => {
     const onBack = jest.fn();
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="stale-occurrence" loadOccurrence={loadOccurrence} onBack={onBack} /></AppearanceProvider>);
     expect(await screen.findByText("Workout preview could not be loaded")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
     await fireEvent.press(screen.getByRole("button", { name: "Retry preview" }));
     expect(await screen.findByText("Workout preview unavailable")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
     expect(loadOccurrence).toHaveBeenLastCalledWith("stale-occurrence");
     await fireEvent.press(screen.getByRole("button", { name: "Back to Calendar" }));
     expect(onBack).toHaveBeenCalledTimes(1);

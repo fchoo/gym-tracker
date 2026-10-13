@@ -216,7 +216,7 @@ export function encodeV12CalendarDiagnosticsResult(result, streamId = "p16diag-h
   })}`);
 }
 
-export function extractV12CalendarDiagnosticsResult(logs) {
+export function extractV12CalendarDiagnosticsResult(logs, expectedStreamId) {
   const encoded = logs.split(/\r?\n/u).filter((entry) => entry.includes(RESULT_CHUNK_MARKER));
   if (encoded.length === 0) return undefined;
   let chunks;
@@ -224,6 +224,7 @@ export function extractV12CalendarDiagnosticsResult(logs) {
     chunks = encoded.map((line) => JSON.parse(line.slice(line.indexOf(RESULT_CHUNK_MARKER) + RESULT_CHUNK_MARKER.length)));
   } catch { fail("result_json_invalid"); }
   const streamId = chunks.at(-1)?.stream_id;
+  if (expectedStreamId !== undefined && streamId !== expectedStreamId) fail("result_stream_identity_invalid");
   const stream = chunks.filter((chunk) => chunk.stream_id === streamId);
   const total = stream[0]?.total;
   if ([
@@ -242,6 +243,40 @@ export function extractV12CalendarDiagnosticsResult(logs) {
   catch { fail("result_json_invalid"); }
 }
 
+export function parseV12CalendarDeviceSize(output) {
+  const matches = [...String(output).matchAll(/(?:Physical|Override) size:\s*(\d+)x(\d+)/gu)];
+  const match = matches.at(-1);
+  const width = Number(match?.[1]);
+  const height = Number(match?.[2]);
+  if (![width, height].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 20_000)) {
+    fail("device_size_invalid");
+  }
+  return Object.freeze({ width, height });
+}
+
+export function createV12CalendarDiagnosticDrivePlan({ querySamples, interactionSamples, width, height }) {
+  if ([querySamples, interactionSamples].some((value) => !Number.isSafeInteger(value) || value < 100 || value > 500)) fail("drive_count_invalid");
+  if (![width, height].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 20_000)) fail("device_size_invalid");
+  const queryTransitions = querySamples - 1;
+  const cycles = Math.max(queryTransitions, interactionSamples);
+  const startX = Math.round(width * 0.7);
+  const committedEndX = Math.round(width * 0.4);
+  const subthresholdEndX = Math.round(width * 0.6);
+  const gestureY = Math.round(height * 0.45);
+  const commands = [["shell", "sleep", "2"]];
+  for (let index = 0; index < cycles; index += 1) {
+    commands.push(
+      ["shell", "input", "swipe", String(startX), String(gestureY), String(index < queryTransitions ? committedEndX : subthresholdEndX), String(gestureY), "320"],
+      ["shell", "sleep", "1"],
+      ["shell", "input", "tap", String(Math.round(width * 0.5)), String(gestureY)],
+      ["shell", "sleep", "1"],
+      ["shell", "input", "keyevent", "4"],
+      ["shell", "sleep", "1"],
+    );
+  }
+  return Object.freeze(commands.map((command) => Object.freeze(command)));
+}
+
 export async function executeV12CalendarDiagnostics(args = process.argv.slice(2), dependencies = {}) {
   const options = parseV12CalendarDiagnosticsArgs(args);
   const root = dependencies.root ?? ROOT;
@@ -256,14 +291,21 @@ export async function executeV12CalendarDiagnostics(args = process.argv.slice(2)
   const serial = dependencies.serial ?? process.env.ANDROID_SERIAL;
   const adb = dependencies.adb ?? ((...adbArgs) => runV12CalendarAdb(serial, adbArgs, { root }));
   adb("logcat", "-c");
-  const uri = `gymtracker-devtest://calendar?phase16CalendarDiagnostics=true&querySamples=${options.querySamples}&interactionSamples=${options.interactionSamples}`;
+  const streamId = `p16diag-${manifest.source_tree_sha256.slice(0, 12)}-${manifest.device.identity_sha256.slice(0, 12)}`;
+  const uri = `gymtracker-devtest://calendar?phase16CalendarDiagnostics=true&querySamples=${options.querySamples}&interactionSamples=${options.interactionSamples}&diagnosticStreamId=${streamId}`;
   adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", uri, manifest.package);
+  const deviceSize = parseV12CalendarDeviceSize(adb("shell", "wm", "size"));
+  for (const command of createV12CalendarDiagnosticDrivePlan({
+    querySamples: options.querySamples,
+    interactionSamples: options.interactionSamples,
+    ...deviceSize,
+  })) adb(...command);
   const now = dependencies.now ?? Date.now;
   const wait = dependencies.wait ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const deadline = now() + 10 * 60_000;
   let raw;
   while (now() < deadline && raw === undefined) {
-    raw = extractV12CalendarDiagnosticsResult(adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S"));
+    raw = extractV12CalendarDiagnosticsResult(adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S"), streamId);
     if (raw === undefined) await wait(500);
   }
   if (raw === undefined) fail("result_missing");

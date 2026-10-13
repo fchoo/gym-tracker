@@ -85,14 +85,12 @@ tags: [calendar-tracer, native-only, development-test, phase-16]
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }
     commands:
-      - swipe: { start: "70%, 45%", end: "40%, 45%", duration: 240 }
-      - swipe: { start: "40%, 45%", end: "60%, 45%", duration: 120 }
+      - assertVisible: { id: "calendar-month-viewport" }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }
     commands:
-      - swipe: { start: "70%, 45%", end: "52%, 45%", duration: 220 }
-      - pressKey: BACK
+      - assertVisible: { id: "calendar-month-viewport" }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-vertical'} }

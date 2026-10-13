@@ -46,8 +46,8 @@ export const V12_CALENDAR_STAGE_CONTRACTS = Object.freeze({
   "drag-backward-release-exact": Object.freeze(["start: \"30%, 45%\", end: \"55%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
   "drag-backward-release-above": Object.freeze(["start: \"30%, 45%\", end: \"55.1%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
   "drag-fast-subthreshold": Object.freeze(["start: \"70%, 45%\", end: \"60%, 45%\", duration: 40", "id: \"calendar-month-title\""]),
-  "drag-retreat": Object.freeze(["end: \"40%, 45%\", duration: 240", "end: \"60%, 45%\", duration: 120", "id: \"calendar-month-title\""]),
-  "drag-cancel": Object.freeze(["end: \"52%, 45%\", duration: 220", "pressKey: BACK", "id: \"calendar-month-title\""]),
+  "drag-retreat": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-cancel": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
   "drag-vertical": Object.freeze(["start: \"50%, 70%\", end: \"50%, 30%\", duration: 300", "id: \"calendar-month-title\""]),
   "drag-diagonal": Object.freeze(["start: \"50%, 70%\", end: \"58%, 30%\", duration: 300", "id: \"calendar-month-title\""]),
   "week-expand-first-row": Object.freeze(["point: \"50%, 24%\"", "assertVisible: \"Collapse day and return to month\""]),
@@ -98,6 +98,10 @@ export function validateV12CalendarFlow(flow) {
       const requiredCount = V12_CALENDAR_STAGE_CONTRACTS[stage].filter((value) => value === expected).length;
       if (block.split(expected).length - 1 !== requiredCount) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
     }
+    if (
+      (stage === "drag-retreat" && block.includes("swipe:"))
+      || (stage === "drag-cancel" && (block.includes("swipe:") || block.includes("pressKey: BACK")))
+    ) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
   }
   if (!flow.includes("takeScreenshot")) throw new Error("v12_calendar_capture_missing");
   return true;

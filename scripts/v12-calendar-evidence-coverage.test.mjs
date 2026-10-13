@@ -17,10 +17,12 @@ import test from "node:test";
 import { PNG } from "pngjs";
 
 import {
+  createV12CalendarDiagnosticDrivePlan,
   createV12CalendarDiagnostics,
   encodeV12CalendarDiagnosticsResult,
   executeV12CalendarDiagnostics,
   extractV12CalendarDiagnosticsResult,
+  parseV12CalendarDeviceSize,
   parseV12CalendarDiagnosticsArgs,
   runV12CalendarAdb,
   runV12CalendarDiagnosticsCli,
@@ -29,6 +31,8 @@ import {
 import {
   compareV12Calendar,
   executeV12CalendarComparisonFixture,
+  v12CalendarCaseEvidenceBinding,
+  v12CalendarCaseEvidencePaths,
   v12CalendarReferenceMapSha256,
   validateV12CalendarComparison,
   runV12CalendarComparisonCli,
@@ -74,6 +78,7 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const fixture = () => JSON.parse(readFileSync("scripts/fixtures/v12-calendar-evidence/complete.json", "utf8"));
 const comparisonFixturePath = "scripts/fixtures/v12-calendar-comparison/complete.json";
+const DIAGNOSTIC_STREAM_ID = "p16diag-bbbbbbbbbbbb-dddddddddddd";
 
 function manifest() {
   return {
@@ -114,6 +119,44 @@ function rawDiagnostics(count = 100) {
       refresh_rate_hz: index === 0 ? 90 : 60,
       profiler_overhead_ms: 0.1,
     })),
+  };
+}
+
+function completeCaseResult(requiredCase, runId, identity, index) {
+  const binding = v12CalendarCaseEvidenceBinding(requiredCase);
+  const requiredCount = binding.measured.input_motion.length;
+  const paths = v12CalendarCaseEvidencePaths(requiredCase, runId);
+  const record = (kind, withSamples = false) => ({
+    passed: requiredCount,
+    failed: 0,
+    skipped: 0,
+    ...(withSamples ? { sample_count: requiredCount } : {}),
+    artifact: { path: paths[kind], sha256: "a".repeat(64) },
+  });
+  const startedAt = new Date(Date.UTC(2026, 9, 13, 0, 0, index * 2)).toISOString();
+  return {
+    id: requiredCase.id,
+    case_sha256: requiredCase.case_sha256,
+    native_execution: "EXECUTED",
+    binding,
+    execution: {
+      schema_version: 1,
+      producer: "v12-calendar-native-case/v1",
+      run_id: runId,
+      package: identity.package,
+      build_profile: "development-test",
+      source_tree_sha256: identity.source_tree_sha256,
+      device_identity_sha256: identity.device_identity_sha256,
+      started_at: startedAt,
+      finished_at: new Date(Date.parse(startedAt) + 1_000).toISOString(),
+    },
+    records: {
+      functional: record("functional"),
+      trace: record("trace", true),
+      measurement: record("measurement", true),
+      capture: record("capture"),
+    },
+    artifact: { path: `artifacts/native/v1.2/${runId}/cases/${requiredCase.case_sha256}.json`, sha256: "a".repeat(64) },
   };
 }
 
@@ -158,10 +201,10 @@ function comparisonFixture() {
     sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
     synthetic: true,
     samples: [
-      { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
-      { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
-      { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
-      { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
+      { kind: "drag", commandedRatio: 0.249, dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
+      { kind: "drag", commandedRatio: 0.25, dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
+      { kind: "drag", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
+      { kind: "release", commandedRatio: 0.251, dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
     ],
   };
   return {
@@ -215,13 +258,9 @@ function liveEvidence() {
   evidence.comparison.status = "PASS";
   evidence.comparison.identity = structuredClone(evidence.identity);
   evidence.comparison.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
-  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
-    id: entry.id,
-    case_sha256: entry.case_sha256,
-    status: "PASS",
-    native_execution: "EXECUTED",
-    artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
-  }));
+  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
+    completeCaseResult(entry, evidence.run_id, evidence.identity, index)
+  ));
   evidence.comparison.records.forEach((entry) => {
     entry.classification = "PASS";
     entry.differences = [];
@@ -294,6 +333,7 @@ test("diagnostic argument, adb, and marker helpers reject every malformed bounda
   const encoded = encodeV12CalendarDiagnosticsResult({ ok: true });
   assert.deepEqual(extractV12CalendarDiagnosticsResult(`noise\n${encoded.join("\n")}`), { ok: true });
   assert.throws(() => encodeV12CalendarDiagnosticsResult({ ok: true }, "Alice"), /result_stream_invalid/u);
+  assert.throws(() => extractV12CalendarDiagnosticsResult(encoded.join("\n"), "p16diag-wrong-stream"), /result_stream_identity_invalid/u);
   assert.throws(() => extractV12CalendarDiagnosticsResult("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:{"), /result_json_invalid/u);
   const malformedChunk = JSON.parse(encoded[0].split(":").slice(1).join(":"));
   for (const mutate of [
@@ -325,6 +365,16 @@ test("diagnostic argument, adb, and marker helpers reject every malformed bounda
     spawn: (...args) => { invocation = args; return { status: 0, stdout: " ok \n" }; },
   }), "ok");
   assert.deepEqual(invocation, [fakeAdb, ["-s", "serial", "devices"], { cwd: "/repo", encoding: "utf8" }]);
+  assert.deepEqual(parseV12CalendarDeviceSize("Physical size: 1080x2400\nOverride size: 720x1600"), { width: 720, height: 1600 });
+  assert.throws(() => parseV12CalendarDeviceSize("unknown"), /device_size_invalid/u);
+  const drivePlan = createV12CalendarDiagnosticDrivePlan({ querySamples: 101, interactionSamples: 102, width: 1080, height: 2400 });
+  const driveSwipes = drivePlan.filter((args) => args[1] === "input" && args[2] === "swipe");
+  assert.equal(driveSwipes.length, 102);
+  assert.equal(driveSwipes.filter((args) => args[5] === "432").length, 100);
+  assert.equal(driveSwipes.filter((args) => args[5] === "648").length, 2);
+  assert.ok(drivePlan.length <= 1 + 500 * 6);
+  assert.throws(() => createV12CalendarDiagnosticDrivePlan({ querySamples: 99, interactionSamples: 100, width: 1080, height: 2400 }), /drive_count_invalid/u);
+  assert.throws(() => createV12CalendarDiagnosticDrivePlan({ querySamples: 100, interactionSamples: 100, width: 0, height: 2400 }), /device_size_invalid/u);
 });
 
 test("diagnostic validators exercise every exact-schema and numeric branch", () => {
@@ -394,7 +444,7 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
   try {
     writeFileSync(path.join(root, "build.json"), JSON.stringify(manifest()));
     const raw = rawDiagnostics();
-    const logs = encodeV12CalendarDiagnosticsResult(raw).join("\n");
+    const logs = encodeV12CalendarDiagnosticsResult(raw, DIAGNOSTIC_STREAM_ID).join("\n");
     const calls = [];
     const result = await executeV12CalendarDiagnostics(["--manifest", "build.json"], {
       root,
@@ -403,7 +453,11 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       serial: "hashed-outside-evidence",
       now: () => 0,
       wait: async () => undefined,
-      adb: (...args) => { calls.push(args); return args[1] === "-d" ? logs : ""; },
+      adb: (...args) => {
+        calls.push(args);
+        if (args[0] === "shell" && args[1] === "wm") return "Physical size: 1080x2400";
+        return args[1] === "-d" ? logs : "";
+      },
     });
     assert.deepEqual(result, {
       output: "diagnostics/calendar.json",
@@ -411,7 +465,11 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       interaction_samples: 100,
       acceptance_owner: "phase20",
     });
-    assert.equal(calls.length, 3);
+    assert.equal(calls.filter((args) => args[0] === "shell" && args[1] === "input" && args[2] === "swipe").length, 100);
+    assert.equal(calls.filter((args) => args[0] === "shell" && args[1] === "input" && args[2] === "tap").length, 100);
+    assert.equal(calls.filter((args) => args[0] === "shell" && args[1] === "input" && args[2] === "keyevent").length, 100);
+    assert.match(calls.find((args) => args[0] === "shell" && args[1] === "am")?.join(" ") ?? "", /diagnosticStreamId=p16diag-/u);
+    assert.ok(calls.find((args) => args[0] === "shell" && args[1] === "wm" && args[2] === "size"));
     assert.equal(readFileSync(path.join(root, result.output), "utf8").includes("Alice"), false);
     const cli = captureIo();
     assert.equal(await runV12CalendarDiagnosticsCli(["--manifest", "build.json", "--output", "diagnostics/cli.json"], cli.io, {
@@ -420,7 +478,9 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       source: manifest().source_tree_sha256,
       now: () => 0,
       wait: async () => undefined,
-      adb: (...args) => args[1] === "-d" ? logs : "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm"
+        ? "Physical size: 1080x2400"
+        : args[1] === "-d" ? logs : "",
       write: writeFileSync,
     }), 0);
     assert.match(cli.stdout[0], /"acceptance_owner":"phase20"/u);
@@ -442,18 +502,22 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       source: manifest().source_tree_sha256,
       now: (() => { const values = [0, 600_001]; return () => values.shift() ?? 600_001; })(),
       wait: async () => undefined,
-      adb: () => "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm" ? "Physical size: 1080x2400" : "",
     };
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json"], dependencies), /result_missing/u);
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--output", "../escape.json"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm"
+        ? "Physical size: 1080x2400"
+        : args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics(), DIAGNOSTIC_STREAM_ID).join("\n") : "",
     }), /output_path_invalid/u);
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--query-samples", "101"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
+      adb: (...args) => args[0] === "shell" && args[1] === "wm"
+        ? "Physical size: 1080x2400"
+        : args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics(), DIAGNOSTIC_STREAM_ID).join("\n") : "",
     }), /requested_sample_count_mismatch/u);
   } finally {
     rmSync(failureRoot, { recursive: true, force: true });
@@ -474,9 +538,10 @@ test("diagnostic execution default adapters read git identity, adb output, clock
     const adbDirectory = path.join(sdkRoot, "platform-tools");
     mkdirSync(adbDirectory, { recursive: true });
     const counterPath = path.join(sdkRoot, "counter");
-    const raw = encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\\n").replaceAll("'", "");
+    const streamId = `p16diag-${current.source_tree_sha256.slice(0, 12)}-${current.device.identity_sha256.slice(0, 12)}`;
+    const raw = encodeV12CalendarDiagnosticsResult(rawDiagnostics(), streamId).join("\\n").replaceAll("'", "");
     const adbPath = path.join(adbDirectory, "adb");
-    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%b\\n' '${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
+    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"shell wm size"*) printf '%s\\n' 'Physical size: 1080x2400' ;;\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%b\\n' '${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
     chmodSync(adbPath, 0o755);
     process.env.ANDROID_HOME = sdkRoot;
     process.env.ANDROID_SERIAL = "local-test-device";
@@ -528,6 +593,14 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   assert.throws(() => validateV12CalendarFlow(`${flow}\n# October 2026`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(`${flow}\n# phase16CalendarReducedMotion=true`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_STAGE == 'drag-forward-10'", "PHASE16_CALENDAR_STAGE == 'missing'")), /stage_missing/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace(
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:",
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:\n      - swipe: { start: \"70%, 45%\", end: \"40%, 45%\", duration: 240 }",
+  )), /flow_stage_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace(
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:",
+    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:\n      - pressKey: BACK",
+  )), /flow_stage_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("takeScreenshot", "capture")), /capture_missing/u);
   const runnerPlan = createV12CalendarRunnerPlan(valid);
   assert.equal(runnerPlan.stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);
@@ -1125,6 +1198,13 @@ test("shared comparison validation rejects malformed host and live envelopes", (
     ], (entry) => validateV12CalendarComparison(entry));
     assert.throws(() => validateV12CalendarComparison(host, { expectedRunId: "wrong" }), /result_identity_invalid/u);
     assert.throws(() => validateV12CalendarComparison(host, { expectedIdentity: { ...host.identity, report_sha256: "0".repeat(64) } }), /result_identity_invalid/u);
+    const failingHost = structuredClone(host);
+    failingHost.records[0].classification = "FAIL";
+    failingHost.status = "FAIL";
+    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      failingHost.records[0].artifacts[kind].path = `comparison/${failingHost.records[0].id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+    }
+    assert.throws(() => validateV12CalendarComparison(failingHost), /result_status_invalid/u);
 
     const live = structuredClone(host);
     live.mode = "live-executed";
@@ -1138,11 +1218,26 @@ test("shared comparison validation rejects malformed host and live envelopes", (
       live.records[0].artifacts[kind].path = `${artifactRoot}/comparison/${live.records[0].id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
     }
     live.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
-    live.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({ id: entry.id, case_sha256: entry.case_sha256, status: "PASS", native_execution: "EXECUTED", artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) } }));
+    live.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
+      completeCaseResult(entry, live.run_id, live.identity, index)
+    ));
     assert.equal(validateV12CalendarComparison(live), true);
     const explained = structuredClone(live);
     explained.records[0].differences = [{ kind: "visual", explained: true }];
     assert.equal(validateV12CalendarComparison(explained), true);
+    const failedCase = structuredClone(live);
+    failedCase.case_results[0].records.functional.passed -= 1;
+    failedCase.case_results[0].records.functional.failed = 1;
+    failedCase.status = "FAIL";
+    assert.equal(validateV12CalendarComparison(failedCase), true);
+    const reviewCase = structuredClone(live);
+    reviewCase.case_results[0].records.trace.passed -= 1;
+    reviewCase.case_results[0].records.trace.skipped = 1;
+    reviewCase.status = "REVIEW_REQUIRED";
+    assert.equal(validateV12CalendarComparison(reviewCase), true);
+    const sizedCaseEvidence = structuredClone(live);
+    sizedCaseEvidence.case_results[0].records.capture.artifact.size_bytes = 1;
+    assert.equal(validateV12CalendarComparison(sizedCaseEvidence), true);
     const unknownDifference = structuredClone(explained);
     unknownDifference.records[0].differences[0].kind = "private-route-data";
     assert.throws(() => validateV12CalendarComparison(unknownDifference), /privacy_schema_invalid/u);
@@ -1154,12 +1249,33 @@ test("shared comparison validation rejects malformed host and live envelopes", (
       (entry) => { entry.case_results = null; },
       (entry) => { entry.case_results.pop(); },
       (entry) => { entry.case_results[0].id = "wrong"; },
-      (entry) => { entry.case_results[0].status = "UNKNOWN"; },
+      (entry) => { entry.case_results[0].binding.measured.state_id = "wrong"; },
       (entry) => { entry.case_results[0].native_execution = "NOT_RUN"; },
+      (entry) => { entry.case_results[0].case_sha256 = "0".repeat(64); },
+      (entry) => { entry.case_results[0].execution.schema_version = 2; },
+      (entry) => { entry.case_results[0].execution.producer = "wrong"; },
+      (entry) => { entry.case_results[0].execution.run_id = "wrong"; },
+      (entry) => { entry.case_results[0].execution.package = "wrong"; },
+      (entry) => { entry.case_results[0].execution.build_profile = "release"; },
+      (entry) => { entry.case_results[0].execution.source_tree_sha256 = "0".repeat(64); },
+      (entry) => { entry.case_results[0].execution.device_identity_sha256 = "0".repeat(64); },
+      (entry) => { entry.case_results[0].execution.started_at = null; },
+      (entry) => { entry.case_results[0].execution.started_at = "not-a-date"; },
+      (entry) => { entry.case_results[0].execution.started_at = "2026-10-13"; },
+      (entry) => { entry.case_results[0].execution.finished_at = "2026-10-13T00:00:00.000Z"; },
+      (entry) => { entry.case_results[0].records.functional.passed = -1; },
+      (entry) => { entry.case_results[0].records.functional.passed -= 1; },
+      (entry) => { entry.case_results[0].records.trace.sample_count = 0; },
+      (entry) => { entry.case_results[0].records.trace.artifact.path = "wrong"; },
+      (entry) => { entry.case_results[0].records.trace.artifact.sha256 = "bad"; },
+      (entry) => { entry.case_results[0].records.capture.artifact.size_bytes = 0; },
       (entry) => { entry.case_results[0].artifact.sha256 = "bad"; },
-      (entry) => { entry.case_results[0].status = "FAIL"; },
-      (entry) => { entry.case_results[0].status = "REVIEW_REQUIRED"; },
+      (entry) => { entry.case_results[0].artifact.path = "wrong"; },
     ], (entry) => validateV12CalendarComparison(entry));
+    assert.throws(() => v12CalendarCaseEvidenceBinding({
+      kind: "state",
+      binding: { configuration_id: "missing", state_id: "state", input: "touch", motion: "normal" },
+    }), /case_result_binding_invalid/u);
   } finally {
     rmSync(value.directory, { recursive: true, force: true });
   }

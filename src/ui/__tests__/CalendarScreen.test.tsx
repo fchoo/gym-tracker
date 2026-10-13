@@ -835,6 +835,50 @@ describe("CalendarScreen", () => {
     }
   });
 
+  it("preserves the 48/minmax/76/48 month controls at 360dp and 200 percent text", async () => {
+    const dimensions = jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
+      fontScale: 2,
+      height: 800,
+      scale: 1,
+      width: 360,
+    });
+    try {
+      await render(
+        <AppearanceProvider>
+          <CalendarScreen
+            initialDate="2026-08-24"
+            loadCalendarRange={jest.fn(async () => range)}
+            onOpenEvent={jest.fn()}
+            today="2026-08-24"
+          />
+        </AppearanceProvider>,
+      );
+
+      expect(await screen.findByTestId("calendar-month-navigation")).toHaveStyle({ gap: 3 });
+      expect(screen.getByTestId("calendar-month-previous-slot")).toHaveStyle({ width: 48 });
+      expect(screen.getByTestId("calendar-month-title-slot")).toHaveStyle({ flex: 1, minWidth: 0 });
+      expect(screen.getByTestId("calendar-month-today-slot")).toHaveStyle({ width: 76 });
+      expect(screen.getByTestId("calendar-month-next-slot")).toHaveStyle({ width: 48 });
+      expect(screen.getByTestId("calendar-month-title")).toHaveProp("numberOfLines", 1);
+      expect(screen.getByTestId("calendar-month-title")).toHaveProp("ellipsizeMode", "tail");
+      expect(screen.getByTestId("calendar-month-title")).toHaveProp("accessibilityLabel", "August 2026");
+
+      const previous = screen.getByRole("button", { name: "Show July 2026" });
+      const today = screen.getByRole("button", { name: "Return to today, 24 August 2026" });
+      const next = screen.getByRole("button", { name: "Show September 2026" });
+      expect(previous).toHaveStyle({ height: 48, width: 48 });
+      expect(today).toHaveStyle({ minHeight: 48, width: 76 });
+      expect(next).toHaveStyle({ height: 48, width: 48 });
+      expect(previous).toBeEnabled();
+      expect(today).toBeEnabled();
+      expect(next).toBeEnabled();
+      await fireEvent.press(today);
+      expect(screen.getByTestId("calendar-month-title")).toHaveTextContent("August 2026");
+    } finally {
+      dimensions.mockRestore();
+    }
+  });
+
   it("reserves a reachable focused agenda row at 200 percent text in compact height", async () => {
     const dimensions = jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
       fontScale: 2,

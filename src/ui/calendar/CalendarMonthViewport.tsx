@@ -12,10 +12,12 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 
 import {
+  phase16CalendarGestureDriver,
   recordPhase16CalendarCancel,
   recordPhase16CalendarDrag,
   recordPhase16CalendarFocus,
   recordPhase16CalendarRelease,
+  type Phase16CalendarStage,
 } from "../../bootstrap/phase16CalendarTestControls";
 import { addLocalMonthsClamped, startOfLocalMonth, type LocalDate } from "../../domains/scheduling/localDate";
 import {
@@ -155,6 +157,7 @@ function FocusedAgenda({
 export function CalendarMonthViewport({
   agenda,
   command,
+  diagnosticStage,
   disabled = false,
   fontScale = 1,
   focusedWeek,
@@ -173,6 +176,7 @@ export function CalendarMonthViewport({
 }: Readonly<{
   agenda?: React.ReactNode;
   command: CalendarMotionCommand | null;
+  diagnosticStage?: Phase16CalendarStage;
   disabled?: boolean;
   fontScale?: number;
   layoutGeneration?: number;
@@ -215,6 +219,7 @@ export function CalendarMonthViewport({
   }>>({ activeEpoch: null, deliveredEpoch: null, timer: null });
   const diagnosticSequenceStarted = useRef(false);
   const diagnosticSequenceExpanded = useRef(false);
+  const diagnosticStageDriven = useRef(false);
   const lastWidth = useRef(0);
   const lastHeight = useRef(0);
   const previousMonth = startOfLocalMonth(addLocalMonthsClamped(month, -1));
@@ -384,7 +389,7 @@ export function CalendarMonthViewport({
         if (progress >= marker && (diagnosticThresholdMask.value & bit) === 0) {
           diagnosticThresholdMask.value |= bit;
           const { semanticMonth, titleMonth } = calendarDragDiagnosticMonths(month, previousMonth, nextMonth, nextPanel);
-          scheduleOnRN(recordPhase16CalendarDrag, { dx, viewportWidth: width, transformX: dx, semanticMonth, titleMonth });
+          scheduleOnRN(recordPhase16CalendarDrag, { commandedRatio: marker, dx, viewportWidth: width, transformX: dx, semanticMonth, titleMonth });
         }
       }
       if (nextPanel !== previewPanel.value) {
@@ -400,7 +405,7 @@ export function CalendarMonthViewport({
       released.value = true;
       const dx = Math.max(-width, Math.min(width, event.translationX));
       const selectedMonth = (Math.abs(dx) >= width * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);
-      if (Math.abs(dx) >= width * 0.25 && onInteractionDiagnosticStart !== undefined) scheduleOnRN(beginDiagnosticSequence);
+      if (onInteractionDiagnosticStart !== undefined) scheduleOnRN(beginDiagnosticSequence);
       scheduleOnRN(recordPhase16CalendarRelease, { dx, viewportWidth: width, semanticMonth: selectedMonth, titleMonth: selectedMonth });
       scheduleOnRN(onRelease, {
         dx,
@@ -432,6 +437,33 @@ export function CalendarMonthViewport({
     pointerX.value = 0;
     previewPanel.value = 0;
     if (hadMeasurement && mounted.current) onCancel();
+    const diagnosticSteps = phase16CalendarGestureDriver(diagnosticStage);
+    if (diagnosticSteps === null || diagnosticStageDriven.current) return;
+    diagnosticStageDriven.current = true;
+    for (const step of diagnosticSteps) {
+      if (step.kind === "drag") {
+        const dx = step.dxRatio * nextWidth;
+        pointerX.value = dx;
+        const nextPanel: PanelOffset = Math.abs(dx) >= nextWidth * 0.25 ? (dx < 0 ? 1 : -1) : 0;
+        const { semanticMonth, titleMonth } = calendarDragDiagnosticMonths(month, previousMonth, nextMonth, nextPanel);
+        recordPhase16CalendarDrag({ commandedRatio: step.commandedRatio, dx, viewportWidth: nextWidth, transformX: dx, semanticMonth, titleMonth });
+        onPreview(dx, nextWidth);
+      } else if (step.kind === "release") {
+        const dx = step.dxRatio * nextWidth;
+        const selectedMonth = (Math.abs(dx) >= nextWidth * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);
+        recordPhase16CalendarRelease({ dx, viewportWidth: nextWidth, semanticMonth: selectedMonth, titleMonth: selectedMonth });
+        onRelease({
+          dx,
+          dy: 0,
+          targetMonthId: dx < 0 ? nextMonth.slice(0, 7) : previousMonth.slice(0, 7),
+          viewportWidth: nextWidth,
+        });
+      } else {
+        pointerX.value = 0;
+        recordPhase16CalendarCancel();
+        onCancel();
+      }
+    }
   };
 
   const trackMetrics = calendarTrackMetrics(fontScale);

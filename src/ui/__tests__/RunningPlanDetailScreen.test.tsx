@@ -39,6 +39,16 @@ beforeEach(() => {
 afterEach(() => consoleError.mockRestore());
 
 describe("RunningPlanDetailScreen", () => {
+  it.each([
+    ["loading", () => new Promise<RunningPlanAggregate | null>(() => undefined), "Loading Running plan"],
+    ["error", async () => { throw new Error("sqlite unavailable"); }, "Running plan could not be loaded"],
+    ["missing", async () => null, "Running plan not found"],
+  ] as [string, () => Promise<RunningPlanAggregate | null>, string][])("keeps Back as the Calendar entry target in the %s state", async (_state, loadPlan, expectedText) => {
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" sessionId="session-2" loadPlan={loadPlan} mode="calendar" onBack={jest.fn()} /></AppearanceProvider>);
+    expect(await screen.findByText(expectedText)).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+  });
+
   it("loads and renders only the exact Calendar-scheduled session revision", async () => {
     const loadPlan = jest.fn(async () => plan);
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" sessionId="session-2" loadPlan={loadPlan} mode="calendar" onBack={jest.fn()} /></AppearanceProvider>);
@@ -47,6 +57,7 @@ describe("RunningPlanDetailScreen", () => {
     expect(screen.getByText("Monday · Tempo")).toBeOnTheScreen();
     expect(screen.queryByText("Monday · Recovery")).toBeNull();
     expect(loadPlan).toHaveBeenCalledWith("running-1", "session-2");
+    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
   });
 
   it("activates the one Garmin handoff without replacing loaded plan facts", async () => {
@@ -71,6 +82,7 @@ describe("RunningPlanDetailScreen", () => {
     expect(screen.getByText("6:00 / km")).toBeOnTheScreen();
     expect(screen.getByText("Monday · Recovery")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Sync Garmin / match activity" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(false);
     await fireEvent.press(screen.getByRole("button", { name: "Edit running plan" }));
     await fireEvent.press(screen.getByRole("button", { name: "Edit Tempo session" }));
     await fireEvent.press(screen.getByRole("button", { name: "Edit Recovery session" }));

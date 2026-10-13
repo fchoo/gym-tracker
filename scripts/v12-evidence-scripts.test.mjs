@@ -22,7 +22,11 @@ import {
   executeV12CalendarDiagnostics,
   validateV12CalendarDiagnostics,
 } from "./benchmark-v12-interactions.mjs";
-import { validateV12CalendarComparison } from "./compare-v12-calendar.mjs";
+import {
+  v12CalendarCaseEvidenceBinding,
+  v12CalendarCaseEvidencePaths,
+  validateV12CalendarComparison,
+} from "./compare-v12-calendar.mjs";
 import {
   V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_REQUIRED_CASES,
@@ -90,6 +94,49 @@ function rawDiagnostics() {
   };
 }
 
+function completeCaseResult(requiredCase, runId, identity, index) {
+  const binding = v12CalendarCaseEvidenceBinding(requiredCase);
+  const requiredCount = binding.measured.input_motion.length;
+  const paths = v12CalendarCaseEvidencePaths(requiredCase, runId);
+  const record = (kind, withSamples = false) => ({
+    passed: requiredCount,
+    failed: 0,
+    skipped: 0,
+    ...(withSamples ? { sample_count: requiredCount } : {}),
+    artifact: { path: paths[kind], sha256: "a".repeat(64) },
+  });
+  const startedAt = new Date(Date.UTC(2026, 9, 13, 0, 0, index * 2)).toISOString();
+  const finishedAt = new Date(Date.parse(startedAt) + 1_000).toISOString();
+  return {
+    id: requiredCase.id,
+    case_sha256: requiredCase.case_sha256,
+    native_execution: "EXECUTED",
+    binding,
+    execution: {
+      schema_version: 1,
+      producer: "v12-calendar-native-case/v1",
+      run_id: runId,
+      package: identity.package,
+      build_profile: "development-test",
+      source_tree_sha256: identity.source_tree_sha256,
+      device_identity_sha256: identity.device_identity_sha256,
+      started_at: startedAt,
+      finished_at: finishedAt,
+    },
+    records: {
+      functional: record("functional"),
+      trace: record("trace", true),
+      measurement: record("measurement", true),
+      capture: record("capture"),
+    },
+    artifact: { path: `artifacts/native/v1.2/${runId}/cases/${requiredCase.case_sha256}.json`, sha256: "a".repeat(64) },
+  };
+}
+
+function caseSupportArtifacts(entry) {
+  return Object.values(entry.records).map(({ artifact }) => artifact);
+}
+
 function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
   const evidence = fixture();
   const artifactRoot = `artifacts/native/v1.2/${runId}`;
@@ -118,13 +165,9 @@ function completeLiveEvidence(runId = "phase20-20261013T000000Z-abcdef123456") {
   evidence.comparison.identity = clone(evidence.identity);
   evidence.comparison.case_ledger = clone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
   evidence.comparison.status = "PASS";
-  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
-    id: entry.id,
-    case_sha256: entry.case_sha256,
-    status: "PASS",
-    native_execution: "EXECUTED",
-    artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
-  }));
+  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry, index) => (
+    completeCaseResult(entry, runId, evidence.identity, index)
+  ));
   evidence.comparison.records.forEach((entry, index) => {
     entry.classification = "PASS";
     entry.differences = [];
@@ -171,6 +214,9 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
     evidence.identity.source_tree_sha256 = currentIdentity.source;
     evidence.comparison.identity.base_head = currentIdentity.head;
     evidence.comparison.identity.source_tree_sha256 = currentIdentity.source;
+    evidence.comparison.case_results.forEach((entry) => {
+      entry.execution.source_tree_sha256 = currentIdentity.source;
+    });
     evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
   }
   const runDirectory = path.join(root, "artifacts/native/v1.2", evidence.run_id);
@@ -200,7 +246,10 @@ function materializeLiveEvidence(root, currentIdentity, runId) {
 
   for (const entry of evidence.functional_cases) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
   for (const entry of evidence.route_journeys) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
-  for (const entry of evidence.comparison.case_results) writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
+  for (const entry of evidence.comparison.case_results) {
+    for (const artifact of caseSupportArtifacts(entry)) writeDescriptor(root, artifact);
+    writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
+  }
 
   const map = JSON.parse(readFileSync(destinationMap, "utf8"));
   const mappedById = new Map(map.captures.map((entry) => [entry.id, entry]));
@@ -241,6 +290,50 @@ test("Calendar evidence fixture carries the exact native, route, comparison, and
   assert.equal(evidence.native_execution, "NOT_RUN");
   assert.equal(evidence.acceptance_owner, "phase20");
   assert.equal(evidence.route_journeys.every(({ focus }) => focus.clearance_dp === null && focus.measurement_status === "NOT_RUN"), true);
+});
+
+test("the live verifier rejects all 96 required cases when they contain status-only claims", () => {
+  const evidence = completeLiveEvidence();
+  const artifactRoot = `artifacts/native/v1.2/${evidence.run_id}`;
+  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
+    id: entry.id,
+    case_sha256: entry.case_sha256,
+    status: "PASS",
+    native_execution: "EXECUTED",
+    artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
+  }));
+
+  assert.equal(evidence.comparison.case_results.length, 96);
+  assert.equal(evidence.comparison.case_results.every((entry) => entry.status === "PASS"), true);
+  assert.throws(
+    () => validateV12CalendarEvidence(evidence),
+    /privacy_schema_invalid:case_result/u,
+  );
+});
+
+test("all 96 live case records bind measured configuration and source-owned input-motion coverage", () => {
+  const evidence = completeLiveEvidence();
+  const configurationCases = evidence.comparison.case_results.filter(({ id }) => id.startsWith("configuration:"));
+  const requiredCombinations = new Set([
+    "touch:normal",
+    "touch:reduced",
+    "software-keyboard:normal",
+    "software-keyboard:reduced",
+    "hardware-keyboard:normal",
+    "hardware-keyboard:reduced",
+    "dpad:normal",
+    "dpad:reduced",
+  ]);
+
+  assert.equal(evidence.comparison.case_results.length, 96);
+  assert.equal(evidence.comparison.case_results.every((entry) => !Object.hasOwn(entry, "status")), true);
+  assert.equal(configurationCases.length, 64);
+  assert.equal(configurationCases.every((entry) => (
+    entry.binding.measured.configuration.id === entry.binding.requested.configuration_id
+      && entry.binding.measured.input_motion.length === 8
+      && new Set(entry.binding.measured.input_motion.map(({ input, motion }) => `${input}:${motion}`)).size === requiredCombinations.size
+      && entry.binding.measured.input_motion.every(({ input, motion }) => requiredCombinations.has(`${input}:${motion}`))
+  )), true);
 });
 
 test("Calendar evidence rejects missing, duplicate, stale, mutating, non-monotonic, and weak-focus records", () => {
@@ -309,7 +402,8 @@ test("Calendar evidence derives FAIL and REVIEW_REQUIRED and permits accepted de
   assert.throws(() => validateV12CalendarEvidence(falsePass), /aggregate_status_mismatch/u);
 
   const failedRequiredCase = completeLiveEvidence();
-  failedRequiredCase.comparison.case_results[0].status = "FAIL";
+  failedRequiredCase.comparison.case_results[0].records.functional.passed -= 1;
+  failedRequiredCase.comparison.case_results[0].records.functional.failed = 1;
   failedRequiredCase.comparison.status = "FAIL";
   assert.throws(() => validateV12CalendarEvidence(failedRequiredCase), /aggregate_status_mismatch/u);
   failedRequiredCase.status = "FAIL";
@@ -340,6 +434,7 @@ test("the final CLI verifier accepts a complete live comparison on the same run 
       ...evidence.functional_cases.map(({ artifact }) => artifact),
       ...evidence.route_journeys.map(({ artifact }) => artifact),
       ...evidence.comparison.case_results.map(({ artifact }) => artifact),
+      ...evidence.comparison.case_results.flatMap(caseSupportArtifacts),
       ...evidence.comparison.records.flatMap(({ artifacts }) => Object.values(artifacts)),
     ], { root });
     const retainedComparison = JSON.parse(readFileSync(path.join(root, evidence.artifacts.comparison.path), "utf8"));
@@ -363,6 +458,40 @@ test("the final CLI verifier accepts a complete live comparison on the same run 
       route_journeys: 8,
       comparisons: 14,
     });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the final CLI verifier cannot pass a retained 96-row status-only ledger", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-status-only-"));
+  try {
+    const { evidence, manifestPath } = materializeLiveEvidence(root);
+    const artifactRoot = `artifacts/native/v1.2/${evidence.run_id}`;
+    evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
+      id: entry.id,
+      case_sha256: entry.case_sha256,
+      status: "PASS",
+      native_execution: "EXECUTED",
+      artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
+    }));
+    for (const entry of evidence.comparison.case_results) {
+      writeJsonDescriptor(root, entry.artifact, withoutArtifact(entry));
+    }
+    writeJsonDescriptor(root, evidence.artifacts.comparison, evidence.comparison);
+    writeFileSync(
+      path.join(root, path.dirname(manifestPath), "evidence/calendar-evidence.json"),
+      `${JSON.stringify(evidence, null, 2)}\n`,
+    );
+
+    assert.throws(() => executeV12CalendarEvidenceVerifier({
+      args: ["--manifest", manifestPath, "--automated-only"],
+      root,
+      currentIdentity: {
+        head: evidence.manifest.base_head,
+        source: evidence.manifest.source_tree_sha256,
+      },
+    }), /privacy_schema_invalid:case_result/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -532,9 +661,11 @@ test("Calendar diagnostics and live verification reject symlinked parent directo
     const currentManifest = manifest();
     writeFileSync(path.join(root, "build.json"), `${JSON.stringify(currentManifest)}\n`);
     const raw = rawDiagnostics();
-    const adb = (...args) => args[0] === "logcat" && args[1] === "-d"
-      ? encodeV12CalendarDiagnosticsResult(raw).join("\n")
-      : "";
+    const adb = (...args) => args[0] === "shell" && args[1] === "wm"
+      ? "Physical size: 1080x2400"
+      : args[0] === "logcat" && args[1] === "-d"
+        ? encodeV12CalendarDiagnosticsResult(raw, "p16diag-bbbbbbbbbbbb-dddddddddddd").join("\n")
+        : "";
     await assert.rejects(
       executeV12CalendarDiagnostics([
         "--manifest", "build.json",
