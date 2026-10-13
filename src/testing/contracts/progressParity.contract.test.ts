@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +27,7 @@ import {
 } from "../../platform/sqlite/sqliteKernel";
 import {
   PROGRESS_PARITY_CONTRACT_CASES,
+  PROGRESS_PARITY_REQUIREMENT_BY_CASE,
   runProgressParityContract,
   type ProgressParityContractAdapter,
 } from "./progressParity.contract";
@@ -124,9 +126,11 @@ function createHostAdapter(): ProgressParityContractAdapter {
 
 describe("Progress parity contract", () => {
   it("runs the factual Running read and lost-acknowledgement target replay against real SQLite", async () => {
-    expect(PROGRESS_PARITY_CONTRACT_CASES).toEqual([
-      "progress-running-read-target-replay",
-    ]);
+    expect(PROGRESS_PARITY_CONTRACT_CASES).toHaveLength(18);
+    expect(Object.values(PROGRESS_PARITY_REQUIREMENT_BY_CASE)).toEqual(
+      Array.from({ length: 18 }, (_, index) =>
+        `PRO-${String(index + 1).padStart(2, "0")}`),
+    );
 
     const result = await runProgressParityContract(createHostAdapter());
     if (result.status !== "passed") {
@@ -137,35 +141,43 @@ describe("Progress parity contract", () => {
       schemaVersion: 1,
       contractVersion: 1,
       status: "passed",
-      total: 1,
-      passed: 1,
+      total: 18,
+      passed: 18,
       failed: 0,
       skipped: 0,
-      cases: [{
-        id: "progress-running-read-target-replay",
+    });
+    for (const [index, contractCase] of result.cases.entries()) {
+      expect(contractCase).toMatchObject({
+        id: PROGRESS_PARITY_CONTRACT_CASES[index],
+        requirement: `PRO-${String(index + 1).padStart(2, "0")}`,
         status: "passed",
         code: "progress_contract_case_passed",
         counts: {
-          snapshots: 1,
+          snapshots: index === 0 ? 4 : index === 1 || index === 2 ? 2 : 1,
           runningFacts: 1,
           goalRevisions: 2,
           receiptRows: 1,
           receiptReplays: 1,
         },
-      }],
-    });
-    const [contractCase] = result.cases;
-    expect(contractCase?.timings.durationMs).toBeGreaterThanOrEqual(0);
-    expect(contractCase?.hashes).toEqual({
-      source: expect.stringMatching(/^[a-f0-9]{64}$/u),
-      projection: expect.stringMatching(/^[a-f0-9]{64}$/u),
-      receipt: expect.stringMatching(/^[a-f0-9]{64}$/u),
-    });
-    expect(new Set(Object.values(contractCase?.hashes ?? {})).size).toBe(3);
+      });
+      expect(contractCase.timings.durationMs).toBeGreaterThanOrEqual(0);
+      expect(contractCase.hashes).toEqual({
+        source: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        projection: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        receipt: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      });
+      expect(new Set(Object.values(contractCase.hashes)).size).toBe(3);
+    }
+    expect(new Set(result.cases.map(({ hashes }) => hashes.projection)).size).toBe(18);
+
+    const resultPath = process.env.PHASE19_CONTRACT_RESULT_PATH;
+    if (resultPath !== undefined) {
+      writeFileSync(resultPath, `${JSON.stringify(result)}\n`);
+    }
 
     const serialized = JSON.stringify(result);
     for (const forbidden of [
-      "activityId", "bodyweight", "coordinates", "filename", "heartRate",
+      "activityId", "bodyweight_kg", "coordinates", "filename", "heartRate",
       "owner", "provider", "route", "sql", "targetDurationMs", "workout",
     ]) {
       expect(serialized).not.toContain(forbidden);

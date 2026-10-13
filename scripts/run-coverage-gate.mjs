@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import {
+  execFileSync,
   spawnSync,
 } from "node:child_process";
 import {
@@ -9,12 +10,17 @@ import {
 } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { createRequire } from "node:module";
 
 import { loadPhase18LanguageCoverageReports } from "./phase18-language-coverage.mjs";
 
 const projectRoot = process.cwd();
 const coverageDirectory = path.join(projectRoot, "coverage");
 const summaryPath = path.join(coverageDirectory, "coverage-summary.json");
+const phase19CoverageManifest = JSON.parse(readFileSync(
+  path.join(projectRoot, "scripts/phase19-integrity-coverage.json"),
+  "utf8",
+));
 const phase18IntegrityCriticalFiles = [
   "src/domains/activities/activityDetails.ts",
   "src/domains/activities/importCommands.ts",
@@ -113,27 +119,7 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-artifacts.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
-const phase19IntegrityCriticalFiles = [
-  "src/domains/progress/dashboardProjection.ts",
-  "src/domains/progress/runningPacing.ts",
-  "src/domains/progress/periodProjection.ts",
-  "src/platform/sqlite/repositories/progressRepository.ts",
-  "src/domains/progress/relativeStrength.ts",
-  "src/domains/history/metricHistory.ts",
-  "src/platform/sqlite/repositories/historyRepository.ts",
-  "src/domains/running/commands.ts",
-  "src/platform/sqlite/repositories/runningPlanRepository.ts",
-  "src/domains/progression/recommendationCommands.ts",
-  "src/domains/bodyweight/contracts.ts",
-  "src/domains/bodyweight/commands.ts",
-  "src/domains/portability/backupContracts.ts",
-  "src/domains/portability/mergePlan.ts",
-  "src/domains/portability/restoreCommands.ts",
-  "src/platform/sqlite/migrations/0045_recommendation_decision_receipts.ts",
-  "src/platform/sqlite/repositories/logicalBackupRepository.ts",
-  "src/platform/sqlite/repositories/logicalRestoreRepository.ts",
-  "src/platform/sqlite/repositories/logicalMergeRepository.ts",
-];
+const phase19IntegrityCriticalFiles = phase19CoverageManifest.required_files;
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",
   "src/domains/portability/backupContracts.ts",
@@ -183,6 +169,9 @@ const integrityCriticalFiles = [
   "src/platform/garmin/garminSyncCoordinator.ts",
   "src/bootstrap/garminImportRuntime.tsx",
   "src/bootstrap/phase18GarminBenchmarkRuntime.ts",
+  "src/bootstrap/runningPlanRuntime.tsx",
+  "src/bootstrap/trainingFoundationRuntime.ts",
+  "src/bootstrap/workoutAppRuntime.tsx",
   "src/bootstrap/phase16CalendarTestControls.ts",
   "src/ui/calendar/calendarTransitionController.ts",
   "src/ui/garmin/useGarminConnectionController.ts",
@@ -283,6 +272,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/repositories/runningPlanRepository.ts",
   "src/platform/sqlite/repositories/scheduleRepository.ts",
   "src/platform/sqlite/repositories/trainingCalendarRepository.ts",
+  "src/platform/sqlite/repositories/workoutOutcomeRepository.ts",
   "src/platform/sqlite/serializedWriter.ts",
   "src/platform/sqlite/sqliteKernel.ts",
   "src/platform/files/expoBackupFilePort.ts",
@@ -306,6 +296,172 @@ function coverageDirectoryArgument(args, fallback) {
     : path.resolve(projectRoot, args[index + 1] ?? "coverage");
 }
 
+function resolveJestBin() {
+  if (process.env.PHASE19_JEST_BIN !== undefined) {
+    return process.env.PHASE19_JEST_BIN;
+  }
+  try {
+    return createRequire(import.meta.url).resolve("jest/bin/jest.js");
+  } catch {
+    return path.join(projectRoot, "node_modules/jest/bin/jest.js");
+  }
+}
+
+function validatePhase19CoverageManifest() {
+  const expectedKeys = [
+    "schema_version", "phase", "diff_base", "diff_head", "required_files",
+    "supporting_files", "changed_line_scope", "unreachable_coverage",
+    "reviewed_exclusions",
+  ];
+  const exactKeys = (value, keys) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+    const actual = Object.keys(value).sort();
+    const expected = [...keys].sort();
+    return actual.length === expected.length
+      && actual.every((key, index) => key === expected[index]);
+  };
+  const exclusions = phase19CoverageManifest.reviewed_exclusions;
+  if (
+    !exactKeys(phase19CoverageManifest, expectedKeys)
+    || phase19CoverageManifest.schema_version !== 1
+    || phase19CoverageManifest.phase !== "19-progress-parity"
+    || !Array.isArray(phase19IntegrityCriticalFiles)
+    || phase19IntegrityCriticalFiles.length < 1
+    || new Set(phase19IntegrityCriticalFiles).size !== phase19IntegrityCriticalFiles.length
+    || !Array.isArray(phase19CoverageManifest.supporting_files)
+    || phase19CoverageManifest.supporting_files.some((filePath) =>
+      !phase19IntegrityCriticalFiles.includes(filePath))
+    || !Array.isArray(phase19CoverageManifest.changed_line_scope)
+    || phase19CoverageManifest.changed_line_scope.some((entry) =>
+      !exactKeys(entry, ["path", "reason"])
+      || !phase19IntegrityCriticalFiles.includes(entry.path)
+      || typeof entry.reason !== "string"
+      || entry.reason.length < 20)
+    || !Array.isArray(phase19CoverageManifest.unreachable_coverage)
+    || phase19CoverageManifest.unreachable_coverage.some((entry) =>
+      !exactKeys(entry, ["path", "line", "metrics", "reason"])
+      || !phase19CoverageManifest.changed_line_scope.some(({ path: filePath }) =>
+        filePath === entry.path)
+      || !Number.isSafeInteger(entry.line)
+      || entry.line < 1
+      || !Array.isArray(entry.metrics)
+      || entry.metrics.length < 1
+      || entry.metrics.some((metric) =>
+        !["statements", "branches", "functions", "lines"].includes(metric))
+      || typeof entry.reason !== "string"
+      || entry.reason.length < 40)
+    || !Array.isArray(exclusions)
+    || exclusions.some((entry) =>
+      !exactKeys(entry, ["path", "reason"])
+      || typeof entry.reason !== "string"
+      || entry.reason.length < 20)
+    || new Set(exclusions.map(({ path: filePath }) => filePath)).size !== exclusions.length
+  ) throw new Error("phase19_integrity_coverage_manifest_invalid");
+
+  const changedModules = execFileSync(
+    "git",
+    [
+      "diff", "--name-only",
+      `${phase19CoverageManifest.diff_base}..${phase19CoverageManifest.diff_head}`,
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  ).split(/\r?\n/u).filter((filePath) =>
+    /^(?:src|app)\/.*\.tsx?$/u.test(filePath)
+    && !/\.test\.|\/__tests__\/|^src\/testing\//u.test(filePath));
+  const classified = new Set([
+    ...phase19IntegrityCriticalFiles,
+    ...exclusions.map(({ path: filePath }) => filePath),
+  ]);
+  const changed = new Set(changedModules);
+  const unclassified = changedModules.filter((filePath) => !classified.has(filePath));
+  const supporting = new Set(phase19CoverageManifest.supporting_files);
+  const stale = [...classified].filter((filePath) =>
+    !changed.has(filePath) && !supporting.has(filePath));
+  const invalidRequired = phase19IntegrityCriticalFiles.filter((filePath) =>
+    !integrityCriticalFiles.includes(filePath));
+  if (unclassified.length > 0 || stale.length > 0 || invalidRequired.length > 0) {
+    throw new Error(JSON.stringify({
+      error: "phase19_integrity_coverage_manifest_drift",
+      unclassified,
+      stale,
+      invalid_required: invalidRequired,
+    }));
+  }
+}
+
+function phase19OwnedLines(relativePath) {
+  const phaseCommits = new Set(execFileSync(
+    "git",
+    [
+      "rev-list",
+      `${phase19CoverageManifest.diff_base}..${phase19CoverageManifest.diff_head}`,
+    ],
+    { cwd: projectRoot, encoding: "utf8" },
+  ).split(/\r?\n/u).filter(Boolean));
+  const lines = new Set();
+  const blame = execFileSync(
+    "git",
+    ["blame", "--line-porcelain", "HEAD", "--", relativePath],
+    { cwd: projectRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+  );
+  for (const line of blame.split(/\r?\n/u)) {
+    const match = line.match(/^([a-f0-9]{40}) \d+ (\d+)(?: (\d+))?$/u);
+    if (match === null || !phaseCommits.has(match[1])) continue;
+    const start = Number(match[2]);
+    const count = Number(match[3] ?? 1);
+    for (let index = 0; index < count; index += 1) lines.add(start + index);
+  }
+  if (lines.size === 0) throw new Error(`phase19_owned_lines_missing:${relativePath}`);
+  return lines;
+}
+
+function overlapsOwnedLines(location, ownedLines) {
+  const start = location?.start?.line;
+  const end = location?.end?.line ?? start;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return false;
+  for (let line = start; line <= end; line += 1) {
+    if (ownedLines.has(line)) return true;
+  }
+  return false;
+}
+
+function changedScopeFailures(relativePath, detail) {
+  const ownedLines = phase19OwnedLines(relativePath);
+  const failures = [];
+  const excluded = (metric, line) => phase19CoverageManifest.unreachable_coverage.some(
+    (entry) => entry.path === relativePath
+      && entry.line === line
+      && entry.metrics.includes(metric),
+  );
+  const statements = Object.entries(detail.statementMap)
+    .filter(([, location]) => overlapsOwnedLines(location, ownedLines)
+      && !excluded("statements", location.start.line));
+  const functions = Object.entries(detail.fnMap)
+    .filter(([, metadata]) => overlapsOwnedLines(metadata.loc, ownedLines)
+      && !excluded("functions", metadata.loc.start.line));
+  const branches = Object.entries(detail.branchMap)
+    .filter(([, metadata]) => overlapsOwnedLines(metadata.loc, ownedLines)
+      && !excluded("branches", metadata.loc.start.line));
+  const lines = new Map();
+  for (const [id, location] of statements) {
+    const line = location.start.line;
+    if (excluded("lines", line)) continue;
+    lines.set(line, (lines.get(line) ?? 0) + detail.s[id]);
+  }
+  const metrics = {
+    statements: statements.map(([id]) => detail.s[id]),
+    branches: branches.flatMap(([id]) => detail.b[id]),
+    functions: functions.map(([id]) => detail.f[id]),
+    lines: [...lines.values()],
+  };
+  for (const [metric, counts] of Object.entries(metrics)) {
+    if (counts.some((count) => count === 0)) {
+      failures.push(`${relativePath}: changed ${metric} below 100%`);
+    }
+  }
+  return failures;
+}
+
 const forwarded = process.argv.slice(2);
 const focusedIntegrityFiles = [];
 const focusedProjects = [];
@@ -313,7 +469,8 @@ const jestForwarded = [];
 let focusPhase18 = false;
 let focusPhase16Evidence = false;
 let focusPhase19 = false;
-for (const argument of forwarded) {
+for (let index = 0; index < forwarded.length; index += 1) {
+  const argument = forwarded[index];
   if (argument === "--focus-phase18") {
     focusPhase18 = true;
   } else if (argument === "--focus-phase16-evidence") {
@@ -324,6 +481,10 @@ for (const argument of forwarded) {
     focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
   } else if (argument.startsWith("--focus-project=")) {
     focusedProjects.push(...argument.slice("--focus-project=".length).split(",").filter(Boolean));
+  } else if (argument === "--coverageDirectory") {
+    index += 1;
+  } else if (argument.startsWith("--coverageDirectory=")) {
+    // Consumed by coverageDirectoryArgument; do not forward a duplicate to Jest.
   } else {
     jestForwarded.push(argument);
   }
@@ -339,6 +500,7 @@ if (focusPhase18) {
   jestForwarded.push(...phase18TargetedTests);
 }
 if (focusPhase19) {
+  validatePhase19CoverageManifest();
   focusedIntegrityFiles.push(...phase19IntegrityCriticalFiles);
   focusedProjects.push("unit", "components", "sqlite-host", "integration");
 }
@@ -424,9 +586,11 @@ const collectionArguments = focusedIntegrityFiles.flatMap((file) => [`--collectC
 const jest = spawnSync(
   process.execPath,
   [
-    path.join(projectRoot, "node_modules/jest/bin/jest.js"),
+    resolveJestBin(),
     "--config",
-    "jest.config.js",
+    focusPhase19 && process.env.PHASE19_NODE_MODULES !== undefined
+      ? "scripts/phase19-coverage.jest.cjs"
+      : "jest.config.js",
     "--selectProjects",
     ...selectedProjects,
     "--coverage",
@@ -435,6 +599,7 @@ const jest = spawnSync(
     "--coverageReporters=json-summary",
     "--coverageReporters=text",
     "--coverageReporters=json",
+    "--coverageThreshold={}",
     ...collectionArguments,
     ...jestForwarded,
   ],
@@ -453,6 +618,10 @@ if (jest.status !== 0) {
 
 const resolvedSummary = path.join(outputDirectory, "coverage-summary.json");
 const summary = JSON.parse(readFileSync(resolvedSummary, "utf8"));
+const detail = JSON.parse(readFileSync(
+  path.join(outputDirectory, "coverage-final.json"),
+  "utf8",
+));
 const failures = [];
 const requiredIntegrityFiles = focusedIntegrityFiles.length > 0
   ? focusedIntegrityFiles
@@ -464,11 +633,23 @@ for (const relativePath of requiredIntegrityFiles) {
     failures.push(`${relativePath}: no coverage data`);
     continue;
   }
-  for (const metric of ["statements", "branches", "functions", "lines"]) {
-    if (coverage[metric]?.pct !== 100) {
-      failures.push(
-        `${relativePath}: ${metric} ${String(coverage[metric]?.pct)}%`,
-      );
+  const changedScope = focusPhase19
+    && phase19CoverageManifest.changed_line_scope.some(({ path: filePath }) =>
+      filePath === relativePath);
+  if (changedScope) {
+    const fileDetail = detail[absolutePath];
+    if (fileDetail === undefined) {
+      failures.push(`${relativePath}: no detailed coverage data`);
+    } else {
+      failures.push(...changedScopeFailures(relativePath, fileDetail));
+    }
+  } else {
+    for (const metric of ["statements", "branches", "functions", "lines"]) {
+      if (coverage[metric]?.pct !== 100) {
+        failures.push(
+          `${relativePath}: ${metric} ${String(coverage[metric]?.pct)}%`,
+        );
+      }
     }
   }
 }
@@ -494,4 +675,7 @@ console.log(JSON.stringify({
   }),
   metrics: ["statements", "branches", "functions", "lines"],
   required_percent: 100,
+  changed_line_scope_files: focusPhase19
+    ? phase19CoverageManifest.changed_line_scope.length
+    : 0,
 }));

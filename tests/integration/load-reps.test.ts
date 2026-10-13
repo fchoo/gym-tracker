@@ -1261,6 +1261,28 @@ describe("Plan 01-10 recommendation lifecycle", () => {
     })]);
   });
 
+  it("rejects changed use-target bytes under a committed request identity", async () => {
+    const { repository } = await setupRecommendation();
+    const input = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-use-conflict",
+      decision: "use_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+    await acceptRecommendation({ repository, input });
+    await expect(acceptRecommendation({
+      repository,
+      input: { ...input, decidedAtMs: input.decidedAtMs + 1 },
+    })).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        message: "recommendation_request_identity_conflict",
+      }),
+    });
+  });
+
   it("rejects a changed decision under an already committed request identity", async () => {
     const { repository } = await setupRecommendation();
     const input = {
@@ -1615,6 +1637,71 @@ describe("Plan 01-10 recommendation lifecycle", () => {
       `SELECT load_grams, revision FROM plan_working_set_targets WHERE id = ?`,
       [targetId],
     )).toEqual([{ load_grams: 60_000, revision: 1 }]);
+  });
+
+  it("replays keep-current and stale keep-current receipts after acknowledgement loss", async () => {
+    const first = await setupRecommendation();
+    const keep = {
+      recommendationId: "recommendation-1",
+      requestId: "recommendation-review-keep-replay",
+      decision: "keep_current_target" as const,
+      expectedEvidenceVersion: 2,
+      expectedSourceRevision: 1,
+      expectedTargetRevision: 1,
+      decidedAtMs: 1_786_854_000_000,
+    };
+    await expect(keepCurrentTarget({ repository: first.repository, input: keep }))
+      .resolves.toMatchObject({ status: "rejected" });
+    await expect(keepCurrentTarget({ repository: first.repository, input: keep }))
+      .resolves.toMatchObject({ status: "already_committed" });
+
+    const second = await setupRecommendation();
+    const stale = {
+      ...keep,
+      requestId: "recommendation-review-keep-stale",
+      expectedTargetRevision: 99,
+    };
+    await expect(keepCurrentTarget({ repository: second.repository, input: stale }))
+      .resolves.toMatchObject({ status: "superseded" });
+    await expect(keepCurrentTarget({ repository: second.repository, input: stale }))
+      .resolves.toMatchObject({ status: "already_committed" });
+  });
+
+  it("rolls back when recommendation lifecycle compare-and-swap updates are ignored", async () => {
+    const accepted = await setupRecommendation();
+    await accepted.kernel.write((transaction) => transaction.execute(
+      `CREATE TRIGGER ignore_phase19_accept
+       BEFORE UPDATE OF status ON progression_recommendations
+       WHEN NEW.status = 'accepted'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(acceptRecommendation({
+      repository: accepted.repository,
+      input: {
+        recommendationId: "recommendation-1",
+        decidedAtMs: 1_786_854_000_000,
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
+
+    const superseded = await setupRecommendation();
+    await superseded.kernel.write((transaction) => transaction.execute(
+      `CREATE TRIGGER ignore_phase19_supersede
+       BEFORE UPDATE OF status ON progression_recommendations
+       WHEN NEW.status = 'superseded'
+       BEGIN SELECT RAISE(IGNORE); END`,
+    ));
+    await expect(keepCurrentTarget({
+      repository: superseded.repository,
+      input: {
+        recommendationId: "recommendation-1",
+        requestId: "recommendation-review-stale-cas",
+        decision: "keep_current_target",
+        expectedEvidenceVersion: 2,
+        expectedSourceRevision: 1,
+        expectedTargetRevision: 99,
+        decidedAtMs: 1_786_854_000_000,
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
   });
 
   it("rejects a keep-current decision for an unknown recommendation", async () => {

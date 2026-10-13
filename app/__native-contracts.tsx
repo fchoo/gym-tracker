@@ -116,8 +116,23 @@ const PHASE2_AGGREGATE_CASE_IDS = [
   ...PHASE2_FTS_CASE_IDS,
   ...PHASE2_CASE_IDS,
 ] as const;
+type NativeContractSuite =
+  | "migrations-effects"
+  | "phase2"
+  | "phase2-content"
+  | "phase2-fts"
+  | "phase2-metrics"
+  | "phase2-plan"
+  | "phase2-schedule"
+  | "phase2-search"
+  | "phase2-starter"
+  | "portable-merge"
+  | "multi-plan-running"
+  | "progress-parity"
+  | "google-drive-backup"
+  | "sqlite-kernel";
 const configuredSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
-const defaultSuite = configuredSuite === "phase19"
+const defaultSuite: NativeContractSuite = configuredSuite === "phase19"
   ? "progress-parity"
   : configuredSuite === "phase13"
   ? "multi-plan-running"
@@ -157,7 +172,7 @@ function requestedPackagedSuite(
     ? "google-drive-backup" : undefined;
 }
 
-function expectedCaseCountFor(suite: typeof defaultSuite): number {
+function expectedCaseCountFor(suite: NativeContractSuite): number {
   return {
   "migrations-effects": MIGRATIONS_EFFECTS_CONTRACT_CASES.length,
   phase2: PHASE2_AGGREGATE_CASE_IDS.length,

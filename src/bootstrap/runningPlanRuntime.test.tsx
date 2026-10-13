@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { renderHook } from "@testing-library/react-native";
+import React from "react";
 
 const mockReadAggregate = jest.fn<any>();
 const mockCreateInactiveRunningPlan = jest.fn<any>();
@@ -17,7 +19,12 @@ jest.mock("../domains/running/commands", () => ({
   canonicalRunningRequestHash: () => "b".repeat(64),
 }));
 
-import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
+import {
+  RunningPlanRuntimeProvider,
+  createRunningPlanRuntimePort,
+  useCalendarRunningPlanReadPort,
+  useRunningPlanRuntime,
+} from "./runningPlanRuntime";
 
 describe("RunningPlanRuntimePort", () => {
   beforeEach(() => {
@@ -68,6 +75,37 @@ describe("RunningPlanRuntimePort", () => {
     await expect(runtime.saveRunningTarget({ planId: "running", requestId: "target-readback", expectedSourceRevision: 4, goalDistanceMeters: 2400, targetDurationMs: 660_000, trainingDays: ["Monday"] })).rejects.toThrow("running_target_readback_missing");
   });
 
+  it("rejects stale or cross-distance target requests and replays an already committed envelope", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2400, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+    mockReadAggregate.mockResolvedValueOnce(null);
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "stale", expectedSourceRevision: 4,
+      goalDistanceMeters: 2400, targetDurationMs: 660_000, trainingDays: ["Monday"],
+    })).rejects.toThrow("running_target_revision_conflict");
+
+    mockReadAggregate.mockResolvedValueOnce(plan);
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "distance", expectedSourceRevision: 4,
+      goalDistanceMeters: 10_000, targetDurationMs: 660_000, trainingDays: ["Monday"],
+    })).rejects.toThrow("running_target_distance_conflict");
+
+    const readBack = { ...plan, revision: 5, goal: { ...plan.goal, revision: 3, id: "goal-3" } };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValue(readBack);
+    mockSaveRunningTarget
+      .mockResolvedValueOnce({ outcome: "committed" })
+      .mockResolvedValueOnce({ outcome: "already_committed" });
+    const input = {
+      planId: "running", requestId: "replay", expectedSourceRevision: 4,
+      goalDistanceMeters: 2400, targetDurationMs: 660_000, trainingDays: ["Monday" as const],
+    };
+    await expect(runtime.saveRunningTarget(input)).resolves.toMatchObject({ outcome: "committed" });
+    await expect(runtime.saveRunningTarget(input)).resolves.toMatchObject({ outcome: "already_committed" });
+  });
+
   it("allocates identities only inside an authoritative session commit and returns committed readback", async () => {
     const plan = {
       id: "running", version: 1 as const, name: "Running", revision: 1, active: false as const, createdAtMs: 1,
@@ -110,5 +148,31 @@ describe("RunningPlanRuntimePort", () => {
     expect(mockConfirmLifecycle).toHaveBeenLastCalledWith(expect.objectContaining({
       action: "activate", requestId: "lifecycle-request", preview,
     }));
+  });
+
+  it("provides both runtime contexts and fails closed outside the provider", async () => {
+    const runtime = createRunningPlanRuntimePort({} as never, {
+      nowMs: () => 1,
+      randomUUID: () => "uuid",
+      sha256: async () => "a".repeat(64),
+    });
+    const wrapper = ({ children }: Readonly<{ children: React.ReactNode }>) => (
+      <RunningPlanRuntimeProvider runtime={runtime}>{children}</RunningPlanRuntimeProvider>
+    );
+    const running = await renderHook(() => useRunningPlanRuntime(), { wrapper });
+    expect(running.result.current).toBe(runtime);
+    const calendar = await renderHook(() => useCalendarRunningPlanReadPort(), { wrapper });
+    mockReadAggregate.mockResolvedValue({
+      id: "running",
+      sessions: [{ session: { id: "session-r1", planId: "running" } }],
+    });
+    await expect(calendar.result.current.loadScheduledSessionPlan("running", "session-r1"))
+      .resolves.toMatchObject({ id: "running" });
+    await expect(renderHook(() => useRunningPlanRuntime())).rejects.toThrow(
+      "running_plan_runtime_unavailable",
+    );
+    await expect(renderHook(() => useCalendarRunningPlanReadPort())).rejects.toThrow(
+      "calendar_running_plan_read_port_unavailable",
+    );
   });
 });
