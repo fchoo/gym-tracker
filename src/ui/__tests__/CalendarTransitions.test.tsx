@@ -566,6 +566,31 @@ describe("Calendar semantic transitions", () => {
       .toMatchObject({ currentMonthId: "2026-12", selectedLocalDate: "2026-12-01", phase: "adjacent-expanding" });
   });
 
+  it("owns same-month date selection in the transition state and validates the civil date", () => {
+    const selected = transitionCalendar(initial(), { type: "select-date", localDate: "2026-11-30" });
+    expect(selected).toEqual({
+      state: expect.objectContaining({ selectedLocalDate: "2026-11-30", currentMonthId: "2026-11", mode: "month", phase: "idle" }),
+      commands: [],
+    });
+    expect(() => transitionCalendar(initial(), { type: "select-date", localDate: "2026-02-30" }))
+      .toThrow("local_date_invalid");
+    expect(transitionCalendar(initial(), { type: "select-date", localDate: "2026-12-01" }))
+      .toEqual({ state: initial(), commands: [] });
+
+    const settling = transitionCalendar(initial(), { type: "move", direction: "next", targetMonthId: "2026-12" });
+    expect(transitionCalendar(settling.state, { type: "select-date", localDate: "2026-12-12" }))
+      .toEqual({ state: settling.state, commands: [] });
+
+    const expanded = transitionCalendar(selected.state, { type: "expand" });
+    const focused = transitionCalendar(expanded.state, { type: "settle-complete", epoch: expanded.state.epoch }).state;
+    const collapsed = transitionCalendar(focused, { type: "collapse" });
+    const month = transitionCalendar(collapsed.state, { type: "settle-complete", epoch: collapsed.state.epoch }).state;
+    expect(transitionCalendar(month, {
+      type: "move", direction: "next", targetMonthId: "2026-12", targetSelectedLocalDate: "2026-12-30",
+    }).state)
+      .toMatchObject({ currentMonthId: "2026-12", selectedLocalDate: "2026-12-30" });
+  });
+
   it("publishes completion only for the current epoch and resolves reduced motion with the same destination but no motion command", () => {
     const settling = transitionCalendar(initial(), {
       type: "move", direction: "next", targetMonthId: "2026-12",

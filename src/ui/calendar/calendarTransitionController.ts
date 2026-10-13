@@ -1,3 +1,5 @@
+import { parseLocalDate } from "../../domains/scheduling";
+
 export type CalendarTitlePanel = "previous" | "current" | "next";
 export type CalendarDisplayMode = "month" | "focused";
 export type CalendarTransitionPhase = "idle" | "dragging" | "settling" | "adjacent-collapsing" | "adjacent-measuring" | "adjacent-expanding";
@@ -54,6 +56,7 @@ export type CalendarTransitionEvent =
   | Readonly<{ type: "settle-complete"; epoch: number }>
   | Readonly<{ type: "expand" }>
   | Readonly<{ type: "collapse" }>
+  | Readonly<{ type: "select-date"; localDate: string }>
   | Readonly<{ type: "select-adjacent"; localDate: string; targetMonthId?: string }>
   | Readonly<{ type: "layout-ready" }>
   | Readonly<{ type: "back" }>;
@@ -280,6 +283,12 @@ export function transitionCalendar(
       if (state.phase !== "idle" || state.mode === "month") return result(state);
       const next = freezeState({ ...state, mode: "month", phase: state.reducedMotion ? "idle" : "settling", epoch: state.epoch + 1 });
       return settleWeek(state, "collapse", next);
+    }
+    case "select-date": {
+      const localDate = parseLocalDate(event.localDate);
+      if (state.phase !== "idle") return result(state);
+      if (localDate.slice(0, 7) !== state.currentMonthId) return result(state);
+      return result(freezeState({ ...state, selectedLocalDate: localDate }));
     }
     case "select-adjacent": {
       assertIdentifier(event.localDate);

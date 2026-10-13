@@ -256,6 +256,26 @@ describe("CalendarScreen", () => {
     }));
   });
 
+  it("keeps a same-month Today selection as the source for later clamped navigation", async () => {
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => range)}
+          onOpenEvent={jest.fn()}
+          today="2026-08-31"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Return to today, 31 August 2026" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+
+    await screen.findByText("September 2026");
+    await waitFor(() => expect(screen.getAllByTestId("calendar-day-2026-09-30").some((node) => node.props.accessibilityState?.selected === true)).toBe(true));
+  });
+
   it("records bounded source-backed query aggregates through the routed diagnostics producer", async () => {
     const producer = {
       recordQuery: jest.fn(),
