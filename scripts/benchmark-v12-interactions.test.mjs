@@ -95,5 +95,7 @@ test("performance shard keeps the complete raw observation schema review-require
   assert.equal(observation.observation_state, "REVIEW_REQUIRED");
   assert.equal(Object.hasOwn(observation, "verdict"), false);
   assert.equal(validateV12PerformanceShard(observation, identity).calendar_frame_sequences.samples, 100);
-  assert.throws(() => executeV12PerformanceShard({ identity, performance: evidence({ samples: { ...evidence().samples, garmin_sync_normalization: { state: "PASS" } } }) }), /garmin/);
+  const inventedGarminLimit = structuredClone(observation);
+  inventedGarminLimit.raw_samples.garmin_sync_normalization = { state: "PASS" };
+  assert.throws(() => validateV12PerformanceShard(inventedGarminLimit, identity), /garmin/);
 });
