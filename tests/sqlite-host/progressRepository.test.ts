@@ -1510,6 +1510,18 @@ describe("progress repository", () => {
         activeGoals: [{ sport: "Running" }, { sport: "Strength" }],
       },
     });
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE running_goals SET created_at_ms = 99 WHERE id = 'cross-sport-running-goal'",
+      );
+      await transaction.execute(
+        "UPDATE workout_sessions SET revision = 0 WHERE id IN ('session-1', 'session-2')",
+      );
+    });
+    await expect(createProgressRepository(kernel).load({
+      sport: "All", period: "all_time", nowLocalDate: "2026-08-24",
+    })).resolves.toMatchObject({ dashboard: { primaryGoal: { sport: "Strength" } } });
   });
 
   it("maps unset, exact, and non-second Running goal durations without fabrication", async () => {
