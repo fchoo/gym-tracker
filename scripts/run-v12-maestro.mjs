@@ -31,21 +31,21 @@ export const V12_CALENDAR_DIAGNOSTIC_STAGES = Object.freeze([
 ]);
 
 export const V12_CALENDAR_STAGE_CONTRACTS = Object.freeze({
-  "drag-forward-10": Object.freeze(["start: \"70%, 45%\", end: \"60%, 45%\", duration: 160", "id: \"calendar-month-title\""]),
-  "drag-forward-24_9": Object.freeze(["start: \"70%, 45%\", end: \"45.1%, 45%\", duration: 400", "id: \"calendar-month-title\""]),
-  "drag-forward-25": Object.freeze(["start: \"70%, 45%\", end: \"45%, 45%\", duration: 400", "id: \"calendar-month-title\""]),
-  "drag-forward-25_1": Object.freeze(["start: \"70%, 45%\", end: \"44.9%, 45%\", duration: 400", "id: \"calendar-month-title\""]),
-  "drag-forward-release-below": Object.freeze(["start: \"70%, 45%\", end: \"45.1%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
-  "drag-forward-release-exact": Object.freeze(["start: \"70%, 45%\", end: \"45%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
-  "drag-forward-release-above": Object.freeze(["start: \"70%, 45%\", end: \"44.9%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
-  "drag-backward-10": Object.freeze(["start: \"30%, 45%\", end: \"40%, 45%\", duration: 160", "id: \"calendar-month-title\""]),
-  "drag-backward-24_9": Object.freeze(["start: \"30%, 45%\", end: \"54.9%, 45%\", duration: 400", "id: \"calendar-month-title\""]),
-  "drag-backward-25": Object.freeze(["start: \"30%, 45%\", end: \"55%, 45%\", duration: 400", "id: \"calendar-month-title\""]),
-  "drag-backward-25_1": Object.freeze(["start: \"30%, 45%\", end: \"55.1%, 45%\", duration: 400", "id: \"calendar-month-title\""]),
-  "drag-backward-release-below": Object.freeze(["start: \"30%, 45%\", end: \"54.9%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
-  "drag-backward-release-exact": Object.freeze(["start: \"30%, 45%\", end: \"55%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
-  "drag-backward-release-above": Object.freeze(["start: \"30%, 45%\", end: \"55.1%, 45%\", duration: 320", "id: \"calendar-month-title\""]),
-  "drag-fast-subthreshold": Object.freeze(["start: \"70%, 45%\", end: \"60%, 45%\", duration: 40", "id: \"calendar-month-title\""]),
+  "drag-forward-10": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-forward-24_9": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-forward-25": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-forward-25_1": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-forward-release-below": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-forward-release-exact": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-forward-release-above": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-backward-10": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-backward-24_9": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-backward-25": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-backward-25_1": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-backward-release-below": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-backward-release-exact": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-backward-release-above": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
+  "drag-fast-subthreshold": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
   "drag-retreat": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
   "drag-cancel": Object.freeze(["id: \"calendar-month-viewport\"", "id: \"calendar-month-title\""]),
   "drag-vertical": Object.freeze(["start: \"50%, 70%\", end: \"50%, 30%\", duration: 300", "id: \"calendar-month-title\""]),
@@ -61,6 +61,14 @@ export const V12_CALENDAR_STAGE_CONTRACTS = Object.freeze({
   "reduced-motion": Object.freeze(["PHASE16_CALENDAR_REDUCED_MOTION == 'verified-device-setting'", "point: \"50%, 45%\"", "assertVisible: \"Collapse day and return to month\""]),
   "accessibility-keyboard": Object.freeze(["pressKey: TAB", "pressKey: DPAD_RIGHT", "pressKey: ENTER", "assertVisible: \"Collapse day and return to month\""]),
 });
+
+const IN_APP_GESTURE_STAGES = new Set([
+  ...V12_CALENDAR_DIAGNOSTIC_STAGES.filter((stage) => (
+    stage.startsWith("drag-forward")
+    || stage.startsWith("drag-backward")
+    || ["drag-fast-subthreshold", "drag-retreat", "drag-cancel"].includes(stage)
+  )),
+]);
 
 export function validateV12CalendarManifest(manifest, current = {}) {
   if (!exactKeys(manifest, ["schema_version", "suite", "profile", "package", "js_bundle", "base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "apk", "installed_apk", "device", "report_sha256"])) throw new Error("v12_calendar_manifest_invalid");
@@ -98,10 +106,9 @@ export function validateV12CalendarFlow(flow) {
       const requiredCount = V12_CALENDAR_STAGE_CONTRACTS[stage].filter((value) => value === expected).length;
       if (block.split(expected).length - 1 !== requiredCount) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
     }
-    if (
-      (stage === "drag-retreat" && block.includes("swipe:"))
-      || (stage === "drag-cancel" && (block.includes("swipe:") || block.includes("pressKey: BACK")))
-    ) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
+    if (IN_APP_GESTURE_STAGES.has(stage)) {
+      if (/(?:swipe:|pressKey: BACK)/u.test(block)) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
+    }
   }
   if (!flow.includes("takeScreenshot")) throw new Error("v12_calendar_capture_missing");
   return true;

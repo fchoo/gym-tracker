@@ -553,7 +553,14 @@ test("the Phase 16 runner exposes every pre-destination diagnostic stage but can
   const flow = readFileSync("maestro/v1.2/calendar.yaml", "utf8");
   assert.equal(validateV12CalendarFlow(flow), true);
   assert.throws(
-    () => validateV12CalendarFlow(flow.replace("end: \"60%, 45%\"", "end: \"45%, 45%\"")),
+    () => validateV12CalendarFlow(flow.replace(
+      "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10'} }\n    commands:",
+      "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10'} }\n    commands:\n      - swipe: { start: \"70%, 45%\", end: \"60%, 45%\", duration: 160 }",
+    )),
+    /v12_calendar_flow_stage_invalid:drag-forward-10/u,
+  );
+  assert.throws(
+    () => validateV12CalendarFlow(flow.replace('id: "calendar-month-title"', 'id: "calendar-title-missing"')),
     /v12_calendar_flow_stage_invalid:drag-forward-10/u,
   );
   const plan = createV12CalendarRunnerPlan(manifest);

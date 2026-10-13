@@ -25,6 +25,7 @@ import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "
 import { CalendarAgenda, type CalendarAgendaHandle, type CalendarAgendaRowHandle } from "../calendar/CalendarAgenda";
 import {
   CalendarMonthViewport,
+  calendarHorizontalInsetForSafeWidth,
   calendarWeekGeometryForGeneration,
   type CalendarWeekGeometry,
 } from "../calendar/CalendarMonthViewport";
@@ -600,7 +601,7 @@ export function CalendarScreen({
       || focusedWeek === null) return;
     dispatchCalendarTransition({ type: "layout-ready" });
   }, [calendarTransition.phase, dispatchCalendarTransition, focusedWeek]);
-  const calendarInset = Math.min(18, Math.max(0, (safeWidth - 348) / 2));
+  const calendarInset = calendarHorizontalInsetForSafeWidth(safeWidth);
   const adaptiveScreenInset = safeWidth < 600 ? space[4] : safeWidth < 840 ? space[6] : space[8];
 
   const header = (
