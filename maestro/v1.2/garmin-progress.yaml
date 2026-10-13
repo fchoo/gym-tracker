@@ -1,0 +1,48 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 20 Garmin and Progress observation path
+tags: [garmin, progress, native-only, development-test, phase-20, observe-only]
+---
+- assertTrue: ${PHASE20_GARMIN_STAGE != null}
+- launchApp: { clearState: false, stopApp: true }
+- openLink: "gymtracker-devtest://garmin?phase20GarminStage=${PHASE20_GARMIN_STAGE}"
+- assertVisible: "Garmin Sync"
+- runFlow:
+    when: { true: ${PHASE20_GARMIN_STAGE == 'packaging-auth'} }
+    commands:
+      - assertVisible: "Connect Garmin"
+      - tapOn: "Connect Garmin"
+      - assertVisible: "Email"
+      - tapOn: "Email"
+      - inputText: ${GARMIN_EMAIL}
+      - tapOn: "Password"
+      - inputText: ${GARMIN_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Continue"
+      - runFlow:
+          when: { visible: "One-time code" }
+          commands:
+            - inputText: ${GARMIN_MFA_CODE}
+            - hideKeyboard
+            - tapOn: "Verify"
+      - extendedWaitUntil: { visible: "Connected to Garmin", timeout: 30000 }
+- runFlow:
+    when: { true: ${PHASE20_GARMIN_STAGE == 'sync-read-dedupe-match'} }
+    commands:
+      - tapOn: "Sync now"
+      - extendedWaitUntil: { visible: "Imported activities", timeout: 30000 }
+      - tapOn: ${GARMIN_ACTIVITY_ACCESSIBILITY_LABEL}
+      - assertVisible: "Laps"
+      - tapOn: "Match to scheduled workout"
+      - tapOn: ${GARMIN_MATCH_CANDIDATE_LABEL}
+      - tapOn: "Confirm match"
+      - assertVisible: "Matched"
+- runFlow:
+    when: { true: ${PHASE20_GARMIN_STAGE == 'restart-logout'} }
+    commands:
+      - stopApp
+      - launchApp: { clearState: false }
+      - assertVisible: "Connected to Garmin"
+      - tapOn: "Disconnect Garmin"
+      - tapOn: { text: "Disconnect Garmin", index: 1 }
+      - assertVisible: "Garmin not connected"
+- takeScreenshot: "garmin-${PHASE20_GARMIN_STAGE}"
