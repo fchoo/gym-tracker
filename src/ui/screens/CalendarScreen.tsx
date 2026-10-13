@@ -642,6 +642,7 @@ export function CalendarScreen({
   const titleMonth = calendarTransition.titlePanel === "previous" ? nextMonth(titleBaseMonth, -1)
     : calendarTransition.titlePanel === "next" ? nextMonth(titleBaseMonth, 1)
       : titleBaseMonth;
+  const visibleMonthLabel = monthLabel(titleMonth ?? month);
   const selectedEvents = (range?.events ?? []).filter((event) => event.localDate === visibleSelectedDate);
   const selectedDay = range?.days?.find((day) => day.localDate === visibleSelectedDate);
   const registerDateCell = (date: LocalDate, node: CalendarDateCellHandle | null) => {
@@ -709,23 +710,40 @@ export function CalendarScreen({
         <React.Profiler id="phase16-calendar" onRender={recordDiagnosticRender}>
         <View style={styles.screen}>
           {header}
-          <View style={styles.navigation}>
-            <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={interactionDisabled || previous === null} icon="back" onPress={() => navigateMonth(-1)} />
-            <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]} testID="calendar-month-title">{monthLabel(titleMonth ?? month)}</Text>
-            <FocusablePressable
-              accessibilityHint="Returns the Calendar selection to the current local date"
-              accessibilityLabel={`Return to today, ${fullDate(parsedToday)}`}
-              accessibilityRole="button"
-              disabled={interactionDisabled}
-              onPress={returnToToday}
-              style={({ pressed }) => [
-                styles.todayAction,
-                { backgroundColor: pressed ? colors.actionPressed : colors.action },
-              ]}
-            >
-              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.onAction }]}>Today</Text>
-            </FocusablePressable>
-            <IconAction accessibilityLabel={following === null ? "Next month unavailable" : `Show ${monthLabel(following)}`} disabled={interactionDisabled || following === null} icon="forward" onPress={() => navigateMonth(1)} />
+          <View style={styles.navigation} testID="calendar-month-navigation">
+            <View style={styles.monthNavigationAction} testID="calendar-month-previous-slot">
+              <IconAction accessibilityLabel={previous === null ? "Previous month unavailable" : `Show ${monthLabel(previous)}`} disabled={interactionDisabled || previous === null} icon="back" onPress={() => navigateMonth(-1)} />
+            </View>
+            <View style={styles.monthTitleSlot} testID="calendar-month-title-slot">
+              <Text
+                accessibilityLabel={visibleMonthLabel}
+                accessibilityRole="header"
+                ellipsizeMode="tail"
+                numberOfLines={1}
+                style={[calendarTypeScale.heading as TextStyle, styles.monthTitle, { color: colors.textPrimary }]}
+                testID="calendar-month-title"
+              >
+                {visibleMonthLabel}
+              </Text>
+            </View>
+            <View style={styles.monthTodaySlot} testID="calendar-month-today-slot">
+              <FocusablePressable
+                accessibilityHint="Returns the Calendar selection to the current local date"
+                accessibilityLabel={`Return to today, ${fullDate(parsedToday)}`}
+                accessibilityRole="button"
+                disabled={interactionDisabled}
+                onPress={returnToToday}
+                style={({ pressed }) => [
+                  styles.todayAction,
+                  { backgroundColor: pressed ? colors.actionPressed : colors.action },
+                ]}
+              >
+                <Text style={[typeScale.bodyStrong as TextStyle, styles.todayLabel, { color: colors.onAction }]}>Today</Text>
+              </FocusablePressable>
+            </View>
+            <View style={styles.monthNavigationAction} testID="calendar-month-next-slot">
+              <IconAction accessibilityLabel={following === null ? "Next month unavailable" : `Show ${monthLabel(following)}`} disabled={interactionDisabled || following === null} icon="forward" onPress={() => navigateMonth(1)} />
+            </View>
           </View>
           {isLoading && range !== null ? <Text accessibilityLiveRegion="polite" style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>Updating Calendar</Text> : null}
           {error === null ? null : (
@@ -908,13 +926,18 @@ const styles = StyleSheet.create({
   keyGroup: { gap: 8 },
   keyGroupTitle: { fontWeight: "800", letterSpacing: 0.6 },
   keyItems: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  navigation: { alignItems: "center", flexDirection: "row", gap: 3, justifyContent: "space-between", minHeight: 52 },
+  monthNavigationAction: { width: 48 },
+  monthTitle: { flexShrink: 1, textAlign: "center" },
+  monthTitleSlot: { alignItems: "center", flex: 1, minWidth: 0 },
+  monthTodaySlot: { width: 76 },
+  navigation: { alignItems: "center", flexDirection: "row", gap: 3, minHeight: 52 },
   partialKey: { borderStyle: "dotted", borderWidth: 2, paddingVertical: 3 },
   plannedKey: { backgroundColor: "transparent", borderStyle: "dashed", borderWidth: 2, paddingVertical: 3 },
   screen: { flex: 1, gap: 10 },
   skeletonMonth: { gap: 8 },
   statusKey: { overflow: "hidden", paddingHorizontal: 8, position: "relative" },
-  todayAction: { alignItems: "center", borderRadius: 8, height: 48, justifyContent: "center", minWidth: 76, paddingHorizontal: 8 },
+  todayAction: { alignItems: "center", borderRadius: 8, justifyContent: "center", minHeight: 48, paddingHorizontal: 8, width: 76 },
+  todayLabel: { textAlign: "center" },
   weekday: { flex: 1, textAlign: "center" },
   weekdayRow: { flexDirection: "row", gap: 2 },
   visuallyHidden: { height: 0, opacity: 0, width: 0 },
