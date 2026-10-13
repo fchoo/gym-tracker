@@ -28,10 +28,10 @@ describe("v1.2 Calendar native-acceptance contract", () => {
   });
 
   it("fails closed for final-only, non-monotonic, stale, wrong-boundary, and mutated traces", () => {
-    expect(() => runV12CalendarAcceptanceContract({ ...observation, samples: [observation.samples[0]] })).toThrow("calendar_intermediate_samples_required");
+    expect(() => runV12CalendarAcceptanceContract({ ...observation, samples: [observation.samples[0]!] })).toThrow("calendar_intermediate_samples_required");
     expect(() => runV12CalendarAcceptanceContract({ ...observation, samples: [{ ...observation.samples[0], timestampMs: 2 }, { ...observation.samples[1], timestampMs: 1 }] })).toThrow("calendar_timestamp_non_monotonic");
     expect(() => runV12CalendarAcceptanceContract({ ...observation, samples: observation.samples.map((sample) => ({ ...sample, generation: 0 })) })).toThrow("calendar_generation_invalid");
     expect(() => runV12CalendarAcceptanceContract({ ...observation, samples: observation.samples.map((sample) => ({ ...sample, dxDp: -99.5, translationDp: -99.5 })) })).toThrow("calendar_threshold_boundary_invalid");
-    expect(() => runV12CalendarAcceptanceContract({ ...observation, nativeExecution: "PASS" })).toThrow("calendar_execution_invalid");
+    expect(() => runV12CalendarAcceptanceContract({ ...observation, nativeExecution: "PASS" as unknown as "NOT_RUN" })).toThrow("calendar_execution_invalid");
   });
 });
