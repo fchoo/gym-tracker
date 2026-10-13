@@ -99,7 +99,7 @@ import {
 } from "../src/testing/contracts/googleDriveBackup.contract";
 import {
   createExpoV12AcceptanceSqliteContractAdapter,
-  runV12AcceptanceSqliteContracts,
+  runV12AcceptanceSqliteContracts as verifyV12AcceptanceSqliteContracts,
   V12_ACCEPTANCE_SQLITE_CASE_IDS,
   type V12AcceptanceSqliteContractResult,
 } from "../src/testing/contracts/v12Acceptance.contract";
@@ -534,7 +534,7 @@ export default function NativeSqliteContractsScreen() {
         }
 
         if (selectedSuite === "v1.2-acceptance") {
-          const result = await runV12AcceptanceSqliteContracts(
+          const result = await verifyV12AcceptanceSqliteContracts(
             await createExpoV12AcceptanceSqliteContractAdapter(runId),
           );
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
