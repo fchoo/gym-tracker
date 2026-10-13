@@ -1,7 +1,9 @@
 ---
 phase: 19-progress-parity
 status: secured
-head: e7eea042779bf0c9b426924f672c494267cccb0f
+head: d97ea569fc6f8671df94f68e64635c55d06864aa
+audit_head: 9c3cb6f2d894cbd9387dfa7d45c87445bfce8152
+source_tree_sha256: 0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c
 register_authored_at_plan_time: true
 threats_total: 41
 threats_closed: 41
@@ -11,7 +13,7 @@ accepted_risks: 1
 asvs_level: 1
 block_on: high
 created: 2026-10-13
-audited: 2026-10-13
+audited: 2026-10-14
 ---
 
 # Phase 19 — Security
@@ -20,7 +22,9 @@ audited: 2026-10-13
 
 **Phase:** 19 — Progress Parity
 
-**Exact HEAD:** `e7eea042779bf0c9b426924f672c494267cccb0f`
+**Exact source implementation:** `d97ea569fc6f8671df94f68e64635c55d06864aa`
+
+**Validated repository HEAD:** `9c3cb6f2d894cbd9387dfa7d45c87445bfce8152`
 
 **Threats Closed:** 41/41
 
@@ -141,25 +145,20 @@ notes map to the registered threats above and add no unmapped attack surface.
 
 ## Verification Run
 
-The re-audit used an isolated clean clone of exact HEAD
-`e7eea042779bf0c9b426924f672c494267cccb0f`; the implementation source-tree
-digest was `f7d1c001ad12ca2b3dd60a369a5a0c44d09ec465b3c04dc2279939b1d1642598`.
+The fresh re-audit verified exact source implementation
+`d97ea569fc6f8671df94f68e64635c55d06864aa` from validated repository HEAD
+`9c3cb6f2d894cbd9387dfa7d45c87445bfce8152`. The intervening commits update
+review and validation documents only. The implementation source-tree digest was
+`0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c`.
 
 | Check | Result |
 |---|---|
-| Phase 19 benchmark/native/verifier source contracts | 18/18 passed, including exact actual build-manifest schema, retained-byte rehashing, identity/omission/privacy rejection, timeout/cap checks, and Phase 20 authority |
-| Progress parity real-SQLite contract | 2/2 passed; 18 ordered requirement cases retained in the contract result |
-| Production-workload host benchmark | passed with exact 20/100/20/100/20/100 sample counts, query-row cap 500, subprocess timeout/output caps, source hash, result hash, and native `NOT_RUN` |
-| Product/security suites reached by the exact coverage command | 311 suites / 4,506 tests passed, including Progress, history, target, recommendation, merge, bodyweight, routes, evidence, and privacy paths |
-| Canonical host evidence collector | failed closed before manifest publication because 3 assertions in `phase19WorkoutOutcomeRepositoryCoverage.test.ts` still encode the pre-merge recommendation receipt contract; no false PASS or host manifest was emitted |
+| Phase 19 evidence contracts | PASS — 20/20, including retained-byte rehashing, identity/omission/privacy rejection, timeout/cap checks, and Phase 20 authority |
+| Exact integrity coverage | PASS — 312 suites / 4,622 tests; 25 owners and four changed-line scopes at 100% |
+| Progress parity requirement registry | PASS — all 18 ordered PRO records retained with source status PASS |
+| Production-workload host benchmark | PASS with required sample counts, query-row cap 500, bounded subprocess/output contracts, source hash, result hash, and native `NOT_RUN` |
+| Canonical host evidence collector | PASS — all 7 commands completed and the retained verifier accepted the source-bound manifest |
 | Native execution | `NOT_RUN` / `REVIEW_REQUIRED` — Phase 20-owned and not a Phase 19 finding |
-
-The three stale coverage-test assertions are a merged verifier-fixture mismatch,
-not an absent declared mitigation: current production callers submit the shared
-fenced receipt envelope, legacy bare callers are completed into a deterministic
-receipt, and integration/real-SQLite paths pass. The canonical collector's
-refusal to publish demonstrates the declared fail-closed behavior. This audit
-does not convert that non-security test-maintenance item into an open threat.
 
 ## Security Audit Trail
 
@@ -167,5 +166,6 @@ does not convert that non-security test-maintenance item into an open threat.
 |---|---|---:|---:|---:|---:|---|
 | 2026-10-13 | `fd2877c99d697118fef8cf6ba47e27521d116a25` | 41 | 29 | 12 | 7 | OPEN_THREATS |
 | 2026-10-13 | `e7eea042779bf0c9b426924f672c494267cccb0f` | 41 | 41 | 0 | 0 | SECURED |
+| 2026-10-14 | `d97ea569fc6f8671df94f68e64635c55d06864aa` | 41 | 41 | 0 | 0 | SECURED |
 
 **threats_open:** 0
