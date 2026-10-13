@@ -389,6 +389,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
+    maxHeight: "82%",
     overflow: "hidden",
   },
   header: {

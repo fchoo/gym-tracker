@@ -57,6 +57,7 @@ describe("RunningTargetSheet", () => {
     );
 
     expect(view.getByText("Running target")).toBeTruthy();
+    expect(view.getByTestId("bottom-sheet-surface")).toHaveStyle({ maxHeight: "82%" });
     expect(view.getByDisplayValue("11:00")).toBeTruthy();
     expect(view.getByLabelText("Target time")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, lineHeight: 22 });
     expect(view.getByText("Current benchmark")).toBeTruthy();
