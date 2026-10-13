@@ -21,6 +21,7 @@ import {
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
+  sizes,
   themes,
 } from "../theme";
 
@@ -311,6 +312,21 @@ describe("ExerciseHistoryScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Open source" }));
     expect(onOpenSource).toHaveBeenCalledTimes(1);
     expect(onOpenSource).toHaveBeenCalledWith("session-working-best", 7);
+  });
+
+  it("uses the Phase 19 focus contract for non-load source actions", async () => {
+    await renderHistory({
+      onOpenSource: jest.fn(),
+      loadExerciseHistory: jest.fn(async () => bodyweightHistory([undefined, 7])),
+    });
+
+    const sourceAction = await screen.findByRole("button", { name: "Open source" });
+    await fireEvent(sourceAction, "focus");
+
+    expect(sourceAction).toHaveStyle({
+      outlineOffset: 3,
+      outlineWidth: sizes.focusRing,
+    });
   });
 
   it("routes corrected effective non-load sources exactly and rejects invalid revisions", async () => {
