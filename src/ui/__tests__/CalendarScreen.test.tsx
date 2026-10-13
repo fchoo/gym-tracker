@@ -425,6 +425,26 @@ describe("CalendarScreen", () => {
     expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
   });
 
+  it("renders the exact transparent 9dp date atom and centered 28dp today ring", async () => {
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => range)}
+          onOpenEvent={jest.fn()}
+          onOpenSettings={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    const ordinary = await screen.findByTestId("calendar-day-2026-08-25");
+    const todayTrack = screen.getByTestId("calendar-date-track-2026-08-24");
+    const eventTrack = screen.getByTestId("calendar-event-track-2026-08-24");
+    expect(ordinary).toHaveStyle({ borderColor: "transparent", borderRadius: 9, borderWidth: 1 });
+    expect(todayTrack).toHaveStyle({ alignItems: "center", alignSelf: "center", borderWidth: 2, width: 28 });
+    expect(eventTrack).toHaveStyle({ marginTop: 2 });
+  });
+
   it("moves arrow focus to the selected civil date and transfers focus through expand and Collapse", async () => {
     await render(
       <AppearanceProvider>

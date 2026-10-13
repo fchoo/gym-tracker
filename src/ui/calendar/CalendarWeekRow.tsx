@@ -16,7 +16,7 @@ import {
 } from "../../domains/history/calendar";
 import type { CalendarDay, CalendarEvent } from "./calendarPorts";
 import { FocusablePressable } from "../components";
-import { calendarTypeScale, colorWithAlpha, radius, sizes, useAppTheme } from "../theme";
+import { calendarTypeScale, colorWithAlpha, sizes, useAppTheme } from "../theme";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -133,7 +133,7 @@ export function CalendarWeekRow({
               styles.cell,
               {
                 backgroundColor: selected ? colors.blueBg : pressed ? colors.surface : colors.paper,
-                borderColor: selected ? colors.blue : colors.line,
+                borderColor: selected ? colors.blue : "transparent",
                 opacity: outsideMonth ? 0.5 : 1,
               },
             ]}
@@ -202,7 +202,7 @@ export function CalendarWeekRow({
 
 const styles = StyleSheet.create({
   cell: {
-    borderRadius: radius.standard,
+    borderRadius: 9,
     borderWidth: 1,
     flex: 1,
     gap: 0,
@@ -211,10 +211,10 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   completeChip: { borderStyle: "solid", borderWidth: 1 },
-  dateTrack: { alignItems: "flex-start", borderColor: "transparent", borderRadius: 14, borderWidth: 2, justifyContent: "center", paddingHorizontal: 2 },
+  dateTrack: { alignItems: "center", alignSelf: "center", borderColor: "transparent", borderRadius: 14, borderWidth: 2, justifyContent: "center", width: 28 },
   eventChip: { borderRadius: 3, justifyContent: "center", overflow: "hidden", paddingHorizontal: 2, position: "relative" },
   eventChipText: { zIndex: 1 },
-  events: { gap: 2, position: "relative" },
+  events: { gap: 2, marginTop: 2, position: "relative" },
   hidden: { opacity: 0 },
   partialChip: { borderStyle: "dotted", borderWidth: 2 },
   partialFill: { bottom: 0, left: 0, position: "absolute", top: 0, width: "50%" },
