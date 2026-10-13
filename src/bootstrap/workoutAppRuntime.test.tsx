@@ -2098,7 +2098,10 @@ describe("WorkoutAppRuntimeProvider", () => {
     await expect(captured!.progressRecommendationRuntime.decide(pending, "use_target"))
       .rejects.toThrow("recommendation_revision_fence_unavailable");
 
-    outcomeRepository.keepCurrentTarget
+    const keepCurrentTargetMock = outcomeRepository.keepCurrentTarget as jest.MockedFunction<
+      typeof outcomeRepository.keepCurrentTarget
+    >;
+    keepCurrentTargetMock
       .mockRejectedValueOnce(new Error("transient"))
       .mockResolvedValueOnce({ recommendationId: "recommendation-1", status: "rejected" });
     const fenceCalls = () => queryAll.mock.calls.filter(([sql]) =>

@@ -8,6 +8,7 @@ import {
   evaluatePhase19ProgressBenchmark,
   nearestRankP95,
   parsePhase19ProgressBenchmarkArgs,
+  validatePhase19ProgressBenchmarkResult,
 } from "./benchmark-phase19-progress.mjs";
 
 const repeated = (count, value) => Array.from({ length: count }, (_, index) => value + (index % 3));
@@ -77,6 +78,7 @@ test("Progress benchmark enforces only the named NV-PERF-08 and JS-task budgets"
   assert.equal(result.statistics.useful_content_ms.maximum_ms, 12);
   assert.equal(result.statistics.js_task_ms.maximum_ms, 4);
   assert.deepEqual(result.production_artifact, evidence().production_artifact);
+  assert.equal(validatePhase19ProgressBenchmarkResult(result), true);
   assert.equal(Object.hasOwn(result, "score"), false);
   assert.doesNotMatch(JSON.stringify(result), /aggregate[_-]?score|baseline[_-]?score/iu);
 });

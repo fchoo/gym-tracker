@@ -13,8 +13,11 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  PHASE19_HOST_CASE_IDS,
+  PHASE19_HOST_COMMAND_IDS,
   PHASE19_REQUIREMENT_EVIDENCE,
   buildPhase19AutomatedOnlyReport,
+  validatePhase19HostManifest,
   validatePhase19NativeEvidenceRows,
   validatePhase19Privacy,
 } from "./verify-phase19-evidence.mjs";
@@ -22,6 +25,11 @@ import {
   PHASE19_REQUIREMENT_EVIDENCE_IDS,
   buildPhase19NativeRows,
 } from "./run-phase19-native-evidence.mjs";
+import {
+  PHASE19_PROGRESS_BUDGETS,
+  evaluatePhase19ProgressBenchmark,
+} from "./benchmark-phase19-progress.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
@@ -122,15 +130,118 @@ function nativeEvidence(root, overrides = {}) {
   };
 }
 
+const repeated = (count, value) => Array.from(
+  { length: count },
+  (_, index) => value + (index % 3),
+);
+
+function hostFixture(root) {
+  const retained = (name, value) => {
+    const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    writeFileSync(join(root, name), bytes);
+    return {
+      path: name,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      size_bytes: bytes.length,
+    };
+  };
+  const now = "2026-10-13T01:00:00.000Z";
+  const commands = PHASE19_HOST_COMMAND_IDS.map((id, index) => ({
+    id,
+    status: "PASS",
+    exit_code: 0,
+    started_at: "2026-10-13T00:00:00.000Z",
+    finished_at: "2026-10-13T00:59:00.000Z",
+    stdout: retained(`${index}-${id}.stdout`, `${id}:pass\n`),
+    stderr: retained(`${index}-${id}.stderr`, ""),
+  }));
+  const contract = {
+    schemaVersion: 1,
+    contractVersion: 1,
+    status: "passed",
+    total: 18,
+    passed: 18,
+    failed: 0,
+    skipped: 0,
+    cases: PHASE19_HOST_CASE_IDS.map((id, index) => ({
+      id,
+      requirement: `PRO-${String(index + 1).padStart(2, "0")}`,
+      status: "passed",
+      code: "progress_contract_case_passed",
+      counts: {},
+      timings: { durationMs: 1 },
+      hashes: {
+        source: createHash("sha256").update(`source-${id}`).digest("hex"),
+        projection: createHash("sha256").update(`projection-${id}`).digest("hex"),
+        receipt: createHash("sha256").update(`receipt-${id}`).digest("hex"),
+      },
+    })),
+    startedAt: "2026-10-13T00:00:00.000Z",
+    finishedAt: "2026-10-13T00:30:00.000Z",
+  };
+  const benchmark = evaluatePhase19ProgressBenchmark({
+    schema_version: 2,
+    suite: "phase19-progress",
+    producer: "phase19-progress-benchmark/v2",
+    environment: "host-production-workload",
+    status: "passed",
+    native_status: "NOT_RUN",
+    phase20_owned: true,
+    budgets: PHASE19_PROGRESS_BUDGETS,
+    production_artifact: {
+      case_id: "phase19-progress-production-workload",
+      source_sha256: HASH,
+      result_sha256: HASH,
+    },
+    measurements: {
+      useful_content_ms: repeated(20, 1),
+      review_open_ms: repeated(100, 1),
+      targeted_rebuild_ms: repeated(20, 1),
+      range_query_ms: repeated(100, 1),
+      chart_data_render_ms: repeated(20, 1),
+      js_task_ms: repeated(100, 1),
+    },
+    query_rows: { case_id: "progress-repository-query-rows", samples: [0, 1, 500] },
+    targeted_rebuild: { updating_visible: false, bounded_yield_count: 20 },
+  });
+  const coverage = {
+    ok: true,
+    integrity_critical_files: 23,
+    focused: true,
+    metrics: ["statements", "branches", "functions", "lines"],
+    required_percent: 100,
+    changed_line_scope_files: 4,
+  };
+  const currentHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const manifest = {
+    schema_version: 1,
+    suite: "phase19-progress-host",
+    producer: "run-phase19-host-evidence/v1",
+    producer_sha256: createHash("sha256")
+      .update(readFileSync("scripts/run-phase19-host-evidence.mjs"))
+      .digest("hex"),
+    run_id: HASH,
+    status: "PASS",
+    source: { head: currentHead, tree_sha256: sourceTreeSha256(process.cwd()) },
+    commands,
+    contract_result: retained("contract.json", JSON.stringify(contract)),
+    benchmark_result: retained("benchmark.json", JSON.stringify(benchmark)),
+    coverage_result: retained("coverage.json", JSON.stringify(coverage)),
+    generated_at: now,
+  };
+  return { manifest, contract };
+}
+
 test("Phase 19 owns one exact source evidence record for each PRO requirement", () => {
   assert.deepEqual(PHASE19_REQUIREMENT_EVIDENCE.map(({ requirement }) => requirement),
     Array.from({ length: 18 }, (_, index) => `PRO-${String(index + 1).padStart(2, "0")}`));
   assert.deepEqual(PHASE19_REQUIREMENT_EVIDENCE.map(({ evidence_id }) => evidence_id),
     PHASE19_REQUIREMENT_EVIDENCE_IDS);
   assert.equal(new Set(PHASE19_REQUIREMENT_EVIDENCE.map(({ task_id }) => task_id)).size > 1, true);
-  for (const record of PHASE19_REQUIREMENT_EVIDENCE) {
+  for (const [index, record] of PHASE19_REQUIREMENT_EVIDENCE.entries()) {
     assert.match(record.task_id, /^19-(?:0[1-9]|10)-0[1-3]$/u);
-    assert.equal(record.host.status, "PASS");
+    assert.equal(record.host.required_case_id, PHASE19_HOST_CASE_IDS[index]);
+    assert.equal(record.host.required_test_id, `progress-parity/${PHASE19_HOST_CASE_IDS[index]}`);
     assert.ok(record.host.refs.length > 0);
     assert.deepEqual(record.native, {
       status: "NOT_RUN",
@@ -142,20 +253,38 @@ test("Phase 19 owns one exact source evidence record for each PRO requirement", 
   }
 });
 
-test("automated-only report passes source contracts while retaining every native deferral", () => {
-  const report = buildPhase19AutomatedOnlyReport({
-    source_head: HEAD,
-    source_tree_sha256: HASH,
-  });
+test("automated-only report rehashes fresh host results while retaining every native deferral", () => {
+  const root = mkdtempSync(join(tmpdir(), "phase19-host-verifier-"));
+  try {
+    const { manifest } = hostFixture(root);
+    assert.ok(validatePhase19HostManifest(manifest, {
+      root: process.cwd(), artifact_root: root,
+    }));
+    const report = buildPhase19AutomatedOnlyReport(manifest, {
+      root: process.cwd(), artifact_root: root,
+    });
 
-  assert.equal(report.source_status, "PASS");
-  assert.equal(report.native_status, "NOT_RUN");
-  assert.equal(report.status, "REVIEW_REQUIRED");
-  assert.equal(report.phase20_owned, true);
-  assert.equal(report.requirements.length, 18);
-  assert.deepEqual(report.requirements.map(({ native_status }) => native_status),
-    Array(18).fill("NOT_RUN"));
-  assert.doesNotMatch(JSON.stringify(report), /release_approved|attended_approved|aggregate[_-]?score/iu);
+    assert.equal(report.source_status, "PASS");
+    assert.equal(report.native_status, "NOT_RUN");
+    assert.equal(report.status, "REVIEW_REQUIRED");
+    assert.equal(report.phase20_owned, true);
+    assert.equal(report.requirements.length, 18);
+    assert.deepEqual(report.requirements.map(({ host_status }) => host_status),
+      Array(18).fill("PASS"));
+    assert.deepEqual(report.requirements.map(({ native_status }) => native_status),
+      Array(18).fill("NOT_RUN"));
+    assert.doesNotMatch(JSON.stringify(report), /release_approved|attended_approved|aggregate[_-]?score/iu);
+
+    writeFileSync(join(root, manifest.commands[0].stdout.path), "tampered");
+    assert.throws(
+      () => validatePhase19HostManifest(manifest, {
+        root: process.cwd(), artifact_root: root,
+      }),
+      /phase19_evidence_host_artifact_invalid/u,
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("future native validation rehashes retained bytes and rejects identity, omission, privacy, and claim drift", async () => {
@@ -276,5 +405,6 @@ test("coverage gate registers every Phase 19 integrity module and preserves Phas
   assert.match(coverageSource, /--coverageThreshold=\{\}/u);
   assert.match(packageJson.scripts["test:coverage:integrity"], /--focus-phase19/u);
   assert.match(packageJson.scripts["test:evidence:phase19"], /verify-phase19-evidence\.test\.mjs/u);
-  assert.match(packageJson.scripts["verify:phase19:evidence"], /verify-phase19-evidence\.mjs/u);
+  assert.match(packageJson.scripts["verify:phase19:evidence"], /run-phase19-host-evidence\.mjs/u);
+  assert.match(packageJson.scripts["verify:phase19:evidence:retained"], /verify-phase19-evidence\.mjs/u);
 });

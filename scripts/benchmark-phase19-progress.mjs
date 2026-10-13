@@ -258,6 +258,20 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
   });
 }
 
+export function validatePhase19ProgressBenchmarkResult(result) {
+  if (!exactKeys(result, [
+    ...EXACT_EVIDENCE_KEYS,
+    "sample_counts",
+    "statistics",
+  ])) fail("phase19_progress_benchmark_schema_invalid");
+  const raw = Object.fromEntries(EXACT_EVIDENCE_KEYS.map((key) => [key, result[key]]));
+  const evaluated = evaluatePhase19ProgressBenchmark(raw);
+  if (JSON.stringify(evaluated) !== JSON.stringify(result)) {
+    fail("phase19_progress_benchmark_result_invalid");
+  }
+  return true;
+}
+
 function runProductionBenchmarkWorker(root) {
   const directory = mkdtempSync(path.join(tmpdir(), "gym-phase19-progress-benchmark-"));
   const resultPath = path.join(directory, "production-result.json");

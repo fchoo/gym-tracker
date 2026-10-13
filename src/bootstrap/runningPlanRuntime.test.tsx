@@ -90,7 +90,7 @@ describe("RunningPlanRuntimePort", () => {
     mockReadAggregate.mockResolvedValueOnce(plan);
     await expect(runtime.saveRunningTarget({
       planId: "running", requestId: "distance", expectedSourceRevision: 4,
-      goalDistanceMeters: 10_000, targetDurationMs: null, trainingDays: ["Monday"],
+      goalDistanceMeters: 10_000, targetDurationMs: 660_000, trainingDays: ["Monday"],
     })).rejects.toThrow("running_target_distance_conflict");
 
     const readBack = { ...plan, revision: 5, goal: { ...plan.goal, revision: 3, id: "goal-3" } };

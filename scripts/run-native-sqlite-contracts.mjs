@@ -381,8 +381,9 @@ function assertProgressParityContractResult(input) {
   const cases = Array.isArray(input?.cases) ? input.cases : [];
   const validCases = cases.length === PROGRESS_PARITY_CONTRACT_CASES.length
     && cases.every((contractCase, index) => (
-      exactKeys(contractCase, ['id', 'status', 'code', 'counts', 'timings', 'hashes'])
+      exactKeys(contractCase, ['id', 'requirement', 'status', 'code', 'counts', 'timings', 'hashes'])
       && contractCase?.id === PROGRESS_PARITY_CONTRACT_CASES[index]
+      && contractCase?.requirement === `PRO-${String(index + 1).padStart(2, '0')}`
       && contractCase?.status === 'passed'
       && contractCase?.code === 'progress_contract_case_passed'
       && exactKeys(contractCase.counts, countKeys)
