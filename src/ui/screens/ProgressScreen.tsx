@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent, type TextStyle } from "react-native";
 
 import type { ProgressPeriod, ProgressPeriodProjection, ProgressProjectionDiagnostic, ProgressProjectionFreshness, ProgressRecommendationReview } from "../../domains/progress";
+import type { RecommendationDecisionResult } from "../../domains/progression";
 import type { ProgressDashboardProjection, ProgressRefreshMetadata, ProgressRunningGoal, ProgressSport, ProgressStrengthGoal, ProgressStrengthValueFormat } from "../../domains/progress/contracts";
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
@@ -40,7 +41,7 @@ export type ProgressScreenProps = Readonly<{
   onOpenSettings?(): void;
   runningTargetRuntime?: Pick<RunningPlanRuntimePort, "createId" | "loadPlan" | "saveRunningTarget">;
   progressRecommendationRuntime?: Readonly<{
-    decide(recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target"): Promise<unknown>;
+    decide(recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target"): Promise<RecommendationDecisionResult>;
   }>;
   progressBodyweightRuntime?: Readonly<{
     createId(kind: string): string;
@@ -286,7 +287,7 @@ function StrengthGoalHero({ goal, heading, onOpenHistory, onOpenSource, rangeLab
   </View>;
 }
 
-function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendation, onOpenExercise, onOpenSession, onRetry, onSelectSport, period, rangeLabel, recommendations }: Readonly<{
+function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendation, onOpenExercise, onOpenSession, onRetry, onSelectSport, period, rangeLabel, recommendations, staleRecommendation }: Readonly<{
   dashboard: Exclude<ProgressDashboardProjection, { sport: "Running" }>;
   exerciseActionRefs: React.MutableRefObject<Map<string, View>>;
   onDecideRecommendation?: ((recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target") => Promise<unknown>) | undefined;
@@ -297,6 +298,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
   period: ProgressPeriod;
   rangeLabel: string;
   recommendations: readonly ProgressRecommendationReview[];
+  staleRecommendation: ProgressRecommendationReview | null;
 }>) {
   const { colors } = useAppTheme();
   if (dashboard.state === "empty") {
@@ -334,6 +336,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
   const primary = dashboard.goals[0];
   return <View style={styles.content}>
     {dashboard.state === "sparse" ? <InlineNotice body="One comparable result is not enough to call a trend." heading="More data needed" tone="attention" /> : null}
+    {staleRecommendation === null ? null : <InlineNotice body="The current target was not changed. Progress was reloaded from saved facts." heading="Recommendation no longer applies" tone="attention" />}
     {primary === undefined ? null : <StrengthGoalHero goal={primary} heading="Strength progress" onOpenHistory={() => onOpenExercise(primary.exerciseId, primary.exerciseName, `progress:Strength:${period}:exercise:${primary.exerciseId}`)} onOpenSource={(source) => { if ("sessionId" in source) onOpenSession(source.sessionId, `progress:Strength:${period}:source:${source.sessionId}`, source.sourceRevision); }} rangeLabel={rangeLabel} />}
     {recommendations.length === 0 ? null : <View style={styles.goalRows}>
       <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Needs review</Text>
@@ -375,6 +378,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const [bodyweightVisible, setBodyweightVisible] = useState(false);
   const [bodyweightEntries, setBodyweightEntries] = useState<readonly ProgressBodyweightEntry[]>([]);
   const [bodyweightEditor, setBodyweightEditor] = useState<Readonly<{ mode: "add" | "edit"; entry?: ProgressBodyweightEntry }> | null>(null);
+  const [staleRecommendation, setStaleRecommendation] = useState<ProgressRecommendationReview | null>(null);
   const bodyweightRequestRef = useRef<string | null>(null);
   const bodyweightDeleteRequestsRef = useRef(new Map<string, string>());
   const semanticToast = useOptionalSemanticToast();
@@ -459,6 +463,16 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     const result = await progressRecommendationRuntime.decide(recommendation, decision);
     const readBack = await readProgress(false);
     if (readBack === null) throw new Error("progress_recommendation_readback_obsolete");
+    const committed = readBack.projection?.recommendations.find(({ id }) => id === recommendation.id);
+    if (result.status === "superseded" || committed?.lifecycle === "superseded") {
+      setStaleRecommendation(recommendation);
+      return result;
+    }
+    const expectedLifecycle = decision === "use_target" ? "accepted" : "rejected";
+    if (committed?.lifecycle !== expectedLifecycle) {
+      throw new Error("progress_recommendation_readback_missing");
+    }
+    setStaleRecommendation(null);
     semanticToast?.enqueue({
       message: decision === "use_target"
         ? `${recommendation.exerciseName} target updated to ${recommendationTargetText(recommendation.proposedTarget)}.`
@@ -505,6 +519,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     period={period}
     rangeLabel={rangeLabel}
     recommendations={snapshot.projection?.recommendations ?? []}
+    staleRecommendation={staleRecommendation}
   />;
 
   const targetSources = targetDistanceMeters === null
@@ -538,7 +553,14 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
       key={`running-target-${targetDistanceMeters ?? "closed"}`}
       onClose={() => setTargetDistanceMeters(null)}
       onSaved={async (saved) => {
-        await readProgress(false);
+        const readBack = await readProgress(false);
+        const targetSource = readBack?.runningTargetSources?.find(({ id }) => id === saved.id);
+        if (readBack === null
+          || targetSource === undefined
+          || targetSource.revision !== saved.revision
+          || targetSource.goal.revision !== saved.goal.revision) {
+          throw new Error("running_target_root_readback_obsolete");
+        }
         semanticToast?.enqueue({ message: `${distanceLabel(saved.goal.goalDistanceMeters)} target saved.` });
       }}
       restoreFocusRef={{ current: targetDistanceMeters === null ? null : targetTriggerRefs.current.get(targetDistanceMeters) ?? null }}

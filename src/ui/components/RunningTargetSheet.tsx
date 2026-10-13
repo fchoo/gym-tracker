@@ -22,7 +22,7 @@ type Draft = Readonly<{
   trainingDays: readonly Weekday[];
   expectedSourceRevision: number;
 }>;
-type ErrorState = "save" | "stale" | null;
+type ErrorState = "save" | "stale" | "refresh" | null;
 
 export type RunningTargetSheetProps = Readonly<{
   initialDistanceMeters?: number;
@@ -114,6 +114,7 @@ export function RunningTargetSheet({
   const [renderVersion, setRenderVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorState>(null);
+  const [committedPlan, setCommittedPlan] = useState<RunningPlanAggregate | null>(null);
   const targetRef = useRef<TextInput>(null);
   const dateRef = useRef<TextInput>(null);
   const dayRef = useRef<View>(null);
@@ -172,11 +173,34 @@ export function RunningTargetSheet({
         targetLocalDate: draft.targetDate === "" ? undefined : draft.targetDate,
         trainingDays: [...draft.trainingDays],
       });
-      await onSaved?.(saved.plan);
+      try {
+        await onSaved?.(saved.plan);
+      } catch {
+        setCommittedPlan(saved.plan);
+        setError("refresh");
+        return;
+      }
       requestIdsRef.current.delete(source.id);
+      setCommittedPlan(null);
       onClose();
     } catch (cause) {
       setError(cause instanceof Error && cause.message.includes("revision_conflict") ? "stale" : "save");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryCommittedRefresh = async () => {
+    if (committedPlan === null || busy) return;
+    setBusy(true);
+    try {
+      await onSaved?.(committedPlan);
+      requestIdsRef.current.delete(committedPlan.id);
+      setCommittedPlan(null);
+      setError(null);
+      onClose();
+    } catch {
+      setError("refresh");
     } finally {
       setBusy(false);
     }
@@ -274,6 +298,7 @@ export function RunningTargetSheet({
           </View>
           {error === "save" ? <InlineNotice action={<SecondaryAction label="Retry saving target" onPress={() => { void save(); }} />} body="Your current target is unchanged. Review the draft and try again." heading="Target was not saved" tone="error" /> : null}
           {error === "stale" ? <InlineNotice action={<SecondaryAction label="Reload target" onPress={() => { void reload(); }} />} body="Review the latest target before saving again." heading="Target changed since this sheet opened" tone="error" /> : null}
+          {error === "refresh" ? <InlineNotice action={<SecondaryAction label="Retry loading progress" onPress={() => { void retryCommittedRefresh(); }} />} body="The target was committed, but the root has not read the matching saved revision yet. Retrying will not submit the target again." heading="Target saved; Progress needs refreshing" tone="attention" /> : null}
           <View style={styles.actions}>
             <SecondaryAction disabled={busy} label="Discard target changes" onPress={onClose} />
             <PrimaryAction busy={busy} label="Save target" onPress={() => { void save(); }} />
