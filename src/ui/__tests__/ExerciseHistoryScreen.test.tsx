@@ -314,6 +314,73 @@ describe("ExerciseHistoryScreen", () => {
     expect(onOpenSource).toHaveBeenCalledWith("session-working-best", 7);
   });
 
+  it("deduplicates non-load source actions by immutable source identity while keeping visits factual", async () => {
+    const onOpenSource = jest.fn();
+    const projection = bodyweightHistory([11, 11]);
+    const segment = projection.segments[0]!;
+    const first = {
+      ...segment.comparableSets[0]!,
+      sessionId: "session-shared",
+      setId: "working-shared-first",
+      localDate: "2026-08-24",
+      setOrdinal: 0,
+      sourceRevision: 11,
+    };
+    const second = {
+      ...segment.comparableSets[1]!,
+      sessionId: "session-shared",
+      setId: "working-shared-second",
+      localDate: "2026-08-25",
+      setOrdinal: 1,
+      sourceRevision: 11,
+    };
+    const unique = {
+      ...second,
+      sessionId: "session-unique",
+      setId: "working-unique",
+      localDate: "2026-08-26",
+      setOrdinal: 2,
+      sourceRevision: 12,
+    };
+
+    await renderHistory({
+      onOpenSource,
+      loadExerciseHistory: jest.fn(async () => ({
+        ...projection,
+        segments: [{
+          ...segment,
+          comparableSets: [first, second, unique],
+        }],
+      })),
+    });
+
+    expect(await screen.findByText("bodyweight_reps · contract 1 · generation 1"))
+      .toBeOnTheScreen();
+    expect(screen.getByText(/Working visit · 24 August 2026 · Set 1/u))
+      .toBeOnTheScreen();
+    expect(screen.getByText(/Working visit · 25 August 2026 · Set 2/u))
+      .toBeOnTheScreen();
+    expect(screen.getByText(/Working visit · 26 August 2026 · Set 3/u))
+      .toBeOnTheScreen();
+
+    const sourceActions = screen.getAllByRole("button", { name: "Open source" });
+    expect(sourceActions).toHaveLength(2);
+    await fireEvent(sourceActions[0]!, "focus");
+    expect(sourceActions[0]).toHaveStyle({
+      outlineOffset: 3,
+      outlineWidth: sizes.focusRing,
+    });
+
+    await fireEvent.press(sourceActions[0]!);
+    await fireEvent.press(sourceActions[1]!);
+    await fireEvent.press(sourceActions[0]!);
+    expect(onOpenSource.mock.calls).toEqual([
+      ["session-shared", 11],
+      ["session-unique", 12],
+      ["session-shared", 11],
+    ]);
+  });
+
   it("uses the Phase 19 focus contract for non-load source actions", async () => {
     await renderHistory({
       onOpenSource: jest.fn(),
