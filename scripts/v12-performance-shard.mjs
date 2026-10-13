@@ -1,5 +1,6 @@
 import {
   V12_PERFORMANCE_BUDGETS,
+  V12_PERFORMANCE_WORKLOAD,
   nearestRankP95,
   validateV12PerformanceEvidence,
 } from "./benchmark-v12-interactions.mjs";
@@ -94,18 +95,21 @@ export function executeV12PerformanceShard({ identity, performance }) {
     observation_state: "REVIEW_REQUIRED",
     identity: Object.freeze({ ...identity }),
     budgets: V12_PERFORMANCE_BUDGETS,
+    workload: V12_PERFORMANCE_WORKLOAD,
     raw_samples: Object.freeze(structuredClone(performance.samples)),
     summary: Object.freeze({ ...core, ...extension }),
   });
 }
 
 export function validateV12PerformanceShard(observation, identity) {
-  if (!observation || observation.schema_version !== 1 || observation.suite !== "v1.2-performance" || observation.producer !== "v12-performance-observation-shard/v1" || observation.observation_state !== "REVIEW_REQUIRED" || Object.hasOwn(observation, "verdict") || Object.hasOwn(observation, "status") || JSON.stringify(observation.budgets) !== JSON.stringify(V12_PERFORMANCE_BUDGETS)) fail("envelope_invalid");
+  if (!observation || observation.schema_version !== 1 || observation.suite !== "v1.2-performance" || observation.producer !== "v12-performance-observation-shard/v1" || observation.observation_state !== "REVIEW_REQUIRED" || Object.hasOwn(observation, "verdict") || Object.hasOwn(observation, "status") || JSON.stringify(observation.budgets) !== JSON.stringify(V12_PERFORMANCE_BUDGETS) || JSON.stringify(observation.workload) !== JSON.stringify(V12_PERFORMANCE_WORKLOAD)) fail("envelope_invalid");
   const performance = {
     schema_version: 1,
     suite: "v1.2-performance",
     producer: "v12-release-performance-collector/v1",
     native_execution: "EXECUTED",
+    sample_origin: "release-native-source-backed",
+    workload: observation.workload,
     identity: observation.identity,
     budgets: observation.budgets,
     samples: observation.raw_samples,

@@ -28,6 +28,15 @@ function evidence(overrides = {}) {
     suite: "v1.2-performance",
     producer: "v12-release-performance-collector/v1",
     native_execution: "EXECUTED",
+    sample_origin: "release-native-source-backed",
+    workload: {
+      full_calendar: true,
+      set_count: 15_000,
+      correction_count: 200,
+      multi_plan_history: true,
+      maximum_reviewed_garmin_json: true,
+      merge_fixture: "phase12-24mib-100000-row",
+    },
     identity,
     budgets: V12_PERFORMANCE_BUDGETS,
     samples: {
@@ -57,8 +66,13 @@ test("validates retained raw samples and deterministic p95 without fabricated ve
 
 test("rejects missing or invalid samples, drifted budgets, and mismatched identity", () => {
   assert.throws(() => validateV12PerformanceEvidence(evidence({ samples: {} }), identity), /samples_invalid/);
+  assert.throws(() => validateV12PerformanceEvidence(evidence({ samples: { ...evidence().samples, cold_launch_to_interactive_ms: samples(19, 200) } }), identity), /cold_launch_samples_invalid/);
+  assert.throws(() => validateV12PerformanceEvidence(evidence({ samples: { ...evidence().samples, ordinary_js_task_ms: [Number.NaN] } }), identity), /ordinary_js_task_samples_invalid/);
   assert.throws(() => validateV12PerformanceEvidence(evidence({ budgets: {} }), identity), /budgets_invalid/);
-  assert.throws(() => validateV12PerformanceEvidence(evidence({ identity: { ...identity, fixture_sha256: "f".repeat(64) } }), identity), /identity_invalid/);
+  for (const key of ["source_tree_sha256", "apk_sha256", "device_identity_sha256", "fixture_sha256"]) {
+    assert.throws(() => validateV12PerformanceEvidence(evidence({ identity: { ...identity, [key]: "f".repeat(64) } }), identity), /identity_invalid/);
+  }
+  assert.throws(() => validateV12PerformanceEvidence(evidence({ sample_origin: "host-jest" }), identity), /source_backing_invalid/);
 });
 
 test("collector stays deferred without a later authorized native execution", async () => {

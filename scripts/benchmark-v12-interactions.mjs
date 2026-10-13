@@ -342,6 +342,15 @@ export const V12_PERFORMANCE_BUDGETS = Object.freeze({
   garmin_sync_normalization: Object.freeze({ status: "REVIEW_REQUIRED", limit_source: "phase18-exact-artifact-baseline", fixture: "maximum-reviewed-garmin-json" }),
 });
 
+export const V12_PERFORMANCE_WORKLOAD = Object.freeze({
+  full_calendar: true,
+  set_count: 15_000,
+  correction_count: 200,
+  multi_plan_history: true,
+  maximum_reviewed_garmin_json: true,
+  merge_fixture: "phase12-24mib-100000-row",
+});
+
 export function nearestRankP95(values) {
   if (!Array.isArray(values) || values.length === 0) fail("performance_samples_invalid");
   return [...values].sort((left, right) => left - right)[Math.ceil(values.length * 0.95) - 1];
@@ -359,6 +368,7 @@ function validatePerformanceSamples(values, minimum, label) {
 /** Validates observations only; no status or verdict is accepted or emitted here. */
 export function validateV12PerformanceEvidence(evidence, expectedIdentity) {
   if (evidence?.schema_version !== 1 || evidence.suite !== "v1.2-performance" || evidence.producer !== "v12-release-performance-collector/v1" || evidence.native_execution !== "EXECUTED" || Object.hasOwn(evidence, "verdict") || Object.hasOwn(evidence, "status")) fail("performance_envelope_invalid");
+  if (evidence.sample_origin !== "release-native-source-backed" || JSON.stringify(evidence.workload) !== JSON.stringify(V12_PERFORMANCE_WORKLOAD)) fail("performance_source_backing_invalid");
   if (JSON.stringify(evidence.budgets) !== JSON.stringify(V12_PERFORMANCE_BUDGETS)) fail("performance_budgets_invalid");
   validatePerformanceIdentity(evidence.identity, expectedIdentity);
   const samples = evidence.samples;
