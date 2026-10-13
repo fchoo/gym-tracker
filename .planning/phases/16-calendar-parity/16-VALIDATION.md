@@ -237,7 +237,7 @@ needed: every mapped gap was already covered by an executable behavioral test.
 | Exact verifier | `npm run verify:v12:calendar -- --fixture scripts/fixtures/v12-calendar-evidence/complete.json` | PASS as validator; `ok=true`, `status=REVIEW_REQUIRED`, `all_pass=false`, 9 native cases / 8 route journeys / 14 comparisons |
 | Focused coverage | `npm run test:coverage:v12:calendar` | PASS — evidence scripts 100% statements/branches/functions/lines; controls 100% all four metrics |
 | Static checks | `npm run typecheck && npm run check:boundaries` | PASS — TypeScript and 430-file boundary check |
-| Full host run | `npm run test:all -- --runInBand` | PARTIAL execution: unit 150 suites/2,526 tests, components 99/975, SQLite 29/607 passed; integration was terminated externally with exit 143 after its first suite, so no incomplete integration result is counted as green |
+| Full host projects | Unit, components, SQLite results from the prior host run plus `npm run test:integration -- --runInBand` closure rerun | PASS — unit 150 suites/2,526 tests, components 99 suites/975 tests, SQLite 29 suites/607 tests, integration 34 suites/514 tests; all host-automatable projects green |
 
 ### Native/manual boundary
 
@@ -262,4 +262,16 @@ green.
 | Tracked source/app/test/script count | 960 files |
 | Working-tree change | `16-VALIDATION.md` only before commit; implementation tree unchanged |
 
-**Execution sign-off:** host-automatable requirements validated; `nyquist_compliant: true` and `wave_0_complete: true`; only the explicitly listed Phase 20 native/attended items remain deferred.
+**Execution sign-off:** all host-automatable requirements are green; `nyquist_compliant: true` and `wave_0_complete: true`; `PARTIAL` applies only to the explicitly listed Phase 20 native/attended items, which remain deferred.
+
+### Closure rerun
+
+The previously interrupted integration project was rerun alone with the pinned
+toolchain in this isolated worktree:
+
+```text
+npm run test:integration -- --runInBand
+PASS — 34 suites, 514 tests, 128.2s, exit 0
+```
+
+No native, device, Maestro, screenshot, or performance command was rerun.
