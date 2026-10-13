@@ -16,6 +16,7 @@ import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedSt
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
+import { createProgressRepository } from "../../src/platform/sqlite/repositories/progressRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { createCollisionDecisionCommand } from "../../src/domains/scheduling/scheduleCommands";
 import {
@@ -164,6 +165,37 @@ describe("Running target source receipts", () => {
       "SELECT COUNT(*) AS count FROM running_goals WHERE plan_id = ?",
       [source.id],
     )).resolves.toEqual([{ count: 4 }]);
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute("UPDATE plans SET is_active = 1 WHERE id = ?", [source.id]);
+      await transaction.execute(
+        "UPDATE owned_plan_schedules SET lifecycle = 'active', deactivated_at_ms = NULL WHERE plan_id = ?",
+        [source.id],
+      );
+    });
+    const projected = await createProgressRepository(kernel).load({
+      sport: "Running",
+      period: "all_time",
+      nowLocalDate: "2026-10-13",
+    });
+    expect(projected.dashboard).toMatchObject({
+      sport: "Running",
+      goals: [
+        { distanceMeters: 2_400, target: { durationSeconds: 650 } },
+        { distanceMeters: 10_000, target: { durationSeconds: 3_000 } },
+        { distanceMeters: 21_097, target: { durationSeconds: 7_200 } },
+      ],
+    });
+    expect(projected.runningTargetSources).toEqual([
+      expect.objectContaining({
+        id: source.id,
+        currentTargets: expect.arrayContaining([
+          expect.objectContaining({ goalDistanceMeters: 2_400, revision: 2 }),
+          expect.objectContaining({ goalDistanceMeters: 10_000, revision: 1 }),
+          expect.objectContaining({ goalDistanceMeters: 21_097, revision: 1 }),
+        ]),
+      }),
+    ]);
   });
 });
 
