@@ -137,6 +137,15 @@ type FocusablePressableProps = PressableProps & Readonly<{
   onKeyDown?: (event: { nativeEvent: { key: string } }) => void;
 }>;
 
+const FocusClearanceContext = React.createContext<number>(sizes.focusClearance);
+
+export function FocusClearanceProvider({ children, clearance }: Readonly<{
+  children: React.ReactNode;
+  clearance: number;
+}>) {
+  return h(FocusClearanceContext.Provider, { value: clearance }, children);
+}
+
 type ContentCardProps = Readonly<{
   children: React.ReactNode;
   disabled?: boolean;
@@ -241,6 +250,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
     ref,
   ) {
     const { colors } = useAppTheme();
+    const focusClearance = React.useContext(FocusClearanceContext);
     const [focused, setFocused] = useState(false);
     const [preferredFocus, setPreferredFocus] = useState(false);
     const focusRegistration = useBottomSheetFocusRegistration();
@@ -318,7 +328,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
         typeof style === "function" ? style(state) : style,
         {
           outlineColor: colors.focusRing,
-          outlineOffset: focused ? sizes.focusClearance : 0,
+          outlineOffset: focused ? focusClearance : 0,
           outlineStyle: "solid",
           outlineWidth: focused ? sizes.focusRing : 0,
         },

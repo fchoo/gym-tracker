@@ -7,7 +7,7 @@ import type { ProgressAllGoal, ProgressDashboardProjection, ProgressPlannedNext,
 import { runningTargetForDistance, type RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningPlanRuntimePort } from "../../bootstrap/runningPlanRuntime";
 import type { ProgressBodyweightEntry, ProgressBodyweightSaveInput } from "../../bootstrap/workoutAppRuntime";
-import { EmptyState, FocusablePressable, IconAction, InlineNotice, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
+import { EmptyState, FocusablePressable, FocusClearanceProvider, IconAction, InlineNotice, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { BodyweightEditorSheet } from "../components/BodyweightEditorSheet";
 import { BodyweightHistorySheet } from "../components/BodyweightHistorySheet";
 import { ProgressSettingsSheet } from "../components/ProgressSettingsSheet";
@@ -702,7 +702,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     ? []
     : (snapshot?.runningTargetSources ?? []);
 
-  return <>
+  return <FocusClearanceProvider clearance={3}><>
     <AdaptiveScreen
       {...adaptiveWidth}
       onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => { scrollOffsetRef.current = event.nativeEvent.contentOffset.y; }}
@@ -822,7 +822,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
       todayLocalDate={nowLocalDate}
       visible={bodyweightEditor !== null}
     />}
-  </>;
+  </></FocusClearanceProvider>;
 }
 
 const styles = StyleSheet.create({
