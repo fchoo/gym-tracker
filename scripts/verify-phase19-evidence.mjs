@@ -334,11 +334,15 @@ export function validatePhase19HostManifest(manifest, context) {
     context.artifact_root,
     retainedPaths,
   ).toString("utf8"));
+  const coverageContract = JSON.parse(readFileSync(
+    path.join(context.root, "scripts/phase19-integrity-coverage.json"),
+    "utf8",
+  ));
   if (
     coverage.ok !== true
-    || coverage.integrity_critical_files !== 23
+    || coverage.integrity_critical_files !== coverageContract.required_files?.length
     || coverage.required_percent !== 100
-    || coverage.changed_line_scope_files !== 4
+    || coverage.changed_line_scope_files !== coverageContract.changed_line_scope?.length
     || canonicalJson(coverage.metrics) !== canonicalJson([
       "statements", "branches", "functions", "lines",
     ])

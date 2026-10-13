@@ -183,6 +183,17 @@ describe("Phase 19 Running repository defensive coverage", () => {
     }) as never);
     await expect(missingTarget.saveSourceGraph(sourceInput as never)).rejects.toThrow("running_target_readback_missing");
 
+    const staleDistanceTarget = createRunningPlanRepository(kernel((sql) => {
+      if (sql.includes("running_plan_receipts")) return [];
+      if (sql.includes("FROM plans plan JOIN running_plans")) return [{ revision: 1, plan_kind: "running", is_active: 0, status: "ready" }];
+      if (sql.includes("CAST(json_extract")) return [{ goal_json: JSON.stringify(plan.goal) }];
+      return [];
+    }) as never);
+    await expect(staleDistanceTarget.saveSourceGraph({
+      ...sourceInput,
+      expectedGoalRevision: 0,
+    } as never)).rejects.toThrow("running_target_revision_conflict");
+
     const sessionInput = {
       ...sourceInput,
       targetCommand: false,

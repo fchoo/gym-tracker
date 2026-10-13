@@ -21,6 +21,11 @@ const phase19CoverageManifest = JSON.parse(readFileSync(
   path.join(projectRoot, "scripts/phase19-integrity-coverage.json"),
   "utf8",
 ));
+const phase19CoverageHead = execFileSync(
+  "git",
+  ["rev-parse", "HEAD"],
+  { cwd: projectRoot, encoding: "utf8" },
+).trim();
 const phase18IntegrityCriticalFiles = [
   "src/domains/activities/activityDetails.ts",
   "src/domains/activities/importCommands.ts",
@@ -309,7 +314,7 @@ function resolveJestBin() {
 
 function validatePhase19CoverageManifest() {
   const expectedKeys = [
-    "schema_version", "phase", "diff_base", "diff_head", "required_files",
+    "schema_version", "phase", "diff_base", "diff_head_strategy", "required_files",
     "supporting_files", "changed_line_scope", "unreachable_coverage",
     "reviewed_exclusions",
   ];
@@ -323,8 +328,9 @@ function validatePhase19CoverageManifest() {
   const exclusions = phase19CoverageManifest.reviewed_exclusions;
   if (
     !exactKeys(phase19CoverageManifest, expectedKeys)
-    || phase19CoverageManifest.schema_version !== 1
+    || phase19CoverageManifest.schema_version !== 2
     || phase19CoverageManifest.phase !== "19-progress-parity"
+    || phase19CoverageManifest.diff_head_strategy !== "current_head"
     || !Array.isArray(phase19IntegrityCriticalFiles)
     || phase19IntegrityCriticalFiles.length < 1
     || new Set(phase19IntegrityCriticalFiles).size !== phase19IntegrityCriticalFiles.length
@@ -358,11 +364,20 @@ function validatePhase19CoverageManifest() {
     || new Set(exclusions.map(({ path: filePath }) => filePath)).size !== exclusions.length
   ) throw new Error("phase19_integrity_coverage_manifest_invalid");
 
+  const dirtyProduction = execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=all", "--", "src", "app"],
+    { cwd: projectRoot, encoding: "utf8" },
+  ).trim();
+  if (dirtyProduction !== "") {
+    throw new Error("phase19_integrity_coverage_uncommitted_production_changes");
+  }
+
   const changedModules = execFileSync(
     "git",
     [
       "diff", "--name-only",
-      `${phase19CoverageManifest.diff_base}..${phase19CoverageManifest.diff_head}`,
+      `${phase19CoverageManifest.diff_base}..${phase19CoverageHead}`,
     ],
     { cwd: projectRoot, encoding: "utf8" },
   ).split(/\r?\n/u).filter((filePath) =>
@@ -394,7 +409,7 @@ function phase19OwnedLines(relativePath) {
     "git",
     [
       "rev-list",
-      `${phase19CoverageManifest.diff_base}..${phase19CoverageManifest.diff_head}`,
+      `${phase19CoverageManifest.diff_base}..${phase19CoverageHead}`,
     ],
     { cwd: projectRoot, encoding: "utf8" },
   ).split(/\r?\n/u).filter(Boolean));

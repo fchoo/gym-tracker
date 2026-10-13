@@ -136,6 +136,10 @@ const repeated = (count, value) => Array.from(
 );
 
 function hostFixture(root) {
+  const coverageManifest = JSON.parse(readFileSync(
+    "scripts/phase19-integrity-coverage.json",
+    "utf8",
+  ));
   const retained = (name, value) => {
     const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value);
     writeFileSync(join(root, name), bytes);
@@ -210,11 +214,11 @@ function hostFixture(root) {
   });
   const coverage = {
     ok: true,
-    integrity_critical_files: 23,
+    integrity_critical_files: coverageManifest.required_files.length,
     focused: true,
     metrics: ["statements", "branches", "functions", "lines"],
     required_percent: 100,
-    changed_line_scope_files: 4,
+    changed_line_scope_files: coverageManifest.changed_line_scope.length,
   };
   const currentHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const manifest = {
@@ -359,6 +363,7 @@ test("coverage gate registers every Phase 19 integrity module and preserves Phas
     "src/domains/history/metricHistory.ts",
     "src/platform/sqlite/repositories/historyRepository.ts",
     "src/domains/running/commands.ts",
+    "src/domains/running/contracts.ts",
     "src/platform/sqlite/repositories/runningPlanRepository.ts",
     "src/bootstrap/runningPlanRuntime.tsx",
     "src/domains/progression/recommendationCommands.ts",
@@ -370,6 +375,7 @@ test("coverage gate registers every Phase 19 integrity module and preserves Phas
     "src/domains/portability/backupContracts.ts",
     "src/domains/portability/mergePlan.ts",
     "src/domains/portability/restoreCommands.ts",
+    "src/domains/workout/finishWorkout.ts",
     "src/platform/sqlite/migrations/0045_recommendation_decision_receipts.ts",
     "src/platform/sqlite/repositories/logicalBackupRepository.ts",
     "src/platform/sqlite/repositories/logicalRestoreRepository.ts",
@@ -385,14 +391,13 @@ test("coverage gate registers every Phase 19 integrity module and preserves Phas
     "src/bootstrap/trainingFoundationRuntime.ts",
     "src/bootstrap/workoutAppRuntime.tsx",
   ]);
-  assert.deepEqual(manifest.unreachable_coverage, [{
-    path: "src/bootstrap/workoutAppRuntime.tsx",
-    line: 4765,
-    metrics: ["statements", "branches", "lines"],
-    reason: "The local command is assigned immediately before this defensive assertion and cannot be cleared or observed as undefined in JavaScript execution.",
-  }]);
+  assert.equal(manifest.schema_version, 2);
+  assert.equal(manifest.diff_head_strategy, "current_head");
+  assert.equal(Object.hasOwn(manifest, "diff_head"), false);
+  assert.deepEqual(manifest.unreachable_coverage, []);
+  const currentHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const changedModules = execFileSync("git", [
-    "diff", "--name-only", `${manifest.diff_base}..${manifest.diff_head}`,
+    "diff", "--name-only", `${manifest.diff_base}..${currentHead}`,
   ], { encoding: "utf8" }).split(/\r?\n/u).filter((filePath) =>
     /^(?:src|app)\/.*\.tsx?$/u.test(filePath)
     && !/\.test\.|\/__tests__\/|^src\/testing\//u.test(filePath));
@@ -406,6 +411,7 @@ test("coverage gate registers every Phase 19 integrity module and preserves Phas
   assert.match(coverageSource, /focusPhase16Evidence/u);
   assert.match(coverageSource, /argument === "--coverageDirectory"/u);
   assert.match(coverageSource, /changedScopeFailures/u);
+  assert.match(coverageSource, /phase19CoverageHead/u);
   assert.match(coverageSource, /--coverageThreshold=\{\}/u);
   assert.match(packageJson.scripts["test:coverage:integrity"], /--focus-phase19/u);
   assert.match(packageJson.scripts["test:evidence:phase19"], /verify-phase19-evidence\.test\.mjs/u);

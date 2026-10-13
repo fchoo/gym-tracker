@@ -428,5 +428,12 @@ describe("projectProgressDashboard", () => {
       sport: "Running",
       plannedNext: [{ ...plannedNext[0]!, sourceRevision: 0 }],
     })).toMatchObject({ plannedNext: null });
+    const sameDay = [
+      { ...plannedNext[0]!, sourceOpportunityId: "running-z", localDate: "2026-10-14" },
+      { ...plannedNext[1]!, sourceOpportunityId: "strength-z" },
+      { ...plannedNext[0]!, sourceOpportunityId: "running-a", localDate: "2026-10-14" },
+    ];
+    expect(__dashboardProjectionTestOnly.plannedNextFor("All", sameDay))
+      .toMatchObject({ sourceOpportunityId: "running-a" });
   });
 });

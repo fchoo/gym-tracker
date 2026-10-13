@@ -1,8 +1,8 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "phase": "19-progress-parity",
   "diff_base": "475581604fed32d3a16395655217112e4ab38022",
-  "diff_head": "134b0db7130730dfad2bae7a9371d070059f61a1",
+  "diff_head_strategy": "current_head",
   "required_files": [
     "src/domains/progress/dashboardProjection.ts",
     "src/domains/progress/runningPacing.ts",
@@ -12,6 +12,7 @@
     "src/domains/history/metricHistory.ts",
     "src/platform/sqlite/repositories/historyRepository.ts",
     "src/domains/running/commands.ts",
+    "src/domains/running/contracts.ts",
     "src/platform/sqlite/repositories/runningPlanRepository.ts",
     "src/bootstrap/runningPlanRuntime.tsx",
     "src/domains/progression/recommendationCommands.ts",
@@ -23,6 +24,7 @@
     "src/domains/portability/backupContracts.ts",
     "src/domains/portability/mergePlan.ts",
     "src/domains/portability/restoreCommands.ts",
+    "src/domains/workout/finishWorkout.ts",
     "src/platform/sqlite/migrations/0045_recommendation_decision_receipts.ts",
     "src/platform/sqlite/repositories/logicalBackupRepository.ts",
     "src/platform/sqlite/repositories/logicalRestoreRepository.ts",
@@ -37,14 +39,7 @@
     { "path": "src/bootstrap/trainingFoundationRuntime.ts", "reason": "The runtime predates Phase 19; exact coverage is enforced on Phase 19 bodyweight composition lines and branches." },
     { "path": "src/bootstrap/workoutAppRuntime.tsx", "reason": "The application runtime predates Phase 19; exact coverage is enforced on Phase 19 progress, recommendation, and bodyweight seams." }
   ],
-  "unreachable_coverage": [
-    {
-      "path": "src/bootstrap/workoutAppRuntime.tsx",
-      "line": 4765,
-      "metrics": ["statements", "branches", "lines"],
-      "reason": "The local command is assigned immediately before this defensive assertion and cannot be cleared or observed as undefined in JavaScript execution."
-    }
-  ],
+  "unreachable_coverage": [],
   "reviewed_exclusions": [
     { "path": "app/(tabs)/calendar.tsx", "reason": "Phase 16 calendar route presentation, not a Phase 19 integrity owner." },
     { "path": "app/(tabs)/progress.tsx", "reason": "Thin navigation composition; runtime transaction seams are covered directly." },
@@ -62,10 +57,15 @@
     { "path": "src/domains/progression/index.ts", "reason": "Barrel re-export with no executable integrity logic." },
     { "path": "src/domains/scheduling/localDate.ts", "reason": "Shared Phase 16 date helper already owned by its existing tests." },
     { "path": "src/domains/workout/workoutPresentation.ts", "reason": "Presentation formatting with no transaction or evidence authority." },
+    { "path": "src/domains/workout/index.ts", "reason": "Barrel re-export with no executable integrity logic." },
+    { "path": "src/domains/workout/sessionDetail.ts", "reason": "Phase 16 read-only session presentation contract, covered by its phase-owned tests." },
     { "path": "src/navigation/importedActivityRoute.ts", "reason": "Read-only bounded route encoding covered by route tests." },
     { "path": "src/navigation/routeOrigin.ts", "reason": "Read-only route token parsing covered by route tests." },
     { "path": "src/platform/sqlite/migrations/index.ts", "reason": "Migration barrel registration; schema 45 migration implementation is required directly." },
     { "path": "src/platform/sqlite/repositories/trainingCalendarRepository.ts", "reason": "Phase 16 calendar repository remains under its phase-owned coverage." },
+    { "path": "src/platform/sqlite/repositories/plansWorkoutRepository.ts", "reason": "Phase 16 planned Strength source read work remains under its phase-owned coverage." },
+    { "path": "src/platform/sqlite/repositories/scheduleRepository.ts", "reason": "Phase 16 schedule materialization changes remain under its phase-owned coverage." },
+    { "path": "src/platform/sqlite/repositories/strengthOccurrenceSnapshot.ts", "reason": "Phase 16 immutable occurrence snapshot reads remain under its phase-owned coverage." },
     { "path": "src/ui/calendar/CalendarAgenda.tsx", "reason": "Phase 16 presentation component with no mutation authority." },
     { "path": "src/ui/calendar/CalendarMonthViewport.tsx", "reason": "Phase 16 presentation component with no mutation authority." },
     { "path": "src/ui/calendar/CalendarReadOnlyWorkout.tsx", "reason": "Phase 16 read-only presentation component." },
@@ -80,12 +80,16 @@
     { "path": "src/ui/components/ProgressSettingsSheet.tsx", "reason": "Read-only presentation with no integrity authority." },
     { "path": "src/ui/components/RecommendationSurface.tsx", "reason": "Presentation is covered behaviorally; command/repository/runtime owners are required." },
     { "path": "src/ui/components/RunningHistorySheet.tsx", "reason": "Read-only evidence presentation covered by component contracts." },
+    { "path": "src/ui/components/RunningSessionFields.tsx", "reason": "Phase 16 read-only Running target presentation, not a Phase 19 integrity owner." },
     { "path": "src/ui/components/RunningTargetSheet.tsx", "reason": "Presentation is covered behaviorally; running command/repository/runtime owners are required." },
+    { "path": "src/ui/components/WorkoutSessionPresentation.tsx", "reason": "Phase 16 read-only workout presentation remains under its phase-owned coverage." },
+    { "path": "src/ui/components/index.ts", "reason": "Barrel re-export with no executable integrity logic." },
     { "path": "src/ui/screens/CalendarScreen.tsx", "reason": "Phase 16 presentation screen, not a Phase 19 integrity owner." },
     { "path": "src/ui/screens/ExerciseHistoryScreen.tsx", "reason": "Read-only presentation covered by route and component contracts." },
     { "path": "src/ui/screens/ImportedActivityDetailScreen.tsx", "reason": "Read-only source presentation covered by component tests." },
     { "path": "src/ui/screens/PlannedWorkoutDetailScreen.tsx", "reason": "Read-only Phase 16 presentation screen." },
     { "path": "src/ui/screens/ProgressScreen.tsx", "reason": "Presentation state machine covered behaviorally; all mutation/read authority owners are required." },
-    { "path": "src/ui/screens/RunningPlanDetailScreen.tsx", "reason": "Presentation is covered behaviorally; running runtime and repository owners are required." }
+    { "path": "src/ui/screens/RunningPlanDetailScreen.tsx", "reason": "Presentation is covered behaviorally; running runtime and repository owners are required." },
+    { "path": "src/ui/theme/index.ts", "reason": "Phase 16 theme barrel changes contain no Phase 19 integrity authority." }
   ]
 }
