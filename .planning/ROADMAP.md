@@ -4,13 +4,13 @@
 
 - **v1.0 Personal-use Gym Tracker** — Phases 1-7 (shipped 2026-09-14)
 - **v1.1 In-Workout Editing, Advanced Timing & Drive Backup** — Phases 8-12 (shipped 2026-10-01)
-- **v1.2 Prototype Parity, Concurrent Plans & Garmin Import** — Phases 13-20 (planning; implementation requires later owner authorization)
+- **v1.2 Prototype Parity, Concurrent Plans & Garmin Import** — Phases 13-20 (implementation in progress; Phase 20 native acceptance remains)
 
 ## Milestone Outcome
 
 Reproduce the owner-approved Revision 18 prototype in the Android application while preserving SQLite authority, commit-gated workout behavior, immutable history, offline operation, recovery, backup/merge, accessibility, and performance. Strength and Running plans coexist through real domain contracts; Garmin supplies imported Running facts rather than an in-app recorder.
 
-**Planning gate:** This roadmap authorizes planning only. Every phase must be discussed, UI-heavy phases must receive a UI specification, executable plans must pass checks and review convergence, and the complete milestone must stop for owner review before any implementation, build, device mutation, release, or deployment.
+**Execution authority:** The owner authorized direct execution of the converged plans. Phase 20 remains the single comprehensive native/device/release checkpoint; no production artifact is final before it passes.
 
 ## Phases
 
@@ -42,15 +42,15 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 
 </details>
 
-### v1.2 Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
+### v1.2 Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENTING
 
 - [x] **Phase 13: One-per-Sport Plan & Running Foundation** - Establish authoritative zero/one-per-sport activation, Running-session, import, matching, portability, and history contracts. (completed 2026-10-08)
 - [x] **Phase 14: Prototype Visual Shell** - Establish the approved four-root visual, navigation, appearance, overlay, startup, and settings system. (host-complete 2026-10-12; exact native acceptance deferred to Phase 20)
 - [x] **Phase 15: Workout Parity** - Deliver the approved Workout and Active Workout experience without weakening offline or commit-gated behavior. (host-complete 2026-10-12; exact native acceptance deferred to Phase 20)
-- [ ] **Phase 16: Calendar Parity** - Deliver the full-height interactive Calendar and read-only historical detail flow using the Phase 15 presentation contract.
+- [x] **Phase 16: Calendar Parity** - Deliver the full-height interactive Calendar and read-only historical detail flow using the Phase 15 presentation contract. (host-complete 2026-10-14; native acceptance deferred to Phase 20)
 - [x] **Phase 17: Library & Running Plans** - Deliver complete Library parity plus persistent structured Running-plan creation, editing, scheduling, and collision decisions. (host-complete 2026-10-12; exact native acceptance deferred to Phase 20)
 - [x] **Phase 18: Garmin Account Sync** - Deliver the selected standalone ARM64 embedded-client sync, factual activity detail, deduplication, recovery, and confirmed matching. (completed 2026-10-12)
-- [ ] **Phase 19: Progress Parity** - Deliver factual Strength and Running progress, goals, recommendations, and optional bodyweight views from durable evidence.
+- [x] **Phase 19: Progress Parity** - Deliver factual Strength and Running progress, goals, recommendations, and optional bodyweight views from durable evidence. (host-complete 2026-10-14; native acceptance deferred to Phase 20)
 - [ ] **Phase 20: Native Acceptance** - Demonstrate cross-phase native fidelity, accessibility, recovery, integrity, and performance before later release authorization.
 
 **Coverage:** 172/172 v1.2 requirements mapped exactly once: DOM 17; SHL 13; WRK 36; CAL 23; LIB 36; GAR 16; PRO 18; VER 13.
@@ -205,13 +205,13 @@ silently select a different transport.
 
 Plans:
 
-- [ ] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and implement accepted DEV-01/DEV-02 contracts.
-- [ ] 16-02-PLAN.md — Build the source-backed full-height month grid, Calendar key, encodings, focus, and query states.
-- [ ] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
-- [ ] 16-04-PLAN.md — Implement UI-thread 1:1 month drag and measured expand/collapse/adjacent motion.
-- [ ] 16-05-PLAN.md — Complete compact agenda routing and Calendar-owned Back/scroll/focus restoration.
-- [ ] 16-06-PLAN.md — Capture diagnostic native geometry and mapped Revision 18 overlay/difference artifacts.
-- [ ] 16-07-PLAN.md — Integrate real Phase 17/18 destinations, seal evidence, and hand performance diagnostics to Phase 20.
+- [x] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and implement accepted DEV-01/DEV-02 contracts.
+- [x] 16-02-PLAN.md — Build the source-backed full-height month grid, Calendar key, encodings, focus, and query states.
+- [x] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
+- [x] 16-04-PLAN.md — Implement UI-thread 1:1 month drag and measured expand/collapse/adjacent motion.
+- [x] 16-05-PLAN.md — Complete compact agenda routing and Calendar-owned Back/scroll/focus restoration.
+- [x] 16-06-PLAN.md — Capture diagnostic native geometry and mapped Revision 18 overlay/difference artifacts.
+- [x] 16-07-PLAN.md — Integrate real Phase 17/18 destinations, seal evidence, and hand performance diagnostics to Phase 20.
 
 **UI hint**: yes
 **Plan flags**: research required; UI specification required; plan check required; fresh review convergence required; DEV-01 and DEV-02 are accepted with native evidence pending
@@ -337,10 +337,10 @@ Plans:
 | 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 16/16 | Complete    | 2026-10-08 |
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 12/12 | Host complete; native deferred | 2026-10-12 |
 | 15. Workout Parity | 15-workout-parity | 13/13 | Host complete; native deferred | 2026-10-12 |
-| 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
+| 16. Calendar Parity | 16-calendar-parity | 7/7 | Host complete; native deferred | 2026-10-14 |
 | 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; native deferred | 2026-10-12 |
 | 18. Garmin Account Sync | 18-garmin-import | 14/14 | Complete    | 2026-10-12 |
-| 19. Progress Parity | 19-progress-parity | 0/10 | Not started | - |
+| 19. Progress Parity | 19-progress-parity | 10/10 | Host complete; native deferred | 2026-10-14 |
 | 20. Native Acceptance | 20-native-acceptance | 0/12 | Not started | - |
 
 ## Backlog

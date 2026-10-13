@@ -96,29 +96,29 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ### Phase 16: Calendar and read-only detail
 
-- [ ] **CAL-01**: Fill the area above bottom navigation with a Monday-first month grid and persistent Previous, month title, Today and Next controls.
-- [ ] **CAL-02**: Place the info action immediately left of App Settings and show Activity and Status groups in a Calendar key sheet, with no inline legend.
-- [ ] **CAL-03**: Use orange Strength and blue Running, solid/tinted Complete, dotted half-filled Partial and transparent dashed Planned, with neutral status samples.
-- [ ] **CAL-04**: Use shared month/focused date/event cells with 28px date and 36px event tracks, stable effective 4px top inset and measured row-height continuity.
-- [ ] **CAL-05**: Show up to two compact titled events per date in selected and adjacent weeks, preserving full names/statuses in day accessibility labels.
-- [ ] **CAL-06**: Distinguish selected date, today, outside-month dates, rest day and empty dates without changing event status semantics.
-- [ ] **CAL-07**: Keep clipped previous/current/next month panels following horizontal pointer movement one-to-one, clamped to one panel, while vertical intent scrolls normally.
-- [ ] **CAL-08**: Change the visible title at 25% width, revert immediately below the threshold or on cancel, and settle only at or beyond 25%; shorter drags snap back even when fast.
-- [ ] **CAL-09**: Preserve the 240ms month-settle motion and cubic-bezier(.22,.8,.3,1), with completion handling that avoids stale selection or duplicate navigation.
-- [ ] **CAL-10**: Keep previous/next/Today controls usable in both month and focused views, preserving/clamping selected day and returning to today's actual local date.
-- [ ] **CAL-11**: Provide visible-focus arrow navigation and activation for date cells plus non-gesture month controls.
-- [ ] **CAL-12**: Animate the selected month row to the top and its following row to the bottom, retain a single Monday-first weekday header, and reveal compact agenda rows.
-- [ ] **CAL-13**: Reverse both focused rows to their measured month positions before showing month mode and restoring selected-day focus.
-- [ ] **CAL-14**: On adjacent-week date selection, collapse to month, select/focus the new date, then expand its week with events preserved.
-- [ ] **CAL-15**: Keep identical selected dates, navigation sequence and agenda content when reduced motion removes row movement and month transitions.
-- [ ] **CAL-16**: Use one full-width tap target per event with title, one-line result/target, sport/status, source and chevron; remove nested Resume/View/Match actions.
-- [ ] **CAL-17**: Route Strength to read-only workout detail, planned Running to Running plan, and imported Running to Garmin activity detail using real entity identities.
-- [ ] **CAL-18**: Render Active-shaped full-height completed/partial workout detail with exercise disclosure, all set rows and result/state semantics, but no edit/complete/reorder/settings mutation.
-- [ ] **CAL-19**: Render planned Strength as a read-only plan-occurrence preview without inventing a session ID, completed set or result.
-- [ ] **CAL-20**: Preserve agenda date, expanded week and triggering-row focus on detail Back, and expose expand/collapse controls for each historical exercise.
-- [ ] **CAL-21**: Add source-backed loading, empty, stale-projection/error and retry states that retain the selected date and never display invented sessions.
-- [ ] **CAL-22**: Keep deliberate Correct workout, revision history, draft validation, stale-revision conflict and save/retry in the existing correction route, outside Calendar's read-only detail context.
-- [ ] **CAL-23**: Keep intentional Resume workout and Remove from history/confirmation reachable from a separate management context while Calendar history stays read-only.
+- [x] **CAL-01**: Fill the area above bottom navigation with a Monday-first month grid and persistent Previous, month title, Today and Next controls.
+- [x] **CAL-02**: Place the info action immediately left of App Settings and show Activity and Status groups in a Calendar key sheet, with no inline legend.
+- [x] **CAL-03**: Use orange Strength and blue Running, solid/tinted Complete, dotted half-filled Partial and transparent dashed Planned, with neutral status samples.
+- [x] **CAL-04**: Use shared month/focused date/event cells with 28px date and 36px event tracks, stable effective 4px top inset and measured row-height continuity.
+- [x] **CAL-05**: Show up to two compact titled events per date in selected and adjacent weeks, preserving full names/statuses in day accessibility labels.
+- [x] **CAL-06**: Distinguish selected date, today, outside-month dates, rest day and empty dates without changing event status semantics.
+- [x] **CAL-07**: Keep clipped previous/current/next month panels following horizontal pointer movement one-to-one, clamped to one panel, while vertical intent scrolls normally.
+- [x] **CAL-08**: Change the visible title at 25% width, revert immediately below the threshold or on cancel, and settle only at or beyond 25%; shorter drags snap back even when fast.
+- [x] **CAL-09**: Preserve the 240ms month-settle motion and cubic-bezier(.22,.8,.3,1), with completion handling that avoids stale selection or duplicate navigation.
+- [x] **CAL-10**: Keep previous/next/Today controls usable in both month and focused views, preserving/clamping selected day and returning to today's actual local date.
+- [x] **CAL-11**: Provide visible-focus arrow navigation and activation for date cells plus non-gesture month controls.
+- [x] **CAL-12**: Animate the selected month row to the top and its following row to the bottom, retain a single Monday-first weekday header, and reveal compact agenda rows.
+- [x] **CAL-13**: Reverse both focused rows to their measured month positions before showing month mode and restoring selected-day focus.
+- [x] **CAL-14**: On adjacent-week date selection, collapse to month, select/focus the new date, then expand its week with events preserved.
+- [x] **CAL-15**: Keep identical selected dates, navigation sequence and agenda content when reduced motion removes row movement and month transitions.
+- [x] **CAL-16**: Use one full-width tap target per event with title, one-line result/target, sport/status, source and chevron; remove nested Resume/View/Match actions.
+- [x] **CAL-17**: Route Strength to read-only workout detail, planned Running to Running plan, and imported Running to Garmin activity detail using real entity identities.
+- [x] **CAL-18**: Render Active-shaped full-height completed/partial workout detail with exercise disclosure, all set rows and result/state semantics, but no edit/complete/reorder/settings mutation.
+- [x] **CAL-19**: Render planned Strength as a read-only plan-occurrence preview without inventing a session ID, completed set or result.
+- [x] **CAL-20**: Preserve agenda date, expanded week and triggering-row focus on detail Back, and expose expand/collapse controls for each historical exercise.
+- [x] **CAL-21**: Add source-backed loading, empty, stale-projection/error and retry states that retain the selected date and never display invented sessions.
+- [x] **CAL-22**: Keep deliberate Correct workout, revision history, draft validation, stale-revision conflict and save/retry in the existing correction route, outside Calendar's read-only detail context.
+- [x] **CAL-23**: Keep intentional Resume workout and Remove from history/confirmation reachable from a separate management context while Calendar history stays read-only.
 
 ### Phase 17: Library, plan creation and structured Running
 
@@ -180,24 +180,24 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ### Phase 19: Progress and personal goals
 
-- [ ] **PRO-01**: Provide All, Strength and Running tabs plus 4 weeks, 12 weeks and All time ranges with selected/accessibility state and keyboard alternatives.
-- [ ] **PRO-02**: Show nearest active goal with Latest, Best, Target and personal-history goal line, active goals and planned-next context from real comparable facts.
-- [ ] **PRO-03**: Show primary strength goal, gap/status, Needs review and exercise-progress rows using comparable completed history.
-- [ ] **PRO-04**: Show latest/best/target/gap, goal-line trend, running goals, best efforts and derived pacing from imported activities.
-- [ ] **PRO-05**: Keep the default 2.4 km goal at 11:00 with 4:35/km, 1:50/400 m and 0:55/200 m; derive changes only from explicit owner-selected targets.
-- [ ] **PRO-06**: Keep 10 km and Half Marathon target times unset until chosen; show Set target/Target unset and No effort recorded without plotting zero.
-- [ ] **PRO-07**: Provide ready, sparse, empty and loading presentations: one effort says More data needed, missing imports show no zero chart, loading communicates busy.
-- [ ] **PRO-08**: Provide source-loading failure/retry and stale/rebuilding projection states without losing current sport/range or reporting unreliable results.
-- [ ] **PRO-09**: Open primary chart/exercise/best-effort details with an accessible history chart, separate goal line and clear empty state.
-- [ ] **PRO-10**: Preserve the existing exercise-history route, comparable metric facts, source sessions, empty/error/loading states and return navigation.
-- [ ] **PRO-11**: Offer Load/Relative only when a valid optional bodyweight exists for a load metric; disclose its measurement basis and never change targets.
-- [ ] **PRO-12**: Edit Distance, Target time, Optional target date and Available training days while showing a read-only Current benchmark and explicit Save target/Cancel.
-- [ ] **PRO-13**: Persist validated target edits to source facts; reject invalid time/date without losing draft and keep plan/detail/Progress goal displays consistent.
-- [ ] **PRO-14**: Show Review target with Current/Proposed values, personal-history evidence and Keep current/Use target choices.
-- [ ] **PRO-15**: Persist acceptance/keep decisions once with revision checks; keep failure/retry visible and prevent a dismissed recommendation reappearing from a fixture rerender.
-- [ ] **PRO-16**: Keep Body metrics/Settings and Bodyweight history reachable; explain personal history and optional measurements without collecting gender/height or creating a score.
-- [ ] **PRO-17**: Show optional empty/bodyweight history with Add first entry/Add entry, dated values, Edit and two-step Delete/Confirm.
-- [ ] **PRO-18**: Provide dated kg input with Add/Edit, Save entry/Cancel, error feedback and persistence; enforce reviewed valid measurement/date bounds.
+- [x] **PRO-01**: Provide All, Strength and Running tabs plus 4 weeks, 12 weeks and All time ranges with selected/accessibility state and keyboard alternatives.
+- [x] **PRO-02**: Show nearest active goal with Latest, Best, Target and personal-history goal line, active goals and planned-next context from real comparable facts.
+- [x] **PRO-03**: Show primary strength goal, gap/status, Needs review and exercise-progress rows using comparable completed history.
+- [x] **PRO-04**: Show latest/best/target/gap, goal-line trend, running goals, best efforts and derived pacing from imported activities.
+- [x] **PRO-05**: Keep the default 2.4 km goal at 11:00 with 4:35/km, 1:50/400 m and 0:55/200 m; derive changes only from explicit owner-selected targets.
+- [x] **PRO-06**: Keep 10 km and Half Marathon target times unset until chosen; show Set target/Target unset and No effort recorded without plotting zero.
+- [x] **PRO-07**: Provide ready, sparse, empty and loading presentations: one effort says More data needed, missing imports show no zero chart, loading communicates busy.
+- [x] **PRO-08**: Provide source-loading failure/retry and stale/rebuilding projection states without losing current sport/range or reporting unreliable results.
+- [x] **PRO-09**: Open primary chart/exercise/best-effort details with an accessible history chart, separate goal line and clear empty state.
+- [x] **PRO-10**: Preserve the existing exercise-history route, comparable metric facts, source sessions, empty/error/loading states and return navigation.
+- [x] **PRO-11**: Offer Load/Relative only when a valid optional bodyweight exists for a load metric; disclose its measurement basis and never change targets.
+- [x] **PRO-12**: Edit Distance, Target time, Optional target date and Available training days while showing a read-only Current benchmark and explicit Save target/Cancel.
+- [x] **PRO-13**: Persist validated target edits to source facts; reject invalid time/date without losing draft and keep plan/detail/Progress goal displays consistent.
+- [x] **PRO-14**: Show Review target with Current/Proposed values, personal-history evidence and Keep current/Use target choices.
+- [x] **PRO-15**: Persist acceptance/keep decisions once with revision checks; keep failure/retry visible and prevent a dismissed recommendation reappearing from a fixture rerender.
+- [x] **PRO-16**: Keep Body metrics/Settings and Bodyweight history reachable; explain personal history and optional measurements without collecting gender/height or creating a score.
+- [x] **PRO-17**: Show optional empty/bodyweight history with Add first entry/Add entry, dated values, Edit and two-step Delete/Confirm.
+- [x] **PRO-18**: Provide dated kg input with Add/Edit, Save entry/Cancel, error feedback and persistence; enforce reviewed valid measurement/date bounds.
 
 ### Phase 20: Native acceptance, accessibility and performance
 
@@ -304,29 +304,29 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-34 | 15 | workout.outcomes | Complete |
 | WRK-35 | 15 | workout.completion-review | Complete |
 | WRK-36 | 15 | workout.completion-writeback | Complete |
-| CAL-01 | 16 | calendar.month | Pending |
-| CAL-02 | 16 | calendar.calendar-key | Pending |
-| CAL-03 | 16 | calendar.event-encoding | Pending |
-| CAL-04 | 16 | calendar.date-grid | Pending |
-| CAL-05 | 16 | calendar.events-titles | Pending |
-| CAL-06 | 16 | calendar.today-selection | Pending |
-| CAL-07 | 16 | calendar.drag-follow | Pending |
-| CAL-08 | 16 | calendar.threshold | Pending |
-| CAL-09 | 16 | calendar.month-motion | Pending |
-| CAL-10 | 16 | calendar.month-navigation | Pending |
-| CAL-11 | 16 | calendar.keyboard | Pending |
-| CAL-12 | 16 | calendar.expand-week | Pending |
-| CAL-13 | 16 | calendar.collapse-week | Pending |
-| CAL-14 | 16 | calendar.adjacent-week | Pending |
-| CAL-15 | 16 | calendar.reduced-motion | Pending |
-| CAL-16 | 16 | calendar.agenda | Pending |
-| CAL-17 | 16 | calendar.agenda-routing | Pending |
-| CAL-18 | 16 | calendar.readonly-history | Pending |
-| CAL-19 | 16 | calendar.planned-preview | Pending |
-| CAL-20 | 16 | calendar.detail-return | Pending |
-| CAL-21 | 16 | calendar.calendar-load-error | Pending |
-| CAL-22 | 16 | calendar.history-deep-correction | Pending |
-| CAL-23 | 16 | calendar.history-management | Pending |
+| CAL-01 | 16 | calendar.month | Complete |
+| CAL-02 | 16 | calendar.calendar-key | Complete |
+| CAL-03 | 16 | calendar.event-encoding | Complete |
+| CAL-04 | 16 | calendar.date-grid | Complete |
+| CAL-05 | 16 | calendar.events-titles | Complete |
+| CAL-06 | 16 | calendar.today-selection | Complete |
+| CAL-07 | 16 | calendar.drag-follow | Complete |
+| CAL-08 | 16 | calendar.threshold | Complete |
+| CAL-09 | 16 | calendar.month-motion | Complete |
+| CAL-10 | 16 | calendar.month-navigation | Complete |
+| CAL-11 | 16 | calendar.keyboard | Complete |
+| CAL-12 | 16 | calendar.expand-week | Complete |
+| CAL-13 | 16 | calendar.collapse-week | Complete |
+| CAL-14 | 16 | calendar.adjacent-week | Complete |
+| CAL-15 | 16 | calendar.reduced-motion | Complete |
+| CAL-16 | 16 | calendar.agenda | Complete |
+| CAL-17 | 16 | calendar.agenda-routing | Complete |
+| CAL-18 | 16 | calendar.readonly-history | Complete |
+| CAL-19 | 16 | calendar.planned-preview | Complete |
+| CAL-20 | 16 | calendar.detail-return | Complete |
+| CAL-21 | 16 | calendar.calendar-load-error | Complete |
+| CAL-22 | 16 | calendar.history-deep-correction | Complete |
+| CAL-23 | 16 | calendar.history-management | Complete |
 | LIB-01 | 17 | library.views | Complete |
 | LIB-02 | 17 | library.plans-groups | Complete |
 | LIB-03 | 17 | library.search-filters | Complete |
@@ -379,24 +379,24 @@ once and remains Pending until its owning phase is implemented and verified.
 | GAR-14 | 18 | garmin.match-confirm | Complete |
 | GAR-15 | 18 | garmin.detail-recovery | Complete |
 | GAR-16 | 18 | garmin.appearance | Complete |
-| PRO-01 | 19 | progress.sport-range | Pending |
-| PRO-02 | 19 | progress.all | Pending |
-| PRO-03 | 19 | progress.strength | Pending |
-| PRO-04 | 19 | progress.running | Pending |
-| PRO-05 | 19 | progress.fixed-goal | Pending |
-| PRO-06 | 19 | progress.unset-goals | Pending |
-| PRO-07 | 19 | progress.running-source-states | Pending |
-| PRO-08 | 19 | progress.progress-errors | Pending |
-| PRO-09 | 19 | progress.history-sheet | Pending |
-| PRO-10 | 19 | progress.exercise-history-route | Pending |
-| PRO-11 | 19 | progress.relative-view | Pending |
-| PRO-12 | 19 | progress.target-editor | Pending |
-| PRO-13 | 19 | progress.target-persistence | Pending |
-| PRO-14 | 19 | progress.recommendation | Pending |
-| PRO-15 | 19 | progress.recommendation-persistence | Pending |
-| PRO-16 | 19 | progress.progress-settings | Pending |
-| PRO-17 | 19 | progress.bodyweight-history | Pending |
-| PRO-18 | 19 | progress.bodyweight-editor | Pending |
+| PRO-01 | 19 | progress.sport-range | Complete |
+| PRO-02 | 19 | progress.all | Complete |
+| PRO-03 | 19 | progress.strength | Complete |
+| PRO-04 | 19 | progress.running | Complete |
+| PRO-05 | 19 | progress.fixed-goal | Complete |
+| PRO-06 | 19 | progress.unset-goals | Complete |
+| PRO-07 | 19 | progress.running-source-states | Complete |
+| PRO-08 | 19 | progress.progress-errors | Complete |
+| PRO-09 | 19 | progress.history-sheet | Complete |
+| PRO-10 | 19 | progress.exercise-history-route | Complete |
+| PRO-11 | 19 | progress.relative-view | Complete |
+| PRO-12 | 19 | progress.target-editor | Complete |
+| PRO-13 | 19 | progress.target-persistence | Complete |
+| PRO-14 | 19 | progress.recommendation | Complete |
+| PRO-15 | 19 | progress.recommendation-persistence | Complete |
+| PRO-16 | 19 | progress.progress-settings | Complete |
+| PRO-17 | 19 | progress.bodyweight-history | Complete |
+| PRO-18 | 19 | progress.bodyweight-editor | Complete |
 | VER-01 | 20 | verification.parity | Pending |
 | VER-02 | 20 | verification.themes | Pending |
 | VER-03 | 20 | verification.viewports | Pending |

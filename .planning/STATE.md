@@ -1,21 +1,21 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
-current_phase: 16
-current_phase_name: Calendar Parity (parallel with Phase 19 Progress Parity)
+milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENTING
+current_phase: 20
+current_phase_name: Native Acceptance
 status: executing
-stopped_at: Phase 18 host gates complete; Phases 16 and 19 ready for parallel execution
-last_updated: "2026-10-12T15:02:00.000Z"
-last_activity: 2026-10-12
-last_activity_desc: Phase 18 passed all targeted gates; Phase 16 and Phase 19 are dependency-safe to execute in parallel
-state_head: 312c7bf3207613fee45b27366b69dba75a7af0fa
+stopped_at: Phases 16 and 19 host gates complete; Phase 20 ready for execution
+last_updated: "2026-10-14T00:00:00.000Z"
+last_activity: 2026-10-14
+last_activity_desc: Phases 16 and 19 passed final review, UI, Nyquist, security, and independent verification gates
+state_head: 0932f7c87a189e72db3f3a39e691644efddd9821
 progress:
   total_phases: 8
-  completed_phases: 5
+  completed_phases: 7
   total_plans: 98
-  completed_plans: 69
-  percent: 63
+  completed_plans: 86
+  percent: 88
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-06)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phases 16 and 19 — Calendar Parity and Progress Parity in parallel
+**Current focus:** Phase 20 — Native Acceptance
 
 ## Current Position
 
-Phase: 16 and 19 — Calendar Parity and Progress Parity
-Plan: Existing converged plans ready for execution
-Status: Parallel execution authorized
-Last activity: 2026-10-12 — Phase 18 passed all targeted gates
+Phase: 20 — Native Acceptance
+Plan: Existing 12 converged plans ready for direct execution
+Status: Final comprehensive native checkpoint in progress
+Last activity: 2026-10-14 — Phases 16 and 19 passed all targeted host gates
 
-Progress: [██████░░░░] 63%
+Progress: [█████████░] 88%
 
 ## Delivery Model and Planning Gate
 
@@ -275,7 +275,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-11T12:33:27.904Z
-Stopped at: Phase 18 host gates complete; Phases 16 and 19 ready for parallel execution
+Last session: 2026-10-14T00:00:00.000Z
+Stopped at: Phases 16 and 19 host gates complete; Phase 20 ready for execution
 Resume file: None
-Next action: Execute the existing Phase 16 and Phase 19 plans in parallel; all real account/session/device evidence remains deferred to Phase 20.
+Next action: Execute the existing Phase 20 plans directly; build/install/final artifact delivery remains blocked until every native acceptance gate passes.
