@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronUp } from "lucide-react-native";
 import {
   AccessibilityInfo,
   AppState,
@@ -656,31 +657,31 @@ export function CalendarScreen({
   };
   const agendaRegion = (
     <View style={styles.agendaRegion} testID="calendar-agenda-region">
-      <View style={[styles.agendaHeading, { borderColor: colors.textPrimary }]}>
+      <View style={[styles.agendaHeading, { borderColor: colors.textPrimary }]} testID="calendar-agenda-heading">
         <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{fullDate(visibleSelectedDate)}</Text>
         <Text style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>
           {selectedEvents.length === 0
             ? "No workout"
             : `${selectedEvents.length} scheduled or imported event${selectedEvents.length === 1 ? "" : "s"}`}
         </Text>
+        <FocusablePressable
+          accessibilityLabel="Collapse day and return to month"
+          accessibilityRole="button"
+          disabled={interactionDisabled}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.key === "Escape") requestCalendarBack();
+            else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " " || event.nativeEvent.key === "Select") collapseCalendar();
+          }}
+          onPress={collapseCalendar}
+          ref={collapseActionRef}
+          style={({ pressed }) => [
+            styles.collapseAction,
+            { backgroundColor: pressed ? colors.surfaceSubtle : "transparent" },
+          ]}
+        >
+          <ChevronUp accessible={false} color={colors.textPrimary} size={24} strokeWidth={2} />
+        </FocusablePressable>
       </View>
-      <FocusablePressable
-        accessibilityLabel="Collapse day and return to month"
-        accessibilityRole="button"
-        disabled={interactionDisabled}
-        onKeyDown={(event) => {
-          if (event.nativeEvent.key === "Escape") requestCalendarBack();
-          else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " " || event.nativeEvent.key === "Select") collapseCalendar();
-        }}
-        onPress={collapseCalendar}
-        ref={collapseActionRef}
-        style={({ pressed }) => [
-          styles.collapseAction,
-          { backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderColor: colors.line },
-        ]}
-      >
-        <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Collapse day and return to month</Text>
-      </FocusablePressable>
       <CalendarAgenda
         {...(selectedDay === undefined ? {} : { day: selectedDay })}
         events={selectedEvents}
@@ -918,8 +919,8 @@ export function CalendarScreen({
 
 const styles = StyleSheet.create({
   agendaRegion: { flex: 1, gap: 10, minHeight: 0 },
-  agendaHeading: { borderBottomWidth: 2, gap: 4, minHeight: 62, paddingBottom: 8 },
-  collapseAction: { alignItems: "flex-start", borderWidth: 1, justifyContent: "center", minHeight: 48, paddingHorizontal: 10 },
+  agendaHeading: { borderBottomWidth: 2, gap: 4, minHeight: 62, paddingBottom: 8, paddingRight: 48, position: "relative" },
+  collapseAction: { alignItems: "center", height: 48, justifyContent: "center", position: "absolute", right: 0, top: 0, width: 48 },
   completeKey: { borderWidth: 1, paddingVertical: 4 },
   gridRegion: { flex: 1, gap: 2, minHeight: 0 },
   keyPartialFill: { bottom: 0, left: 0, position: "absolute", top: 0, width: "50%" },

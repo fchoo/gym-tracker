@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { ChevronRight } from "lucide-react-native";
 import {
   ScrollView,
   StyleSheet,
@@ -121,7 +122,7 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
               }}
               style={({ pressed }) => [
                 styles.row,
-                { backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderColor: colors.line },
+                { backgroundColor: pressed ? colors.surfaceSubtle : "transparent", borderBottomColor: colors.line },
               ]}
               testID={`calendar-agenda-event-${event.id}`}
             >
@@ -132,7 +133,7 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
                 <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{`${sport} · ${status}`}</Text>
                 <Text numberOfLines={undefined} style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{event.sourceLabel}</Text>
               </View>
-              <Text accessible={false} style={[typeScale.sectionTitle as TextStyle, styles.chevron, { color: colors.textSecondary }]}>›</Text>
+              <ChevronRight accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
             </FocusablePressable>
           );
         })}
@@ -142,11 +143,10 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
 );
 
 const styles = StyleSheet.create({
-  chevron: { minWidth: 24, textAlign: "center" },
-  content: { gap: 10, paddingBottom: space[4] },
+  content: { paddingBottom: space[4] },
   copy: { flex: 1, gap: 2, minWidth: 0, paddingVertical: 10 },
-  empty: { borderWidth: 1, gap: 6, padding: 10 },
+  empty: { borderWidth: 1, gap: space[1], padding: 10 },
   rail: { alignSelf: "stretch", minHeight: 82, width: 5 },
-  row: { alignItems: "center", borderWidth: 1, flexDirection: "row", gap: 10, minHeight: 82, paddingRight: 10 },
+  row: { alignItems: "center", borderBottomWidth: 1, borderWidth: 0, flexDirection: "row", gap: 10, minHeight: 82, paddingRight: 10 },
   scroll: { flex: 1, minHeight: 0 },
 });

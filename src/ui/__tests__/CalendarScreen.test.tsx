@@ -467,6 +467,8 @@ describe("CalendarScreen", () => {
     await measureAugustFocusedRows();
     await fireEvent.press(screen.getByTestId("calendar-day-2026-08-25"));
     const collapse = await screen.findByRole("button", { name: "Collapse day and return to month" });
+    expect(collapse).toHaveStyle({ height: 48, position: "absolute", right: 0, top: 0, width: 48 });
+    expect(screen.getByTestId("calendar-agenda-heading")).toContainElement(collapse);
     await waitFor(() => expect(collapse).toHaveProp("hasTVPreferredFocus", true));
 
     await fireEvent(collapse, "keyDown", { nativeEvent: { key: "Enter" } });
