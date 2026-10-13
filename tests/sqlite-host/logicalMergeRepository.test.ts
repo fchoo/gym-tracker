@@ -55,6 +55,9 @@ import {
   createRestoreReconciliationRepository,
 } from "../../src/platform/sqlite/repositories/restoreReconciliationRepository";
 import {
+  createRunningPlanRepository,
+} from "../../src/platform/sqlite/repositories/runningPlanRepository";
+import {
   configureSqliteConnection,
   type SqliteConnection,
   type SqlitePreparedResult,
@@ -221,6 +224,88 @@ async function seedOwnedPlan(
     await transaction.execute(
       "INSERT INTO owned_plan_aggregate_states (plan_id, lifecycle, graph_status, missing_requirement_code, missing_requirement, created_at_ms, updated_at_ms, archived_at_ms) VALUES (?, 'draft', 'missing_valid_target', 'owned_plan_missing_valid_target', 'Add at least one exercise with valid targets before scheduling or activating.', 1, 1, NULL)",
       [input.id],
+    );
+  });
+}
+
+async function seedRunningPlan(
+  kernel: SqliteKernel,
+  input: Readonly<{ portableId: string }>,
+): Promise<void> {
+  const planId = "shared-running-plan";
+  const session = {
+    version: 1, id: "shared-running-session-revision", rootId: "shared-running-session-root",
+    planId, sessionKind: "recovery", revision: 1, createdAtMs: 1,
+    phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 1_800_000 }] }],
+    contextual: {},
+  };
+  const goals = [
+    { id: "shared-running-goal-2400", distance: 2_400, duration: 660_000 },
+    { id: "shared-running-goal-10000", distance: 10_000, duration: 3_600_000 },
+    { id: "shared-running-goal-21097", distance: 21_097, duration: 7_200_000 },
+  ].map(({ id, distance, duration }) => ({
+    version: 1, id, planId, revision: 1, goalDistanceMeters: distance,
+    targetDurationMs: duration, trainingDays: ["Monday"], createdAtMs: 1,
+  }));
+  const result = {
+    planId, planRevision: 2, active: false,
+    sessionRootIds: [session.rootId], slotRootIds: ["shared-running-slot-root"],
+    outcome: "committed", targetRevision: 1, target: goals[0],
+  };
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO plans
+        (id, content_pack_id, origin, source_namespace, upstream_id, name,
+         days_per_week, audience, goal, estimate_minutes, attribution,
+         is_active, revision, portable_id, plan_kind)
+       VALUES (?, NULL, 'custom', NULL, NULL, 'Portable Running', 3, 'Owner',
+         'Running', 30, 'Owner', 0, 1, ?, 'running')`,
+      [planId, input.portableId],
+    );
+    await transaction.execute(
+      "INSERT INTO running_plans(plan_id, status, revision, created_at_ms) VALUES (?, 'draft', 1, 1)",
+      [planId],
+    );
+    for (const goal of goals) {
+      await transaction.execute(
+        "INSERT INTO running_goals(id, plan_id, goal_json, revision, created_at_ms) VALUES (?, ?, ?, 1, 1)",
+        [goal.id, planId, JSON.stringify(goal)],
+      );
+    }
+    await transaction.execute(
+      "INSERT INTO running_session_roots(id, plan_id, session_kind, current_revision, created_at_ms) VALUES (?, ?, 'recovery', 1, 1)",
+      [session.rootId, planId],
+    );
+    await transaction.execute(
+      "INSERT INTO running_session_revisions(id, plan_id, session_kind, revision, definition_json, created_at_ms) VALUES (?, ?, 'recovery', 1, ?, 1)",
+      [session.id, planId, JSON.stringify(session)],
+    );
+    await transaction.execute(
+      "INSERT INTO running_session_slot_roots(id, plan_id, weekday, created_at_ms) VALUES ('shared-running-slot-root', ?, 'Monday', 1)",
+      [planId],
+    );
+    await transaction.execute(
+      `INSERT INTO running_session_slot_revisions
+        (id, slot_root_id, revision, ordinal, session_root_id, session_revision_id, created_at_ms)
+       VALUES ('shared-running-slot-revision', 'shared-running-slot-root', 1, 0, ?, ?, 1)`,
+      [session.rootId, session.id],
+    );
+    await transaction.execute(
+      `INSERT INTO running_session_slots
+        (id, plan_id, weekday, ordinal, session_revision_id, revision, retired_at_ms)
+       VALUES ('shared-running-slot-root', ?, 'Monday', 0, ?, 1, NULL)`,
+      [planId, session.id],
+    );
+    await transaction.execute(
+      `INSERT INTO running_plan_receipts
+        (request_id, request_sha256, operation, plan_id, expected_plan_revision, result_json, committed_at_ms)
+       VALUES ('shared-running-request', ?, 'edit', ?, 1, ?, 2)`,
+      ["a".repeat(64), planId, JSON.stringify(result)],
+    );
+    await transaction.execute(
+      `INSERT INTO running_plan_events(id, plan_id, event_type, payload_json, created_at_ms)
+       VALUES ('shared-running-event', ?, 'revised', ?, 2)`,
+      [planId, JSON.stringify(result)],
     );
   });
 }
@@ -2379,6 +2464,70 @@ describe("logical merge repository", () => {
       decision: "keep_current_target",
       result_json: JSON.stringify({ recommendationId: "owned-recommendation", status: "rejected" }),
     }]);
+  });
+
+  it("commits a keep-both Running collision as a readable remapped aggregate", async () => {
+    const archiveKernel = await open("running-keep-both-archive");
+    await seedRunningPlan(archiveKernel, { portableId: "7".repeat(32) });
+    const archive = await snapshot(archiveKernel);
+    const localKernel = await open("running-keep-both-local");
+    await seedRunningPlan(localKernel, { portableId: "8".repeat(32) });
+    const local = await createSqliteMergeLocalFactsPort(localKernel).read();
+    const plan = await buildPortableMergePlan({
+      archive: {
+        ...archive,
+        version: 2 as const,
+        tables: {
+          ...archive.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      local: {
+        version: 2 as const,
+        ...local,
+        tables: {
+          ...local.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      payloadDigest: sha256,
+    });
+    const remappedPlanId = plan.idRemaps.find(({ archiveId, recordClass }) =>
+      recordClass === "owned_plan" && archiveId === "shared-running-plan"
+    )?.localId;
+    expect(remappedPlanId).toBeDefined();
+
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      })).resolves.toEqual({ state: "rebuild_pending" });
+
+    const aggregate = await createRunningPlanRepository(localKernel).readAggregate(remappedPlanId!);
+    expect(aggregate).not.toBeNull();
+    expect(aggregate).toMatchObject({
+      id: remappedPlanId,
+      currentTargets: expect.arrayContaining([
+        expect.objectContaining({ planId: remappedPlanId, goalDistanceMeters: 2_400, targetDurationMs: 660_000 }),
+        expect.objectContaining({ planId: remappedPlanId, goalDistanceMeters: 10_000, targetDurationMs: 3_600_000 }),
+        expect.objectContaining({ planId: remappedPlanId, goalDistanceMeters: 21_097, targetDurationMs: 7_200_000 }),
+      ]),
+      sessions: [expect.objectContaining({
+        session: expect.objectContaining({ planId: remappedPlanId }),
+      })],
+    });
+    const [receipt] = await localKernel.queryAll<{ request_id: string; request_sha256: string; result_json: string }>(
+      "SELECT request_id, request_sha256, result_json FROM running_plan_receipts WHERE plan_id = ?",
+      [remappedPlanId!],
+    );
+    const [event] = await localKernel.queryAll<{ payload_json: string }>(
+      "SELECT payload_json FROM running_plan_events WHERE plan_id = ?",
+      [remappedPlanId!],
+    );
+    expect(receipt?.request_id).not.toBe("shared-running-request");
+    expect(receipt?.request_sha256).toBe("a".repeat(64));
+    expect(JSON.parse(receipt!.result_json)).toMatchObject({ planId: remappedPlanId });
+    expect(JSON.parse(event!.payload_json)).toMatchObject({ planId: remappedPlanId });
   });
 
   it("rolls back every admitted owned-plan insertion stage", async () => {

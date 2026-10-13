@@ -2339,7 +2339,16 @@ describe("portable merge plan", () => {
       owned_plan_schedules: [{ id: "schedule", plan_id: "archive-plan", lifecycle: "inactive" }],
       owned_plan_schedule_versions: [{ id: "schedule-version", schedule_id: "schedule" }],
       running_plans: [{ plan_id: "archive-plan" }],
-      running_session_revisions: [{ id: "session-revision", plan_id: "archive-plan" }],
+      running_session_revisions: [{
+        id: "session-revision",
+        plan_id: "archive-plan",
+        definition_json: JSON.stringify({
+          version: 1, id: "session-revision", rootId: "session-root", planId: "archive-plan",
+          sessionKind: "recovery", revision: 1, createdAtMs: 1,
+          phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }],
+          contextual: {},
+        }),
+      }],
       running_session_roots: [{ id: "session-root", plan_id: "archive-plan" }],
       running_session_slot_roots: [{ id: "slot-root", plan_id: "archive-plan" }],
       running_session_slot_revisions: [{
@@ -2348,16 +2357,16 @@ describe("portable merge plan", () => {
         session_root_id: "session-root",
         session_revision_id: "session-revision",
       }],
-      running_plan_receipts: [{ request_id: "request", plan_id: "archive-plan" }],
-      running_plan_events: [{ id: "event", plan_id: "archive-plan" }],
-      running_goals: [{ id: "goal", plan_id: "archive-plan" }],
-      running_session_slots: [{ id: "slot", plan_id: "archive-plan", session_revision_id: "session-revision" }],
+      running_plan_receipts: [{ request_id: "request", request_sha256: "a".repeat(64), plan_id: "archive-plan", result_json: JSON.stringify({ planId: "archive-plan" }) }],
+      running_plan_events: [{ id: "event", plan_id: "archive-plan", payload_json: JSON.stringify({ planId: "archive-plan" }) }],
+      running_goals: [{ id: "goal", plan_id: "archive-plan", goal_json: JSON.stringify({ version: 1, id: "goal", planId: "archive-plan", revision: 1, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday"], createdAtMs: 1 }) }],
+      running_session_slots: [{ id: "slot-root", plan_id: "archive-plan", session_revision_id: "session-revision" }],
       running_opportunities: [{
         id: "opportunity",
         plan_id: "archive-plan",
         schedule_id: "schedule",
         schedule_version_id: "schedule-version",
-        slot_id: "slot",
+        slot_id: "slot-root",
         session_revision_id: "session-revision",
       }],
     });
@@ -2382,6 +2391,85 @@ describe("portable merge plan", () => {
       "running_opportunities",
     ]) {
       expect(aggregate.tables[table]).toHaveLength(1);
+    }
+  });
+
+  it("remaps every relational and embedded Running identity under keep-both collisions", () => {
+    const portableId = "7".repeat(32);
+    const goal = {
+      version: 1, id: "goal", planId: "archive-plan", revision: 1,
+      goalDistanceMeters: 2_400, targetDurationMs: 660_000,
+      trainingDays: ["Monday"], createdAtMs: 1,
+    };
+    const session = {
+      version: 1, id: "session-revision", rootId: "session-root", planId: "archive-plan",
+      sessionKind: "recovery", revision: 1, createdAtMs: 1,
+      phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 1_800_000 }] }],
+      contextual: {},
+    };
+    const result = {
+      planId: "archive-plan", planRevision: 2, active: false,
+      sessionRootIds: ["session-root"], slotRootIds: ["slot-root"],
+      outcome: "committed", targetRevision: 1, target: goal,
+    };
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: portableId, plan_kind: "running" }],
+      running_plans: [{ plan_id: "archive-plan" }],
+      running_session_revisions: [{ id: "session-revision", plan_id: "archive-plan", definition_json: JSON.stringify(session) }],
+      running_session_roots: [{ id: "session-root", plan_id: "archive-plan" }],
+      running_session_slot_roots: [{ id: "slot-root", plan_id: "archive-plan" }],
+      running_session_slot_revisions: [{
+        id: "slot-revision", slot_root_id: "slot-root", session_root_id: "session-root",
+        session_revision_id: "session-revision",
+      }],
+      running_plan_receipts: [{ request_id: "request", request_sha256: "a".repeat(64), plan_id: "archive-plan", result_json: JSON.stringify(result) }],
+      running_plan_events: [{ id: "event", plan_id: "archive-plan", payload_json: JSON.stringify(result) }],
+      running_goals: [{ id: "goal", plan_id: "archive-plan", goal_json: JSON.stringify(goal) }],
+      running_session_slots: [{ id: "slot-root", plan_id: "archive-plan", session_revision_id: "session-revision" }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "8".repeat(32), plan_kind: "running" }],
+      running_session_revisions: [{ id: "session-revision" }],
+      running_session_roots: [{ id: "session-root" }],
+      running_session_slot_roots: [{ id: "slot-root" }],
+      running_session_slot_revisions: [{ id: "slot-revision" }],
+      running_plan_receipts: [{ request_id: "request" }],
+      running_plan_events: [{ id: "event" }],
+      running_goals: [{ id: "goal" }],
+      running_session_slots: [{ id: "slot-root" }],
+    });
+    const aggregate = __mergePlanTestOnly.planAggregate(
+      archive,
+      local,
+      { aggregateClass: "owned_plan", kind: "keep_both", portableId, archiveId: "archive-plan", localId: "merged-plan" },
+      new Map(),
+      new Map([["archive-plan", "merged-plan"]]),
+      new Map(),
+    );
+    const mappedGoalRow = aggregate.tables.running_goals?.[0]!;
+    const mappedGoal = JSON.parse(String(mappedGoalRow.goal_json));
+    const mappedSessionRow = aggregate.tables.running_session_revisions?.[0]!;
+    const mappedSession = JSON.parse(String(mappedSessionRow.definition_json));
+    const mappedRoot = aggregate.tables.running_session_roots?.[0]!;
+    const mappedSlotRoot = aggregate.tables.running_session_slot_roots?.[0]!;
+    const mappedSlot = aggregate.tables.running_session_slots?.[0]!;
+    const mappedReceipt = aggregate.tables.running_plan_receipts?.[0]!;
+    const mappedReceiptResult = JSON.parse(String(mappedReceipt.result_json));
+    const mappedEventResult = JSON.parse(String(aggregate.tables.running_plan_events?.[0]?.payload_json));
+
+    expect(mappedGoal).toMatchObject({ id: mappedGoalRow.id, planId: "merged-plan" });
+    expect(mappedSession).toMatchObject({ id: mappedSessionRow.id, rootId: mappedRoot.id, planId: "merged-plan" });
+    expect(mappedSlot.id).toBe(mappedSlotRoot.id);
+    expect(mappedReceipt.request_id).not.toBe("request");
+    expect(mappedReceipt.request_sha256).toBe("a".repeat(64));
+    for (const embedded of [mappedReceiptResult, mappedEventResult]) {
+      expect(embedded).toMatchObject({
+        planId: "merged-plan",
+        sessionRootIds: [mappedRoot.id],
+        slotRootIds: [mappedSlotRoot.id],
+        target: { id: mappedGoalRow.id, planId: "merged-plan" },
+      });
+      expect(JSON.stringify(embedded)).not.toContain("archive-plan");
     }
   });
 

@@ -12,6 +12,14 @@ import {
 import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "./restoreCommands";
+import {
+  parseRunningGoal,
+  parseRunningPlanAggregate,
+  parseRunningSessionRevision,
+  type RunningGoal,
+  type RunningPlanAggregate,
+  type RunningSessionRevision,
+} from "../running/contracts";
 
 type MergeTables = Readonly<Record<string, readonly LogicalBackupRow[]>>;
 
@@ -621,6 +629,139 @@ function rewriteRestDefaultReceiptResult(
     sessionId: mappedIdentifier(sessionIds, result.sessionId),
     sessionExerciseId: mappedIdentifier(exerciseIds, result.sessionExerciseId),
   });
+}
+
+type RunningIdentityMaps = Readonly<{
+  plans: ReadonlyMap<string, string>;
+  goals: ReadonlyMap<string, string>;
+  sessionRevisions: ReadonlyMap<string, string>;
+  sessionRoots: ReadonlyMap<string, string>;
+  slotRevisions: ReadonlyMap<string, string>;
+  slotRoots: ReadonlyMap<string, string>;
+}>;
+
+function parseRunningGoalValue(value: unknown): RunningGoal {
+  try {
+    return parseRunningGoal(value);
+  } catch {
+    return invalid();
+  }
+}
+
+function parseRunningSessionValue(value: unknown): RunningSessionRevision {
+  try {
+    return parseRunningSessionRevision(value);
+  } catch {
+    return invalid();
+  }
+}
+
+function rewriteRunningGoalValue(
+  value: unknown,
+  maps: RunningIdentityMaps,
+): RunningGoal {
+  const goal = parseRunningGoalValue(value);
+  return parseRunningGoalValue({
+    ...goal,
+    id: mappedIdentifier(maps.goals, goal.id),
+    planId: mappedIdentifier(maps.plans, goal.planId),
+  });
+}
+
+function rewriteRunningSessionValue(
+  value: unknown,
+  maps: RunningIdentityMaps,
+): RunningSessionRevision {
+  const session = parseRunningSessionValue(value);
+  return parseRunningSessionValue({
+    ...session,
+    id: mappedIdentifier(maps.sessionRevisions, session.id),
+    rootId: mappedIdentifier(maps.sessionRoots, session.rootId),
+    planId: mappedIdentifier(maps.plans, session.planId),
+  });
+}
+
+function rewriteRunningAggregateValue(
+  value: unknown,
+  maps: RunningIdentityMaps,
+): RunningPlanAggregate {
+  let aggregate: RunningPlanAggregate;
+  try {
+    aggregate = parseRunningPlanAggregate(value);
+  } catch {
+    return invalid();
+  }
+  const rewritten = {
+    ...aggregate,
+    id: mappedIdentifier(maps.plans, aggregate.id),
+    goal: rewriteRunningGoalValue(aggregate.goal, maps),
+    currentTargets: aggregate.currentTargets?.map((goal) =>
+      rewriteRunningGoalValue(goal, maps)),
+    sessions: aggregate.sessions.map((entry) => ({
+      slot: {
+        ...entry.slot,
+        id: mappedIdentifier(maps.slotRevisions, entry.slot.id),
+        rootId: mappedIdentifier(maps.slotRoots, entry.slot.rootId),
+      },
+      session: rewriteRunningSessionValue(entry.session, maps),
+    })),
+  };
+  try {
+    return parseRunningPlanAggregate(rewritten);
+  } catch {
+    return invalid();
+  }
+}
+
+function mappedIdentifierArray(
+  value: unknown,
+  mappings: ReadonlyMap<string, string>,
+): readonly string[] {
+  if (!Array.isArray(value)) invalid();
+  return value.map((item) => mappedIdentifier(mappings, item));
+}
+
+function rewriteRunningPayloadValue(
+  value: unknown,
+  maps: RunningIdentityMaps,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteRunningPayloadValue(item, maps));
+  }
+  if (!isPlainObject(value)) return value;
+  if ("goalDistanceMeters" in value && "trainingDays" in value) {
+    return rewriteRunningGoalValue(value, maps);
+  }
+  if ("sessionKind" in value && "phases" in value && "rootId" in value) {
+    return rewriteRunningSessionValue(value, maps);
+  }
+  if ("goal" in value && "sessions" in value && "lifecycle" in value) {
+    return rewriteRunningAggregateValue(value, maps);
+  }
+  const rewritten = Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key,
+    key === "planId"
+      ? mappedIdentifier(maps.plans, item)
+      : key === "sessionRootId"
+        ? mappedIdentifier(maps.sessionRoots, item)
+        : key === "sessionRevisionId"
+          ? mappedIdentifier(maps.sessionRevisions, item)
+          : key === "slotRootId"
+            ? mappedIdentifier(maps.slotRoots, item)
+            : key === "sessionRootIds"
+              ? mappedIdentifierArray(item, maps.sessionRoots)
+              : key === "slotRootIds"
+                ? mappedIdentifierArray(item, maps.slotRoots)
+                : rewriteRunningPayloadValue(item, maps),
+  ]));
+  return rewritten;
+}
+
+function rewriteRunningPayload(
+  serialized: unknown,
+  maps: RunningIdentityMaps,
+): string {
+  return encodeJson(rewriteRunningPayloadValue(parseJsonObject(serialized), maps));
 }
 
 function sessionAggregate(
@@ -1377,7 +1518,6 @@ function planAggregate(
   const mappedRunningRevisions = mappedRows(local, "running_session_revisions", runningRevisions, [
     { column: "plan_id", ids: planMap },
   ], operation.kind === "keep_both", operation.portableId);
-  if (mappedRunningRevisions.rows.length > 0) tables.running_session_revisions = mappedRunningRevisions.rows;
   recordMap("running_session_revisions", mappedRunningRevisions.ids);
 
   const runningSessionRoots = rowsFor(snapshot, "running_session_roots")
@@ -1406,22 +1546,76 @@ function planAggregate(
   if (mappedRunningSlotRevisions.rows.length > 0) tables.running_session_slot_revisions = mappedRunningSlotRevisions.rows;
   recordMap("running_session_slot_revisions", mappedRunningSlotRevisions.ids);
 
-  for (const table of ["running_plan_receipts", "running_plan_events", "running_goals"] as const) {
-    const rows = rowsFor(snapshot, table).filter((row) => row.plan_id === archivePlanId);
-    const mapped = mappedRows(local, table, rows, [
-      { column: "plan_id", ids: planMap },
-    ], operation.kind === "keep_both", operation.portableId,
-    LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey[0]!);
-    if (mapped.rows.length > 0) tables[table] = mapped.rows;
-    recordMap(table, mapped.ids);
+  const runningGoals = rowsFor(snapshot, "running_goals")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningGoals = mappedRows(local, "running_goals", runningGoals, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  recordMap("running_goals", mappedRunningGoals.ids);
+
+  const runningIdentityMaps: RunningIdentityMaps = Object.freeze({
+    plans: planMappings,
+    goals: mappedRunningGoals.ids,
+    sessionRevisions: mappedRunningRevisions.ids,
+    sessionRoots: mappedRunningSessionRoots.ids,
+    slotRevisions: mappedRunningSlotRevisions.ids,
+    slotRoots: mappedRunningSlotRoots.ids,
+  });
+  if (mappedRunningRevisions.rows.length > 0) {
+    tables.running_session_revisions = Object.freeze(mappedRunningRevisions.rows.map((row) =>
+      Object.freeze({
+        ...row,
+        definition_json: rewriteRunningPayload(row.definition_json, runningIdentityMaps),
+      })
+    ));
   }
+  if (mappedRunningGoals.rows.length > 0) {
+    tables.running_goals = Object.freeze(mappedRunningGoals.rows.map((row) =>
+      Object.freeze({
+        ...row,
+        goal_json: rewriteRunningPayload(row.goal_json, runningIdentityMaps),
+      })
+    ));
+  }
+
+  const runningReceipts = rowsFor(snapshot, "running_plan_receipts")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningReceipts = mappedRows(local, "running_plan_receipts", runningReceipts, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId, "request_id");
+  if (mappedRunningReceipts.rows.length > 0) {
+    tables.running_plan_receipts = Object.freeze(mappedRunningReceipts.rows.map((row) => {
+      if (!/^[a-f0-9]{64}$/u.test(textId(row.request_sha256))) invalid();
+      return Object.freeze({
+        ...row,
+        result_json: rewriteRunningPayload(row.result_json, runningIdentityMaps),
+      });
+    }));
+  }
+  recordMap("running_plan_receipts", mappedRunningReceipts.ids);
+
+  const runningEvents = rowsFor(snapshot, "running_plan_events")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningEvents = mappedRows(local, "running_plan_events", runningEvents, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRunningEvents.rows.length > 0) {
+    tables.running_plan_events = Object.freeze(mappedRunningEvents.rows.map((row) =>
+      Object.freeze({
+        ...row,
+        payload_json: rewriteRunningPayload(row.payload_json, runningIdentityMaps),
+      })
+    ));
+  }
+  recordMap("running_plan_events", mappedRunningEvents.ids);
 
   const runningSlots = rowsFor(snapshot, "running_session_slots")
     .filter((row) => row.plan_id === archivePlanId);
   const mappedRunningSlots = mappedRows(local, "running_session_slots", runningSlots, [
     { column: "plan_id", ids: planMap },
     { column: "session_revision_id", ids: mappedRunningRevisions.ids },
-  ], operation.kind === "keep_both", operation.portableId);
+  ], operation.kind === "keep_both", operation.portableId, "id",
+  mappedRunningSlotRoots.ids);
   if (mappedRunningSlots.rows.length > 0) tables.running_session_slots = mappedRunningSlots.rows;
   recordMap("running_session_slots", mappedRunningSlots.ids);
 
