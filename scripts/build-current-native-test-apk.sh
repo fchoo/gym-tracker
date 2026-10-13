@@ -5,6 +5,7 @@ set -eu
 project_root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 temporary_directory=$(mktemp -d)
 suite='sqlite-kernel'
+single_build=0
 device_serial=${GYM_TRACKER_ANDROID_SERIAL:-}
 package_name='com.fchoo.gymtracker.devtest'
 native_build_lock="$project_root/.native-build.lock"
@@ -47,6 +48,10 @@ while [ "$#" -gt 0 ]; do
       device_serial=${1#--serial=}
       shift
       ;;
+    --single-build)
+      single_build=1
+      shift
+      ;;
     *)
       fail "unknown argument: $1"
       ;;
@@ -58,6 +63,8 @@ case "$suite" in
     fail 'suite must contain only letters, numbers, dot, underscore, or hyphen.'
     ;;
 esac
+[ "$single_build" -eq 0 ] || [ "$suite" = 'v1.2-acceptance' ] ||
+  fail '--single-build is reserved for v1.2-acceptance.'
 case "$suite" in
   phase18-garmin-proof|phase18-garmin-acceptance|phase18-garmin-adversarial)
     fail 'Phase 18 suite-specific APKs are prohibited; use v1.2-acceptance.'

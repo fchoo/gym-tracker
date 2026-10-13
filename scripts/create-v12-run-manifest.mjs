@@ -1,3 +1,11 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
+
+import { sourceTreeSha256AtHead, assertCleanCommittedTree } from "./source-tree-digest.mjs";
+
 const SHA256 = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -160,4 +168,69 @@ export function validateV12RunManifest(manifest) {
   const normalized = normalizeInput(manifest);
   if (normalized.run_id !== manifest.run_id || JSON.stringify(normalized) !== JSON.stringify(manifest)) fail("canonical_invalid");
   return deepFreeze(structuredClone(manifest));
+}
+
+export function parseV12RunManifestCliArgs(args) {
+  if (Array.isArray(args) && args.length === 2 && args[0] === "--from-build" && args[1] === "--create") {
+    return Object.freeze({ mode: "create" });
+  }
+  if (Array.isArray(args) && args.length === 3 && args[0] === "--run" && RUN_ID.test(args[1] ?? "") && args[2] === "--verify-build-only") {
+    return Object.freeze({ mode: "verify", runId: args[1] });
+  }
+  fail("cli_invalid");
+}
+
+function hashFile(root, relativePath) {
+  const resolved = path.resolve(root, relativePath);
+  if (!resolved.startsWith(`${path.resolve(root)}${path.sep}`) || !existsSync(resolved)) fail("input_missing");
+  return createHash("sha256").update(readFileSync(resolved)).digest("hex");
+}
+
+function readJson(root, relativePath) {
+  try { return JSON.parse(readFileSync(path.resolve(root, relativePath), "utf8")); } catch { fail("input_invalid"); }
+}
+
+export function executeV12RunManifestCli(args, { root = process.cwd(), now = () => new Date() } = {}) {
+  const options = parseV12RunManifestCliArgs(args);
+  const projectRoot = path.resolve(root);
+  if (options.mode === "verify") {
+    const relativePath = `artifacts/native/v1.2/${options.runId}/build.json`;
+    const manifest = readJson(projectRoot, relativePath);
+    if (validateV12RunManifest(manifest).run_id !== options.runId) fail("run_id_invalid");
+    return manifest;
+  }
+  const buildManifest = readJson(projectRoot, "artifacts/native/v1.2-acceptance/build.json");
+  const identity = buildManifest.v12_evidence_identity;
+  if (buildManifest?.suite !== "v1.2-acceptance" || buildManifest?.profile !== "development-test"
+    || buildManifest?.build_variant !== "release" || buildManifest?.package !== "com.fchoo.gymtracker.devtest"
+    || !identity || identity.retained_apk_sha256 !== buildManifest?.apk?.sha256
+    || identity.installed_apk_sha256 !== buildManifest?.apk?.sha256) fail("build_identity_invalid");
+  const head = buildManifest.base_head;
+  assertCleanCommittedTree(head, projectRoot);
+  if (sourceTreeSha256AtHead(head, projectRoot) !== buildManifest.source_tree_sha256) fail("source_invalid");
+  const sourceManifest = readJson(projectRoot, ".planning/design/v1.2-browser-evidence/source-manifest.json");
+  const sources = sourceManifest.sources;
+  if (!Array.isArray(sources) || sourceManifest.revision !== 18 || sources.length < 2) fail("input_invalid");
+  const createdAt = now().toISOString().replace(".000", "");
+  const input = {
+    created_at: createdAt,
+    source: { head, tree_sha256: buildManifest.source_tree_sha256, dirty: false, package_json_sha256: hashFile(projectRoot, "package.json"), package_lock_sha256: hashFile(projectRoot, "package-lock.json") },
+    planning: { matrix_sha256: hashFile(projectRoot, ".planning/design/v1.2-prototype-parity-matrix.json"), requirements_sha256: hashFile(projectRoot, ".planning/REQUIREMENTS.md"), source_manifest_sha256: hashFile(projectRoot, ".planning/design/v1.2-browser-evidence/source-manifest.json"), owner_brief_sha256: hashFile(projectRoot, ".planning/v1.2-OWNER-BRIEF.md"), ui_spec_sha256: hashFile(projectRoot, ".planning/phases/20-native-acceptance/20-UI-SPEC.md"), deviations_sha256: hashFile(projectRoot, ".planning/design/v1.2-DEVIATIONS.md") },
+    prototype: { revision: 18, approval_sha256: sources[0]?.sha256, html_sha256: sources[1]?.sha256 },
+    fixtures: { registry_sha256: hashFile(projectRoot, ".planning/design/v1.2-browser-evidence/serial-walk.json") },
+    build: { profile: "development-test", package: buildManifest.package, version_name: "0.1.0", version_code: 1, apk: { path: buildManifest.apk.path, sha256: buildManifest.apk.sha256, size_bytes: buildManifest.apk.size_bytes, page_alignment_verified: buildManifest.apk.page_alignment_verified, signature_sha256: identity.signature_sha256, certificate_sha256: identity.certificate_sha256 } },
+    device: { identity_sha256: identity.device_identity_sha256, abi: buildManifest.device.abi, installed_apk_sha256: identity.installed_apk_sha256, settings_sha256: identity.settings_sha256, restoration_sha256: identity.restoration_sha256 },
+    configuration: { id: "AP-SL-C390-P-F100" },
+  };
+  const runDirectory = path.join(projectRoot, "artifacts/native/v1.2", createV12RunManifest({ input }).run_id);
+  const output = path.join(runDirectory, "build.json");
+  const manifest = createV12RunManifest({ input, existing_run_ids: existsSync(path.join(projectRoot, "artifacts/native/v1.2")) ? [] : [], output_exists: existsSync(output) });
+  if (existsSync(runDirectory)) fail("output_exists");
+  mkdirSync(runDirectory, { recursive: false });
+  writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, { flag: "wx" });
+  return manifest;
+}
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try { process.stdout.write(`${executeV12RunManifestCli(process.argv.slice(2)).run_id}\n`); } catch (error) { console.error(error instanceof Error ? error.message : "v12_run_manifest_cli_failed"); process.exitCode = 1; }
 }

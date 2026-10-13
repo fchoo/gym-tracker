@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createV12RunManifest,
+  parseV12RunManifestCliArgs,
   validateV12RunManifest,
 } from "./create-v12-run-manifest.mjs";
 
@@ -97,4 +98,13 @@ test("fails closed on substituted, private, hostile, or incomplete identity valu
   }) }), /v12_run_manifest_live_identity_invalid/u);
   assert.throws(() => validateV12RunManifest({ ...createV12RunManifest({ input: buildInput() }), unexpected: true }), /v12_run_manifest_exact_keys_invalid/u);
   assert.throws(() => createV12RunManifest({ input: buildInput({ source: { ...buildInput().source, dirty: true } }) }), /v12_run_manifest_source_invalid/u);
+});
+
+test("accepts only the explicit create and build-only verification CLI modes", () => {
+  assert.deepEqual(parseV12RunManifestCliArgs(["--from-build", "--create"]), { mode: "create" });
+  assert.deepEqual(parseV12RunManifestCliArgs(["--run", `phase20-20261014T123456Z-${HEAD.slice(0, 12)}`, "--verify-build-only"]), {
+    mode: "verify", runId: `phase20-20261014T123456Z-${HEAD.slice(0, 12)}`,
+  });
+  assert.throws(() => parseV12RunManifestCliArgs(["--from-build"]), /v12_run_manifest_cli_invalid/u);
+  assert.throws(() => parseV12RunManifestCliArgs(["--run", "bad", "--verify-build-only"]), /v12_run_manifest_cli_invalid/u);
 });

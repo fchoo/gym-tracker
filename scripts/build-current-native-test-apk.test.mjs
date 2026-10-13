@@ -23,3 +23,10 @@ test("the native test APK build retries launcher resolution after install", () =
     /v1\.2-acceptance[\s\S]*device=%\$?device_serial/u,
   );
 });
+
+test("the v1.2 acceptance build accepts the explicit one-build guard without changing legacy suites", () => {
+  const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");
+  assert.match(source, /--single-build\)/u);
+  assert.match(source, /single_build=0/u);
+  assert.match(source, /\[ "\$single_build" -eq 0 \] \|\| \[ "\$suite" = 'v1\.2-acceptance' \] \|\|/u);
+});
