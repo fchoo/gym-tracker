@@ -1,7 +1,7 @@
 import React, { createContext, useContext } from "react";
 
 import { canonicalRunningRequestHash, createInactiveRunningPlan, saveRunningSourceGraph, saveRunningTarget, type CreateInactiveRunningPlanInput, type SaveRunningTargetInput } from "../domains/running/commands";
-import type { RunningPlanAggregate, RunningSessionRevision } from "../domains/running/contracts";
+import { runningTargetForDistance, type RunningPlanAggregate, type RunningSessionRevision } from "../domains/running/contracts";
 import type { RunningLifecycleAction, RunningLifecyclePreview } from "../domains/running/lifecycle";
 import type { CommitScheduleCollisionChoiceInput, ScheduleCollisionPreview } from "../domains/scheduling/collisionCommands";
 import type { SqliteKernel } from "../platform/sqlite";
@@ -122,10 +122,11 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
           throw new Error("running_target_revision_conflict");
         }
         const savedAtMs = dependencies.nowMs();
+        const currentTarget = runningTargetForDistance(current, input.goalDistanceMeters);
         const goal = {
-          ...current.goal,
+          ...(currentTarget ?? current.goal),
           id: createId("running-goal-revision"),
-          revision: current.goal.revision + 1,
+          revision: (currentTarget?.revision ?? 0) + 1,
           goalDistanceMeters: input.goalDistanceMeters,
           targetDurationMs: input.targetDurationMs,
           targetLocalDate: input.targetLocalDate,
@@ -136,7 +137,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
           requestId: input.requestId,
           planId: input.planId,
           expectedPlanRevision: current.revision,
-          expectedGoalRevision: current.goal.revision,
+          expectedGoalRevision: currentTarget?.revision ?? 0,
           savedAtMs,
           goal,
         };
@@ -148,7 +149,10 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       }
       const result = await saveRunningTarget(repository, command);
       const readBack = await repository.readAggregate(command.planId);
-      if (readBack === null || readBack.goal.revision !== command.goal.revision) {
+      const targetReadBack = readBack === null
+        ? undefined
+        : runningTargetForDistance(readBack, command.goal.goalDistanceMeters);
+      if (readBack === null || targetReadBack?.revision !== command.goal.revision) {
         throw new Error("running_target_readback_missing");
       }
       return Object.freeze({

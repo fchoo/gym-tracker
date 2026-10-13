@@ -78,6 +78,18 @@ describe("progress repository factual source reads", () => {
     } as unknown as SqliteReadTransactionExecutor;
     await expect(__progressRepositoryTestOnly.loadRunningTargetSources(executor))
       .rejects.toThrow("progress_running_active_plan_invalid");
+    await expect(__progressRepositoryTestOnly.loadPlannedNext({
+      queryAll: async (sql: string) => sql.includes("owned_plan_schedule_opportunities")
+        ? [{
+            opportunity_id: "", opportunity_revision: 0, local_date: "invalid",
+            plan_id: "", plan_name: "", plan_day_id: "", plan_day_name: "",
+          }]
+        : [{
+            opportunity_id: "running", source_revision: 1, local_date: "2026-11-01",
+            plan_id: "plan", plan_name: "Plan", session_revision_id: "session",
+            session_kind: "unsupported",
+          }],
+    } as never, "2026-10-13")).resolves.toEqual([]);
   });
 
   it("requires the source-coherent snapshot kernel", () => {

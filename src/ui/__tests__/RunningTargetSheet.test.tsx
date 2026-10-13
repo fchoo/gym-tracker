@@ -75,15 +75,26 @@ describe("RunningTargetSheet", () => {
     expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ revision: 5 }));
   });
 
-  it("switches among all three distances with independent drafts and saves an unset 10 km target through the source plan", async () => {
-    const saved = source({ goalDistanceMeters: 10_000, targetDurationMs: 3_600_000, id: "goal-10k", revision: 3 });
+  it("reloads independent persisted distance targets from one source plan before saving", async () => {
+    const base = source();
+    const saved = {
+      ...base,
+      revision: 5,
+      currentTargets: [base.goal, {
+        ...base.goal,
+        id: "goal-10k",
+        revision: 1,
+        goalDistanceMeters: 10_000,
+        targetDurationMs: 3_600_000,
+      }],
+    };
     const saveRunningTarget = jest.fn(async () => ({ outcome: "committed" as const, plan: { ...saved, revision: 5 } }));
     const view = await render(
       <AppearanceProvider reduceMotion><RunningTargetSheet
         initialDistanceMeters={2_400}
         onClose={jest.fn()}
         runtime={{ createId: () => "request-10k", saveRunningTarget } as never}
-        sources={[source()]}
+        sources={[saved]}
         todayLocalDate="2026-10-12"
         visible
       /></AppearanceProvider>,
@@ -94,8 +105,8 @@ describe("RunningTargetSheet", () => {
     expect(view.getByRole("tab", { name: "Half Marathon" })).toBeTruthy();
     await fireEvent.changeText(view.getByLabelText("Target time"), "10:45");
     await fireEvent.press(view.getByRole("tab", { name: "10 km" }));
-    expect(view.getByLabelText("Target time")).toHaveProp("value", "");
-    await fireEvent.changeText(view.getByLabelText("Target time"), "1:00:00");
+    expect(view.getByLabelText("Target time")).toHaveProp("value", "1:00:00");
+    await fireEvent.changeText(view.getByLabelText("Target time"), "59:30");
     await fireEvent.press(view.getByRole("tab", { name: "2.4 km" }));
     expect(view.getByDisplayValue("10:45")).toBeTruthy();
     await fireEvent.press(view.getByRole("tab", { name: "10 km" }));
@@ -103,9 +114,9 @@ describe("RunningTargetSheet", () => {
 
     await waitFor(() => expect(saveRunningTarget).toHaveBeenCalledWith(expect.objectContaining({
       planId: "running-2point4",
-      expectedSourceRevision: 4,
+      expectedSourceRevision: 5,
       goalDistanceMeters: 10_000,
-      targetDurationMs: 3_600_000,
+      targetDurationMs: 3_570_000,
     })));
   });
 

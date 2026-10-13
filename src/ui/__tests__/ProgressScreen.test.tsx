@@ -157,6 +157,44 @@ async function renderProgress(
 }
 
 describe("ProgressScreen", () => {
+  it("renders source-backed Planned next content on All, Strength, and Running", async () => {
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: {
+        ...dashboardFor(input.sport),
+        plannedNext: input.sport === "Running" ? {
+          sport: "Running" as const,
+          sourceOpportunityId: "running-next",
+          sourceRevision: 3,
+          localDate: "2026-08-27",
+          planId: "running-plan",
+          planName: "5K base",
+          activityId: "running-tempo-v3",
+          activityName: "Tempo",
+        } : {
+          sport: "Strength" as const,
+          sourceOpportunityId: "strength-next",
+          sourceRevision: 2,
+          localDate: "2026-08-26",
+          planId: "strength-plan",
+          planName: "Full body",
+          activityId: "strength-day",
+          activityName: "Workout A",
+        },
+      },
+    }));
+    await renderProgress(loadProgress as never);
+
+    expect(await screen.findByRole("header", { name: "Planned next" })).toBeOnTheScreen();
+    expect(screen.getByText("Strength · Workout A · 2026-08-26")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    expect(await screen.findByText("Strength · Workout A · 2026-08-26")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+    expect(await screen.findByText("Running · Tempo · 2026-08-27")).toBeOnTheScreen();
+  });
+
   it("renders one accepted 2.4 km Running path with exact factual evidence and pacing", async () => {
     const loadProgress = await renderProgress();
 
@@ -678,6 +716,19 @@ describe("ProgressScreen", () => {
     expect(screen.getByRole("button", { name: "4 weeks" })).toHaveStyle({ minHeight: 48 });
   });
 
+  it.each([
+    { fontScale: 1, direction: "row", divider: { borderLeftWidth: 1 } },
+    { fontScale: 2, direction: "column", divider: { borderLeftWidth: 0, borderTopWidth: 1 } },
+  ] as const)("renders Latest, Best, and Target cells at font scale $fontScale", async ({ fontScale, direction, divider }) => {
+    await renderProgress(undefined, { fontScale, width: 390 });
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+
+    expect(await screen.findByTestId("progress-hero-facts")).toHaveStyle({ flexDirection: direction });
+    expect(screen.getByTestId("progress-hero-fact-latest")).toHaveStyle({ flex: 1 });
+    expect(screen.getByTestId("progress-hero-fact-best")).toHaveStyle({ ...divider, flex: 1 });
+    expect(screen.getByTestId("progress-hero-fact-target")).toHaveStyle({ ...divider, flex: 1 });
+  });
+
   it("safely dismisses an open target editor before switching roots", async () => {
     const saveRunningTarget = jest.fn(async () => ({ outcome: "committed" as const, plan: runningTargetSource }));
     const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
@@ -708,30 +759,29 @@ describe("ProgressScreen", () => {
   });
 
   it("opens each available Running goal row in its distance-bound target editor", async () => {
-    const tenKilometreSource: RunningPlanAggregate = Object.freeze({
+    const tenKilometreTarget = Object.freeze({
+      ...runningTargetSource.goal,
+      id: "running-goal-10000",
+      goalDistanceMeters: 10_000,
+      targetDurationMs: 3_600_000,
+      revision: 1,
+    });
+    const multiDistanceSource: RunningPlanAggregate = Object.freeze({
       ...runningTargetSource,
-      id: "running-plan-10000",
-      name: "10 km plan",
-      goal: Object.freeze({
-        ...runningTargetSource.goal,
-        id: "running-goal-10000",
-        planId: "running-plan-10000",
-        goalDistanceMeters: 10_000,
-        targetDurationMs: undefined,
-      }),
+      currentTargets: Object.freeze([runningTargetSource.goal, tenKilometreTarget]),
     });
     const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
       sport: input.sport,
       period: input.period as "4_weeks" | "12_weeks" | "all_time",
       freshness: "current" as const,
       dashboard: dashboardFor(input.sport),
-      runningTargetSources: input.sport === "Running" ? [runningTargetSource, tenKilometreSource] : [],
+      runningTargetSources: input.sport === "Running" ? [multiDistanceSource] : [],
     }));
     await renderProgress(loadProgress as never, {
       runningTargetRuntime: {
         createId: () => "running-target-save:request",
-        loadPlan: async () => tenKilometreSource,
-        saveRunningTarget: jest.fn(async () => ({ outcome: "committed" as const, plan: tenKilometreSource })),
+        loadPlan: async () => multiDistanceSource,
+        saveRunningTarget: jest.fn(async () => ({ outcome: "committed" as const, plan: multiDistanceSource })),
       },
     });
 
@@ -743,7 +793,7 @@ describe("ProgressScreen", () => {
       "accessibilityState",
       expect.objectContaining({ selected: true }),
     );
-    expect(screen.getByText("No benchmark yet")).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("1:00:00")).toBeOnTheScreen();
   });
 
   it("restores focus to the exact retained Strength row after a deep-route return", async () => {
@@ -780,5 +830,60 @@ describe("ProgressScreen", () => {
 
     await waitFor(() => expect(trigger).toHaveProp("hasTVPreferredFocus", true));
     expect(screen.getByText("Bench Press")).toBeOnTheScreen();
+  });
+
+  it("restores the exact All hero history and Strength chart source invokers", async () => {
+    const onOpenExercise = jest.fn();
+    const onOpenSession = jest.fn();
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "All" ? {
+        sport: "All" as const,
+        state: "ready" as const,
+        primaryGoal: { sport: "Strength" as const, goal: strengthGoal },
+        activeGoals: [{ sport: "Strength" as const, goal: strengthGoal }],
+      } : input.sport === "Strength" ? {
+        sport: "Strength" as const,
+        state: "ready" as const,
+        facts: [],
+        goals: [strengthGoal],
+      } : dashboardFor(input.sport),
+    }));
+    const props = {
+      loadProgress: loadProgress as never,
+      nowLocalDate: "2026-08-24",
+      onOpenExercise,
+      onOpenSession,
+    };
+    const rendered = await render(
+      <AppearanceProvider reduceMotion store={createMemoryAppearanceStore("Dark")}>
+        <ProgressScreen {...props} returnFocusVersion={0} width={390} />
+      </AppearanceProvider>,
+    );
+    const allHeroHistory = await screen.findByRole("button", { name: "Open exercise history for Bench Press" });
+    await fireEvent.press(allHeroHistory);
+    const allHeroToken = "progress:All:4_weeks:hero-history:bench-press:2";
+    expect(onOpenExercise).toHaveBeenLastCalledWith("bench-press", "Bench Press", allHeroToken);
+    await rendered.rerender(
+      <AppearanceProvider reduceMotion store={createMemoryAppearanceStore("Dark")}>
+        <ProgressScreen {...props} returnFocusToken={allHeroToken} returnFocusVersion={1} width={390} />
+      </AppearanceProvider>,
+    );
+    await waitFor(() => expect(allHeroHistory).toHaveProp("hasTVPreferredFocus", true));
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Strength" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Show history data" }));
+    const sourceAction = screen.getAllByRole("button", { name: "Open source" })[0]!;
+    await fireEvent.press(sourceAction);
+    const sourceToken = "progress:Strength:4_weeks:hero-source:session-41:1";
+    expect(onOpenSession).toHaveBeenLastCalledWith("session-41", sourceToken, 1);
+    await rendered.rerender(
+      <AppearanceProvider reduceMotion store={createMemoryAppearanceStore("Dark")}>
+        <ProgressScreen {...props} returnFocusToken={sourceToken} returnFocusVersion={2} width={390} />
+      </AppearanceProvider>,
+    );
+    await waitFor(() => expect(sourceAction).toHaveProp("hasTVPreferredFocus", true));
   });
 });

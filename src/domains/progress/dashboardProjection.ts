@@ -12,6 +12,7 @@ import type {
   ProgressDashboardInput,
   ProgressDashboardProjection,
   ProgressGoalRevision,
+  ProgressPlannedNext,
   ProgressRecord,
   ProgressRunningActivityFact,
   ProgressRunningEffort,
@@ -132,7 +133,30 @@ function runningGap(goal: Readonly<{
   return difference > 0 ? `Gap · ${amount} ahead of target` : `Gap · ${amount} behind target`;
 }
 
-function runningProjection(input: NonNullable<ProgressDashboardInput["running"]>): Extract<ProgressDashboardProjection, { sport: "Running" }> {
+function plannedNextFor(
+  sport: ProgressDashboardInput["sport"],
+  candidates: readonly ProgressPlannedNext[],
+): ProgressPlannedNext | null {
+  return candidates.filter((candidate) =>
+    (sport === "All" || candidate.sport === sport)
+    && validIdentifier(candidate.sourceOpportunityId)
+    && validPositiveInteger(candidate.sourceRevision)
+    && /^\d{4}-\d{2}-\d{2}$/u.test(candidate.localDate)
+    && validIdentifier(candidate.planId)
+    && validIdentifier(candidate.planName)
+    && validIdentifier(candidate.activityId)
+    && validIdentifier(candidate.activityName)
+  ).toSorted((left, right) =>
+    left.localDate.localeCompare(right.localDate)
+    || left.sport.localeCompare(right.sport)
+    || left.sourceOpportunityId.localeCompare(right.sourceOpportunityId)
+  )[0] ?? null;
+}
+
+function runningProjection(
+  input: NonNullable<ProgressDashboardInput["running"]>,
+  plannedNext: ProgressPlannedNext | null,
+): Extract<ProgressDashboardProjection, { sport: "Running" }> {
   const eligible = input.activities.filter(isEligibleRunningFact).toSorted(compareEffort);
   const authoritativeTargets = input.targets.filter(isAuthoritativeGoal);
   const grouped = new Map<string, ProgressRunningActivityFact[]>();
@@ -198,6 +222,7 @@ function runningProjection(input: NonNullable<ProgressDashboardInput["running"]>
     state,
     goals: Object.freeze(goals.toSorted((left, right) => left.distanceMeters - right.distanceMeters
       || left.timeBasis.localeCompare(right.timeBasis))),
+    plannedNext,
     ...(goals.length > 0 ? {} : {
       absenceReason: hasAttemptedFact
         ? "exact_effort_evidence_insufficient" as const
@@ -396,10 +421,11 @@ function strengthGoals(facts: readonly ProgressRecord[]): readonly ProgressStren
 }
 
 export function projectProgressDashboard(input: ProgressDashboardInput): ProgressDashboardProjection {
+  const plannedNext = plannedNextFor(input.sport, input.plannedNext ?? []);
   const running = runningProjection(input.running ?? {
     activities: [],
     targets: input.goals ?? [],
-  });
+  }, plannedNext);
   const facts = input.strength?.candidates === undefined
     ? input.strength?.facts ?? []
     : projectStrengthComparableFacts(input.strength.candidates);
@@ -411,6 +437,7 @@ export function projectProgressDashboard(input: ProgressDashboardInput): Progres
       state: strength.length === 0 ? "empty" as const : strength.every(({ evidenceCount }) => evidenceCount === 1) ? "sparse" as const : "ready" as const,
       facts: Object.freeze([...facts]),
       goals: strength,
+      plannedNext,
     });
   }
   const activeGoals: ProgressAllGoal[] = [
@@ -422,6 +449,7 @@ export function projectProgressDashboard(input: ProgressDashboardInput): Progres
     state: activeGoals.length === 0 ? "empty" as const : activeGoals.every(({ goal }) => goal.evidenceCount <= 1) ? "sparse" as const : "ready" as const,
     primaryGoal: activeGoals[0] ?? null,
     activeGoals: Object.freeze(activeGoals),
+    plannedNext,
   });
 }
 
@@ -429,5 +457,6 @@ export const __dashboardProjectionTestOnly = Object.freeze({
   compareGoals,
   duration,
   formatScalar,
+  plannedNextFor,
   scalarMetric,
 });

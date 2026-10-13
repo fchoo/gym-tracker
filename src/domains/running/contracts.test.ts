@@ -10,6 +10,7 @@ import {
   parseRunningGoal,
   parseRunningPlanAggregate,
   parseRunningSessionRevision,
+  runningTargetForDistance,
   runningSessionReadback,
   runningSessionRevisionReadback,
 } from "./contracts";
@@ -140,6 +141,36 @@ describe("Running source contracts", () => {
       id: "plan-running",
       sessions: [entry],
     });
+    const tenKilometreTarget = {
+      ...aggregate.goal,
+      id: "goal-10k-v1",
+      goalDistanceMeters: 10_000,
+    };
+    const multiTarget = parseRunningPlanAggregate({
+      ...aggregate,
+      currentTargets: [aggregate.goal, tenKilometreTarget],
+    });
+    expect(runningTargetForDistance(multiTarget, 10_000)).toMatchObject({
+      id: "goal-10k-v1",
+      revision: 1,
+    });
+    expect(runningTargetForDistance(multiTarget, 21_097)).toBeUndefined();
+    expect(() => parseRunningPlanAggregate({
+      ...aggregate,
+      currentTargets: [],
+    })).toThrow(RunningBoundaryError);
+    expect(() => parseRunningPlanAggregate({
+      ...aggregate,
+      currentTargets: [aggregate.goal, { ...tenKilometreTarget, planId: "other-plan" }],
+    })).toThrow(RunningBoundaryError);
+    expect(() => parseRunningPlanAggregate({
+      ...aggregate,
+      currentTargets: [aggregate.goal, { ...tenKilometreTarget, goalDistanceMeters: 5_000 }],
+    })).toThrow(RunningBoundaryError);
+    expect(() => parseRunningPlanAggregate({
+      ...aggregate,
+      currentTargets: [tenKilometreTarget],
+    })).toThrow(RunningBoundaryError);
     expect(runningSessionReadback(entry)).toBe("5000 m · easy No target");
     expect(() => parseRunningPlanAggregate({ ...aggregate, name: "" })).toThrow(RunningBoundaryError);
     expect(() => parseRunningPlanAggregate({ ...aggregate, lifecycle: "unknown" })).toThrow(RunningBoundaryError);

@@ -132,7 +132,8 @@ describe("RunningPlanRuntimePort", () => {
       id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
       goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
     };
-    const readBack = { ...plan, revision: 5, goal: { ...plan.goal, id: "goal-3", revision: 3, goalDistanceMeters: 10_000, targetDurationMs: 3_600_000 } };
+    const tenKilometreTarget = { ...plan.goal, id: "goal-3", revision: 1, goalDistanceMeters: 10_000, targetDurationMs: 3_600_000 };
+    const readBack = { ...plan, revision: 5, currentTargets: [plan.goal, tenKilometreTarget] };
     mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(readBack);
     mockSaveRunningTarget.mockResolvedValue({ outcome: "committed", target: readBack.goal });
     const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
@@ -142,6 +143,7 @@ describe("RunningPlanRuntimePort", () => {
       goalDistanceMeters: 10_000, targetDurationMs: 3_600_000, trainingDays: ["Monday"],
     })).resolves.toEqual({ outcome: "committed", plan: readBack });
     expect(mockSaveRunningTarget).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      expectedGoalRevision: 0,
       goal: expect.objectContaining({ goalDistanceMeters: 10_000, targetDurationMs: 3_600_000 }),
     }));
   });

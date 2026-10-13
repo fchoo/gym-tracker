@@ -69,6 +69,7 @@ describe("projectProgressDashboard", () => {
       sport: "Running",
       state: "more_data_needed",
       goals: [],
+      plannedNext: null,
       absenceReason: "exact_effort_evidence_insufficient",
     });
   });
@@ -140,18 +141,21 @@ describe("projectProgressDashboard", () => {
       state: "empty",
       facts: [],
       goals: [],
+      plannedNext: null,
     });
     expect(projectProgressDashboard({ sport: "Strength", strength: {} })).toEqual({
       sport: "Strength",
       state: "empty",
       facts: [],
       goals: [],
+      plannedNext: null,
     });
     expect(projectProgressDashboard({ sport: "All" })).toEqual({
       sport: "All",
       state: "empty",
       primaryGoal: null,
       activeGoals: [],
+      plannedNext: null,
     });
     expect(projectProgressDashboard({
       sport: "All",
@@ -388,5 +392,48 @@ describe("projectProgressDashboard", () => {
       activities: [accepted2400],
       targets: [{ targetId: "one-second-gap", sport: "Running", distanceMeters: 2_400, targetDurationSeconds: 649, effectiveAtMs: 1, revision: 1, sourceOrder: 1 }],
     } })).toMatchObject({ goals: [{ gap: "Gap · 1 second behind target" }] });
+  });
+
+  it("projects the earliest compatible source-backed planned opportunity for each sport", () => {
+    const plannedNext = [{
+      sport: "Running" as const,
+      sourceOpportunityId: "running-opportunity",
+      sourceRevision: 3,
+      localDate: "2026-10-15",
+      planId: "running-plan",
+      planName: "5K base",
+      activityId: "running-session",
+      activityName: "Tempo",
+    }, {
+      sport: "Strength" as const,
+      sourceOpportunityId: "strength-opportunity",
+      sourceRevision: 2,
+      localDate: "2026-10-14",
+      planId: "strength-plan",
+      planName: "Full body",
+      activityId: "strength-day",
+      activityName: "Workout A",
+    }];
+
+    expect(projectProgressDashboard({ sport: "All", plannedNext })).toMatchObject({
+      plannedNext: { sport: "Strength", sourceOpportunityId: "strength-opportunity" },
+    });
+    expect(projectProgressDashboard({ sport: "Strength", plannedNext })).toMatchObject({
+      plannedNext: { sport: "Strength", activityName: "Workout A" },
+    });
+    expect(projectProgressDashboard({ sport: "Running", plannedNext })).toMatchObject({
+      plannedNext: { sport: "Running", activityName: "Tempo" },
+    });
+    expect(projectProgressDashboard({
+      sport: "Running",
+      plannedNext: [{ ...plannedNext[0]!, sourceRevision: 0 }],
+    })).toMatchObject({ plannedNext: null });
+    const sameDay = [
+      { ...plannedNext[0]!, sourceOpportunityId: "running-z", localDate: "2026-10-14" },
+      { ...plannedNext[1]!, sourceOpportunityId: "strength-z" },
+      { ...plannedNext[0]!, sourceOpportunityId: "running-a", localDate: "2026-10-14" },
+    ];
+    expect(__dashboardProjectionTestOnly.plannedNextFor("All", sameDay))
+      .toMatchObject({ sourceOpportunityId: "running-a" });
   });
 });

@@ -55,6 +55,8 @@ export type SaveRunningSourceGraphInput = Readonly<{
   /** Target-only revisions share the source graph receipt table but need a
    * typed committed/read-back result for UI replay recovery. */
   targetCommand?: boolean;
+  /** Revision of the selected distance-keyed target root. Zero creates it. */
+  expectedGoalRevision?: number;
 }>;
 
 export type RunningSourceGraphRepository = Readonly<{
@@ -149,7 +151,7 @@ function assertRunningTarget(input: SaveRunningTargetInput): void {
     throw new RunningCommandError(input.requestId ? "running_command_hash_invalid" : "running_command_identity_invalid");
   }
   if (!Number.isSafeInteger(input.expectedPlanRevision) || input.expectedPlanRevision < 1
-    || !Number.isSafeInteger(input.expectedGoalRevision) || input.expectedGoalRevision < 1
+    || !Number.isSafeInteger(input.expectedGoalRevision) || input.expectedGoalRevision < 0
     || !Number.isSafeInteger(input.savedAtMs) || input.savedAtMs < 0) {
     throw new RunningCommandError("running_command_revision_invalid");
   }
@@ -191,6 +193,7 @@ export async function saveRunningTarget(
     sessions: [],
     slots: [],
     targetCommand: true,
+    expectedGoalRevision: input.expectedGoalRevision,
   });
 }
 

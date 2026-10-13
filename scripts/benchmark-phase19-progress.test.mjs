@@ -15,9 +15,9 @@ const repeated = (count, value) => Array.from({ length: count }, (_, index) => v
 
 function evidence(overrides = {}) {
   return {
-    schema_version: 2,
+    schema_version: 3,
     suite: "phase19-progress",
-    producer: "phase19-progress-benchmark/v2",
+    producer: "phase19-progress-benchmark/v3",
     environment: "host-production-workload",
     status: "passed",
     native_status: "NOT_RUN",
@@ -42,7 +42,8 @@ function evidence(overrides = {}) {
     },
     targeted_rebuild: {
       updating_visible: true,
-      bounded_yield_count: 20,
+      useful_content_visible: true,
+      completed_rebuild_count: 20,
     },
     ...overrides,
   };
@@ -97,10 +98,15 @@ test("Progress benchmark rejects under-sampling, non-finite data, invented score
   const reviewSlow = evidence();
   reviewSlow.measurements.review_open_ms.fill(201);
   variants.push(reviewSlow);
-  const rebuildSlowWithoutVisibleState = evidence();
-  rebuildSlowWithoutVisibleState.measurements.targeted_rebuild_ms[19] = 501;
-  rebuildSlowWithoutVisibleState.targeted_rebuild.updating_visible = false;
-  variants.push(rebuildSlowWithoutVisibleState);
+  const rebuildSlow = evidence();
+  rebuildSlow.measurements.targeted_rebuild_ms[19] = 501;
+  variants.push(rebuildSlow);
+  const rebuildWithoutVisibleState = evidence();
+  rebuildWithoutVisibleState.targeted_rebuild.updating_visible = false;
+  variants.push(rebuildWithoutVisibleState);
+  const rebuildWithoutUsefulContent = evidence();
+  rebuildWithoutUsefulContent.targeted_rebuild.useful_content_visible = false;
+  variants.push(rebuildWithoutUsefulContent);
   const jsTaskSlow = evidence();
   jsTaskSlow.measurements.js_task_ms[99] = 51;
   variants.push(jsTaskSlow);
@@ -131,10 +137,16 @@ test("Progress benchmark rejects under-sampling, non-finite data, invented score
 
 test("Progress benchmark executes the production repository and UI workload with bounded subprocesses", () => {
   const source = readFileSync("scripts/benchmark-phase19-progress.mjs", "utf8");
+  const worker = readFileSync("src/ui/__tests__/Phase19ProgressBenchmark.test.tsx", "utf8");
   assert.doesNotMatch(source, /CREATE TABLE progress_facts|createSyntheticRuntime/u);
   assert.match(source, /Phase19ProgressBenchmark\.test\.tsx/u);
   assert.match(source, /timeout:\s*PHASE19_BENCHMARK_SUBPROCESS_TIMEOUT_MS/u);
   assert.match(source, /maxBuffer:\s*PHASE19_BENCHMARK_MAX_OUTPUT_BYTES/u);
+  assert.match(worker, /fireEvent\.press[\s\S]*Review target for Synthetic press/u);
+  assert.match(worker, /createHistoryProjectionEffectRunner/u);
+  assert.match(worker, /Updating progress/u);
+  assert.match(worker, /Nearest active goal/u);
+  assert.doesNotMatch(worker, /recommendationTargetText|setImmediate/u);
 });
 
 test("Progress benchmark CLI is host-only and does not accept native or score flags", () => {

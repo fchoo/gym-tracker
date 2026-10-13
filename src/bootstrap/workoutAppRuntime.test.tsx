@@ -1790,6 +1790,7 @@ describe("WorkoutAppRuntimeProvider", () => {
         sport: "Running",
         state: "empty",
         goals: [],
+        plannedNext: null,
         absenceReason: "no_factual_points",
       },
       runningTargetSources: [],
@@ -1820,10 +1821,14 @@ describe("WorkoutAppRuntimeProvider", () => {
       queryAll,
     } as unknown as SqliteKernel;
     const repository = runtimeRepository([noPlanView], [null]);
+    const outcomeRepository = runtimeOutcomeRepository();
     let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
 
     await render(<RuntimeCaptureHarness
-      dependencies={dependencies(repository, { openKernel: jest.fn(async () => kernel) })}
+      dependencies={dependencies(repository, {
+        createOutcomeRepository: () => outcomeRepository,
+        openKernel: jest.fn(async () => kernel),
+      })}
       onReady={(runtime) => { captured = runtime; }}
     />);
     await waitFor(() => expect(captured?.launchState).toBe("trusted"));
@@ -1840,6 +1845,13 @@ describe("WorkoutAppRuntimeProvider", () => {
       });
     await expect(captured!.loadImportedActivityDetail("activity-1", 1))
       .resolves.toMatchObject({ kind: "projection_error" });
+    expect(() => captured!.getSessionDetailAtRevision("session-1", 1))
+      .toThrow("workout_source_revision_reader_unavailable");
+    Object.assign(outcomeRepository, {
+      getSessionDetailAtRevision: jest.fn(async () => runtimeSessionDetail),
+    });
+    await expect(captured!.getSessionDetailAtRevision("session-1", 1))
+      .resolves.toEqual(runtimeSessionDetail);
     stale = true;
     await expect(captured!.loadProgress({
       sport: "Running",
@@ -1936,7 +1948,12 @@ describe("WorkoutAppRuntimeProvider", () => {
       period: "4_weeks",
       nowLocalDate: "2026-08-24",
     });
-    expect(progress.runningTargetSources).toEqual([targetSource]);
+    expect(progress.runningTargetSources).toEqual([
+      expect.objectContaining({
+        ...targetSource,
+        currentTargets: [targetSource.goal],
+      }),
+    ]);
     expect(progress).not.toHaveProperty("sourceFacts");
     expect(captured!.progressRunningTargetRuntime.createId("running-target-save"))
       .toBe("running-target-save:request");

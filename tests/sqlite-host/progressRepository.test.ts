@@ -586,7 +586,7 @@ describe("progress repository", () => {
     expect(result).toEqual(expect.objectContaining({
       sport: "Running",
       freshness: "current",
-      dashboard: {
+      dashboard: expect.objectContaining({
         sport: "Running",
         state: "sparse",
         goals: [expect.objectContaining({
@@ -597,7 +597,7 @@ describe("progress repository", () => {
             durationSeconds: 660,
           }),
         })],
-      },
+      }),
     }));
     expect(result).not.toHaveProperty("sourceFacts");
     expect(JSON.stringify(result)).not.toContain("aggregate_json");
@@ -714,6 +714,99 @@ describe("progress repository", () => {
     ]);
   });
 
+  it("projects only current active future Strength and Running opportunities", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute("UPDATE plans SET is_active = 1 WHERE id = 'plan-1'");
+      await transaction.execute(
+        "INSERT INTO plan_days(id, plan_id, ordinal, name, revision) VALUES ('strength-day', 'plan-1', 0, 'Workout A', 1)",
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_versions
+          (id, schedule_id, version_number, effective_local_date, mode, timezone,
+           rotation_pointer, created_at_ms)
+         VALUES ('schedule-version-2', 'schedule-1', 2, '2026-08-24',
+                 'rotation', 'Asia/Singapore', 0, 2)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_opportunities
+          (id, schedule_id, schedule_version_id, local_date, source, plan_day_id,
+           state, outcome, session_id, revision, consumed_at_ms)
+         VALUES
+          ('strength-stale', 'schedule-1', 'schedule-version-1', '2026-08-25',
+           'rotation', 'strength-day', 'pending', NULL, NULL, 1, NULL),
+          ('strength-next', 'schedule-1', 'schedule-version-2', '2026-08-26',
+           'rotation', 'strength-day', 'pending', NULL, NULL, 2, NULL)`,
+      );
+      await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision, plan_kind)
+         VALUES ('running-next-plan', NULL, 'custom', NULL, NULL, '5K base',
+                 2, 'Owner', 'Running', 30, 'Owner-authored', 1, 1, 'running')`,
+      );
+      await transaction.execute(
+        "INSERT INTO plan_days(id, plan_id, ordinal, name, revision) VALUES ('running-anchor', 'running-next-plan', 0, 'Running schedule anchor', 1)",
+      );
+      await transaction.execute(
+        "INSERT INTO running_plans(plan_id, status, revision, created_at_ms) VALUES ('running-next-plan', 'ready', 1, 1)",
+      );
+      await transaction.execute(
+        `INSERT INTO running_session_revisions
+          (id, plan_id, session_kind, revision, definition_json, created_at_ms)
+         VALUES ('running-tempo-v3', 'running-next-plan', 'tempo', 3, '{}', 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO running_session_slots
+          (id, plan_id, weekday, ordinal, session_revision_id, revision, retired_at_ms)
+         VALUES ('running-slot', 'running-next-plan', 'Thursday', 0,
+                 'running-tempo-v3', 1, NULL)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedules
+          (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind)
+         VALUES ('running-next-schedule', 'running-next-plan', 'active', 1, 1, NULL, 'running')`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_versions
+          (id, schedule_id, version_number, effective_local_date, mode, timezone,
+           rotation_pointer, created_at_ms)
+         VALUES ('running-next-version', 'running-next-schedule', 1, '2026-08-01',
+                 'weekday', 'Asia/Singapore', NULL, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO running_opportunities
+          (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date,
+           timezone, session_revision_id, state, created_at_ms)
+         VALUES
+          ('running-skipped', 'running-next-plan', 'running-next-schedule',
+           'running-next-version', 'running-slot', '2026-08-25', 'Asia/Singapore',
+           'running-tempo-v3', 'skipped', 1),
+          ('running-next', 'running-next-plan', 'running-next-schedule',
+           'running-next-version', 'running-slot', '2026-08-27', 'Asia/Singapore',
+           'running-tempo-v3', 'planned', 1)`,
+      );
+    });
+    const repository = createProgressRepository(kernel);
+
+    await expect(repository.load({ sport: "All", period: "all_time", nowLocalDate: "2026-08-24" }))
+      .resolves.toMatchObject({ dashboard: { plannedNext: {
+        sport: "Strength", sourceOpportunityId: "strength-next", sourceRevision: 2,
+        localDate: "2026-08-26", activityName: "Workout A",
+      } } });
+    await expect(repository.load({ sport: "Strength", period: "all_time", nowLocalDate: "2026-08-24" }))
+      .resolves.toMatchObject({ dashboard: { plannedNext: {
+        sport: "Strength", sourceOpportunityId: "strength-next",
+      } } });
+    await expect(repository.load({ sport: "Running", period: "all_time", nowLocalDate: "2026-08-24" }))
+      .resolves.toMatchObject({ dashboard: { plannedNext: {
+        sport: "Running", sourceOpportunityId: "running-next", sourceRevision: 3,
+        localDate: "2026-08-27", activityName: "Tempo",
+      } } });
+  });
+
   const progressRanges: ReadonlyArray<readonly [ProgressPeriod, string | null]> = [
     ["4_weeks", "2026-07-28"],
     ["12_weeks", "2026-06-02"],
@@ -748,7 +841,7 @@ describe("progress repository", () => {
     const boundedRows = queries.filter(({ sql }) =>
       sql.includes("history_projection_period_inputs")
       || sql.includes("history_projection_comparable_exposures")
-      || sql.includes("owned_plan_schedule_opportunities")
+      || sql.includes("owned_plan_schedule_opportunities") && sql.includes("state = 'consumed'")
       || sql.includes("FROM imported_activities activity")
         && sql.includes("identity.aggregate_revision = lifecycle.aggregate_revision")
     );
@@ -757,6 +850,12 @@ describe("progress repository", () => {
       expect(sql).toMatch(/(?:local_date|confirmed_local_date'\)) >= \?/u);
       expect(parameters).toContain(expectedStart);
     }
+    const futureRows = queries.filter(({ sql }) =>
+      sql.includes("owned_plan_schedule_opportunities opportunity") && sql.includes("state = 'pending'")
+      || sql.includes("FROM running_opportunities opportunity") && sql.includes("state = 'planned'")
+    );
+    expect(futureRows).toHaveLength(2);
+    for (const { parameters } of futureRows) expect(parameters).toContain("2026-08-24");
     expect(queries.some(({ sql }) => /INSERT|UPDATE|DELETE/u.test(sql))).toBe(false);
   });
 
