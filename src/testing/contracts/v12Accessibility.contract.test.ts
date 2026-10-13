@@ -1,3 +1,5 @@
+import { describe, expect, it } from "@jest/globals";
+
 import { validateV12AccessibilityContract } from "./v12Accessibility.contract";
 
 describe("v1.2 accessibility contract", () => {

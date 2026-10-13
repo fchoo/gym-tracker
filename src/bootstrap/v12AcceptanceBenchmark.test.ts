@@ -1,3 +1,5 @@
+import { describe, expect, it } from "@jest/globals";
+
 import {
   V12_ACCEPTANCE_BENCHMARK_MARKER,
   createV12AcceptanceBenchmark,
