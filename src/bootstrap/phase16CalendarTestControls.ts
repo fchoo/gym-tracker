@@ -140,6 +140,22 @@ export function phase16CalendarGestureDriver(
       Object.freeze({ kind: "cancel" as const }),
     ]);
   }
+  const direction = stage?.startsWith("drag-forward") === true
+    ? -1
+    : stage?.startsWith("drag-backward") === true ? 1 : stage === "drag-fast-subthreshold" ? -1 : 0;
+  const ratio = stage?.endsWith("-10") === true || stage === "drag-fast-subthreshold"
+    ? 0.1
+    : stage?.endsWith("-24_9") === true || stage?.endsWith("release-below") === true
+      ? 0.249
+      : stage?.endsWith("-25") === true || stage?.endsWith("release-exact") === true
+        ? 0.25
+        : stage?.endsWith("-25_1") === true || stage?.endsWith("release-above") === true ? 0.251 : null;
+  if (direction !== 0 && ratio !== null) {
+    return Object.freeze([
+      Object.freeze({ kind: "drag" as const, dxRatio: direction * ratio, commandedRatio: ratio }),
+      Object.freeze({ kind: "release" as const, dxRatio: direction * ratio }),
+    ]);
+  }
   return null;
 }
 

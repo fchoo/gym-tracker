@@ -402,6 +402,8 @@ describe("CalendarScreen", () => {
 
     expect(await screen.findByRole("button", { name: "Return to today, 24 August 2026" }))
       .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Return to today, 24 August 2026" }))
+      .toHaveStyle({ backgroundColor: "transparent" });
     expect(screen.getByRole("button", { name: "Show July 2026" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Show September 2026" })).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByTestId("screen-header-actions").props.style)).toMatchObject({ flexDirection: "row", gap: 2 });
@@ -415,6 +417,8 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("Color identifies the activity. Fill and border style identify its status."))
       .toBeOnTheScreen();
     expect(screen.getByText("ACTIVITY")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-key-strength-swatch")).toHaveStyle({ backgroundColor: "#D97820" });
+    expect(screen.getByTestId("calendar-key-running-swatch")).toHaveStyle({ backgroundColor: "#195FAE" });
     expect(screen.getByText("STATUS")).toBeOnTheScreen();
     expect(screen.queryByText("Complete", { exact: true })).not.toBeNull();
     expect(StyleSheet.flatten(screen.getByTestId("calendar-key-complete").props.style).backgroundColor).toBe("#0D0C0A24");
@@ -423,6 +427,26 @@ describe("CalendarScreen", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Close Calendar key" }));
     expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
+  });
+
+  it("renders the exact transparent 9dp date atom and centered 28dp today ring", async () => {
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={jest.fn(async () => range)}
+          onOpenEvent={jest.fn()}
+          onOpenSettings={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    const ordinary = await screen.findByTestId("calendar-day-2026-08-25");
+    const todayTrack = screen.getByTestId("calendar-date-track-2026-08-24");
+    const eventTrack = screen.getByTestId("calendar-event-track-2026-08-24");
+    expect(ordinary).toHaveStyle({ borderColor: "transparent", borderRadius: 9, borderWidth: 1 });
+    expect(todayTrack).toHaveStyle({ alignItems: "center", alignSelf: "center", borderWidth: 2, width: 28 });
+    expect(eventTrack).toHaveStyle({ marginTop: 2 });
   });
 
   it("moves arrow focus to the selected civil date and transfers focus through expand and Collapse", async () => {
@@ -447,6 +471,8 @@ describe("CalendarScreen", () => {
     await measureAugustFocusedRows();
     await fireEvent.press(screen.getByTestId("calendar-day-2026-08-25"));
     const collapse = await screen.findByRole("button", { name: "Collapse day and return to month" });
+    expect(collapse).toHaveStyle({ height: 48, position: "absolute", right: 0, top: 0, width: 48 });
+    expect(screen.getByTestId("calendar-agenda-heading")).toContainElement(collapse);
     await waitFor(() => expect(collapse).toHaveProp("hasTVPreferredFocus", true));
 
     await fireEvent(collapse, "keyDown", { nativeEvent: { key: "Enter" } });

@@ -53,6 +53,14 @@ export function calendarMonthPanEnabled(phase: CalendarTransitionPhase): boolean
   return phase === "idle" || phase === "dragging";
 }
 
+export function calendarHorizontalInsetForSafeWidth(safeWidth: number): number {
+  return Math.min(18, Math.max(0, (safeWidth - 348) / 2));
+}
+
+export function calendarViewportWidthForSafeWidth(safeWidth: number): number {
+  return safeWidth - calendarHorizontalInsetForSafeWidth(safeWidth) * 2;
+}
+
 export function calendarFocusedAgendaMinimumHeight(fontScale: number): number {
   const scale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
   const heading = Math.max(62, Math.ceil((26 + 20) * scale + 10));

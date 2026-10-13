@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Minus } from "lucide-react-native";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { PlannedStrengthOccurrenceDetail } from "../../domains/workout";
@@ -14,7 +15,7 @@ import {
 } from "../../domains/workout/workoutPresentation";
 import { EmptyState, FocusablePressable, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
-import { calendarTypeScale, space, typeScale, useAppTheme } from "../theme";
+import { calendarTypeScale, space, useAppTheme } from "../theme";
 
 type LoadState = "loading" | "ready" | "missing" | "error";
 
@@ -142,10 +143,10 @@ export function PlannedWorkoutDetailScreen({
       primary={<>
         <ScreenHeader backAction={onBack} backActionRef={backActionRef} title={title} titleStyle={calendarTypeScale.heading as TextStyle} />
         <View style={styles.summary} testID="planned-workout-summary">
-          <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Planned preview · read only</Text>
+          <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>Planned preview · read only</Text>
           <Text style={[calendarTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{detail.planName}</Text>
-          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{detail.localDate}</Text>
-          <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`0 of ${targets.length} sets`}</Text>
+          <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textSecondary }]}>{detail.localDate}</Text>
+          <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textPrimary }]}>{`0 of ${targets.length} sets`}</Text>
           <View accessibilityLabel={`0 of ${targets.length} sets complete`} style={[styles.progressTrack, { backgroundColor: colors.line }]}>
             <View style={[styles.progressFill, { backgroundColor: colors.completed, width: "0%" }]} />
           </View>
@@ -171,7 +172,13 @@ export function PlannedWorkoutDetailScreen({
                     <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{exercise.exerciseName}</Text>
                     <Text style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{`${firstTarget} · 0/${exercise.targets.length} complete`}</Text>
                   </View>
-                  <Text accessible={false} style={[calendarTypeScale.heading as TextStyle, { color: colors.textSecondary }]}>{expanded ? "⌄" : "›"}</Text>
+                  <View testID={`planned-exercise-disclosure-${exercise.id}`}>
+                    {expanded ? (
+                      <ChevronDown accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
+                    ) : (
+                      <ChevronRight accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
+                    )}
+                  </View>
                 </FocusablePressable>
                 {expanded ? <View style={styles.table}>
                   <View style={styles.tableHeader}>
@@ -182,7 +189,9 @@ export function PlannedWorkoutDetailScreen({
                       <Text style={[calendarTypeScale.numeric as TextStyle, styles.cell, { color: colors.textPrimary }]}>{String(target.ordinal + 1).padStart(2, "0")}</Text>
                       <Text style={[calendarTypeScale.numeric as TextStyle, styles.cell, { color: colors.textSecondary }]}>{previousText(target) ?? "—"}</Text>
                       <Text style={[calendarTypeScale.numeric as TextStyle, styles.cell, { color: colors.textPrimary }]}>{targetText(target.targetJson)!}</Text>
-                      <Text accessibilityLabel="Planned" style={[calendarTypeScale.metadata as TextStyle, styles.cell, { color: colors.textSecondary }]}>—</Text>
+                      <View accessibilityLabel="Planned" accessible style={styles.cell} testID={`planned-state-${target.id}`}>
+                        <Minus accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
+                      </View>
                     </View>
                   ))}
                 </View> : null}

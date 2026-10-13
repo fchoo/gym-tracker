@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import type { RunningLifecyclePreview } from "../../domains/running/lifecycle";
@@ -55,6 +56,8 @@ describe("RunningPlanDetailScreen", () => {
 
     expect(await screen.findByText("Scheduled session")).toBeOnTheScreen();
     expect(screen.getByText("Monday · Tempo")).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByText("10K base").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByText("10000 m").props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
     expect(screen.queryByText("Monday · Recovery")).toBeNull();
     expect(loadPlan).toHaveBeenCalledWith("running-1", "session-2");
     expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);

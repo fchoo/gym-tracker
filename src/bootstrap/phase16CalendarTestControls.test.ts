@@ -45,7 +45,22 @@ test("Phase 16 stage drivers expose one continuous retreat and a pointer-cancel 
     { kind: "drag", dxRatio: -0.18, commandedRatio: 0.18 },
     { kind: "cancel" },
   ]);
-  expect(phase16CalendarGestureDriver("drag-forward-25")).toBeNull();
+  expect(phase16CalendarGestureDriver("drag-forward-25")).toEqual([
+    { kind: "drag", dxRatio: -0.25, commandedRatio: 0.25 },
+    { kind: "release", dxRatio: -0.25 },
+  ]);
+  expect(phase16CalendarGestureDriver("drag-backward-24_9")).toEqual([
+    { kind: "drag", dxRatio: 0.249, commandedRatio: 0.249 },
+    { kind: "release", dxRatio: 0.249 },
+  ]);
+  expect(phase16CalendarGestureDriver("drag-forward-release-above")).toEqual([
+    { kind: "drag", dxRatio: -0.251, commandedRatio: 0.251 },
+    { kind: "release", dxRatio: -0.251 },
+  ]);
+  expect(phase16CalendarGestureDriver("drag-fast-subthreshold")).toEqual([
+    { kind: "drag", dxRatio: -0.1, commandedRatio: 0.1 },
+    { kind: "release", dxRatio: -0.1 },
+  ]);
   expect(phase16CalendarGestureDriver(undefined)).toBeNull();
 });
 

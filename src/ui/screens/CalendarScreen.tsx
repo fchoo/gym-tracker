@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronUp } from "lucide-react-native";
 import {
   AccessibilityInfo,
   AppState,
@@ -25,6 +26,7 @@ import type { CalendarEventDestination, CalendarRange, CalendarReadPort } from "
 import { CalendarAgenda, type CalendarAgendaHandle, type CalendarAgendaRowHandle } from "../calendar/CalendarAgenda";
 import {
   CalendarMonthViewport,
+  calendarHorizontalInsetForSafeWidth,
   calendarWeekGeometryForGeneration,
   type CalendarWeekGeometry,
 } from "../calendar/CalendarMonthViewport";
@@ -600,7 +602,7 @@ export function CalendarScreen({
       || focusedWeek === null) return;
     dispatchCalendarTransition({ type: "layout-ready" });
   }, [calendarTransition.phase, dispatchCalendarTransition, focusedWeek]);
-  const calendarInset = Math.min(18, Math.max(0, (safeWidth - 348) / 2));
+  const calendarInset = calendarHorizontalInsetForSafeWidth(safeWidth);
   const adaptiveScreenInset = safeWidth < 600 ? space[4] : safeWidth < 840 ? space[6] : space[8];
 
   const header = (
@@ -655,31 +657,31 @@ export function CalendarScreen({
   };
   const agendaRegion = (
     <View style={styles.agendaRegion} testID="calendar-agenda-region">
-      <View style={[styles.agendaHeading, { borderColor: colors.textPrimary }]}>
+      <View style={[styles.agendaHeading, { borderColor: colors.textPrimary }]} testID="calendar-agenda-heading">
         <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{fullDate(visibleSelectedDate)}</Text>
         <Text style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>
           {selectedEvents.length === 0
             ? "No workout"
             : `${selectedEvents.length} scheduled or imported event${selectedEvents.length === 1 ? "" : "s"}`}
         </Text>
+        <FocusablePressable
+          accessibilityLabel="Collapse day and return to month"
+          accessibilityRole="button"
+          disabled={interactionDisabled}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.key === "Escape") requestCalendarBack();
+            else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " " || event.nativeEvent.key === "Select") collapseCalendar();
+          }}
+          onPress={collapseCalendar}
+          ref={collapseActionRef}
+          style={({ pressed }) => [
+            styles.collapseAction,
+            { backgroundColor: pressed ? colors.surfaceSubtle : "transparent" },
+          ]}
+        >
+          <ChevronUp accessible={false} color={colors.textPrimary} size={24} strokeWidth={2} />
+        </FocusablePressable>
       </View>
-      <FocusablePressable
-        accessibilityLabel="Collapse day and return to month"
-        accessibilityRole="button"
-        disabled={interactionDisabled}
-        onKeyDown={(event) => {
-          if (event.nativeEvent.key === "Escape") requestCalendarBack();
-          else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " " || event.nativeEvent.key === "Select") collapseCalendar();
-        }}
-        onPress={collapseCalendar}
-        ref={collapseActionRef}
-        style={({ pressed }) => [
-          styles.collapseAction,
-          { backgroundColor: pressed ? colors.surfaceSubtle : colors.surface, borderColor: colors.line },
-        ]}
-      >
-        <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Collapse day and return to month</Text>
-      </FocusablePressable>
       <CalendarAgenda
         {...(selectedDay === undefined ? {} : { day: selectedDay })}
         events={selectedEvents}
@@ -735,10 +737,10 @@ export function CalendarScreen({
                 onPress={returnToToday}
                 style={({ pressed }) => [
                   styles.todayAction,
-                  { backgroundColor: pressed ? colors.actionPressed : colors.action },
+                  { backgroundColor: pressed ? colors.surfaceSubtle : "transparent" },
                 ]}
               >
-                <Text style={[typeScale.bodyStrong as TextStyle, styles.todayLabel, { color: colors.onAction }]}>Today</Text>
+                <Text style={[typeScale.bodyStrong as TextStyle, styles.todayLabel, { color: colors.blue }]}>Today</Text>
               </FocusablePressable>
             </View>
             <View style={styles.monthNavigationAction} testID="calendar-month-next-slot">
@@ -888,8 +890,14 @@ export function CalendarScreen({
             <View style={styles.keyGroup}>
               <Text style={[typeScale.label as TextStyle, styles.keyGroupTitle, { color: colors.textSecondary }]}>ACTIVITY</Text>
               <View style={styles.keyItems}>
-                <Text style={[typeScale.body as TextStyle, { color: colors.calendarStrengthTextLight }]}>Strength</Text>
-                <Text style={[typeScale.body as TextStyle, { color: colors.blue }]}>Running</Text>
+                <View style={styles.activityKeyItem}>
+                  <View style={[styles.activitySwatch, { backgroundColor: colors.orange }]} testID="calendar-key-strength-swatch" />
+                  <Text style={[typeScale.body as TextStyle, { color: colors.calendarStrengthTextLight }]}>Strength</Text>
+                </View>
+                <View style={styles.activityKeyItem}>
+                  <View style={[styles.activitySwatch, { backgroundColor: colors.blue }]} testID="calendar-key-running-swatch" />
+                  <Text style={[typeScale.body as TextStyle, { color: colors.blue }]}>Running</Text>
+                </View>
               </View>
             </View>
             <View style={styles.keyGroup}>
@@ -917,8 +925,10 @@ export function CalendarScreen({
 
 const styles = StyleSheet.create({
   agendaRegion: { flex: 1, gap: 10, minHeight: 0 },
-  agendaHeading: { borderBottomWidth: 2, gap: 4, minHeight: 62, paddingBottom: 8 },
-  collapseAction: { alignItems: "flex-start", borderWidth: 1, justifyContent: "center", minHeight: 48, paddingHorizontal: 10 },
+  activityKeyItem: { alignItems: "center", flexDirection: "row", gap: 4 },
+  activitySwatch: { height: 12, width: 12 },
+  agendaHeading: { borderBottomWidth: 2, gap: 4, minHeight: 62, paddingBottom: 8, paddingRight: 48, position: "relative" },
+  collapseAction: { alignItems: "center", height: 48, justifyContent: "center", position: "absolute", right: 0, top: 0, width: 48 },
   completeKey: { borderWidth: 1, paddingVertical: 4 },
   gridRegion: { flex: 1, gap: 2, minHeight: 0 },
   keyPartialFill: { bottom: 0, left: 0, position: "absolute", top: 0, width: "50%" },

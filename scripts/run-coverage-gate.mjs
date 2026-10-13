@@ -122,6 +122,7 @@ const phase16EvidenceFiles = [
   "scripts/run-v12-maestro.mjs",
   "scripts/verify-v12-native-evidence.mjs",
   "scripts/v12-calendar-artifacts.mjs",
+  "scripts/v12-calendar-case-evidence.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
 const phase19IntegrityCriticalFiles = phase19CoverageManifest.required_files;

@@ -15,7 +15,11 @@ import {
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
-import { V12_CALENDAR_ROUTE_JOURNEY_IDS } from "./v12-calendar-case-registry.mjs";
+import {
+  V12_CALENDAR_REQUIRED_CASES,
+  V12_CALENDAR_ROUTE_JOURNEY_IDS,
+} from "./v12-calendar-case-registry.mjs";
+import { validateV12CalendarCaseSupportBytes } from "./v12-calendar-case-evidence.mjs";
 import { errorMessage, exactKeys } from "./node-evidence-utils.mjs";
 import {
   resolveV12CalendarPath,
@@ -304,6 +308,20 @@ function retainedJson(root, descriptorValue, expected, code) {
   if (!isDeepStrictEqual(parsed, expected) || text !== stableCanonicalJson(parsed)) fail(`${code}_content_mismatch`);
 }
 
+function validateRetainedCaseSupport(root, caseResults) {
+  for (const [index, caseResult] of caseResults.entries()) {
+    const requiredCase = V12_CALENDAR_REQUIRED_CASES[index];
+    const bytesByKind = Object.fromEntries(Object.entries(caseResult.records).map(([kind, record]) => {
+      const artifactPath = resolveV12CalendarPath(path.resolve(root, record.artifact.path), {
+        root,
+        mustExist: true,
+      });
+      return [kind, readFileSync(artifactPath)];
+    }));
+    validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, bytesByKind });
+  }
+}
+
 function withoutArtifact(entry) {
   const { artifact, ...value } = entry;
   return value;
@@ -380,6 +398,7 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
   for (const entry of evidence.functional_cases) retainedJson(root, entry.artifact, withoutArtifact(entry), "functional_case");
   for (const entry of evidence.route_journeys) retainedJson(root, entry.artifact, withoutArtifact(entry), "route_journey");
   for (const entry of evidence.comparison.case_results) retainedJson(root, entry.artifact, withoutArtifact(entry), "case_result");
+  validateRetainedCaseSupport(root, evidence.comparison.case_results);
   const map = referenceMap(root, evidence.manifest.reference_map_sha256);
   const mappedById = new Map(map.captures.map((entry) => [entry.id, entry]));
   for (const record of evidence.comparison.records) {

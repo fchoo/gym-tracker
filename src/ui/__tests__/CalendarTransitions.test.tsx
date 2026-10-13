@@ -25,6 +25,7 @@ import {
 import {
   calendarMonthPanEnabled,
   calendarPanelTranslate,
+  calendarViewportWidthForSafeWidth,
   calendarWeekGeometryForGeneration,
   CalendarMonthViewport,
   calendarAgendaMotion,
@@ -304,6 +305,59 @@ describe("Calendar semantic transitions", () => {
       clearPhase16CalendarTestControls();
     }
   });
+
+  it.each(([360, 390] as const).flatMap((safeWidth) => ([
+    "drag-forward-24_9",
+    "drag-forward-25",
+    "drag-forward-25_1",
+    "drag-backward-24_9",
+    "drag-backward-25",
+    "drag-backward-25_1",
+  ] as const).map((diagnosticStage) => [safeWidth, diagnosticStage] as const)))(
+    "drives %sdp %s against the actual inset viewport",
+    async (safeWidth, diagnosticStage) => {
+      const viewportWidth = calendarViewportWidthForSafeWidth(safeWidth);
+      expect(viewportWidth).toBe(safeWidth === 360 ? 348 : 354);
+      configurePhase16CalendarTestControls({
+        packageName: "com.fchoo.gymtracker.devtest",
+        buildProfile: "development-test",
+        nativeContractsEnabled: true,
+        suite: "phase16-calendar",
+        stage: diagnosticStage,
+        nowMs: () => 1_800_000_000_000,
+        traceNonce: `p16trace-${diagnosticStage.replaceAll("_", "-")}-${safeWidth}`,
+        emitLine: () => undefined,
+      });
+      const rendered = await render(
+        <CalendarMonthViewport
+          command={null}
+          diagnosticStage={diagnosticStage}
+          focusedWeek={null}
+          month={"2026-11-01" as LocalDate}
+          onCancel={jest.fn()}
+          onComplete={jest.fn()}
+          onPreview={jest.fn()}
+          onRelease={jest.fn()}
+          renderMonth={() => <View />}
+          renderWeek={() => <View />}
+          transition={initial()}
+        />,
+      );
+      await fireEvent(rendered.getByTestId("calendar-month-viewport"), "layout", {
+        nativeEvent: { layout: { height: 500, width: viewportWidth, x: 0, y: 0 } },
+      });
+      const trace = readPhase16CalendarActiveTrace();
+      expect(trace?.samples.map(({ kind }) => kind)).toEqual(["drag", "release"]);
+      const validator = pathToFileURL(path.resolve("scripts/compare-v12-calendar.mjs")).href;
+      expect(execFileSync(process.execPath, [
+        "--input-type=module",
+        "--eval",
+        `import { validateV12CalendarStageTrace } from ${JSON.stringify(validator)}; process.stdout.write(String(validateV12CalendarStageTrace(JSON.parse(process.argv[1]))));`,
+        JSON.stringify(trace),
+      ], { encoding: "utf8" })).toBe("true");
+      clearPhase16CalendarTestControls();
+    },
+  );
 
   it("records one bounded interaction sample only after a committed drag expands and collapses", async () => {
     const createPan = Gesture.Pan.bind(Gesture);

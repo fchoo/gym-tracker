@@ -6,7 +6,7 @@ import type {
   WorkoutPresentationExercise,
   WorkoutPresentationModel,
 } from "../../domains/workout/workoutPresentation";
-import { space, workoutTypeScale, useAppTheme } from "../theme";
+import { calendarTypeScale, space, workoutTypeScale, useAppTheme } from "../theme";
 import { FocusablePressable } from "./index";
 import { WorkoutSetFactsRow } from "./WorkoutSetFactsRow";
 
@@ -19,6 +19,7 @@ export type WorkoutSessionPresentationProps = Readonly<{
   onExerciseToggle?: (exercise: WorkoutPresentationExercise, expanded: boolean, index: number) => void;
   renderExerciseAccessory?: (exercise: WorkoutPresentationExercise, index: number) => React.ReactNode;
   showGrip?: boolean;
+  typography?: "default" | "calendar";
 }>;
 
 /** Command-free exercise disclosure and facts surface reusable by read-only consumers. */
@@ -31,6 +32,7 @@ export function WorkoutSessionPresentation({
   onExerciseToggle,
   renderExerciseAccessory,
   showGrip = true,
+  typography = "default",
 }: WorkoutSessionPresentationProps) {
   const { colors } = useAppTheme();
   const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
@@ -84,8 +86,8 @@ export function WorkoutSessionPresentation({
                 style={styles.disclosure}
               >
                 <View style={styles.copy}>
-                  <Text accessibilityRole="header" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-                  <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
+                  <Text accessibilityRole="header" style={[(typography === "calendar" ? calendarTypeScale.bodyStrong : workoutTypeScale.bodyStrong) as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
+                  <Text style={[(typography === "calendar" ? calendarTypeScale.metadata : workoutTypeScale.secondary) as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
                 </View>
                 {expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
               </FocusablePressable>

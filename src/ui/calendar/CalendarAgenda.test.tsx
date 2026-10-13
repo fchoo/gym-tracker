@@ -35,6 +35,11 @@ describe("CalendarAgenda factual copy", () => {
       </AppearanceProvider>,
     );
     expect(screen.getByText("3 of 4 working sets completed")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-agenda-event-completed")).toHaveStyle({
+      backgroundColor: "transparent",
+      borderBottomWidth: 1,
+      borderWidth: 0,
+    });
     expect(screen.queryByText("Completed result")).toBeNull();
     expect(JSON.stringify(rendered.toJSON())).not.toMatch(/garmin_connect_account|owner-a/u);
     await act(async () => agendaRef.current?.scrollTo(-10));
@@ -51,6 +56,7 @@ describe("CalendarAgenda factual copy", () => {
       </AppearanceProvider>,
     );
     expect(screen.getByText("Recovery is the plan")).toBeOnTheScreen();
+    expect(screen.getByLabelText(/Recovery is the plan/u)).toHaveStyle({ gap: 4 });
     expect(screen.getByText("Full body plan. Nothing to resume or review.")).toBeOnTheScreen();
 
     await rendered.rerender(
