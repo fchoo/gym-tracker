@@ -67,6 +67,7 @@
     { "path": "src/platform/sqlite/repositories/scheduleRepository.ts", "reason": "Phase 16 schedule materialization changes remain under its phase-owned coverage." },
     { "path": "src/platform/sqlite/repositories/strengthOccurrenceSnapshot.ts", "reason": "Phase 16 immutable occurrence snapshot reads remain under its phase-owned coverage." },
     { "path": "src/ui/calendar/CalendarAgenda.tsx", "reason": "Phase 16 presentation component with no mutation authority." },
+    { "path": "src/ui/calendar/CalendarDisclosureChevron.tsx", "reason": "Phase 16 presentation-only disclosure animation with no Phase 19 data, transaction, receipt, projection, or evidence authority." },
     { "path": "src/ui/calendar/CalendarMonthViewport.tsx", "reason": "Phase 16 presentation component with no mutation authority." },
     { "path": "src/ui/calendar/CalendarReadOnlyWorkout.tsx", "reason": "Phase 16 read-only presentation component." },
     { "path": "src/ui/calendar/CalendarRouteAdapters.tsx", "reason": "Phase 16 navigation adapter covered by calendar route tests." },
