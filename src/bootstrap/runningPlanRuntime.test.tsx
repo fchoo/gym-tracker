@@ -245,6 +245,10 @@ describe("RunningPlanRuntimePort", () => {
     mockReadAggregate.mockResolvedValueOnce(null);
     await expect(runtime.savePlan(plan)).rejects.toThrow("running_plan_revision_conflict");
 
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(null);
+    await expect(runtime.savePlan({ ...plan, name: "Missing readback" }))
+      .rejects.toThrow("running_plan_readback_missing");
+
     const session = {
       sessionKind: "recovery" as const,
       weekday: "Monday" as const,
@@ -271,6 +275,14 @@ describe("RunningPlanRuntimePort", () => {
       expectedSlotRevision: 1,
       session,
     })).rejects.toThrow("running_session_revision_conflict");
+
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(null);
+    await expect(runtime.saveSession({
+      planId: "running",
+      expectedPlanRevision: 1,
+      requestId: "missing-session-readback",
+      session,
+    })).rejects.toThrow("running_plan_readback_missing");
 
     const preview = {
       action: "activate" as const,

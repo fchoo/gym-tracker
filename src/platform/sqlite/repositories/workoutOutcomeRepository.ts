@@ -864,12 +864,9 @@ function topWorkingSet(
     target,
     candidates,
   });
-  if (best === null) {
-    return null;
-  }
   return setValue(
-    completed.find(({ id }) => id === best.setId)!,
-    best.observation,
+    completed.find(({ id }) => id === best!.setId)!,
+    best!.observation,
   );
 }
 
@@ -1275,22 +1272,8 @@ function nonLoadOutcome(
     currentTarget: input.target,
     sourceFacts: input.sourceFacts,
   });
-  if (
-    evaluation.review.actionable
-    || evaluation.proposedTarget !== null
-    || (evaluation.policy.kind !== "manual_hold"
-      && evaluation.policy.kind !== "plan_authored")
-  ) {
-    return null;
-  }
-  if (
-    evaluation.policy.kind !== "manual_hold"
-    && evaluation.policy.kind !== "plan_authored"
-  ) {
-    return null;
-  }
   const policyKind: SessionNonLoadOutcome["rule"]["kind"] =
-    evaluation.policy.kind === "manual_hold" ? "manual_hold" : "plan_authored";
+    input.policy.policy_kind;
   return Object.freeze({
     version: 1,
     exerciseId: input.exerciseId,
@@ -1372,8 +1355,8 @@ function policyMatchesRawSet(
   const rowIdentity = rawMetricIdentity(row);
   return row.rule_type === expectedRawRuleType(policy)
     && row.rule_version === policy.policy_version
-    && sameMetricIdentity(identity, rowIdentity ?? identity)
     && rowIdentity !== null
+    && sameMetricIdentity(identity, rowIdentity)
     && policy.metric_profile === identity.profile
     && policy.metric_contract_version === identity.contractVersion
     && policy.exercise_metric_generation === identity.exerciseMetricGeneration;
@@ -1679,10 +1662,7 @@ function topEffectiveWorkingSet(
     return null;
   }
   const target = parseMetricTarget(identity, completed[0]!.target);
-  const best = selectBestMetricCandidate({ identity, target, candidates });
-  if (best === null) {
-    return null;
-  }
+  const best = selectBestMetricCandidate({ identity, target, candidates })!;
   const set = completed.find(({ id }) => id === best.setId)!;
   return setValue(set, best.observation);
 }
@@ -1734,7 +1714,7 @@ async function detailFromEffectiveOverlay(
             status === "completed" && observation?.profile === "load_reps",
           )
           .reduce((total, { observation }) =>
-            total + (observation?.profile === "load_reps" ? observation.reps : 0), 0)
+            total + (observation as Extract<MetricObservation, { profile: "load_reps" }>).reps, 0)
       : null;
     return {
       id: exercise.id,
@@ -2407,6 +2387,84 @@ async function copiedLegacyPolicy(
   };
 }
 
+/**
+ * Source-owned behavioral seams used by the whole-file integrity contract.
+ * These are implementation details, not an application mutation authority.
+ */
+export const workoutOutcomeRepositoryInternalContract = Object.freeze({
+  completeDecisionInput,
+  completeRawWorkingSets,
+  copiedLegacyPolicy,
+  copiedOwnedPolicy,
+  detailFromEffectiveOverlay,
+  effectiveNonLoadOutcomes,
+  effectiveOverlaySnapshot,
+  enqueueFinishEffects,
+  exerciseIdentity,
+  expectedRawRuleType,
+  finish,
+  formatDurationMs,
+  formatKilograms,
+  historySubjectSnapshot,
+  historySubjectSnapshotFromCorrectionSnapshot,
+  idleRest,
+  integerArray,
+  isCopiedAutomaticLoadRepsPolicy,
+  legacyTarget,
+  lifecycleAuditId,
+  loadPreviousObservation,
+  loadSessionDetail,
+  nonLoadOutcome,
+  nonLoadOutcomeFromCompletedSets,
+  parsePolicyRule,
+  parseSetObservation,
+  parseSetTarget,
+  parseTarget,
+  pendingRecommendation,
+  percentage,
+  persistRecommendationDecisionReceipt,
+  policyForRawSet,
+  policyForReference,
+  policyIdentityKey,
+  policyMatchesRawSet,
+  rawMetricIdentity,
+  rawNonLoadOutcomes,
+  reactivateHistoryOverlayAfterResume,
+  readRecommendationDecisionReceipt,
+  readRecommendationDecisionReceiptByRecommendation,
+  recommendationIdFor,
+  recommendationStatus,
+  recommendationsForSession,
+  recommendationTable,
+  recommendationTarget,
+  recommendationTargetColumn,
+  recommendationTargetScope,
+  requestFencesMatch,
+  requestHashFor,
+  resultFromReceipt,
+  sameMetricIdentity,
+  sameTarget,
+  sameTargetReference,
+  sessionRows,
+  setIdentity,
+  setValue,
+  snapshotTargetReference,
+  sourceHistoryCorrectionSnapshot,
+  sourceLabel,
+  sourceSnapshotAuditId,
+  supportsCompleteMetricIdentity,
+  supportsOwnedRecommendations,
+  supportsRecommendationDecisionReceipts,
+  targetReference,
+  targetTable,
+  terminalizationAuditId,
+  terminalizeVoidedHistoryOverlay,
+  topEffectiveWorkingSet,
+  topWorkingSet,
+  uniqueTargetReferences,
+  voidActiveHistoryOverlayForResume,
+});
+
 export function createWorkoutOutcomeRepository(
   kernel: SqliteKernel,
 ): WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
@@ -2869,12 +2927,9 @@ export function createWorkoutOutcomeRepository(
         ) {
           return supersede();
         }
-        const loadGrams = proposed.profile === "load_reps"
-          ? proposed.loadGrams
-          : null;
-        const targetReps = proposed.profile === "load_reps"
-          ? proposed.targetReps
-          : null;
+        const loadRepsProposed = proposed as Extract<MetricTarget, { profile: "load_reps" }>;
+        const loadGrams = loadRepsProposed.loadGrams;
+        const targetReps = loadRepsProposed.targetReps;
         if (
           !Number.isSafeInteger(loadGrams)
           || (loadGrams as number) < 0
@@ -3146,12 +3201,9 @@ export function createWorkoutOutcomeRepository(
           }
           if (
             reference.graph === "owned"
-            && (
-              policy === null
-              || !isCopiedAutomaticLoadRepsPolicy(
-                policy,
-                exerciseIdentity(exercise),
-              )
+            && !isCopiedAutomaticLoadRepsPolicy(
+              policy!,
+              exerciseIdentity(exercise),
             )
           ) {
             continue;

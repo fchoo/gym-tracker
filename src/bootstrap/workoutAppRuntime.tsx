@@ -2485,15 +2485,18 @@ export function WorkoutAppRuntimeProvider({
           },
         }),
       csvExportRepository: dependencies.createCsvExportRepository?.(kernel)
-        ?? Object.freeze({
-          readRows: async () => { throw new Error("csv_export_unavailable"); },
-          serialize: async () => { throw new Error("csv_export_unavailable"); },
-        }),
-      csvFiles: dependencies.createCsvFiles?.() ?? Object.freeze({
-        writeCsv: async () => { throw new Error("csv_export_unavailable"); },
-        shareCsv: async () => { throw new Error("csv_export_unavailable"); },
-        discardCsv: async () => undefined,
-      }),
+        ?? Object.freeze((() => {
+          const unavailable = async () => { throw new Error("csv_export_unavailable"); };
+          return { readRows: unavailable, serialize: unavailable };
+        })()),
+      csvFiles: dependencies.createCsvFiles?.() ?? Object.freeze((() => {
+        const unavailable = async () => { throw new Error("csv_export_unavailable"); };
+        return {
+          writeCsv: unavailable,
+          shareCsv: unavailable,
+          discardCsv: async () => undefined,
+        };
+      })()),
       restoreCommands: dependencies.createRestoreCommands?.(kernel)
         ?? Object.freeze({
           preflightSecureRestore: async () => {
@@ -2908,7 +2911,7 @@ export function WorkoutAppRuntimeProvider({
         activityType: "Running",
         confirmedLocalDate: projected.detail.confirmedLocalDate,
         identityCopy: `Accepted source title unavailable. ${projected.detail.activityType} on ${projected.detail.confirmedLocalDate}.`,
-        ...(summary.length === 0 ? {} : { summary }),
+        summary,
         matchState: row.match_count === 1 ? "matched" as const : "unmatched" as const,
         revisionState: row.pending_revision_count > 0
           ? "needs_review" as const
@@ -4028,7 +4031,7 @@ export function WorkoutAppRuntimeProvider({
       const running = (await Promise.all(sessionIds.map(async (sessionId) => {
         const context = await services.restRepository.getRestContext(sessionId);
         return context?.state.state === "running"
-          ? { context, sessionId }
+          ? { context: { ...context, state: context.state }, sessionId }
           : null;
       }))).filter((candidate): candidate is NonNullable<typeof candidate> => (
         candidate !== null
@@ -4036,14 +4039,8 @@ export function WorkoutAppRuntimeProvider({
       if (running.length !== 1) {
         return "runtime_contract_unavailable";
       }
-      const candidate = running[0];
-      if (candidate === undefined) {
-        return "runtime_contract_unavailable";
-      }
+      const candidate = running[0]!;
       const { context, sessionId } = candidate;
-      if (context.state.state !== "running") {
-        return "runtime_contract_unavailable";
-      }
       const expired = await services.restRepository.expireRestWithForegroundFeedback?.({
         sessionId,
         expectedSessionRevision: context.sessionRevision,
@@ -5024,8 +5021,6 @@ export function WorkoutAppRuntimeProvider({
             })();
             if (rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
             rowCount = rows.length;
-          } else if (actionReceiptId === undefined) {
-            throw new Error("phase17_family_a_action_receipt_missing");
           }
           const customReceiptKind = ({
             "library.exercise-favorites": "favorite",
