@@ -58,6 +58,12 @@ export type Phase16CalendarDiagnosticSample = Readonly<{
 export type Phase16CalendarTrace = Readonly<{
   schemaVersion: 1;
   stage: Phase16CalendarStage;
+  traceNonce: string;
+  sourceIdentity: Readonly<{
+    packageName: "com.fchoo.gymtracker.devtest";
+    buildProfile: "development-test";
+    suite: "phase16-calendar";
+  }>;
   synthetic: true;
   samples: readonly Phase16CalendarDiagnosticSample[];
 }>;
@@ -69,7 +75,11 @@ const MAX_SAMPLES = 64;
 const MIN_DIAGNOSTIC_SAMPLES = 100;
 const MAX_DIAGNOSTIC_SAMPLES = 500;
 
-export const PHASE16_CALENDAR_DIAGNOSTICS_RESULT_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:";
+export const PHASE16_CALENDAR_TRACE_SAMPLE_MARKER = "GYM_TRACKER_V12_CALENDAR_TRACE_SAMPLE:";
+export const PHASE16_CALENDAR_DIAGNOSTICS_CHUNK_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:";
+const DIAGNOSTICS_CHUNK_SIZE = 1800;
+let traceNonceSequence = 0;
+let diagnosticsStreamSequence = 0;
 
 function safeNumber(value: number): number {
   if (!Number.isFinite(value) || Math.abs(value) > 100_000) throw new Error("phase16_calendar_diagnostic_number_invalid");
@@ -80,6 +90,11 @@ function safeTimestamp(value: number): number {
   if (!Number.isSafeInteger(value) || value < 1_700_000_000_000 || value > 2_000_000_000_000) {
     throw new Error("phase16_calendar_diagnostic_clock_invalid");
   }
+  return value;
+}
+
+function safeTraceNonce(value: string): string {
+  if (!/^p16trace-[a-z0-9-]{3,63}$/u.test(value)) throw new Error("phase16_calendar_trace_nonce_invalid");
   return value;
 }
 
@@ -128,11 +143,15 @@ type Phase16CalendarMonthSampleInput = Readonly<{
 export function createPhase16CalendarTestControls(input: NativeContractIdentity & Readonly<{
   stage: string | undefined;
   nowMs?: () => number;
+  traceNonce?: string;
+  emitLine?: (line: string) => void;
 }>): Phase16CalendarTestControls | null {
   const stage = phase16CalendarStageFromNativeContract(input);
   if (stage === null) return null;
   const nowMs = input.nowMs ?? Date.now;
   const startedAtMs = safeTimestamp(nowMs());
+  const traceNonce = safeTraceNonce(input.traceNonce
+    ?? `p16trace-${startedAtMs.toString(36)}-${(++traceNonceSequence).toString(36)}`);
   let lastElapsedMs = -1;
   let baseMonthIndex: number | undefined;
   const samples: Phase16CalendarDiagnosticSample[] = [];
@@ -152,7 +171,20 @@ export function createPhase16CalendarTestControls(input: NativeContractIdentity 
     const elapsedMs = safeTimestamp(nowMs()) - startedAtMs;
     if (elapsedMs <= lastElapsedMs) throw new Error("phase16_calendar_diagnostic_clock_invalid");
     lastElapsedMs = elapsedMs;
-    samples.push(Object.freeze({ ...sample, elapsedMs, synthetic: true }));
+    const retained = Object.freeze({ ...sample, elapsedMs, synthetic: true });
+    samples.push(retained);
+    input.emitLine?.(`${PHASE16_CALENDAR_TRACE_SAMPLE_MARKER}${JSON.stringify({
+      schema_version: 1,
+      trace_nonce: traceNonce,
+      source_identity: {
+        package_name: PACKAGE,
+        build_profile: "development-test",
+        suite: SUITE,
+      },
+      stage,
+      sequence: samples.length,
+      sample: retained,
+    })}`);
   };
   return Object.freeze({
     recordDrag: (sample) => append({
@@ -177,7 +209,18 @@ export function createPhase16CalendarTestControls(input: NativeContractIdentity 
       focusRingWidthDp: 3,
       focusClearanceDp: 4,
     }),
-    trace: () => Object.freeze({ schemaVersion: 1, stage, synthetic: true, samples: Object.freeze([...samples]) }),
+    trace: () => Object.freeze({
+      schemaVersion: 1,
+      stage,
+      traceNonce,
+      sourceIdentity: Object.freeze({
+        packageName: PACKAGE,
+        buildProfile: "development-test",
+        suite: SUITE,
+      }),
+      synthetic: true,
+      samples: Object.freeze([...samples]),
+    }),
   });
 }
 
@@ -255,6 +298,7 @@ function safeDuration(value: number): number {
 export function createPhase16CalendarDiagnosticsProducer(input: NativeContractIdentity & Readonly<{
   request: Phase16CalendarDiagnosticsRequest | null;
   emitLine: (line: string) => void;
+  streamId?: string;
 }>): Phase16CalendarDiagnosticsProducer | null {
   if (!nativeIdentityEnabled(input) || input.request === null) return null;
   const request = input.request;
@@ -297,8 +341,21 @@ export function createPhase16CalendarDiagnosticsProducer(input: NativeContractId
         query_samples: Object.freeze([...querySamples]),
         interaction_samples: Object.freeze([...interactionSamples]),
       });
+      const payload = JSON.stringify(result);
+      const streamId = input.streamId
+        ?? `p16diag-${(++diagnosticsStreamSequence).toString(36)}-${payload.length.toString(36)}`;
+      if (!/^p16diag-[a-z0-9-]{3,63}$/u.test(streamId)) throw new Error("phase16_calendar_diagnostics_stream_invalid");
+      const chunks = Array.from({ length: Math.ceil(payload.length / DIAGNOSTICS_CHUNK_SIZE) }, (_, index) => (
+        payload.slice(index * DIAGNOSTICS_CHUNK_SIZE, (index + 1) * DIAGNOSTICS_CHUNK_SIZE)
+      ));
+      chunks.forEach((chunk, index) => input.emitLine(`${PHASE16_CALENDAR_DIAGNOSTICS_CHUNK_MARKER}${JSON.stringify({
+        schema_version: 1,
+        stream_id: streamId,
+        sequence: index + 1,
+        total: chunks.length,
+        payload: chunk,
+      })}`));
       exported = true;
-      input.emitLine(`${PHASE16_CALENDAR_DIAGNOSTICS_RESULT_MARKER}${JSON.stringify(result)}`);
       return result;
     },
   });
@@ -307,12 +364,23 @@ export function createPhase16CalendarDiagnosticsProducer(input: NativeContractId
 let activeControls: Phase16CalendarTestControls | null = null;
 
 /** Route composition calls this once; production and unknown identities always clear the recorder. */
-export function configurePhase16CalendarTestControls(input: NativeContractIdentity & Readonly<{ stage: string | undefined }>): void {
-  activeControls = createPhase16CalendarTestControls(input);
+export function configurePhase16CalendarTestControls(input: NativeContractIdentity & Readonly<{
+  stage: string | undefined;
+  traceNonce?: string;
+  emitLine?: (line: string) => void;
+}>): void {
+  activeControls = createPhase16CalendarTestControls({
+    ...input,
+    emitLine: input.emitLine ?? ((line) => console.info(line)),
+  });
 }
 
 export function clearPhase16CalendarTestControls(): void {
   activeControls = null;
+}
+
+export function readPhase16CalendarActiveTrace(): Phase16CalendarTrace | null {
+  return activeControls?.trace() ?? null;
 }
 
 export function recordPhase16CalendarDrag(input: Phase16CalendarMonthSampleInput & Readonly<{ dx: number; viewportWidth: number; transformX: number }>): void {

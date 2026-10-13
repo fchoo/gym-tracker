@@ -18,6 +18,7 @@ import { PNG } from "pngjs";
 
 import {
   createV12CalendarDiagnostics,
+  encodeV12CalendarDiagnosticsResult,
   executeV12CalendarDiagnostics,
   extractV12CalendarDiagnosticsResult,
   parseV12CalendarDiagnosticsArgs,
@@ -28,25 +29,32 @@ import {
 import {
   compareV12Calendar,
   executeV12CalendarComparisonFixture,
+  v12CalendarReferenceMapSha256,
   validateV12CalendarComparison,
   runV12CalendarComparisonCli,
   validateV12CalendarReferenceMap,
 } from "./compare-v12-calendar.mjs";
 import {
+  V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR,
+  V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_REQUIRED_CASE_IDS,
   validateV12CalendarCaseRegistryDescriptor,
 } from "./v12-calendar-case-registry.mjs";
 import {
   createExclusiveDirectory,
+  ensureV12CalendarDirectory,
   initializeV12CalendarRun,
   readV12CalendarRunState,
   recordV12CalendarStageResult,
+  resolveV12CalendarPath,
 } from "./v12-calendar-artifacts.mjs";
 import {
   V12_CALENDAR_DIAGNOSTIC_STAGES,
+  V12_CALENDAR_TRACE_SAMPLE_MARKER,
   createV12CalendarRunnerPlan,
   executeV12Maestro,
+  extractV12CalendarStageTrace,
   initializeV12CalendarRunnerState,
   readV12CalendarRunnerState,
   recordV12CalendarRunnerStage,
@@ -77,6 +85,7 @@ function manifest() {
     base_head: "a".repeat(40),
     source_tree_sha256: "b".repeat(64),
     source_manifest_sha256: "90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4",
+    reference_map_sha256: "513c8f5798c1010eb370d35d259ea9c5e805c80a2786101a2ed732b588167c33",
     apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 },
     installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true },
     device: { identity_sha256: "d".repeat(64) },
@@ -139,20 +148,20 @@ function comparisonFixture() {
       reference: { path: referencePath, sha256: hash(bytes), width: 1, height: 1 },
       configuration: { theme: "Light", viewport: { width: 390, height: 844 }, orientation: "portrait", font_scale: 1, motion: "normal", input: "touch", fixture: "synthetic-calendar-month-v1" },
     }],
-    case_ledger: [
-      { id: "light", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "touch", viewport: "390x844" },
-      { id: "dark", capture_ids: ["calendar-month-light-390"], theme: "Dark", motion: "normal", input: "touch", viewport: "390x844" },
-      { id: "accessibility", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "normal", input: "dpad", viewport: "390x844" },
-      { id: "reduced", capture_ids: ["calendar-month-light-390"], theme: "Light", motion: "reduced", input: "touch", viewport: "390x844" },
-    ],
+    case_ledger: V12_CALENDAR_CASE_LEDGER_DESCRIPTOR,
   };
+  identity.reference_map_sha256 = v12CalendarReferenceMapSha256(map);
   const trace = {
+    schemaVersion: 1,
+    stage: "drag-forward-25_1",
+    traceNonce: "p16trace-host-coverage",
+    sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
     synthetic: true,
     samples: [
-      { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0 },
-      { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1 },
-      { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1 },
-      { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1 },
+      { kind: "drag", dx: -89.64, viewportWidth: 360, transformX: -89.64, semanticOffset: 0, titleOffset: 0, elapsedMs: 1, synthetic: true },
+      { kind: "drag", dx: -90, viewportWidth: 360, transformX: -90, semanticOffset: 0, titleOffset: 1, elapsedMs: 2, synthetic: true },
+      { kind: "drag", dx: -90.36, viewportWidth: 360, transformX: -90.36, semanticOffset: 0, titleOffset: 1, elapsedMs: 3, synthetic: true },
+      { kind: "release", dx: -90.36, viewportWidth: 360, semanticOffset: 1, titleOffset: 1, elapsedMs: 4, synthetic: true },
     ],
   };
   return {
@@ -181,6 +190,7 @@ function comparisonFixture() {
 function liveEvidence() {
   const evidence = fixture();
   evidence.run_id = "phase20-20261013T080808Z-abcdef123456";
+  const artifactRoot = `artifacts/native/v1.2/${evidence.run_id}`;
   evidence.host_only_fixture = false;
   evidence.native_execution = "EXECUTED";
   evidence.functional_cases.forEach((entry) => {
@@ -204,16 +214,28 @@ function liveEvidence() {
   evidence.comparison.phase20_deferred = false;
   evidence.comparison.status = "PASS";
   evidence.comparison.identity = structuredClone(evidence.identity);
-  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({
-    id,
+  evidence.comparison.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
+  evidence.comparison.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({
+    id: entry.id,
+    case_sha256: entry.case_sha256,
     status: "PASS",
     native_execution: "EXECUTED",
-    artifact: { path: `fixtures/cases/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) },
+    artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) },
   }));
   evidence.comparison.records.forEach((entry) => {
     entry.classification = "PASS";
     entry.differences = [];
+    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      entry.artifacts[kind].path = `${artifactRoot}/comparison/${entry.id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+    }
   });
+  evidence.manifest.apk.path = `${artifactRoot}/app.apk`;
+  evidence.functional_cases.forEach((entry) => { entry.artifact.path = `${artifactRoot}/cases/${entry.id}.json`; });
+  evidence.route_journeys.forEach((entry) => { entry.artifact.path = `${artifactRoot}/routes/${entry.id}.json`; });
+  evidence.artifacts.manifest.path = `${artifactRoot}/build.json`;
+  evidence.artifacts.report.path = `${artifactRoot}/evidence/native-report.json`;
+  evidence.artifacts.comparison.path = `${artifactRoot}/comparison/calendar.json`;
+  evidence.artifacts.diagnostics.path = `${artifactRoot}/diagnostics/calendar.json`;
   evidence.diagnostics = createV12CalendarDiagnostics({ manifest: evidence.manifest, raw: rawDiagnostics() });
   evidence.status = "PASS";
   evidence.all_pass = true;
@@ -221,10 +243,10 @@ function liveEvidence() {
 }
 
 function mutateAndReject(base, mutations, validate) {
-  for (const mutate of mutations) {
+  for (const [index, mutate] of mutations.entries()) {
     const value = structuredClone(base);
     mutate(value);
-    assert.throws(() => validate(value));
+    assert.throws(() => validate(value), undefined, `mutation ${index} must be rejected`);
   }
 }
 
@@ -269,8 +291,26 @@ test("diagnostic argument, adb, and marker helpers reject every malformed bounda
   ]) assert.throws(() => parseV12CalendarDiagnosticsArgs(args), /argument_invalid/u);
 
   assert.equal(extractV12CalendarDiagnosticsResult("noise"), undefined);
-  assert.deepEqual(extractV12CalendarDiagnosticsResult("noise\nGYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:{\"ok\":true}"), { ok: true });
-  assert.throws(() => extractV12CalendarDiagnosticsResult("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:{"), /result_json_invalid/u);
+  const encoded = encodeV12CalendarDiagnosticsResult({ ok: true });
+  assert.deepEqual(extractV12CalendarDiagnosticsResult(`noise\n${encoded.join("\n")}`), { ok: true });
+  assert.throws(() => encodeV12CalendarDiagnosticsResult({ ok: true }, "Alice"), /result_stream_invalid/u);
+  assert.throws(() => extractV12CalendarDiagnosticsResult("GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:{"), /result_json_invalid/u);
+  const malformedChunk = JSON.parse(encoded[0].split(":").slice(1).join(":"));
+  for (const mutate of [
+    (value) => { value.stream_id = "Alice"; },
+    (value) => { value.total = 0; },
+    (value) => { value.sequence = 2; },
+    (value) => { value.extra = true; },
+    (value) => { value.schema_version = 2; },
+    (value) => { value.payload = 1; },
+    (value) => { value.payload = "x".repeat(1_801); },
+  ]) {
+    const value = structuredClone(malformedChunk);
+    mutate(value);
+    assert.throws(() => extractV12CalendarDiagnosticsResult(`GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:${JSON.stringify(value)}`), /result_chunks_invalid/u);
+  }
+  const invalidPayload = { ...malformedChunk, payload: "{" };
+  assert.throws(() => extractV12CalendarDiagnosticsResult(`GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:${JSON.stringify(invalidPayload)}`), /result_json_invalid/u);
 
   const fakeAdb = "/sdk/platform-tools/adb";
   assert.throws(() => runV12CalendarAdb("serial", [], { environment: {}, exists: () => false }), /adb_unavailable/u);
@@ -354,7 +394,7 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
   try {
     writeFileSync(path.join(root, "build.json"), JSON.stringify(manifest()));
     const raw = rawDiagnostics();
-    const logs = `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(raw)}`;
+    const logs = encodeV12CalendarDiagnosticsResult(raw).join("\n");
     const calls = [];
     const result = await executeV12CalendarDiagnostics(["--manifest", "build.json"], {
       root,
@@ -381,6 +421,7 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
       now: () => 0,
       wait: async () => undefined,
       adb: (...args) => args[1] === "-d" ? logs : "",
+      write: writeFileSync,
     }), 0);
     assert.match(cli.stdout[0], /"acceptance_owner":"phase20"/u);
     const failedCli = captureIo();
@@ -407,12 +448,12 @@ test("diagnostic execution exports one exclusive aggregate and fails closed", as
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--output", "../escape.json"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(rawDiagnostics())}` : "",
+      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
     }), /output_path_invalid/u);
     await assert.rejects(() => executeV12CalendarDiagnostics(["--manifest", "build.json", "--query-samples", "101"], {
       ...dependencies,
       now: () => 0,
-      adb: (...args) => args[1] === "-d" ? `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(rawDiagnostics())}` : "",
+      adb: (...args) => args[1] === "-d" ? encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\n") : "",
     }), /requested_sample_count_mismatch/u);
   } finally {
     rmSync(failureRoot, { recursive: true, force: true });
@@ -433,9 +474,9 @@ test("diagnostic execution default adapters read git identity, adb output, clock
     const adbDirectory = path.join(sdkRoot, "platform-tools");
     mkdirSync(adbDirectory, { recursive: true });
     const counterPath = path.join(sdkRoot, "counter");
-    const raw = JSON.stringify(rawDiagnostics()).replaceAll("'", "");
+    const raw = encodeV12CalendarDiagnosticsResult(rawDiagnostics()).join("\\n").replaceAll("'", "");
     const adbPath = path.join(adbDirectory, "adb");
-    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%s\\n' 'GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
+    writeFileSync(adbPath, `#!/bin/sh\ncase "$*" in\n  *"logcat -d -v raw"*)\n    if [ -f "${counterPath}" ]; then printf '%b\\n' '${raw}'; else printf 1 > "${counterPath}"; fi\n    ;;\nesac\n`);
     chmodSync(adbPath, 0o755);
     process.env.ANDROID_HOME = sdkRoot;
     process.env.ANDROID_SERIAL = "local-test-device";
@@ -483,9 +524,46 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   assert.throws(() => validateV12CalendarFlow(null), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow("PHASE16_CALENDAR_STAGE"), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow("calendar-tracer"), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_FIXTURE_ID == 'synthetic-calendar-v1'", "PHASE16_CALENDAR_FIXTURE_ID != null")), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(`${flow}\n# October 2026`), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(`${flow}\n# phase16CalendarReducedMotion=true`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_STAGE == 'drag-forward-10'", "PHASE16_CALENDAR_STAGE == 'missing'")), /stage_missing/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("takeScreenshot", "capture")), /capture_missing/u);
-  assert.equal(createV12CalendarRunnerPlan(valid).stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);
+  const runnerPlan = createV12CalendarRunnerPlan(valid);
+  assert.equal(runnerPlan.stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);
+  assert.equal(runnerPlan.fixture_id, "synthetic-calendar-v1");
+  assert.equal(runnerPlan.trace_sample_marker, V12_CALENDAR_TRACE_SAMPLE_MARKER);
+
+  const traceRow = {
+    schema_version: 1,
+    trace_nonce: "p16trace-native-1",
+    source_identity: { package_name: "com.fchoo.gymtracker.devtest", build_profile: "development-test", suite: "phase16-calendar" },
+    stage: "drag-cancel",
+    sequence: 1,
+    sample: { kind: "cancel", elapsedMs: 1, synthetic: true },
+  };
+  const traceLine = `${V12_CALENDAR_TRACE_SAMPLE_MARKER}${JSON.stringify(traceRow)}`;
+  assert.equal(extractV12CalendarStageTrace("noise", "drag-cancel"), undefined);
+  assert.deepEqual(extractV12CalendarStageTrace(traceLine, "drag-cancel"), {
+    schemaVersion: 1,
+    stage: "drag-cancel",
+    traceNonce: "p16trace-native-1",
+    sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
+    synthetic: true,
+    samples: [{ kind: "cancel", elapsedMs: 1, synthetic: true }],
+  });
+  assert.throws(() => extractV12CalendarStageTrace(`${V12_CALENDAR_TRACE_SAMPLE_MARKER}{`, "drag-cancel"), /trace_json_invalid/u);
+  for (const mutate of [
+    (value) => { value.trace_nonce = "Alice"; },
+    (value) => { value.sequence = 2; },
+    (value) => { value.source_identity.package_name = "wrong"; },
+    (value) => { value.extra = true; },
+  ]) {
+    const invalid = structuredClone(traceRow);
+    mutate(invalid);
+    assert.throws(() => extractV12CalendarStageTrace(`${V12_CALENDAR_TRACE_SAMPLE_MARKER}${JSON.stringify(invalid)}`, "drag-cancel"), /trace_chunks_invalid/u);
+  }
+  assert.throws(() => extractV12CalendarStageTrace(traceLine, "unknown"), /trace_chunks_invalid/u);
 
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-runner-state-"));
   try {
@@ -527,12 +605,38 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
 });
 
 test("artifact journals validate registry, corruption, terminal completion, and filesystem failures", () => {
-  assert.throws(() => createExclusiveDirectory("/definitely/missing/parent/output"), /ENOENT/u);
+  assert.throws(() => createExclusiveDirectory("/definitely/missing/parent/output"), /path_escape/u);
   assert.throws(() => validateV12CalendarCaseRegistryDescriptor({ ...V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR, route_count: 7 }), /case_registry_invalid/u);
   for (const stageIds of [null, [], ["a", "a"], ["bad stage"]]) {
     assert.throws(() => initializeV12CalendarRun({ root: "/tmp", runId: "phase20-20261013T020202Z-abcdef123456", stageIds }));
   }
   assert.throws(() => initializeV12CalendarRun({ root: "/tmp", runId: "bad", stageIds: ["stage-one"] }), /run_id_invalid/u);
+
+  const pathRoot = mkdtempSync(path.join(tmpdir(), "v12-calendar-path-branches-"));
+  const outsideRoot = mkdtempSync(path.join(tmpdir(), "v12-calendar-path-outside-"));
+  try {
+    const existing = path.join(pathRoot, "existing");
+    mkdirSync(existing);
+    assert.equal(resolveV12CalendarPath(existing), existing);
+    assert.throws(() => resolveV12CalendarPath(path.join(pathRoot, "missing"), { root: path.join(pathRoot, "absent-root"), mustExist: true }), /path_unsafe/u);
+    const linkedRoot = path.join(pathRoot, "linked-root");
+    symlinkSync(outsideRoot, linkedRoot, "dir");
+    assert.throws(() => resolveV12CalendarPath(path.join(linkedRoot, "missing"), { root: linkedRoot }), /path_unsafe/u);
+    const rootFile = path.join(pathRoot, "root-file");
+    writeFileSync(rootFile, "file");
+    assert.throws(() => resolveV12CalendarPath(path.join(rootFile, "child"), { root: rootFile }), /path_unsafe/u);
+    assert.throws(() => resolveV12CalendarPath(path.join(pathRoot, "missing", "child"), { root: pathRoot }), /path_missing/u);
+    assert.throws(() => resolveV12CalendarPath(path.join(pathRoot, "missing"), { root: pathRoot, mustExist: true }), /path_missing/u);
+    const blockingFile = path.join(pathRoot, "blocking-file");
+    writeFileSync(blockingFile, "file");
+    assert.throws(() => resolveV12CalendarPath(path.join(blockingFile, "child"), { root: pathRoot }), /path_unsafe/u);
+    assert.throws(() => ensureV12CalendarDirectory(blockingFile, { root: pathRoot }), /path_unsafe/u);
+    assert.throws(() => ensureV12CalendarDirectory(outsideRoot, { root: pathRoot }), /path_escape/u);
+    assert.throws(() => ensureV12CalendarDirectory(existing, { root: pathRoot, exclusive: true }), /output_exists/u);
+  } finally {
+    rmSync(pathRoot, { recursive: true, force: true });
+    rmSync(outsideRoot, { recursive: true, force: true });
+  }
 
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-terminal-"));
   const runId = "phase20-20261013T020202Z-abcdef123456";
@@ -896,7 +1000,7 @@ test("checked reference map rejects every malformed structural field", () => {
     (value) => { value.captures[0].configuration.motion = "spring"; },
     (value) => { value.captures[0].configuration.input = "voice"; },
     (value) => { value.captures[0].configuration.fixture = null; },
-    (value) => { value.case_ledger[0].capture_ids = []; },
+    (value) => { value.case_ledger.case_ids = []; },
   ], (value) => validateV12CalendarReferenceMap(value));
 });
 
@@ -928,16 +1032,17 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
     reject(({ run }) => { run.captures[0].differences = null; }, /classification_invalid/u);
     reject(({ run }) => { run.captures[0].trace.synthetic = false; }, /trace_invalid/u);
     reject(({ run }) => { run.captures[0].trace.samples = null; }, /trace_invalid/u);
-    reject(({ run }) => { run.captures[0].trace.samples.push({ kind: "cancel" }); }, /trace_invalid/u);
-    reject(({ run }) => { run.captures[0].trace.samples[0].dx = "bad"; }, /trace_25_percent_missing/u);
-    reject(({ run }) => { run.captures[0].trace.samples[1].viewportWidth = Number.NaN; }, /trace_25_percent_missing/u);
-    reject(({ run }) => { run.captures[0].trace.samples[3].semanticOffset = 0; }, /trace_25_percent_semantic/u);
+    reject(({ run }) => { run.captures[0].trace.samples.push({ kind: "cancel" }); }, /privacy_schema_invalid/u);
+    reject(({ run }) => { run.captures[0].trace.samples[0].dx = "bad"; }, /trace_invalid/u);
+    reject(({ run }) => { run.captures[0].trace.samples[1].viewportWidth = Number.NaN; }, /trace_invalid/u);
+    reject(({ run }) => { run.captures[0].trace.samples[3].semanticOffset = 0; }, /trace_stage_semantic_invalid/u);
     reject(({ run }) => { run.captures[0].semantics.focus_ring_dp = 2; }, /semantic_mismatch/u);
     reject(({ run }) => { run.captures[0].semantics.focus_clearance_dp = 3; }, /semantic_mismatch/u);
     reject(({ run }) => { run.captures[0].semantics.authority = "mutating"; }, /semantic_mismatch/u);
     reject(({ run }) => { run.captures[0].semantics.target = null; }, /privacy_schema_invalid/u);
     reject(({ run }) => { run.captures[0].semantics.target = "employee-session"; }, /privacy_schema_invalid/u);
     reject(({ run }) => { run.captures[0].native.path = ""; }, /path_invalid/u);
+    reject(({ run }) => { run.captures[0].native.path = "/etc/passwd"; }, /path_escape/u);
     reject(({ run }) => { run.captures[0].native.path = path.join(value.directory, "missing.png"); }, /path_unsafe/u);
     const linkedPath = path.join(value.directory, "linked.png");
     symlinkSync(path.join(value.directory, "native.png"), linkedPath);
@@ -945,11 +1050,16 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
     reject(({ run }) => { run.captures[0].native.sha256 = "0".repeat(64); }, /image_identity_invalid/u);
     reject(({ run }) => { run.captures[0].native.height = 2; }, /image_identity_invalid/u);
     reject(({ map }) => { map.captures[0].reference.sha256 = "0".repeat(64); }, /reference_stale/u);
-    reject(({ map }) => { map.case_ledger[0].capture_ids = null; }, /ledger_capture_set_mismatch/u);
+    reject(({ map }) => { map.case_ledger.case_ids = null; }, /ledger_required_case_missing/u);
     reject(({ map }) => {
       delete map.host_only_fixture;
       map.source_manifest = ".planning/design/v1.2-browser-evidence/source-manifest.json";
-    }, /path_escape/u);
+    }, /path_invalid/u);
+    reject(({ map }) => {
+      delete map.host_only_fixture;
+      map.source_manifest = ".planning/design/v1.2-browser-evidence/source-manifest.json";
+      map.captures[0].reference.path = ".planning/design/v1.2-browser-evidence/alice-private-reference.png";
+    }, /path_invalid/u);
 
     const invalidPng = path.join(value.directory, "invalid.png");
     writeFileSync(invalidPng, "not-png");
@@ -973,9 +1083,7 @@ test("comparison generation rejects every untrusted map, trace, image, and outpu
 
     const fullTraceRun = structuredClone(value.run);
     fullTraceRun.captures[0].trace = {
-      schemaVersion: 1,
-      stage: "drag-forward-25",
-      synthetic: true,
+      ...fullTraceRun.captures[0].trace,
       samples: fullTraceRun.captures[0].trace.samples.map((sample, index) => ({ ...sample, elapsedMs: index + 1, synthetic: true })),
     };
     assert.equal(compareV12Calendar({ map: value.map, run: fullTraceRun, outputDirectory: path.join(value.directory, "full-trace") }).records.length, 1);
@@ -1006,6 +1114,7 @@ test("shared comparison validation rejects malformed host and live envelopes", (
       (entry) => { entry.identity.device_identity_sha256 = "bad"; },
       (entry) => { entry.identity.report_sha256 = "bad"; },
       (entry) => { entry.case_registry.sha256 = "0".repeat(64); },
+      (entry) => { entry.case_ledger.case_ids = []; },
       (entry) => { entry.case_results.status = "PASS"; },
       (entry) => { entry.case_results.native_execution = "EXECUTED"; },
       (entry) => { entry.case_results.required_case_count = 1; },
@@ -1024,7 +1133,12 @@ test("shared comparison validation rejects malformed host and live envelopes", (
     live.phase20_deferred = false;
     live.status = "PASS";
     live.records[0].classification = "PASS";
-    live.case_results = V12_CALENDAR_REQUIRED_CASE_IDS.map((id) => ({ id, status: "PASS", native_execution: "EXECUTED", artifact: { path: `fixtures/${id.replaceAll(":", "-")}.json`, sha256: "a".repeat(64) } }));
+    const artifactRoot = `artifacts/native/v1.2/${live.run_id}`;
+    for (const kind of ["reference", "native", "overlay", "difference", "mask", "record"]) {
+      live.records[0].artifacts[kind].path = `${artifactRoot}/comparison/${live.records[0].id}/${kind === "record" ? "comparison.json" : `${kind}.png`}`;
+    }
+    live.case_ledger = structuredClone(V12_CALENDAR_CASE_LEDGER_DESCRIPTOR);
+    live.case_results = V12_CALENDAR_REQUIRED_CASES.map((entry) => ({ id: entry.id, case_sha256: entry.case_sha256, status: "PASS", native_execution: "EXECUTED", artifact: { path: `${artifactRoot}/cases/${entry.case_sha256}.json`, sha256: "a".repeat(64) } }));
     assert.equal(validateV12CalendarComparison(live), true);
     const explained = structuredClone(live);
     explained.records[0].differences = [{ kind: "visual", explained: true }];

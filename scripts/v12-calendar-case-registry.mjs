@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 const APPEARANCES = Object.freeze([
   Object.freeze({ code: "L", preference: "Light", os_scheme: "Light" }),
@@ -32,8 +33,6 @@ export const V12_CALENDAR_STATIC_CONFIGURATIONS = Object.freeze(
       }),
       orientation: orientation === "P" ? "portrait" : "landscape",
       font_scale: font.value,
-      motion: "normal",
-      input: "touch",
     })))
   ))),
 );
@@ -79,20 +78,85 @@ export const V12_CALENDAR_INPUT_IDS = Object.freeze([
 
 export const V12_CALENDAR_MOTION_IDS = Object.freeze(["normal", "reduced"]);
 
+const CANONICAL_CONFIGURATION_ID = "L-C390-P-F100";
+const CANONICAL_STATE_ID = "calendar-focused-week";
+
+function requiredCase(id, kind, binding) {
+  const identity = { id, kind, binding };
+  return Object.freeze({
+    ...identity,
+    case_sha256: createHash("sha256").update(JSON.stringify(identity)).digest("hex"),
+  });
+}
+
+export const V12_CALENDAR_REQUIRED_CASES = Object.freeze([
+  ...V12_CALENDAR_STATIC_CONFIGURATIONS.map((configuration) => requiredCase(
+    `configuration:${configuration.id}`,
+    "configuration",
+    Object.freeze({
+      configuration_id: configuration.id,
+      state_id: "calendar-month",
+      input: "touch",
+      motion: "normal",
+    }),
+  )),
+  ...V12_CALENDAR_STATE_IDS.map((stateId) => requiredCase(
+    `state:${stateId}`,
+    "state",
+    Object.freeze({
+      configuration_id: CANONICAL_CONFIGURATION_ID,
+      state_id: stateId,
+      input: "touch",
+      motion: "normal",
+    }),
+  )),
+  ...V12_CALENDAR_ROUTE_JOURNEY_IDS.map((routeId, index) => requiredCase(
+    `route:${routeId}`,
+    "route",
+    Object.freeze({
+      configuration_id: CANONICAL_CONFIGURATION_ID,
+      state_id: routeId,
+      input: index % 2 === 0 ? "touch" : "hardware-keyboard",
+      motion: "normal",
+    }),
+  )),
+  ...V12_CALENDAR_INPUT_IDS.map((inputId) => requiredCase(
+    `input:${inputId}`,
+    "input",
+    Object.freeze({
+      configuration_id: CANONICAL_CONFIGURATION_ID,
+      state_id: CANONICAL_STATE_ID,
+      input: inputId,
+      motion: "normal",
+    }),
+  )),
+  ...V12_CALENDAR_MOTION_IDS.map((motionId) => requiredCase(
+    `motion:${motionId}`,
+    "motion",
+    Object.freeze({
+      configuration_id: CANONICAL_CONFIGURATION_ID,
+      state_id: CANONICAL_STATE_ID,
+      input: "touch",
+      motion: motionId,
+    }),
+  )),
+]);
+
 export const V12_CALENDAR_CASE_REGISTRY = Object.freeze({
-  schema_version: 1,
+  schema_version: 2,
   id: "v12-calendar-reference-cases/v1",
   static_configurations: V12_CALENDAR_STATIC_CONFIGURATIONS,
   state_ids: V12_CALENDAR_STATE_IDS,
   route_ids: V12_CALENDAR_ROUTE_JOURNEY_IDS,
   input_ids: V12_CALENDAR_INPUT_IDS,
   motion_ids: V12_CALENDAR_MOTION_IDS,
+  required_cases: V12_CALENDAR_REQUIRED_CASES,
 });
 
 const registryBytes = Buffer.from(JSON.stringify(V12_CALENDAR_CASE_REGISTRY));
 
 export const V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR = Object.freeze({
-  schema_version: 1,
+  schema_version: 2,
   id: V12_CALENDAR_CASE_REGISTRY.id,
   sha256: createHash("sha256").update(registryBytes).digest("hex"),
   static_configuration_count: V12_CALENDAR_STATIC_CONFIGURATIONS.length,
@@ -100,19 +164,30 @@ export const V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR = Object.freeze({
   route_count: V12_CALENDAR_ROUTE_JOURNEY_IDS.length,
   input_count: V12_CALENDAR_INPUT_IDS.length,
   motion_count: V12_CALENDAR_MOTION_IDS.length,
+  required_case_count: V12_CALENDAR_REQUIRED_CASES.length,
 });
 
-export const V12_CALENDAR_REQUIRED_CASE_IDS = Object.freeze([
-  ...V12_CALENDAR_STATIC_CONFIGURATIONS.map(({ id }) => `configuration:${id}`),
-  ...V12_CALENDAR_STATE_IDS.map((id) => `state:${id}`),
-  ...V12_CALENDAR_ROUTE_JOURNEY_IDS.map((id) => `route:${id}`),
-  ...V12_CALENDAR_INPUT_IDS.map((id) => `input:${id}`),
-  ...V12_CALENDAR_MOTION_IDS.map((id) => `motion:${id}`),
-]);
+export const V12_CALENDAR_REQUIRED_CASE_IDS = Object.freeze(
+  V12_CALENDAR_REQUIRED_CASES.map(({ id }) => id),
+);
+
+export const V12_CALENDAR_CASE_LEDGER_DESCRIPTOR = Object.freeze({
+  schema_version: 1,
+  registry_id: V12_CALENDAR_CASE_REGISTRY.id,
+  case_ids: V12_CALENDAR_REQUIRED_CASE_IDS,
+  artifact_path_template: "cases/{case_sha256}.json",
+});
 
 export function validateV12CalendarCaseRegistryDescriptor(value) {
-  if (JSON.stringify(value) !== JSON.stringify(V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR)) {
+  if (!isDeepStrictEqual(value, V12_CALENDAR_CASE_REGISTRY_DESCRIPTOR)) {
     throw new Error("v12_calendar_case_registry_invalid");
+  }
+  return true;
+}
+
+export function validateV12CalendarCaseLedgerDescriptor(value) {
+  if (!isDeepStrictEqual(value, V12_CALENDAR_CASE_LEDGER_DESCRIPTOR)) {
+    throw new Error("v12_calendar_case_ledger_invalid");
   }
   return true;
 }

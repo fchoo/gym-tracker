@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -9,10 +9,16 @@ import { pathToFileURL } from "node:url";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { exactKeys } from "./node-evidence-utils.mjs";
-import { stableCanonicalJson, writeExclusiveArtifact } from "./v12-calendar-artifacts.mjs";
+import {
+  ensureV12CalendarDirectory,
+  resolveV12CalendarPath,
+  stableCanonicalJson,
+  writeExclusiveArtifact,
+} from "./v12-calendar-artifacts.mjs";
 
 const ROOT = process.cwd();
-const RESULT_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:";
+const RESULT_CHUNK_MARKER = "GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_CHUNK:";
+const RESULT_CHUNK_SIZE = 1800;
 const HASH = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
 
@@ -46,6 +52,7 @@ function identityFromManifest(manifest) {
     base_head: manifest.base_head,
     source_tree_sha256: manifest.source_tree_sha256,
     source_manifest_sha256: manifest.source_manifest_sha256,
+    reference_map_sha256: manifest.reference_map_sha256,
     package: manifest.package,
     apk_sha256: manifest.apk.sha256,
     installed_apk_sha256: manifest.installed_apk.sha256,
@@ -54,17 +61,19 @@ function identityFromManifest(manifest) {
 }
 
 function validateIdentity(identity, manifest) {
-  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256"], "identity");
+  schema(identity, ["base_head", "source_tree_sha256", "source_manifest_sha256", "reference_map_sha256", "package", "apk_sha256", "installed_apk_sha256", "device_identity_sha256"], "identity");
   if ([
     !HEAD.test(identity.base_head),
     !HASH.test(identity.source_tree_sha256),
     !HASH.test(identity.source_manifest_sha256),
+    !HASH.test(identity.reference_map_sha256),
     !HASH.test(identity.apk_sha256),
     !HASH.test(identity.installed_apk_sha256),
     !HASH.test(identity.device_identity_sha256),
     identity.base_head !== manifest.base_head,
     identity.source_tree_sha256 !== manifest.source_tree_sha256,
     identity.source_manifest_sha256 !== manifest.source_manifest_sha256,
+    identity.reference_map_sha256 !== manifest.reference_map_sha256,
     identity.package !== manifest.package,
     identity.apk_sha256 !== manifest.apk.sha256,
     identity.installed_apk_sha256 !== manifest.installed_apk.sha256,
@@ -192,10 +201,44 @@ export function runV12CalendarAdb(serial, args, dependencies = {}) {
   return result.stdout.trim();
 }
 
+export function encodeV12CalendarDiagnosticsResult(result, streamId = "p16diag-host-1") {
+  if (!/^p16diag-[a-z0-9-]{3,63}$/u.test(streamId)) fail("result_stream_invalid");
+  const payload = JSON.stringify(result);
+  const chunks = Array.from({ length: Math.ceil(payload.length / RESULT_CHUNK_SIZE) }, (_, index) => (
+    payload.slice(index * RESULT_CHUNK_SIZE, (index + 1) * RESULT_CHUNK_SIZE)
+  ));
+  return chunks.map((chunk, index) => `${RESULT_CHUNK_MARKER}${JSON.stringify({
+    schema_version: 1,
+    stream_id: streamId,
+    sequence: index + 1,
+    total: chunks.length,
+    payload: chunk,
+  })}`);
+}
+
 export function extractV12CalendarDiagnosticsResult(logs) {
-  const line = logs.split(/\r?\n/u).findLast((entry) => entry.includes(RESULT_MARKER));
-  if (line === undefined) return undefined;
-  try { return JSON.parse(line.slice(line.indexOf(RESULT_MARKER) + RESULT_MARKER.length)); }
+  const encoded = logs.split(/\r?\n/u).filter((entry) => entry.includes(RESULT_CHUNK_MARKER));
+  if (encoded.length === 0) return undefined;
+  let chunks;
+  try {
+    chunks = encoded.map((line) => JSON.parse(line.slice(line.indexOf(RESULT_CHUNK_MARKER) + RESULT_CHUNK_MARKER.length)));
+  } catch { fail("result_json_invalid"); }
+  const streamId = chunks.at(-1)?.stream_id;
+  const stream = chunks.filter((chunk) => chunk.stream_id === streamId);
+  const total = stream[0]?.total;
+  if ([
+    !/^p16diag-[a-z0-9-]{3,63}$/u.test(streamId),
+    !Number.isSafeInteger(total),
+    total < 1,
+    stream.length !== total,
+    stream.some((chunk, index) => !exactKeys(chunk, ["schema_version", "stream_id", "sequence", "total", "payload"])
+      || chunk.schema_version !== 1
+      || chunk.sequence !== index + 1
+      || chunk.total !== total
+      || typeof chunk.payload !== "string"
+      || chunk.payload.length > RESULT_CHUNK_SIZE),
+  ].some(Boolean)) fail("result_chunks_invalid");
+  try { return JSON.parse(stream.map(({ payload }) => payload).join("")); }
   catch { fail("result_json_invalid"); }
 }
 
@@ -206,7 +249,7 @@ export async function executeV12CalendarDiagnostics(args = process.argv.slice(2)
   const fileExists = dependencies.exists ?? existsSync;
   if (!fileExists(manifestPath)) fail("manifest_missing");
   const readText = dependencies.readText ?? ((file) => readFileSync(file, "utf8"));
-  const manifest = JSON.parse(readText(manifestPath));
+  const manifest = JSON.parse(readText(resolveV12CalendarPath(manifestPath, { root, mustExist: true })));
   const head = dependencies.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   const source = dependencies.source ?? sourceTreeSha256(root);
   validateV12CalendarManifest(manifest, { head, source });
@@ -229,9 +272,10 @@ export async function executeV12CalendarDiagnostics(args = process.argv.slice(2)
   validateV12CalendarDiagnostics(evidence, manifest);
   const outputPath = path.resolve(root, options.outputPath ?? path.join(path.dirname(options.manifestPath), "diagnostics", "calendar.json"));
   if (outputPath !== root && !outputPath.startsWith(`${root}${path.sep}`)) fail("output_path_invalid");
-  mkdirSync(path.dirname(outputPath), { recursive: true });
+  ensureV12CalendarDirectory(path.dirname(outputPath), { root, allowRoot: true });
   const write = dependencies.write ?? writeExclusiveArtifact;
-  write(outputPath, stableCanonicalJson(evidence));
+  if (dependencies.write === undefined) write(outputPath, stableCanonicalJson(evidence), { root });
+  else write(outputPath, stableCanonicalJson(evidence));
   return Object.freeze({ output: path.relative(root, outputPath), query_samples: options.querySamples, interaction_samples: options.interactionSamples, acceptance_owner: "phase20" });
 }
 

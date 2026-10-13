@@ -5,8 +5,11 @@ import {
   configurePhase16CalendarTestControls,
   createPhase16CalendarDiagnosticsProducer,
   createPhase16CalendarTestControls,
+  PHASE16_CALENDAR_DIAGNOSTICS_CHUNK_MARKER,
+  PHASE16_CALENDAR_TRACE_SAMPLE_MARKER,
   phase16CalendarDiagnosticsRequestFromNativeContract,
   phase16CalendarStageFromNativeContract,
+  readPhase16CalendarActiveTrace,
   recordPhase16CalendarCancel,
   recordPhase16CalendarDrag,
   recordPhase16CalendarFocus,
@@ -35,6 +38,7 @@ test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only
   const controls = createPhase16CalendarTestControls({
     ...developmentIdentity,
     stage: "drag-forward-25",
+    traceNonce: "p16trace-unit-1",
     nowMs: (() => { let now = 1_800_000_000_000; return () => ++now; })(),
   });
   expect(controls).not.toBeNull();
@@ -42,6 +46,12 @@ test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only
   controls?.recordFocus({ selected: { y: 112, height: 64 }, following: { y: 176, height: 64 }, destination: { selectedY: 0, followingY: 296 } });
   expect(controls?.trace()).toEqual(expect.objectContaining({
     stage: "drag-forward-25",
+    traceNonce: "p16trace-unit-1",
+    sourceIdentity: {
+      packageName: "com.fchoo.gymtracker.devtest",
+      buildProfile: "development-test",
+      suite: "phase16-calendar",
+    },
     synthetic: true,
     samples: [
       expect.objectContaining({ kind: "drag", elapsedMs: 1, semanticOffset: 0, titleOffset: 1 }),
@@ -49,6 +59,7 @@ test("Phase 16 Calendar controls retain deterministic synthetic diagnostics only
     ],
   }));
   expect(JSON.stringify(controls?.trace())).not.toMatch(/sessionId|eventId|token|email|serial|2026-/u);
+  expect(() => createPhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-forward-25", traceNonce: "owner-name" })).toThrow("phase16_calendar_trace_nonce_invalid");
 
   const legacyInputControls = createPhase16CalendarTestControls({
     ...developmentIdentity,
@@ -74,15 +85,33 @@ test("Phase 16 Calendar controls reject unsafe samples and retain no global reco
 
   let clock = 1_800_000_100_000;
   const dateNow = jest.spyOn(Date, "now").mockImplementation(() => ++clock);
+  const emitted: string[] = [];
   try {
-    configurePhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-cancel" });
+    configurePhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-cancel", traceNonce: "p16trace-global-1", emitLine: (line) => emitted.push(line) });
     recordPhase16CalendarDrag({ dx: 0, viewportWidth: 360, transformX: 0, semanticOffset: 0, titleOffset: 0 });
     recordPhase16CalendarRelease({ dx: 0, viewportWidth: 360, semanticOffset: 0, titleOffset: 0 });
     recordPhase16CalendarFocus({ selected: { y: 0, height: 64 }, following: { y: 64, height: 64 }, destination: { selectedY: 0, followingY: 296 } });
     recordPhase16CalendarCancel();
+    expect(readPhase16CalendarActiveTrace()).toEqual(expect.objectContaining({
+      stage: "drag-cancel",
+      traceNonce: "p16trace-global-1",
+      samples: expect.arrayContaining([expect.objectContaining({ kind: "cancel" })]),
+    }));
+    expect(emitted).toHaveLength(4);
+    expect(emitted.every((line) => line.startsWith(PHASE16_CALENDAR_TRACE_SAMPLE_MARKER) && line.length < 2_000)).toBe(true);
     clearPhase16CalendarTestControls();
+    expect(readPhase16CalendarActiveTrace()).toBeNull();
   } finally {
     dateNow.mockRestore();
+  }
+  const consoleInfo = jest.spyOn(console, "info").mockImplementation(() => undefined);
+  try {
+    configurePhase16CalendarTestControls({ ...developmentIdentity, stage: "drag-cancel", traceNonce: "p16trace-console-1" });
+    recordPhase16CalendarCancel();
+    expect(consoleInfo).toHaveBeenCalledWith(expect.stringMatching(/^GYM_TRACKER_V12_CALENDAR_TRACE_SAMPLE:/u));
+  } finally {
+    clearPhase16CalendarTestControls();
+    consoleInfo.mockRestore();
   }
   configurePhase16CalendarTestControls({ ...developmentIdentity, packageName: "com.fchoo.gymtracker", stage: "drag-cancel" });
   expect(() => recordPhase16CalendarCancel()).not.toThrow();
@@ -131,9 +160,12 @@ test("Phase 16 diagnostics request and producer export only bounded aggregate na
     query_samples: expect.any(Array),
     interaction_samples: expect.any(Array),
   }));
-  expect(emitted).toEqual([
-    `GYM_TRACKER_V12_CALENDAR_DIAGNOSTICS_RESULT:${JSON.stringify(raw)}`,
-  ]);
+  expect(emitted.length).toBeGreaterThan(1);
+  expect(emitted.every((line) => line.startsWith(PHASE16_CALENDAR_DIAGNOSTICS_CHUNK_MARKER) && line.length < 2_200)).toBe(true);
+  const chunks = emitted.map((line) => JSON.parse(line.slice(PHASE16_CALENDAR_DIAGNOSTICS_CHUNK_MARKER.length)) as { sequence: number; total: number; payload: string });
+  expect(chunks.map(({ sequence }) => sequence)).toEqual(Array.from({ length: chunks.length }, (_, index) => index + 1));
+  expect(chunks.every(({ total }) => total === chunks.length)).toBe(true);
+  expect(JSON.parse(chunks.map(({ payload }) => payload).join(""))).toEqual(raw);
   expect(() => producer?.exportResult()).toThrow("phase16_calendar_diagnostics_exported");
 });
 
@@ -155,6 +187,12 @@ test("Phase 16 diagnostics producer rejects incomplete, overflowing, and malform
   }
   expect(() => producer?.recordQuery({ durationMs: 1, eventCount: 0, planCount: 0, importedCount: 0 })).toThrow("phase16_calendar_diagnostics_query_overflow");
   expect(() => producer?.recordInteraction({ frameWorkMs: [1], missedFrames: 0, refreshRateHz: 60, profilerOverheadMs: 0 })).toThrow("phase16_calendar_diagnostics_interaction_overflow");
+  const invalidStream = createPhase16CalendarDiagnosticsProducer({ ...developmentIdentity, request, streamId: "Alice", emitLine: () => undefined });
+  for (let index = 0; index < 100; index += 1) {
+    invalidStream?.recordQuery({ durationMs: 1, eventCount: 0, planCount: 0, importedCount: 0 });
+    invalidStream?.recordInteraction({ frameWorkMs: [1], missedFrames: 0, refreshRateHz: 60, profilerOverheadMs: 0 });
+  }
+  expect(() => invalidStream?.exportResult()).toThrow("phase16_calendar_diagnostics_stream_invalid");
 });
 
 test("Phase 16 Calendar controls reject repeated timestamps and a trace buffer beyond its bounded capacity", () => {
