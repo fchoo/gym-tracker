@@ -402,6 +402,8 @@ describe("CalendarScreen", () => {
 
     expect(await screen.findByRole("button", { name: "Return to today, 24 August 2026" }))
       .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Return to today, 24 August 2026" }))
+      .toHaveStyle({ backgroundColor: "transparent" });
     expect(screen.getByRole("button", { name: "Show July 2026" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Show September 2026" })).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByTestId("screen-header-actions").props.style)).toMatchObject({ flexDirection: "row", gap: 2 });
@@ -415,6 +417,8 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("Color identifies the activity. Fill and border style identify its status."))
       .toBeOnTheScreen();
     expect(screen.getByText("ACTIVITY")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-key-strength-swatch")).toHaveStyle({ backgroundColor: "#D97820" });
+    expect(screen.getByTestId("calendar-key-running-swatch")).toHaveStyle({ backgroundColor: "#195FAE" });
     expect(screen.getByText("STATUS")).toBeOnTheScreen();
     expect(screen.queryByText("Complete", { exact: true })).not.toBeNull();
     expect(StyleSheet.flatten(screen.getByTestId("calendar-key-complete").props.style).backgroundColor).toBe("#0D0C0A24");

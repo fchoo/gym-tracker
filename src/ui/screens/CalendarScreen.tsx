@@ -737,10 +737,10 @@ export function CalendarScreen({
                 onPress={returnToToday}
                 style={({ pressed }) => [
                   styles.todayAction,
-                  { backgroundColor: pressed ? colors.actionPressed : colors.action },
+                  { backgroundColor: pressed ? colors.surfaceSubtle : "transparent" },
                 ]}
               >
-                <Text style={[typeScale.bodyStrong as TextStyle, styles.todayLabel, { color: colors.onAction }]}>Today</Text>
+                <Text style={[typeScale.bodyStrong as TextStyle, styles.todayLabel, { color: colors.blue }]}>Today</Text>
               </FocusablePressable>
             </View>
             <View style={styles.monthNavigationAction} testID="calendar-month-next-slot">
@@ -890,8 +890,14 @@ export function CalendarScreen({
             <View style={styles.keyGroup}>
               <Text style={[typeScale.label as TextStyle, styles.keyGroupTitle, { color: colors.textSecondary }]}>ACTIVITY</Text>
               <View style={styles.keyItems}>
-                <Text style={[typeScale.body as TextStyle, { color: colors.calendarStrengthTextLight }]}>Strength</Text>
-                <Text style={[typeScale.body as TextStyle, { color: colors.blue }]}>Running</Text>
+                <View style={styles.activityKeyItem}>
+                  <View style={[styles.activitySwatch, { backgroundColor: colors.orange }]} testID="calendar-key-strength-swatch" />
+                  <Text style={[typeScale.body as TextStyle, { color: colors.calendarStrengthTextLight }]}>Strength</Text>
+                </View>
+                <View style={styles.activityKeyItem}>
+                  <View style={[styles.activitySwatch, { backgroundColor: colors.blue }]} testID="calendar-key-running-swatch" />
+                  <Text style={[typeScale.body as TextStyle, { color: colors.blue }]}>Running</Text>
+                </View>
               </View>
             </View>
             <View style={styles.keyGroup}>
@@ -919,6 +925,8 @@ export function CalendarScreen({
 
 const styles = StyleSheet.create({
   agendaRegion: { flex: 1, gap: 10, minHeight: 0 },
+  activityKeyItem: { alignItems: "center", flexDirection: "row", gap: 4 },
+  activitySwatch: { height: 12, width: 12 },
   agendaHeading: { borderBottomWidth: 2, gap: 4, minHeight: 62, paddingBottom: 8, paddingRight: 48, position: "relative" },
   collapseAction: { alignItems: "center", height: 48, justifyContent: "center", position: "absolute", right: 0, top: 0, width: 48 },
   completeKey: { borderWidth: 1, paddingVertical: 4 },
