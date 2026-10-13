@@ -43,6 +43,10 @@ describe("PlannedWorkoutDetailScreen", () => {
     expect(screen.getByText("50 kg × 5")).toBeOnTheScreen();
     expect(screen.getByText("40 kg × 8")).toBeOnTheScreen();
     expect(screen.getByLabelText("Planned")).toHaveTextContent("—");
+    await fireEvent.press(screen.getByRole("button", { name: /Bench press.*Collapse exercise/u }));
+    expect(screen.queryByTestId("planned-target-target-1")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: /Bench press.*Expand exercise/u }));
+    expect(screen.getByTestId("planned-target-target-1")).toBeOnTheScreen();
     expect(screen.queryByText(/Exercise 1/u)).toBeNull();
     expect(screen.queryByText("Start workout")).toBeNull();
     expect(screen.queryByText("Resume workout")).toBeNull();

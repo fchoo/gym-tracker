@@ -1,10 +1,10 @@
-import { render, screen } from "@testing-library/react-native";
+import { act, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import { parseLocalDate } from "../../domains/scheduling/localDate";
 import { AppearanceProvider } from "../theme";
-import { CalendarAgenda } from "./CalendarAgenda";
+import { CalendarAgenda, type CalendarAgendaHandle } from "./CalendarAgenda";
 
 const rowRefs = { current: new Map() };
 const common = {
@@ -18,10 +18,12 @@ const common = {
 
 describe("CalendarAgenda factual copy", () => {
   it("renders the source-backed result summary verbatim", async () => {
+    const agendaRef = React.createRef<CalendarAgendaHandle>();
     const rendered = await render(
       <AppearanceProvider>
         <CalendarAgenda
           {...common}
+          ref={agendaRef}
           events={[{
             id: "completed", source: "strength", sport: "strength", status: "completed",
             title: "Full body A", displaySummary: "3 of 4 working sets completed", sourceLabel: "Strength",
@@ -35,6 +37,7 @@ describe("CalendarAgenda factual copy", () => {
     expect(screen.getByText("3 of 4 working sets completed")).toBeOnTheScreen();
     expect(screen.queryByText("Completed result")).toBeNull();
     expect(JSON.stringify(rendered.toJSON())).not.toMatch(/garmin_connect_account|owner-a/u);
+    await act(async () => agendaRef.current?.scrollTo(-10));
   });
 
   it("distinguishes a source-backed rest day from an empty date", async () => {

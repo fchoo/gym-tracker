@@ -257,7 +257,6 @@ function strengthProjection(row: StrengthRow): StrengthProjection {
     (count, exercise) => count + exercise.targets.length,
     0,
   );
-  if (plannedTargetSets < 1) return Object.freeze({ event: null, rest: null });
   const title = snapshot.dayName;
   return Object.freeze({
     event: Object.freeze({

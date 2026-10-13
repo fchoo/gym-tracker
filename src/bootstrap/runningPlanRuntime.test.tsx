@@ -1,14 +1,27 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { renderHook } from "@testing-library/react-native";
+import React from "react";
 
 const mockReadAggregate = jest.fn<any>();
+const mockReadScheduledAggregate = jest.fn<any>();
 const mockCreateInactiveRunningPlan = jest.fn<any>();
 const mockSaveRunningSourceGraph = jest.fn<any>();
 const mockPreviewLifecycle = jest.fn<any>();
 const mockConfirmLifecycle = jest.fn<any>();
 const mockSaveRunningTarget = jest.fn<any>();
+const mockPreviewCollision = jest.fn<any>();
+const mockPreviewCollisionForPlan = jest.fn<any>();
+const mockConfirmCollision = jest.fn<any>();
 
 jest.mock("../platform/sqlite/repositories/runningPlanRepository", () => ({
-  createRunningPlanRepository: () => ({ readAggregate: mockReadAggregate, saveSourceGraph: mockSaveRunningSourceGraph, previewLifecycle: mockPreviewLifecycle, confirmLifecycle: mockConfirmLifecycle }),
+  createRunningPlanRepository: () => ({ readAggregate: mockReadAggregate, readScheduledAggregate: mockReadScheduledAggregate, saveSourceGraph: mockSaveRunningSourceGraph, previewLifecycle: mockPreviewLifecycle, confirmLifecycle: mockConfirmLifecycle }),
+}));
+jest.mock("../platform/sqlite/repositories/scheduleCollisionRepository", () => ({
+  createScheduleCollisionRepository: () => ({
+    preview: mockPreviewCollision,
+    previewForRunningPlan: mockPreviewCollisionForPlan,
+    confirm: mockConfirmCollision,
+  }),
 }));
 jest.mock("../domains/running/commands", () => ({
   createInactiveRunningPlan: (...arguments_: unknown[]) => mockCreateInactiveRunningPlan(...arguments_),
@@ -17,16 +30,37 @@ jest.mock("../domains/running/commands", () => ({
   canonicalRunningRequestHash: () => "b".repeat(64),
 }));
 
-import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
+import {
+  createRunningPlanRuntimePort,
+  RunningPlanRuntimeProvider,
+  useCalendarRunningPlanReadPort,
+  useRunningPlanRuntime,
+} from "./runningPlanRuntime";
+
+function runningSession(planId: string) {
+  return {
+    slot: { id: "recovery-slot-v1", rootId: "recovery-slot", weekday: "Monday" as const, revision: 1, ordinal: 0 },
+    session: {
+      version: 1 as const, id: "recovery-v1", rootId: "recovery", planId,
+      sessionKind: "recovery" as const, revision: 1, createdAtMs: 1,
+      phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 60_000 }] }],
+      advisoryTarget: { rpe: 4 }, contextual: {},
+    },
+  };
+}
 
 describe("RunningPlanRuntimePort", () => {
   beforeEach(() => {
     mockReadAggregate.mockReset();
+    mockReadScheduledAggregate.mockReset();
     mockCreateInactiveRunningPlan.mockReset();
     mockSaveRunningSourceGraph.mockReset();
     mockSaveRunningTarget.mockReset();
     mockPreviewLifecycle.mockReset();
     mockConfirmLifecycle.mockReset();
+    mockPreviewCollision.mockReset();
+    mockPreviewCollisionForPlan.mockReset();
+    mockConfirmCollision.mockReset();
   });
 
   it("returns only the authoritative aggregate read after a successful create command", async () => {
@@ -90,6 +124,138 @@ describe("RunningPlanRuntimePort", () => {
     expect(command.sessions[0]).not.toHaveProperty("weekday");
   });
 
+  it("revises one existing session while retaining the other immutable source member", async () => {
+    const recovery = runningSession("running");
+    const sibling = {
+      slot: { ...recovery.slot, id: "tempo-slot-v1", rootId: "tempo-slot", ordinal: 1 },
+      session: {
+        ...recovery.session,
+        id: "tempo-v1",
+        rootId: "tempo",
+        sessionKind: "tempo" as const,
+        contextual: { format: "continuous" as const, work: { durationMs: 600_000 } },
+      },
+    };
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 3, active: true as const,
+      lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-1", planId: "running", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday" as const], createdAtMs: 1 },
+      sessions: [recovery, sibling],
+    };
+    const readBack = { ...plan, revision: 4 };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(readBack);
+    mockSaveRunningSourceGraph.mockResolvedValue({ planId: "running", planRevision: 4 });
+    const runtime = createRunningPlanRuntimePort({} as never, {
+      nowMs: () => 4,
+      randomUUID: () => "uuid",
+      sha256: async () => "a".repeat(64),
+    });
+
+    await expect(runtime.saveSession({
+      planId: "running",
+      expectedPlanRevision: 3,
+      requestId: "edit-recovery",
+      sessionRootId: "recovery",
+      expectedSessionRevision: 1,
+      slotRootId: "recovery-slot",
+      expectedSlotRevision: 1,
+      session: {
+        sessionKind: "recovery",
+        weekday: "Thursday",
+        phases: recovery.session.phases,
+        advisoryTarget: { rpe: 3 },
+        contextual: {},
+      },
+    })).resolves.toEqual({ plan: readBack, sessionRootId: "recovery" });
+    expect(mockSaveRunningSourceGraph).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      sessions: [
+        expect.objectContaining({ rootId: "recovery", revision: 2 }),
+        sibling.session,
+      ],
+      slots: [
+        expect.objectContaining({ rootId: "recovery-slot", revision: 2, weekday: "Thursday" }),
+        expect.objectContaining({ rootId: "tempo-slot", revision: 2, sessionRevisionId: "tempo-v1" }),
+      ],
+    }));
+  });
+
+  it("rejects stale or missing authoritative readbacks across mutation boundaries", async () => {
+    const runtime = createRunningPlanRuntimePort({} as never, {
+      nowMs: () => 5,
+      randomUUID: () => "uuid",
+      sha256: async () => "a".repeat(64),
+    });
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 1, active: false as const,
+      lifecycle: "inactive" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-1", planId: "running", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday" as const], createdAtMs: 1 },
+      sessions: [runningSession("running")],
+    };
+
+    mockCreateInactiveRunningPlan.mockResolvedValue(plan);
+    mockReadAggregate.mockResolvedValueOnce(null);
+    await expect(runtime.createInactivePlan({ plan: plan as never })).rejects.toThrow("running_plan_readback_missing");
+
+    mockReadAggregate.mockResolvedValueOnce(null);
+    await expect(runtime.savePlan(plan)).rejects.toThrow("running_plan_revision_conflict");
+
+    const session = {
+      sessionKind: "recovery" as const,
+      weekday: "Monday" as const,
+      phases: plan.sessions[0]!.session.phases,
+      advisoryTarget: { rpe: 4 },
+      contextual: {},
+    };
+    mockReadAggregate.mockResolvedValueOnce(null);
+    await expect(runtime.saveSession({
+      planId: "running",
+      expectedPlanRevision: 1,
+      requestId: "missing-plan",
+      session,
+    })).rejects.toThrow("running_plan_revision_conflict");
+
+    mockReadAggregate.mockResolvedValueOnce(plan);
+    await expect(runtime.saveSession({
+      planId: "running",
+      expectedPlanRevision: 1,
+      requestId: "stale-session",
+      sessionRootId: "recovery",
+      expectedSessionRevision: 2,
+      slotRootId: "recovery-slot",
+      expectedSlotRevision: 1,
+      session,
+    })).rejects.toThrow("running_session_revision_conflict");
+
+    mockReadAggregate.mockResolvedValueOnce(plan);
+    await expect(runtime.saveRunningTarget({
+      planId: "running",
+      requestId: "wrong-distance",
+      expectedSourceRevision: 1,
+      goalDistanceMeters: 10_000,
+      targetDurationMs: 3_000_000,
+      trainingDays: ["Monday"],
+    })).rejects.toThrow("running_target_distance_conflict");
+
+    const preview = {
+      action: "activate" as const,
+      planId: "running",
+      planName: "Running",
+      expectedPlanRevision: 1,
+      expectedScheduleRevision: 1,
+      lifecycle: "inactive" as const,
+      activeWorkout: false,
+      activeRunning: null,
+      confirmationToken: "running-lifecycle-preview-v1:missing-readback",
+    };
+    mockConfirmLifecycle.mockResolvedValue({ planId: "running", lifecycle: "active" });
+    mockReadAggregate.mockResolvedValueOnce(null);
+    await expect(runtime.confirmLifecycle({
+      action: "activate",
+      preview,
+      requestId: "missing-lifecycle-readback",
+    })).rejects.toThrow("running_lifecycle_readback_missing");
+  });
+
   it("reuses a review envelope on lifecycle retry and returns only authoritative lifecycle readback", async () => {
     const preview = {
       action: "activate" as const, planId: "running", planName: "Running", expectedPlanRevision: 1,
@@ -110,5 +276,48 @@ describe("RunningPlanRuntimePort", () => {
     expect(mockConfirmLifecycle).toHaveBeenLastCalledWith(expect.objectContaining({
       action: "activate", requestId: "lifecycle-request", preview,
     }));
+  });
+
+  it("forwards exact reads, complete plan saves, collisions, and both provider capabilities", async () => {
+    const current = {
+      id: "running", version: 1 as const, name: "Running", revision: 1,
+      active: false as const, lifecycle: "inactive" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-1", planId: "running", revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday" as const], createdAtMs: 1 },
+      sessions: [runningSession("running")],
+    };
+    const saved = { ...current, revision: 2, name: "Saved Running" };
+    mockReadAggregate
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(saved)
+      .mockResolvedValue(saved);
+    mockReadScheduledAggregate.mockResolvedValue(saved);
+    mockSaveRunningSourceGraph.mockResolvedValue({ planId: "running", planRevision: 2 });
+    mockPreviewCollision.mockResolvedValue({ confirmationToken: "collision" });
+    mockPreviewCollisionForPlan.mockResolvedValue({ confirmationToken: "collision-plan" });
+    mockConfirmCollision.mockResolvedValue({ kind: "committed" });
+    const runtime = createRunningPlanRuntimePort({} as never, {
+      nowMs: () => 2,
+      randomUUID: () => "uuid",
+      sha256: async () => "a".repeat(64),
+    });
+
+    await expect(runtime.loadPlan("running")).resolves.toBe(current);
+    await expect(runtime.loadScheduledSessionPlan("running", "recovery-v1")).resolves.toBe(saved);
+    await expect(runtime.savePlan({ ...current, name: "Saved Running" })).resolves.toBe(saved);
+    await expect(runtime.previewScheduleCollision({} as never)).resolves.toEqual({ confirmationToken: "collision" });
+    await expect(runtime.previewScheduleCollisionForPlan("running")).resolves.toEqual({ confirmationToken: "collision-plan" });
+    await expect(runtime.commitScheduleCollisionChoice({} as never)).resolves.toEqual({ kind: "committed" });
+
+    const wrapper = ({ children }: Readonly<{ children: React.ReactNode }>) => (
+      <RunningPlanRuntimeProvider runtime={runtime}>{children}</RunningPlanRuntimeProvider>
+    );
+    const runningHook = await renderHook(() => useRunningPlanRuntime(), { wrapper });
+    const calendarHook = await renderHook(() => useCalendarRunningPlanReadPort(), { wrapper });
+    expect(runningHook.result.current).toBe(runtime);
+    expect(calendarHook.result.current)
+      .toEqual({ loadScheduledSessionPlan: runtime.loadScheduledSessionPlan });
+    await expect(renderHook(() => useRunningPlanRuntime())).rejects.toThrow("running_plan_runtime_unavailable");
+    await expect(renderHook(() => useCalendarRunningPlanReadPort())).rejects.toThrow("calendar_running_plan_read_port_unavailable");
   });
 });

@@ -319,12 +319,15 @@ describe("training calendar repository", () => {
         { ...baseStrength, id: "overlay-plan", state: "consumed", outcome: "completed", session_id: "overlay-plan", session_status: "completed", snapshot_json: snapshot("overlay-plan", "Corrected plan", null) },
         { ...baseStrength, id: "overlay-source", state: "consumed", outcome: "completed", session_id: "overlay-source", session_status: "completed", snapshot_json: snapshot("overlay-source", null, null) },
         { ...baseStrength, id: "planned-fallback", plan_day_name: null },
+        { ...baseStrength, id: "snapshot-mismatch", planned_snapshot_json: plannedStrengthSnapshot({ occurrenceId: "another-occurrence", opportunityRevision: 1, targetCount: 1 }) },
       ];
       if (sql.includes("FROM running_opportunities opportunity")) return [
         { ...baseRunning, id: "fulfilled", state: "fulfilled" },
         { ...baseRunning, id: "blank-running-plan", plan_name: " " },
         { ...baseRunning, id: "blank-running-revision", session_revision_id: " " },
         { ...baseRunning, id: "blank-running-kind", session_kind: "__", definition_json: "{}" },
+        { ...baseRunning, id: "identity-mismatch", definition_json: runningDefinition("another-revision", "running-plan", "recovery") },
+        { ...baseRunning, id: "invalid-running-json", definition_json: "{" },
       ];
       return [
         imported("small-distance", {}),

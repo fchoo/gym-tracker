@@ -65,7 +65,7 @@ describe("useCurrentLocalDate", () => {
     expect(screen.getByText("2026-10-13")).toBeOnTheScreen();
     expect(scheduledDelayMs).toBe(60_000);
 
-    activeCivilDate = "2026-10-14";
+    activeCivilDate = "2026-10-14" as LocalDate;
     await act(async () => scheduled?.());
 
     expect(screen.getByText("2026-10-14")).toBeOnTheScreen();

@@ -1140,6 +1140,15 @@ describe("Today schedule workout integration", () => {
     )).resolves.toBeNull();
   });
 
+  it("loads a missing planned Strength occurrence without a snapshot executor", async () => {
+    const plans = createPlansWorkoutRepository({
+      queryAll: async () => [],
+    } as never);
+
+    await expect(plans.loadPlannedStrengthOccurrence?.("missing-occurrence"))
+      .resolves.toBeNull();
+  });
+
   it("activates a valid unscheduled owned plan through Save schedule and projects Today", async () => {
     const runtime = await setupRuntime();
     await runtime.kernel.write(async (transaction) => {

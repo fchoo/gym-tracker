@@ -188,6 +188,54 @@ describe("Calendar semantic transitions", () => {
     }
   });
 
+  it("arbitrates touch intent, publishes drag markers, and cancels an unfinished gesture", async () => {
+    const createPan = Gesture.Pan.bind(Gesture);
+    let latestPan: unknown;
+    const panSpy = jest.spyOn(Gesture, "Pan").mockImplementation(() => {
+      latestPan = createPan();
+      return latestPan as ReturnType<typeof Gesture.Pan>;
+    });
+    const onCancel = jest.fn();
+    const onPreview = jest.fn();
+    await render(
+      <CalendarMonthViewport
+        command={null}
+        focusedWeek={null}
+        month={"2026-11-01" as LocalDate}
+        onCancel={onCancel}
+        onComplete={jest.fn()}
+        onPreview={onPreview}
+        onRelease={jest.fn()}
+        renderMonth={() => <View />}
+        renderWeek={() => <View />}
+        transition={initial()}
+      />,
+    );
+    await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", {
+      nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } },
+    });
+    const handlers = (latestPan as { handlers: {
+      onTouchesDown?: (event: Readonly<{ allTouches: readonly Readonly<{ absoluteX: number; absoluteY: number }>[] }>) => void;
+      onTouchesMove?: (event: Readonly<{ allTouches: readonly Readonly<{ absoluteX: number; absoluteY: number }>[] }>, manager: Readonly<{ activate(): void; fail(): void }>) => void;
+      onBegin?: () => void;
+      onChange?: (event: Readonly<{ translationX: number }>) => void;
+      onFinalize?: () => void;
+    } }).handlers;
+    const manager = { activate: jest.fn(), fail: jest.fn() };
+    handlers.onTouchesDown?.({ allTouches: [{ absoluteX: 200, absoluteY: 100 }] });
+    handlers.onTouchesMove?.({ allTouches: [{ absoluteX: 210, absoluteY: 101 }] }, manager);
+    expect(manager.activate).toHaveBeenCalledTimes(1);
+    handlers.onTouchesDown?.({ allTouches: [{ absoluteX: 200, absoluteY: 100 }] });
+    handlers.onTouchesMove?.({ allTouches: [{ absoluteX: 202, absoluteY: 110 }] }, manager);
+    expect(manager.fail).toHaveBeenCalledTimes(1);
+    handlers.onBegin?.();
+    handlers.onChange?.({ translationX: -100 });
+    expect(onPreview).toHaveBeenCalledWith(-100, 400);
+    handlers.onFinalize?.();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    panSpy.mockRestore();
+  });
+
   it("records one bounded interaction sample only after a committed drag expands and collapses", async () => {
     const createPan = Gesture.Pan.bind(Gesture);
     let latestPan: unknown;

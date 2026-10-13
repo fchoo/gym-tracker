@@ -62,19 +62,30 @@ describe("RunningPlanDetailScreen", () => {
   });
 
   it("shows factual inactive goal, pace, zero-safe facts, and stable same-day slot order", async () => {
-    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
+    const onEdit = jest.fn();
+    const onEditSession = jest.fn();
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={onEdit} onNewSession={jest.fn()} onEditSession={onEditSession} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
     await screen.findByText("INACTIVE");
     expect(screen.getByText("Goal distance")).toBeOnTheScreen();
     expect(screen.getByText("10000 m")).toBeOnTheScreen();
     expect(screen.getByText("6:00 / km")).toBeOnTheScreen();
     expect(screen.getByText("Monday · Recovery")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Sync Garmin / match activity" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Edit running plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Edit Tempo session" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Edit Recovery session" }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onEditSession).toHaveBeenCalledWith("session-2");
+    expect(onEditSession).toHaveBeenCalledWith("session-1");
   });
 
   it("shows an explicit empty weekly structure without creating a session", async () => {
-    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => ({ ...plan, sessions: [] }))} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
+    const onNewSession = jest.fn();
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => ({ ...plan, sessions: [] }))} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={onNewSession} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
     expect(await screen.findByText("No sessions yet")).toBeOnTheScreen();
     expect(screen.getByText("Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Add session" }));
+    expect(onNewSession).toHaveBeenCalledTimes(1);
   });
 
   it("distinguishes a retryable load failure from a contextual not-found result", async () => {
@@ -122,5 +133,7 @@ describe("RunningPlanDetailScreen", () => {
     expect(await screen.findByText("Schedule collision needs attention")).toBeOnTheScreen();
     expect(screen.getByText("Schedule changed while you were reviewing. Check the latest dates and choose again.")).toBeOnTheScreen();
     expect(commitScheduleCollisionChoice).toHaveBeenCalledWith(expect.objectContaining({ requestId: "collision-request", preview: collisionPreview }));
+    fireEvent.press(screen.getByRole("button", { name: "Retry schedule review" }));
+    await waitFor(() => expect(previewScheduleCollisionForPlan).toHaveBeenCalledTimes(2));
   });
 });

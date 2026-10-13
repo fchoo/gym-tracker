@@ -445,6 +445,37 @@ function repositoryError(
 }
 
 describe("accepted starter activation repository", () => {
+  it("supports legacy plan-kind schemas and omits aggregate state when that optional table is absent", async () => {
+    const legacyTransaction = {
+      execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+      queryAll: async (sql: string) => {
+        if (sql.includes("starter_plan_activation_requests")) return [];
+        if (sql === "PRAGMA table_info(plans)") return [];
+        if (sql.includes("FROM plans plan") || sql.includes("FROM owned_plan_schedules")) return [];
+        return [];
+      },
+    };
+    const legacyRepository = createStarterPlanRepository({
+      write: async (operation: (transaction: typeof legacyTransaction) => Promise<unknown>) => operation(legacyTransaction),
+    } as never);
+    await expect(legacyRepository.activateAcceptedStarterPlan({
+      requestId: "legacy-plan-kind-probe",
+      requestSha256: "a".repeat(64),
+      expectedActiveScheduleRevision: 1,
+    } as never)).rejects.toMatchObject({ code: "starter_schedule_revision_conflict" });
+
+    const kernel = await createRuntime();
+    await kernel.write((transaction) => transaction.execute("DROP TABLE owned_plan_aggregate_states"));
+    await expect(createInactiveCopy(kernel, {
+      activeScheduleRevision: null,
+      requestId: "copy-without-aggregate-state",
+      createdAtMs: 1_787_027_299_000,
+    })).resolves.toMatchObject({
+      outcome: "committed",
+      plan: { isActive: false },
+    });
+  });
+
   it("installs immutable starter sources before activation and rejects conflicting bytes", async () => {
     const kernel = await createRuntime();
     const pack = await acceptedPack();

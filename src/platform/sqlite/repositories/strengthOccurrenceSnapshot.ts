@@ -68,7 +68,7 @@ export function parseStrengthOccurrenceSnapshot(
       || exercise.ordinal < 0
       || !Array.isArray(exercise.targets)
       || exercise.targets.length === 0
-      || exercise.targets.some((target) => !validText(target.id)
+      || exercise.targets.some((target: PlannedStrengthOccurrenceDetail["exercises"][number]["targets"][number]) => !validText(target.id)
         || !Number.isSafeInteger(target.ordinal)
         || target.ordinal < 0
         || !validText(target.targetJson)
