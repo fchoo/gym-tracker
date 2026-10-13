@@ -129,11 +129,13 @@ export function RunningTargetSheet({
   const [renderVersion, setRenderVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ErrorState>(null);
+  const [validation, setValidation] = useState({ date: false, time: false });
   const [committedPlan, setCommittedPlan] = useState<RunningPlanAggregate | null>(null);
   const targetRef = useRef<TextInput>(null);
   const dateRef = useRef<TextInput>(null);
   const dayRef = useRef<View>(null);
   const dayRefs = useRef(WEEKDAYS.map(() => React.createRef<View>()));
+  const distanceRefs = useRef(DISTANCES.map(() => React.createRef<View>()));
   const source = sources.find(({ active, lifecycle }) => active && lifecycle === "active") ?? sources[0];
   const draftKey = source === undefined ? "" : `${source.id}:${selectedDistanceMeters}`;
   const draft = source === undefined
@@ -155,6 +157,7 @@ export function RunningTargetSheet({
       }
     }
     setError(null);
+    setValidation({ date: false, time: false });
   }, [initialDistanceMeters, sources, visible]);
 
   const update = (next: Partial<Draft>) => {
@@ -166,6 +169,7 @@ export function RunningTargetSheet({
 
   const save = async () => {
     if (source === undefined || draft === undefined || busy) return;
+    setValidation({ date: true, time: true });
     const parsedDuration = parseTargetTime(draft.targetTime);
     if (parsedDuration === null) {
       targetRef.current?.focus();
@@ -234,6 +238,7 @@ export function RunningTargetSheet({
       // Preserve the draft for comparison; only its revision fence changes.
       const current = draftsRef.current.get(draftKey) ?? draftFrom(source, selectedDistanceMeters);
       draftsRef.current.set(draftKey, Object.freeze({ ...current, expectedSourceRevision: reloaded.revision }));
+      requestIdsRef.current.delete(draftKey);
       setError(null);
       setRenderVersion((value) => value + 1);
     } catch {
@@ -241,8 +246,8 @@ export function RunningTargetSheet({
     }
   };
 
-  const timeError = draft !== undefined && durationMs === null ? "Enter a valid target time." : undefined;
-  const dateError = draft !== undefined && !isFutureDate(draft.targetDate, todayLocalDate) ? "Enter a valid target date." : undefined;
+  const timeError = validation.time && draft !== undefined && durationMs === null ? "Enter a valid target time." : undefined;
+  const dateError = validation.date && draft !== undefined && !isFutureDate(draft.targetDate, todayLocalDate) ? "Enter a valid target date." : undefined;
   const _renderVersion = renderVersion;
   void _renderVersion;
 
@@ -259,21 +264,41 @@ export function RunningTargetSheet({
         <View style={styles.content}>
           <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Distance</Text>
           <View accessibilityRole="tablist" style={styles.distances}>
-            {DISTANCES.map((distanceMeters) => (
+            {DISTANCES.map((distanceMeters, index) => (
               <FocusablePressable
+                {...({ onKeyDown: (event: { nativeEvent: { key: string; preventDefault?: () => void } }) => {
+                  const key = event.nativeEvent.key;
+                  if (key === "Enter" || key === " ") {
+                    event.nativeEvent.preventDefault?.();
+                    setSelectedDistanceMeters(distanceMeters);
+                    setValidation({ date: false, time: false });
+                    setError(null);
+                    return;
+                  }
+                  const nextIndex = key === "Home" ? 0 : key === "End" ? DISTANCES.length - 1 : key === "ArrowLeft" ? (index + DISTANCES.length - 1) % DISTANCES.length : key === "ArrowRight" ? (index + 1) % DISTANCES.length : null;
+                  if (nextIndex !== null) {
+                    event.nativeEvent.preventDefault?.();
+                    const nextDistance = DISTANCES[nextIndex]!;
+                    setSelectedDistanceMeters(nextDistance);
+                    setValidation({ date: false, time: false });
+                    setError(null);
+                    requestAnimationFrame(() => distanceRefs.current[nextIndex]?.current?.focus?.());
+                  }
+                } } as object)}
                 accessibilityLabel={distanceLabel(distanceMeters)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: distanceMeters === selectedDistanceMeters }}
                 key={distanceMeters}
-                onPress={() => { setSelectedDistanceMeters(distanceMeters); setError(null); }}
+                onPress={() => { setSelectedDistanceMeters(distanceMeters); setValidation({ date: false, time: false }); setError(null); }}
+                ref={(node) => { distanceRefs.current[index]!.current = node; }}
                 style={[styles.distance, { backgroundColor: distanceMeters === selectedDistanceMeters ? colors.contentCardSelected : colors.surface, borderColor: colors.divider }]}
               >
                 <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{distanceLabel(distanceMeters)}</Text>
               </FocusablePressable>
             ))}
           </View>
-          <Field label="Target time" inputRef={targetRef} value={draft.targetTime} onChangeText={(targetTime) => update({ targetTime })} error={timeError} />
-          <Field label="Optional target date" inputRef={dateRef} value={draft.targetDate} onChangeText={(targetDate) => update({ targetDate })} error={dateError} placeholder="YYYY-MM-DD" />
+          <Field label="Target time" inputRef={targetRef} value={draft.targetTime} onBlur={() => setValidation((current) => ({ ...current, time: true }))} onChangeText={(targetTime) => update({ targetTime })} error={timeError} />
+          <Field label="Optional target date" inputRef={dateRef} value={draft.targetDate} onBlur={() => setValidation((current) => ({ ...current, date: true }))} onChangeText={(targetDate) => update({ targetDate })} error={dateError} placeholder="YYYY-MM-DD" />
           <View style={styles.fact}>
             <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Current benchmark</Text>
             <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{benchmarkLabel(source, selectedDistanceMeters)}</Text>
@@ -329,16 +354,17 @@ export function RunningTargetSheet({
   );
 }
 
-function Field({ error, inputRef, label, onChangeText, placeholder, value }: Readonly<{
+function Field({ error, inputRef, label, onBlur, onChangeText, placeholder, value }: Readonly<{
   label: string;
   value: string;
+  onBlur(): void;
   onChangeText(value: string): void;
   inputRef: React.RefObject<TextInput | null>;
   error?: string | undefined;
   placeholder?: string | undefined;
 }>) {
   const { colors } = useAppTheme();
-  return <View style={styles.field}><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{label}</Text><TextInput accessibilityLabel={label} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.textSecondary} ref={inputRef} style={[typeScale.body as TextStyle, styles.input, { borderColor: error === undefined ? colors.divider : colors.destructive, color: colors.textPrimary }]} value={value} />{error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}</View>;
+  return <View style={styles.field}><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{label}</Text><TextInput accessibilityLabel={label} onBlur={onBlur} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.textSecondary} ref={inputRef} style={[typeScale.bodyNumeric as TextStyle, styles.input, { borderColor: error === undefined ? colors.divider : colors.destructive, color: colors.textPrimary }]} value={value} />{error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}</View>;
 }
 
 const styles = StyleSheet.create({

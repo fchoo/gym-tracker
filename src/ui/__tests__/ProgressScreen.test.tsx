@@ -206,15 +206,23 @@ describe("ProgressScreen", () => {
     }));
     expect(await screen.findByText("Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation."))
       .toBeOnTheScreen();
+    expect(screen.getByTestId("progress-running-evidence")).toHaveStyle({
+      borderLeftColor: "#195FAE",
+      borderLeftWidth: 4,
+    });
     expect(screen.getByRole("header", { name: "2.4 km goal" })).toBeOnTheScreen();
-    expect(screen.getByText("Latest · 11:20 elapsed")).toBeOnTheScreen();
-    expect(screen.getByText("Best · 10:50 elapsed")).toBeOnTheScreen();
-    expect(screen.getByText("Target · 11:00")).toBeOnTheScreen();
+    expect(screen.getByTestId("progress-hero-label-latest")).toHaveStyle({ fontFamily: "ArchivoVariable", fontSize: 16 });
+    expect(screen.getByTestId("progress-hero-value-latest")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
+    expect(screen.getByText("11:20 elapsed")).toBeOnTheScreen();
+    expect(screen.getByText("10:50 elapsed")).toBeOnTheScreen();
+    expect(screen.getByText("11:00")).toBeOnTheScreen();
     expect(screen.getByText("Gap · 10 seconds ahead of target")).toBeOnTheScreen();
     expect(screen.getByText("Pace · 4:35/km")).toBeOnTheScreen();
     expect(screen.getByText("400 m · 1:50")).toBeOnTheScreen();
     expect(screen.getByText("200 m · 0:55")).toBeOnTheScreen();
     expect(screen.getByText("Evidence · 2 accepted imported activities")).toBeOnTheScreen();
+    expect(screen.getAllByTestId("progress-hero-facts")).toHaveLength(1);
+    expect(screen.queryByTestId("factual-history-facts")).toBeNull();
     expect(screen.getByRole("tab", { name: "Running" }))
       .toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
     expect(screen.getByRole("button", { name: "All time" }))
@@ -226,8 +234,22 @@ describe("ProgressScreen", () => {
 
     const all = screen.getByRole("tab", { name: "All" });
     const running = screen.getByRole("tab", { name: "Running" });
+    expect(screen.getByLabelText("Progress sport")).toHaveStyle({
+      borderRadius: 13,
+      borderWidth: 1,
+      gap: 3,
+      padding: 3,
+    });
+    expect(screen.getByLabelText("Progress range")).toHaveStyle({
+      borderRadius: 13,
+      borderWidth: 1,
+      gap: 3,
+      padding: 3,
+    });
     expect(all).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
-    expect(all).toHaveStyle({ minHeight: 48 });
+    expect(all).toHaveStyle({ borderRadius: 9, borderWidth: 0, minHeight: 48 });
+    await fireEvent(all, "focus");
+    expect(all).toHaveStyle({ outlineOffset: 3, outlineWidth: 3 });
     expect(screen.getByRole("button", { name: "4 weeks" })).toHaveStyle({ minHeight: 48 });
 
     await fireEvent(running, "keyDown", { nativeEvent: { key: "Home", preventDefault: jest.fn() } });
@@ -274,7 +296,7 @@ describe("ProgressScreen", () => {
     await renderProgress(loadProgress as never);
 
     expect(await screen.findByRole("header", { name: "Nearest active goal" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Open Running goal" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Open Running active goal 2.4 km" }));
 
     await waitFor(() => expect(loadProgress).toHaveBeenLastCalledWith({
       sport: "Running", period: "4_weeks", nowLocalDate: "2026-08-24",
@@ -316,6 +338,29 @@ describe("ProgressScreen", () => {
     expect(await screen.findByText("Updating progress")).toBeOnTheScreen();
     expect(screen.queryByText(/Latest ·|Best ·/u)).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Refresh progress" }));
+    await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+  });
+
+  it.each(["projection", "dashboard"] as const)("renders exact unavailable copy and retry for the %s state", async (kind) => {
+    const loadProgress = jest.fn<React.ComponentProps<typeof ProgressScreen>["loadProgress"]>()
+      .mockResolvedValue(kind === "projection" ? {
+        sport: "All",
+        period: "4_weeks",
+        freshness: "unavailable",
+        dashboard: null,
+        diagnostic: { code: "history_projection_unavailable", affectedSubjects: ["all_period"] },
+      } : {
+        sport: "All",
+        period: "4_weeks",
+        freshness: "current",
+        dashboard: { sport: "All", state: "unavailable", primaryGoal: null, activeGoals: [] },
+      });
+    await renderProgress(loadProgress);
+
+    expect(await screen.findByText("Progress could not be loaded")).toBeOnTheScreen();
+    expect(screen.getByText("Your saved workouts and targets were not changed. Retry loading progress.")).toBeOnTheScreen();
+    expect(screen.queryByText("Updating progress")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry loading progress" }));
     await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
   });
 
@@ -412,6 +457,101 @@ describe("ProgressScreen", () => {
       "accessibilityState",
       expect.objectContaining({ selected: true }),
     );
+    expect(screen.getByRole("button", { name: "All time" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
+  });
+
+  it("opens every Running Best-effort row and restores focus to the exact 48dp invoker", async () => {
+    await renderProgress();
+    await fireEvent.press(screen.getByRole("tab", { name: "Running" }));
+
+    for (const [label, heading] of [
+      ["2.4 km", "2.4 km best efforts"],
+      ["10 km", "10 km best efforts"],
+      ["Half Marathon", "Half Marathon best efforts"],
+    ] as const) {
+      const trigger = await screen.findByRole("button", { name: `Open best efforts for ${label}` });
+      expect(trigger).toHaveStyle({ minHeight: 48 });
+      await fireEvent.press(trigger);
+      expect(screen.getByRole("header", { name: heading })).toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", { name: `Close ${heading.toLocaleLowerCase()}` }));
+      await waitFor(() => expect(trigger).toHaveProp("hasTVPreferredFocus", true));
+      expect(screen.getByRole("tab", { name: "Running" })).toHaveProp(
+        "accessibilityState",
+        expect.objectContaining({ selected: true }),
+      );
+      expect(screen.getByRole("button", { name: "4 weeks" })).toHaveProp(
+        "accessibilityState",
+        expect.objectContaining({ selected: true }),
+      );
+    }
+  });
+
+  it("completes the All Running history/source graph and activates every goal row", async () => {
+    const onOpenRunningSource = jest.fn();
+    const onOpenExercise = jest.fn();
+    const loadProgress = jest.fn(async (input: { sport: "All" | "Strength" | "Running"; period: string }) => ({
+      sport: input.sport,
+      period: input.period as "4_weeks" | "12_weeks" | "all_time",
+      freshness: "current" as const,
+      dashboard: input.sport === "All" ? {
+        sport: "All" as const,
+        state: "ready" as const,
+        primaryGoal: { sport: "Running" as const, goal: runningDashboard().goals[0]! },
+        activeGoals: [
+          { sport: "Running" as const, goal: runningDashboard().goals[0]! },
+          { sport: "Strength" as const, goal: strengthGoal },
+        ],
+      } : input.sport === "Strength" ? {
+        sport: "Strength" as const,
+        state: "ready" as const,
+        facts: [],
+        goals: [strengthGoal],
+      } : runningDashboard(),
+    }));
+    const props = {
+      loadProgress: loadProgress as never,
+      nowLocalDate: "2026-08-24",
+      onOpenExercise,
+      onOpenSession: jest.fn(),
+      onOpenRunningSource,
+    };
+    const rendered = await render(
+      <AppearanceProvider><ProgressScreen {...props} returnFocusVersion={0} /></AppearanceProvider>,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "All time" }));
+
+    const historyTrigger = await screen.findByRole("button", { name: "Open history for nearest Running 2.4 km" });
+    expect(historyTrigger).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(historyTrigger);
+    expect(screen.getByRole("header", { name: "2.4 km best efforts" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Close 2.4 km best efforts" }));
+    await waitFor(() => expect(historyTrigger).toHaveProp("hasTVPreferredFocus", true));
+
+    await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
+    const sourceAction = screen.getAllByRole("button", { name: "Open source" })[0]!;
+    await fireEvent.press(sourceAction);
+    const sourceToken = "progress:All:all_time:hero-running-source:activity-best:3";
+    expect(onOpenRunningSource).toHaveBeenLastCalledWith(
+      { activityId: "activity-best", sourceRevision: 3 },
+      sourceToken,
+    );
+    await rendered.rerender(
+      <AppearanceProvider><ProgressScreen {...props} returnFocusToken={sourceToken} returnFocusVersion={1} /></AppearanceProvider>,
+    );
+    await waitFor(() => expect(sourceAction).toHaveProp("hasTVPreferredFocus", true));
+
+    const runningGoalRow = screen.getByRole("button", { name: "Open Running active goal 2.4 km" });
+    const strengthGoalRow = screen.getByRole("button", { name: "Open Strength active goal Bench Press" });
+    expect(runningGoalRow).toHaveStyle({ minHeight: 48 });
+    expect(strengthGoalRow).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(strengthGoalRow);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Strength" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    ));
     expect(screen.getByRole("button", { name: "All time" })).toHaveProp(
       "accessibilityState",
       expect.objectContaining({ selected: true }),
@@ -863,6 +1003,7 @@ describe("ProgressScreen", () => {
       </AppearanceProvider>,
     );
     const allHeroHistory = await screen.findByRole("button", { name: "Open exercise history for Bench Press" });
+    expect(screen.getByTestId("progress-strength-hero")).toHaveStyle({ borderTopColor: "#D97820" });
     await fireEvent.press(allHeroHistory);
     const allHeroToken = "progress:All:4_weeks:hero-history:bench-press:2";
     expect(onOpenExercise).toHaveBeenLastCalledWith("bench-press", "Bench Press", allHeroToken);

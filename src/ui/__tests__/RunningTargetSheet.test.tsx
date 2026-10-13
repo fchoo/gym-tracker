@@ -57,7 +57,9 @@ describe("RunningTargetSheet", () => {
     );
 
     expect(view.getByText("Running target")).toBeTruthy();
+    expect(view.getByTestId("bottom-sheet-surface")).toHaveStyle({ maxHeight: "82%" });
     expect(view.getByDisplayValue("11:00")).toBeTruthy();
+    expect(view.getByLabelText("Target time")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, lineHeight: 22 });
     expect(view.getByText("Current benchmark")).toBeTruthy();
     expect(view.getByText("12:00 · Personal History · 2026-10-01")).toBeTruthy();
 
@@ -120,6 +122,24 @@ describe("RunningTargetSheet", () => {
     })));
   });
 
+  it("keeps an unset distance neutral until blur or save validation", async () => {
+    const view = await render(
+      <AppearanceProvider reduceMotion><RunningTargetSheet
+        onClose={jest.fn()}
+        runtime={{ createId: () => "request-1", saveRunningTarget: jest.fn() } as never}
+        sources={[source()]}
+        todayLocalDate="2026-10-12"
+        visible
+      /></AppearanceProvider>,
+    );
+
+    await fireEvent.press(view.getByRole("tab", { name: "10 km" }));
+    expect(view.getByLabelText("Target time")).toHaveProp("value", "");
+    expect(view.queryByText("Enter a valid target time.")).toBeNull();
+    await fireEvent(view.getByLabelText("Target time"), "blur");
+    expect(view.getByText("Enter a valid target time.")).toBeOnTheScreen();
+  });
+
   it("retains its complete draft and invokes no runtime save after invalid validation", async () => {
     const saveRunningTarget = jest.fn();
     const view = await render(
@@ -164,6 +184,40 @@ describe("RunningTargetSheet", () => {
     await fireEvent.press(view.getByText("Reload target"));
     await waitFor(() => expect(loadPlan).toHaveBeenCalledWith("running-2point4"));
     expect(view.getByDisplayValue("10:45")).toBeTruthy();
+  });
+
+  it("rotates the request identity after reload and submits the refreshed revision with the visible draft", async () => {
+    const stale = new Error("running_target_revision_conflict");
+    const reloaded = { ...source({ id: "goal-2point4-v3", revision: 3, targetDurationMs: 645_000 }), revision: 5 };
+    const committed = { ...source({ id: "goal-2point4-v4", revision: 4, targetDurationMs: 630_000 }), revision: 6 };
+    const loadPlan = jest.fn(async () => reloaded);
+    const saveRunningTarget = jest.fn(async (_input: Record<string, unknown>) => ({ outcome: "committed" as const, plan: committed }))
+      .mockRejectedValueOnce(stale);
+    const createId = jest.fn()
+      .mockReturnValueOnce("stale-request")
+      .mockReturnValueOnce("rebased-request");
+    const view = await render(
+      <AppearanceProvider reduceMotion><RunningTargetSheet
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        runtime={{ createId, loadPlan, saveRunningTarget } as never}
+        sources={[source()]}
+        todayLocalDate="2026-10-12"
+        visible
+      /></AppearanceProvider>,
+    );
+
+    await fireEvent.changeText(view.getByLabelText("Target time"), "10:45");
+    await fireEvent.press(view.getByRole("button", { name: "Save target" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Reload target" }));
+    await fireEvent.changeText(view.getByLabelText("Target time"), "10:30");
+    await fireEvent.press(view.getByRole("button", { name: "Save target" }));
+
+    await waitFor(() => expect(saveRunningTarget).toHaveBeenCalledTimes(2));
+    expect(saveRunningTarget.mock.calls.map(([input]) => input)).toEqual([
+      expect.objectContaining({ requestId: "stale-request", expectedSourceRevision: 4, targetDurationMs: 645_000 }),
+      expect.objectContaining({ requestId: "rebased-request", expectedSourceRevision: 5, targetDurationMs: 630_000 }),
+    ]);
   });
 
   it("keeps the current target and a stable retry receipt through a storage failure", async () => {
@@ -232,5 +286,22 @@ describe("RunningTargetSheet", () => {
       "accessibilityState",
       expect.objectContaining({ checked: true }),
     );
+
+    const twoPointFour = view.getByRole("tab", { name: "2.4 km" });
+    await fireEvent(twoPointFour, "keyDown", {
+      nativeEvent: { key: "ArrowRight", preventDefault: jest.fn() },
+    });
+    await waitFor(() => expect(view.getByRole("tab", { name: "10 km" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    ));
+    expect(view.getByRole("tab", { name: "10 km" })).toHaveProp("hasTVPreferredFocus", true);
+    await fireEvent(view.getByRole("tab", { name: "10 km" }), "keyDown", {
+      nativeEvent: { key: "End", preventDefault: jest.fn() },
+    });
+    await waitFor(() => expect(view.getByRole("tab", { name: "Half Marathon" })).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    ));
   });
 });

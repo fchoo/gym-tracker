@@ -31,7 +31,7 @@ describe("RunningHistorySheet", () => {
     expect(rendered.getByText("2.4 km best efforts")).toBeTruthy();
     expect(rendered.getByText("Best efforts compare elapsed time at the same distance. Faster is lower on the clock.")).toBeTruthy();
     expect(rendered.getAllByText("Best")[0]).toBeTruthy();
-    expect(rendered.getAllByText("10:54")[0]).toBeTruthy();
+    expect(rendered.getAllByText("10:54")[0]).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 20, fontWeight: "400" });
     expect(rendered.getAllByText("Target")[0]).toBeTruthy();
     expect(rendered.getAllByText("11:00")[0]).toBeTruthy();
 

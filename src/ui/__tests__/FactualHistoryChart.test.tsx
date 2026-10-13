@@ -53,6 +53,7 @@ describe("FactualHistoryChart", () => {
     expect(rendered.getByText("Best")).toBeTruthy();
     expect(rendered.getByText("Target")).toBeTruthy();
     expect(rendered.getByText("Gap")).toBeTruthy();
+    expect(rendered.getAllByText("10:54")[0]).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
     expect(rendered.getByText("Goal 11:00")).toBeTruthy();
     expect(rendered.getByLabelText(/2\.4 km.*All time.*2 factual points.*Faster is lower.*goal line present/u)).toBeTruthy();
 

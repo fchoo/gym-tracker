@@ -60,7 +60,9 @@ describe("BodyweightHistorySheet", () => {
       </AppearanceProvider>,
     );
 
-    expect(screen.getByText("Latest · 69.5 kg")).toBeOnTheScreen();
+    expect(screen.getByTestId("bodyweight-latest-label")).toHaveStyle({ fontFamily: "ArchivoVariable", fontSize: 16 });
+    expect(screen.getByTestId("bodyweight-latest-value")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16 });
+    expect(screen.getByTestId("bodyweight-date-latest")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16 });
     expect(screen.getByText("2 entries")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Delete bodyweight entry for 2026-10-07" }));
     expect(screen.getByText("Delete bodyweight entry?")).toBeOnTheScreen();

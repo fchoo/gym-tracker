@@ -76,6 +76,7 @@
     { "path": "src/ui/calendar/useCurrentLocalDate.ts", "reason": "Phase 16 UI date hook, not a Phase 19 integrity owner." },
     { "path": "src/ui/components/BodyweightEditorSheet.tsx", "reason": "Presentation is covered behaviorally; bodyweight contracts and commands are required." },
     { "path": "src/ui/components/BodyweightHistorySheet.tsx", "reason": "Presentation is covered behaviorally; history/runtime owners are required." },
+    { "path": "src/ui/components/BottomSheet.tsx", "reason": "Shared presentation geometry is covered by component tests; the frame has no Progress data or mutation authority." },
     { "path": "src/ui/components/FactualHistoryChart.tsx", "reason": "Presentation and sampling are covered by component tests and the production benchmark." },
     { "path": "src/ui/components/ProgressSettingsSheet.tsx", "reason": "Read-only presentation with no integrity authority." },
     { "path": "src/ui/components/RecommendationSurface.tsx", "reason": "Presentation is covered behaviorally; command/repository/runtime owners are required." },

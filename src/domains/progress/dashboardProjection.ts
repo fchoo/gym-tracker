@@ -40,6 +40,53 @@ function compareGoals(left: ProgressGoalRevision, right: ProgressGoalRevision): 
     || left.revision - right.revision;
 }
 
+type AllGoalCandidate = Readonly<{
+  order: ProgressGoalRevision;
+  value: ProgressAllGoal;
+}>;
+
+function fallbackGoalOrder(
+  value: ProgressAllGoal,
+): ProgressGoalRevision {
+  if (value.sport === "Running") {
+    return Object.freeze({
+      targetId: value.goal.target?.targetId ?? `running:${String(value.goal.distanceMeters)}:${value.goal.timeBasis}`,
+      sport: "Running" as const,
+      distanceMeters: value.goal.distanceMeters,
+      targetDurationSeconds: value.goal.target?.durationSeconds ?? null,
+      effectiveAtMs: 0,
+      revision: value.goal.latest?.sourceRevision ?? 1,
+      sourceOrder: Number.MAX_SAFE_INTEGER,
+    });
+  }
+  return Object.freeze({
+    targetId: value.goal.goalId,
+    sport: "Strength" as const,
+    targetDurationSeconds: null,
+    effectiveAtMs: 0,
+    revision: value.goal.latest.sourceRevision ?? 1,
+    sourceOrder: Number.MAX_SAFE_INTEGER,
+  });
+}
+
+function allGoalCandidate(
+  value: ProgressAllGoal,
+  declaredGoals: readonly ProgressGoalRevision[],
+): AllGoalCandidate {
+  const targetId = value.sport === "Strength"
+    ? value.goal.goalId
+    : value.goal.target?.targetId;
+  const declared = targetId === undefined
+    ? undefined
+    : declaredGoals.find((goal) =>
+      goal.sport === value.sport
+      && goal.targetId === targetId
+      && goal.current !== false
+      && isAuthoritativeGoal(goal)
+    );
+  return Object.freeze({ order: declared ?? fallbackGoalOrder(value), value });
+}
+
 function isAuthoritativeGoal(target: ProgressGoalRevision): boolean {
   return target.active !== false
     && target.lifecycle !== "inactive"
@@ -440,10 +487,16 @@ export function projectProgressDashboard(input: ProgressDashboardInput): Progres
       plannedNext,
     });
   }
-  const activeGoals: ProgressAllGoal[] = [
+  const declaredGoals = Object.freeze([
+    ...(input.goals ?? []),
+    ...(input.running?.targets ?? []),
+  ]);
+  const activeGoals = [
     ...strength.filter(({ target }) => target !== null).map((goal) => Object.freeze({ sport: "Strength" as const, goal })),
     ...running.goals.filter(({ target }) => target !== null).map((goal) => Object.freeze({ sport: "Running" as const, goal })),
-  ];
+  ].map((goal) => allGoalCandidate(goal, declaredGoals))
+    .toSorted((left, right) => compareGoals(left.order, right.order))
+    .map(({ value }) => value);
   return Object.freeze({
     sport: "All" as const,
     state: activeGoals.length === 0 ? "empty" as const : activeGoals.every(({ goal }) => goal.evidenceCount <= 1) ? "sparse" as const : "ready" as const,
@@ -454,8 +507,10 @@ export function projectProgressDashboard(input: ProgressDashboardInput): Progres
 }
 
 export const __dashboardProjectionTestOnly = Object.freeze({
+  allGoalCandidate,
   compareGoals,
   duration,
+  fallbackGoalOrder,
   formatScalar,
   plannedNextFor,
   scalarMetric,

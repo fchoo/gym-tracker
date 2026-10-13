@@ -127,6 +127,99 @@ describe("RunningPlanRuntimePort", () => {
     await expect(runtime.saveRunningTarget(input)).resolves.toMatchObject({ outcome: "already_committed" });
   });
 
+  it("rejects changed target input that reuses a committed request identity", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2_400, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const readBack = { ...plan, revision: 5, goal: { ...plan.goal, id: "goal-3", revision: 3, targetDurationMs: 645_000 } };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValue(readBack);
+    mockSaveRunningTarget.mockResolvedValueOnce({ outcome: "committed" });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "changed-request", expectedSourceRevision: 4,
+      goalDistanceMeters: 2_400, targetDurationMs: 645_000, trainingDays: ["Monday"],
+    })).resolves.toMatchObject({ outcome: "committed" });
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "changed-request", expectedSourceRevision: 4,
+      goalDistanceMeters: 2_400, targetDurationMs: 630_000, trainingDays: ["Monday"],
+    })).rejects.toThrow("running_target_request_identity_conflict");
+    expect(mockSaveRunningTarget).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebases a changed target after a proven pre-commit revision conflict", async () => {
+    const plan4 = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const plan5 = { ...plan4, revision: 5, goal: { ...plan4.goal, id: "goal-3", revision: 3, targetDurationMs: 645_000 } };
+    const readBack = { ...plan5, revision: 6, goal: { ...plan5.goal, id: "goal-4", revision: 4, targetDurationMs: 630_000 } };
+    mockReadAggregate.mockResolvedValueOnce(plan4).mockResolvedValueOnce(plan5).mockResolvedValueOnce(readBack);
+    mockSaveRunningTarget
+      .mockRejectedValueOnce(new Error("running_target_revision_conflict"))
+      .mockResolvedValueOnce({ outcome: "committed" });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "rebased-request", expectedSourceRevision: 4,
+      goalDistanceMeters: 2_400, targetDurationMs: 645_000, trainingDays: ["Monday"],
+    })).rejects.toThrow("running_target_revision_conflict");
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "rebased-request", expectedSourceRevision: 5,
+      goalDistanceMeters: 2_400, targetDurationMs: 630_000, trainingDays: ["Monday"],
+    })).resolves.toMatchObject({ outcome: "committed", plan: { revision: 6 } });
+    expect(mockSaveRunningTarget).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      expectedPlanRevision: 5,
+      expectedGoalRevision: 3,
+      goal: expect.objectContaining({ targetDurationMs: 630_000 }),
+    }));
+  });
+
+  it("invalidates a cached target command after a plan revision conflict", async () => {
+    const plan4 = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const plan5 = { ...plan4, revision: 5, goal: { ...plan4.goal, id: "goal-3", revision: 3, targetDurationMs: 645_000 } };
+    const readBack = { ...plan5, revision: 6, goal: { ...plan5.goal, id: "goal-4", revision: 4, targetDurationMs: 630_000 } };
+    mockReadAggregate.mockResolvedValueOnce(plan4).mockResolvedValueOnce(plan5).mockResolvedValueOnce(readBack);
+    mockSaveRunningTarget
+      .mockRejectedValueOnce(new Error("running_plan_revision_conflict"))
+      .mockResolvedValueOnce({ outcome: "committed" });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "plan-conflict", expectedSourceRevision: 4,
+      goalDistanceMeters: 2_400, targetDurationMs: 645_000, trainingDays: ["Monday"],
+    })).rejects.toThrow("running_plan_revision_conflict");
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "plan-conflict", expectedSourceRevision: 5,
+      goalDistanceMeters: 2_400, targetDurationMs: 630_000, trainingDays: ["Monday"],
+    })).resolves.toMatchObject({ plan: { revision: 6 } });
+  });
+
+  it("retains an exact target envelope after an unclassified rejection", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const readBack = { ...plan, revision: 5, goal: { ...plan.goal, id: "goal-3", revision: 3, targetDurationMs: 645_000 } };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(readBack);
+    mockSaveRunningTarget
+      .mockRejectedValueOnce("unknown_storage_failure")
+      .mockResolvedValueOnce({ outcome: "already_committed" });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+    const input = {
+      planId: "running", requestId: "unknown-failure", expectedSourceRevision: 4,
+      goalDistanceMeters: 2_400, targetDurationMs: 645_000, trainingDays: ["Monday" as const],
+    };
+
+    await expect(runtime.saveRunningTarget(input)).rejects.toBe("unknown_storage_failure");
+    await expect(runtime.saveRunningTarget(input)).resolves.toMatchObject({ outcome: "already_committed" });
+    expect(mockReadAggregate).toHaveBeenCalledTimes(2);
+  });
+
   it("commits an owner-selected distance revision on the authoritative Running goal", async () => {
     const plan = {
       id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,

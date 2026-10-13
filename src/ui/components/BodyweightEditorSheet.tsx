@@ -114,7 +114,7 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
           keyboardType="numbers-and-punctuation"
           onChangeText={(localDate) => setDraft((current) => ({ ...current, localDate }))}
           ref={dateInputRef}
-          style={[styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
+          style={[typeScale.bodyNumeric as TextStyle, styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
           value={draft.localDate}
         />
         <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Bodyweight, kg</Text>
@@ -123,7 +123,7 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
           keyboardType="decimal-pad"
           onChangeText={(kilograms) => setDraft((current) => ({ ...current, kilograms }))}
           ref={kilogramsInputRef}
-          style={[styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
+          style={[typeScale.bodyNumeric as TextStyle, styles.input, { borderColor: colors.divider, color: colors.textPrimary }]}
           value={draft.kilograms}
         />
       </View>
@@ -138,5 +138,5 @@ export function BodyweightEditorSheet(props: BodyweightEditorSheetProps) {
 const styles = StyleSheet.create({
   content: { gap: space[4], maxHeight: "82%" },
   fields: { gap: space[2] },
-  input: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, fontSize: 18, minHeight: sizes.minimumTarget, paddingHorizontal: space[2] },
+  input: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, minHeight: sizes.minimumTarget, paddingHorizontal: space[2] },
 });
