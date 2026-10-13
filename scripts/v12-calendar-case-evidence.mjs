@@ -6,9 +6,11 @@ import { exactKeys } from "./node-evidence-utils.mjs";
 import {
   V12_CALENDAR_INPUT_IDS,
   V12_CALENDAR_MOTION_IDS,
+  V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_STATIC_CONFIGURATIONS,
 } from "./v12-calendar-case-registry.mjs";
 import {
+  V12_CALENDAR_RUN_ID_PATTERN,
   ensureV12CalendarDirectory,
   stableCanonicalJson,
   writeExclusiveArtifact,
@@ -41,7 +43,13 @@ function schema(value, keys, location) {
 function validTimestamp(value) {
   return typeof value === "string" && ISO.test(value) && new Date(value).toISOString() === value;
 }
+function validateRequiredCase(requiredCase) {
+  const canonical = V12_CALENDAR_REQUIRED_CASES.find(({ id }) => id === requiredCase?.id);
+  if (canonical === undefined || !isDeepStrictEqual(requiredCase, canonical)) fail("case_registry_invalid");
+  return canonical;
+}
 function configurationFor(requiredCase) {
+  validateRequiredCase(requiredCase);
   const configuration = V12_CALENDAR_STATIC_CONFIGURATIONS.find(
     ({ id }) => id === requiredCase.binding.configuration_id,
   );
@@ -81,6 +89,8 @@ export function v12CalendarCaseEvidenceBinding(requiredCase) {
 }
 
 export function v12CalendarCaseEvidencePaths(requiredCase, runId) {
+  validateRequiredCase(requiredCase);
+  if (!V12_CALENDAR_RUN_ID_PATTERN.test(runId)) fail("execution_invalid");
   const root = `artifacts/native/v1.2/${runId}/case-support/${requiredCase.case_sha256}`;
   return Object.fromEntries(
     Object.entries(V12_CALENDAR_CASE_RECORD_FILES).map(([kind, file]) => [kind, `${root}/${file}`]),
@@ -92,6 +102,7 @@ function validateExecution(execution) {
   if ([
     execution.schema_version !== 1,
     execution.producer !== V12_CALENDAR_CASE_EVIDENCE_PRODUCER,
+    !V12_CALENDAR_RUN_ID_PATTERN.test(execution.run_id),
     execution.package !== "com.fchoo.gymtracker.devtest",
     execution.build_profile !== "development-test",
     !SHA256.test(execution.source_tree_sha256),
@@ -102,7 +113,7 @@ function validateExecution(execution) {
   ].some(Boolean)) fail("execution_invalid");
 }
 
-function evidenceChecks(kind, evidence) {
+function evidenceChecks(kind, evidence, expectedCapturePath) {
   if (kind === "functional") {
     schema(evidence, ["assertions"], "functional.evidence");
     if (!Array.isArray(evidence.assertions)) fail("schema_invalid:functional.assertions");
@@ -131,11 +142,11 @@ function evidenceChecks(kind, evidence) {
     return evidence.samples.map(({ value, minimum, maximum }) => ({ passed: value >= minimum && value <= maximum }));
   }
   schema(evidence, ["captures"], "capture.evidence");
-  if (!Array.isArray(evidence.captures)) fail("schema_invalid:capture.captures");
+  if (!Array.isArray(evidence.captures) || evidence.captures.length !== 1) fail("schema_invalid:capture.captures");
   for (const capture of evidence.captures) {
     schema(capture, ["path", "expected_sha256", "actual_sha256", "size_bytes"], "capture.item");
     const normalized = typeof capture.path === "string" ? path.posix.normalize(capture.path) : "";
-    if ([normalized.length === 0, normalized !== capture.path, normalized.startsWith("../"), normalized.includes("\\"), path.posix.isAbsolute(normalized), !SHA256.test(capture.expected_sha256), !SHA256.test(capture.actual_sha256), !Number.isSafeInteger(capture.size_bytes), capture.size_bytes < 1].some(Boolean)) fail("schema_invalid:capture.item");
+    if ([normalized.length === 0, normalized !== capture.path, normalized !== expectedCapturePath, normalized.startsWith("../"), normalized.includes("\\"), path.posix.isAbsolute(normalized), !SHA256.test(capture.expected_sha256), !SHA256.test(capture.actual_sha256), !Number.isSafeInteger(capture.size_bytes), capture.size_bytes < 1].some(Boolean)) fail("schema_invalid:capture.item");
   }
   return evidence.captures.map(({ expected_sha256, actual_sha256 }) => ({ passed: actual_sha256 === expected_sha256 }));
 }
@@ -149,7 +160,8 @@ function validateRecords(payload, requiredCase, kind) {
     schema(record, ["sequence", "input", "motion", "started_at", "finished_at", "evidence"], `${kind}.record`);
     const expected = binding.measured.input_motion[index];
     if ([record.sequence !== index + 1, !INPUTS.has(record.input), !MOTIONS.has(record.motion), record.input !== expected.input, record.motion !== expected.motion, !validTimestamp(record.started_at), !validTimestamp(record.finished_at), Date.parse(record.finished_at) <= Date.parse(record.started_at)].some(Boolean)) fail("record_identity_invalid");
-    const checks = evidenceChecks(kind, record.evidence);
+    const expectedCapturePath = `artifacts/native/v1.2/${payload.execution.run_id}/captures/${requiredCase.case_sha256}/${record.input}-${record.motion}.png`;
+    const checks = evidenceChecks(kind, record.evidence, expectedCapturePath);
     sampleCount += checks.length;
     statuses.push(checks.length === 0 ? "REVIEW_REQUIRED" : checks.some(({ passed }) => !passed) ? "FAIL" : "PASS");
   }
@@ -259,6 +271,9 @@ export function validateV12CalendarCaseSupportBytes({ requiredCase, caseResult, 
 
 export function produceV12CalendarCaseEvidence({ root, requiredCase, execution, observations }) {
   const bundle = createV12CalendarCaseEvidenceBundle({ requiredCase, execution, observations });
+  const repositoryRoot = path.resolve(root);
+  const runRoot = path.join(repositoryRoot, "artifacts/native/v1.2", execution.run_id);
+  ensureV12CalendarDirectory(runRoot, { root: repositoryRoot });
   const resultWithoutArtifact = {
     id: requiredCase.id,
     case_sha256: requiredCase.case_sha256,
@@ -268,9 +283,9 @@ export function produceV12CalendarCaseEvidence({ root, requiredCase, execution, 
     records: bundle.records,
   };
   for (const [kind, { bytes }] of Object.entries(bundle.artifacts)) {
-    const absolute = path.join(root, bundle.records[kind].artifact.path);
-    ensureV12CalendarDirectory(path.dirname(absolute), { root });
-    writeExclusiveArtifact(absolute, bytes, { root });
+    const absolute = path.join(repositoryRoot, bundle.records[kind].artifact.path);
+    ensureV12CalendarDirectory(path.dirname(absolute), { root: runRoot });
+    writeExclusiveArtifact(absolute, bytes, { root: runRoot });
   }
   const caseBytes = Buffer.from(stableCanonicalJson(resultWithoutArtifact));
   const artifact = {
@@ -278,8 +293,8 @@ export function produceV12CalendarCaseEvidence({ root, requiredCase, execution, 
     sha256: sha256(caseBytes),
     size_bytes: caseBytes.length,
   };
-  const absolute = path.join(root, artifact.path);
-  ensureV12CalendarDirectory(path.dirname(absolute), { root });
-  writeExclusiveArtifact(absolute, caseBytes, { root });
+  const absolute = path.join(repositoryRoot, artifact.path);
+  ensureV12CalendarDirectory(path.dirname(absolute), { root: runRoot });
+  writeExclusiveArtifact(absolute, caseBytes, { root: runRoot });
   return Object.freeze({ ...resultWithoutArtifact, artifact });
 }

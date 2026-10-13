@@ -389,6 +389,61 @@ test("the production case producer writes immutable configuration-bound support 
   }
 });
 
+test("the case producer rejects non-canonical run, case, and capture identities", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-case-boundary-"));
+  try {
+    const requiredCase = V12_CALENDAR_REQUIRED_CASES[0];
+    const binding = v12CalendarCaseEvidenceBinding(requiredCase);
+    const runId = "phase20-20261013T101010Z-abcdef123456";
+    const startedAt = "2026-10-13T10:10:10.000Z";
+    const execution = {
+      schema_version: 1,
+      producer: "v12-calendar-native-case/v1",
+      run_id: runId,
+      package: "com.fchoo.gymtracker.devtest",
+      build_profile: "development-test",
+      source_tree_sha256: "b".repeat(64),
+      device_identity_sha256: "d".repeat(64),
+      started_at: startedAt,
+      finished_at: "2026-10-13T10:10:11.000Z",
+    };
+
+    const traversalExecution = { ...execution, run_id: "../../../rogue" };
+    assert.throws(() => produceV12CalendarCaseEvidence({
+      root,
+      requiredCase,
+      execution: traversalExecution,
+      observations: passingCaseObservations(
+        requiredCase,
+        binding,
+        runId,
+        startedAt,
+      ),
+    }), /execution_invalid/u);
+    assert.equal(existsSync(path.join(root, "rogue")), false);
+
+    assert.throws(() => createV12CalendarCaseEvidenceBundle({
+      requiredCase: {
+        ...requiredCase,
+        binding: { ...requiredCase.binding, state_id: "calendar-private-state" },
+      },
+      execution,
+      observations: passingCaseObservations(requiredCase, binding, runId, startedAt),
+    }), /case_registry_invalid/u);
+
+    const privacyBearing = passingCaseObservations(requiredCase, binding, runId, startedAt);
+    privacyBearing[0].capture.captures[0].path =
+      `artifacts/native/v1.2/${runId}/captures/${requiredCase.case_sha256}/Alice-private-rehab.png`;
+    assert.throws(() => createV12CalendarCaseEvidenceBundle({
+      requiredCase,
+      execution,
+      observations: privacyBearing,
+    }), /schema_invalid:capture\.item/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("case support rejects malformed source records and derives every outcome from their bytes", () => {
   const requiredCase = V12_CALENDAR_REQUIRED_CASES[0];
   const binding = v12CalendarCaseEvidenceBinding(requiredCase);
@@ -414,7 +469,7 @@ test("case support rejects malformed source records and derives every outcome fr
 
   assert.throws(() => create({ execution: { ...execution, unexpected: true } }), /schema_invalid:execution/u);
   assert.throws(() => create({ execution: { ...execution, schema_version: 2 } }), /execution_invalid/u);
-  assert.throws(() => create({ requiredCase: { ...requiredCase, binding: { ...requiredCase.binding, configuration_id: "missing" } } }), /case_result_binding_invalid/u);
+  assert.throws(() => create({ requiredCase: { ...requiredCase, binding: { ...requiredCase.binding, configuration_id: "missing" } } }), /case_registry_invalid/u);
   assert.throws(() => create({ observations: observations.slice(1) }), /record_set_invalid/u);
   assert.throws(() => create({ observations: observations.map((value, index) => index === 0 ? { ...value, input: "keyboard" } : value) }), /record_identity_invalid/u);
 
