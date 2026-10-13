@@ -9,9 +9,11 @@ threats_closed: 30
 threats_total: 30
 asvs_level: 1
 block_on: high
-audited_commit: d97ea569fc6f8671df94f68e64635c55d06864aa
-audit_head: 9c3cb6f2d894cbd9387dfa7d45c87445bfce8152
-source_tree_sha256: 0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c
+audited_commit: 0932f7c87a189e72db3f3a39e691644efddd9821
+audit_head: 0932f7c87a189e72db3f3a39e691644efddd9821
+git_tree: 6f1eed92ba9cb97a3a72868acb7167a492dd922f
+source_tree_sha256: f5ce741410f171f79c55196246d65c9ae40722068d922225f7d19e16a850ffef
+phase_source_subset_sha256: f3b848e0996694462d59bb825df8037109fba09811d4a18ed142a30732cecc2d
 created: 2026-10-13
 updated: 2026-10-14
 ---
@@ -88,17 +90,18 @@ Phase 20 still owns Android build/install, ADB/Maestro execution, screenshots, d
 
 ## Verification Run
 
-Audited source implementation `d97ea569fc6f8671df94f68e64635c55d06864aa`
-from validated repository HEAD `9c3cb6f2d894cbd9387dfa7d45c87445bfce8152`.
-The intervening commits update review and validation documents only; the source-tree
-SHA-256 is `0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c`.
+Audited final source implementation `0932f7c87a189e72db3f3a39e691644efddd9821`
+with Git tree `6f1eed92ba9cb97a3a72868acb7167a492dd922f`. The full
+source-tree SHA-256 is `f5ce741410f171f79c55196246d65c9ae40722068d922225f7d19e16a850ffef`;
+the Phase 16 source subset SHA-256 is
+`f3b848e0996694462d59bb825df8037109fba09811d4a18ed142a30732cecc2d`.
 
 | Check | Result |
 |-------|--------|
 | Calendar transition, screen, planned detail, session route, plan route, and cross-destination component suites | PASS — focused Calendar/component/route/focus matrix green |
 | Calendar ports, agenda, production read ports, and diagnostic controls | PASS — bounded read-only capability and control-rejection tests green |
 | SQLite Calendar projection, immutable Running revision, and history-only detail suites | PASS — 4 suites / 27 tests |
-| Full host projects | PASS — unit 150 suites / 2,526 tests; components 99 / 975; SQLite 29 / 607; integration 34 / 514 |
+| Full host projects | PASS — 312 suites / 4,629 tests; unit 150 / 2,527, components 99 / 981, SQLite 29 / 607, integration 34 / 514 |
 | Evidence/comparison/coverage adversarial suites | PASS — 51/51 evidence tests; evidence helpers and 17 controls at 100% |
 | Host-only final verifier | PASS as fail-closed contract validation — `REVIEW_REQUIRED`, `all_pass: false`, 9 native cases, 8 route journeys, 14 comparisons |
 | TypeScript | PASS — `npm run typecheck` |
@@ -112,6 +115,7 @@ SHA-256 is `0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c`.
 | 2026-10-13 | `8072135ce686ddaea1ad8149c7f5733902624076` | 30 | 27 | 3 | 0 | 3 | TRAE security auditor |
 | 2026-10-13 | `e7eea042779bf0c9b426924f672c494267cccb0f` | 30 | 30 | 0 | 0 | 0 | TRAE security auditor (re-audit) |
 | 2026-10-14 | `d97ea569fc6f8671df94f68e64635c55d06864aa` | 30 | 30 | 0 | 0 | 0 | TRAE security auditor (fresh source re-audit) |
+| 2026-10-14 | `0932f7c87a189e72db3f3a39e691644efddd9821` | 30 | 30 | 0 | 0 | 0 | TRAE security auditor (final source re-audit) |
 
 ## Sign-Off
 

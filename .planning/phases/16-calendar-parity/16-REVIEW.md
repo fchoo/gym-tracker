@@ -1,6 +1,6 @@
 ---
 phase: 16-calendar-parity
-reviewed: 2026-10-13T17:13:07Z
+reviewed: 2026-10-13T19:34:42Z
 depth: deep
 files_reviewed: 109
 files_reviewed_list:
@@ -123,10 +123,10 @@ status: clean
 
 # Phase 16: Code Review Report
 
-**Reviewed:** 2026-10-13T17:13:07Z
+**Reviewed:** 2026-10-13T19:34:42Z
 **Depth:** deep/final
 **Files Reviewed:** 109
-**Source:** `fchoo/UX-revamp` at `d97ea569fc6f8671df94f68e64635c55d06864aa`
+**Source:** `fchoo/UX-revamp` at `53b3d1a7d936d4024daf51e1f20d1d62814096ed`
 **Status:** clean
 
 ## Verdict
@@ -139,9 +139,9 @@ The required zero-finding gate is **met**.
 - Info: **0**
 - Total: **0**
 
-All three warnings from the `b4150a2a` review remain closed: the Garmin Calendar-origin assertion uses the exact header label, missing-detail primary actions retain their distinct approved copy, and the scoped runtime import graph has zero cycles. The sole `c18b3405` warning also reproduces as closed. Commit `867c369c`, merged without conflict by `d97ea569`, moves the focus-clearance context into the existing leaf module; both `FocusablePressable` and the frame-owned BottomSheet Close action consume the same hook; the 4dp default and Progress-scoped 3dp override are both asserted.
+All prior Phase 16 code-review findings remain closed. The independent verifier gap recorded after `d97ea569` also reproduces as closed: `28f77d9e`, merged without conflict by `4a3be035`, adds a validated controller-owned `select-date` event and routes same-month Today, pointer, keyboard, and D-pad selection through it. The reducer and mounted regressions prove that the rendered date, controller state, and the next clamped month destination remain synchronized.
 
-All requested type, boundary, evidence, privacy, focused-test, runtime-import, and repository-wide coverage gates pass at the exact reviewed HEAD. No new source, test, security, authority, accessibility, motion, typography, iconography, spacing, or integrity finding was found.
+All certification commands were run with the repository-pinned Node `24.19.0` and npm `11.17.0`. Type, boundary, evidence, privacy, focused-test, runtime-import, and repository-wide coverage gates pass at the exact reviewed HEAD. The later Phase 19 source changes are disjoint from Phase 16 runtime behavior and pass through the shared full gate. No new source, test, security, authority, accessibility, motion, typography, iconography, spacing, state-ownership, or integrity finding was found.
 
 The 96-case evidence boundary remains source-byte-backed and fail-closed. The exact registry has 96 cases and 64 static configurations, expands to 554 input/motion observations, and resolves to 1,662/1,662 unique opaque trace, measurement, and PNG paths. The 51-test evidence suite rejects traversal, symlink, privacy-field/path, missing-byte, malformed-PNG, unordered-trace, arbitrary-wrapper, stale-hash, and status-only evidence attacks.
 
@@ -150,6 +150,12 @@ Native Android/device execution, screenshots, physical focus/geometry, and relea
 ## Narrative Findings (AI reviewer)
 
 No findings.
+
+## Independent Verifier Gap
+
+| Prior gap | Current disposition | Exact current-HEAD evidence |
+|---|---|---|
+| Same-month date selection bypassed the semantic transition controller, leaving `calendarTransitionRef.selectedLocalDate` stale | **CLOSED** | `calendarTransitionController.ts:59,287-292` declares and handles `select-date`, validates the civil date, ignores non-idle and cross-month misuse, and updates the controller-owned selection. `CalendarScreen.tsx:450-483` dispatches this event for same-month Today and date movement. `CalendarTransitions.test.tsx:569-591` covers valid, invalid, cross-month, in-flight, expand/collapse, and follow-on clamped navigation; `CalendarScreen.test.tsx:259-276` proves the mounted same-month Today path drives the later September selection. The dedicated run passes 2/2 suites and 58/58 tests. |
 
 ## The `c18b3405` Warning
 
@@ -167,9 +173,9 @@ No findings.
 
 ## Complete Historical-Finding Reconciliation
 
-Every prior code-review finding is accounted for below. Repeated findings are grouped by lineage; every historical identifier remains explicit.
+Every prior code-review finding is accounted for below. Repeated findings are grouped by lineage; all 66 historical review identifiers remain explicit. Together with the independent verifier gap above, 67 prior finding/gap records were reproduced.
 
-| Historical finding IDs | Disposition at `d97ea569` | Current evidence |
+| Historical finding IDs | Disposition at `53b3d1a7` | Current evidence |
 |---|---|---|
 | `b0d0e706` CR-01 broad mutation authority | **CLOSED** | Calendar composition still receives frozen query-only range/session/occurrence/activity/Running ports; route tests prove mutation runtimes are not acquired. |
 | `b0d0e706` CR-02 untrusted origin fails open | **CLOSED** | Origin, return-token, local-ID, and revision parsers reject arrays, blanks, unknown roots, provider identifiers, and malformed values before routing. |
@@ -184,7 +190,7 @@ Every prior code-review finding is accounted for below. Repeated findings are gr
 | `b0d0e706` CR-11 live comparison rejected | **CLOSED** | Host-deferred and live-executed schemas are separated; checked live verifier coverage reaches PASS while the checked host fixture remains honestly `REVIEW_REQUIRED`. |
 | `b0d0e706` CR-12 / `8e01ca78` CR-05 / `f0c63c44` CR-02 privacy and path escape | **CLOSED** | Canonical source-owned paths, run-ID grammar, exact-key schemas, parent symlink rejection, and privacy-bearing path/payload rejection pass. |
 | `b0d0e706` CR-13 / `8e01ca78` CR-01 / `31f54e8f` CR-01 descriptor loss, overwrite, and arbitrary support bytes | **CLOSED** | Exclusive writes, immutable journals, retained descriptor bytes, canonical JSON, nested capture verification, and stale/replaced-byte rejection pass. |
-| `b0d0e706` CR-14 / `8e01ca78` WR-07 / `e2e5f928` WR-01 / `31f54e8f` WR-01 repository or integrity coverage red | **CLOSED** | Exact repository coverage passes 312/312 suites and 4,622/4,622 tests; all 158 integrity-critical files are 100% in all four metrics. |
+| `b0d0e706` CR-14 / `8e01ca78` WR-07 / `e2e5f928` WR-01 / `31f54e8f` WR-01 repository or integrity coverage red | **CLOSED** | Exact repository coverage passes 312/312 suites and 4,627/4,627 tests; all 158 integrity-critical files are 100% in all four metrics. |
 | `b0d0e706` WR-01 / `f0c63c44` WR-02 status visuals and glyph icons | **CLOSED** | Sport/status treatments remain distinct and Calendar historical states use 24dp, 2dp-stroke Lucide icons with hidden decorative semantics. |
 | `b0d0e706` WR-02 same-day order destroyed | **CLOSED** | Stable source grouping/order tests pass. |
 | `b0d0e706` WR-03 / `8e01ca78` CR-11 return-focus refresh race | **CLOSED** | Restoration waits for matching authoritative refresh and falls back to the selected date when the event disappears. |
@@ -222,6 +228,7 @@ Every prior code-review finding is accounted for below. Repeated findings are gr
 - **Typography:** Calendar heading, body, metadata, chip, and historical exercise-name roles match `16-UI-SPEC.md`; the prior 20sp/16sp leaks remain absent.
 - **Icons and semantics:** Required Lucide 24dp/2dp icons, hidden decorative glyphs, status text plus non-color treatment, accessible names/roles/states, and 48dp minimum actions remain asserted.
 - **Focus and input:** Calendar root/detail focus, exact trigger restoration, modal trapping, Back/Escape/scrim cancellation, arrow/Home/End/Enter/Space paths, 4dp Calendar focus clearance, and the shared Progress 3dp BottomSheet override all pass.
+- **Controller ownership:** Same-month Today, pointer, keyboard, and D-pad selection now update the semantic controller before screen state; invalid, cross-month, and in-flight direct-selection events fail closed or no-op as appropriate, and later clamped month navigation uses the selected date.
 - **Motion:** Inclusive 25% settling, second-touch protection, epoch/idempotent completion, 160ms disclosure rotation, cancellation, and reduced-motion terminal semantics remain covered.
 - **Authority and privacy:** Calendar-origin destinations remain query-only and identity-bounded. Evidence schemas remain exact-key, canonical-path, source-byte-backed, privacy-rejecting, and fail-closed.
 
@@ -229,12 +236,14 @@ Every prior code-review finding is accounted for below. Repeated findings are gr
 
 | Command or probe | Exact result |
 |---|---|
-| `git rev-parse HEAD` | PASS: `d97ea569fc6f8671df94f68e64635c55d06864aa` before the review write. |
-| `npm run typecheck` | PASS, exit 0. |
-| `npm run check:boundaries` | PASS, 430 files checked. |
+| Runtime pin preflight | PASS: every Node/npm command below was invoked with `/Users/bytedance/.nvm/versions/node/v24.19.0/bin` first on `PATH`; `node --version` = `v24.19.0`, `npm --version` = `11.17.0`, and `npm exec -- node --version` = `v24.19.0`. |
+| `git rev-parse HEAD` | PASS: `53b3d1a7d936d4024daf51e1f20d1d62814096ed` before the review write. |
+| `npm run typecheck` | PASS under the pinned runtime, exit 0. |
+| `npm run check:boundaries` | PASS under the pinned runtime, 430 files checked. |
 | Focused Phase 16 unit command with `--runTestsByPath` | PASS, 4/4 suites and 56/56 tests. |
 | Focused Calendar/Running/history data command with `--runTestsByPath` | PASS, 4/4 suites and 73/73 tests. |
-| Focused Calendar/detail/route UI command with `--runTestsByPath` | PASS, 16/16 suites and 184/184 tests. The existing non-failing React `act(...)` diagnostic is emitted by the Garmin route suite. |
+| Controller/UI wiring reproducer | PASS, 2/2 suites and 58/58 tests, including controller-owned `select-date` and mounted same-month Today followed by clamped navigation. |
+| Focused Calendar/detail/route UI command with `--runTestsByPath` | PASS, 16/16 suites and 186/186 tests. The existing non-failing React `act(...)` diagnostic is emitted by the Garmin route suite. |
 | Focused shared Progress/foundation command with `--runTestsByPath` | PASS, 2/2 suites and 84/84 tests. |
 | Stale-Garmin-label reproducer | PASS, 1/1 suite and 29/29 tests. |
 | Missing-action-copy reproducer | PASS, 5/5 suites and 48/48 tests. |
@@ -244,22 +253,24 @@ Every prior code-review finding is accounted for below. Repeated findings are gr
 | `npm run test:coverage:v12:calendar -- --coverageDirectory <temporary-directory>` | PASS; 51/51 Node evidence tests plus 17/17 Calendar-control tests; all seven evidence helpers are 100% lines/branches/functions and `phase16CalendarTestControls.ts` is 100% statements/branches/functions/lines. |
 | `npm run verify:v12:calendar -- --fixture scripts/fixtures/v12-calendar-evidence/complete.json` | PASS, exit 0; exact result `REVIEW_REQUIRED`, `all_pass:false`, 9 native cases, 8 route journeys, 14 comparisons. This is the required host-only outcome. |
 | Exact source-registry probe | PASS: 96 required cases, 64 static configurations, 554 input/motion observations, 1,662 source paths, 1,662 unique source paths. |
-| Exact repository `npm run test:coverage -- --runInBand --coverageDirectory <temporary-directory>` | PASS, 312/312 suites and 4,622/4,622 tests; 0 snapshots; global 92.53% statements, 88.68% branches, 92.50% functions, 93.65% lines; 158 integrity-critical files at 100% statements/branches/functions/lines; `changed_line_scope_files:0`. |
+| Exact repository `npm run test:coverage -- --runInBand --coverageDirectory <temporary-directory>` | PASS, 312/312 suites and 4,627/4,627 tests; 0 snapshots; global 92.54% statements, 88.70% branches, 92.51% functions, 93.66% lines; 158 integrity-critical files at 100% statements/branches/functions/lines; `changed_line_scope_files:0`; `calendarTransitionController.ts` is 100% in all four metrics. |
 | TypeScript runtime import-graph probe over the declared review scope | PASS: 109 files, 104 JS/TS modules, 235 unique runtime edges, 0 cycles. |
+| Recursive runtime graph from `calendarTransitionController.ts` | PASS: 5 reachable modules, 7 runtime edges, 0 cycles; the new scheduling-barrel dependency remains one-way. |
 | BottomSheet scoped-focus source reproducer | PASS: barrel import absent; leaf default uses the shared token; leaf exports provider and hook; both close action and `FocusablePressable` consume the hook; Progress provides 3dp; tests assert default 4dp and scoped 3dp; registry classifies the leaf exactly once. |
 | Focused privacy/path command | PASS, 6/6 tests; 0 failed, cancelled, skipped, or todo. |
-| `git diff --check c18b3405707c9b7118e278648baea074ab4c90f4..HEAD` | PASS. |
-| Fix lineage and merge checks | PASS: `867c369c` is an ancestor of HEAD; `git show --remerge-diff d97ea569` is empty. |
+| Controller/UI source probe | PASS: `select-date` is declared, validates civil dates, rejects non-idle/cross-month use, owns selection, and is wired from both same-month screen paths; both named regressions are present. |
+| `git diff --check d97ea569fc6f8671df94f68e64635c55d06864aa..HEAD` | PASS. |
+| Fix lineage and merge checks | PASS: `28f77d9e` and `4a3be035` are ancestors of HEAD; both `4a3be035` and `53b3d1a7` have empty `--remerge-diff` output; no Phase 16 runtime path changes after `4a3be035`. |
 | Revision 18 authority hashes | PASS: `approved-hybrid.html` SHA-256 `b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96`; `approved.json` SHA-256 `b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf`. |
 | Native/device commands | NOT RUN by design; Phase 20-only and excluded from finding counts. |
 
 ## Required Gate
 
-**MET:** 0 Critical, 0 BLOCKER, 0 Warning, 0 Info. All historical findings, including the sole `c18b3405` warning, reproduce as closed. No source fix was made in this review.
+**MET:** 0 Critical, 0 BLOCKER, 0 Warning, 0 Info. All 66 historical review findings plus the independent verifier gap reproduce as closed. No source fix was made in this review.
 
 ---
 
-_Reviewed: 2026-10-13T17:13:07Z_
+_Reviewed: 2026-10-13T19:34:42Z_
 
 _Reviewer: TRAE (`gstack-review` discipline)_
 

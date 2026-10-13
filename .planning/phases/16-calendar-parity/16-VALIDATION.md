@@ -9,8 +9,8 @@ requirements: [CAL-01, CAL-02, CAL-03, CAL-04, CAL-05, CAL-06, CAL-07, CAL-08, C
 automated_gaps: 0
 manual_only: 2
 validated_at: 2026-10-14
-validated_head: f6c8e9cf7efdf4330a132320920b370f61c81e3d
-source_implementation_head: d97ea569
+validated_head: 0932f7c87a189e72db3f3a39e691644efddd9821
+source_implementation_head: 28f77d9e
 ---
 
 # Phase 16 — Validation Strategy
@@ -275,3 +275,60 @@ PASS — 34 suites, 514 tests, 128.2s, exit 0
 ```
 
 No native, device, Maestro, screenshot, or performance command was rerun.
+
+## Final Nyquist Refresh (2026-10-14)
+
+This final read/refresh audit was run against the exact requested repository
+HEAD `0932f7c87a189e72db3f3a39e691644efddd9821`. The latest Phase 16 source
+change is `28f77d9e` (merged by `4a811baa`); later commits do not alter the
+Calendar controller or its tests. Only this validation document was modified
+by this audit.
+
+### Previously missing same-month selection behavior
+
+The gap is filled by real behavioral coverage, not source inspection alone:
+
+- `src/ui/__tests__/CalendarTransitions.test.tsx` proves controller-owned
+  same-month selection, civil-date validation, cross-month rejection,
+  in-flight suppression, expand/collapse retention, and follow-on clamped
+  navigation.
+- `src/ui/__tests__/CalendarScreen.test.tsx` mounts the real screen, presses
+  same-month Today, navigates to September, and asserts the clamped selected
+  date (`2026-09-30`) remains selected.
+- Command: `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx src/ui/__tests__/CalendarScreen.test.tsx`
+- Result: PASS — 2 suites, 58 tests, 0 failures.
+
+### Final executed regression evidence
+
+| Gate | Result |
+|---|---|
+| Phase 16 unit/data focus | PASS — 4 suites, 71 tests |
+| Phase 16 component/route focus | PASS — 13 suites, 146 tests |
+| Phase 16 SQLite focus | PASS — 4 suites, 27 tests |
+| Phase 16 evidence/control focus | PASS — 51 tests, 0 failures, 0 skips |
+| TypeScript and boundary checks | PASS — typecheck; boundary check twice, 430 files each |
+| Full host gate (`npm run test:all -- --runInBand`) | PASS — 312 suites, 4,629 tests |
+| Full gate coverage result | PASS — integrity gate returned `ok: true`, 158 files, all required metrics 100% |
+
+All 23 CAL requirements and their task mappings were quick-regressed through
+the focused unit, mounted component/route, SQLite, and evidence suites. No
+automated gap, escalation, or skipped test remains. The known non-failing
+React `act(...)` diagnostics in unrelated/full-suite tests do not change test
+results and are not Phase 16 behavioral failures.
+
+### Final audit trail
+
+| Audit item | Exact value |
+|---|---|
+| Validated HEAD | `0932f7c87a189e72db3f3a39e691644efddd9821` |
+| Source implementation HEAD | `28f77d9e` (`4a811baa` merge) |
+| CAL requirements quick-regressed | 23/23 |
+| Automated gaps | 0 |
+| Escalations | 0 |
+| Phase 20 native/attended inputs | Deferred/manual — Android/device/Maestro, screenshots/geometry/focus, attended Samsung review, release/profile performance |
+| Nyquist compliant | `true` |
+| Wave 0 complete | `true` |
+
+The checked-in native fixture remains truthful (`NOT_RUN` /
+`REVIEW_REQUIRED` / `all_pass: false`). Phase 20 native and attended work
+remains manual/deferred; no native PASS is claimed here.
