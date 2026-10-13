@@ -12,6 +12,7 @@ jest.mock("../../domains/progression/recommendationCommands", () => {
 
 import {
   canonicalRecommendationDecisionRequest,
+  type RecommendationDecisionResult,
 } from "../../domains/progression/recommendationCommands";
 import { runtimeSha256 } from "../../platform/crypto/runtimeSha256";
 import { createWorkoutOutcomeRepository } from "../../platform/sqlite/repositories/workoutOutcomeRepository";
@@ -61,10 +62,14 @@ function repositoryFor(
 
 describe("Phase 19 workout outcome receipt coverage", () => {
   it("rejects duplicate graph receipts and malformed retained results", async () => {
-    const duplicate = repositoryFor((sql) =>
-      sql.includes("recommendation_decision_receipts")
-        ? [{ request_sha256: "a".repeat(64), result_json: "{}" }]
-        : []);
+    const duplicate = repositoryFor((sql) => {
+      if (sql.includes("FROM sqlite_master")) return [{ count: 2 }];
+      if (sql.includes("FROM progression_recommendation_decision_receipts")
+        || sql.includes("FROM owned_progression_recommendation_decision_receipts")) {
+        return [{ request_sha256: "a".repeat(64), result_json: "{}" }];
+      }
+      return [];
+    });
     await expect(duplicate.repository.acceptRecommendation({
       recommendationId: "recommendation",
       requestId: "request",
@@ -86,6 +91,7 @@ describe("Phase 19 workout outcome receipt coverage", () => {
     };
     const requestSha256 = await runtimeSha256(canonicalRecommendationDecisionRequest(request));
     const malformed = repositoryFor((sql) => {
+      if (sql.includes("FROM sqlite_master")) return [{ count: 2 }];
       if (sql.includes("FROM progression_recommendation_decision_receipts")) {
         return [{ request_sha256: requestSha256, result_json: "{}" }];
       }
@@ -95,17 +101,24 @@ describe("Phase 19 workout outcome receipt coverage", () => {
       .rejects.toThrow("recommendation_receipt_invalid");
   });
 
-  it("rejects an explicit envelope without request identity", async () => {
-    const source = repositoryFor(() => []);
-    await expect(source.repository.acceptRecommendation({
+  it("rejects a partial explicit envelope at the public command boundary", () => {
+    const actual = jest.requireActual<typeof import("../../domains/progression/recommendationCommands")>(
+      "../../domains/progression/recommendationCommands",
+    );
+    expect(() => actual.validateRecommendationDecisionInput({
       recommendationId: "recommendation",
       decision: "use_target",
       decidedAtMs: 1,
-    } as never)).rejects.toThrow("recommendation_request_identity_missing");
+    })).toThrow("recommendation_decision_input_invalid");
   });
 
-  it("uses retained recommendation fences when an explicit request omits optional fences", async () => {
+  it("derives deterministic fences and hash-bound receipts for legacy bare callers", async () => {
+    const rejected: RecommendationDecisionResult = {
+      recommendationId: "recommendation",
+      status: "rejected",
+    };
     const legacy = repositoryFor((sql) => {
+      if (sql.includes("FROM sqlite_master")) return [{ count: 2 }];
       if (sql.includes("FROM progression_recommendation_decision_receipts")
         || sql.includes("FROM owned_progression_recommendation_decision_receipts")) return [];
       if (sql.includes("FROM progression_recommendations")) {
@@ -115,18 +128,36 @@ describe("Phase 19 workout outcome receipt coverage", () => {
     });
     await expect(legacy.repository.keepCurrentTarget({
       recommendationId: "recommendation",
-      requestId: "legacy-request",
       decidedAtMs: 1,
-    } as never)).resolves.toEqual({
-      recommendationId: "recommendation",
-      status: "superseded",
-    });
+    })).resolves.toEqual(rejected);
+    const legacyRequestId = `recommendation_decision_${await runtimeSha256(JSON.stringify({
+      decision: "keep_current_target",
+      evidenceVersion: recommendation.evidence_version,
+      recommendationId: recommendation.id,
+      sourceRevision: recommendation.source_revision,
+      targetRevision: recommendation.target_revision,
+    }))}`;
+    const legacyRequestSha256 = await runtimeSha256(canonicalRecommendationDecisionRequest({
+      recommendationId: recommendation.id,
+      requestId: legacyRequestId,
+      decision: "keep_current_target",
+      expectedEvidenceVersion: recommendation.evidence_version,
+      expectedSourceRevision: recommendation.source_revision,
+      expectedTargetRevision: recommendation.target_revision,
+      decidedAtMs: 1,
+    }));
+    expect(legacy.execute).toHaveBeenCalledWith(
+      expect.stringContaining("progression_recommendation_decision_receipts"),
+      [legacyRequestId, legacyRequestSha256, recommendation.id, "keep_current_target", JSON.stringify(rejected), 1],
+    );
 
     const owned = repositoryFor((sql) => {
-      if (sql.includes("recommendation_decision_receipts")) return [];
+      if (sql.includes("FROM progression_recommendation_decision_receipts")
+        || sql.includes("FROM owned_progression_recommendation_decision_receipts")) return [];
       if (sql.includes("PRAGMA table_info(session_sets)")) {
         return [{ name: "source_owned_plan_working_set_target_id" }];
       }
+      if (sql.includes("name IN")) return [{ count: 2 }];
       if (sql.includes("FROM sqlite_master")) return [{ count: 1 }];
       if (sql.includes("FROM progression_recommendations")) return [];
       if (sql.includes("FROM owned_progression_recommendations")) {
@@ -136,12 +167,8 @@ describe("Phase 19 workout outcome receipt coverage", () => {
     });
     await expect(owned.repository.keepCurrentTarget({
       recommendationId: "recommendation",
-      requestId: "owned-request",
       decidedAtMs: 1,
-    } as never)).resolves.toEqual({
-      recommendationId: "recommendation",
-      status: "superseded",
-    });
+    })).resolves.toEqual(rejected);
     expect(owned.execute).toHaveBeenCalledWith(
       expect.stringContaining("owned_progression_recommendation_decision_receipts"),
       expect.any(Array),
