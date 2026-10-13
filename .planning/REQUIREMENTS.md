@@ -201,7 +201,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ### Phase 20: Native acceptance, accessibility and performance
 
-- [ ] **VER-01**: Verify every inventory route/interaction/state against its mapped requirement and native implementation with recorded evidence and no unmapped route.
+- [x] **VER-01**: Verify every inventory route/interaction/state against its mapped requirement and native implementation with recorded evidence and no unmapped route.
 - [ ] **VER-02**: Compare native screenshots against approved Light and Dark and verify System transitions on all root, detail and sheet surfaces.
 - [ ] **VER-03**: Verify 360×800, 390×844, 600×960 and 840×1080-equivalent viewports plus landscape without loss of required actions or changing the four-root composition.
 - [ ] **VER-04**: Verify required actions at 200% text, minimum 48dp touch targets, semantic labels and meaningful non-color state encoding.
@@ -213,7 +213,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **VER-10**: Verify a self-contained ARM64 APK's Python/native packaging, real account login/MFA/read, encrypted token refresh/cold restart/logout, JSON fidelity, idempotent sync and explicit matching; synthetic tests alone cannot close live account/network evidence, and partner approval/FIT decoding is not a prerequisite.
 - [ ] **VER-11**: Preserve or improve existing p95 interaction and launch budgets with the full calendar, large histories, long active sessions and representative import loads.
 - [ ] **VER-12**: Record owner-attended Samsung visual/usability/accessibility acceptance in addition to automated evidence.
-- [ ] **VER-13**: Prepare signed personal-use Android release verification, recovery/rollback evidence and a complete parity/deviation review before any later release authorization.
+- [x] **VER-13**: Prepare signed personal-use Android release verification, recovery/rollback evidence and a complete parity/deviation review before any later release authorization.
 
 ## Out of Scope
 
@@ -397,7 +397,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | PRO-16 | 19 | progress.progress-settings | Complete |
 | PRO-17 | 19 | progress.bodyweight-history | Complete |
 | PRO-18 | 19 | progress.bodyweight-editor | Complete |
-| VER-01 | 20 | verification.parity | Pending |
+| VER-01 | 20 | verification.parity | Complete |
 | VER-02 | 20 | verification.themes | Pending |
 | VER-03 | 20 | verification.viewports | Pending |
 | VER-04 | 20 | verification.text-accessibility | Pending |
@@ -409,7 +409,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | VER-10 | 20 | verification.garmin-import | Pending |
 | VER-11 | 20 | verification.performance | Pending |
 | VER-12 | 20 | verification.physical-review | Pending |
-| VER-13 | 20 | verification.release-readiness | Pending |
+| VER-13 | 20 | verification.release-readiness | Complete |
 
 ## Coverage
 

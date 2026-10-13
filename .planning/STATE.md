@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENT
 current_phase: 20
 current_phase_name: Native Acceptance
 status: executing
-stopped_at: Completed 20-05-PLAN.md
-last_updated: "2026-10-13T22:11:34.534Z"
+stopped_at: Completed 20-06-PLAN.md
+last_updated: "2026-10-13T22:22:10.295Z"
 last_activity: 2026-10-14
 last_activity_desc: Phase 20 Wave 2 complete; Plan 20-06 ready
-state_head: ce3ef98a7890f1425802f8ad68689abfa32ab2ef
+state_head: 0c95a18cf8d43d35b6f7c636da2f28d9a81aaac5
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 98
-  completed_plans: 91
+  completed_plans: 92
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 20 (Native Acceptance) — EXECUTING
-Plan: 6 of 12
+Plan: 7 of 12
 Status: Ready to execute
 Last activity: 2026-10-14 — Phase 20 Wave 2 complete; Plan 20-06 ready
 
@@ -110,6 +110,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 18 P13 | 13m 36s | 3 tasks | 8 files |
 | Phase 18 P14 | 12m | 3 tasks | 11 files |
 | Phase 20 P01 | 3m | 2 tasks | 4 files |
+| Phase 20 P06 | 7m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -255,6 +256,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 20]: Phase 20: Browser evidence preserves all 107 ordered Light/Dark occurrences; repeated names retain distinct BW IDs.
 - [Phase 20]: Phase 20: Ledger verdicts are validator-owned; producer output remains observation-only.
 - [Phase 20]: Phase 20: Live manifests bind source, prototype, fixture, build, APK, device, and configuration identity; pre-build fixtures are explicit and non-live.
+- [Phase 20]: Phase 20: Only the final v1.2 validator derives row verdicts and seals final evidence; producers remain observation-only.
+- [Phase 20]: Phase 20: Accepted exceptions remain non-PASS and can support conditional readiness only with an explicit reviewed policy.
 
 ### Pending Owner Review
 
@@ -279,7 +282,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-13T21:25:34.886Z
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-10-13T22:22:10.033Z
+Stopped at: Completed 20-06-PLAN.md
 Resume file: None
 Next action: Execute the existing Phase 20 plans directly; build/install/final artifact delivery remains blocked until every native acceptance gate passes.
