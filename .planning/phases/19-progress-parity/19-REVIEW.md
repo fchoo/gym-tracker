@@ -1,8 +1,8 @@
 ---
 phase: 19-progress-parity
-reviewed: 2026-10-13T07:25:11Z
+reviewed: 2026-10-13T13:31:32Z
 depth: deep
-source_head: 57774f7709c768facc3132c078e2a3495c817a20
+source_head: efb0e4ba99763d01645dbc055e8c2a870384a9a8
 files_reviewed: 112
 files_reviewed_list:
   - app/(tabs)/progress.tsx
@@ -119,137 +119,153 @@ files_reviewed_list:
   - tests/sqlite-host/progressRepository.test.ts
 findings:
   critical: 3
-  warning: 2
+  warning: 0
   info: 0
-  total: 5
+  total: 3
 status: issues_found
 ---
 
 # Phase 19: Code Review Report
 
-**Reviewed:** 2026-10-13T07:25:11Z
+**Reviewed:** 2026-10-13T13:31:32Z
 **Depth:** deep
 **Files Reviewed:** 112
-**Source HEAD:** `57774f7709c768facc3132c078e2a3495c817a20`
+**Source HEAD:** `efb0e4ba99763d01645dbc055e8c2a870384a9a8`
+**Phase 19 final fix merge:** `24d6109dd1090906ea8000811894e1bb74f2b55d`
 **Status:** issues_found
 
 ## Summary
 
-The required zero-Critical/Warning gate is not met. The eight findings from the immediately preceding review were re-tested against the final Phase 19 fix chain and are closed at their cited paths. The fresh canonical host collector also passes on the merged tip. Three independently reproducible correctness/data-integrity gaps and two still-open UI contract defects remain.
+The required zero-Critical/BLOCKER/Warning gate is not met. Three current-source correctness defects reproduce on the merged branch: edited target retries can become request-identity locked, production All-goal ordering systematically gives Running a finite ordering record while Strength falls back to the end, and activating an All active-goal row changes sport without moving focus to the selected sport tab.
 
-Native Android, device, Maestro, attended, and release evidence was not run. Those checks remain Phase 20-owned and are not treated as Phase 19 failures.
+The canonical current-HEAD host collector passes its registered cases, including the current 25-owner integrity gate. That evidence closes the embedded Running merge, multi-distance persistence, planned-next, receipt, benchmark, segmented/hero, sheet-cap, and typography findings listed below. It does not exercise any of the three failing reproductions, so it cannot close them.
 
-## Verification Evidence
-
-Fresh verification ran in a clean local clone of exact HEAD `/tmp/gym-phase19-final.uDI3yr/repo`; dependencies were resolved through a read-only `node_modules` symlink. The live worktree was not used for generated evidence.
-
-| Check | Fresh result |
-|---|---|
-| Canonical host collector | PASS; source HEAD `57774f7709c768facc3132c078e2a3495c817a20`, tree SHA-256 `bad54ebf5056835078a879359f5fd31e87b86030e445ebd9865de9dc4ea6d08c` |
-| Retained host manifest | PASS; canonical manifest SHA-256 `6b48e3f69b4f8186d1072d73bd378f94c24b424321f8b4d6b89b20feb9a26ad8` |
-| Exact Phase 19 coverage command | 312/312 suites and 4,536/4,536 tests passed; 25 integrity owners; 4 changed-line-scope owners; declared 100% gate passed |
-| Focused final-fix tests | 19 suites and 408 tests passed across unit, component, SQLite-host, and integration projects |
-| Phase 19 evidence-script tests | 20/20 passed |
-| Progress parity host contract | 2/2 Jest tests; 18/18 source-owned requirement cases passed |
-| Benchmark | PASS; review-open p95 5.2665 ms, targeted-rebuild max 22.1645 ms, Updating/useful-content observed in 20/20 rebuild samples |
-| TypeScript / boundaries / diff check | PASS; boundary scan covered 429 files |
-| Native/device execution | `NOT_RUN`, correctly deferred to Phase 20 |
-
-The canonical collector is strong evidence for its registered paths, but it does not exercise the two data-integrity reproductions below or the missing root interactions.
-
-## Prior Finding Re-test Ledger
-
-| Prior item | Current verdict | Evidence |
-|---|---|---|
-| Re-review CR-01: durable distance-keyed targets | Closed for normal commits/reloads | `runningPlanRepository.ts:198-208,492-507` resolves current revisions per distance; `running-foundation.test.ts:93-198` saves 2.4 km, 10 km, and Half Marathon through runtime recreation and projects all three. Stale retry remains separately open as CR-01 below. |
-| Re-review CR-02: planned-next | Closed | `progressRepository.ts:632-753,953-1022` reads current active future Strength/Running opportunities in the same snapshot; `dashboardProjection.ts:136-153,423-453` validates/selects by sport; real SQLite and root render tests pass. |
-| Re-review CR-03: merged receipt coverage failures | Closed | Fresh collector passed `phase19WorkoutOutcomeRepositoryCoverage.test.ts`; the exact gate completed 312 suites / 4,536 tests and published a current hash-bound manifest. |
-| Re-review CR-04: stale 23-module ownership | Closed | `phase19-integrity-coverage.json` now owns 25 modules, including `running/contracts.ts` and `finishWorkout.ts`; `run-coverage-gate.mjs:315-430` derives and classifies production changes through current HEAD. |
-| Re-review CR-05: proxy review/rebuild benchmarks | Closed | `Phase19ProgressBenchmark.test.tsx:318-385` repeatedly opens/closes the real review surface and drives a real stale projection through enqueue, visible Updating state, effect drain, refresh, and useful content. |
-| Re-review WR-01: exact return focus | Closed for the cited controls | Stable token/ref maps cover Strength rows, recommendations, All/Strength hero history/source actions, and Running source rows; focused component assertions pass. Missing controls are separately open as CR-03 below. |
-| Re-review WR-02: structural proxy tests | Closed for the cited target behavior | The one-plan multi-distance component fixture and real-SQLite runtime-recreation outcome test replace the invalid two-plan proxy. |
-| Re-review WR-03: three-cell facts | Closed | `ProgressScreen.tsx:155-176,457-459,739-746` renders equal horizontal cells normally and stacked cells at 200% font scale/narrow width; both modes pass component assertions. |
-| Historical CR-01/CR-03/CR-05: period paging, coherent snapshot, bounded refresh | Closed | Period predicates/paging, target sources and planned-next are in one snapshot, and 250/1000/4000 ms refresh attempts terminate/cancel as tested. |
-| Historical CR-02/CR-04/PRO-05/PRO-12: factual hierarchy and target authority | Closed for projection and ordinary persistence | Current goal identity, target-only/sparse states, fixed 2.4 km default, three distance roots, All/Strength/Running heroes, charts, goals, Best efforts, and planned-next are source-backed. Retry and root-action gaps remain below. |
-| Historical CR-06/CR-07/CR-08: recommendation receipts, merge retention, exact source revision | Closed at the reviewed paths | Current-schema callers use the shared fenced envelope, both recommendation receipt graphs survive merge tests, and session destinations enforce the requested effective revision. |
-| Historical CR-09/CR-10/CR-11/CR-12: evidence, benchmarks, native contract, coverage | Closed for host/source | Fresh retained outputs are hash-bound to current source; real review/rebuild workloads run; the native contract remains fail-closed and Phase 20-deferred; current-tip coverage ownership passes. |
-| Historical CR-13 / WR-01 / WR-02: chart direction, equality, semantic sampling, duration | Closed | Comparator-aware Y, `At target`, retained extrema/crossings, complete data pages, and shared hour-aware duration formatting pass focused tests. |
-| Historical WR-03 / WR-04 / T-19-08-04: read-back fencing, outcome tests, bodyweight isolation | Closed for cited paths | Superseded decisions cannot toast success; target success requires exact read-back; SHA-256 protected-row digests and real target persistence outcomes pass. |
-| Security register T-19-01-01 through T-19-10-05 | Closed at declared source boundaries | Parameterized SQL, source/revision validation, receipt hashing, one-snapshot reads, bounded commands, privacy scanning, and fail-closed artifact validation all re-passed. CR-02 below is an additional portability defect not exercised by the existing keep-both fixture. |
+Native Android, device, Maestro, attended, visual, and release evidence remains `NOT_RUN` and Phase 20-owned. It is not counted as a Phase 19 finding.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical / Blocker Issues
+### Verification Evidence
 
-### CR-01: Retrying a changed or reloaded target replays the stale cached command
+Fresh verification ran in the isolated clean clone `/tmp/gym-phase19-definitive.P7LIo0/repo` at exact current HEAD. Dependencies resolved through a disposable `node_modules` symlink; the live worktree's user-owned Phase 14 and coverage changes were not used or modified.
+
+| Check | Fresh result |
+|---|---|
+| Canonical host collector | PASS; source HEAD `efb0e4ba99763d01645dbc055e8c2a870384a9a8`; tree SHA-256 `e448e60984e876a8dcf0c737107b472fec4508c4441864f3ac740a32f1a2c71d` |
+| Retained host manifest | PASS; canonical manifest SHA-256 `b055a99d2bbf259f146c854f104e73006324ccc4ae24e2a9a5f8e86005816682`; producer SHA-256 `d0e20f03c2184e6d5c717c7d57de1fa3e06433558a8ffaa186cdb64509c94de1` |
+| Evidence-script contracts | 18/18 passed; zero failed/skipped/todo |
+| Progress parity host contract | 2/2 Jest tests passed; ordered PRO-01 through PRO-18 records retained |
+| Exact Phase 19 coverage command | 312/312 suites and 4,610/4,610 tests passed; 25 integrity owners; 4 changed-line-scope owners; statements/branches/functions/lines all met 100% |
+| Production benchmark | PASS; useful-content max 8.461 ms; review-open p95 3.919 ms; targeted-rebuild max 18.665 ms; Updating and useful content observed in 20/20 rebuild samples; query rows capped at 500 |
+| TypeScript / boundaries / diff check | PASS; boundary scan covered 429 files |
+| Adversarial focused repros | 3/3 reproduced the current defects below |
+| Native/device execution | `NOT_RUN` / `REVIEW_REQUIRED`, correctly deferred to Phase 20 |
+
+### Critical / Blocker Issues
+
+#### CR-01: Editing a retained target after a non-CAS failure permanently reuses the failed request identity
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/bootstrap/runningPlanRuntime.tsx:84,117-150`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/RunningTargetSheet.tsx:160-165,182-207,229-238`
+**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/bootstrap/runningPlanRuntime.tsx:133`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/RunningTargetSheet.tsx:163`
 
-**Evidence:** The runtime caches the first immutable command solely by `requestId`. On every later call with that ID, line 118 takes the cached command without comparing the new plan revision, distance, time, date, or training days. The sheet intentionally retains the same request ID after both save failure and stale-revision recovery; `reload` updates only `expectedSourceRevision`. A read-only probe called the runtime twice with the same request ID after a simulated compare-and-swap conflict, first with revision 4 / 645,000 ms and then with refreshed revision 5 / 630,000 ms. Both repository calls were exactly `{"expectedPlanRevision":4,"targetDurationMs":645000,"requestId":"same-request"}`.
+**Motivating code:**
 
-**Issue:** If another writer wins between the runtime read and repository write, `Reload target` cannot recover: every retry resubmits the old revision and conflicts forever. If storage fails before commit and the owner edits the retained draft, retry can silently submit the earlier target instead of the visible draft. This breaks stale recovery and risks committing the wrong owner-selected target.
+- `runningPlanRuntime.tsx:134-138` rejects a reused request ID when the visible payload fingerprint changes.
+- `runningPlanRuntime.tsx:169` caches the first command; `:174-180` invalidates it only for the two revision-conflict messages.
+- `RunningTargetSheet.tsx:163-168` changes the draft without rotating its request identity.
+- `RunningTargetSheet.tsx:189-190` reuses the retained ID, and `:210-211` maps the resulting identity conflict back to the same generic save error.
 
-**Fix:** Cache a canonical high-level input fingerprint with each command and reuse a cached command only for an identical retry. On a proven pre-commit revision conflict, invalidate the cached command and rotate the sheet's request ID after explicit reload. Reject changed payload reuse rather than silently substituting the first command. Add an outcome test that forces the race between runtime read and repository CAS, reloads revision 5, changes the draft, and asserts the second repository command carries revision 5 and the new target while an exact lost-acknowledgement retry retains the original envelope.
+**Exact reproducer:**
 
-### CR-02: Keep-both portability produces internally inconsistent Running plans
+1. Render the real `RunningTargetSheet` with the real `createRunningPlanRuntimePort`, plan revision 4, and target 11:00.
+2. Enter 10:45 and make the repository command throw `running_target_storage_failed` before commit.
+3. Keep the sheet open, change the retained draft to 10:30, and press `Save target` again.
+4. Observed in the isolated Jest probe: the repository save mock remains at exactly one call, the 10:30 draft remains visible, and `Target was not saved` returns. The second attempt is rejected in the runtime as `running_target_request_identity_conflict`.
+5. Focused output: `PASS ... cannot submit an edited retained draft after an unclassified pre-commit failure`.
+
+An exact unchanged retry remains correct and stale-CAS reload now rotates identity, but the owner-visible promise says to review the retained draft and try again. Editing that draft makes retry impossible until the sheet is discarded/remounted, losing the retained recovery path.
+
+**Fix:** Store the draft fingerprint with `requestIdsRef`. Reuse the ID only while the canonical draft fingerprint is unchanged; allocate a new ID when the owner edits any request field after an attempt. If the first ambiguous attempt actually committed, the new request's old revision must fail CAS and route through authoritative reload. Add one combined sheet/runtime outcome test for pre-commit failure → edit → new request, while retaining the existing exact lost-acknowledgement replay test.
+
+#### CR-02: Production All ordering never supplies factual ordering metadata for Strength goals
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/portability/mergePlan.ts:1181-1232,1367-1417`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/running/contracts.ts:307-327`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/portability/mergePlan.test.ts:2336-2385`
+**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/progress/dashboardProjection.ts:34`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/platform/sqlite/repositories/progressRepository.ts:1062`
 
-**Evidence:** `mappedRows` rewrites relational columns and primary keys only. The Running-plan loop sends `running_goals` through that generic mapper, so a keep-both collision changes row `id` and `plan_id` but leaves `goal_json.id` and `goal_json.planId` unchanged. The existing “retains the complete running graph” test uses a row without `goal_json` and an insert operation with no collision, so it cannot detect the defect. A read-only planner probe on current HEAD produced:
+**Motivating code:**
+
+- `dashboardProjection.ts:34-40` compares `sourceOrder` before target date or any other tie-break.
+- `dashboardProjection.ts:72-87` can use declared ordering only when a matching `ProgressGoalRevision` exists; otherwise the fallback at `:48-69` assigns `Number.MAX_SAFE_INTEGER`.
+- `progressRepository.ts:1066-1074` passes `dashboardFacts.goals` as the declared goal set. That set is built only from `running_goals`; Strength receives history facts but no cross-sport ordering record.
+- Therefore every current Running target gets a finite SQL-derived order and every Strength candidate gets the fallback maximum. `dashboardProjection.ts:494-504` then selects Running first whenever both sports are present.
+
+**Exact reproducer:**
+
+A production-shaped `projectProgressDashboard` input with two current Strength facts, one current Running target, and no synthetic Strength entry in `goals` returns:
 
 ```text
-row_id=merge_running_goals_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0
-row_plan_id=merged-plan
-goal_json.id=goal
-goal_json.planId=archive-plan
+primaryGoal.sport = Running
+activeGoals = [Running, Strength]
 ```
 
-Passing that retained row through the production `readRunningPlanAggregate` path deterministically throws `RunningBoundaryError:running_goal_invalid` at the `goal.planId !== aggregate.id` check. The same generic loop also leaves embedded identities in Running session definitions, event payloads, and receipt results unexamined.
+This remains true with the Running target dated `2027-12-31` and `sourceOrder: 99`; the current unit test passes only because it manually injects a Strength `ProgressGoalRevision` that the repository never produces. Focused output: `PASS ... always places a production-shaped Running declaration before Strength`.
 
-**Issue:** A valid keep-both logical merge can commit a relationally valid but unreadable Running source graph. Distance-keyed targets may appear present in the archive/merge counts yet become unusable after restore, violating portability and creating silent data-loss risk at the application boundary.
+**Fix:** Produce one typed, persisted cross-sport ordering record for every eligible Strength and Running goal inside the same Progress snapshot. Match Strength records by stable goal/target identity, not a test-only synthetic declaration, and apply the settled ordering to those records before selecting `primaryGoal`. Replace or supplement the pure unit fixture with a real-SQLite All read containing both sports and assert the intended primary goal and complete ordered list.
 
-**Fix:** Add schema-aware Running row rewriters before materialization. Remap and validate embedded plan/goal/session/slot identities in `goal_json`, `definition_json`, event payloads, and receipt results; preserve or deliberately invalidate/reissue hashes according to the receipt contract. Add a real-SQLite keep-both collision test with all three distance targets, commit the merge, recreate the repository, and assert every current target plus session is readable under the remapped plan.
-
-### CR-03: Required Progress root drill-downs are still rendered as inert text
+#### CR-03: Activating an All active-goal row drops keyboard/D-pad focus
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:247-256,381-390`
+**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:204`
 
-**Evidence:** The Running `Best efforts` section maps all three rows to plain `Text`, so none can open its distance-bound history. The All `Active goals` section also maps every row to plain `Text`, so only the separate primary-goal button can switch sport. When All selects a Running primary goal, its `FactualHistoryChart` receives neither `onOpenSource` nor `registerSourceAction`; the chart therefore renders `Source unavailable` for otherwise source-backed activity rows. The exact source/focus wiring added by `1520b701` exists for All-Strength and Strength, not this All-Running branch.
+**Motivating code:**
 
-**Issue:** Phase 19 plan 19-09 requires every hero/row to open the correct history/source surface and return to the exact invoker. The UI-SPEC separately requires All active-goal rows to select their sport and Running Best-effort rows to open Running history. These user journeys are absent, so the prior hierarchy and exact-focus findings are not fully closed despite the focused tests passing.
+- `ProgressScreen.tsx:218-224` makes each Active goal row actionable, but activation only calls `onSelectSport`.
+- The handler at `:691` closes local surfaces and calls `setSport(next)`; it does not focus the selected sport tab.
+- The segmented-control ref map and focus call are private to keyboard movement within `SegmentedControls` at `:99-106`, so an external active-goal activation cannot request tab focus.
+- The invoked row unmounts when the sport root replaces All, leaving no deterministic focus owner.
 
-**Fix:** Render each Active goal and Best effort as a 48dp `FocusablePressable`, route each distance to its matching Running history, and pass source callbacks plus stable identity/revision return-token refs to the All-Running chart. Add outcome tests that press every row/source action, assert the exact route/distance/revision, return, and verify focus on the precise invoking control while sport/range/scroll remain unchanged.
+**Exact reproducer:**
 
-## Warnings
+1. Render All with a Strength active-goal row.
+2. Press `Open Strength active goal Bench Press`.
+3. The Strength tab becomes selected, but its `hasTVPreferredFocus` remains absent/false.
+4. Focused output: `PASS ... drops focus instead of moving it to the selected sport tab`.
 
-### WR-01: The approved 3dp focus offset is still implemented as 4dp
+This violates the approved source contract that a sport change focuses the selected tab. Native Phase 20 evidence is deferred, but the missing source focus call is already deterministic and host-reproducible.
 
-**Classification:** WARNING
-**Confidence:** 10/10
-**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/theme/index.ts:49-63`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/index.ts:190-201,312-323`
+**Fix:** Add an explicit external focus request to `SegmentedControls` (for example, a value plus request version or a hoisted ref map). Active-goal activation should retain range, set sport, then focus the selected tab after the render commits. Extend the existing Active goals component test to require both selected state and exact preferred/accessibility focus.
 
-**Issue:** Phase 19 UI-SPEC lines 141, 157, and 526 require a 3dp outline with a 3dp offset and explicitly prohibit rounding that geometry to the shared 4dp spacing scale. `sizes.focusClearance` remains `4`, and shared Phase 19 focusables consume that value directly. This is the prior UI focus-geometry finding unchanged in source.
+### Historical / Final Finding Reproduction Ledger
 
-**Fix:** Set the shared focus-offset token to the approved 3dp value after checking Phase 14 consumers, or introduce an approved focus-geometry token that Phase 19 controls use. Keep the 3dp outline and add source/native assertions that focused segmented controls, rows, and sheets are not clipped.
+| Required area | Current verdict | Direct evidence |
+|---|---|---|
+| Stale target retries | **OPEN — CR-01** | CAS reload rotates the sheet ID and classified conflicts invalidate the runtime cache, but edited retained drafts after non-CAS failures reuse the old ID and cannot submit. |
+| Embedded Running merge identities | **CLOSED** | `rewriteRunningPayload` remaps plan, goal, session revision/root, slot revision/root, arrays, aggregate targets, events, and receipt results. Pure planner test `mergePlan.test.ts:2397` and real-SQLite readable keep-both test `logicalMergeRepository.test.ts:2469` passed in the 4,610-test gate. |
+| Drill-down / exact focus | **PARTIAL — CR-03** | Running Best-effort rows, All Running history/source, Strength history/source, recommendations, target sheets, and bodyweight invokers have exact refs and passing tests. All Active goal sport selection still drops focus. |
+| Factual goal ordering | **OPEN — CR-02** | Array-position selection was replaced, but production provides ordering declarations only for Running. The Strength ordering branch is exercised only by a synthetic unit input. |
+| Segmented / hero UI | **CLOSED** | One 13dp segmented frame with 3dp internal geometry is present; root charts suppress duplicate summary facts; current component assertions passed. |
+| Sheet / focus / typography | **PARTIAL — CR-03 only** | Full sheet frame has the 82% cap; Progress scopes an exact 3dp focus clearance; declared Archivo/IBM Plex Mono data roles and 14/16/20 sizes are used. The remaining source focus loss is CR-03. |
+| Multi-distance targets | **CLOSED** | Real SQLite runtime recreation preserves independent 2.4 km, 10 km, and Half Marathon targets (`running-foundation.test.ts:95`), and the root projects all three. |
+| Planned-next | **CLOSED** | Current active Strength/Running future opportunities are queried in the same snapshot and projected deterministically; repository and projection tests passed. |
+| Recommendation receipt coverage | **CLOSED** | Current completion/Keep/Use callers use the receipt-fenced path; merged coverage fixture passes; current collector ran 312 suites / 4,610 tests without stale receipt assertions. |
+| Benchmark / evidence | **CLOSED for host/source** | Fresh retained command bytes, source/producer/result hashes, real review open/close, real rebuild enqueue/drain/refresh, bounded worker/output/query samples, and privacy validation all passed. Native remains Phase 20-owned. |
+| 25-owner integrity coverage | **CLOSED** | Current-tip manifest classifies every changed production TS/TSX module; 25 required owners and four changed-line scopes passed 100% statements/branches/functions/lines. |
+| Registered Phase 19 security threats | **CLOSED** | All 41 registered threats remain mitigated or explicitly accepted at the reviewed boundaries; current static injection/secret/eval scans and the fresh host collector found no new security finding. |
 
-### WR-02: The 82% sheet cap still excludes the header and safe-area inset
+### Test-Gate Gap
 
-**Classification:** WARNING
-**Confidence:** 9/10
-**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/BottomSheet.tsx:306-365,388-403`
+The host manifest reports PASS for all 18 PRO records because those records map to existing broad tests. None executes:
 
-**Issue:** The approved 82% cap is applied only to the child `ScrollView` (`styles.scroll.maxHeight`). The enclosing frame has no portrait max-height, then adds the header and bottom safe-area padding. A Phase 19 sheet can therefore exceed the specified surface cap before 200% text and keyboard avoidance are considered. The source defect is independent of deferred native screenshot evidence.
+- non-CAS target failure → owner edits retained draft → retry;
+- production repository All input with both sports and no test-only Strength ordering declaration;
+- Active goal activation → selected sport tab receives exact focus.
 
-**Fix:** Apply the 82% viewport cap to the complete sheet frame, or compute the body maximum after subtracting header and safe-area insets. Retain the compact-landscape calculation and add host geometry assertions; Phase 20 should then confirm 200% text, keyboard, and landscape behavior on device.
+The fixes should add these outcomes to the source-owned contract, not only as isolated regression tests, so future green manifests cannot miss the same defects.
 
 ---
 
-_Reviewed: 2026-10-13T07:25:11Z_
+_Reviewed: 2026-10-13T13:31:32Z_
 _Reviewer: TRAE (gsd-code-reviewer)_
 _Depth: deep_

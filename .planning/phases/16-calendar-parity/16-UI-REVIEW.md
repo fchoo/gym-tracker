@@ -1,61 +1,61 @@
 # Phase 16 — UI Review
 
 **Audited:** 2026-10-13
-**Baseline:** .planning/v1.2-OWNER-DECISIONS.md → .planning/v1.2-OWNER-BRIEF.md → .planning/design/v1.2-SOURCE-PRECEDENCE.md → approved Revision 18 approved.json / approved-hybrid.html → 16-UI-SPEC.md
-**Source:** fchoo/UX-revamp at 57774f77
-**Screenshots:** Not captured — no dev server responded on ports 3000, 5173, or 8080. Native screenshots/device checks remain Phase 20-deferred and were not scored as a Phase 16 defect.
-**Scope:** Final re-audit of the 11 warnings in the prior Phase 16 UI review, plus full-height/focused composition, exact typography, status encoding, 48dp/focus behavior, motion/reduced motion, and real query-only destinations. Existing Phase 14/19 worktree changes were excluded and left untouched.
+**Baseline:** `.planning/v1.2-OWNER-DECISIONS.md` → `.planning/v1.2-OWNER-BRIEF.md` → `.planning/design/v1.2-SOURCE-PRECEDENCE.md` → approved Revision 18 `approved.json` / `approved-hybrid.html` → `16-UI-SPEC.md`
+**Source:** `fchoo/UX-revamp` at `efb0e4ba99763d01645dbc055e8c2a870384a9a8`
+**Screenshots:** Not captured — no web dev server responded on ports 3000, 5173, or 8080. Native screenshots, physical focus/geometry, and release/profile checks remain Phase 20-deferred and do not reduce this score.
+**Scope:** Definitive code-and-host-test re-audit of the current merged Phase 16 source, including every prior warning and the owner-requested date/Today/agenda/Collapse geometry, exact typography, icons, key swatches, spacing, 360dp at font scale 2, focus/48dp behavior, composition, motion, status encoding, and Calendar-origin details.
 
 ---
 
 ## Verdict
 
-**WARNING — the required 24/24 gate is not met.** The merged final fixes close three of the prior 11 warnings: Calendar-origin planned Strength and Running now deterministically prefer Back, the month navigation now implements the contracted 48 / minmax / 76 / 48 structure, and a 360×800 font-scale-2 regression proves all controls remain present and activatable.
+**WARNING — the required 24/24 gate is not met.** The final UI-fix commits close the date atom, Today treatment, flat-row surface, month-control, declared agenda/planned icons, Activity swatch presence, empty-state gap, ready-detail typography, planned/Running Back focus, and 360dp/font-scale-2 warnings covered by their regression tests.
 
-Eight source-visible contract deviations remain. Ordinary date cells still have visible borders and an 8dp radius; the today ring still stretches across the date track; the focused heading/Collapse action and agenda rows remain card-like instead of the flat Revision 18 composition; several required Lucide icons remain text glyphs; the Activity key still has no sport swatches; Calendar-origin details still use 18sp/20sp and weight 700 outside the exact type contract; and the empty agenda retains an undeclared 6dp gap. These are current source differences, not missing Phase 20 screenshots.
+The current merged source still has five contract-level warning findings: the focused agenda and Calendar-key atoms do not match the Revision 18 geometry; historical set-state marks are text glyphs rather than the declared Lucide icons; Calendar-key and non-ready Calendar detail headings still resolve to the shared 20sp typography outside the exact four-size contract; and historical loading/error/missing routes do not deterministically focus Back while exercise disclosures swap icons immediately instead of using the specified 160ms rotation.
 
-**Shipping gate:** 0 BLOCKER, 8 WARNING, 0 REGISTRY FLAG. Required zero-warning / 24-of-24 result: **not achieved**.
+**Gate result:** 0 BLOCKER, 5 WARNING findings, 0 REGISTRY FLAG. Required zero-warning / 24-of-24 result: **not achieved**.
 
 ## Pillar Scores
 
 | Pillar | Score | Key Finding |
 |---|---:|---|
-| 1. Copywriting | 4/4 | Exact Calendar, loading/error, rest, factual agenda, and read-only detail copy remains source-backed. |
-| 2. Visuals | 2/4 | Full-height/focused structure passes, but date atoms, flat agenda hierarchy, Collapse placement, and icon treatment still diverge from Revision 18. |
-| 3. Color | 3/4 | Sport/status fills are correct, but persistent cell/agenda/Today surfaces and missing Activity swatches violate the contracted distribution. |
-| 4. Typography | 2/4 | Calendar root is exact; Calendar-origin Strength, Running, and imported-detail seams still introduce 18sp/20sp and weight 700 roles. |
-| 5. Spacing | 2/4 | Responsive month controls now pass, but the exact 9dp/28dp/2dp date geometry and declared spacing set are still not fully implemented. |
-| 6. Experience Design | 4/4 | Deterministic Back focus, 360dp/font-scale-2 navigation, state coverage, motion, 48dp focus, and query-only routing all have current source and host-test evidence. |
+| 1. Copywriting | 4/4 | Exact Calendar, state, retry, agenda, and read-only wording is present; the scoped generic-label scan is clean. |
+| 2. Visuals | 3/4 | Core date/Today/Collapse composition is repaired, but agenda/key micro-composition and historical state icons still diverge from the contract/oracle. |
+| 3. Color | 4/4 | Theme roles, DEV-02, sport/status separation, transparent base surfaces, and neutral status samples are correctly sourced. |
+| 4. Typography | 3/4 | Ready surfaces use the exact Calendar scale, but the Calendar key and several non-ready detail headings still inherit 20sp shared headings. |
+| 5. Spacing | 3/4 | Date cells, month controls, adaptive inset, and prior 6dp gap are fixed; agenda rails and key swatches retain non-oracle geometry. |
+| 6. Experience Design | 3/4 | Core state, motion, routing, focus-return, and 360dp behavior pass, but historical non-ready Back focus and 160ms disclosure motion remain absent. |
 
-**Overall: 17/24**
+**Overall: 20/24**
 
 ---
 
 ## Top 3 Priority Fixes
 
-1. **Restore the Calendar atom and flat agenda geometry** — Visible borders on ordinary days, the full-width today track, boxed agenda rows, and a separate full-width Collapse row materially change the Revision 18 hierarchy. Reserve a transparent 1dp cell border, use a 9dp cell radius, center a fixed 28dp date circle, add the 2dp event-track top offset, render paper rows with only a bottom separator, and place a 48dp Lucide Collapse action inside the agenda heading. (CalendarWeekRow.tsx:132-151,203-223; CalendarAgenda.tsx:122-150; CalendarScreen.tsx:656-682,918-943)
-2. **Enforce the exact Phase 16 typography through every Calendar-origin destination** — Shared historical Strength disclosures use 18sp/700; status/header seams in Strength, Running, and imported detail use 20sp; some date/value facts use Archivo instead of IBM Plex Mono. Add Calendar-origin typography props or wrappers so these routes use only 11/14/16/22sp, weights 400/800, Archivo for interface text, and IBM Plex Mono for numeric/date facts. (WorkoutSessionPresentation.tsx:86-90; CalendarReadOnlyWorkout.tsx:58-67; PlannedWorkoutDetailScreen.tsx:143-148; RunningPlanDetailScreen.tsx:40-54; ImportedActivityDetailScreen.tsx:130,641-648; theme/index.ts:69-172,185-259)
-3. **Finish declared icon, key, and micro-spacing fidelity** — Replace agenda/planned-detail text glyphs with outlined 24dp Lucide Chevron/Check/Dash icons, add the required orange and blue Activity swatches, and replace the empty agenda's undeclared 6dp gap with a declared token or contracted exception. (CalendarAgenda.tsx:135,144-150; PlannedWorkoutDetailScreen.tsx:170-185; CalendarScreen.tsx:887-908; 16-UI-SPEC.md:68,85-130,214-220)
+1. **Apply Calendar typography to every rendered state** — Calendar-key and loading/error/missing detail headings render at shared `typeScale.screenTitle` / `typeScale.sectionTitle` 20sp, outside the required 11/14/16/22sp set. Add scoped typography overrides to `BottomSheet` and `EmptyState`, and pass `calendarTypeScale.heading` to every Calendar-origin `ScreenHeader`; add tests for key, loading, error, and missing states. (`src/ui/components/BottomSheet.tsx:339`, `src/ui/components/index.ts:658`, `src/ui/components/index.ts:764`, `src/ui/calendar/CalendarRouteAdapters.tsx:21-35`, `src/ui/calendar/CalendarRouteAdapters.tsx:76-85`, `src/ui/screens/PlannedWorkoutDetailScreen.tsx:129-136`)
+2. **Finish exact agenda and key geometry** — The agenda row uses centered flex layout with an 82dp full-height rail instead of the contracted top-aligned `5dp / content / 24dp` composition with 10dp row padding and a 62dp inset rail; Activity swatches are 12×12 squares instead of Revision 18's 24×8, 2dp-radius bars. Match the source geometry and strengthen the tests beyond presence/color. (`src/ui/calendar/CalendarAgenda.tsx:123-150`, `src/ui/screens/CalendarScreen.tsx:927-949`, `approved-hybrid.html:1144-1150`, `approved-hybrid.html:1195-1204`)
+3. **Complete detail icon, motion, and entry-focus fidelity** — Replace historical `✓` / `—` state glyphs with 24dp, 2dp-stroke Lucide Check/Dash; animate disclosure chevrons through the required 160ms rotation with immediate reduced-motion behavior; and pass/focus a Back ref in historical loading/error/missing branches. (`src/ui/calendar/CalendarReadOnlyWorkout.tsx:38-40`, `src/ui/calendar/CalendarReadOnlyWorkout.tsx:91-99`, `src/ui/components/WorkoutSessionPresentation.tsx:70-93`, `src/ui/screens/PlannedWorkoutDetailScreen.tsx:160-193`, `src/ui/calendar/CalendarRouteAdapters.tsx:21-35`, `src/ui/calendar/CalendarRouteAdapters.tsx:76-85`)
 
 ---
 
 ## Prior 11-Warning Re-audit
 
-| Prior warning | Final result | Exact current evidence |
+| Prior warning | Final result | Current evidence |
 |---|---|---|
-| W-UI-01 — date-cell atoms/today ring | **WARNING — OPEN** | Non-selected cells still use colors.line; cell radius is radius.standard = 8; dateTrack has no 28dp width and aligns content left, so the today border spans the track (CalendarWeekRow.tsx:132-151,203-217; theme/index.ts:43-47). Contract/oracle: transparent base border, 9dp cell, centered 28dp circle (16-UI-SPEC.md:120-130,174-177,191; approved-hybrid.html:1118-1123). |
-| W-UI-02 — agenda/Collapse composition | **WARNING — OPEN** | Collapse remains a separate bordered text row after the heading, while agenda events retain full borders and secondary surfaces (CalendarScreen.tsx:656-682,919-921; CalendarAgenda.tsx:122-150). Contract/oracle place a 48dp Collapse icon in the heading and use transparent flat rows with bottom separators (16-UI-SPEC.md:194-200,262-269; approved-hybrid.html:1195-1204). |
-| W-UI-03 — icon fidelity | **WARNING — OPEN** | Agenda chevrons and planned Strength disclosure/state marks remain text glyphs rather than the declared Lucide Chevron/Check/Dash set (CalendarAgenda.tsx:135; PlannedWorkoutDetailScreen.tsx:170-185; 16-UI-SPEC.md:68). |
-| W-COLOR-01 — surface/accent distribution | **WARNING — OPEN** | Ordinary cells retain visible line borders, agenda rows default to colors.surface, and Today defaults to the filled colors.action surface (CalendarWeekRow.tsx:132-139; CalendarAgenda.tsx:122-125; CalendarScreen.tsx:730-741). Revision 18 uses transparent base borders, paper agenda rows, and a transparent Today background (approved-hybrid.html:1108,1118,1198-1204). |
-| W-COLOR-02 — Activity key swatches | **WARNING — OPEN** | ACTIVITY contains colored text only; no orange/blue swatch nodes are rendered (CalendarScreen.tsx:887-893). The contract requires both sport swatches (16-UI-SPEC.md:214-220). |
-| W-TYPE-01 — exact 11/14/16/22 Archivo/IBM roles | **WARNING — OPEN** | Root Calendar roles remain exact, but historical Strength inherits workoutTypeScale.bodyStrong at 18sp/700; historical/planned status headers and Calendar-origin Running/imported detail still consume 20sp shared roles (WorkoutSessionPresentation.tsx:86-90; CalendarReadOnlyWorkout.tsx:58-67; PlannedWorkoutDetailScreen.tsx:143-148; RunningPlanDetailScreen.tsx:40-54; ImportedActivityDetailScreen.tsx:130; theme/index.ts:69-172,185-259). Contract permits only 11/14/16/22 and weights 400/800 (16-UI-SPEC.md:132-143). |
-| W-SPACE-01 — exact date-cell geometry | **WARNING — OPEN** | Cell radius remains 8 rather than 9, the date circle has no fixed 28dp width/centering, and the event track has gap 2 but no 2dp top offset (CalendarWeekRow.tsx:203-223; theme/index.ts:43-47; 16-UI-SPEC.md:101-130,185-192). |
-| W-SPACE-02 — exact month-control columns | **CLOSED** | The merged final fix adds 48dp Previous/Next slots, a flex:1/minWidth:0 title slot, a 76dp Today slot, 3dp gaps, one-line tail ellipsis, and full accessible month text (CalendarScreen.tsx:713-747,929-940). |
-| W-SPACE-03 — undeclared 6dp gap | **WARNING — OPEN** | CalendarAgenda empty state still declares gap: 6, outside the reusable 4dp scale and the listed 2/3/10/14/18dp Calendar exceptions (CalendarAgenda.tsx:144-150; 16-UI-SPEC.md:85-116). |
-| W-XD-01 — deterministic Back entry focus | **CLOSED** | ScreenHeader now forwards backActionRef; planned Strength focuses it on mount across loading/error/missing/ready; Calendar-origin Running does the same while management mode remains unchanged (components/index.ts:599-668; PlannedWorkoutDetailScreen.tsx:91-95,128-145; RunningPlanDetailScreen.tsx:44-54). |
-| W-XD-02 — 360dp/200% portrait navigation | **CLOSED** | The exact source layout above is covered at 360×800 with fontScale 2, including enabled 48/76/48 actions and title ellipsis/accessibility label (CalendarScreen.test.tsx:838-879). |
+| W-UI-01 — date-cell atoms / Today ring | **CLOSED** | Ordinary cells reserve a transparent 1dp border and use 9dp radius; the Today ring is centered at 28dp; the event track has its 2dp top offset. (`CalendarWeekRow.tsx:132-153`, `CalendarWeekRow.tsx:203-223`) |
+| W-UI-02 — agenda / Collapse composition | **PARTIAL** | Collapse is now a 48dp Lucide action inside the heading, and event rows are transparent with only a bottom divider. Row alignment/padding and rail height still differ from the contracted Revision 18 grid. (`CalendarScreen.tsx:658-684`, `CalendarAgenda.tsx:123-150`) |
+| W-UI-03 — Lucide icon fidelity | **PARTIAL** | Agenda Chevron and planned-detail Chevron/Dash are now Lucide 24dp/2dp. Historical set states still render text `✓` / `—`, and disclosure icons swap without the specified rotation. (`CalendarAgenda.tsx:136`, `PlannedWorkoutDetailScreen.tsx:175-194`, `CalendarReadOnlyWorkout.tsx:91-99`) |
+| W-COLOR-01 — surface/accent distribution | **CLOSED** | Ordinary cells, Today, and agenda rows are transparent at rest; pressed feedback uses a secondary surface. (`CalendarWeekRow.tsx:132-139`, `CalendarAgenda.tsx:123-126`, `CalendarScreen.tsx:731-744`) |
+| W-COLOR-02 — Activity key swatches | **CLOSED for color/presence** | Orange Strength and blue Running swatches are rendered from semantic tokens. Exact shape/size remains under the spacing finding. (`CalendarScreen.tsx:890-900`) |
+| W-TYPE-01 — exact Calendar typography | **PARTIAL** | Ready Calendar and Calendar-origin detail facts now use `calendarTypeScale`, Archivo, and IBM Plex Mono correctly, but shared key/non-ready headings still introduce 20sp. (`theme/index.ts:146-186`, `CalendarReadOnlyWorkout.tsx:54-105`, `PlannedWorkoutDetailScreen.tsx:144-193`, `RunningPlanDetailScreen.tsx:40-54`, `ImportedActivityDetailScreen.tsx:44-54`) |
+| W-SPACE-01 — exact date-cell geometry | **CLOSED** | 9dp cell radius, centered 28dp date ring, 2dp chip gap/top offset, and 2dp row gaps now match the contract. (`CalendarWeekRow.tsx:203-223`) |
+| W-SPACE-02 — exact month-control columns | **CLOSED** | The source retains 48 / flex-minmax / 76 / 48 slots, 3dp gaps, and shrink-safe title ellipsis. (`CalendarScreen.tsx:715-749`, `CalendarScreen.tsx:939-950`) |
+| W-SPACE-03 — undeclared 6dp gap | **CLOSED** | The empty agenda now uses `space[1]` (4dp), not an undeclared 6dp value. (`CalendarAgenda.tsx:145-150`) |
+| W-XD-01 — deterministic planned / Running Back focus | **CLOSED** | Planned Strength and Calendar-origin Running preserve Back as the preferred target in loading, error, missing, and ready states. (`PlannedWorkoutDetailScreen.tsx:92-96`, `RunningPlanDetailScreen.tsx:44-54`; focused tests pass.) |
+| W-XD-02 — 360dp / 200% month controls | **CLOSED** | The 360×800/fontScale-2 regression proves the 48/76/48 actions remain present, enabled, and activatable while the title ellipsizes semantically. (`CalendarScreen.test.tsx:864-906`) |
 
-**Reconciliation:** 3 closed, 8 open.
+**Reconciliation:** 8 closed, 3 partially closed. The historical non-ready focus gap is an additional current-source finding exposed by the final full audit.
 
 ---
 
@@ -63,16 +63,14 @@ Eight source-visible contract deviations remain. Ordinary date cells still have 
 
 | Contract check | Final result | Evidence |
 |---|---|---|
-| Date cell / today ring / agenda / Collapse geometry | **WARNING** | W-UI-01, W-UI-02, and W-SPACE-01 remain source-visible. |
-| Exact 11/14/16/22 Archivo + IBM roles/weights | **WARNING** | Root tokens are exact, but Calendar-origin detail seams still use 18sp/700 and 20sp roles; see W-TYPE-01. |
-| Deterministic Back focus | **CLOSED** | Shared Back refs and mounted preferred-focus tests cover planned Strength and Calendar-origin Running loading/error/missing/ready states (PlannedWorkoutDetailScreen.test.tsx:37-74; RunningPlanDetailScreen.test.tsx:44-60). |
-| 360dp fontScale 2 navigation | **CLOSED** | Exact four-slot source layout and mounted 360×800/fontScale-2 regression pass (CalendarScreen.tsx:713-747,929-940; CalendarScreen.test.tsx:838-879). |
-| Full-height month / focused composition | **CLOSED** | Month rows share remaining height; focused composition is selected week → absolute agenda → following week; scale-aware minimum height preserves agenda reachability (CalendarWeekRow.tsx:84-90,223; CalendarMonthViewport.tsx:107-155,469-526). |
-| Status colors and non-color encoding | **CLOSED for event/status semantics; WARNING for surrounding color fidelity** | Complete is 14% sport tint, Partial is dotted with 18% half-fill, Planned is transparent/dashed, status-key samples are neutral, and accessible labels state sport/status (CalendarWeekRow.tsx:154-194; CalendarScreen.tsx:895-907). W-COLOR-01/02 remain. |
-| 48dp targets and visible focus | **CLOSED at source/host level** | Shared targets use sizes.minimumTarget = 48; focus uses a 3dp outline with 4dp offset; 360dp controls remain non-overlapping and enabled (theme/index.ts:49-63; components/index.ts:298-325; CalendarWeekRow.tsx:203-223; CalendarScreen.test.tsx:838-879). Native appearance remains Phase 20-owned. |
-| Motion and reduced motion | **CLOSED** | Inclusive distance-only 25%, 240/260/170/140ms timings, agenda delay, settle fencing, and reduced-motion destination preservation remain implemented (calendarTransitionController.ts:18-44,118-146,170-205,210-238,247-315; CalendarMonthViewport.tsx:261-336). |
-| Query-only details and return focus | **CLOSED** | Session, occurrence, scheduled Running revision, and imported activity use narrow read adapters and durable IDs; the cross-destination suite proves zero mutation commands and restored agenda-row focus (CalendarRouteAdapters.tsx:38-177; app/(tabs)/calendar.tsx:100-130; calendar-cross-destination-route.test.tsx:313-353,375-503). |
-| Native screenshots/device proof | **PHASE 20 DEFERRED — NOT SCORED** | No native screenshot, physical focus, or device geometry absence reduced a pillar. |
+| Date / Today geometry | **PASS** | Transparent 1dp base border, 9dp cell radius, centered 28dp Today ring, and 2dp event offset are implemented and regression-tested. (`CalendarWeekRow.tsx:132-153`, `CalendarScreen.test.tsx:432-450`) |
+| Agenda / Collapse geometry | **WARNING** | Heading-contained 48dp Collapse and flat row surfaces pass; exact row alignment/padding/rail geometry remains different. (`CalendarScreen.tsx:658-684`, `CalendarAgenda.tsx:123-150`, `16-UI-SPEC.md:262-269`) |
+| Exact fonts / sizes / weights | **WARNING** | Bundled Archivo/IBM fonts and ready-state 11/14/16/22sp, 400/800 roles pass; shared key/non-ready headings still render at 20sp. (`theme/index.ts:18-31`, `theme/index.ts:146-186`, `BottomSheet.tsx:339`, `components/index.ts:764`) |
+| Lucide icons / Activity swatches / gaps | **WARNING** | Named agenda, planned-detail, Collapse, Info, Settings, Previous, and Next icons are Lucide and the 6dp gap is gone; historical state glyphs and exact swatch shape remain divergent. (`CalendarAgenda.tsx:1-2`, `PlannedWorkoutDetailScreen.tsx:1-3`, `CalendarScreen.tsx:608-631`, `CalendarScreen.tsx:888-949`) |
+| 360dp / fontScale 2 | **PASS at source/host level** | DEV-01 computes 6dp at 360; date/event tracks scale; controls retain 48/76/48 geometry; compact-height agenda remains reachable. (`CalendarMonthViewport.tsx:56-69`, `CalendarScreen.test.tsx:835-939`) |
+| Focus / 48dp | **WARNING** | Date, month, Collapse, agenda and ready-detail targets use ≥48dp plus the 3dp/4dp focus contract. Historical session loading/error/missing branches do not assign a Back ref or preferred focus. (`components/index.ts:239-336`, `CalendarRouteAdapters.tsx:21-35`, `CalendarRouteAdapters.tsx:76-85`, `16-UI-SPEC.md:364-370`) |
+| Composition / motion / status / details | **WARNING** | Full-height month/focused composition, 1:1 drag, inclusive 25%, exact month/week timings, reduced-motion state order, status patterns, durable query-only destinations, and return focus pass. The separate 160ms disclosure rotation is not implemented. (`calendarTransitionController.ts:66-70`, `calendarTransitionController.ts:118-146`, `CalendarMonthViewport.tsx:269-344`, `WorkoutSessionPresentation.tsx:70-93`, `16-UI-SPEC.md:241-251`) |
+| Native screenshots/device proof | **PHASE 20 DEFERRED — NOT SCORED** | No deduction is applied for absent native screenshots, physical focus checks, or device-only geometry/performance evidence. |
 
 ---
 
@@ -80,115 +78,121 @@ Eight source-visible contract deviations remain. Ordinary date cells still have 
 
 ### Pillar 1: Copywriting (4/4)
 
-- **PASS — exact source-led copy remains complete.** Root/action/key strings, loading/updating/error/retry, empty/rest, read-only status, unavailable states, and Back copy match the contract (CalendarScreen.tsx:606-629,656-682,713-755,880-910; CalendarAgenda.tsx:71-80; CalendarRouteAdapters.tsx:21-35,76-87; PlannedWorkoutDetailScreen.tsx:128-148).
-- **PASS — no generic-label regression.** Scoped string scan found no Submit, Click Here, bare OK, bare Cancel, or bare Save label in the audited Phase 16 surfaces.
-- **PASS — summaries remain factual.** Agenda rows render repository-provided displaySummary, while rest and empty states remain distinct (CalendarAgenda.tsx:71-80,94-136).
+- **PASS — exact source-led wording is intact.** Calendar title/actions/key copy, loading/updating/error/retry, empty/rest, event counts, read-only statuses, unavailable states, and Back labels match `16-UI-SPEC.md:299-326` in the implemented surfaces (`CalendarScreen.tsx:608-631`, `CalendarScreen.tsx:658-703`, `CalendarAgenda.tsx:72-80`, `CalendarRouteAdapters.tsx:21-35`, `PlannedWorkoutDetailScreen.tsx:129-149`).
+- **PASS — no generic CTA regression.** The scoped scan found no `Submit`, `Click Here`, bare `OK`, bare `Cancel`, or bare `Save` labels.
+- **PASS — factual summaries remain source-backed.** Agenda text consumes `displaySummary` and `sourceLabel`; rest and empty states remain distinct (`CalendarAgenda.tsx:72-80`, `CalendarAgenda.tsx:95-136`).
 
-### Pillar 2: Visuals (2/4)
+### Pillar 2: Visuals (3/4)
 
-- **PASS — full-height/focused reading order is structurally correct.** Equal-share month rows and selected-week/agenda/following-week overlays preserve the approved composition (CalendarWeekRow.tsx:84-90,223; CalendarMonthViewport.tsx:107-155,469-526).
-- **WARNING W-UI-01 — date atoms and today ring remain incorrect.** Ordinary borders, 8dp radius, and a full-width left-aligned date track differ from the transparent 9dp cell and centered 28dp ring.
-- **WARNING W-UI-02 — focused agenda remains card-like and mis-composed.** Collapse is outside the heading; rows use full borders, gaps, and secondary surfaces instead of a flat paper list.
-- **WARNING W-UI-03 — icon treatment remains incomplete.** Agenda/planned-detail Chevron and Dash states use font glyphs instead of the declared outlined Lucide set.
+- **PASS — the main Calendar hierarchy is materially corrected.** The full-height month/focused ordering, exact date atom, transparent Today action, heading-contained Collapse, flat event rows, and named Lucide agenda/planned-detail icons now match the intended hierarchy (`CalendarWeekRow.tsx:132-195`, `CalendarScreen.tsx:658-749`, `CalendarAgenda.tsx:123-150`, `PlannedWorkoutDetailScreen.tsx:159-197`).
+- **WARNING W-VIS-01 — agenda and key micro-composition is still not oracle-exact.** Revision 18 uses top-aligned agenda columns with 10dp row padding, a 62dp inset rail, and 24×8 rounded sport swatches. Current rows center content, apply vertical padding only to the copy column, stretch the rail to at least 82dp, and render 12×12 square swatches (`CalendarAgenda.tsx:145-150`, `CalendarScreen.tsx:927-949`; oracle `approved-hybrid.html:1144-1150`, `approved-hybrid.html:1195-1204`).
+- **WARNING W-VIS-02 — historical set-state marks do not use the declared icon set.** The read-only historical table emits `✓ Complete` / `— Not completed` as text instead of decorative Lucide Check/Dash icons plus semantic labels (`CalendarReadOnlyWorkout.tsx:91-99`; contract `16-UI-SPEC.md:68`, `16-UI-SPEC.md:268`).
 
-### Pillar 3: Color (3/4)
+### Pillar 3: Color (4/4)
 
-- **PASS — core semantic encoding is correct.** Scoped source has no hardcoded hex/RGB literals outside the theme. Complete/Partial/Planned derive from the current sport color, and the status key is neutral (CalendarWeekRow.tsx:154-191; CalendarScreen.tsx:895-907).
-- **Scan distribution:** textSecondary 41 uses, textPrimary 38, line/divider 7 each, blue 6, surface 4, orange 2. The semantic palette is used consistently, but role assignment is not fully faithful.
-- **WARNING W-COLOR-01 — dominant/secondary/action surface roles are misplaced.** Base borders, boxed surface agenda rows, and filled Today overstate the 30%/10% layers.
-- **WARNING W-COLOR-02 — Activity lacks the required orange/blue swatches.** Colored words alone do not match the key composition.
+- **PASS — semantic palette and role separation are correct.** DEV-02 resolves Light Strength title to `#9B470B` while retaining `#D97820` for the sport border/rail/swatch; Dark retains `#D97820`. Running uses the blue role, selected/Today/action use blue, and status uses solid/dotted/dashed treatment rather than a second sport hue (`theme/index.ts:275-297`, `CalendarWeekRow.tsx:154-191`, `CalendarScreen.tsx:890-915`).
+- **PASS — prior surface overuse is closed.** Ordinary cells, Today, and agenda rows are transparent at rest and use semantic pressed surfaces only during interaction (`CalendarWeekRow.tsx:132-139`, `CalendarAgenda.tsx:123-126`, `CalendarScreen.tsx:731-744`).
+- **Distribution scan:** 51 `textSecondary`, 49 `textPrimary`, 11 `divider`, 7 `line`, 8 `blue`, 4 `orange`, 4 `completed`, 4 `surface`, and 2 `blueBg` references across the audited files. No hardcoded color literal exists in Phase 16-owned UI files; the only scoped shared literal is the approved modal scrim in `BottomSheet.tsx:380`.
 
-### Pillar 4: Typography (2/4)
+### Pillar 4: Typography (3/4)
 
-- **PASS — Calendar root tokens are exact.** calendarTypeScale defines 11/14/16/22sp at 400/800, with IBM Plex Mono numeric dates/weekdays and Archivo interface roles (theme/index.ts:132-172; CalendarScreen.tsx:628,659-660,718-727,770; CalendarWeekRow.tsx:143-190).
-- **WARNING W-TYPE-01 — destination typography still violates the exact contract.** Scoped role scan still finds workoutTypeScale.bodyStrong/secondary plus shared screenTitle/sectionTitle. Their definitions introduce 18sp/700 and 20sp, and several dates/value facts stay on Archivo body roles instead of IBM Plex Mono (theme/index.ts:69-130,185-259).
+- **PASS — the corrected ready surfaces use the exact families and roles.** `calendarTypeScale` contains only 11/14/16/22sp and 400/800 with Archivo and IBM Plex Mono; Calendar dates, month headings, historical Strength, planned Strength, Calendar-origin Running, and Calendar-origin imported facts now select those roles (`theme/index.ts:146-186`, `CalendarReadOnlyWorkout.tsx:54-105`, `PlannedWorkoutDetailScreen.tsx:144-193`, `RunningPlanDetailScreen.tsx:40-54`, `ImportedActivityDetailScreen.tsx:44-54`, `ImportedActivityDetailScreen.tsx:128-175`).
+- **WARNING W-TYPE-01 — the exact four-size rule is not applied to every Calendar-owned state.** The Calendar key heading uses `BottomSheet`'s 20sp `typeScale.screenTitle`; historical and planned Strength loading/error/missing headers omit the available Calendar title override; their `EmptyState` headings use 20sp `typeScale.sectionTitle`. That is source-visible use of an undeclared Phase 16 size (`BottomSheet.tsx:331-341`, `components/index.ts:654-660`, `components/index.ts:756-768`, `CalendarRouteAdapters.tsx:21-35`, `CalendarRouteAdapters.tsx:76-85`, `PlannedWorkoutDetailScreen.tsx:129-136`; contract `16-UI-SPEC.md:132-143`).
 
-### Pillar 5: Spacing (2/4)
+### Pillar 5: Spacing (3/4)
 
-- **PASS — the final month-control fix is exact.** 48/minmax/76/48 slots, 3dp gaps, shrink-safe title, and 200% portrait regression close W-SPACE-02.
-- **PASS — full-height and adaptive inset remain correct.** DEV-01 is computed as min(18, max(0, (safeWidth - 348) / 2)); scaled track and agenda minima create vertical overflow instead of shrinking controls (CalendarScreen.tsx:603-604,762-768; CalendarMonthViewport.tsx:56-62,469-490).
-- **WARNING W-SPACE-01 — local date geometry is still wrong.** 8dp radius, unbounded date track, and missing 2dp event top offset remain.
-- **WARNING W-SPACE-03 — undeclared spacing remains.** Empty agenda uses gap: 6.
+- **PASS — the high-risk Calendar geometry now matches.** DEV-01 computes the approved adaptive inset; 360dp gives seven non-overlapping 48dp day targets with 2dp gaps; month navigation is 48 / flexible / 76 / 48 with 3dp gaps; date cells use 3dp vertical and 2dp horizontal padding, 9dp radius, 28dp date tracks, and 2dp event gaps/offsets (`CalendarMonthViewport.tsx:56-69`, `CalendarWeekRow.tsx:203-223`, `CalendarScreen.tsx:715-749`, `CalendarScreen.tsx:939-952`).
+- **PASS — the undeclared 6dp gap is removed.** Empty agenda content now uses the 4dp `space[1]` token (`CalendarAgenda.tsx:145-150`).
+- **WARNING W-SPACE-04 — agenda/key dimensions remain off-oracle.** Current 82dp full-height rails and 12×12 square sport swatches do not match the 62dp inset agenda rail and 24×8, 2dp-radius sport swatches in Revision 18 (`CalendarAgenda.tsx:145-150`, `CalendarScreen.tsx:927-949`; oracle `approved-hybrid.html:1144-1150`, `approved-hybrid.html:1198-1204`).
 
-### Pillar 6: Experience Design (4/4)
+### Pillar 6: Experience Design (3/4)
 
-- **PASS — all prior experience warnings are closed.** Back is deterministic on every Calendar-origin detail path covered by the final fix, and 360dp/font-scale-2 month navigation has a concrete source layout and mounted regression.
-- **PASS — interaction and state coverage is broad.** Loading, retained refresh, error/retry, empty/rest, missing details, disabled replacement states, focus restoration, exact threshold/cancel/settle, compact-height overflow, and reduced motion are present and tested.
-- **PASS — routes remain real and query-only.** The Calendar route carries durable IDs into narrow read adapters; Calendar mode exposes no edit/start/resume/remove/lifecycle commands, and return state restores the triggering agenda row.
-- **PASS — focused verification is green.** 11 component/route suites and 121 tests passed. One existing non-failing React act warning was emitted by the Garmin route harness.
+- **PASS — core interaction/state coverage is strong.** Source and tests cover loading, retained refresh, errors/retry, empty/rest, stale/missing identities, disabled authoritative replacement, exact 25% distance-only month settling, 7dp/1.15 intent arbitration, first/middle/last measured row morph, adjacent collapse → select/focus → expand, reduced-motion equivalence, duplicate-settle fencing, real query-only destinations, and agenda return focus (`calendarTransitionController.ts:66-70`, `calendarTransitionController.ts:170-315`, `CalendarMonthViewport.tsx:241-355`, `CalendarRouteAdapters.tsx:38-177`).
+- **PASS — the requested host checks are green.** The re-audit ran 11 focused component/route suites with 134/134 tests passing, two civil-date/event unit suites with 52/52 tests passing, the Today hook suite with 2/2 tests passing, TypeScript, and the 429-file boundary check. The Garmin route suite emitted the existing non-failing React `act(...)` warning.
+- **WARNING W-XD-03 — detail focus and disclosure motion are incomplete.** Planned Strength, Running, imported activity, and ready historical details focus Back, but historical session loading/error/missing branches construct `ScreenHeader` without a Back ref and therefore do not establish the required initial Back focus. Historical and planned exercise disclosures also replace right/down icons immediately; no 160ms rotation or reduced-motion branch exists (`CalendarRouteAdapters.tsx:21-35`, `CalendarRouteAdapters.tsx:76-85`, `WorkoutSessionPresentation.tsx:70-93`, `PlannedWorkoutDetailScreen.tsx:160-193`; contract `16-UI-SPEC.md:241-251`, `16-UI-SPEC.md:362-372`).
 
 ---
 
 ## Audit Trail and Verification
 
-- Prior UI review baseline: source f152c965, **16/24**, 0 blockers and 11 warnings.
-- Current audited HEAD: 57774f77 on fchoo/UX-revamp.
-- Final fixes inspected: 7719bfce (Back focus) and e2e0aa7a (month navigation / 360dp fontScale 2), merged by 2d0e9eb9.
-- Screenshot-safety gate passed: .planning/ui-reviews/.gitignore already ignores PNG/WebP/JPEG/GIF/BMP/TIFF.
+- Prior UI review baseline: source `57774f77`, **17/24**, 0 blockers, 8 open warnings.
+- Current audited HEAD: `efb0e4ba99763d01645dbc055e8c2a870384a9a8` on `fchoo/UX-revamp`.
+- UI fixes inspected: `df151e3f` (date atoms), `5f2adbb4` (agenda/Collapse), `e9c574cc` (icons/key), and `9b6b4699` (Calendar detail typography), merged by `efb0e4ba`.
+- Screenshot-safety gate: existing `.planning/ui-reviews/.gitignore` covers PNG/WebP/JPEG/GIF/BMP/TIFF.
 - Dev-server detection: ports 3000, 5173, and 8080 returned no response; no web screenshots were captured.
-- Focused component/route gate: **11 suites, 121 tests passed**.
-- Static scan: no generic CTA regression and no hardcoded color literal in scoped Phase 16 UI implementation files.
-- Registry audit: not applicable — components.json is absent, shadcn_initialized is false, and 16-UI-SPEC.md declares no third-party registries.
-- Native screenshots, physical focus/geometry, and release/profile checks remain Phase 20-deferred without penalty.
+- Focused component/route verification: **11 suites, 134 tests passed**.
+- Civil-date/event unit verification: **2 suites, 52 tests passed**.
+- Current-date hook verification: **1 suite, 2 tests passed**.
+- Static verification: TypeScript passed; boundary policy passed for 429 files; scoped generic-label scan returned zero matches; scoped Phase 16 UI hardcoded-color scan returned zero matches.
+- Registry audit: not applicable — `components.json` is absent, `shadcn_initialized` is false, and `16-UI-SPEC.md` declares no third-party registries.
+- Native screenshots/device proof: Phase 20-deferred by owner instruction and not scored here.
 
-Green host checks prove covered structure, state, route, and interaction contracts. They do not override the eight source-visible visual/type/spacing discrepancies above.
+Passing tests establish the covered host contracts. They do not erase the source-visible typography, geometry, icon, focus, or disclosure-motion differences listed above.
 
 ---
 
 ## Files Audited
 
-### Authority and prior audit
+### Authority and implementation records
 
-- .planning/v1.2-OWNER-DECISIONS.md
-- .planning/v1.2-OWNER-BRIEF.md
-- .planning/design/v1.2-SOURCE-PRECEDENCE.md
-- .planning/phases/16-calendar-parity/16-CONTEXT.md
-- .planning/phases/16-calendar-parity/16-UI-SPEC.md
-- .planning/phases/16-calendar-parity/16-01-PLAN.md through 16-07-PLAN.md
-- .planning/phases/16-calendar-parity/16-01-SUMMARY.md through 16-07-SUMMARY.md
-- .planning/phases/16-calendar-parity/16-REVIEW-FIX.md
-- Previous .planning/phases/16-calendar-parity/16-UI-REVIEW.md
-- External approved Revision 18 approved.json (SHA-256 b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf)
-- External approved Revision 18 approved-hybrid.html (SHA-256 b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96)
-- External design-audit-revision18/design-audit-revision18.md
+- `.planning/v1.2-OWNER-DECISIONS.md`
+- `.planning/v1.2-owner-decisions.json`
+- `.planning/v1.2-OWNER-BRIEF.md`
+- `.planning/design/v1.2-SOURCE-PRECEDENCE.md`
+- `.planning/design/v1.2-DEVIATIONS.md`
+- `.planning/phases/16-calendar-parity/16-CONTEXT.md`
+- `.planning/phases/16-calendar-parity/16-UI-SPEC.md`
+- `.planning/phases/16-calendar-parity/16-01-PLAN.md` through `16-07-PLAN.md`
+- `.planning/phases/16-calendar-parity/16-01-SUMMARY.md` through `16-07-SUMMARY.md`
+- `.planning/phases/16-calendar-parity/16-REVIEW-FIX.md`
+- Previous `.planning/phases/16-calendar-parity/16-UI-REVIEW.md`
+- External Revision 18 `approved.json` (SHA-256 `b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf`)
+- External Revision 18 `approved-hybrid.html` (SHA-256 `b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96`)
+- External `design-audit-revision18.md`
 
 ### Current implementation and routes
 
-- app/(tabs)/calendar.tsx
-- src/ui/screens/CalendarScreen.tsx
-- src/ui/calendar/CalendarMonthViewport.tsx
-- src/ui/calendar/CalendarWeekRow.tsx
-- src/ui/calendar/CalendarAgenda.tsx
-- src/ui/calendar/CalendarReadOnlyWorkout.tsx
-- src/ui/calendar/CalendarRouteAdapters.tsx
-- src/ui/calendar/calendarTransitionController.ts
-- src/ui/screens/PlannedWorkoutDetailScreen.tsx
-- src/ui/screens/RunningPlanDetailScreen.tsx
-- src/ui/screens/ImportedActivityDetailScreen.tsx
-- src/ui/components/WorkoutSessionPresentation.tsx
-- src/ui/components/index.ts
-- src/ui/theme/index.ts
+- `app/(tabs)/calendar.tsx`
+- `src/ui/screens/CalendarScreen.tsx`
+- `src/ui/calendar/CalendarMonthViewport.tsx`
+- `src/ui/calendar/CalendarWeekRow.tsx`
+- `src/ui/calendar/CalendarAgenda.tsx`
+- `src/ui/calendar/CalendarReadOnlyWorkout.tsx`
+- `src/ui/calendar/CalendarRouteAdapters.tsx`
+- `src/ui/calendar/calendarTransitionController.ts`
+- `src/ui/calendar/useCurrentLocalDate.ts`
+- `src/ui/screens/PlannedWorkoutDetailScreen.tsx`
+- `src/ui/screens/RunningPlanDetailScreen.tsx`
+- `src/ui/screens/ImportedActivityDetailScreen.tsx`
+- `src/ui/components/WorkoutSessionPresentation.tsx`
+- `src/ui/components/BottomSheet.tsx`
+- `src/ui/components/index.ts`
+- `src/ui/theme/index.ts`
+- `app/_layout.tsx`
 
 ### Tests
 
-- src/ui/__tests__/CalendarScreen.test.tsx
-- src/ui/__tests__/CalendarTransitions.test.tsx
-- src/ui/__tests__/PlannedWorkoutDetailScreen.test.tsx
-- src/ui/__tests__/RunningPlanDetailScreen.test.tsx
-- src/ui/__tests__/SessionDetailScreen.test.tsx
-- src/ui/__tests__/ImportedActivityDetailScreen.test.tsx
-- src/ui/calendar/CalendarAgenda.test.tsx
-- app/(tabs)/__tests__/calendar.test.tsx
-- app/__tests__/calendar-plan-route.test.tsx
-- app/__tests__/calendar-cross-destination-route.test.tsx
-- app/__tests__/garmin-activity-route.test.tsx
+- `src/domains/scheduling/localDate.test.ts`
+- `src/domains/history/calendar.test.ts`
+- `src/ui/calendar/useCurrentLocalDate.test.tsx`
+- `src/ui/__tests__/CalendarScreen.test.tsx`
+- `src/ui/__tests__/CalendarTransitions.test.tsx`
+- `src/ui/__tests__/PlannedWorkoutDetailScreen.test.tsx`
+- `src/ui/__tests__/RunningPlanDetailScreen.test.tsx`
+- `src/ui/__tests__/SessionDetailScreen.test.tsx`
+- `src/ui/__tests__/ImportedActivityDetailScreen.test.tsx`
+- `src/ui/calendar/CalendarAgenda.test.tsx`
+- `app/(tabs)/__tests__/calendar.test.tsx`
+- `app/__tests__/calendar-plan-route.test.tsx`
+- `app/__tests__/calendar-cross-destination-route.test.tsx`
+- `app/__tests__/garmin-activity-route.test.tsx`
 
 ---
 
 ## Recommendation Count
 
 - Priority fixes: 3
-- Source-level warnings: 8
-- Additional warnings beyond the top three grouped fixes: 5
+- Source-level warning findings: 5
+- Additional warnings beyond the three grouped priority fixes: 2
 - Blockers: 0
 - Registry flags: 0
