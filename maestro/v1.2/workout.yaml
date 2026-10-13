@@ -1,0 +1,11 @@
+appId: com.fchoo.gymtracker.devtest
+name: V1.2 source-owned full workout lifecycle flow
+tags: [v1.2, phase-20, source-owned, synthetic-fixture]
+---
+- assertTrue: ${V12_CASE_ID != null}
+- assertTrue: ${V12_FIXTURE_ID == 'v12-synthetic-fixtures-r18'}
+- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- openLink: "gymtracker-devtest:///native-acceptance/workout?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}"
+- extendedWaitUntil: { visible: "Native acceptance fixture", timeout: 30000 }
+- assertVisible: { id: "native-acceptance-stage" }
+- takeScreenshot: "v12-${V12_CASE_ID}-${V12_CONFIG_ID}"
