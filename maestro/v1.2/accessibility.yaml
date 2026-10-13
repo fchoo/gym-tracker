@@ -1,0 +1,16 @@
+appId: com.fchoo.gymtracker.devtest
+name: V1.2 accessibility observation flow
+tags: [v1.2, phase-20, accessibility, source-owned]
+---
+- assertTrue: ${V12_ACCESSIBILITY_STAGE != null}
+- assertTrue: ${V12_FONT_SCALE == '2.0'}
+- assertTrue: ${V12_FIXTURE_ID == 'v12-synthetic-fixtures-r18'}
+- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- openLink: "gymtracker-devtest:///native-acceptance/accessibility?stage=${V12_ACCESSIBILITY_STAGE}&fixture=${V12_FIXTURE_ID}"
+- extendedWaitUntil: { visible: "Native acceptance fixture", timeout: 30000 }
+- pressKey: TAB
+- pressKey: ENTER
+- pressKey: BACK
+- pressKey: ESCAPE
+- pressKey: "Remote Dpad Center"
+- takeScreenshot: "v12-accessibility-${V12_ACCESSIBILITY_STAGE}"
