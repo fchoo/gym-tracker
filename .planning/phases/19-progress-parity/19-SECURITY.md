@@ -1,9 +1,10 @@
 ---
 phase: 19-progress-parity
 status: secured
-head: d97ea569fc6f8671df94f68e64635c55d06864aa
-audit_head: 9c3cb6f2d894cbd9387dfa7d45c87445bfce8152
-source_tree_sha256: 0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c
+head: 0932f7c87a189e72db3f3a39e691644efddd9821
+audit_head: 0932f7c87a189e72db3f3a39e691644efddd9821
+git_tree: 6f1eed92ba9cb97a3a72868acb7167a492dd922f
+source_tree_sha256: f5ce741410f171f79c55196246d65c9ae40722068d922225f7d19e16a850ffef
 register_authored_at_plan_time: true
 threats_total: 41
 threats_closed: 41
@@ -22,9 +23,9 @@ audited: 2026-10-14
 
 **Phase:** 19 — Progress Parity
 
-**Exact source implementation:** `d97ea569fc6f8671df94f68e64635c55d06864aa`
+**Exact source implementation:** `0932f7c87a189e72db3f3a39e691644efddd9821`
 
-**Validated repository HEAD:** `9c3cb6f2d894cbd9387dfa7d45c87445bfce8152`
+**Validated Git tree:** `6f1eed92ba9cb97a3a72868acb7167a492dd922f`
 
 **Threats Closed:** 41/41
 
@@ -145,16 +146,15 @@ notes map to the registered threats above and add no unmapped attack surface.
 
 ## Verification Run
 
-The fresh re-audit verified exact source implementation
-`d97ea569fc6f8671df94f68e64635c55d06864aa` from validated repository HEAD
-`9c3cb6f2d894cbd9387dfa7d45c87445bfce8152`. The intervening commits update
-review and validation documents only. The implementation source-tree digest was
-`0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c`.
+The final re-audit verified exact source implementation
+`0932f7c87a189e72db3f3a39e691644efddd9821`, Git tree
+`6f1eed92ba9cb97a3a72868acb7167a492dd922f`, and implementation source-tree
+digest `f5ce741410f171f79c55196246d65c9ae40722068d922225f7d19e16a850ffef`.
 
 | Check | Result |
 |---|---|
 | Phase 19 evidence contracts | PASS — 20/20, including retained-byte rehashing, identity/omission/privacy rejection, timeout/cap checks, and Phase 20 authority |
-| Exact integrity coverage | PASS — 312 suites / 4,622 tests; 25 owners and four changed-line scopes at 100% |
+| Exact integrity coverage | PASS — 312 suites / 4,629 tests; 25 owners and four changed-line scopes at 100% |
 | Progress parity requirement registry | PASS — all 18 ordered PRO records retained with source status PASS |
 | Production-workload host benchmark | PASS with required sample counts, query-row cap 500, bounded subprocess/output contracts, source hash, result hash, and native `NOT_RUN` |
 | Canonical host evidence collector | PASS — all 7 commands completed and the retained verifier accepted the source-bound manifest |
@@ -167,5 +167,6 @@ review and validation documents only. The implementation source-tree digest was
 | 2026-10-13 | `fd2877c99d697118fef8cf6ba47e27521d116a25` | 41 | 29 | 12 | 7 | OPEN_THREATS |
 | 2026-10-13 | `e7eea042779bf0c9b426924f672c494267cccb0f` | 41 | 41 | 0 | 0 | SECURED |
 | 2026-10-14 | `d97ea569fc6f8671df94f68e64635c55d06864aa` | 41 | 41 | 0 | 0 | SECURED |
+| 2026-10-14 | `0932f7c87a189e72db3f3a39e691644efddd9821` | 41 | 41 | 0 | 0 | SECURED |
 
 **threats_open:** 0

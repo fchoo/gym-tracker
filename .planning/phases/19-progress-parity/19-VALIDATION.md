@@ -8,6 +8,11 @@ created: 2026-10-06
 requirements: [PRO-01, PRO-02, PRO-03, PRO-04, PRO-05, PRO-06, PRO-07, PRO-08, PRO-09, PRO-10, PRO-11, PRO-12, PRO-13, PRO-14, PRO-15, PRO-16, PRO-17, PRO-18]
 automated_gaps: 0
 manual_only: 4
+validated_head: 0932f7c87a189e72db3f3a39e691644efddd9821
+git_tree: 6f1eed92ba9cb97a3a72868acb7167a492dd922f
+source_tree_sha256: f5ce741410f171f79c55196246d65c9ae40722068d922225f7d19e16a850ffef
+full_host_suites: 312
+full_host_tests: 4629
 ---
 
 # Phase 19 — Validation Strategy
@@ -199,13 +204,26 @@ No same-wave plans share a `files_modified` path.
 
 | Evidence | Result |
 |---|---|
-| Source implementation baseline | `d97ea569` (current source; review/document commits follow); audited HEAD `f6c8e9cf7efdf4330a132320920b370f61c81e3d` |
-| Exact source tree hash | `0a4cc9223f17ccb1519217292f463cb62ee461668892e7e99308ea4dc1ebff5c` |
-| Retained host manifest hash | `aab0e7d88009e91c617e4d496961ddda0f6b61b8c5f3ea8d1bd424a63ab6ab54` |
-| Focused behavioral proof | Unit 12 suites / 84 tests; components 10 / 95; SQLite-host 5 / 75; integration 3 / 58; evidence contracts 20 / 20 |
-| Integrity proof | 25 owners; statements, branches, functions, and lines all 100%; 4 changed-line scopes all 100%; full focused gate 312 suites / 4,622 tests |
-| Host collector / retained verifier | 7/7 manifest commands `PASS`; 18/18 requirement records `PASS`; overall `REVIEW_REQUIRED` because native rows are `NOT_RUN` and Phase 20-owned |
-| Benchmark proof | Synthetic host benchmark passed with 20 useful-content, 100 review-open, 20 rebuild, 100 range-query, 20 chart-render, and 100 JS-task samples; no score or native claim |
-| Audit classification | COVERED: 26/26 tasks and PRO-01..PRO-18; PARTIAL: 0; MISSING: 0; automated gaps resolved: 0; explicit deferred inputs: 4 |
+| Source implementation baseline | Exact HEAD `0932f7c87a189e72db3f3a39e691644efddd9821`; Git tree `6f1eed92ba9cb97a3a72868acb7167a492dd922f`; source tree SHA-256 `f5ce741410f171f79c55196246d65c9ae40722068d922225f7d19e16a850ffef` |
+| Reviewed contract/source hashes | `progressParity.contract.ts` `fa9052a5121f67cd2423e18edb8a474df91431fe27da9c425d62dd2483a8727f`; test `fefb04273b3afa0d370273be04a9db9229c3ba54fe233af1da8622d453bcf662`; ExerciseHistory screen `4475262db49fa06086b3377a649a37f88f8e1e126486be9fd4c2d479586ab729`; test `33dbaa0c8366d00ccba9a635c68e2784f94e9c872657d740063d54855c757861` |
+| Evidence producer/verifier hashes | Collector `d0e20f03c2184e6d5c717c7d57de1fa3e06433558a8ffaa186cdb64509c94de1`; verifier `01817924ef27952bff246d448e07100daefab157b8f17b60db05479dfae7599b`; coverage registry `fd9ae750512e5782d370e44c2165b439c66cb0bc6d8ec285e094c208532618d3` |
+| Retained host manifest | File SHA-256 `5665bc7e4cc68f93152101d468d2442db27560b3c7121079f40ad0eabc62e698`; canonical SHA-256 `9446cf8d26601ef816fa2722f9b2fa9a08790505351d8888973ad353d0d561db`; verifier exit 0 with `source_status: PASS`, native `NOT_RUN`, overall `REVIEW_REQUIRED` |
+| Independent behavioral proof | Evidence contracts 20/20; parity contract 3/3 tests and 18/18 distinct cases; injected PRO-03 failure isolated while PRO-04 remained PASS; ExerciseHistory/chart/history 3 suites / 24 tests; dedupe, exact routing, invalid/missing revisions, and 3dp focus pass |
+| Full host proof | Unit 150 suites / 2,527 tests; components 99 / 981; SQLite-host 29 / 607; integration 34 / 514; complete coverage gate **312 suites / 4,629 tests passed**; integrity owners/scopes 100% |
+| Collector / requirement closure | Canonical host collector 7/7 commands `PASS`; verifier 18/18 ordered PRO records `PASS`; real PRO-09/10/15 paths pass through chart/history, ExerciseHistory route/source, and recommendation persistence; no raw payloads |
+| Audit classification | COVERED: 26/26 tasks and PRO-01..PRO-18; PARTIAL: 0; MISSING: 0; automated gaps: 0; explicit deferred inputs: 4 |
+
+## Final Validation Refresh — 2026-10-14
+
+This refresh was performed against exact HEAD `0932f7c87a189e72db3f3a39e691644efddd9821` in the clean verification clone used by the final review. The full host command exited 0 and reported 312/312 suites and 4,629/4,629 tests.
+
+| Adversarial closure check | Actual result |
+|---|---|
+| Independent 18-case executors | `progressParity.contract.test.ts`: 3/3 tests, 18/18 requirement cases, 18 distinct projection records; injected PRO-03 failure did not mask PRO-04. Evidence contract suite: 20/20, no failed/skipped/todo. |
+| Real paths | PRO-09 chart/history, PRO-10 ExerciseHistory route/source, and PRO-15 recommendation persistence pass through production-facing domain/repository/UI paths. |
+| ExerciseHistory source actions | Three factual visits with one duplicate `(sessionId, sourceRevision)` identity render two actions; repeat activation routes `session-shared/11` and `session-unique/12`; missing/invalid revisions remain `Source unavailable`. |
+| Focus and isolation | Exact 3dp focus styling passes; failure/retry and stale/fault/read-back cases retain drafts/results according to contract. |
+| Collector evidence | Retained manifest rehashes and verifies at exact HEAD/tree; 7/7 host commands and all 18 PRO records are PASS. Native/device/Maestro/attended evidence remains honestly `NOT_RUN` and Phase 20-owned. |
+| Warnings | Existing Expo notification and React `act(...)` console warnings were non-failing; no assertion was weakened and no implementation/test file was changed. |
 
 **Approval:** validated for Phase 19 host automation. Phase 20 must complete the four deferred native/release inputs before integrated acceptance.
