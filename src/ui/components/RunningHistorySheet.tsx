@@ -29,8 +29,9 @@ export type RunningHistorySheetProps = Readonly<{
 }>;
 
 function formatDistance(distanceMeters: number): string {
-  return distanceMeters === 2_400
-    ? "2.4 km"
+  return distanceMeters === 2_400 ? "2.4 km"
+    : distanceMeters === 10_000 ? "10 km"
+      : distanceMeters === 21_097 ? "Half Marathon"
     : distanceMeters >= 1_000
       ? `${(distanceMeters / 1_000).toFixed(distanceMeters % 1_000 === 0 ? 0 : 1)} km`
       : `${distanceMeters} m`;
