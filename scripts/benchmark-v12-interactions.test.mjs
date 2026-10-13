@@ -64,3 +64,36 @@ test("rejects missing or invalid samples, drifted budgets, and mismatched identi
 test("collector stays deferred without a later authorized native execution", async () => {
   await assert.rejects(() => executeV12InteractionBenchmark(), /deferred/);
 });
+
+test("performance shard keeps the complete raw observation schema review-required", async () => {
+  const {
+    executeV12PerformanceShard,
+    validateV12PerformanceShard,
+  } = await import("./v12-performance-shard.mjs");
+  const observation = executeV12PerformanceShard({
+    identity,
+    performance: evidence({
+      samples: {
+        ...evidence().samples,
+        input_response_ms: { numeric_edit: samples(100, 10), rest_control: samples(100, 10) },
+        search_after_debounce_ms: samples(100, 20),
+        calendar_month_and_selection_ms: samples(100, 50),
+        progress_useful_content_ms: samples(20, 80),
+        progress_review_open_ms: samples(100, 50),
+        progress_targeted_rebuild_ms: samples(20, 80),
+        calendar_frame_sequences: Array.from({ length: 100 }, () => ({ frame_work_ms: [10, 12], missed_frames: 0, refresh_rate_hz: 60, profiler_overhead_ms: 0.2 })),
+        phase12_dirty_trigger_ms: samples(100, 1),
+        phase12_writer_occupancy_ms: samples(20, 20),
+        phase12_merge_preflight_ms: samples(10, 100),
+        phase12_merge_peak_growth_bytes: samples(10, 1_024),
+        phase12_merge_materialization_ms: samples(5, 100),
+        phase12_merge_fixture: { snapshot_bytes: 24 * 1024 * 1024, rows: 100_000, writer_commits: 5, sqlite_max_variable_number: 4_000 },
+        garmin_sync_normalization: { state: "REVIEW_REQUIRED", limit_source: "phase18-exact-artifact-baseline", fixture_sha256: "f".repeat(64) },
+      },
+    }),
+  });
+  assert.equal(observation.observation_state, "REVIEW_REQUIRED");
+  assert.equal(Object.hasOwn(observation, "verdict"), false);
+  assert.equal(validateV12PerformanceShard(observation, identity).calendar_frame_sequences.samples, 100);
+  assert.throws(() => executeV12PerformanceShard({ identity, performance: evidence({ samples: { ...evidence().samples, garmin_sync_normalization: { state: "PASS" } } }) }), /garmin/);
+});
