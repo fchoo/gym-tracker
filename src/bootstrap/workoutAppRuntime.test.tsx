@@ -203,6 +203,10 @@ import {
   productionWorkoutAppRuntimeDependencies,
   WorkoutAppRuntimeProvider,
   type WorkoutAppRuntimeDependencies,
+  useCalendarActivityReadPort,
+  useCalendarRangeReadPort,
+  useCalendarSessionReadPort,
+  useCalendarStrengthOccurrenceReadPort,
   useWorkoutAppRuntime,
 } from "./workoutAppRuntime";
 import {
@@ -1321,6 +1325,31 @@ function RuntimeCaptureHarness({
   );
 }
 
+function CalendarPortsProbe({ onReady }: Readonly<{ onReady(): void }>) {
+  useCalendarRangeReadPort();
+  useCalendarSessionReadPort();
+  useCalendarStrengthOccurrenceReadPort();
+  useCalendarActivityReadPort();
+  React.useEffect(onReady, [onReady]);
+  return <Text testID="calendar-ports-ready">ready</Text>;
+}
+
+function CalendarPortsHarness({
+  dependencies: runtimeDependencies,
+  onReady,
+}: Readonly<{
+  dependencies: WorkoutAppRuntimeDependencies;
+  onReady(): void;
+}>) {
+  return (
+    <AppearanceProvider>
+      <WorkoutAppRuntimeProvider dependencies={runtimeDependencies}>
+        <CalendarPortsProbe onReady={onReady} />
+      </WorkoutAppRuntimeProvider>
+    </AppearanceProvider>
+  );
+}
+
 describe("WorkoutAppRuntimeProvider", () => {
   beforeEach(() => {
     mockNativeContractsEnabled = true;
@@ -1710,6 +1739,57 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(readSnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the bounded snapshot fallback and fences imported source revisions", async () => {
+    let stale = false;
+    const queryAll = jest.fn(async (sql: string) => {
+      if (stale && sql.includes("history_projection_freshness")) {
+        return [{ subject_id: "session-1", revision: 2, applied_revision: 1 }];
+      }
+      if (stale && sql.includes("FROM history_rebuild_effects")) {
+        return [{ subject_id: "session-1" }];
+      }
+      return sql.includes("FROM imported_activities activity") ? [{
+        activity_id: "activity-1",
+        aggregate_json: "{}",
+        aggregate_revision: 1,
+        accepted_normalized_sha256: "a".repeat(64),
+        removal_state: "active",
+        pending_revision_count: 0,
+      }] : [];
+    });
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+    } as unknown as SqliteKernel;
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(<RuntimeCaptureHarness
+      dependencies={dependencies(repository, { openKernel: jest.fn(async () => kernel) })}
+      onReady={(runtime) => { captured = runtime; }}
+    />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+
+    await expect(captured!.loadProgress({
+      sport: "Strength",
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    })).resolves.toMatchObject({ sport: "Strength", freshness: "current" });
+    await expect(captured!.loadImportedActivityDetail("activity-1", 2))
+      .resolves.toEqual({
+        kind: "projection_error",
+        code: "accepted_payload_unavailable",
+      });
+    await expect(captured!.loadImportedActivityDetail("activity-1", 1))
+      .resolves.toMatchObject({ kind: "projection_error" });
+    stale = true;
+    await expect(captured!.loadProgress({
+      sport: "Running",
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    })).resolves.toMatchObject({ sport: "Running", freshness: "updating" });
+  });
+
   it("exposes only typed Running target reads and commit-gated commands to Progress", async () => {
     const targetSource = Object.freeze({
       version: 1 as const,
@@ -1731,23 +1811,30 @@ describe("WorkoutAppRuntimeProvider", () => {
       }),
       sessions: Object.freeze([]),
     }) satisfies RunningPlanAggregate;
+    const archivedTargetSource = Object.freeze({
+      ...targetSource,
+      id: "running-plan-archived",
+      lifecycle: "archived" as const,
+      goal: Object.freeze({ ...targetSource.goal, planId: "running-plan-archived" }),
+    }) satisfies RunningPlanAggregate;
     const progressRunningTargetRuntime = Object.freeze({
       createId: jest.fn(() => "running-target-save:request"),
-      loadPlan: jest.fn(async () => targetSource),
+      loadPlan: jest.fn(async (planId: string) => planId === "running-plan-missing"
+        ? null
+        : planId === "running-plan-archived" ? archivedTargetSource : targetSource),
       saveRunningTarget: jest.fn(async () => Object.freeze({
         outcome: "committed" as const,
         plan: targetSource,
       })),
     }) as unknown as RunningPlanRuntimePort;
     mockedCreateRunningPlanRuntimePort.mockImplementationOnce(() => progressRunningTargetRuntime);
-    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM running_goals")
-      ? [{
-        id: "running-goal-2400",
-        plan_id: "running-plan-2400",
-        revision: 2,
-        goal_json: JSON.stringify(targetSource.goal),
-        created_at_ms: 1,
-      }]
+    const queryAll = jest.fn(async (sql: string) => sql.includes("SELECT DISTINCT goal.plan_id")
+      ? [
+        { plan_id: "invalid plan id" },
+        { plan_id: "running-plan-missing" },
+        { plan_id: "running-plan-archived" },
+        { plan_id: "running-plan-2400" },
+      ]
       : []);
     const kernel = {
       close: jest.fn(async () => undefined),
@@ -1788,6 +1875,9 @@ describe("WorkoutAppRuntimeProvider", () => {
       targetDurationMs: 660_000,
       trainingDays: ["Monday"],
     })).resolves.toEqual({ outcome: "committed", plan: targetSource });
+    const runningDependencies = mockedCreateRunningPlanRuntimePort.mock.calls.at(-1)?.[1];
+    await expect(runningDependencies?.sha256("phase19-runtime-seam"))
+      .resolves.toMatch(/^[a-f0-9]{64}$/u);
   });
 
   it("keeps Progress recommendation and bodyweight commands behind typed receipt adapters", async () => {
@@ -1886,6 +1976,140 @@ describe("WorkoutAppRuntimeProvider", () => {
       recommendationId: "recommendation-1",
       requestId: expect.stringMatching(/^progress-recommendation-use:/u),
     }));
+  });
+
+  it("fails closed across bodyweight owner, conflict, retry, edit, delete, and readback seams", async () => {
+    const entry = Object.freeze({
+      entryId: "bodyweight-1",
+      ownerId: "owner-1",
+      revision: 1,
+      lifecycle: "active" as const,
+      revisionId: "revision-1",
+      eventId: "event-1",
+      localDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+      grams: 72_100,
+    }) satisfies BodyweightEntryState;
+    let ownerRows: readonly { owner_namespace: string }[] = [];
+    let historyEntries: readonly BodyweightEntryState[] = [];
+    let commitResult: unknown = { kind: "conflict" };
+    const loadBodyweightHistory = jest.fn(async () => historyEntries);
+    const commitBodyweight = jest.fn(async () => commitResult);
+    mockedCreateTrainingFoundationRuntimePort.mockImplementationOnce(() => Object.freeze({
+      loadCalendarRange: jest.fn(),
+      loadPlannedStrengthOccurrence: jest.fn(),
+      loadToday: jest.fn(),
+      loadBodyweightHistory,
+      commitBodyweight,
+    }) as never);
+    const queryAll = jest.fn(async (sql: string) =>
+      sql.includes("FROM portable_owner_identity") ? ownerRows : []);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (
+        query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
+      ) => query({ queryAll: queryAll as unknown as SqliteTransactionExecutor["queryAll"] })),
+    } as unknown as SqliteKernel;
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(<RuntimeCaptureHarness
+      dependencies={dependencies(repository, { openKernel: jest.fn(async () => kernel) })}
+      onReady={(runtime) => { captured = runtime; }}
+    />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+
+    await expect(captured!.progressBodyweightRuntime.loadHistory())
+      .rejects.toThrow("progress_bodyweight_owner_unavailable");
+    const createInput = {
+      entryId: "bodyweight-1",
+      expectedRevision: 0,
+      grams: 72_100,
+      localDate: "2026-08-17",
+      requestId: "bodyweight-create",
+    };
+    await expect(captured!.progressBodyweightRuntime.save(createInput))
+      .rejects.toThrow("progress_bodyweight_owner_unavailable");
+
+    ownerRows = [{ owner_namespace: "owner-1" }];
+    await expect(captured!.progressBodyweightRuntime.save(createInput))
+      .rejects.toThrow("bodyweight_revision_conflict");
+    commitResult = { kind: "created", entry };
+    historyEntries = [entry];
+    await expect(captured!.progressBodyweightRuntime.save(createInput))
+      .resolves.toMatchObject([{ entryId: "bodyweight-1", revision: 1 }]);
+
+    const edited = { ...entry, revision: 2, grams: 72_200 };
+    commitResult = { kind: "edited", entry: edited };
+    historyEntries = [edited];
+    await expect(captured!.progressBodyweightRuntime.save({
+      ...createInput,
+      requestId: "bodyweight-edit",
+      expectedRevision: 1,
+      grams: 72_200,
+    })).resolves.toMatchObject([{ revision: 2, grams: 72_200 }]);
+
+    commitResult = { kind: "deleted", entry: edited };
+    historyEntries = [];
+    await expect(captured!.progressBodyweightRuntime.delete({
+      entryId: edited.entryId,
+      revision: edited.revision,
+      localDate: edited.localDate,
+      grams: edited.grams,
+    }, "bodyweight-delete")).resolves.toEqual([]);
+
+    commitResult = { kind: "created", entry };
+    await expect(captured!.progressBodyweightRuntime.save({
+      ...createInput,
+      requestId: "bodyweight-missing-readback",
+    })).rejects.toThrow("bodyweight_readback_missing");
+  });
+
+  it("fences non-actionable recommendations, retries one command, and supports Keep", async () => {
+    const outcomeRepository = runtimeOutcomeRepository();
+    const queryAll = jest.fn(async (sql: string) => sql.includes("FROM progression_recommendations")
+      ? [{ evidence_version: 2, source_revision: 4, target_revision: 3, status: "pending" }]
+      : []);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (
+        query: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>,
+      ) => query({ queryAll: queryAll as unknown as SqliteTransactionExecutor["queryAll"] })),
+    } as unknown as SqliteKernel;
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(<RuntimeCaptureHarness
+      dependencies={dependencies(repository, {
+        createOutcomeRepository: () => outcomeRepository,
+        openKernel: jest.fn(async () => kernel),
+      })}
+      onReady={(runtime) => { captured = runtime; }}
+    />);
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    const pending = { id: "recommendation-1", lifecycle: "pending" } as ProgressRecommendationReview;
+    await expect(captured!.progressRecommendationRuntime.decide({
+      ...pending,
+      lifecycle: "accepted",
+    } as ProgressRecommendationReview, "use_target"))
+      .rejects.toThrow("recommendation_no_longer_actionable");
+
+    queryAll.mockResolvedValueOnce([]);
+    await expect(captured!.progressRecommendationRuntime.decide(pending, "use_target"))
+      .rejects.toThrow("recommendation_revision_fence_unavailable");
+
+    outcomeRepository.keepCurrentTarget
+      .mockRejectedValueOnce(new Error("transient"))
+      .mockResolvedValueOnce({ recommendationId: "recommendation-1", status: "rejected" });
+    const fenceCalls = () => queryAll.mock.calls.filter(([sql]) =>
+      String(sql).includes("FROM progression_recommendations")).length;
+    const callsBeforeKeep = fenceCalls();
+    await expect(captured!.progressRecommendationRuntime.decide(pending, "keep_current_target"))
+      .rejects.toThrow();
+    await expect(captured!.progressRecommendationRuntime.decide(pending, "keep_current_target"))
+      .resolves.toMatchObject({ status: "rejected" });
+    expect(fenceCalls() - callsBeforeKeep).toBe(1);
+
   });
 
   it("keeps the development expiry bridge unavailable until launch is trusted", async () => {
@@ -5361,5 +5585,28 @@ describe("WorkoutAppRuntimeProvider", () => {
     await expect(render(<OutsideProbe />)).rejects.toThrow(
       "useWorkoutAppRuntime must be used within WorkoutAppRuntimeProvider",
     );
+
+    for (const [usePort, message] of [
+      [useCalendarRangeReadPort, "calendar_range_read_port_unavailable"],
+      [useCalendarSessionReadPort, "calendar_session_read_port_unavailable"],
+      [useCalendarStrengthOccurrenceReadPort, "calendar_strength_occurrence_read_port_unavailable"],
+      [useCalendarActivityReadPort, "calendar_activity_read_port_unavailable"],
+    ] as const) {
+      function OutsideCalendarProbe() {
+        usePort();
+        return null;
+      }
+      await expect(render(<OutsideCalendarProbe />)).rejects.toThrow(message);
+    }
+  });
+
+  it("provides every bounded Calendar read context inside the runtime provider", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const onReady = jest.fn();
+    await render(
+      <CalendarPortsHarness dependencies={dependencies(repository)} onReady={onReady} />,
+    );
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("calendar-ports-ready")).toHaveTextContent("ready");
   });
 });

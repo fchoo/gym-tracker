@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   mkdtempSync,
@@ -211,6 +212,10 @@ test("privacy scanner rejects personal payload fields and values recursively", (
 
 test("coverage gate registers every Phase 19 integrity module and preserves Phase 16 focus modes", () => {
   const coverageSource = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
+  const manifest = JSON.parse(readFileSync(
+    "scripts/phase19-integrity-coverage.json",
+    "utf8",
+  ));
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
   const required = [
     "src/domains/progress/dashboardProjection.ts",
@@ -222,7 +227,11 @@ test("coverage gate registers every Phase 19 integrity module and preserves Phas
     "src/platform/sqlite/repositories/historyRepository.ts",
     "src/domains/running/commands.ts",
     "src/platform/sqlite/repositories/runningPlanRepository.ts",
+    "src/bootstrap/runningPlanRuntime.tsx",
     "src/domains/progression/recommendationCommands.ts",
+    "src/platform/sqlite/repositories/workoutOutcomeRepository.ts",
+    "src/bootstrap/trainingFoundationRuntime.ts",
+    "src/bootstrap/workoutAppRuntime.tsx",
     "src/domains/bodyweight/contracts.ts",
     "src/domains/bodyweight/commands.ts",
     "src/domains/portability/backupContracts.ts",
@@ -236,7 +245,35 @@ test("coverage gate registers every Phase 19 integrity module and preserves Phas
   assert.ok(coverageSource.includes("const phase19IntegrityCriticalFiles"));
   assert.ok(coverageSource.includes("--focus-phase19"));
   assert.ok(coverageSource.includes("focusPhase16Evidence"));
-  for (const file of required) assert.ok(coverageSource.includes(file), file);
+  assert.deepEqual(manifest.required_files, required);
+  assert.deepEqual(manifest.changed_line_scope.map(({ path }) => path), [
+    "src/bootstrap/runningPlanRuntime.tsx",
+    "src/platform/sqlite/repositories/workoutOutcomeRepository.ts",
+    "src/bootstrap/trainingFoundationRuntime.ts",
+    "src/bootstrap/workoutAppRuntime.tsx",
+  ]);
+  assert.deepEqual(manifest.unreachable_coverage, [{
+    path: "src/bootstrap/workoutAppRuntime.tsx",
+    line: 4765,
+    metrics: ["statements", "branches", "lines"],
+    reason: "The local command is assigned immediately before this defensive assertion and cannot be cleared or observed as undefined in JavaScript execution.",
+  }]);
+  const changedModules = execFileSync("git", [
+    "diff", "--name-only", `${manifest.diff_base}..${manifest.diff_head}`,
+  ], { encoding: "utf8" }).split(/\r?\n/u).filter((filePath) =>
+    /^(?:src|app)\/.*\.tsx?$/u.test(filePath)
+    && !/\.test\.|\/__tests__\/|^src\/testing\//u.test(filePath));
+  const classified = new Set([
+    ...manifest.required_files,
+    ...manifest.reviewed_exclusions.map(({ path }) => path),
+  ]);
+  assert.deepEqual(changedModules.filter((filePath) => !classified.has(filePath)), []);
+  assert.deepEqual([...classified].filter((filePath) =>
+    !changedModules.includes(filePath) && !manifest.supporting_files.includes(filePath)), []);
+  assert.match(coverageSource, /focusPhase16Evidence/u);
+  assert.match(coverageSource, /argument === "--coverageDirectory"/u);
+  assert.match(coverageSource, /changedScopeFailures/u);
+  assert.match(coverageSource, /--coverageThreshold=\{\}/u);
   assert.match(packageJson.scripts["test:coverage:integrity"], /--focus-phase19/u);
   assert.match(packageJson.scripts["test:evidence:phase19"], /verify-phase19-evidence\.test\.mjs/u);
   assert.match(packageJson.scripts["verify:phase19:evidence"], /verify-phase19-evidence\.mjs/u);
