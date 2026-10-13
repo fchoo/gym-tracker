@@ -1,9 +1,9 @@
 ---
 phase: 19-progress-parity
-reviewed: 2026-10-13T03:58:29Z
+reviewed: 2026-10-13T07:25:11Z
 depth: deep
-source_head: e7eea042779bf0c9b426924f672c494267cccb0f
-files_reviewed: 109
+source_head: 57774f7709c768facc3132c078e2a3495c817a20
+files_reviewed: 112
 files_reviewed_list:
   - app/(tabs)/progress.tsx
   - app/__native-contracts.tsx
@@ -94,13 +94,16 @@ files_reviewed_list:
   - src/ui/__tests__/RunningTargetSheet.test.tsx
   - src/ui/components/BodyweightEditorSheet.tsx
   - src/ui/components/BodyweightHistorySheet.tsx
+  - src/ui/components/BottomSheet.tsx
   - src/ui/components/FactualHistoryChart.tsx
   - src/ui/components/ProgressSettingsSheet.tsx
   - src/ui/components/RecommendationSurface.tsx
   - src/ui/components/RunningHistorySheet.tsx
   - src/ui/components/RunningTargetSheet.tsx
+  - src/ui/components/index.ts
   - src/ui/screens/ExerciseHistoryScreen.tsx
   - src/ui/screens/ProgressScreen.tsx
+  - src/ui/theme/index.ts
   - tests/integration/bodyweight-history.test.ts
   - tests/integration/load-reps.test.ts
   - tests/integration/multi-plan-portability.test.ts
@@ -115,177 +118,138 @@ files_reviewed_list:
   - tests/sqlite-host/phase12BackupBenchmark.host.test.ts
   - tests/sqlite-host/progressRepository.test.ts
 findings:
-  critical: 5
-  warning: 3
+  critical: 3
+  warning: 2
   info: 0
-  total: 8
+  total: 5
 status: issues_found
 ---
 
 # Phase 19: Code Review Report
 
-**Reviewed:** 2026-10-13T03:58:29Z
+**Reviewed:** 2026-10-13T07:25:11Z
 **Depth:** deep
-**Files Reviewed:** 109
-**Source HEAD:** `e7eea042779bf0c9b426924f672c494267cccb0f`
+**Files Reviewed:** 112
+**Source HEAD:** `57774f7709c768facc3132c078e2a3495c817a20`
 **Status:** issues_found
 
 ## Summary
 
-The required zero-Critical/Warning gate is not met. Current merged `fchoo/UX-revamp` has five BLOCKER findings and three Warnings.
+The required zero-Critical/Warning gate is not met. The eight findings from the immediately preceding review were re-tested against the final Phase 19 fix chain and are closed at their cited paths. The fresh canonical host collector also passes on the merged tip. Three independently reproducible correctness/data-integrity gaps and two still-open UI contract defects remain.
 
-This re-review read the prior review/fix/security/UI/verification artifacts, the owner decisions/brief/source precedence/Phase 19 context and UI contract, both second-wave branches (`agent-phase19-fix-data` and `agent-phase19-fix-evidence`), both merge commits, the three-file data-merge conflict resolution, and the later Phase 16 merge wherever it touched shared Phase 19 runtime/repository code. Revision 18 JSON/HTML still match the UI-SPEC hashes exactly. Native/device execution remains correctly Phase 20-owned and `NOT_RUN`.
-
-Several important fixes are real: selected-period Running reads and 501-row paging are coherent; target sources moved into the same SQLite snapshot; bounded refresh is live; recommendation decisions use durable receipts and superseded feedback is fenced; both receipt graphs survive merge; exact workout source revisions reach the destination; protected bodyweight digests hash row bytes; chart semantic sampling, direction, equality, duration formatting, and target-toast fencing are corrected; future native evidence rehashes retained bytes and expands motion/input observations.
-
-The merged result is still not clean. Distance-specific Running targets are not durably independent, planned-next context remains absent, the fresh hash-bound host collector fails its coverage command, the 23-module ownership range predates the second-wave fixes, and two benchmark labels do not measure the production operations they claim. The clean-clone full run passed 311/312 suites and 4,506/4,509 tests; the three failures are all in the merged Phase 19 workout-outcome coverage contract.
+Native Android, device, Maestro, attended, and release evidence was not run. Those checks remain Phase 20-owned and are not treated as Phase 19 failures.
 
 ## Verification Evidence
 
-Fresh verification ran in a clean detached clone of current HEAD at `/tmp/gym-phase19-rereview.NshkbO/repo`; it used the workspace dependency installation without modifying this worktree.
+Fresh verification ran in a clean local clone of exact HEAD `/tmp/gym-phase19-final.uDI3yr/repo`; dependencies were resolved through a read-only `node_modules` symlink. The live worktree was not used for generated evidence.
 
 | Check | Fresh result |
 |---|---|
-| Phase 19 evidence/native/verifier source tests | 18/18 passed |
-| Progress parity host contract | 2/2 Jest tests passed; all 18 requirement cases reported passed |
-| Production-workload benchmark command | Executed and reported `passed`; semantic validity caveat is CR-05 |
-| Exact Phase 19 coverage command | **FAILED**: 311/312 suites passed; 4,506/4,509 tests passed |
-| TypeScript | Passed |
-| Boundary scan | Passed across 429 files |
-| `git diff --check` | Passed |
-| Native/device execution | `NOT_RUN`, Phase 20-deferred as required |
-| Hash-bound host manifest | **Not produced** because the coverage command failed |
+| Canonical host collector | PASS; source HEAD `57774f7709c768facc3132c078e2a3495c817a20`, tree SHA-256 `bad54ebf5056835078a879359f5fd31e87b86030e445ebd9865de9dc4ea6d08c` |
+| Retained host manifest | PASS; canonical manifest SHA-256 `6b48e3f69b4f8186d1072d73bd378f94c24b424321f8b4d6b89b20feb9a26ad8` |
+| Exact Phase 19 coverage command | 312/312 suites and 4,536/4,536 tests passed; 25 integrity owners; 4 changed-line-scope owners; declared 100% gate passed |
+| Focused final-fix tests | 19 suites and 408 tests passed across unit, component, SQLite-host, and integration projects |
+| Phase 19 evidence-script tests | 20/20 passed |
+| Progress parity host contract | 2/2 Jest tests; 18/18 source-owned requirement cases passed |
+| Benchmark | PASS; review-open p95 5.2665 ms, targeted-rebuild max 22.1645 ms, Updating/useful-content observed in 20/20 rebuild samples |
+| TypeScript / boundaries / diff check | PASS; boundary scan covered 429 files |
+| Native/device execution | `NOT_RUN`, correctly deferred to Phase 20 |
 
-No source, shared tracking, Phase 14, Phase 16, commit, push, deployment, APK, emulator, device, or Maestro mutation was performed by this review.
+The canonical collector is strong evidence for its registered paths, but it does not exercise the two data-integrity reproductions below or the missing root interactions.
 
 ## Prior Finding Re-test Ledger
 
 | Prior item | Current verdict | Evidence |
 |---|---|---|
-| CR-01 period scope / oldest-500 truncation | Closed | Window predicates and snapshot-local paging are in `progressRepository.ts:193-207,456-537`; 501-row behavior passes. |
-| CR-02 active/current target authority | Partially closed | Active lifecycle/current revision filtering exists, but distance-specific current targets are not preserved (CR-01). |
-| CR-03 post-snapshot target composition | Closed | `runningTargetSources` is loaded inside the repository snapshot at `progressRepository.ts:793-867`; runtime delegates directly. |
-| CR-04 All/Strength/Running hierarchy | Partially closed | Heroes/charts/goals/best efforts now render, but planned-next remains absent (CR-02). |
-| CR-05 metadata-only refresh | Closed | The screen schedules/cancels 250/1000/4000 ms attempts at `ProgressScreen.tsx:411-434`. |
-| CR-06 receipt bypass | Implementation closed | All callers share `commitRecommendationDecision`; current-schema repository paths persist/replay receipts. Fresh proof remains blocked by CR-03/CR-04. |
-| CR-07 merge drops receipts | Closed | Both receipt graphs are materialized/remapped at `mergePlan.ts:1549-1595` with planner and real-SQLite tests. |
-| CR-08 source revision discarded | Closed | Route validation and one-snapshot exact-revision read are present at `app/session/[sessionId].tsx:182-216` and `workoutOutcomeRepository.ts:2419-2454`. |
-| CR-09 hard-coded host PASS | Open | Host PASS now requires retained artifacts, but the fresh collector cannot produce a manifest because coverage fails (CR-03). |
-| CR-10 toy benchmark | Open | Real repository/components are imported, but timed review-open and rebuild samples are still substitutes (CR-05). |
-| CR-11 opaque native hashes | Closed for source contract | Explicit 64 configurations x 8 motion/input observations per requirement, retained artifacts, schema validation, and recomputed hashes are present; execution remains Phase 20 `NOT_RUN`. |
-| CR-12 incomplete exact-coverage ownership | Open | Fresh gate fails and the ownership range ends before second-wave fixes (CR-03/CR-04). |
-| CR-13 chart direction/equality | Closed | Comparator-aware Y and `At target` are tested. |
-| WR-01 semantic sampling loss | Closed | Mandatory extrema/crossings may exceed the nominal cap and complete data pages remain available. |
-| WR-02 duration mismatch | Closed | Shared formatter covers 59:59, 1:00:00, and 23:59:59. |
-| WR-03 obsolete read-back toast | Closed | Matching root target/recommendation read-back is required before toast. |
-| WR-04 placeholder/proxy tests | Open | Outcome coverage improved, but invalid multi-plan proxies and merge-skew coverage tests remain (WR-02). |
-| PRO-05 fixed 2.4 km target | Open after another distance save | The parser seeds 11:00, but the single current-goal model replaces its current distance (CR-01). |
-| PRO-12 editable distance | Open | UI drafts switch, but committed targets are not independently reloadable by distance (CR-01). |
-| T-19-08-04 bodyweight isolation | Closed | SHA-256 covers exact protected target/recommendation/import/session/set rows, not counts. |
-| T-19-03-02 screen analytics boundary | Closed | Gap/pacing/comparator results are prepared below the screen; the screen formats presentation only. |
-| T-19-07-02 / T-19-07-04 / T-19-09-02 | Closed in implementation | Durable receipts and superseded/non-success feedback fencing are present. |
-| T-19-10-04 bounded execution | Closed | Benchmark subprocesses, native operations/ADB, output bytes, samples, and restoration are bounded. |
-| UI exact focus return / 48dp source actions | Partially closed | Source actions are 48dp; some Strength/All return tokens still cannot restore the exact invoking control (WR-01). |
-| UI root factual geometry | Open | Root hero facts remain a vertical text stack instead of three equal cells (WR-03). |
+| Re-review CR-01: durable distance-keyed targets | Closed for normal commits/reloads | `runningPlanRepository.ts:198-208,492-507` resolves current revisions per distance; `running-foundation.test.ts:93-198` saves 2.4 km, 10 km, and Half Marathon through runtime recreation and projects all three. Stale retry remains separately open as CR-01 below. |
+| Re-review CR-02: planned-next | Closed | `progressRepository.ts:632-753,953-1022` reads current active future Strength/Running opportunities in the same snapshot; `dashboardProjection.ts:136-153,423-453` validates/selects by sport; real SQLite and root render tests pass. |
+| Re-review CR-03: merged receipt coverage failures | Closed | Fresh collector passed `phase19WorkoutOutcomeRepositoryCoverage.test.ts`; the exact gate completed 312 suites / 4,536 tests and published a current hash-bound manifest. |
+| Re-review CR-04: stale 23-module ownership | Closed | `phase19-integrity-coverage.json` now owns 25 modules, including `running/contracts.ts` and `finishWorkout.ts`; `run-coverage-gate.mjs:315-430` derives and classifies production changes through current HEAD. |
+| Re-review CR-05: proxy review/rebuild benchmarks | Closed | `Phase19ProgressBenchmark.test.tsx:318-385` repeatedly opens/closes the real review surface and drives a real stale projection through enqueue, visible Updating state, effect drain, refresh, and useful content. |
+| Re-review WR-01: exact return focus | Closed for the cited controls | Stable token/ref maps cover Strength rows, recommendations, All/Strength hero history/source actions, and Running source rows; focused component assertions pass. Missing controls are separately open as CR-03 below. |
+| Re-review WR-02: structural proxy tests | Closed for the cited target behavior | The one-plan multi-distance component fixture and real-SQLite runtime-recreation outcome test replace the invalid two-plan proxy. |
+| Re-review WR-03: three-cell facts | Closed | `ProgressScreen.tsx:155-176,457-459,739-746` renders equal horizontal cells normally and stacked cells at 200% font scale/narrow width; both modes pass component assertions. |
+| Historical CR-01/CR-03/CR-05: period paging, coherent snapshot, bounded refresh | Closed | Period predicates/paging, target sources and planned-next are in one snapshot, and 250/1000/4000 ms refresh attempts terminate/cancel as tested. |
+| Historical CR-02/CR-04/PRO-05/PRO-12: factual hierarchy and target authority | Closed for projection and ordinary persistence | Current goal identity, target-only/sparse states, fixed 2.4 km default, three distance roots, All/Strength/Running heroes, charts, goals, Best efforts, and planned-next are source-backed. Retry and root-action gaps remain below. |
+| Historical CR-06/CR-07/CR-08: recommendation receipts, merge retention, exact source revision | Closed at the reviewed paths | Current-schema callers use the shared fenced envelope, both recommendation receipt graphs survive merge tests, and session destinations enforce the requested effective revision. |
+| Historical CR-09/CR-10/CR-11/CR-12: evidence, benchmarks, native contract, coverage | Closed for host/source | Fresh retained outputs are hash-bound to current source; real review/rebuild workloads run; the native contract remains fail-closed and Phase 20-deferred; current-tip coverage ownership passes. |
+| Historical CR-13 / WR-01 / WR-02: chart direction, equality, semantic sampling, duration | Closed | Comparator-aware Y, `At target`, retained extrema/crossings, complete data pages, and shared hour-aware duration formatting pass focused tests. |
+| Historical WR-03 / WR-04 / T-19-08-04: read-back fencing, outcome tests, bodyweight isolation | Closed for cited paths | Superseded decisions cannot toast success; target success requires exact read-back; SHA-256 protected-row digests and real target persistence outcomes pass. |
+| Security register T-19-01-01 through T-19-10-05 | Closed at declared source boundaries | Parameterized SQL, source/revision validation, receipt hashing, one-snapshot reads, bounded commands, privacy scanning, and fail-closed artifact validation all re-passed. CR-02 below is an additional portability defect not exercised by the existing keep-both fixture. |
 
 ## Narrative Findings (AI reviewer)
 
 ## Critical / Blocker Issues
 
-### CR-01: Saving one Running distance replaces the current target for every other distance
+### CR-01: Retrying a changed or reloaded target replays the stale cached command
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/bootstrap/runningPlanRuntime.tsx:125-150`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/RunningTargetSheet.tsx:79-90`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/platform/sqlite/repositories/progressRepository.ts:481-488`
+**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/bootstrap/runningPlanRuntime.tsx:84,117-150`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/RunningTargetSheet.tsx:160-165,182-207,229-238`
 
-**Evidence:** `saveRunningTarget` copies the aggregate's single `current.goal` and overwrites `goalDistanceMeters` before writing one newer goal revision. The Progress query marks only the latest goal row for the entire plan as `is_current`, not the latest row per distance. `draftFrom` can reload only the aggregate's current distance; another distance gets the hard-coded 2.4 km fallback or an empty draft rather than its last committed target.
+**Evidence:** The runtime caches the first immutable command solely by `requestId`. On every later call with that ID, line 118 takes the cached command without comparing the new plan revision, distance, time, date, or training days. The sheet intentionally retains the same request ID after both save failure and stale-revision recovery; `reload` updates only `expectedSourceRevision`. A read-only probe called the runtime twice with the same request ID after a simulated compare-and-swap conflict, first with revision 4 / 645,000 ms and then with refreshed revision 5 / 630,000 ms. Both repository calls were exactly `{"expectedPlanRevision":4,"targetDurationMs":645000,"requestId":"same-request"}`.
 
-**Issue:** A real sequence such as save 2.4 km, save 10 km, reopen 2.4 km loses the committed 2.4 km value as a current owner target. Saving Half Marathon then displaces 10 km in the same way. This violates D19-04/PRO-05/PRO-12 and makes the three-distance editor appear independent only until reload.
+**Issue:** If another writer wins between the runtime read and repository write, `Reload target` cannot recover: every retry resubmits the old revision and conflicts forever. If storage fails before commit and the owner edits the retained draft, retry can silently submit the earlier target instead of the visible draft. This breaks stale recovery and risks committing the wrong owner-selected target.
 
-**Fix:** Model distance-keyed current target roots/revisions under the one active Running plan. Saving one distance must compare-and-swap only that distance root while preserving the other two current targets. Read all three current distance targets into the aggregate/editor and add a real-SQLite sequence test that saves 2.4 km -> 10 km -> Half Marathon, reopens after each commit/process recreation, and proves all prior values/revisions remain current.
+**Fix:** Cache a canonical high-level input fingerprint with each command and reuse a cached command only for an identical retry. On a proven pre-commit revision conflict, invalidate the cached command and rotate the sheet's request ID after explicit reload. Reject changed payload reuse rather than silently substituting the first command. Add an outcome test that forces the race between runtime read and repository CAS, reloads revision 5, changes the draft, and asserts the second repository command carries revision 5 and the new target while an exact lost-acknowledgement retry retains the original envelope.
 
-### CR-02: Planned-next context is still absent from the Progress contract and render path
-
-**Classification:** BLOCKER
-**Confidence:** 10/10
-**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/progress/contracts.ts:258-320`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/platform/sqlite/repositories/progressRepository.ts:824-831`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:313-360`
-
-**Evidence:** The All, Strength, and Running dashboard projection types expose goals/history but no `plannedNext` or equivalent source-backed future opportunity. The repository reads only `owned_plan_schedule_opportunities` with `state = 'consumed'`. Neither All, Strength, nor Running renders `Planned next`/`Next target` from an eligible future source fact.
-
-**Issue:** ROADMAP success criterion 2, PRO-02, D19-02, and the Phase 19 UI contract require planned-next context when a real future opportunity exists. The earlier CR-04 fix completed much of the factual hierarchy but did not implement this required branch.
-
-**Fix:** Add a typed planned-next union carrying sport, source opportunity identity/revision, local date, and display facts from the same snapshot. Query eligible active future occurrences, project them without fixture inference, render the exact optional section on All/Strength/Running, and cover present/absent/stale/incompatible cases.
-
-### CR-03: The fresh hash-bound host evidence collector fails on merged receipt-coverage tests
+### CR-02: Keep-both portability produces internally inconsistent Running plans
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/testing/contracts/phase19WorkoutOutcomeRepositoryCoverage.test.ts:63-123`
+**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/portability/mergePlan.ts:1181-1232,1367-1417`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/running/contracts.ts:307-327`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/domains/portability/mergePlan.test.ts:2336-2385`
 
-**Evidence:** On clean current HEAD, `run-phase19-host-evidence.mjs --automated-only` failed `phase19_host_command_failed:coverage:exit_1`. The full exact run reported 311/312 suites and 4,506/4,509 tests passing. The three failures are merge-skew between the evidence branch's test and the data branch's final receipt behavior: expected `recommendation_request_identity_conflict` but got `recommendation_decision_conflict`; expected `recommendation_request_identity_missing` but got `recommendation_decision_conflict`; expected `superseded` but got `rejected`.
+**Evidence:** `mappedRows` rewrites relational columns and primary keys only. The Running-plan loop sends `running_goals` through that generic mapper, so a keep-both collision changes row `id` and `plan_id` but leaves `goal_json.id` and `goal_json.planId` unchanged. The existing “retains the complete running graph” test uses a row without `goal_json` and an insert operation with no collision, so it cannot detect the defect. A read-only planner probe on current HEAD produced:
 
-**Issue:** No fresh host manifest or hash-bound source PASS exists for merged HEAD. The earlier all-fixed report's 100%/PASS evidence was branch-local and does not survive the actual merge.
+```text
+row_id=merge_running_goals_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_0
+row_plan_id=merged-plan
+goal_json.id=goal
+goal_json.planId=archive-plan
+```
 
-**Fix:** Decide the final current-schema/legacy receipt contract from the owner and migration authority, then reconcile the repository and test doubles to that contract. Ensure mocks represent table support accurately, cover duplicate cross-graph receipts and deterministic legacy replay, rerun the complete collector, and retain a manifest bound to current HEAD/tree/output hashes.
+Passing that retained row through the production `readRunningPlanAggregate` path deterministically throws `RunningBoundaryError:running_goal_invalid` at the `goal.planId !== aggregate.id` check. The same generic loop also leaves embedded identities in Running session definitions, event payloads, and receipt results unexamined.
 
-### CR-04: The 23-module coverage manifest excludes second-wave integrity changes
+**Issue:** A valid keep-both logical merge can commit a relationally valid but unreadable Running source graph. Distance-keyed targets may appear present in the archive/merge counts yet become unusable after restore, violating portability and creating silent data-loss risk at the application boundary.
 
-**Classification:** BLOCKER
-**Confidence:** 10/10
-**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/scripts/phase19-integrity-coverage.json:4-38`
+**Fix:** Add schema-aware Running row rewriters before materialization. Remap and validate embedded plan/goal/session/slot identities in `goal_json`, `definition_json`, event payloads, and receipt results; preserve or deliberately invalidate/reissue hashes according to the receipt contract. Add a real-SQLite keep-both collision test with all three distance targets, commit the merge, recreate the repository, and assert every current target plus session is readable under the remapped plan.
 
-**Evidence:** The manifest ends its ownership range at `diff_head: 134b0db7`, before the evidence/data fixes and their merge. Its changed-line scopes for `workoutAppRuntime.tsx` and `workoutOutcomeRepository.ts` therefore omit the later receipt/source-revision branches. `src/domains/running/contracts.ts`, which gained the authoritative 2.4 km default during the data fix, is neither required nor a reviewed exclusion. The static drift test compares only the old range and passes despite this omission.
-
-**Issue:** Even after the three failing tests are repaired, the gate can claim 23 modules at exact coverage without measuring all second-wave authority code it is supposed to certify. This is the same false-confidence class as prior CR-12, exposed by the parallel-branch merge.
-
-**Fix:** Extend the ownership range through the merged Phase 19 fix tip (or derive it from an explicit commit manifest), classify every production source changed by both fix branches and merge resolutions, and include the Running target parser plus all post-review receipt/source-revision lines. Make the drift test fail when commits after `diff_head` touch an unclassified integrity owner.
-
-### CR-05: The benchmark still labels formatting and an ordinary read as review-open and rebuild timings
+### CR-03: Required Progress root drill-downs are still rendered as inert text
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/__tests__/Phase19ProgressBenchmark.test.tsx:294-325`
+**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:247-256,381-390`
 
-**Evidence:** The test opens `RecommendationSurface` once before timing, then records all 100 `review_open_ms` samples by calling only `recommendationTargetText` twice. It records `targeted_rebuild_ms` by awaiting `setImmediate` and a normal `repository.load`; no stale projection, rebuild runner, Updating UI, or terminal refresh is exercised. The fresh result's 0.025 ms review-open p95 confirms the measured operation is string formatting, not opening/rendering the review.
+**Evidence:** The Running `Best efforts` section maps all three rows to plain `Text`, so none can open its distance-bound history. The All `Active goals` section also maps every row to plain `Text`, so only the separate primary-goal button can switch sport. When All selects a Running primary goal, its `FactualHistoryChart` receives neither `onOpenSource` nor `registerSourceAction`; the chart therefore renders `Source unavailable` for otherwise source-backed activity rows. The exact source/focus wiring added by `1520b701` exists for All-Strength and Strength, not this All-Running branch.
 
-**Issue:** The benchmark imports real production code but two named budgets still do not measure the production work they claim. Regressions in review-sheet opening or rebuild-to-useful-content can pass unchanged, so prior CR-10 is only partially fixed.
+**Issue:** Phase 19 plan 19-09 requires every hero/row to open the correct history/source surface and return to the exact invoker. The UI-SPEC separately requires All active-goal rows to select their sport and Running Best-effort rows to open Running history. These user journeys are absent, so the prior hierarchy and exact-focus findings are not fully closed despite the focused tests passing.
 
-**Fix:** Time the actual state transition and committed render for recommendation review across isolated samples, and drive a real stale subject through rebuild scheduling, Updating presentation, projection application, and terminal useful content. Hash the exact fixture/result, keep bounded samples/timeouts, and name any remaining pure projection measurements honestly.
+**Fix:** Render each Active goal and Best effort as a 48dp `FocusablePressable`, route each distance to its matching Running history, and pass source callbacks plus stable identity/revision return-token refs to the All-Running chart. Add outcome tests that press every row/source action, assert the exact route/distance/revision, return, and verify focus on the precise invoking control while sport/range/scroll remain unchanged.
 
 ## Warnings
 
-### WR-01: Strength/All deep-route return does not restore the exact invoking source/history control
+### WR-01: The approved 3dp focus offset is still implemented as 4dp
+
+**Classification:** WARNING
+**Confidence:** 10/10
+**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/theme/index.ts:49-63`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/index.ts:190-201,312-323`
+
+**Issue:** Phase 19 UI-SPEC lines 141, 157, and 526 require a 3dp outline with a 3dp offset and explicitly prohibit rounding that geometry to the shared 4dp spacing scale. `sizes.focusClearance` remains `4`, and shared Phase 19 focusables consume that value directly. This is the prior UI focus-geometry finding unchanged in source.
+
+**Fix:** Set the shared focus-offset token to the approved 3dp value after checking Phase 14 consumers, or introduce an approved focus-geometry token that Phase 19 controls use. Keep the 3dp outline and add source/native assertions that focused segmented controls, rows, and sheets are not clipped.
+
+### WR-02: The 82% sheet cap still excludes the header and safe-area inset
 
 **Classification:** WARNING
 **Confidence:** 9/10
-**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:313-351`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:436-453`
+**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/components/BottomSheet.tsx:306-365,388-403`
 
-**Issue:** Strength/All chart source navigation emits `progress:<sport>:<period>:source:<session>`, but the return handler recognizes only exercise, recommendation, Running source, target, and history tokens. The hero's Open history control is not registered separately; an exercise return resolves to the lower exercise-row ref when one exists, not the exact hero invoker, and All has no matching row ref. This leaves part of the owner-mandated exact focus graph unresolved.
+**Issue:** The approved 82% cap is applied only to the child `ScrollView` (`styles.scroll.maxHeight`). The enclosing frame has no portrait max-height, then adds the header and bottom safe-area padding. A Phase 19 sheet can therefore exceed the specified surface cap before 200% text and keyboard avoidance are considered. The source defect is independent of deferred native screenshot evidence.
 
-**Fix:** Give every hero/history/source invoker a stable token and ref keyed by surface + source identity/revision, register chart source actions for Strength/All, and add return tests that assert focus on the exact pressed control rather than another control for the same exercise.
-
-### WR-02: Multi-distance and coverage tests still use structural proxies that cannot prove production behavior
-
-**Classification:** WARNING
-**Confidence:** 10/10
-**Files:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/__tests__/RunningTargetSheet.test.tsx:78-109`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/__tests__/ProgressScreen.test.tsx:710-746`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/testing/contracts/phase19IntegrityCoverage.test.ts:390-401`
-
-**Issue:** The sheet test proves only in-memory draft switching with a mocked save. The screen test supplies two active Running source plans, while production `loadRunningTargetSources` rejects more than one. The coverage drift test inspects only the old manifest range. These green proxies allowed CR-01 and CR-04 to survive.
-
-**Fix:** Replace them with current-schema real-SQLite/runtime outcomes: one active plan, three distance-specific persisted targets across reload, exact current-row projection after each save, and coverage classification through the merged fix tip.
-
-### WR-03: Root Latest/Best/Target facts still render as a vertical stack instead of the approved three-cell hierarchy
-
-**Classification:** WARNING
-**Confidence:** 10/10
-**File:** `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:190-205`; `/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/src/ui/screens/ProgressScreen.tsx:663-674`
-
-**Issue:** `factRow` has no row direction, equal-cell wrappers, or per-cell dividers. Its three direct `Text` children therefore stack vertically at normal width. The owner-approved contract requires three equal Latest/Best/Target cells in the first viewport, stacking only for 200% text/narrow adaptation. This prior UI finding remains unchanged in source.
-
-**Fix:** Reuse a fact-cell component with `flexDirection: "row"`, equal `flex: 1` cells and 1dp separators at normal text, then switch to the approved stacked adaptation at 200% text/landscape constraints. Assert both layouts in component tests.
+**Fix:** Apply the 82% viewport cap to the complete sheet frame, or compute the body maximum after subtracting header and safe-area insets. Retain the compact-landscape calculation and add host geometry assertions; Phase 20 should then confirm 200% text, keyboard, and landscape behavior on device.
 
 ---
 
-_Reviewed: 2026-10-13T03:58:29Z_
+_Reviewed: 2026-10-13T07:25:11Z_
 _Reviewer: TRAE (gsd-code-reviewer)_
 _Depth: deep_

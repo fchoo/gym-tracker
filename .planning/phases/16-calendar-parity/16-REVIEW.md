@@ -1,8 +1,8 @@
 ---
 phase: 16-calendar-parity
-reviewed: 2026-10-13T04:31:28Z
+reviewed: 2026-10-13T07:16:07Z
 depth: deep
-files_reviewed: 100
+files_reviewed: 101
 files_reviewed_list:
   - app/(tabs)/__tests__/calendar.test.tsx
   - app/(tabs)/__tests__/root-shell.integration.test.tsx
@@ -21,6 +21,7 @@ files_reviewed_list:
   - scripts/benchmark-v12-interactions.mjs
   - scripts/compare-v12-calendar.mjs
   - scripts/fixtures/v12-calendar-evidence/complete.json
+  - scripts/phase19-integrity-coverage.json
   - scripts/run-coverage-gate.mjs
   - scripts/run-v12-maestro.mjs
   - scripts/v12-calendar-artifacts.mjs
@@ -106,155 +107,172 @@ files_reviewed_list:
   - tests/sqlite-host/trainingCalendarRepository.test.ts
 findings:
   critical: 2
-  warning: 3
+  warning: 1
   info: 0
-  total: 5
+  total: 3
 status: issues_found
 ---
 
 # Phase 16: Code Review Report
 
-**Reviewed:** 2026-10-13T04:31:28Z
+**Reviewed:** 2026-10-13T07:16:07Z
 **Depth:** deep
-**Files Reviewed:** 100
+**Files Reviewed:** 101
 **Status:** issues_found
 
 ## Summary
 
-The current merged `fchoo/UX-revamp` tree at `f152c96502f69b72df074914b2f202182362e268` does not meet the requested zero-BLOCKER/zero-WARNING result. Direct source tracing and adversarial probes found **2 BLOCKER** and **3 WARNING** findings.
+The final merged `fchoo/UX-revamp` tree at `57774f7709c768facc3132c078e2a3495c817a20` does **not** meet the required zero-BLOCKER/zero-WARNING result. Direct source tracing and executable probes found **2 BLOCKER** and **1 WARNING** findings.
 
-All prior 15 BLOCKER and 7 WARNING findings were re-tested. The second-wave data/runtime fixes close CR-06 through CR-15 and WR-01 through WR-06. The privacy, symlink-containment, aggregate-status, retained-JSON, immutable Running/Strength, history-only session, Garmin preservation, adjacent-panel range, focus, retained-state, settle-latch, reduced-motion, compact-layout, current-date, route-reuse, and Previous-fact fixes hold. Prior CR-02 and CR-03 remain open in narrower, directly demonstrated forms, and WR-07 is reopened by the current merged gate.
+The final Back-focus and 360dp/font-scale-2 fixes hold. The Phase 19 receipt suite now passes all five tests. All previously closed authority, privacy-path, symlink, immutable Running/Strength/history, Garmin, range, focus, retained-state, transition, reduced-motion, current-date, route-reuse, and Previous-fact findings remain closed. The surviving failures are narrower than the prior report: the 96-case verifier now rejects status-only rows but still accepts arbitrary support bytes plus self-declared aggregate counts; the 24.9% Maestro stage still executes above the actual inset viewport threshold; and the final Phase 19 merge leaves the declared repository-wide coverage gate red.
 
-Native/device execution remains Phase 20-owned and was not counted as a defect. CR-01 and CR-02 below are source-level producer/verifier defects: they can certify an unproved matrix or cannot emit the evidence their own validators require.
-
-The current specialized `16-SECURITY.md` reports 30/30 threats closed. The concurrently refreshed `16-UI-REVIEW.md` separately records 11 visual/accessibility warnings; this report does not duplicate its purely visual fidelity items in the frontmatter count, but it includes the two functional accessibility/reachability defects that also meet code-review warning criteria.
+Native Android/device execution remains Phase 20-owned and is not counted as a defect. CR-01 and CR-02 are source-level producer/verifier defects demonstrable entirely on the host.
 
 ## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: The 96-case evidence matrix can PASS with status-only artifacts that prove no configuration was executed
+### CR-01: The final verifier PASSes a 96-case matrix whose support artifacts contain no case evidence
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**Files:** `scripts/v12-calendar-case-registry.mjs:24-38`, `scripts/v12-calendar-case-registry.mjs:92-143`, `scripts/compare-v12-calendar.mjs:167-182`, `scripts/verify-v12-native-evidence.mjs:381-388`, `scripts/v12-evidence-scripts.test.mjs:93-145`, `.planning/phases/16-calendar-parity/16-REFERENCE-MAP.json:17-31`
+**Files:** `scripts/compare-v12-calendar.mjs:232-266`, `scripts/compare-v12-calendar.mjs:281-314`, `scripts/verify-v12-native-evidence.mjs:246-260`, `scripts/verify-v12-native-evidence.mjs:279-295`, `scripts/verify-v12-native-evidence.mjs:380-382`, `scripts/v12-evidence-scripts.test.mjs:97-137`, `scripts/v12-evidence-scripts.test.mjs:191-200`, `scripts/v12-evidence-scripts.test.mjs:247-252`, `scripts/v12-evidence-scripts.test.mjs:420-460`
 
-**Issue:** The registry lists 64 appearance/viewport/orientation/font cases, but every one is hard-bound to `input: "touch"` and `motion: "normal"`; keyboard, D-pad, and reduced motion exist only as separate canonical 390×844 Light cases. More importantly, each live `case_results` row is allowed to contain only `id`, `case_sha256`, `status`, `native_execution`, and an artifact descriptor. Its retained JSON contains those same self-declared fields and no measured configuration, trace, screenshot, JUnit case, or source observation. The 14 comparison records remain limited to the checked reference captures, which contain no 600/840, landscape, or D-pad capture.
+**Issue:** The status-only shape is correctly rejected, but its replacement is still self-attested. Each case JSON declares `passed`, `failed`, `skipped`, `sample_count`, exact binding, producer name, and timestamps. The validator derives PASS from those counters and validates only the support descriptors' paths and hashes. The final verifier rehashes the four support files but never parses the JUnit XML, trace JSON, measurement JSON, or capture manifest and never correlates an individual input/motion execution with the declared case binding.
 
-A direct probe built all 96 rows using only those five allowed fields and `status: "PASS"`; `validateV12CalendarComparison` returned `true`. The repository's own complete-live fixture does the same at `scripts/v12-evidence-scripts.test.mjs:121-127,201-203`, and the final-verifier test accepts it. This permits an all-PASS matrix without evidence that the listed configuration/input/motion cases ran, so the old exact-matrix false-PASS is not closed.
+The repository contains no non-test producer for `v12-calendar-native-case/v1`, `functional.junit.xml`, `trace.json`, `measurement.json`, or `capture-manifest.json`. Its own passing final-verifier test writes every support artifact as arbitrary bytes (`bounded:<path>`) and then receives `{ status: "PASS", all_pass: true }`. This proves the matrix can still certify 96 cases without one real functional result, trace, measurement, or capture.
 
-**Fix:** Make each case artifact carry and validate the exact source-owned binding plus immutable producer evidence: measured appearance/OS scheme, viewport/orientation/font scale, input, motion, state/route ID, execution timestamps, and references to the relevant trace/JUnit/capture hashes. Derive case status from those validated artifacts instead of accepting a supplied status. Cover required input/motion combinations across the mandated configuration set, and add a negative test showing that 96 status-only JSON files cannot pass the final verifier.
+**Reproduction:** From repository root:
 
-### CR-02: The checked Maestro and diagnostic producers cannot emit the traces/sample counts their validators require
+```bash
+rg -n "v12-calendar-native-case/v1|functional\.junit\.xml|capture-manifest\.json|case-support" . \
+  --glob '!node_modules/**' --glob '!coverage/**' --glob '!.planning/**'
+node --test --test-name-pattern='final CLI verifier accepts a complete live comparison' \
+  scripts/v12-evidence-scripts.test.mjs
+```
+
+The search returns only validators and test fixture builders. The test passes while `writeDescriptor` supplies arbitrary non-evidence bytes for all case-support files.
+
+**Fix:** Implement a production case-evidence producer. Give each support artifact a source-owned schema containing the exact case hash, run/source/device identity, measured configuration, state, input, motion, timestamps, and individual outcomes. Parse and canonical-compare every support artifact in the final verifier, reconcile per-combination records against `binding.measured.input_motion`, derive counters from parsed records, and reject arbitrary or aggregate-only support bytes. Add a negative final-verifier test that keeps all current hashes/counters valid but replaces support content with `bounded:<path>`.
+
+### CR-02: The 24.9% Maestro stages still execute above the real 25% viewport threshold
 
 **Classification:** BLOCKER
 **Confidence:** 10/10
-**Files:** `maestro/v1.2/calendar.yaml:86-96`, `scripts/run-v12-maestro.mjs:33-63`, `src/ui/calendar/CalendarMonthViewport.tsx:380-420`, `src/bootstrap/phase16CalendarTestControls.ts:151-187`, `scripts/compare-v12-calendar.mjs:105-155`, `scripts/benchmark-v12-interactions.mjs:245-279`, `src/ui/screens/CalendarScreen.tsx:287-320`
+**Files:** `maestro/v1.2/calendar.yaml:16-19`, `maestro/v1.2/calendar.yaml:31-34`, `src/ui/screens/CalendarScreen.tsx:603-604`, `src/ui/screens/CalendarScreen.tsx:757-768`, `src/ui/calendar/CalendarMonthViewport.tsx:378-415`, `scripts/compare-v12-calendar.mjs:139-165`, `src/bootstrap/phase16CalendarTestControls.test.ts:52-68`, `scripts/v12-calendar-comparison.test.mjs:374-383`
 
-**Issue:** The producer and validator still disagree on real stage behavior. Threshold samples are emitted at the first UI event that crosses 10/24.9/25/25.1%, using the event's actual `dx`, while the validator demands equality to the requested ratio within `0.00001`; normal event quantization and the Maestro screen-percentage versus inner-viewport width make that equality non-deterministic. Multiple thresholds crossed in one frame also schedule multiple `Date.now()`-based records that must have strictly increasing millisecond timestamps, so a valid fast gesture can throw `phase16_calendar_diagnostic_clock_invalid`.
+**Issue:** Maestro expresses `70% → 45.1%` against the whole screen, but Calendar decides the inclusive threshold against the narrower month viewport. At 390dp, the source-applied 18dp Calendar insets produce a 354dp viewport. The supposed 24.9% command therefore measures `97.11 / 354 = 27.4322%`, commits the next panel, and emits next-month semantics. The validator correctly requires the 24.9% stage to remain at semantic/title offset 0, so the trace it receives from the real layout is rejected.
 
-The `drag-retreat` flow is two completed `swipe` gestures, but its validator requires one trace that crosses 25% and has exactly one below-threshold release. `drag-cancel` is a completed swipe followed by Android Back; `recordPhase16CalendarCancel` runs only when the gesture finalizes without `onEnd`, so that flow does not generate the required cancel sample. The tests avoid these paths by constructing idealized traces directly.
+The new unit tests avoid this mismatch: they hand-construct a 24.9% trace with current-panel offsets and perturb a 100dp fixture by only 0.4dp. They do not feed Maestro's screen-relative geometry through the mounted inset layout.
 
-The performance launcher has the same producer gap: it clears logcat, launches the route once, and only polls logcat. The screen records one query per range load and records an interaction only after a real committed drag → expand → collapse sequence. Nothing in the launcher drives 100 reloads or 100 interactions, so its default request cannot reach `exportResult()`. A bounded direct probe confirmed the only ADB calls are `logcat -c`, one `am start`, and `logcat -d`, ending in `v12_calendar_diagnostics_result_missing`.
+**Reproduction:** The host probe using the source geometry returns exit 1:
 
-**Fix:** Implement a stage driver that performs one continuous retreat gesture and a real pointer-cancel path, records commanded marker identity separately from measured `dx`, and uses a monotonic high-resolution clock or sequence-derived timestamp that cannot collide. Make the Phase 20 collector explicitly drive the required query refreshes and 100 complete interaction sequences before awaiting export. Add integration tests that feed traces produced by the real control/gesture path into `validateV12CalendarStageTrace`; do not hand-construct the accepted trace.
+```bash
+node --input-type=module --eval '
+import { validateV12CalendarStageTrace } from "./scripts/compare-v12-calendar.mjs";
+const screenWidth=390, viewportWidth=354;
+const trace={schemaVersion:1,stage:"drag-forward-24_9",traceNonce:"p16trace-probe-249",
+sourceIdentity:{packageName:"com.fchoo.gymtracker.devtest",buildProfile:"development-test",suite:"phase16-calendar"},synthetic:true,
+samples:[
+{kind:"drag",commandedRatio:0.1,dx:-39,viewportWidth,transformX:-39,semanticOffset:0,titleOffset:0,elapsedMs:0,synthetic:true},
+{kind:"drag",commandedRatio:0.249,dx:-97.11,viewportWidth,transformX:-97.11,semanticOffset:1,titleOffset:1,elapsedMs:1,synthetic:true},
+{kind:"release",commandedRatio:0.249,dx:-97.11,viewportWidth,semanticOffset:1,titleOffset:1,elapsedMs:2,synthetic:true}]};
+try { validateV12CalendarStageTrace(trace); } catch (error) {
+  console.log(error.message, Math.abs(trace.samples[1].dx)/viewportWidth); process.exit(1);
+}'
+```
+
+Observed: `v12_calendar_trace_stage_semantic_invalid 0.27432203389830506`.
+
+**Fix:** Drive threshold stages in month-viewport coordinates, not screen percentages. A source-owned in-app stage driver can issue exact viewport-relative 10/24.9/25/25.1 markers through the mounted gesture callbacks, or the Phase 20 collector can measure the viewport bounds and inject coordinates relative to them. Add an integration test that converts the actual 360dp and 390dp insets into stage coordinates and feeds the emitted trace to `validateV12CalendarStageTrace`; do not hand-construct semantic offsets.
 
 ## Warnings
 
-### WR-01: The declared repository coverage gate is red after the Phase 16/19 merge
+### WR-01: The declared repository-wide coverage gate is still red after the final Phase 19 merge
 
 **Classification:** WARNING
 **Confidence:** 10/10
-**Files:** `package.json:49`, `package.json:94`, `src/testing/contracts/phase19WorkoutOutcomeRepositoryCoverage.test.ts:63-149`, `src/platform/sqlite/repositories/workoutOutcomeRepository.ts:425-482`, `src/platform/sqlite/repositories/workoutOutcomeRepository.ts:2716-2760`, `src/platform/sqlite/repositories/workoutOutcomeRepository.ts:2938-3024`
+**Files:** `package.json:49-50`, `scripts/phase19-integrity-coverage.json:6-40`, `scripts/run-coverage-gate.mjs:127-180`, `scripts/run-coverage-gate.mjs:640-678`, `src/testing/contracts/phase19WorkoutOutcomeRepositoryCoverage.test.ts:63-187`
 
-**Issue:** The exact declared command, run with coverage output redirected outside the worktree, completed 312 suites and 4,509 tests but failed deterministically: 311 suites/4,506 tests passed and all three tests in `phase19WorkoutOutcomeRepositoryCoverage.test.ts` failed. The merged test doubles no longer model the two-table receipt capability check, the missing-identity test bypasses the validator and never supplies a pending recommendation, and the retained-fence expectation still expects `superseded` even though current completion fills the retained fences and correctly follows the `rejected` path. Global metrics exceed the declared thresholds (90.40% statements, 86.62% branches, 90.63% functions, 91.64% lines), but the command exits non-zero, so `ci:pr` remains red. An isolated rerun reproduces 3/3 failures.
+**Issue:** The Phase 19 receipt repair itself is closed: the focused suite passes 5/5. The exact repository-wide command nevertheless exits 1 on current HEAD after all **312 suites / 4,536 tests pass**. Global coverage exceeds the declared thresholds (90.46% statements, 86.71% branches, 90.70% functions, 91.71% lines), but the integrity gate reports:
 
-**Fix:** Reconcile the Phase 19 coverage fixtures with the merged receipt contract: return `{ count: 2 }` for the capability probe, return table-specific receipt rows, supply a pending recommendation when exercising post-validation branches, and update the retained-fence expectation to the intended `rejected` result (or change production behavior if `superseded` is the actual contract). Re-run the exact repository-wide command; do not weaken thresholds or omit the suite.
+- `src/bootstrap/runningPlanRuntime.tsx`: 97.08% statements / 97.10% branches / 96.15% functions / 98.90% lines
+- `src/bootstrap/workoutAppRuntime.tsx`: 70.85% / 57.10% / 77.49% / 72.77%
+- `src/platform/sqlite/repositories/workoutOutcomeRepository.ts`: 87.51% / 81.63% / 97.35% / 87.29%
 
-### WR-02: Planned Strength and Calendar-origin Running details do not move initial focus to Back
+The Phase 19 manifest explicitly marks these files as changed-line scope, but `run-coverage-gate.mjs` honors that policy only when `--focus-phase19` is present. The normal `npm run test:coverage` path treats them as whole-file 100% owners and fails.
 
-**Classification:** WARNING
-**Confidence:** 9/10
-**Files:** `src/ui/screens/PlannedWorkoutDetailScreen.tsx:123-190`, `src/ui/screens/RunningPlanDetailScreen.tsx:44-53`, `src/ui/components/index.ts:599-670`, `.planning/phases/16-calendar-parity/16-UI-SPEC.md:362-372`
+**Reproduction:** Isolate output outside the worktree and run:
 
-**Issue:** The owner contract requires every Calendar-origin read-only detail to start focus at Back. Completed/partial Strength and imported Garmin now do this, but planned Strength and Calendar-origin Running only render `ScreenHeader backAction`; `ScreenHeader` exposes a title ref but no Back-action ref, and neither screen has a mount focus effect. Keyboard/D-pad users can therefore enter these two destinations without the deterministic Back focus guaranteed by CAL-17/CAL-20.
+```bash
+coverage_dir=$(mktemp -d /tmp/gym-review-coverage.XXXXXX)
+npm run test:coverage -- --runInBand --coverageDirectory "$coverage_dir"
+```
 
-**Fix:** Add a Back-action ref to `ScreenHeader`, forward it to the Back `IconAction`, and focus it on Calendar-origin mount for ready, loading, error, and missing states. Add mounted focus assertions for both planned Strength and Calendar Running routes.
+Observed final error: `integrity_critical_coverage_failed` with the twelve metric failures above.
 
-### WR-03: The 200% portrait month-control row has no constrained title slot or overflow behavior
+**Fix:** Restore one coherent contract for the declared repository-wide gate. Either honor the manifest's `changed_line_scope` in the normal gate as well as focused Phase 19 mode, with tests proving both invocations enforce the same owned lines, or add behavior-bearing coverage that brings all three whole files to 100%. Keep the existing global thresholds and integrity declarations intact.
 
-**Classification:** WARNING
-**Confidence:** 9/10
-**Files:** `src/ui/screens/CalendarScreen.tsx:703-726`, `src/ui/screens/CalendarScreen.tsx:907`, `.planning/phases/16-calendar-parity/16-UI-SPEC.md:202-208`
+## Verified Closures
 
-**Issue:** The contract requires Previous, month title, Today, and Next to remain reachable at 200% text, with a `48 / minmax(0,1fr) / 76 / 48` composition and title ellipsis only after preserving the controls. The implementation uses a generic `space-between` row; the 22sp title has no flex/min-width constraint or `numberOfLines`. Existing 200% coverage exercises a compact landscape viewport, not the required 360×800 portrait control row. Long localized month labels can crowd or displace the fixed controls.
-
-**Fix:** Implement the specified four-column layout, constrain the title cell with `minWidth: 0`/`flex: 1`, add one-line ellipsis plus a full accessibility label, and add a 360×800/font-scale-2 mounted test proving all four controls remain visible and activatable.
+- **WR-02 planned Back focus:** resolved. `ScreenHeader` forwards `backActionRef`; planned Strength and Calendar-origin Running focus it without changing management focus. The relevant component suites pass loading, error, missing, and ready states.
+- **WR-03 360dp/fontScale-2 controls:** resolved. Calendar now uses `48 / minmax(0,1fr) / 76 / 48`, a shrink-safe one-line title, full accessibility label, and reachable fixed actions. The 360×800/font-scale-2 mounted regression passes.
+- **Receipt coverage after Phase 19:** resolved at test level. `phase19WorkoutOutcomeRepositoryCoverage.test.ts` passes 5/5, including two-table capability detection, retained receipts, public-envelope validation, deterministic legacy fences, and both graph tables.
+- **Authority:** resolved. Calendar route composition receives frozen, query-only range/session/occurrence/activity/Running ports; Calendar-origin destination adapters expose facts plus Back and do not acquire management mutation runtimes.
+- **Privacy and filesystem containment:** resolved. Exact-key schemas, source-owned path templates, parent-segment symlink rejection, `O_EXCL|O_NOFOLLOW`, retained-byte hashing, and privacy/path adversarial tests all pass. CR-01 concerns missing semantic validation of allowed support bytes, not a renewed personal-data path.
+- **Immutability and source truth:** resolved. Scheduled Running resolves the pinned session revision; planned Strength reads an append-only deep-frozen occurrence snapshot and rejects stale/inactive provenance; Calendar session reads admit only active completed/partial history; matched Garmin history survives inactive/out-of-range intent; corrected/voided/rest facts remain authoritative.
+- **Historical UI/runtime defects:** adjacent-panel range, root/detail refocus, retained month identity, UI-thread settle latch, reduced-motion destination, compact focused agenda, current civil date, idempotent settle fallback, route reuse, factual Running targets, and Previous facts remain covered and pass in the full run.
+- **Specialized reports:** `16-SECURITY.md` remains 30/30 closed. The committed UI report was used to re-test its functional focus/reachability items; purely visual oracle differences are not reclassified as code-review warnings under the workflow's no-style-preference rule.
 
 ## Prior-Finding Reconciliation
 
-| Prior finding | Current disposition | Evidence |
-|---|---|---|
-| CR-01 outer verifier false-PASS / missing retained artifacts | Resolved | Aggregate status now consumes comparison and case statuses; APK/case/comparison artifacts are rehashed and retained JSON is compared canonically. Adversarial evidence suite passes. |
-| CR-02 exact Calendar matrix | **Open** | Restated as current CR-01: exact IDs are present, but status-only case artifacts prove no execution/configuration. |
-| CR-03 native trace/diagnostic source | **Open** | Restated as current CR-02: source-to-validator stage mismatches and the undriven 100/100 collector remain. |
-| CR-04 symlinked evidence parents | Resolved | Ancestor checks plus `O_EXCL|O_NOFOLLOW`; direct symlink tests pass. |
-| CR-05 privacy in allowed path fields | Resolved | Every descriptor path is constrained to a source-owned exact template; privacy-path tests pass. |
-| CR-06 scheduled Running revision | Resolved | Exact historical session revision read survives current slot advancement; real-SQLite test passes. |
-| CR-07 planned Strength provenance | Resolved | Append-only occurrence snapshot, active/current provenance checks, immutable target/Previous facts, and stale/inactive tests pass. |
-| CR-08 non-history Calendar session | Resolved | Calendar-only read admits only active completed/partial history; route and real-SQLite tests pass. |
-| CR-09 matched Garmin visibility | Resolved | Imported history is validated before suppression and survives inactive/out-of-range opportunity membership; real-SQLite tests pass. |
-| CR-10 adjacent panel range | Resolved | Query covers complete previous/current/next panels plus following week; outer-boundary mounted test passes. |
-| CR-11 root/detail refocus | Resolved | Root refocus always refreshes; detail state is consumed once after fresh membership proof. |
-| CR-12 retained month identity | Resolved | Last-good title/grid/selection/handlers remain coherent and inert during replacement. |
-| CR-13 UI-thread settle race | Resolved | `panEnabled` closes synchronously in `onEnd`; handler-level second-touch test passes. |
-| CR-14 reduced-motion destination loss | Resolved | Every adjacent phase settles to the pending destination when motion changes; controller matrix passes. |
-| CR-15 compact focused agenda | Resolved | Scale-aware row and agenda minima reserve one usable agenda row; compact 200% test passes. |
-| WR-01 Running target placeholders | Resolved | Shared persisted Running readback feeds Calendar and Running detail. |
-| WR-02 Garmin Back focus | Resolved | Calendar mode focuses Back; management remains heading-first. |
-| WR-03 active civil date | Resolved | Bounded active polling plus foreground refresh handles midnight, wall-clock, and timezone changes. |
-| WR-04 settle fallback | Resolved | Epoch-checked timeout and UI callback converge on one completion. |
-| WR-05 reused management routes | Resolved | Session/activity state is keyed to the current entity/revision and old actions disappear during replacement. |
-| WR-06 Previous facts | Resolved | Historical and planned DTOs carry immutable prior observations through shared formatters. |
-| WR-07 declared coverage gate | **Open** | Restated as current WR-01: current merged tree fails 3 deterministic tests. |
-
-## Second-Wave and Merge Audit Trail
-
-- Prior review baseline: `704537a9609baaf380485d2e7dcda2ab91955039`.
-- Evidence fixes inspected: `dd71a6b6`, `2352c4a4`, `27e7cc2a`, `bc85cac8`, `59c342b3`, plus integration test `436f3311`; merged by `b5f23158` without conflict.
-- Runtime/data/UI fixes inspected: `151571c6`, `fe0b950b`, `66ae5658`, `efdb259d`, `610bca41`, `5a21acfd`, `5c823e4a`, `8c6af741`, `edc45efc`, `5925ca65`, `678544bd`, `74cfa0df`, `7c3c4de8`, `80408ae1`, `87752957`, `8e137e47`, `f02cafdc`, plus closure record `51e33379`.
-- Interleaved Phase 19 merges inspected: `2d901a84` was conflict-free; `54afb23a` resolved three test/contract overlaps. Final Phase 16 merge `e7eea042` resolved six overlaps in session routing, runtime ports, Running repository reads, and workout outcomes.
-- `git show --remerge-diff e7eea042` confirms the merge retained both `getCalendarSessionDetail` and Progress `getSessionDetailAtRevision`, both current and scheduled Running reads, and both route-reuse and Progress-revision tests. No conflict markers remain.
-- Current documentation-only HEAD `f152c965` changes Phase 16/19 audit artifacts but no reviewed source.
+| Historical finding | Current disposition |
+|---|---|
+| CR-01 outer aggregate false-PASS / unverified retained bytes | Resolved for aggregate status, retained JSON equality, APK/case descriptor hashing, and path containment. The distinct support-content gap is current CR-01. |
+| CR-02 exact Calendar matrix | **Open as current CR-01.** Status-only rows fail, but aggregate counters plus arbitrary support bytes still PASS. |
+| CR-03 diagnostic producer/trace source | **Open as current CR-02.** Retreat/cancel and 100/100 collection are implemented; the 24.9% screen/viewport mismatch remains. |
+| CR-04 symlinked evidence parents | Resolved; adversarial writer/verifier tests pass. |
+| CR-05 personal data in allowed evidence paths | Resolved; exact path-template attacks fail. |
+| CR-06 scheduled Running mutable revision | Resolved; exact historical revision read and real-SQLite regression pass. |
+| CR-07 planned Strength mutable/inactive provenance | Resolved; frozen snapshot and active/current revision fences pass. |
+| CR-08 non-history Calendar session | Resolved; only active completed/partial history is admitted. |
+| CR-09 matched Garmin suppression | Resolved; valid imported history survives inactive/out-of-range membership. |
+| CR-10 incomplete adjacent panels | Resolved; outer-boundary range regression passes. |
+| CR-11 root/detail refocus | Resolved; root refresh and one-shot detail restoration remain separated. |
+| CR-12 retained month identity | Resolved; title/grid/selection/handlers remain coherent and inert during replacement. |
+| CR-13 second-drag settle race | Resolved; UI-thread latch and handler-level test pass. |
+| CR-14 reduced-motion destination loss | Resolved; destination-preserving controller matrix passes. |
+| CR-15 compact focused agenda | Resolved; scale-aware reachable agenda regression passes. |
+| WR-01 factual Running targets | Resolved; immutable session readback is shared by Calendar and detail. |
+| WR-02 Garmin Back focus | Resolved. |
+| WR-03 active civil date | Resolved; active polling and foreground refresh tests pass. |
+| WR-04 duplicate settle fallback | Resolved; epoch-checked completion is idempotent. |
+| WR-05 reused management routes | Resolved; entity/revision-keyed replacement tests pass. |
+| WR-06 Previous facts | Resolved; immutable historical/planned observations render through shared formatters. |
+| WR-07 / later WR-01 declared coverage gate | **Open as current WR-01.** Receipt tests are fixed, but the merged repository-wide gate still exits 1. |
+| Final WR-02 planned Strength/Running Back focus | Resolved by `7719bfce`; mounted states pass. |
+| Final WR-03 360dp/fontScale-2 month controls | Resolved by `e2e0aa7a`; mounted geometry/reachability test passes. |
 
 ## Verification Evidence
 
 - PASS: `npm run typecheck`.
-- PASS: `npm run check:boundaries`; 429 files checked.
-- PASS: focused Phase 16 component/route tests; 10 suites / 130 tests.
-- PASS: focused Phase 16 unit tests; 3 suites / 76 tests.
-- PASS: focused Calendar/Running/history SQLite tests; 4 suites / 28 tests.
-- PASS: focused schedule/plan/Today integration tests; 3 suites / 95 tests.
-- PASS: merged Progress component compatibility; 6 suites / 67 tests.
-- PASS: Phase 16 evidence tests; 41 tests.
-- PASS: exact Phase 16 evidence/control coverage; six evidence helpers plus Calendar controls at 100% lines/branches/functions/statements.
-- PASS: `git diff --check 704537a9..f152c965`.
-- FAIL: repository-wide `npm run test:coverage -- --runInBand`; 311/312 suites and 4,506/4,509 tests passed, but 3 deterministic Phase 19 receipt-coverage tests failed. Coverage itself was 90.40% statements, 86.62% branches, 90.63% functions, and 91.64% lines.
-- PROBE: a live comparison containing all 96 required case IDs but only `id`, `case_sha256`, `status`, `native_execution`, and artifact descriptors was accepted (`accepted: true`).
-- PROBE: the diagnostic launcher issued only log clear, one route launch, and log polling before `v12_calendar_diagnostics_result_missing`; it issued no query-repeat or interaction-driving command.
-
-## Related Specialized Reports
-
-- `16-SECURITY.md` at the merged source commit reports `SECURED`, 30/30 threats closed. This review's matrix/trace findings concern evidence truth and executability, not a newly discovered owner-data disclosure or production authorization path.
-- The current `16-UI-REVIEW.md` records 0 blockers and 11 visual/accessibility warnings. Its purely visual fidelity findings remain in that specialized report; WR-02 and WR-03 above are duplicated only because they affect keyboard/D-pad reachability in executable code.
-- The older `16-VERIFICATION.md` was read as a failure inventory, not as current truth. Its source-visible data/layout gaps are closed except for the evidence producer/verifier issues restated above.
+- PASS: `npm run check:boundaries`; 429 files.
+- PASS: `npm run test:evidence:v12:calendar`; 45/45 tests.
+- PASS: `npm run test:coverage:v12:calendar -- --coverageDirectory <tmp>`; six evidence helpers and Calendar controls at 100% statements/branches/functions/lines; 45 Node tests plus 17 Jest tests.
+- PASS: focused Phase 19 receipt coverage; 1 suite / 5 tests.
+- PASS at test level: repository-wide Jest execution; 312/312 suites and 4,536/4,536 tests.
+- FAIL at declared gate level: repository-wide coverage command exits 1 with `integrity_critical_coverage_failed` for three shared Phase 19 files.
+- FAIL probe: 390dp screen-relative 24.9% stage validates at 27.4322% of the 354dp month viewport and throws `v12_calendar_trace_stage_semantic_invalid`.
+- FALSE-PASS probe: the checked final-verifier test receives PASS while all 384 case-support files contain only arbitrary `bounded:<path>` bytes.
+- PASS: `git diff --check f152c965..57774f77`.
+- PASS: all final Phase 16 fixes (`1f2287b0`, `4256aeb4`, `7719bfce`, `e2e0aa7a`) and the Phase 19 receipt fix (`8269cc5f`) are ancestors of HEAD; both final merge remerge-diffs are conflict-free.
 
 ## Phase 20 Deferred Native Evidence
 
-Android build/install, ADB/Maestro execution, screenshots, visual comparison, physical focus/geometry checks, and release/profile performance verdicts remain Phase 20-owned. Their absence is not a finding. The checked host fixture remains `native_execution: NOT_RUN`, `status: REVIEW_REQUIRED`, and `all_pass: false`.
+Android build/install, ADB/Maestro execution, screenshots, physical focus/geometry checks, visual comparison, and release/profile verdicts remain Phase 20-owned and were not run or counted as findings. The checked host fixture remains honestly `NOT_RUN`, `REVIEW_REQUIRED`, and `all_pass: false`.
 
 ---
 
-_Reviewed: 2026-10-13T04:31:28Z_
+_Reviewed: 2026-10-13T07:16:07Z_
 _Reviewer: TRAE (gsd-code-reviewer)_
 _Depth: deep_
