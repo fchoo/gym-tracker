@@ -339,7 +339,7 @@ function Field({ error, inputRef, label, onChangeText, placeholder, value }: Rea
   placeholder?: string | undefined;
 }>) {
   const { colors } = useAppTheme();
-  return <View style={styles.field}><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{label}</Text><TextInput accessibilityLabel={label} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.textSecondary} ref={inputRef} style={[typeScale.body as TextStyle, styles.input, { borderColor: error === undefined ? colors.divider : colors.destructive, color: colors.textPrimary }]} value={value} />{error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}</View>;
+  return <View style={styles.field}><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{label}</Text><TextInput accessibilityLabel={label} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.textSecondary} ref={inputRef} style={[typeScale.bodyNumeric as TextStyle, styles.input, { borderColor: error === undefined ? colors.divider : colors.destructive, color: colors.textPrimary }]} value={value} />{error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}</View>;
 }
 
 const styles = StyleSheet.create({

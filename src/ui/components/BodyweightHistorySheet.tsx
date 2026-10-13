@@ -118,14 +118,17 @@ export function BodyweightHistorySheet({ visible, entries, editorRestoreFocusRef
         </View>
       ) : (
         <>
-          <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`Latest · ${displayKilograms(renderedEntries[0]!.grams)}`}</Text>
+          <View style={styles.latestFact}>
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]} testID="bodyweight-latest-label">Latest</Text>
+            <Text style={[typeScale.bodyNumeric as TextStyle, { color: colors.textPrimary }]} testID="bodyweight-latest-value">{displayKilograms(renderedEntries[0]!.grams)}</Text>
+          </View>
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{countLabel}</Text>
           <PrimaryAction label="Add entry" onPress={() => { setPendingEntry(null); setFailure(null); if (editorRestoreFocusRef !== undefined) editorRestoreFocusRef.current = addRef.current; onAdd(); }} ref={addRef} />
           {renderedEntries.map((entry) => {
             const pending = pendingEntry?.entryId === entry.entryId;
             return (
               <View key={entry.entryId} style={[styles.row, { borderColor: colors.divider }]}>
-                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{entry.localDate}</Text>
+                <Text style={[typeScale.bodyNumeric as TextStyle, { color: colors.textPrimary }]} testID={entry.entryId === renderedEntries[0]?.entryId ? "bodyweight-date-latest" : undefined}>{entry.localDate}</Text>
                 <Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{displayKilograms(entry.grams)}</Text>
                 {pending ? (
                   <View style={styles.confirmation}>
@@ -172,6 +175,7 @@ export function BodyweightHistorySheet({ visible, entries, editorRestoreFocusRef
 const styles = StyleSheet.create({
   content: { gap: space[4], maxHeight: "82%" },
   empty: { gap: space[4] },
+  latestFact: { gap: space[1] },
   row: { borderTopWidth: StyleSheet.hairlineWidth, gap: space[2], paddingTop: space[4] },
   actions: { flexDirection: "row", gap: space[2] },
   rowAction: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, flex: 1, justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[2] },

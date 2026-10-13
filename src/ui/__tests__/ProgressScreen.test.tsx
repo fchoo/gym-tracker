@@ -211,9 +211,11 @@ describe("ProgressScreen", () => {
       borderLeftWidth: 4,
     });
     expect(screen.getByRole("header", { name: "2.4 km goal" })).toBeOnTheScreen();
-    expect(screen.getByText("Latest · 11:20 elapsed")).toBeOnTheScreen();
-    expect(screen.getByText("Best · 10:50 elapsed")).toBeOnTheScreen();
-    expect(screen.getByText("Target · 11:00")).toBeOnTheScreen();
+    expect(screen.getByTestId("progress-hero-label-latest")).toHaveStyle({ fontFamily: "ArchivoVariable", fontSize: 16 });
+    expect(screen.getByTestId("progress-hero-value-latest")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
+    expect(screen.getByText("11:20 elapsed")).toBeOnTheScreen();
+    expect(screen.getByText("10:50 elapsed")).toBeOnTheScreen();
+    expect(screen.getByText("11:00")).toBeOnTheScreen();
     expect(screen.getByText("Gap · 10 seconds ahead of target")).toBeOnTheScreen();
     expect(screen.getByText("Pace · 4:35/km")).toBeOnTheScreen();
     expect(screen.getByText("400 m · 1:50")).toBeOnTheScreen();

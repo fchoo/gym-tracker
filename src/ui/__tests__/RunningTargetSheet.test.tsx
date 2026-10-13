@@ -58,6 +58,7 @@ describe("RunningTargetSheet", () => {
 
     expect(view.getByText("Running target")).toBeTruthy();
     expect(view.getByDisplayValue("11:00")).toBeTruthy();
+    expect(view.getByLabelText("Target time")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, lineHeight: 22 });
     expect(view.getByText("Current benchmark")).toBeTruthy();
     expect(view.getByText("12:00 · Personal History · 2026-10-01")).toBeTruthy();
 

@@ -239,7 +239,7 @@ function Fact({ label, value }: Readonly<{ label: string; value: string }>) {
   const { colors } = useAppTheme();
   return <View style={[styles.fact, { borderColor: colors.line }]}>
     <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{label}</Text>
-    <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{value}</Text>
+    <Text style={[typeScale.bodyNumeric as TextStyle, { color: colors.textPrimary }]}>{value}</Text>
   </View>;
 }
 
@@ -329,9 +329,9 @@ export function FactualHistoryChart({ formatValue, onOpenSource, registerSourceA
       {series.points.slice(0, dataPage * HISTORY_DATA_PAGE_SIZE).map((point, index) => {
         const source = sourceFor(point);
         return <View key={`${point.localDate}-${point.activityId ?? "unavailable"}-${index}`} style={[styles.dataRow, { borderColor: colors.line }]}>
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{longDate(point.localDate)}</Text>
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{formatValue === undefined ? `${valueText(point.valueSeconds)} · ${series.unitLabel}` : valueText(point.valueSeconds)}</Text>
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{positiveFinite(point.targetAtDateSeconds) ? `Target at date ${valueText(point.targetAtDateSeconds)}` : "Target unset"}</Text>
+          <Text style={[typeScale.secondaryNumeric as TextStyle, { color: colors.textPrimary }]}>{longDate(point.localDate)}</Text>
+          <Text style={[typeScale.secondaryNumeric as TextStyle, { color: colors.textSecondary }]}>{formatValue === undefined ? `${valueText(point.valueSeconds)} · ${series.unitLabel}` : valueText(point.valueSeconds)}</Text>
+          <Text style={[typeScale.secondaryNumeric as TextStyle, { color: colors.textSecondary }]}>{positiveFinite(point.targetAtDateSeconds) ? `Target at date ${valueText(point.targetAtDateSeconds)}` : "Target unset"}</Text>
           {point.basisLabel ? <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{point.basisLabel}</Text> : null}
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{statusText(point)}</Text>
           {source !== null && onOpenSource !== undefined ? <FocusablePressable accessibilityLabel="Open source" accessibilityRole="button" onPress={() => onOpenSource(source)} ref={(node) => registerSourceAction?.(source, node)} style={[styles.sourceAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text></FocusablePressable> : <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>}

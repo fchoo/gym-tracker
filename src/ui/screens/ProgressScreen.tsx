@@ -176,7 +176,8 @@ function HeroFactRow({ facts, stacked }: Readonly<{
       ]}
       testID={`progress-hero-fact-${label.toLowerCase()}`}
     >
-      <Text style={[typeScale.targetValue as TextStyle, { color: colors.textPrimary }]}>{`${label} · ${value}`}</Text>
+      <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]} testID={`progress-hero-label-${label.toLowerCase()}`}>{label}</Text>
+      <Text style={[typeScale.bodyNumeric as TextStyle, { color: colors.textPrimary }]} testID={`progress-hero-value-${label.toLowerCase()}`}>{value}</Text>
     </View>)}
   </View>;
 }

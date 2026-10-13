@@ -107,11 +107,25 @@ export const typeScale = {
     lineHeight: 22,
     fontWeight: "800",
   },
+  bodyNumeric: {
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "400",
+    fontVariant: ["tabular-nums"] as TextStyle["fontVariant"],
+  },
   secondary: {
     fontFamily: fontFamilies.interfaceRegular,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "400",
+  },
+  secondaryNumeric: {
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "400",
+    fontVariant: ["tabular-nums"] as TextStyle["fontVariant"],
   },
   label: {
     fontFamily: fontFamilies.interfaceRegular,

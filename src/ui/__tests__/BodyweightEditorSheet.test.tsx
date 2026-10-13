@@ -23,6 +23,7 @@ describe("BodyweightEditorSheet", () => {
 
     expect(screen.getByText("Add bodyweight")).toBeOnTheScreen();
     expect(screen.getByText("Optional measurement. It never changes workout targets automatically.")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Bodyweight, kg")).toHaveStyle({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, lineHeight: 22 });
     await fireEvent.changeText(screen.getByLabelText("Bodyweight, kg"), "62.5");
     await fireEvent.press(screen.getByRole("button", { name: "Save entry" }));
 
