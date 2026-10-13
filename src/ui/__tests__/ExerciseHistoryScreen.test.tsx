@@ -119,6 +119,61 @@ function history(
   };
 }
 
+function bodyweightHistory(
+  sourceRevisions: readonly (number | undefined)[],
+): ExerciseMetricHistory {
+  const projection = history();
+  const segment = projection.segments[0]!;
+  const identity = {
+    profile: "bodyweight_reps" as const,
+    contractVersion: 1,
+    exerciseMetricGeneration: 1,
+  };
+  const target = {
+    version: 1 as const,
+    profile: "bodyweight_reps" as const,
+    minReps: 8,
+    maxReps: 12,
+    variationId: "standard",
+    perSide: false,
+  };
+  const comparableSets = segment.comparableSets.map((set, index) => {
+    const { sourceRevision: _sourceRevision, ...setWithoutSourceRevision } = set;
+    return {
+      ...setWithoutSourceRevision,
+      identity,
+      target,
+      observation: {
+        version: 1 as const,
+        profile: "bodyweight_reps" as const,
+        reps: index === 0 ? 10 : 12,
+        source: "manual" as const,
+      },
+      ...(sourceRevisions[index] === undefined
+        ? {}
+        : { sourceRevision: sourceRevisions[index] }),
+      historyStatus: index === 0 ? "corrected_effective" as const : "accepted_current" as const,
+    };
+  });
+  return {
+    ...projection,
+    segments: [{
+      ...segment,
+      identity,
+      referenceTarget: target,
+      comparableSets,
+      best: comparableSets[1]!,
+      average: {
+        version: 1,
+        profile: "bodyweight_reps" as const,
+        sampleSize: comparableSets.length,
+        meanReps: 11,
+      },
+      last: comparableSets[0]!,
+    }],
+  };
+}
+
 async function renderHistory(
   overrides: Partial<React.ComponentProps<typeof ExerciseHistoryScreen>> = {},
   appearanceStore = createMemoryAppearanceStore(),
@@ -235,6 +290,43 @@ describe("ExerciseHistoryScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Show history data" }));
     await fireEvent.press(screen.getAllByRole("button", { name: "Open source" })[0]!);
     expect(onOpenSource).toHaveBeenCalledWith("session-working-best", 2);
+  });
+
+  it("opens guarded non-load sources without fabricating missing identities", async () => {
+    const onOpenSource = jest.fn();
+    await renderHistory({
+      onOpenSource,
+      loadExerciseHistory: jest.fn(async () => bodyweightHistory([undefined, 7])),
+    });
+
+    expect(await screen.findByText("bodyweight_reps · contract 1 · generation 1"))
+      .toBeOnTheScreen();
+    expect(screen.getByText("Bodyweight × 12")).toBeOnTheScreen();
+    expect(screen.getByText("Bodyweight × 11")).toBeOnTheScreen();
+    expect(screen.getByText("Bodyweight × 10")).toBeOnTheScreen();
+    expect(screen.getAllByText(/Working visit/u)).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Open source" })).toHaveLength(1);
+    expect(screen.getAllByText("Source unavailable")).toHaveLength(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open source" }));
+    expect(onOpenSource).toHaveBeenCalledTimes(1);
+    expect(onOpenSource).toHaveBeenCalledWith("session-working-best", 7);
+  });
+
+  it("routes corrected effective non-load sources exactly and rejects invalid revisions", async () => {
+    const onOpenSource = jest.fn();
+    await renderHistory({
+      onOpenSource,
+      loadExerciseHistory: jest.fn(async () => bodyweightHistory([-1, Number.MAX_SAFE_INTEGER])),
+    });
+
+    expect(await screen.findByText("bodyweight_reps · contract 1 · generation 1"))
+      .toBeOnTheScreen();
+    expect(screen.getAllByRole("button", { name: "Open source" })).toHaveLength(1);
+    expect(screen.getAllByText("Source unavailable")).toHaveLength(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Open source" }));
+    expect(onOpenSource).toHaveBeenCalledWith("session-working-best", Number.MAX_SAFE_INTEGER);
+    expect(onOpenSource).not.toHaveBeenCalledWith("session-working-last", expect.anything());
   });
 
   it("keeps Load available and omits Relative when every observation lacks a valid basis", async () => {

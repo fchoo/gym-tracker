@@ -122,6 +122,36 @@ function visitText(set: EffectiveMetricHistorySet, kind: "Warm-up" | "Working"):
   return `${kind} visit · ${longDate(set.localDate)} · ${kind === "Warm-up" ? "W" : "Set "}${set.setOrdinal + 1}`;
 }
 
+function isValidSourceRevision(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function SourceAction({
+  onOpenSource,
+  set,
+}: Readonly<{
+  onOpenSource?: ExerciseHistoryScreenProps["onOpenSource"];
+  set: EffectiveMetricHistorySet;
+}>) {
+  const { colors } = useAppTheme();
+  const sourceRevision = set.sourceRevision;
+  if (onOpenSource === undefined || !isValidSourceRevision(sourceRevision)) {
+    return (
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>
+    );
+  }
+  return (
+    <FocusablePressable
+      accessibilityLabel="Open source"
+      accessibilityRole="button"
+      onPress={() => onOpenSource(set.sessionId, sourceRevision)}
+      style={[styles.sourceAction, { borderColor: colors.focusRing }]}
+    >
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text>
+    </FocusablePressable>
+  );
+}
+
 function MetricSummary({
   label,
   value,
@@ -404,14 +434,18 @@ export function ExerciseHistoryScreen({
               />
               <View style={styles.visitList}>
                 {segment.comparableSets.map((set) => (
-                  <Text
+                  <View
                     key={set.setId}
-                    style={[typeScale.secondary as TextStyle, {
-                      color: colors.contentCardTextSecondary,
-                    }]}
                   >
-                    {visitText(set, "Working")} · {observationText(set.observation)}
-                  </Text>
+                    <Text style={[typeScale.secondary as TextStyle, {
+                      color: colors.contentCardTextSecondary,
+                    }]}>
+                      {visitText(set, "Working")} · {observationText(set.observation)}
+                    </Text>
+                    {segment.identity.profile === "load_reps"
+                      ? null
+                      : <SourceAction onOpenSource={onOpenSource} set={set} />}
+                  </View>
                 ))}
               </View>
             </ContentCard>
@@ -473,6 +507,15 @@ const styles = StyleSheet.create({
     gap: space[4],
     maxWidth: 960,
     width: "100%",
+  },
+  sourceAction: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: space[2],
   },
   summaries: {
     gap: space[2],
