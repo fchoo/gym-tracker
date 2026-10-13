@@ -127,6 +127,12 @@ function isValidSourceRevision(value: number | undefined): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
+function sourceIdentityKey(set: EffectiveMetricHistorySet): string | null {
+  return !isValidSourceRevision(set.sourceRevision)
+    ? null
+    : `${set.sessionId}\u0000${set.sourceRevision}`;
+}
+
 function SourceAction({
   onOpenSource,
   set,
@@ -388,6 +394,7 @@ function ExerciseHistoryScreenContent({
 
   const warmupLabel = `${warmupsVisible ? "Hide" : "Show"} ${history.warmupVisits.length} warm-up ${history.warmupVisits.length === 1 ? "visit" : "visits"}`;
   const resolvedExerciseName = history.exerciseName ?? exerciseName;
+  const seenNonLoadSourceIdentities = new Set<string>();
   return (
     <AdaptiveScreen
       {...adaptiveWidth}
@@ -434,20 +441,30 @@ function ExerciseHistoryScreenContent({
                 segment={segment}
               />
               <View style={styles.visitList}>
-                {segment.comparableSets.map((set) => (
-                  <View
-                    key={set.setId}
-                  >
-                    <Text style={[typeScale.secondary as TextStyle, {
-                      color: colors.contentCardTextSecondary,
-                    }]}>
-                      {visitText(set, "Working")} · {observationText(set.observation)}
-                    </Text>
-                    {segment.identity.profile === "load_reps"
-                      ? null
-                      : <SourceAction onOpenSource={onOpenSource} set={set} />}
-                  </View>
-                ))}
+                {segment.comparableSets.map((set) => {
+                  const sourceKey = segment.identity.profile === "load_reps"
+                    ? null
+                    : sourceIdentityKey(set);
+                  const showSourceAction = sourceKey === null
+                    || !seenNonLoadSourceIdentities.has(sourceKey);
+                  if (sourceKey !== null) {
+                    seenNonLoadSourceIdentities.add(sourceKey);
+                  }
+                  return (
+                    <View
+                      key={set.setId}
+                    >
+                      <Text style={[typeScale.secondary as TextStyle, {
+                        color: colors.contentCardTextSecondary,
+                      }]}>
+                        {visitText(set, "Working")} · {observationText(set.observation)}
+                      </Text>
+                      {segment.identity.profile === "load_reps" || !showSourceAction
+                        ? null
+                        : <SourceAction onOpenSource={onOpenSource} set={set} />}
+                    </View>
+                  );
+                })}
               </View>
             </ContentCard>
           ))}
