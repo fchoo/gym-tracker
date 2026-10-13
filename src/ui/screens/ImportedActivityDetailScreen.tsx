@@ -32,6 +32,7 @@ import {
 } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import {
+  calendarTypeScale,
   fontFamilies,
   radius,
   sizes,
@@ -39,6 +40,19 @@ import {
   typeScale,
   useAppTheme,
 } from "../theme";
+
+const CalendarTypographyContext = React.createContext(false);
+
+function ActivitySectionHeader(props: React.ComponentProps<typeof SectionHeader>) {
+  const calendar = React.useContext(CalendarTypographyContext);
+  return <SectionHeader
+    {...props}
+    {...(calendar ? {
+      titleStyle: calendarTypeScale.heading as TextStyle,
+      supportingTextStyle: calendarTypeScale.numeric as TextStyle,
+    } : {})}
+  />;
+}
 
 export type ImportedActivityDetailScreenState =
   | ImportedActivityDetailReadResult
@@ -111,6 +125,7 @@ function DetailHeader({
   headingRef: React.RefObject<FocusTarget | null>;
 }>) {
   const { colors } = useAppTheme();
+  const calendar = React.useContext(CalendarTypographyContext);
   return (
     <View style={styles.header} testID="activity-detail-three-column-header">
       <View style={styles.headerSide}>
@@ -127,7 +142,8 @@ function DetailHeader({
       >
         <Text
           numberOfLines={1}
-          style={[typeScale.screenTitle as TextStyle, styles.headerTitle, { color: colors.textPrimary }]}
+          style={[(calendar ? calendarTypeScale.heading : typeScale.screenTitle) as TextStyle, styles.headerTitle, { color: colors.textPrimary }]}
+          testID="activity-detail-title-text"
         >
           Activity detail
         </Text>
@@ -148,12 +164,13 @@ function Fact({ label, value, detail }: Readonly<{
   detail?: string;
 }>) {
   const { colors } = useAppTheme();
+  const calendar = React.useContext(CalendarTypographyContext);
   return (
     <View accessibilityLabel={`${label}. ${value}.${detail === undefined ? "" : ` ${detail}.`}`} accessible style={styles.fact}>
-      <Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.numericStrong, { color: colors.textPrimary }]}>{value}</Text>
+      <Text style={[(calendar ? calendarTypeScale.metadata : typeScale.label) as TextStyle, { color: colors.textSecondary }]}>{label}</Text>
+      <Text style={[calendar ? calendarTypeScale.numeric : styles.numericStrong, { color: colors.textPrimary }]}>{value}</Text>
       {detail === undefined ? null : (
-        <Text style={[styles.numericSecondary, { color: colors.textSecondary }]}>{detail}</Text>
+        <Text style={[calendar ? calendarTypeScale.numeric : styles.numericSecondary, { color: colors.textSecondary }]}>{detail}</Text>
       )}
     </View>
   );
@@ -190,7 +207,7 @@ function ActivityRoute({ detail }: Readonly<{ detail: ImportedActivityDetail }>)
       };
     return (
       <View style={styles.section}>
-        <SectionHeader title="Route" />
+        <ActivitySectionHeader title="Route" />
         <InlineNotice body={unavailable.body} heading={unavailable.heading} tone="neutral" />
       </View>
     );
@@ -199,7 +216,7 @@ function ActivityRoute({ detail }: Readonly<{ detail: ImportedActivityDetail }>)
   const label = `Route from ${pointCount} validated source positions in ${detail.route.segments.length} segment${detail.route.segments.length === 1 ? "" : "s"}.`;
   return (
     <View style={styles.section}>
-      <SectionHeader title="Route" />
+      <ActivitySectionHeader title="Route" />
       <View accessibilityLabel={label} accessibilityRole="image" accessible>
         <Svg
           accessibilityElementsHidden
@@ -276,14 +293,14 @@ function LapTable({ laps, stacked }: Readonly<{
   if (laps.length === 0) {
     return (
       <View style={styles.section}>
-        <SectionHeader title="Laps" />
+        <ActivitySectionHeader title="Laps" />
         <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Laps unavailable</Text>
       </View>
     );
   }
   return (
     <View style={styles.section}>
-      <SectionHeader title="Laps" />
+      <ActivitySectionHeader title="Laps" />
       <View accessibilityLabel={`${laps.length} source lap${laps.length === 1 ? "" : "s"}.`} role="table">
         <View role="row" style={[styles.lapHeader, { borderColor: colors.divider }]}>
           {(["Lap", "Time", "Pace"] as const).map((header) => (
@@ -310,7 +327,7 @@ function ReadyDetail({ detail, matchActionRef, onMatch, stackedLaps }: Readonly<
   return (
     <>
       <View style={styles.section}>
-        <SectionHeader supportingText={detail.confirmedLocalDate} title={detail.activityType} />
+        <ActivitySectionHeader supportingText={detail.confirmedLocalDate} title={detail.activityType} />
         <View style={styles.factGrid}>
           <Fact label="Distance" value={detail.distance} />
           {detail.elapsed === undefined ? null : <Fact label="Elapsed" value={detail.elapsed} />}
@@ -412,7 +429,7 @@ function NonReadyDetail({
       }
       return (
         <View style={styles.section}>
-          <SectionHeader
+          <ActivitySectionHeader
             supportingText={`Accepted r${state.review.acceptedRevision} · Proposed r${state.review.proposedRevision}`}
             title="Source revision needs review"
           />
@@ -509,7 +526,7 @@ export function ImportedActivityDetailScreen({
         : onBack
   ), [appearanceOpen, onBack, revisionBusy]);
   const primary = useMemo(() => (
-    <>
+    <CalendarTypographyContext.Provider value={mode === "calendar"}>
       <DetailHeader
         appearanceRef={appearanceRef}
         backRef={backRef}
@@ -529,7 +546,7 @@ export function ImportedActivityDetailScreen({
           {...(onKeepRevision === undefined ? {} : { onKeepRevision })}
         />
       )}
-    </>
+    </CalendarTypographyContext.Provider>
   ), [headingRef, matchActionRef, mode, onAcceptRevision, onKeepRevision, onMatch, onRetry, requestBack, stackedLaps, state]);
   return (
     <>

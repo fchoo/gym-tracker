@@ -6,7 +6,7 @@ import type { SessionDetail } from "../../domains/workout";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { FocusablePressable } from "../components";
 import { WorkoutSessionPresentation } from "../components/WorkoutSessionPresentation";
-import { calendarTypeScale, space, typeScale, useAppTheme } from "../theme";
+import { calendarTypeScale, space, useAppTheme } from "../theme";
 
 function statusLabel(detail: SessionDetail): string {
   return detail.status === "partial" ? "Partial · read only" : "Complete · read only";
@@ -51,18 +51,18 @@ export function CalendarReadOnlyWorkout({
               ref={backRef}
               style={styles.backAction}
             >
-              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Back</Text>
+              <Text style={[calendarTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Back</Text>
             </FocusablePressable>
             <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{title}</Text>
           </View>
           <View style={styles.summary} testID="calendar-read-only-summary">
-            <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>
+            <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>
               {statusLabel(detail)}
             </Text>
-            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+            <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textSecondary }]}>
               {detail.localDate}
             </Text>
-            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+            <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textPrimary }]}>
               {`${completed} of ${planned} sets`}
             </Text>
             <View accessibilityLabel={`${completed} of ${planned} sets complete`} style={[styles.progressTrack, { backgroundColor: colors.line }]}>
@@ -84,6 +84,7 @@ export function CalendarReadOnlyWorkout({
               return `${exercise.workingSets[0]?.target ?? "Target unavailable"} · ${completedSets}/${exercise.workingSets.length} complete`;
             }}
             showGrip={false}
+            typography="calendar"
             children={(exercise, expanded) => expanded ? (
               <View accessibilityLabel={`${exercise.name} read-only set facts`} style={styles.setTable}>
                 <View style={styles.setHeader}>
@@ -100,7 +101,7 @@ export function CalendarReadOnlyWorkout({
               </View>
             ) : null}
           />
-          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+          <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
             Historical workout facts are read only here. Corrections remain available from the session history workflow.
           </Text>
         </>

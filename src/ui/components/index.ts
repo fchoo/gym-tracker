@@ -678,11 +678,15 @@ export function SectionHeader({
   supportingText,
   action,
   tone = "default",
+  titleStyle,
+  supportingTextStyle,
 }: Readonly<{
   title: string;
   supportingText?: string;
   action?: React.ReactNode;
   tone?: "default" | "card";
+  titleStyle?: StyleProp<TextStyle>;
+  supportingTextStyle?: StyleProp<TextStyle>;
 }>) {
   const { colors } = useAppTheme();
   const primary = tone === "card" ? colors.contentCardText : colors.textPrimary;
@@ -702,6 +706,7 @@ export function SectionHeader({
           accessibilityRole: "header",
           style: [
             typeScale.sectionTitle as TextStyle,
+            titleStyle,
             { color: primary },
           ],
         },
@@ -714,6 +719,7 @@ export function SectionHeader({
             {
               style: [
                 typeScale.body as TextStyle,
+                supportingTextStyle,
                 { color: secondary },
               ],
             },

@@ -12,6 +12,7 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 import type { ImportedActivityDetail } from "../../domains/activities/activityDetails";
 import { ImportedActivityDetailScreen } from "../screens/ImportedActivityDetailScreen";
@@ -132,6 +133,8 @@ describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
       </AppearanceProvider>,
     );
     expect(screen.queryByRole("button", { name: "Match to scheduled workout" })).toBeNull();
+    expect(StyleSheet.flatten(screen.getByTestId("activity-detail-title-text").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByText("2026-10-04").props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
   });
 });
 

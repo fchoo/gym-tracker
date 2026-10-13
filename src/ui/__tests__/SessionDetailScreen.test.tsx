@@ -22,6 +22,9 @@ describe("CalendarReadOnlyWorkout", () => {
     expect(screen.getByRole("header", { name: "Day A" })).toBeOnTheScreen();
     expect(await screen.findByRole("button", { name: "Back to Calendar agenda" })).toHaveProp("hasTVPreferredFocus", true);
     expect(screen.getByText(/Not completed/u)).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByText("Complete · read only").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByText("2026-10-13").props.style)).toMatchObject({ fontFamily: "IBMPlexMono_400Regular", fontSize: 16, fontWeight: "400" });
+    expect(StyleSheet.flatten(screen.getByRole("header", { name: "Bench press" }).props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 16, fontWeight: "800" });
     expect(StyleSheet.flatten(screen.getByTestId("calendar-read-only-set-set-1").props.style).flexDirection).toBe("row");
     expect(screen.queryByText("Correct workout")).toBeNull();
     expect(screen.queryByText("Resume workout")).toBeNull();

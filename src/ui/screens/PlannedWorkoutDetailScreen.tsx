@@ -15,7 +15,7 @@ import {
 } from "../../domains/workout/workoutPresentation";
 import { EmptyState, FocusablePressable, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
-import { calendarTypeScale, space, typeScale, useAppTheme } from "../theme";
+import { calendarTypeScale, space, useAppTheme } from "../theme";
 
 type LoadState = "loading" | "ready" | "missing" | "error";
 
@@ -143,10 +143,10 @@ export function PlannedWorkoutDetailScreen({
       primary={<>
         <ScreenHeader backAction={onBack} backActionRef={backActionRef} title={title} titleStyle={calendarTypeScale.heading as TextStyle} />
         <View style={styles.summary} testID="planned-workout-summary">
-          <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Planned preview · read only</Text>
+          <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>Planned preview · read only</Text>
           <Text style={[calendarTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{detail.planName}</Text>
-          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{detail.localDate}</Text>
-          <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`0 of ${targets.length} sets`}</Text>
+          <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textSecondary }]}>{detail.localDate}</Text>
+          <Text style={[calendarTypeScale.numeric as TextStyle, { color: colors.textPrimary }]}>{`0 of ${targets.length} sets`}</Text>
           <View accessibilityLabel={`0 of ${targets.length} sets complete`} style={[styles.progressTrack, { backgroundColor: colors.line }]}>
             <View style={[styles.progressFill, { backgroundColor: colors.completed, width: "0%" }]} />
           </View>
