@@ -163,7 +163,7 @@ describe("Progress parity contract", () => {
       { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
       { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
       { snapshots: 1, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
-      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 1, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
       { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
       { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
       { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },

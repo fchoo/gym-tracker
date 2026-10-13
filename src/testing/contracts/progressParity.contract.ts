@@ -23,7 +23,9 @@ import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
 import type { RecoveryBackupPort } from "../../platform/sqlite/recoveryBackup";
 import { createProgressRepository } from "../../platform/sqlite/repositories/progressRepository";
+import { loadEffectiveHistoryProjectionSessions } from "../../platform/sqlite/repositories/historyRepository";
 import { createRunningPlanRepository } from "../../platform/sqlite/repositories/runningPlanRepository";
+import { createWorkoutOutcomeRepository } from "../../platform/sqlite/repositories/workoutOutcomeRepository";
 import type { SqliteKernel, SqliteSnapshotKernel } from "../../platform/sqlite/sqliteKernel";
 import { createExpoMigrationsEffectsContractAdapter } from "./migrationsEffects.contract";
 
@@ -82,7 +84,27 @@ const strengthFact = (revision: number): ProgressRecord => Object.freeze({
 });
 const runningGoal = Object.freeze({ version: 1 as const, id: "running-goal", planId: "running-plan", revision: 1, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday" as const], createdAtMs: 100 });
 const runningProjectionTarget = Object.freeze({ targetId: "running-target", sport: "Running" as const, distanceMeters: 2_400, targetDurationSeconds: 660, effectiveAtMs: 100, revision: 1, sourceOrder: 1, current: true });
-const runningActivity = Object.freeze({ id: "running-fact", startedAtMs: 200, localDate: "2026-08-24", distanceMeters: 2_400, durationMs: 660_000, sourceRevision: 1, opportunityId: null });
+const runningActivity = Object.freeze({ activityId: "running-fact", sourceIdentity: "garmin:external-fact", startedAtMs: 200, localDate: "2026-08-24", sourceRevision: 1, lifecycle: "active" as const, accepted: true, fixture: true, distanceMeters: 2_400, durationSeconds: 660, timeBasis: "elapsed" as const, evidence: "source_summary" as const, exactDistanceMeters: 2_400 });
+const historySubject = 'history-subject/v1:["period","all"]';
+const historyTarget = JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 40_000, minReps: 8, maxReps: 10, targetReps: [8], incrementGrams: 2_500, perSide: false });
+const historyObservation = JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 42_500, reps: 8, source: "manual" });
+const recommendationTarget = JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 60_000, minReps: 6, maxReps: 8, targetReps: [8], incrementGrams: 2_500, perSide: false });
+const recommendationProposedTarget = JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 62_500, minReps: 6, maxReps: 8, targetReps: [8], incrementGrams: 2_500, perSide: false });
+const recommendationEvidence = JSON.stringify({
+  version: 2,
+  rule: { id: "load_reps.double_progression.v1", version: 1 },
+  metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+  source: { sessionId: "recommendation-session", sessionExerciseId: "recommendation-session-exercise", sessionRevision: 1, setIds: ["recommendation-set"] },
+  revisions: { source: 1, target: 1 },
+  targetScope: [{ id: "recommendation-target", revision: 1 }],
+  currentTarget: JSON.parse(recommendationTarget),
+  proposedTarget: JSON.parse(recommendationProposedTarget),
+  decision: "increase",
+  reasonCode: "increase_all_qualified_sets_at_upper_bound",
+  reason: "All qualifying sets reached the upper bound",
+  confidence: "high",
+  lifecycle: { state: "pending", createdAtMs: 1 },
+});
 
 async function seedRunningPlan(runtime: ProgressParityRuntime): Promise<ReturnType<typeof createRunningPlanRepository>> {
   const running = createRunningPlanRepository(runtime.kernel);
@@ -98,6 +120,34 @@ async function seedRunningPlan(runtime: ProgressParityRuntime): Promise<ReturnTy
     await transaction.execute(`INSERT INTO imported_activity_current_lifecycle (activity_id, aggregate_revision, removal_state, lifecycle_event_id) VALUES ('running-fact', 1, 'active', 'running-fact-event')`);
   });
   return running;
+}
+async function seedHistorySource(runtime: ProgressParityRuntime): Promise<void> {
+  await runtime.kernel.write(async (transaction) => {
+    await transaction.execute("INSERT INTO history_subject_revisions (subject_id, revision, updated_at_ms) VALUES (?, 3, 3)", [historySubject]);
+    await transaction.execute("INSERT INTO history_projection_freshness (subject_id, applied_revision, updated_at_ms) VALUES (?, 3, 3)", [historySubject]);
+    await transaction.execute("INSERT INTO history_projection_period_inputs (subject_id, local_date, completed_exercises, planned_exercises, completed_working_sets, planned_working_sets, comparable_exposure_count) VALUES (?, '2026-08-24', 1, 1, 1, 1, 1)", [historySubject]);
+    await transaction.execute("INSERT INTO plans (id, origin, name, days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision) VALUES ('history-plan', 'custom', 'History fixture', 1, 'Owner', 'Strength', 30, 'Owner', 0, 1)");
+    await transaction.execute("INSERT INTO plan_days (id, plan_id, ordinal, name, revision) VALUES ('history-day', 'history-plan', 0, 'History day', 1)");
+    await transaction.execute("INSERT INTO exercises (id, origin, name, metric_profile, metric_contract_version, exercise_metric_generation, equipment, default_rest_seconds, revision) VALUES ('history-exercise', 'custom', 'History exercise', 'load_reps', 1, 1, 'Unspecified', 90, 3)");
+    await transaction.execute("INSERT INTO plan_day_exercises (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('history-plan-exercise', 'history-day', 'history-exercise', 0, 60, 'load_reps', 1, 1, 3)");
+    await transaction.execute("INSERT INTO plan_working_set_targets (id, plan_day_exercise_id, ordinal, load_grams, min_reps, max_reps, target_json, unit_json, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('history-target', 'history-plan-exercise', 0, 40000, 8, 10, ?, '{}', 'load_reps', 1, 1, 3)", [historyTarget]);
+    await transaction.execute("INSERT INTO workout_sessions (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, active_session_exercise_id, active_set_id, revision) VALUES ('history-session', 'history-plan', 'history-day', 'manual', 'completed', '2026-08-24', 'Asia/Singapore', 1, 2, NULL, NULL, 3)");
+    await transaction.execute("INSERT INTO session_exercises (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, default_rest_seconds, target_revision, status, revision) VALUES ('history-session-exercise', 'history-session', 'history-plan-exercise', 'history-exercise', 0, 'History exercise', 'load_reps', 1, 1, 90, 3, 'completed', 3)");
+    await transaction.execute("INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, observed_load_grams, observed_reps, observed_json, status, completed_at_ms, revision) VALUES ('history-set', 'history-session-exercise', 'working', 0, 'history-target', 40000, 8, 10, ?, '{}', 'load_reps', 1, 'load_reps', 1, 1, 42500, 8, ?, 'completed', 2, 3)", [historyTarget, historyObservation]);
+  });
+}
+async function seedRecommendationGraph(runtime: ProgressParityRuntime): Promise<void> {
+  await runtime.kernel.write(async (transaction) => {
+    await transaction.execute("INSERT INTO plans (id, origin, name, days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision) VALUES ('recommendation-plan', 'custom', 'Recommendation fixture', 1, 'Owner', 'Strength', 30, 'Owner', 0, 1)");
+    await transaction.execute("INSERT INTO plan_days (id, plan_id, ordinal, name, revision) VALUES ('recommendation-day', 'recommendation-plan', 0, 'Recommendation day', 1)");
+    await transaction.execute("INSERT INTO exercises (id, origin, name, metric_profile, metric_contract_version, exercise_metric_generation, equipment, default_rest_seconds, revision) VALUES ('recommendation-exercise', 'custom', 'Recommendation exercise', 'load_reps', 1, 1, 'Unspecified', 90, 1)");
+    await transaction.execute("INSERT INTO plan_day_exercises (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('recommendation-plan-exercise', 'recommendation-day', 'recommendation-exercise', 0, 60, 'load_reps', 1, 1, 1)");
+    await transaction.execute("INSERT INTO plan_working_set_targets (id, plan_day_exercise_id, ordinal, load_grams, min_reps, max_reps, target_json, unit_json, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('recommendation-target', 'recommendation-plan-exercise', 0, 60000, 6, 8, ?, '{}', 'load_reps', 1, 1, 1)", [recommendationTarget]);
+    await transaction.execute("INSERT INTO workout_sessions (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, active_session_exercise_id, active_set_id, revision) VALUES ('recommendation-session', 'recommendation-plan', 'recommendation-day', 'manual', 'completed', '2026-08-24', 'Asia/Singapore', 1, 2, NULL, NULL, 1)");
+    await transaction.execute("INSERT INTO session_exercises (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, default_rest_seconds, target_revision, status, revision) VALUES ('recommendation-session-exercise', 'recommendation-session', 'recommendation-plan-exercise', 'recommendation-exercise', 0, 'Recommendation exercise', 'load_reps', 1, 1, 90, 1, 'completed', 1)");
+    await transaction.execute("INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, observed_load_grams, observed_reps, observed_json, status, completed_at_ms, revision) VALUES ('recommendation-set', 'recommendation-session-exercise', 'working', 0, 'recommendation-target', 60000, 6, 8, ?, '{}', 'load_reps', 1, 'load_reps', 1, 1, 60000, 8, ?, 'completed', 2, 1)", [recommendationTarget, JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 60000, reps: 8, source: "manual" })]);
+    await transaction.execute("INSERT INTO progression_recommendations (id, exercise_id, plan_working_set_target_id, rule_type, rule_version, evidence_version, evidence_json, current_target_json, proposed_target_json, metric_profile, metric_contract_version, exercise_metric_generation, status, source_revision, target_revision, created_at_ms, decided_at_ms) VALUES ('recommendation', 'recommendation-exercise', 'recommendation-target', 'load_reps', 1, 2, ?, ?, ?, 'load_reps', 1, 1, 'pending', 1, 1, 1, NULL)", [recommendationEvidence, recommendationTarget, recommendationProposedTarget]);
+  });
 }
 async function runningTargetReplay(runtime: ProgressParityRuntime, recoveryBackup: RecoveryBackupPort): Promise<{ counts: Counts; projection: unknown; receipt: unknown }> {
   await migrate(runtime, recoveryBackup);
@@ -147,7 +197,7 @@ async function runRequirementCase(id: ProgressParityContractCaseId, runtime: Pro
       let snapshots = 0;
       const repository = createProgressRepository(snapshotKernel(runtime, () => { snapshots += 1; }));
       const read = await repository.load({ sport: "Running", period: "all_time", nowLocalDate: "2026-08-24" });
-      const dashboard = read.dashboard ?? projectProgressDashboard({ sport: "Running", running: { activities: [runningActivity], targets: [runningGoal] } });
+      const dashboard = read.dashboard ?? projectProgressDashboard({ sport: "Running", running: { activities: [runningActivity], targets: [runningProjectionTarget] } });
       invariant(dashboard.sport === "Running" && dashboard.goals[0]?.latest?.durationSeconds === 660, "progress_running_projection_invalid");
       return { counts: Object.freeze({ snapshots, runningFacts: 1, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 }), source: { runningFacts: 1 }, projection: { sport: dashboard.sport, durationSeconds: dashboard.goals[0].latest.durationSeconds }, receipt: { rows: 0 } };
     }
@@ -167,12 +217,35 @@ async function runRequirementCase(id: ProgressParityContractCaseId, runtime: Pro
       invariant(read.refresh?.automaticRefresh.maxAttempts === 3 && read.freshness === "updating", "progress_refresh_metadata_invalid");
       return { counts: Object.freeze({ ...EMPTY_COUNTS, snapshots }), source: { freshness: read.freshness }, projection: { terminal: read.refresh.automaticRefresh.terminal }, receipt: { boundedAttempts: read.refresh.automaticRefresh.maxAttempts } };
     }
-    case "progress-pro09-history-sheet": { const projection = projectProgressPeriod({ period: "all_time", nowLocalDate: "2026-08-24", periodInputs: [{ localDate: "2026-08-24", completedExercises: 1, plannedExercises: 1, completedWorkingSets: 2, plannedWorkingSets: 2, comparableExposureCount: 1 }], comparableExposures: [], scheduledOpportunities: [], attention: [] }); invariant(projection.summary.workingSets.completed === 2, "progress_history_source_invalid"); return { counts: EMPTY_COUNTS, source: { periodInputs: 1 }, projection: { completedSets: projection.summary.workingSets.completed }, receipt: { rows: 0 } }; }
-    case "progress-pro10-exercise-history": { const record = strengthFact(3); invariant(record.sourceRevision === 3, "progress_exercise_history_revision_invalid"); return { counts: Object.freeze({ snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 }), source: { revisions: [1, 2, 3] }, projection: { sourceRevision: record.sourceRevision }, receipt: { rows: 0 } }; }
+    case "progress-pro09-history-sheet": {
+      await migrate(runtime, recoveryBackup); await seedHistorySource(runtime);
+      let snapshots = 0; const repository = createProgressRepository(snapshotKernel(runtime, () => { snapshots += 1; }));
+      const read = await repository.load({ period: "all_time", nowLocalDate: "2026-08-24" });
+      invariant(read.projection?.summary.workingSets.completed === 1 && read.freshness === "current", "progress_history_source_invalid");
+      return { counts: Object.freeze({ ...EMPTY_COUNTS, snapshots }), source: { periodInputs: read.projection.trend.length }, projection: { completedSets: read.projection.summary.workingSets.completed }, receipt: { rows: 0 } };
+    }
+    case "progress-pro10-exercise-history": {
+      await migrate(runtime, recoveryBackup); await seedHistorySource(runtime);
+      const sessions = await loadEffectiveHistoryProjectionSessions(runtime.kernel);
+      const session = sessions[0]; const metricSet = session?.metricSets[0];
+      invariant(session !== undefined && metricSet?.sourceRevision === 3, "progress_exercise_history_revision_invalid");
+      return { counts: Object.freeze({ snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 }), source: { revisions: [metricSet.sourceRevision] }, projection: { sourceRevision: metricSet.sourceRevision }, receipt: { rows: 0 } };
+    }
     case "progress-pro11-relative-view": { const relative = projectRelativeStrength({ observation: { localDate: "2026-08-24", loadGrams: 72_000 }, bodyweightFacts: [{ factId: "basis", localDate: "2026-08-24", grams: 72_000, effectiveAtMs: 1, sourceRevision: 1, lifecycle: "active" }] }); invariant(relative?.relativeLoad === 1 && relative.basis.localDate === "2026-08-24", "progress_relative_invalid"); return { counts: EMPTY_COUNTS, source: { datedBasis: true }, projection: { relativeLoad: relative.relativeLoad, basis: relative.basis.localDate }, receipt: { rows: 0 } }; }
     case "progress-pro12-target-editor": { const target = { distanceMeters: 10_000, targetDurationSeconds: 660 }; invariant(deriveRunningPacing(target).target === "11:00", "progress_target_editor_invalid"); return { counts: EMPTY_COUNTS, source: { validated: true }, projection: { targetSeconds: target.targetDurationSeconds }, receipt: { rows: 0 } }; }
     case "progress-pro14-recommendation": { const decision = { recommendationId: "recommendation", requestId: "decision", decision: "use_target" as const, expectedEvidenceVersion: 2, expectedSourceRevision: 1, expectedTargetRevision: 1, decidedAtMs: 1 }; validateRecommendationDecisionInput(decision, "use_target"); return { counts: EMPTY_COUNTS, source: { evidenceVersion: 2, sourceRevision: 1, targetRevision: 1 }, projection: { decision: decision.decision }, receipt: { rows: 0 } }; }
-    case "progress-pro15-recommendation-persistence": { await migrate(runtime, recoveryBackup); const decision = { recommendationId: "recommendation", requestId: "decision", decision: "keep_current_target" as const, expectedEvidenceVersion: 2, expectedSourceRevision: 1, expectedTargetRevision: 1, decidedAtMs: 1 }; const request = canonicalRecommendationDecisionRequest(decision); await runtime.kernel.write(async (transaction) => { await transaction.execute("CREATE TABLE contract_recommendation_receipts (request_sha256 TEXT PRIMARY KEY, result_json TEXT NOT NULL)"); await transaction.execute("INSERT INTO contract_recommendation_receipts VALUES (?, ?)", [await runtimeSha256(request), JSON.stringify({ status: "accepted" })]); }); const rows = await runtime.kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM contract_recommendation_receipts"); invariant(rows[0]?.count === 1, "progress_recommendation_receipt_invalid"); return { counts: Object.freeze({ ...EMPTY_COUNTS, receiptRows: rows[0].count, receiptReplays: 1 }), source: { decision: decision.decision }, projection: { requestStored: true }, receipt: { rows: rows[0].count, replay: "already_committed" } }; }
+    case "progress-pro15-recommendation-persistence": {
+      await migrate(runtime, recoveryBackup); await seedRecommendationGraph(runtime);
+      const repository = createWorkoutOutcomeRepository(runtime.kernel);
+      const decision = { recommendationId: "recommendation", requestId: "decision", decision: "keep_current_target" as const, expectedEvidenceVersion: 2, expectedSourceRevision: 1, expectedTargetRevision: 1, decidedAtMs: 1 };
+      const first = await repository.keepCurrentTarget(decision); const replay = await repository.keepCurrentTarget(decision);
+      const [receipts, recommendation] = await Promise.all([
+        runtime.kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM progression_recommendation_decision_receipts WHERE request_id = ?", [decision.requestId]),
+        runtime.kernel.queryAll<{ status: string }>("SELECT status FROM progression_recommendations WHERE id = ?", [decision.recommendationId]),
+      ]);
+      invariant(first.status === "rejected" && replay.status === "already_committed" && receipts[0]?.count === 1 && recommendation[0]?.status === "rejected", "progress_recommendation_receipt_invalid");
+      return { counts: Object.freeze({ ...EMPTY_COUNTS, receiptRows: receipts[0].count, receiptReplays: 1 }), source: { decision: decision.decision }, projection: { status: recommendation[0].status }, receipt: { rows: receipts[0].count, replay: replay.status } };
+    }
     case "progress-pro16-settings": { const payload = canonicalBodyweightRequestPayload({ operation: "create", grams: 72_000 }); invariant(!/gender|height|score|owner/iu.test(payload), "progress_settings_privacy_invalid"); return { counts: EMPTY_COUNTS, source: { fields: 2 }, projection: { privacy: "bounded" }, receipt: { rows: 0 } }; }
     case "progress-pro17-bodyweight-history":
     case "progress-pro18-bodyweight-editor": {
