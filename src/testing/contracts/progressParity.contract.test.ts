@@ -93,7 +93,7 @@ afterEach(async () => {
   directories.clear();
 });
 
-function createHostAdapter(): ProgressParityContractAdapter {
+function createHostAdapter(failCase?: string): ProgressParityContractAdapter {
   return {
     async createRuntime(databaseKey) {
       const directory = mkdtempSync(join(tmpdir(), `gym-progress-parity-${databaseKey}-`));
@@ -103,7 +103,15 @@ function createHostAdapter(): ProgressParityContractAdapter {
       const reader = new Connection(new DatabaseSync(databasePath));
       await configureSqliteConnection(writer, { enableWal: true });
       await configureSqliteConnection(reader, { enableWal: false });
-      const kernel = createSqliteKernel({ reader, writer });
+      const baseKernel = createSqliteKernel({ reader, writer });
+      const kernel = failCase === databaseKey
+        ? {
+          ...baseKernel,
+          readSnapshot: async () => {
+            throw new Error("progress_strength_projection_injected_failure");
+          },
+        } as SqliteKernel
+        : baseKernel;
       kernels.add(kernel);
       return {
         databaseName: databasePath,
@@ -125,7 +133,7 @@ function createHostAdapter(): ProgressParityContractAdapter {
 }
 
 describe("Progress parity contract", () => {
-  it("runs the factual Running read and lost-acknowledgement target replay against real SQLite", async () => {
+  it("dispatches each requirement to its own factual path and preserves the privacy-safe result schema", async () => {
     expect(PROGRESS_PARITY_CONTRACT_CASES).toHaveLength(18);
     expect(Object.values(PROGRESS_PARITY_REQUIREMENT_BY_CASE)).toEqual(
       Array.from({ length: 18 }, (_, index) =>
@@ -146,6 +154,26 @@ describe("Progress parity contract", () => {
       failed: 0,
       skipped: 0,
     });
+    const expectedCounts = [
+      { snapshots: 3, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 1, goalRevisions: 1, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 1, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 1, runningFacts: 1, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 1, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 1, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 2, receiptRows: 1, receiptReplays: 1 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 1, receiptReplays: 1 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 0, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 1, receiptReplays: 0 },
+      { snapshots: 0, runningFacts: 0, goalRevisions: 0, receiptRows: 1, receiptReplays: 1 },
+    ] as const;
     for (const [index, contractCase] of result.cases.entries()) {
       expect(contractCase).toMatchObject({
         id: PROGRESS_PARITY_CONTRACT_CASES[index],
@@ -153,11 +181,7 @@ describe("Progress parity contract", () => {
         status: "passed",
         code: "progress_contract_case_passed",
         counts: {
-          snapshots: index === 0 ? 4 : index === 1 || index === 2 ? 2 : 1,
-          runningFacts: 1,
-          goalRevisions: 2,
-          receiptRows: 1,
-          receiptReplays: 1,
+          ...expectedCounts[index],
         },
       });
       expect(contractCase.timings.durationMs).toBeGreaterThanOrEqual(0);
@@ -182,6 +206,19 @@ describe("Progress parity contract", () => {
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
+  });
+
+  it("fails the requirement-specific path instead of being masked by Running setup", async () => {
+    const result = await runProgressParityContract(createHostAdapter("progress-pro03-strength"));
+    const strength = result.cases.find(({ id }) => id === "progress-pro03-strength");
+    const running = result.cases.find(({ id }) => id === "progress-pro04-running");
+    expect(strength).toMatchObject({
+      status: "failed",
+      errorCode: "progress_strength_projection_injected_failure",
+      counts: { snapshots: 0, runningFacts: 0, receiptRows: 0 },
+    });
+    expect(running).toMatchObject({ status: "passed", counts: { runningFacts: 1 } });
+    expect(result.failed).toBe(1);
   });
 
   it("keeps the host/native suite registration source-owned and explicit", () => {
