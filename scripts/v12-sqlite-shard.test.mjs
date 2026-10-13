@@ -11,7 +11,7 @@ const caseIds = [
 const valid = () => ({
   schema_version: 1,
   producer: 'v12-sqlite-shard',
-  identity: { source_digest: digest, fixture_digest: digest, apk_digest: digest, device_digest: digest },
+  identity: { source_digest: digest, fixture_digest: digest, apk_digest: digest, installed_apk_digest: digest, device_digest: digest },
   cases: caseIds.map((id, index) => ({ id, status: 'passed', order: index, digests: { pre: digest, post: digest, reopen: digest, rebuild: digest } })),
 });
 
@@ -28,7 +28,7 @@ test('rejects duplicate, skipped, stale, out-of-order, raw, and impossible downg
     (input) => { input.cases[1].id = input.cases[0].id; },
     (input) => { input.cases[1].status = 'skipped'; },
     (input) => { input.cases.reverse(); },
-    (input) => { input.identity.apk_digest = 'b'.repeat(64); input.identity.source_digest = digest; },
+    (input) => { input.identity.installed_apk_digest = 'b'.repeat(64); },
     (input) => { input.cases[0].raw_rows = [{ secret: 'nope' }]; },
     (input) => { input.cases[1].claimed_schema = 26; },
   ]) {
