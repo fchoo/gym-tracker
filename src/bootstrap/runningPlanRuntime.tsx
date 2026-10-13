@@ -118,14 +118,12 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
         if (current === null || current.revision !== input.expectedSourceRevision) {
           throw new Error("running_target_revision_conflict");
         }
-        if (current.goal.goalDistanceMeters !== input.goalDistanceMeters) {
-          throw new Error("running_target_distance_conflict");
-        }
         const savedAtMs = dependencies.nowMs();
         const goal = {
           ...current.goal,
           id: createId("running-goal-revision"),
           revision: current.goal.revision + 1,
+          goalDistanceMeters: input.goalDistanceMeters,
           targetDurationMs: input.targetDurationMs,
           targetLocalDate: input.targetLocalDate,
           trainingDays: [...input.trainingDays],

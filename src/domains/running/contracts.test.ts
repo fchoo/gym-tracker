@@ -67,6 +67,11 @@ describe("Running source contracts", () => {
     expect(goal.targetLocalDate).toBeUndefined();
     expect(goal.benchmarks?.tenKilometres).toBeUndefined();
     expect(goal.benchmarks?.halfMarathon).toBeUndefined();
+    expect(parseRunningGoal({
+      ...goal,
+      id: "goal-2point4",
+      goalDistanceMeters: 2_400,
+    }).targetDurationMs).toBe(660_000);
 
     expect(() => parseRunningSessionRevision({
       ...base,

@@ -68,6 +68,25 @@ describe("RunningPlanRuntimePort", () => {
     await expect(runtime.saveRunningTarget({ planId: "running", requestId: "target-readback", expectedSourceRevision: 4, goalDistanceMeters: 2400, targetDurationMs: 660_000, trainingDays: ["Monday"] })).rejects.toThrow("running_target_readback_missing");
   });
 
+  it("commits an owner-selected distance revision on the authoritative Running goal", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const readBack = { ...plan, revision: 5, goal: { ...plan.goal, id: "goal-3", revision: 3, goalDistanceMeters: 10_000, targetDurationMs: 3_600_000 } };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(readBack);
+    mockSaveRunningTarget.mockResolvedValue({ outcome: "committed", target: readBack.goal });
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+
+    await expect(runtime.saveRunningTarget({
+      planId: "running", requestId: "target-distance", expectedSourceRevision: 4,
+      goalDistanceMeters: 10_000, targetDurationMs: 3_600_000, trainingDays: ["Monday"],
+    })).resolves.toEqual({ outcome: "committed", plan: readBack });
+    expect(mockSaveRunningTarget).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      goal: expect.objectContaining({ goalDistanceMeters: 10_000, targetDurationMs: 3_600_000 }),
+    }));
+  });
+
   it("allocates identities only inside an authoritative session commit and returns committed readback", async () => {
     const plan = {
       id: "running", version: 1 as const, name: "Running", revision: 1, active: false as const, createdAtMs: 1,
