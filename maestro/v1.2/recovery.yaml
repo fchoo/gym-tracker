@@ -1,0 +1,27 @@
+appId: com.fchoo.gymtracker.devtest
+name: V1.2 recovery fixture flow (deferred native evidence)
+tags:
+  - phase-20
+  - recovery
+  - deferred-native-evidence
+---
+# This source-bound flow is intentionally not run until Plan 20-08's frozen APK gate.
+- launchApp:
+    clearState: false
+    stopApp: true
+- assertVisible: "Today"
+- runFlow:
+    when:
+      true: ${V12_RECOVERY_STAGE == 'post-commit-before-ack'}
+    commands:
+      - stopApp
+      - launchApp:
+          clearState: false
+          stopApp: true
+      - assertVisible: "Resume workout"
+- runFlow:
+    when:
+      true: ${V12_RECOVERY_STAGE == 'offline-retry'}
+    commands:
+      - assertVisible: "Workout in progress"
+      - pressKey: "Back"
