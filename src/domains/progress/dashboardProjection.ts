@@ -507,8 +507,10 @@ export function projectProgressDashboard(input: ProgressDashboardInput): Progres
 }
 
 export const __dashboardProjectionTestOnly = Object.freeze({
+  allGoalCandidate,
   compareGoals,
   duration,
+  fallbackGoalOrder,
   formatScalar,
   plannedNextFor,
   scalarMetric,

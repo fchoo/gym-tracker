@@ -499,5 +499,22 @@ describe("projectProgressDashboard", () => {
         { sport: "Strength", goal: { goalId: strengthGoalId } },
       ],
     });
+
+    const runningGoal = (projection as Extract<typeof projection, { sport: "All" }>).activeGoals[0]!;
+    expect(__dashboardProjectionTestOnly.fallbackGoalOrder(runningGoal)).toMatchObject({
+      targetId: "running-target",
+      targetDurationSeconds: 660,
+      revision: 2,
+    });
+    if (runningGoal.sport !== "Running") throw new Error("expected_running_goal");
+    const missingRunningGoal = { sport: "Running" as const, goal: { ...runningGoal.goal, latest: null, target: null } };
+    expect(__dashboardProjectionTestOnly.fallbackGoalOrder(missingRunningGoal)).toMatchObject({
+      targetId: "running:2400:elapsed",
+      targetDurationSeconds: null,
+      revision: 1,
+    });
+    expect(__dashboardProjectionTestOnly.allGoalCandidate(missingRunningGoal, [])).toMatchObject({
+      value: missingRunningGoal,
+    });
   });
 });

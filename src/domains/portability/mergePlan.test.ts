@@ -2412,6 +2412,17 @@ describe("portable merge plan", () => {
       sessionRootIds: ["session-root"], slotRootIds: ["slot-root"],
       outcome: "committed", targetRevision: 1, target: goal,
     };
+    const aggregateResult = {
+      aggregate: {
+        version: 1, id: "archive-plan", name: "Running", revision: 1,
+        active: false, lifecycle: "inactive", createdAtMs: 1,
+        goal, currentTargets: [goal],
+        sessions: [{
+          slot: { id: "slot-revision", rootId: "slot-root", weekday: "Monday", revision: 1, ordinal: 0 },
+          session,
+        }],
+      },
+    };
     const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
       plans: [{ id: "archive-plan", origin: "custom", portable_id: portableId, plan_kind: "running" }],
       running_plans: [{ plan_id: "archive-plan" }],
@@ -2423,7 +2434,7 @@ describe("portable merge plan", () => {
         session_revision_id: "session-revision",
       }],
       running_plan_receipts: [{ request_id: "request", request_sha256: "a".repeat(64), plan_id: "archive-plan", result_json: JSON.stringify(result) }],
-      running_plan_events: [{ id: "event", plan_id: "archive-plan", payload_json: JSON.stringify(result) }],
+      running_plan_events: [{ id: "event", plan_id: "archive-plan", payload_json: JSON.stringify(aggregateResult) }],
       running_goals: [{ id: "goal", plan_id: "archive-plan", goal_json: JSON.stringify(goal) }],
       running_session_slots: [{ id: "slot-root", plan_id: "archive-plan", session_revision_id: "session-revision" }],
     });
@@ -2462,15 +2473,95 @@ describe("portable merge plan", () => {
     expect(mappedSlot.id).toBe(mappedSlotRoot.id);
     expect(mappedReceipt.request_id).not.toBe("request");
     expect(mappedReceipt.request_sha256).toBe("a".repeat(64));
-    for (const embedded of [mappedReceiptResult, mappedEventResult]) {
-      expect(embedded).toMatchObject({
-        planId: "merged-plan",
-        sessionRootIds: [mappedRoot.id],
-        slotRootIds: [mappedSlotRoot.id],
-        target: { id: mappedGoalRow.id, planId: "merged-plan" },
-      });
-      expect(JSON.stringify(embedded)).not.toContain("archive-plan");
+    expect(mappedReceiptResult).toMatchObject({
+      planId: "merged-plan",
+      sessionRootIds: [mappedRoot.id],
+      slotRootIds: [mappedSlotRoot.id],
+      target: { id: mappedGoalRow.id, planId: "merged-plan" },
+    });
+    expect(mappedEventResult).toMatchObject({ aggregate: {
+      id: "merged-plan",
+      goal: { id: mappedGoalRow.id, planId: "merged-plan" },
+      currentTargets: [{ id: mappedGoalRow.id, planId: "merged-plan" }],
+      sessions: [{
+        slot: { id: aggregate.tables.running_session_slot_revisions?.[0]?.id, rootId: mappedSlotRoot.id },
+        session: { id: mappedSessionRow.id, rootId: mappedRoot.id, planId: "merged-plan" },
+      }],
+    } });
+    expect(JSON.stringify([mappedReceiptResult, mappedEventResult])).not.toContain("archive-plan");
+  });
+
+  it("fails closed for malformed embedded Running identities and covers every payload mapping", () => {
+    const maps = {
+      plans: new Map([["plan", "mapped-plan"]]),
+      goals: new Map([["goal", "mapped-goal"]]),
+      sessionRevisions: new Map([["revision", "mapped-revision"]]),
+      sessionRoots: new Map([["root", "mapped-root"]]),
+      slotRevisions: new Map([["slot-revision", "mapped-slot-revision"]]),
+      slotRoots: new Map([["slot-root", "mapped-slot-root"]]),
+    };
+    const validGoal = { version: 1, id: "goal", planId: "plan", revision: 1, goalDistanceMeters: 2_400, trainingDays: ["Monday"], createdAtMs: 1 };
+    const validSession = { version: 1, id: "revision", rootId: "root", planId: "plan", sessionKind: "recovery", revision: 1, createdAtMs: 1, phases: [], contextual: {} };
+    for (const value of [null, { version: 2, trainingDays: [] }, { version: 1, trainingDays: "Monday" }]) {
+      expect(() => __mergePlanTestOnly.rewriteRunningGoalValue(value, maps)).toThrow(new MergePlanError("merge_plan_invalid"));
     }
+    for (const value of [null, { version: 2, phases: [], contextual: {} }, { version: 1, phases: {}, contextual: {} }, { version: 1, phases: [], contextual: null }]) {
+      expect(() => __mergePlanTestOnly.rewriteRunningSessionValue(value, maps)).toThrow(new MergePlanError("merge_plan_invalid"));
+    }
+    expect(() => __mergePlanTestOnly.runningJsonIdentifier(1)).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.runningJsonIdentifier(" bad")).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.runningJsonIdentifier("")).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(__mergePlanTestOnly.runningJsonIdentifier("valid")).toBe("valid");
+    for (const value of ["1", 1.5, 0]) {
+      expect(() => __mergePlanTestOnly.runningJsonRevision(value)).toThrow(new MergePlanError("merge_plan_invalid"));
+    }
+    expect(__mergePlanTestOnly.runningJsonRevision(1)).toBe(1);
+    expect(() => __mergePlanTestOnly.mappedIdentifierArray({}, maps.sessionRoots)).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(__mergePlanTestOnly.mappedIdentifierArray(["root"], maps.sessionRoots)).toEqual(["mapped-root"]);
+    expect(__mergePlanTestOnly.rewriteRunningPayloadValue(["plain", { planId: "plan" }], maps)).toEqual(["plain", { planId: "mapped-plan" }]);
+    expect(__mergePlanTestOnly.rewriteRunningPayloadValue({
+      sessionRootId: "root", sessionRevisionId: "revision", slotRootId: "slot-root",
+      sessionRootIds: ["root"], slotRootIds: ["slot-root"], nested: { untouched: true },
+    }, maps)).toEqual({
+      sessionRootId: "mapped-root", sessionRevisionId: "mapped-revision", slotRootId: "mapped-slot-root",
+      sessionRootIds: ["mapped-root"], slotRootIds: ["mapped-slot-root"], nested: { untouched: true },
+    });
+    expect(__mergePlanTestOnly.rewriteRunningPayloadValue(validGoal, maps)).toMatchObject({ id: "mapped-goal", planId: "mapped-plan" });
+    expect(__mergePlanTestOnly.rewriteRunningPayloadValue(validSession, maps)).toMatchObject({ id: "mapped-revision", rootId: "mapped-root", planId: "mapped-plan" });
+    expect(__mergePlanTestOnly.rewriteRunningAggregateValue({
+      version: 1, id: "plan", name: "Running", revision: 1, active: false,
+      lifecycle: "inactive", createdAtMs: 1, goal: validGoal, sessions: [],
+    }, maps)).toMatchObject({ id: "mapped-plan", sessions: [] });
+    for (const value of [
+      null,
+      { version: 2, goal: validGoal, sessions: [] },
+      { version: 1, goal: validGoal, sessions: {} },
+      { version: 1, goal: null, sessions: [] },
+      { version: 1, goal: validGoal, sessions: [], currentTargets: {} },
+      { version: 1, id: "plan", goal: validGoal, sessions: [null] },
+      { version: 1, id: "plan", goal: validGoal, sessions: [{ slot: null, session: validSession }] },
+      { version: 1, id: "plan", goal: validGoal, sessions: [{ slot: {}, session: null }] },
+    ]) {
+      expect(() => __mergePlanTestOnly.rewriteRunningAggregateValue(value, maps)).toThrow(new MergePlanError("merge_plan_invalid"));
+    }
+    expect(() => __mergePlanTestOnly.rewriteRunningPayload("[]", maps)).toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
+  it("rejects a malformed Running receipt hash during plan materialization", () => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      plans: [{ id: "plan", origin: "custom", portable_id: "9".repeat(32), plan_kind: "running" }],
+      running_plans: [{ plan_id: "plan" }],
+      running_goals: [{ id: "goal", plan_id: "plan", goal_json: JSON.stringify({ version: 1, id: "goal", planId: "plan", revision: 1, goalDistanceMeters: 2_400, trainingDays: ["Monday"], createdAtMs: 1 }) }],
+      running_plan_receipts: [{ request_id: "request", request_sha256: "bad", plan_id: "plan", result_json: JSON.stringify({ planId: "plan" }) }],
+    });
+    expect(() => __mergePlanTestOnly.planAggregate(
+      archive,
+      snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }),
+      { aggregateClass: "owned_plan", kind: "insert", portableId: "9".repeat(32), archiveId: "plan", localId: "plan" },
+      new Map(),
+      new Map([["plan", "plan"]]),
+      new Map(),
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
   });
 
   it("retains and remaps both recommendation decision receipt graphs under keep-both collisions", () => {
