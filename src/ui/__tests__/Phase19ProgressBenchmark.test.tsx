@@ -12,8 +12,14 @@ import {
   createInactiveRunningPlan,
 } from "../../domains/running/commands";
 import type { ProgressRecommendationReview } from "../../domains/progress";
+import type { HistorySubject } from "../../domains/history";
 import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
+import {
+  createHistoryProjectionEffectRunner,
+  createHistoryProjectionEffectStore,
+} from "../../platform/sqlite/effects/historyProjectionEffects";
+import { createHistoryProjectionRepository } from "../../platform/sqlite/repositories/historyProjectionRepository";
 import {
   configureSqliteConnection,
   type SqliteConnection,
@@ -34,8 +40,8 @@ import {
 } from "../components/FactualHistoryChart";
 import {
   RecommendationSurface,
-  recommendationTargetText,
 } from "../components/RecommendationSurface";
+import { ProgressScreen } from "../screens/ProgressScreen";
 import { AppearanceProvider } from "../theme";
 
 class Result<Row extends Record<string, unknown>>
@@ -156,6 +162,16 @@ async function createProductionRepository() {
     ...createEnvelope,
     requestSha256: canonicalRunningRequestHash(createEnvelope),
   });
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      "UPDATE plans SET is_active = 1 WHERE id = 'phase19-benchmark-plan'",
+    );
+    await transaction.execute(
+      `UPDATE owned_plan_schedules
+          SET lifecycle = 'active', deactivated_at_ms = NULL
+        WHERE plan_id = 'phase19-benchmark-plan'`,
+    );
+  });
 
   await kernel.write(async (transaction) => {
     for (let index = 0; index < 500; index += 1) {
@@ -211,6 +227,7 @@ async function createProductionRepository() {
     } as never)) as Promise<Value>,
   } as SqliteSnapshotKernel;
   return {
+    kernel,
     repository: createProgressRepository(instrumentedKernel),
     queryRows,
   };
@@ -282,7 +299,7 @@ async function collect(count: number, operation: (index: number) => unknown | Pr
 
 describe("Phase 19 production Progress benchmark workload", () => {
   it("measures the real repository, factual chart, and recommendation review", async () => {
-    const { repository, queryRows } = await createProductionRepository();
+    const { kernel, repository, queryRows } = await createProductionRepository();
     const usefulContent = await collect(sampleCounts.useful, async () => {
       const result = await repository.load({
         sport: "Running",
@@ -292,7 +309,7 @@ describe("Phase 19 production Progress benchmark workload", () => {
       expect(result.dashboard?.sport).toBe("Running");
     });
     const reviewSurface = await render(
-      <AppearanceProvider>
+      <AppearanceProvider reduceMotion>
         <RecommendationSurface
           recommendation={pendingReview}
           onAccept={async () => undefined}
@@ -301,27 +318,70 @@ describe("Phase 19 production Progress benchmark workload", () => {
         />
       </AppearanceProvider>,
     );
-    await fireEvent.press(reviewSurface.getByRole("button", {
-      name: "Review target for Synthetic press",
-    }));
-    await waitFor(() => {
-      expect(reviewSurface.getByRole("header", { name: "Review target" })).toBeTruthy();
+    const reviewOpen = await collect(sampleCounts.review, async () => {
+      await fireEvent.press(reviewSurface.getByRole("button", {
+        name: "Review target for Synthetic press",
+      }));
+      await waitFor(() => {
+        expect(reviewSurface.getByRole("header", { name: "Review target" })).toBeTruthy();
+        expect(reviewSurface.getByText("Current target · 60 kg × 8")).toBeTruthy();
+        expect(reviewSurface.getByText("Proposed target · 62.5 kg × 6")).toBeTruthy();
+      });
+      await fireEvent.press(reviewSurface.getByRole("button", { name: "Close review target" }));
+      await waitFor(() => {
+        expect(reviewSurface.queryByRole("header", { name: "Review target" })).toBeNull();
+      });
     });
     reviewSurface.unmount();
-    const reviewOpen = await collect(sampleCounts.review, () => {
-      const current = recommendationTargetText(pendingReview.currentTarget);
-      const proposed = recommendationTargetText(pendingReview.proposedTarget);
-      expect(`${current}|${proposed}`).toContain("kg");
+    const projectionRepository = createHistoryProjectionRepository(kernel);
+    const projectionRunner = createHistoryProjectionEffectRunner({
+      repository: projectionRepository,
+      store: createHistoryProjectionEffectStore(kernel),
     });
-    let boundedYieldCount = 0;
-    const targetedRebuild = await collect(sampleCounts.rebuild, async () => {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      boundedYieldCount += 1;
-      await repository.load({
+    const allPeriodSubject: HistorySubject = {
+      id: 'history-subject/v1:["period","all"]',
+      kind: "period",
+    };
+    let updatingVisibleCount = 0;
+    let completedRebuildCount = 0;
+    let usefulContentVisibleCount = 0;
+    const targetedRebuild = await collect(sampleCounts.rebuild, async (index) => {
+      const nowMs = 20_000 + index;
+      await projectionRepository.advanceAndEnqueue({
+        subjects: [allPeriodSubject],
+        nowMs,
+      });
+      const stale = await repository.load({
         sport: "Running",
-        period: "all_time",
+        period: index % 2 === 0 ? "12_weeks" : "4_weeks",
         nowLocalDate: "2026-08-24",
       });
+      expect(stale.freshness).toBe("updating");
+      const progressSurface = await render(
+        <AppearanceProvider reduceMotion>
+          <ProgressScreen
+            fontScale={1}
+            loadProgress={(input) => repository.load(input)}
+            nowLocalDate="2026-08-24"
+            onOpenExercise={() => undefined}
+            onOpenSession={() => undefined}
+            width={390}
+          />
+        </AppearanceProvider>,
+      );
+      await waitFor(() => {
+        expect(progressSurface.getByText("Updating progress")).toBeTruthy();
+      });
+      updatingVisibleCount += 1;
+      const rebuilt = await projectionRunner.drain({ nowMs, limit: 1 });
+      expect(rebuilt).toMatchObject({ claimed: 1, completed: 1 });
+      completedRebuildCount += rebuilt.completed;
+      await fireEvent.press(progressSurface.getByRole("button", { name: "Refresh progress" }));
+      await waitFor(() => {
+        expect(progressSurface.getByRole("header", { name: "Nearest active goal" })).toBeTruthy();
+      });
+      usefulContentVisibleCount += 1;
+      progressSurface.unmount();
     });
     const periods = ["4_weeks", "12_weeks", "all_time"] as const;
     const rangeQuery = await collect(sampleCounts.range, async (index) => {
@@ -351,9 +411,9 @@ describe("Phase 19 production Progress benchmark workload", () => {
     expect(Math.max(...queryRows)).toBeLessThanOrEqual(500);
     if (resultPath !== undefined) {
       writeFileSync(resultPath, `${JSON.stringify({
-        schema_version: 2,
+        schema_version: 3,
         suite: "phase19-progress",
-        producer: "phase19-progress-benchmark/v2",
+        producer: "phase19-progress-benchmark/v3",
         environment: "host-production-workload",
         status: "passed",
         native_status: "NOT_RUN",
@@ -381,8 +441,9 @@ describe("Phase 19 production Progress benchmark workload", () => {
           samples: queryRows,
         },
         targeted_rebuild: {
-          updating_visible: false,
-          bounded_yield_count: boundedYieldCount,
+          updating_visible: updatingVisibleCount === sampleCounts.rebuild,
+          useful_content_visible: usefulContentVisibleCount === sampleCounts.rebuild,
+          completed_rebuild_count: completedRebuildCount,
         },
       })}\n`);
     }

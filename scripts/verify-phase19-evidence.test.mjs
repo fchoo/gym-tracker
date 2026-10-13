@@ -180,9 +180,9 @@ function hostFixture(root) {
     finishedAt: "2026-10-13T00:30:00.000Z",
   };
   const benchmark = evaluatePhase19ProgressBenchmark({
-    schema_version: 2,
+    schema_version: 3,
     suite: "phase19-progress",
-    producer: "phase19-progress-benchmark/v2",
+    producer: "phase19-progress-benchmark/v3",
     environment: "host-production-workload",
     status: "passed",
     native_status: "NOT_RUN",
@@ -202,7 +202,11 @@ function hostFixture(root) {
       js_task_ms: repeated(100, 1),
     },
     query_rows: { case_id: "progress-repository-query-rows", samples: [0, 1, 500] },
-    targeted_rebuild: { updating_visible: false, bounded_yield_count: 20 },
+    targeted_rebuild: {
+      updating_visible: true,
+      useful_content_visible: true,
+      completed_rebuild_count: 20,
+    },
   });
   const coverage = {
     ok: true,

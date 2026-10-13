@@ -90,7 +90,7 @@ function resolveJestBin() {
     return process.env.PHASE19_JEST_BIN;
   }
   try {
-    return createRequire(import.meta.url).resolve("jest/bin/jest.js");
+    return createRequire(import.meta.url).resolve("jest/bin/jest");
   } catch {
     fail("phase19_progress_benchmark_jest_missing");
   }
@@ -151,9 +151,9 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
   if (
     !exactKeys(evidence, EXACT_EVIDENCE_KEYS)
     || containsScoreKey(evidence)
-    || evidence.schema_version !== 2
+    || evidence.schema_version !== 3
     || evidence.suite !== "phase19-progress"
-    || evidence.producer !== "phase19-progress-benchmark/v2"
+    || evidence.producer !== "phase19-progress-benchmark/v3"
     || evidence.environment !== "host-production-workload"
     || evidence.status !== "passed"
     || evidence.native_status !== "NOT_RUN"
@@ -210,11 +210,15 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
   }
   const rebuildWithinBudget = maximum(measurements.targeted_rebuild_ms)
     <= PHASE19_PROGRESS_BUDGETS.targeted_rebuild.maximum_ms;
-  const rebuildYielded = evidence.targeted_rebuild?.updating_visible === true
-    && Number.isSafeInteger(evidence.targeted_rebuild?.bounded_yield_count)
-    && evidence.targeted_rebuild.bounded_yield_count
+  const rebuildCompleted = exactKeys(evidence.targeted_rebuild, [
+    "completed_rebuild_count", "updating_visible", "useful_content_visible",
+  ])
+    && evidence.targeted_rebuild.updating_visible === true
+    && evidence.targeted_rebuild.useful_content_visible === true
+    && Number.isSafeInteger(evidence.targeted_rebuild.completed_rebuild_count)
+    && evidence.targeted_rebuild.completed_rebuild_count
       === PHASE19_PROGRESS_BUDGETS.targeted_rebuild.maximum_samples;
-  if (!rebuildWithinBudget && !rebuildYielded) {
+  if (!rebuildWithinBudget || !rebuildCompleted) {
     fail("phase19_progress_benchmark_targeted_rebuild_failed");
   }
   if (maximum(measurements.js_task_ms)
@@ -239,7 +243,7 @@ export function evaluatePhase19ProgressBenchmark(evidence) {
     }),
   ]));
   return Object.freeze({
-    schema_version: 2,
+    schema_version: 3,
     suite: evidence.suite,
     producer: evidence.producer,
     environment: evidence.environment,
