@@ -128,7 +128,7 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
             >
               <View
                 style={[styles.rail, { backgroundColor: event.sport === "strength" ? colors.orange : colors.blue }]}
-                testID={`calendar-agenda-event-${event.id}-rail`}
+                testID={`calendar-agenda-rail-${event.id}`}
               />
               <View style={styles.copy}>
                 <Text numberOfLines={undefined} style={[calendarTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{event.title}</Text>
@@ -138,7 +138,7 @@ export const CalendarAgenda = forwardRef<CalendarAgendaHandle, CalendarAgendaPro
               </View>
               <View
                 style={styles.disclosure}
-                testID={`calendar-agenda-event-${event.id}-disclosure`}
+                testID={`calendar-agenda-disclosure-${event.id}`}
               >
                 <ChevronRight
                   accessible={false}

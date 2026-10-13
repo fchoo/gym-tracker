@@ -45,12 +45,12 @@ describe("CalendarAgenda factual copy", () => {
       paddingRight: 10,
       paddingVertical: 10,
     });
-    expect(screen.getByTestId("calendar-agenda-event-completed-rail")).toHaveStyle({
+    expect(screen.getByTestId("calendar-agenda-rail-completed")).toHaveStyle({
       borderRadius: 2,
       height: 62,
       width: 5,
     });
-    expect(screen.getByTestId("calendar-agenda-event-completed-disclosure")).toHaveStyle({
+    expect(screen.getByTestId("calendar-agenda-disclosure-completed")).toHaveStyle({
       alignSelf: "flex-start",
       height: 24,
       width: 24,
