@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 import type { PlannedStrengthOccurrenceDetail } from "../../domains/workout";
 import { AppearanceProvider } from "../theme";
@@ -37,6 +38,7 @@ describe("PlannedWorkoutDetailScreen", () => {
   it("keeps Back as the preferred entry target while the exact occurrence is loading", async () => {
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={() => new Promise(() => undefined)} onBack={jest.fn()} /></AppearanceProvider>);
     expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
+    expect(StyleSheet.flatten(screen.getByText("Workout preview").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
   });
 
   it("renders immutable planned targets with no session or mutation controls", async () => {
@@ -67,9 +69,11 @@ describe("PlannedWorkoutDetailScreen", () => {
     const onBack = jest.fn();
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="stale-occurrence" loadOccurrence={loadOccurrence} onBack={onBack} /></AppearanceProvider>);
     expect(await screen.findByText("Workout preview could not be loaded")).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByText("Workout preview could not be loaded").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
     expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
     await fireEvent.press(screen.getByRole("button", { name: "Retry preview" }));
     expect(await screen.findByText("Workout preview unavailable")).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByText("Workout preview unavailable").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
     expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
     expect(loadOccurrence).toHaveBeenLastCalledWith("stale-occurrence");
     await fireEvent.press(screen.getByRole("button", { name: "Back to Calendar" }));

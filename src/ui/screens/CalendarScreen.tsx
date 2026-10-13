@@ -882,11 +882,12 @@ export function CalendarScreen({
           <BottomSheet
             cancelLabel="Close Calendar key"
             heading="Calendar key"
+            headingStyle={calendarTypeScale.heading as TextStyle}
             onCancel={() => setCalendarKeyOpen(false)}
             restoreFocusRef={infoActionRef}
             visible={isCalendarKeyOpen}
           >
-            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Color identifies the activity. Fill and border style identify its status.</Text>
+            <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>Color identifies the activity. Fill and border style identify its status.</Text>
             <View style={styles.keyGroup}>
               <Text style={[typeScale.label as TextStyle, styles.keyGroupTitle, { color: colors.textSecondary }]}>ACTIVITY</Text>
               <View style={styles.keyItems}>

@@ -127,13 +127,13 @@ export function PlannedWorkoutDetailScreen({
   }, [generation, loadOccurrence, occurrenceId]);
 
   if (state === "loading") {
-    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout preview" /><SkeletonBlock height={48} width="64%" /><SkeletonBlock height={160} /></>} />;
+    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout preview" titleStyle={calendarTypeScale.heading as TextStyle} /><SkeletonBlock height={48} width="64%" /><SkeletonBlock height={160} /></>} />;
   }
   if (state === "error") {
-    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout preview" /><EmptyState body="The planned workout was not changed. Try loading this preview again." heading="Workout preview could not be loaded" primaryAction={<PrimaryAction label="Retry preview" onPress={() => setGeneration((value) => value + 1)} />} /></>} />;
+    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout preview" titleStyle={calendarTypeScale.heading as TextStyle} /><EmptyState body="The planned workout was not changed. Try loading this preview again." bodyStyle={calendarTypeScale.body as TextStyle} heading="Workout preview could not be loaded" headingStyle={calendarTypeScale.heading as TextStyle} primaryAction={<PrimaryAction label="Retry preview" onPress={() => setGeneration((value) => value + 1)} />} /></>} />;
   }
   if (state === "missing" || detail === null) {
-    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout preview" /><EmptyState body="This plan occurrence changed or is no longer available. Return to Calendar and refresh." heading="Workout preview unavailable" primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />} /></>} />;
+    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} backActionRef={backActionRef} title="Workout preview" titleStyle={calendarTypeScale.heading as TextStyle} /><EmptyState body="This plan occurrence changed or is no longer available. Return to Calendar and refresh." bodyStyle={calendarTypeScale.body as TextStyle} heading="Workout preview unavailable" headingStyle={calendarTypeScale.heading as TextStyle} primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />} /></>} />;
   }
 
   const targets = detail.exercises.flatMap((exercise) => exercise.targets);

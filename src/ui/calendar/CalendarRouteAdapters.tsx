@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import type { TextStyle } from "react-native";
 
 import {
   useCalendarActivityReadPort,
@@ -10,6 +11,7 @@ import { WorkoutOutcomeConflictError, type SessionDetail } from "../../domains/w
 import { EmptyState, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { GarminRouteShell } from "../garmin/GarminRouteShell";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
+import { calendarTypeScale } from "../theme";
 import {
   ImportedActivityDetailScreen,
   type ImportedActivityDetailScreenState,
@@ -23,10 +25,12 @@ function CalendarSessionUnavailable({ onBack }: Readonly<{ onBack(): void }>) {
     <AdaptiveScreen
       primary={
         <>
-          <ScreenHeader backAction={onBack} title="Workout details" />
+          <ScreenHeader backAction={onBack} title="Workout details" titleStyle={calendarTypeScale.heading as TextStyle} />
           <EmptyState
             body="This workout was removed or changed. Return to Calendar to refresh."
+            bodyStyle={calendarTypeScale.body as TextStyle}
             heading="Workout details unavailable"
+            headingStyle={calendarTypeScale.heading as TextStyle}
             primaryAction={<PrimaryAction label="Back to Calendar" onPress={onBack} />}
           />
         </>
@@ -77,12 +81,12 @@ export function CalendarSessionDetailRouteAdapter({
   if (state === "error") {
     return (
       <AdaptiveScreen
-        primary={<><ScreenHeader backAction={onBack} title="Workout details" /><EmptyState body="Your saved workout was not changed. Try loading these details again." heading="Workout details could not be loaded" primaryAction={<PrimaryAction label="Retry workout details" onPress={() => setRetryGeneration((value) => value + 1)} />} /></>}
+        primary={<><ScreenHeader backAction={onBack} title="Workout details" titleStyle={calendarTypeScale.heading as TextStyle} /><EmptyState body="Your saved workout was not changed. Try loading these details again." bodyStyle={calendarTypeScale.body as TextStyle} heading="Workout details could not be loaded" headingStyle={calendarTypeScale.heading as TextStyle} primaryAction={<PrimaryAction label="Retry workout details" onPress={() => setRetryGeneration((value) => value + 1)} />} /></>}
       />
     );
   }
   if (state === "loading" || detail === null) {
-    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} title="Workout details" /><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></>} />;
+    return <AdaptiveScreen primary={<><ScreenHeader backAction={onBack} title="Workout details" titleStyle={calendarTypeScale.heading as TextStyle} /><SkeletonBlock height={40} width="64%" /><SkeletonBlock height={96} /></>} />;
   }
   return <CalendarReadOnlyWorkout detail={detail} onGoBack={onBack} />;
 }

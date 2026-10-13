@@ -12,6 +12,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type StyleProp,
   type TextStyle,
   type NativeSyntheticEvent,
   type ViewStyle,
@@ -36,6 +37,7 @@ const BOTTOM_SHEET_HEADER_MIN_HEIGHT = 56;
 export type BottomSheetProps = Readonly<{
   visible: boolean;
   heading: string;
+  headingStyle?: StyleProp<TextStyle>;
   children?: React.ReactNode;
   onCancel: () => void;
   cancelDisabled?: boolean;
@@ -70,6 +72,7 @@ export function useBottomSheetCancel(): (() => void) | undefined {
 export function BottomSheet({
   visible,
   heading,
+  headingStyle,
   children,
   onCancel,
   cancelDisabled = false,
@@ -336,7 +339,7 @@ export function BottomSheet({
                           focusable
                           ref={headingRef}
                         >
-                          <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>
+                          <Text style={[typeScale.screenTitle as TextStyle, headingStyle, { color: colors.textPrimary }]}>
                             {heading}
                           </Text>
                         </View>

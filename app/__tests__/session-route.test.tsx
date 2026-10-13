@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { StyleSheet, type StyleProp, type TextStyle } from "react-native";
 
 import { WorkoutOutcomeConflictError, type SessionDetail } from "../../src/domains/workout";
 
@@ -50,7 +51,12 @@ jest.mock("../../src/ui/screens/SessionDetailScreen", () => ({
 }));
 jest.mock("../../src/ui/components", () => {
   const { Pressable, Text } = require("react-native") as typeof import("react-native");
-  return { EmptyState: ({ heading, primaryAction }: { heading: string; primaryAction?: React.ReactNode }) => <><Text>{heading}</Text>{primaryAction}</>, PrimaryAction: ({ label, onPress }: { label: string; onPress(): void }) => <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} />, ScreenHeader: () => null, SkeletonBlock: () => null };
+  return {
+    EmptyState: ({ heading, headingStyle, primaryAction }: { heading: string; headingStyle?: StyleProp<TextStyle>; primaryAction?: React.ReactNode }) => <><Text style={headingStyle}>{heading}</Text>{primaryAction}</>,
+    PrimaryAction: ({ label, onPress }: { label: string; onPress(): void }) => <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} />,
+    ScreenHeader: ({ title, titleStyle }: { title: string; titleStyle?: StyleProp<TextStyle> }) => <Text style={titleStyle}>{title}</Text>,
+    SkeletonBlock: () => null,
+  };
 });
 jest.mock("../../src/ui/layout/AdaptiveScreen", () => ({ AdaptiveScreen: ({ primary }: { primary: React.ReactNode }) => primary }));
 
@@ -84,6 +90,8 @@ describe("SessionDetailRoute", () => {
     mockParams = { sessionId: ["calendar-session", "other"], origin: "calendar" };
     await render(<SessionDetailRoute />);
     await waitFor(() => expect(screen.getByText("Workout details unavailable")).toBeOnTheScreen());
+    expect(StyleSheet.flatten(screen.getByText("Workout details").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
+    expect(StyleSheet.flatten(screen.getByText("Workout details unavailable").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
     expect(mockLoadCalendarSessionDetail).not.toHaveBeenCalled();
   });
 

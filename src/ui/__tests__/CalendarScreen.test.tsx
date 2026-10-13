@@ -414,6 +414,11 @@ describe("CalendarScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Open Calendar key" }));
 
     expect(screen.getByRole("header", { name: "Calendar key" })).toBeOnTheScreen();
+    expect(StyleSheet.flatten(screen.getByText("Calendar key").props.style)).toMatchObject({
+      fontFamily: "ArchivoVariable",
+      fontSize: 22,
+      fontWeight: "800",
+    });
     expect(screen.getByText("Color identifies the activity. Fill and border style identify its status."))
       .toBeOnTheScreen();
     expect(screen.getByText("ACTIVITY")).toBeOnTheScreen();
