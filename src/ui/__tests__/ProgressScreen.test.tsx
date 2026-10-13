@@ -248,6 +248,8 @@ describe("ProgressScreen", () => {
     });
     expect(all).toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
     expect(all).toHaveStyle({ borderRadius: 9, borderWidth: 0, minHeight: 48 });
+    await fireEvent(all, "focus");
+    expect(all).toHaveStyle({ outlineOffset: 3, outlineWidth: 3 });
     expect(screen.getByRole("button", { name: "4 weeks" })).toHaveStyle({ minHeight: 48 });
 
     await fireEvent(running, "keyDown", { nativeEvent: { key: "Home", preventDefault: jest.fn() } });

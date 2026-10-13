@@ -59,7 +59,7 @@ export const sizes = {
   icon: 24,
   inlineIcon: 20,
   focusRing: 3,
-  focusClearance: 4,
+  focusClearance: 3,
 } as const;
 
 const revision18EditorialWorkoutTitleLetterSpacing =
