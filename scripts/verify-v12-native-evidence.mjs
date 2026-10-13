@@ -25,6 +25,11 @@ import {
   resolveV12CalendarPath,
   stableCanonicalJson,
 } from "./v12-calendar-artifacts.mjs";
+import { validateV12RunManifest as validateGenericRunManifest } from "./create-v12-run-manifest.mjs";
+import {
+  deriveV12Ledger as deriveContractLedger,
+  V12_VERDICTS as CONTRACT_VERDICTS,
+} from "./v12-evidence-contract.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -433,4 +438,162 @@ export function runV12CalendarEvidenceVerifierCli(options = {}, io = process) {
 /* node:coverage ignore next 4 */
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exitCode = runV12CalendarEvidenceVerifierCli();
+}
+
+// Phase 20's v1.2 ledger is intentionally separate from the retained Calendar
+// verifier above.  Shards can state only measured observations; this module is
+// the sole place that turns those observations into row verdicts or writes the
+// two canonical final artifacts.
+const V12_FINAL_RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+const FINAL_RESULTS = new Set(["NOT_RUN", "PASS", "FAIL", "REVIEW_REQUIRED", "N_A_REVIEWED"]);
+const SETTLED_BASELINES = new Set(["MAP-01", "TIM-01", "DEV-01", "DEV-02", "GARMIN_TRANSPORT"]);
+
+function finalFail(code) {
+  throw new Error(`v12_final_${code}`);
+}
+
+function finalPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+function finalExact(value, keys) {
+  return finalPlainObject(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function finalSafeArtifactPath(value, runId) {
+  const prefix = `artifacts/native/v1.2/${runId}/`;
+  if (typeof value !== "string" || !value.startsWith(prefix) || value.includes("\\") || value.includes("//")
+    || value.split("/").some((part) => part === "" || part === "." || part === "..")) finalFail("artifact_path_invalid");
+}
+
+function finalHasPrivateValue(value) {
+  if (Array.isArray(value)) return value.some(finalHasPrivateValue);
+  if (finalPlainObject(value)) return Object.entries(value).some(([key, child]) => (
+    /(?:serial|token|secret|password|email|absolute_path|device_path)/iu.test(key) || finalHasPrivateValue(child)
+  ));
+  return typeof value === "string" && (path.isAbsolute(value) || /(?:\/Users\/|C:\\Users\\|content:\/\/)/iu.test(value));
+}
+
+export const V12_FINAL_VERDICTS = CONTRACT_VERDICTS;
+
+export function validateV12RunManifest(manifest, currentIdentity = undefined) {
+  let validated;
+  try { validated = validateGenericRunManifest(manifest); }
+  catch { finalFail("run_manifest_invalid"); }
+  if (validated.mode !== "live" || !V12_FINAL_RUN.test(validated.run_id)) finalFail("run_manifest_invalid");
+  if (currentIdentity !== undefined) {
+    const expected = {
+      head: validated.source.head,
+      tree_sha256: validated.source.tree_sha256,
+      package: validated.build.package,
+      apk_sha256: validated.build.apk.sha256,
+      installed_apk_sha256: validated.device.installed_apk_sha256,
+      certificate_sha256: validated.build.apk.certificate_sha256,
+      device_identity_sha256: validated.device.identity_sha256,
+      settings_sha256: validated.device.settings_sha256,
+      configuration_id: validated.configuration.id,
+    };
+    if (Object.entries(expected).some(([key, value]) => currentIdentity[key] !== value)) finalFail("run_identity_stale");
+  }
+  return validated;
+}
+
+function finalEvidenceIndex(inputs, manifest, evidence, readArtifact) {
+  const expectedIds = inputs.matrix.rows.map(({ requirement_id }) => requirement_id);
+  if (!Array.isArray(evidence) || evidence.length !== expectedIds.length) finalFail("evidence_set_invalid");
+  const indexed = new Map();
+  for (const [index, item] of evidence.entries()) {
+    const expectedKeys = item?.result === "N_A_REVIEWED"
+      ? ["row_id", "artifact", "sha256", "result", "configuration_id", "na"]
+      : ["row_id", "artifact", "sha256", "result", "configuration_id"];
+    if (!finalExact(item, expectedKeys) || Object.hasOwn(item, "verdict")) finalFail(Object.hasOwn(item ?? {}, "verdict") ? "producer_verdict_forbidden" : "evidence_schema_invalid");
+    if (item.row_id !== expectedIds[index] || indexed.has(item.row_id) || !FINAL_RESULTS.has(item.result)
+      || !HASH.test(item.sha256) || typeof item.configuration_id !== "string" || finalHasPrivateValue(item)) finalFail("evidence_schema_invalid");
+    finalSafeArtifactPath(item.artifact, manifest.run_id);
+    let artifactBytes;
+    try { artifactBytes = readArtifact(item.artifact); }
+    catch { finalFail("artifact_read_failed"); }
+    if (!Buffer.isBuffer(artifactBytes) || artifactBytes.length === 0 || sha256(artifactBytes) !== item.sha256) finalFail("artifact_hash_invalid");
+    if (item.result === "N_A_REVIEWED") {
+      if (!finalExact(item.na, ["reason", "reviewer", "reviewed_at"])) finalFail("na_metadata_invalid");
+    }
+    indexed.set(item.row_id, item);
+  }
+  return indexed;
+}
+
+function finalExceptionIndex(exceptions, inputs) {
+  if (!Array.isArray(exceptions)) finalFail("exception_set_invalid");
+  const rowIds = new Set(inputs.matrix.rows.map(({ requirement_id }) => requirement_id));
+  const indexed = new Map();
+  for (const exception of exceptions) {
+    if (!finalExact(exception, ["row_id", "deviation_id", "owner_decision", "decided_at", "scope", "configurations", "rationale", "evidence_hashes"])
+      || !rowIds.has(exception.row_id) || indexed.has(exception.row_id) || typeof exception.deviation_id !== "string"
+      || SETTLED_BASELINES.has(exception.deviation_id) || typeof exception.owner_decision !== "string"
+      || !/^\d{4}-\d{2}-\d{2}$/u.test(exception.decided_at ?? "") || typeof exception.scope !== "string"
+      || typeof exception.rationale !== "string" || !Array.isArray(exception.configurations) || exception.configurations.length === 0
+      || !Array.isArray(exception.evidence_hashes) || exception.evidence_hashes.length === 0
+      || exception.evidence_hashes.some((hash) => !HASH.test(hash)) || finalHasPrivateValue(exception)) finalFail("exception_metadata_invalid");
+    indexed.set(exception.row_id, exception);
+  }
+  return indexed;
+}
+
+function finalReadinessPolicy(policy) {
+  if (policy === null || policy === undefined) return undefined;
+  if (!finalExact(policy, ["policy_id", "reviewed_by", "reviewed_at", "permits_accepted_exceptions"])
+    || typeof policy.policy_id !== "string" || typeof policy.reviewed_by !== "string"
+    || !/^\d{4}-\d{2}-\d{2}$/u.test(policy.reviewed_at ?? "") || policy.permits_accepted_exceptions !== true) finalFail("readiness_policy_invalid");
+  return Object.freeze({ ...policy });
+}
+
+export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact } = {}) {
+  const validatedManifest = validateV12RunManifest(manifest);
+  if (finalHasPrivateValue(evidence) || finalHasPrivateValue(exceptions)) finalFail("privacy_invalid");
+  if (typeof readArtifact !== "function") finalFail("artifact_reader_required");
+  const evidenceByRow = finalEvidenceIndex(inputs, validatedManifest, evidence, readArtifact);
+  const exceptionsByRow = finalExceptionIndex(exceptions, inputs);
+  const verdicts = inputs.matrix.rows.map(({ requirement_id }) => {
+    const item = evidenceByRow.get(requirement_id);
+    const exception = exceptionsByRow.get(requirement_id);
+    if (exception !== undefined) return { row_id: requirement_id, verdict: "ACCEPTED_EXCEPTION", ...exception };
+    return item.result === "N_A_REVIEWED"
+      ? { row_id: requirement_id, verdict: item.result, ...item.na }
+      : { row_id: requirement_id, verdict: item.result };
+  });
+  const baseLedger = deriveContractLedger(inputs, { observations: evidence.map((item) => ({ row_id: item.row_id, source: "final-validator", status: item.result })), verdicts });
+  const policy = finalReadinessPolicy(readiness_policy);
+  const counts = baseLedger.verdict_counts;
+  const hardBlock = counts.NOT_RUN > 0 || counts.FAIL > 0 || counts.REVIEW_REQUIRED > 0;
+  const readiness = hardBlock ? "NOT_READY"
+    : counts.ACCEPTED_EXCEPTION > 0 ? (policy === undefined ? "NOT_READY" : "CONDITIONALLY_READY")
+      : "READY";
+  return Object.freeze({
+    ...baseLedger,
+    run_id: validatedManifest.run_id,
+    readiness,
+    accepted_exception_count: counts.ACCEPTED_EXCEPTION,
+    policy: policy ?? null,
+  });
+}
+
+export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson } = {}) {
+  if (mode !== "final") finalFail("explicit_final_mode_required");
+  if (!V12_FINAL_RUN.test(run_id ?? "") || ledger?.run_id !== run_id || ledger?.rows?.length !== 172
+    || typeof writeImmutableJson !== "function") finalFail("seal_input_invalid");
+  const base = `artifacts/native/v1.2/${run_id}`;
+  const matrix = Object.freeze({ schema_version: 1, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness });
+  const finalEvidence = Object.freeze({
+    schema_version: 1,
+    run_id,
+    readiness: ledger.readiness,
+    verdict_counts: ledger.verdict_counts,
+    accepted_exception_count: ledger.accepted_exception_count,
+    release_authorized: false,
+    policy: ledger.policy,
+  });
+  writeImmutableJson(`${base}/ui-state-matrix.json`, matrix);
+  writeImmutableJson(`${base}/final-evidence.json`, finalEvidence);
+  return finalEvidence;
 }

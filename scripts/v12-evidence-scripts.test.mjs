@@ -1429,13 +1429,14 @@ test("the sole v1.2 validator derives all 172 rows, preserves exception counts, 
     result: "PASS",
     configuration_id: "AP-L-C390-P-F100",
   }));
-  const normal = deriveV12Ledger({ inputs, manifest, evidence, readiness_policy: null });
+  const readArtifact = (artifact) => Buffer.from(path.basename(artifact, ".json"));
+  const normal = deriveV12Ledger({ inputs, manifest, evidence, readiness_policy: null, readArtifact });
   assert.equal(normal.rows.length, 172);
   assert.equal(normal.verdict_counts.PASS, 172);
   assert.equal(normal.readiness, "READY");
 
   evidence[0] = { ...evidence[0], result: "FAIL" };
-  assert.equal(deriveV12Ledger({ inputs, manifest, evidence, readiness_policy: null }).readiness, "NOT_READY");
+  assert.equal(deriveV12Ledger({ inputs, manifest, evidence, readiness_policy: null, readArtifact }).readiness, "NOT_READY");
   evidence[0] = { ...evidence[0], result: "PASS" };
   const exceptions = [{
     row_id: evidence[0].row_id, deviation_id: "DEV-203", owner_decision: "owner-approved", decided_at: "2026-10-14",
@@ -1445,12 +1446,18 @@ test("the sole v1.2 validator derives all 172 rows, preserves exception counts, 
   const conditional = deriveV12Ledger({
     inputs, manifest, evidence, exceptions,
     readiness_policy: { policy_id: "v12-reviewed-policy", reviewed_by: "owner", reviewed_at: "2026-10-14", permits_accepted_exceptions: true },
+    readArtifact,
   });
   assert.equal(conditional.verdict_counts.ACCEPTED_EXCEPTION, 1);
   assert.equal(conditional.verdict_counts.PASS, 171);
   assert.equal(conditional.readiness, "CONDITIONALLY_READY");
-  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: [{ ...evidence[0], artifact: "../secret.json" }, ...evidence.slice(1)] }), /v12_final_artifact_path_invalid/u);
-  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: evidence.map((item) => ({ ...item, verdict: "PASS" })) }), /v12_final_producer_verdict_forbidden/u);
+  assert.throws(() => validateV12RunManifest(manifest, { head: "stale" }), /v12_final_run_identity_stale/u);
+  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: evidence.slice(1), readArtifact }), /v12_final_evidence_set_invalid/u);
+  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: [{ ...evidence[0], serial: "private" }, ...evidence.slice(1)], readArtifact }), /v12_final_privacy_invalid/u);
+  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence, exceptions: [{ ...exceptions[0], deviation_id: "MAP-01" }], readArtifact }), /v12_final_exception_metadata_invalid/u);
+  assert.equal(deriveV12Ledger({ inputs, manifest, evidence, exceptions, readArtifact }).readiness, "NOT_READY");
+  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: [{ ...evidence[0], artifact: "../secret.json" }, ...evidence.slice(1)], readArtifact }), /v12_final_artifact_path_invalid/u);
+  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: evidence.map((item) => ({ ...item, verdict: "PASS" })), readArtifact }), /v12_final_producer_verdict_forbidden/u);
   assert.throws(() => sealV12FinalEvidence({ mode: "preseal", run_id: manifest.run_id, ledger: normal, writeImmutableJson: () => {} }), /v12_final_explicit_final_mode_required/u);
   const writes = new Map();
   const final = sealV12FinalEvidence({ mode: "final", run_id: manifest.run_id, ledger: normal, writeImmutableJson: (file, value) => writes.set(file, value) });
