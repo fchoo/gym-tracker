@@ -206,6 +206,10 @@ describe("ProgressScreen", () => {
     }));
     expect(await screen.findByText("Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation."))
       .toBeOnTheScreen();
+    expect(screen.getByTestId("progress-running-evidence")).toHaveStyle({
+      borderLeftColor: "#195FAE",
+      borderLeftWidth: 4,
+    });
     expect(screen.getByRole("header", { name: "2.4 km goal" })).toBeOnTheScreen();
     expect(screen.getByText("Latest · 11:20 elapsed")).toBeOnTheScreen();
     expect(screen.getByText("Best · 10:50 elapsed")).toBeOnTheScreen();
@@ -995,6 +999,7 @@ describe("ProgressScreen", () => {
       </AppearanceProvider>,
     );
     const allHeroHistory = await screen.findByRole("button", { name: "Open exercise history for Bench Press" });
+    expect(screen.getByTestId("progress-strength-hero")).toHaveStyle({ borderTopColor: "#D97820" });
     await fireEvent.press(allHeroHistory);
     const allHeroToken = "progress:All:4_weeks:hero-history:bench-press:2";
     expect(onOpenExercise).toHaveBeenLastCalledWith("bench-press", "Bench Press", allHeroToken);

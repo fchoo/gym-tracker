@@ -220,12 +220,19 @@ function ActiveGoalRows({ goals, onSelectSport }: Readonly<{
         focusable
         key={`${entry.sport}:${entry.sport === "Strength" ? entry.goal.goalId : `${String(entry.goal.distanceMeters)}:${entry.goal.timeBasis}`}`}
         onPress={() => onSelectSport(entry.sport)}
-        style={[styles.goalAction, { borderColor: colors.divider }]}
+        style={[styles.goalAction, { borderColor: entry.sport === "Strength" ? colors.orange : colors.action }]}
       >
         <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${entry.sport} · ${identity}`}</Text>
         <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{detail}</Text>
       </FocusablePressable>;
     })}
+  </View>;
+}
+
+function RunningEvidenceNotice() {
+  const { colors } = useAppTheme();
+  return <View style={[styles.runningEvidence, { borderLeftColor: colors.action }]} testID="progress-running-evidence">
+    <InlineNotice body="Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation." heading="Garmin imported" tone="neutral" />
   </View>;
 }
 
@@ -266,7 +273,7 @@ function RunningRoot({ dashboard, historyActionRefs, onOpenHistory, onOpenTarget
   };
   const goal = dashboard.goals.find((candidate) => candidate.distanceMeters === 2400) ?? dashboard.goals[0];
   if (goal === undefined) return <View style={styles.content}>
-    <InlineNotice body="Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation." heading="Garmin imported" tone="neutral" />
+    <RunningEvidenceNotice />
     <EmptyState body="Goals can remain saved, but no zero chart or direction is shown until a Garmin activity is imported." heading="No imported running efforts yet" primaryAction={<PrimaryAction label="Refresh progress" onPress={onRetry} />} />
     <View style={styles.goalRows}><Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Running goals</Text>{goalRow(2_400)}{goalRow(10_000)}{goalRow(21_097)}</View>
     <PlannedNext value={dashboard.plannedNext} />
@@ -277,7 +284,7 @@ function RunningRoot({ dashboard, historyActionRefs, onOpenHistory, onOpenTarget
   const heroHistoryToken = `progress:Running:${period}:hero-history:${String(goal.distanceMeters)}`;
   return (
     <View style={styles.content}>
-      <InlineNotice body="Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation." heading="Garmin imported" tone="neutral" />
+      <RunningEvidenceNotice />
       {dashboard.state === "sparse" ? <InlineNotice body={goal.evidenceCount === 0 ? "Complete or import a comparable result to calculate Best and Gap." : "One comparable result is not enough to call a trend."} heading={goal.evidenceCount === 0 ? "Target saved" : "More data needed"} tone="attention" /> : null}
       <View style={[styles.hero, { borderTopColor: colors.textPrimary }]}>
         <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{`${distanceLabel(goal.distanceMeters)} goal`}</Text>
@@ -365,7 +372,7 @@ function StrengthGoalHero({ goal, heading, historyActionRef, onOpenHistory, onOp
   stackHeroFacts: boolean;
 }>) {
   const { colors } = useAppTheme();
-  return <View style={[styles.hero, { borderTopColor: colors.textPrimary }]}>
+  return <View style={[styles.hero, { borderTopColor: colors.orange }]} testID="progress-strength-hero">
     <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{heading}</Text>
     <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{`${goal.exerciseName} · ${goal.directionLabel}`}</Text>
     <HeroFactRow facts={[
@@ -829,6 +836,7 @@ const styles = StyleSheet.create({
   goalRows: { gap: space[2] },
   hero: { borderTopWidth: 2, gap: space[2], marginTop: 18, paddingTop: space[4] },
   pacing: { gap: space[1] },
+  runningEvidence: { borderLeftWidth: 4, paddingLeft: space[2] },
   screen: { gap: space[4], maxWidth: 960, width: "100%" },
   segment: { alignItems: "center", borderRadius: 9, borderWidth: 0, flex: 1, justifyContent: "center", minHeight: sizes.minimumTarget, paddingHorizontal: space[1] },
   segmented: { borderRadius: 13, borderWidth: 1, flexDirection: "row", gap: 3, padding: 3 },
