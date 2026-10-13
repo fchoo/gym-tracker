@@ -4,7 +4,7 @@ import { executeV12AccessibilityShard, validateV12AccessibilityShard } from "./v
 
 const trace = () => ({
   configuration: { font_scale: 2, density: 3, content_bounds: { width: 360, height: 800 }, insets: { top: 24, bottom: 24 }, ime_bounds: { top: 500, bottom: 800 } },
-  targets: [{ id: "primary", bounds_dp: { left: 0, top: 0, width: 48, height: 48 }, name: "Continue", role: "button", state: "enabled", non_color_cue: true }],
+  targets: [{ id: "primary", bounds_dp: { left: 0, top: 0, width: 48, height: 48 }, name: "Continue", role: "button", state: "enabled", non_color_cue: true, overlap: false }],
   interactions: ["touch", "software-keyboard", "hardware-keyboard", "dpad"].map((input) => ({ input, focus_before: "primary", action: "activate", focus_after: "primary", command_count: 1, image_hash: "a".repeat(64) })),
   modal: { focus_ring_dp: 3, focus_offset_dp: 3, back: "closes-modal", escape: "closes-modal", restores_invoker: true },
   motion: { normal: { destination: "done", callbacks: 1, source_facts: "fixture" }, reduced: { destination: "done", callbacks: 1, source_facts: "fixture" } },
