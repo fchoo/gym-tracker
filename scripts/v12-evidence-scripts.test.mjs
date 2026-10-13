@@ -1407,6 +1407,28 @@ test("the generic v1.2 runner binds one synthetic shard without native execution
       settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id,
     }, adapter: { snapshotSettings: () => ({}), execute: () => ({ observations: [] }), restoreSettings: () => true },
   }), /v12_maestro_flow_hash_mismatch/u);
+
+  const root = mkdtempSync(path.join(tmpdir(), "gym-v12-runner-"));
+  try {
+    const manifestPath = path.join(root, "artifacts/native/v1.2", manifest.run_id, "run-manifest.json");
+    mkdirSync(path.dirname(manifestPath), { recursive: true });
+    mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });
+    mkdirSync(path.join(root, "scripts"), { recursive: true });
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    writeFileSync(path.join(root, "maestro/v1.2/sqlite.yaml"), flowBytes);
+    writeFileSync(path.join(root, "scripts/v12-sqlite-shard.mjs"), sourceBytes);
+    executeV12Maestro(["--run", manifest.run_id, "--shard", "sqlite"], {
+      root,
+      currentIdentity: {
+        head: manifest.source.head, tree_sha256: manifest.source.tree_sha256, package: manifest.build.package,
+        apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256,
+        certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256,
+        settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id,
+      },
+      adapter: { snapshotSettings: () => ({}), execute: () => ({ observations: [] }), restoreSettings: () => true },
+    });
+    assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", manifest.run_id, "shards/sqlite.json")), true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("the v1.2 build branch publishes bounded identity fields without changing historical manifest schemas", () => {

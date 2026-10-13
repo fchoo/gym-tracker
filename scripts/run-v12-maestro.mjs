@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { validateV12RunManifest as validateGenericV12RunManifest } from "./create-v12-run-manifest.mjs";
@@ -125,7 +125,12 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
   });
   const outputPath = `artifacts/native/v1.2/${runId}/shards/${shard}.json`;
   if (typeof dependencies.writeImmutableJson === "function") dependencies.writeImmutableJson(outputPath, record);
-  else genericFail("writer_unavailable");
+  else {
+    const absoluteOutput = path.resolve(root, outputPath);
+    if (!absoluteOutput.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absoluteOutput)) genericFail("immutable_output_invalid");
+    mkdirSync(path.dirname(absoluteOutput), { recursive: true });
+    writeFileSync(absoluteOutput, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx" });
+  }
   return record;
 }
 export const V12_CALENDAR_TRACE_SAMPLE_MARKER = "GYM_TRACKER_V12_CALENDAR_TRACE_SAMPLE:";
