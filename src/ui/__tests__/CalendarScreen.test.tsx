@@ -422,13 +422,19 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("Color identifies the activity. Fill and border style identify its status."))
       .toBeOnTheScreen();
     expect(screen.getByText("ACTIVITY")).toBeOnTheScreen();
-    expect(screen.getByTestId("calendar-key-strength-swatch")).toHaveStyle({ backgroundColor: "#D97820" });
-    expect(screen.getByTestId("calendar-key-running-swatch")).toHaveStyle({ backgroundColor: "#195FAE" });
+    expect(screen.getByTestId("calendar-key-strength-swatch")).toHaveStyle({ backgroundColor: "#D97820", borderRadius: 2, height: 8, width: 24 });
+    expect(screen.getByTestId("calendar-key-running-swatch")).toHaveStyle({ backgroundColor: "#195FAE", borderRadius: 2, height: 8, width: 24 });
     expect(screen.getByText("STATUS")).toBeOnTheScreen();
     expect(screen.queryByText("Complete", { exact: true })).not.toBeNull();
     expect(StyleSheet.flatten(screen.getByTestId("calendar-key-complete").props.style).backgroundColor).toBe("#0D0C0A24");
+    expect(screen.getByTestId("calendar-key-complete")).toHaveStyle({ height: 13, width: 22 });
+    expect(screen.getByTestId("calendar-key-complete")).not.toHaveTextContent("Complete");
     expect(StyleSheet.flatten(screen.getByTestId("calendar-key-partial-fill").props.style).backgroundColor).toBe("#0D0C0A2E");
+    expect(screen.getByTestId("calendar-key-partial")).toHaveStyle({ height: 13, width: 22 });
+    expect(screen.getByTestId("calendar-key-partial")).not.toHaveTextContent("Partial");
     expect(StyleSheet.flatten(screen.getByTestId("calendar-key-planned").props.style).backgroundColor).toBe("transparent");
+    expect(screen.getByTestId("calendar-key-planned")).toHaveStyle({ height: 13, width: 22 });
+    expect(screen.getByTestId("calendar-key-planned")).not.toHaveTextContent("Planned");
 
     await fireEvent.press(screen.getByRole("button", { name: "Close Calendar key" }));
     expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
