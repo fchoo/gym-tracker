@@ -69,6 +69,22 @@ export type RunningTargetMutationResult = Readonly<{
   plan: RunningPlanAggregate;
 }>;
 
+type CachedRunningTargetCommand = Readonly<{
+  inputFingerprint: string;
+  command: SaveRunningTargetInput;
+}>;
+
+function runningTargetInputFingerprint(input: RunningTargetMutationInput): string {
+  return JSON.stringify({
+    planId: input.planId,
+    expectedSourceRevision: input.expectedSourceRevision,
+    goalDistanceMeters: input.goalDistanceMeters,
+    targetDurationMs: input.targetDurationMs,
+    targetLocalDate: input.targetLocalDate ?? null,
+    trainingDays: [...input.trainingDays].sort((left, right) => left.localeCompare(right)),
+  });
+}
+
 const RunningPlanRuntimeContext = createContext<RunningPlanRuntimePort | null>(null);
 const CalendarRunningPlanReadContext = createContext<CalendarRunningPlanReadPort | null>(null);
 
@@ -81,7 +97,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
   const collisions = createScheduleCollisionRepository(kernel, dependencies.sha256);
   const createId = (kind: string) => `${kind}:${dependencies.randomUUID()}`;
   const sessionCommands = new Map<string, ReturnType<typeof buildSessionCommand>>();
-  const targetCommands = new Map<string, SaveRunningTargetInput>();
+  const targetCommands = new Map<string, CachedRunningTargetCommand>();
   const lifecycleCommands = new Map<string, RunningLifecycleConfirmationInput>();
   return Object.freeze({
     createId,
@@ -115,7 +131,12 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       return readBack;
     },
     saveRunningTarget: async (input) => {
-      let command = targetCommands.get(input.requestId);
+      const inputFingerprint = runningTargetInputFingerprint(input);
+      const cached = targetCommands.get(input.requestId);
+      if (cached !== undefined && cached.inputFingerprint !== inputFingerprint) {
+        throw new Error("running_target_request_identity_conflict");
+      }
+      let command = cached?.command;
       if (command === undefined) {
         const current = await repository.readAggregate(input.planId);
         if (current === null || current.revision !== input.expectedSourceRevision) {
@@ -145,9 +166,20 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
           ...hashInput,
           requestSha256: canonicalRunningRequestHash(hashInput),
         };
-        targetCommands.set(input.requestId, command);
+        targetCommands.set(input.requestId, Object.freeze({ command, inputFingerprint }));
       }
-      const result = await saveRunningTarget(repository, command);
+      let result: Awaited<ReturnType<typeof saveRunningTarget>>;
+      try {
+        result = await saveRunningTarget(repository, command);
+      } catch (cause) {
+        if (cause instanceof Error && (
+          cause.message === "running_target_revision_conflict"
+          || cause.message === "running_plan_revision_conflict"
+        )) {
+          targetCommands.delete(input.requestId);
+        }
+        throw cause;
+      }
       const readBack = await repository.readAggregate(command.planId);
       const targetReadBack = readBack === null
         ? undefined

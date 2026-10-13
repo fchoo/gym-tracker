@@ -166,6 +166,40 @@ describe("RunningTargetSheet", () => {
     expect(view.getByDisplayValue("10:45")).toBeTruthy();
   });
 
+  it("rotates the request identity after reload and submits the refreshed revision with the visible draft", async () => {
+    const stale = new Error("running_target_revision_conflict");
+    const reloaded = { ...source({ id: "goal-2point4-v3", revision: 3, targetDurationMs: 645_000 }), revision: 5 };
+    const committed = { ...source({ id: "goal-2point4-v4", revision: 4, targetDurationMs: 630_000 }), revision: 6 };
+    const loadPlan = jest.fn(async () => reloaded);
+    const saveRunningTarget = jest.fn(async (_input: Record<string, unknown>) => ({ outcome: "committed" as const, plan: committed }))
+      .mockRejectedValueOnce(stale);
+    const createId = jest.fn()
+      .mockReturnValueOnce("stale-request")
+      .mockReturnValueOnce("rebased-request");
+    const view = await render(
+      <AppearanceProvider reduceMotion><RunningTargetSheet
+        onClose={jest.fn()}
+        onSaved={jest.fn()}
+        runtime={{ createId, loadPlan, saveRunningTarget } as never}
+        sources={[source()]}
+        todayLocalDate="2026-10-12"
+        visible
+      /></AppearanceProvider>,
+    );
+
+    await fireEvent.changeText(view.getByLabelText("Target time"), "10:45");
+    await fireEvent.press(view.getByRole("button", { name: "Save target" }));
+    await fireEvent.press(await view.findByRole("button", { name: "Reload target" }));
+    await fireEvent.changeText(view.getByLabelText("Target time"), "10:30");
+    await fireEvent.press(view.getByRole("button", { name: "Save target" }));
+
+    await waitFor(() => expect(saveRunningTarget).toHaveBeenCalledTimes(2));
+    expect(saveRunningTarget.mock.calls.map(([input]) => input)).toEqual([
+      expect.objectContaining({ requestId: "stale-request", expectedSourceRevision: 4, targetDurationMs: 645_000 }),
+      expect.objectContaining({ requestId: "rebased-request", expectedSourceRevision: 5, targetDurationMs: 630_000 }),
+    ]);
+  });
+
   it("keeps the current target and a stable retry receipt through a storage failure", async () => {
     const saveRunningTarget = jest.fn(async (_input: Record<string, unknown>): Promise<unknown> => undefined)
       .mockRejectedValueOnce(new Error("running_target_storage_failed"))

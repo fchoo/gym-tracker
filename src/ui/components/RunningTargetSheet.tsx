@@ -234,6 +234,7 @@ export function RunningTargetSheet({
       // Preserve the draft for comparison; only its revision fence changes.
       const current = draftsRef.current.get(draftKey) ?? draftFrom(source, selectedDistanceMeters);
       draftsRef.current.set(draftKey, Object.freeze({ ...current, expectedSourceRevision: reloaded.revision }));
+      requestIdsRef.current.delete(draftKey);
       setError(null);
       setRenderVersion((value) => value + 1);
     } catch {
