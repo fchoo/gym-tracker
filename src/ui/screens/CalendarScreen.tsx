@@ -454,7 +454,7 @@ export function CalendarScreen({
       return;
     }
     if (parsedToday.slice(0, 7) === month.slice(0, 7)) {
-      selectDate(parsedToday);
+      dispatchCalendarTransition({ type: "select-date", localDate: parsedToday });
       return;
     }
     dispatchCalendarTransition({
@@ -480,7 +480,7 @@ export function CalendarScreen({
       }
       return;
     }
-    selectDate(date);
+    dispatchCalendarTransition({ type: "select-date", localDate: date });
   };
 
   const requestCalendarBack = useCallback(() => {
