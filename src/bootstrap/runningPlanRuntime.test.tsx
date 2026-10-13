@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { renderHook } from "@testing-library/react-native";
+import { fireEvent, render, renderHook, waitFor } from "@testing-library/react-native";
 import React from "react";
+
+import { RunningTargetSheet } from "../ui/components/RunningTargetSheet";
+import { AppearanceProvider } from "../ui/theme";
 
 const mockReadAggregate = jest.fn<any>();
 const mockReadScheduledAggregate = jest.fn<any>();
@@ -218,6 +221,51 @@ describe("RunningPlanRuntimePort", () => {
     await expect(runtime.saveRunningTarget(input)).rejects.toBe("unknown_storage_failure");
     await expect(runtime.saveRunningTarget(input)).resolves.toMatchObject({ outcome: "already_committed" });
     expect(mockReadAggregate).toHaveBeenCalledTimes(2);
+  });
+
+  it("allocates a new request identity when the retained target draft changes after a pre-commit failure", async () => {
+    const plan = {
+      id: "running", version: 1 as const, name: "Running", revision: 4, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-2", planId: "running", revision: 2, goalDistanceMeters: 2_400, targetDurationMs: 660_000, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    const readBack = { ...plan, revision: 5, goal: { ...plan.goal, id: "goal-3", revision: 3, targetDurationMs: 630_000 } };
+    mockReadAggregate.mockResolvedValueOnce(plan).mockResolvedValueOnce(plan).mockResolvedValueOnce(readBack);
+    mockSaveRunningTarget
+      .mockRejectedValueOnce(new Error("running_target_storage_failed"))
+      .mockResolvedValueOnce({ outcome: "committed" });
+    let uuid = 0;
+    const runtime = createRunningPlanRuntimePort({} as never, {
+      nowMs: () => 2,
+      randomUUID: () => `uuid-${String(++uuid)}`,
+      sha256: async () => "a".repeat(64),
+    });
+    const onSaved = jest.fn();
+    const view = await render(
+      <AppearanceProvider reduceMotion><RunningTargetSheet
+        onClose={jest.fn()}
+        onSaved={onSaved}
+        runtime={runtime}
+        sources={[plan]}
+        todayLocalDate="2026-10-12"
+        visible
+      /></AppearanceProvider>,
+    );
+
+    await fireEvent.changeText(view.getByLabelText("Target time"), "10:45");
+    await fireEvent.press(view.getByRole("button", { name: "Save target" }));
+    await waitFor(() => expect(view.getByText("Target was not saved")).toBeOnTheScreen());
+    await fireEvent.changeText(view.getByLabelText("Target time"), "10:30");
+    await fireEvent.press(view.getByRole("button", { name: "Save target" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(readBack));
+    expect(mockSaveRunningTarget).toHaveBeenCalledTimes(2);
+    expect(mockSaveRunningTarget.mock.calls.map(([, command]) =>
+      (command as { requestId: string }).requestId
+    )).toEqual([
+      "running-target-save:uuid-1",
+      "running-target-save:uuid-3",
+    ]);
+    view.unmount();
   });
 
   it("commits an owner-selected distance revision on the authoritative Running goal", async () => {
