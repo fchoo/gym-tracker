@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Minus } from "lucide-react-native";
+import { Minus } from "lucide-react-native";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { PlannedStrengthOccurrenceDetail } from "../../domains/workout";
@@ -15,6 +15,7 @@ import {
 } from "../../domains/workout/workoutPresentation";
 import { EmptyState, FocusablePressable, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
+import { CalendarDisclosureChevron } from "../calendar/CalendarDisclosureChevron";
 import { calendarTypeScale, space, useAppTheme } from "../theme";
 
 type LoadState = "loading" | "ready" | "missing" | "error";
@@ -172,13 +173,11 @@ export function PlannedWorkoutDetailScreen({
                     <Text accessibilityRole="header" style={[calendarTypeScale.heading as TextStyle, { color: colors.textPrimary }]}>{exercise.exerciseName}</Text>
                     <Text style={[calendarTypeScale.metadata as TextStyle, { color: colors.textSecondary }]}>{`${firstTarget} · 0/${exercise.targets.length} complete`}</Text>
                   </View>
-                  <View testID={`planned-exercise-disclosure-${exercise.id}`}>
-                    {expanded ? (
-                      <ChevronDown accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
-                    ) : (
-                      <ChevronRight accessible={false} color={colors.textSecondary} size={24} strokeWidth={2} />
-                    )}
-                  </View>
+                  <CalendarDisclosureChevron
+                    color={colors.textSecondary}
+                    expanded={expanded}
+                    testID={`planned-exercise-disclosure-${exercise.id}`}
+                  />
                 </FocusablePressable>
                 {expanded ? <View style={styles.table}>
                   <View style={styles.tableHeader}>

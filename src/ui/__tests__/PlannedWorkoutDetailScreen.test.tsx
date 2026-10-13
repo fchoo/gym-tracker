@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { describe, expect, it, jest } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
-import { StyleSheet } from "react-native";
+import { Animated, StyleSheet } from "react-native";
 
 import type { PlannedStrengthOccurrenceDetail } from "../../domains/workout";
 import { AppearanceProvider } from "../theme";
@@ -35,6 +35,8 @@ function occurrenceWithTargets(
 }
 
 describe("PlannedWorkoutDetailScreen", () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
   it("keeps Back as the preferred entry target while the exact occurrence is loading", async () => {
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={() => new Promise(() => undefined)} onBack={jest.fn()} /></AppearanceProvider>);
     expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
@@ -42,6 +44,7 @@ describe("PlannedWorkoutDetailScreen", () => {
   });
 
   it("renders immutable planned targets with no session or mutation controls", async () => {
+    const timing = jest.spyOn(Animated, "timing");
     await render(<AppearanceProvider><PlannedWorkoutDetailScreen occurrenceId="occurrence-1" loadOccurrence={jest.fn(async () => occurrence)} onBack={jest.fn()} /></AppearanceProvider>);
     expect(await screen.findByText("Planned preview · read only")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Go back" }).props.hasTVPreferredFocus).toBe(true);
@@ -53,7 +56,13 @@ describe("PlannedWorkoutDetailScreen", () => {
     expect(screen.getByTestId("planned-exercise-disclosure-exercise-1")).toBeOnTheScreen();
     expect(screen.getByTestId("planned-state-target-1")).toBeOnTheScreen();
     expect(screen.getByLabelText("Planned")).not.toHaveTextContent("—");
+    timing.mockClear();
     await fireEvent.press(screen.getByRole("button", { name: /Bench press.*Collapse exercise/u }));
+    expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      duration: 160,
+      toValue: 0,
+      useNativeDriver: true,
+    }));
     expect(screen.queryByTestId("planned-target-target-1")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: /Bench press.*Expand exercise/u }));
     expect(screen.getByTestId("planned-target-target-1")).toBeOnTheScreen();
