@@ -245,11 +245,12 @@ function Fact({ label, value }: Readonly<{ label: string; value: string }>) {
 
 export type FactualHistoryChartProps = Readonly<{
   onOpenSource?: (source: FactualHistorySource) => void;
+  registerSourceAction?: (source: FactualHistorySource, node: View | null) => void;
   series: ProgressFactualSeries;
   formatValue?: (value: number | null) => string;
 }>;
 
-export function FactualHistoryChart({ formatValue, onOpenSource, series }: FactualHistoryChartProps) {
+export function FactualHistoryChart({ formatValue, onOpenSource, registerSourceAction, series }: FactualHistoryChartProps) {
   const { colors } = useAppTheme();
   const { fontScale, height, width } = useWindowDimensions();
   const [dataVisible, setDataVisible] = useState(false);
@@ -332,7 +333,7 @@ export function FactualHistoryChart({ formatValue, onOpenSource, series }: Factu
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{positiveFinite(point.targetAtDateSeconds) ? `Target at date ${valueText(point.targetAtDateSeconds)}` : "Target unset"}</Text>
           {point.basisLabel ? <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{point.basisLabel}</Text> : null}
           <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{statusText(point)}</Text>
-          {source !== null && onOpenSource !== undefined ? <FocusablePressable accessibilityLabel="Open source" accessibilityRole="button" onPress={() => onOpenSource(source)} style={[styles.sourceAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text></FocusablePressable> : <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>}
+          {source !== null && onOpenSource !== undefined ? <FocusablePressable accessibilityLabel="Open source" accessibilityRole="button" onPress={() => onOpenSource(source)} ref={(node) => registerSourceAction?.(source, node)} style={[styles.sourceAction, { borderColor: colors.focusRing }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.focusRing }]}>Open source</Text></FocusablePressable> : <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Source unavailable</Text>}
         </View>;
       })}
       {dataPage * HISTORY_DATA_PAGE_SIZE < series.points.length ? <FocusablePressable accessibilityLabel="Show more history data" accessibilityRole="button" onPress={() => setDataPage((page) => page + 1)} style={[styles.disclosure, { borderColor: colors.focusRing }]}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>Show more history data</Text></FocusablePressable> : null}

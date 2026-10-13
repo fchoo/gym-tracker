@@ -27,6 +27,7 @@ import {
 import { BottomSheet } from "./BottomSheet";
 import {
   radius,
+  sizes,
   space,
   typeScale,
   useAppTheme,
@@ -135,12 +136,14 @@ function ReviewSurface({
   onAccept,
   onKeepCurrent,
   onOpenSource,
+  sourceActionRef,
 }: Readonly<{
   recommendation: ProgressRecommendationReview;
   busy: boolean;
   onAccept: DecisionCallback;
   onKeepCurrent: DecisionCallback;
   onOpenSource?(sessionId: string): void;
+  sourceActionRef?: React.Ref<View>;
 }>) {
   const { colors } = useAppTheme();
   const reviewTriggerRef = React.useRef<View>(null);
@@ -264,6 +267,7 @@ function ReviewSurface({
                 accessibilityState={{ disabled: false }}
                 focusable
                 onPress={() => onOpenSource(recommendation.sourceSessionId!)}
+                ref={sourceActionRef}
                 style={({ pressed }) => [
                   styles.sourceAction,
                   { borderColor: colors.divider, opacity: pressed ? 0.76 : 1 },
@@ -423,12 +427,14 @@ export function RecommendationSurface({
   onAccept,
   onKeepCurrent,
   onOpenSource,
+  sourceActionRef,
 }: Readonly<{
   recommendation: RecommendationSurfaceRecommendation;
   busy?: boolean;
   onAccept: DecisionCallback;
   onKeepCurrent: DecisionCallback;
   onOpenSource?: (sessionId: string) => void;
+  sourceActionRef?: React.Ref<View>;
 }>) {
   return isReview(recommendation)
     ? (
@@ -438,6 +444,7 @@ export function RecommendationSurface({
           onKeepCurrent={onKeepCurrent}
           recommendation={recommendation}
           {...(onOpenSource === undefined ? {} : { onOpenSource })}
+          {...(sourceActionRef === undefined ? {} : { sourceActionRef })}
         />
       )
     : (
@@ -467,6 +474,8 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: sizes.minimumTarget,
     paddingHorizontal: space[2],
     paddingVertical: space[1],
   },

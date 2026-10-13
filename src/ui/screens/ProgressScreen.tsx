@@ -287,7 +287,7 @@ function StrengthGoalHero({ goal, heading, onOpenHistory, onOpenSource, rangeLab
   </View>;
 }
 
-function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendation, onOpenExercise, onOpenSession, onRetry, onSelectSport, period, rangeLabel, recommendations, staleRecommendation }: Readonly<{
+function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendation, onOpenExercise, onOpenSession, onRetry, onSelectSport, period, rangeLabel, recommendationSourceRefs, recommendations, staleRecommendation }: Readonly<{
   dashboard: Exclude<ProgressDashboardProjection, { sport: "Running" }>;
   exerciseActionRefs: React.MutableRefObject<Map<string, View>>;
   onDecideRecommendation?: ((recommendation: ProgressRecommendationReview, decision: "use_target" | "keep_current_target") => Promise<unknown>) | undefined;
@@ -297,6 +297,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
   onSelectSport(sport: ProgressSport): void;
   period: ProgressPeriod;
   rangeLabel: string;
+  recommendationSourceRefs: React.MutableRefObject<Map<string, View>>;
   recommendations: readonly ProgressRecommendationReview[];
   staleRecommendation: ProgressRecommendationReview | null;
 }>) {
@@ -346,6 +347,10 @@ function DashboardContent({ dashboard, exerciseActionRefs, onDecideRecommendatio
         onAccept={() => onDecideRecommendation?.(recommendation, "use_target")}
         onKeepCurrent={() => onDecideRecommendation?.(recommendation, "keep_current_target")}
         onOpenSource={(sessionId) => onOpenSession(sessionId, `progress:Strength:${period}:recommendation:${recommendation.id}`)}
+        sourceActionRef={(node) => {
+          if (node === null) recommendationSourceRefs.current.delete(recommendation.id);
+          else recommendationSourceRefs.current.set(recommendation.id, node);
+        }}
       />)}
     </View>}
     <View style={styles.goalRows}>
@@ -371,11 +376,14 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const bodyweightSettingsActionRef = useRef<View>(null);
   const bodyweightEditorRestoreFocusRef = useRef<View>(null);
   const exerciseActionRefs = useRef(new Map<string, View>());
+  const recommendationSourceRefs = useRef(new Map<string, View>());
+  const runningSourceActionRefs = useRef(new Map<string, View>());
   const scrollOffsetRef = useRef(0);
   const [historyGoal, setHistoryGoal] = useState<ProgressRunningGoal | null>(null);
   const [targetDistanceMeters, setTargetDistanceMeters] = useState<number | null>(null);
   const [progressSettingsVisible, setProgressSettingsVisible] = useState(false);
   const [bodyweightVisible, setBodyweightVisible] = useState(false);
+  const [bodyweightInvoker, setBodyweightInvoker] = useState<"body_metrics" | "settings">("body_metrics");
   const [bodyweightEntries, setBodyweightEntries] = useState<readonly ProgressBodyweightEntry[]>([]);
   const [bodyweightEditor, setBodyweightEditor] = useState<Readonly<{ mode: "add" | "edit"; entry?: ProgressBodyweightEntry }> | null>(null);
   const [staleRecommendation, setStaleRecommendation] = useState<ProgressRecommendationReview | null>(null);
@@ -428,12 +436,18 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   useEffect(() => {
     if (returnFocusVersion === 0 || returnFocusToken === undefined) return;
     const exerciseMatch = /^progress:Strength:[A-Za-z0-9_]+:exercise:([A-Za-z0-9._:-]{1,128})$/u.exec(returnFocusToken);
+    const recommendationMatch = /^progress:Strength:[A-Za-z0-9_]+:recommendation:([A-Za-z0-9._:-]{1,128})$/u.exec(returnFocusToken);
+    const runningSourceMatch = /^running-history:\d+:([A-Za-z0-9._:-]{1,128}):(\d+)$/u.exec(returnFocusToken);
     const target = exerciseMatch === null
-      ? returnFocusToken.startsWith("running-target:")
-        ? targetTriggerRefs.current.get(Number(returnFocusToken.split(":").at(-1))) ?? null
-        : returnFocusToken.startsWith("running-history:")
-          ? historyTriggerRef.current
-          : null
+      ? recommendationMatch !== null
+        ? recommendationSourceRefs.current.get(recommendationMatch[1]!) ?? null
+        : runningSourceMatch !== null
+          ? runningSourceActionRefs.current.get(`${runningSourceMatch[1]}:${runningSourceMatch[2]}`) ?? null
+          : returnFocusToken.startsWith("running-target:")
+            ? targetTriggerRefs.current.get(Number(returnFocusToken.split(":").at(-1))) ?? null
+            : returnFocusToken.startsWith("running-history:")
+              ? historyTriggerRef.current
+              : null
       : exerciseActionRefs.current.get(exerciseMatch[1]!) ?? null;
     requestAnimationFrame(() => target?.focus?.());
   }, [returnFocusToken, returnFocusVersion]);
@@ -446,11 +460,12 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     setBodyweightEditor(null);
   };
 
-  const openBodyweight = async () => {
+  const openBodyweight = async (invoker: "body_metrics" | "settings") => {
     if (progressBodyweightRuntime === undefined) return;
     const entries = await progressBodyweightRuntime.loadHistory();
     setBodyweightEntries(entries);
     setProgressSettingsVisible(false);
+    setBodyweightInvoker(invoker);
     setBodyweightEditor(null);
     setBodyweightVisible(true);
   };
@@ -484,7 +499,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   const header = <>
     <ScreenHeader {...(headingRef === undefined ? {} : { ref: headingRef as React.Ref<View> })} action={<IconAction accessibilityHint="Opens App Settings" accessibilityLabel="Open App Settings" icon="settings" nativeID={settingsActionNativeID} onPress={onOpenSettings} ref={settingsActionRef as React.Ref<View>} />} title="Progress" />
     {progressBodyweightRuntime === undefined ? null : <View style={styles.supplementaryActions}>
-      <FocusablePressable accessibilityLabel="Body metrics" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); void openBodyweight(); }} ref={bodyMetricsTriggerRef} style={styles.supplementaryAction}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Body metrics</Text></FocusablePressable>
+      <FocusablePressable accessibilityLabel="Body metrics" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); void openBodyweight("body_metrics"); }} ref={bodyMetricsTriggerRef} style={styles.supplementaryAction}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Body metrics</Text></FocusablePressable>
       <FocusablePressable accessibilityLabel="Settings" accessibilityRole="button" focusable onPress={() => { closeLocalSurfaces(); setProgressSettingsVisible(true); }} ref={progressSettingsTriggerRef} style={styles.supplementaryAction}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>Settings</Text></FocusablePressable>
     </View>}
     <SegmentedControls<ProgressSport> label="Progress sport" onChange={(next) => { closeLocalSurfaces(); setSport(next); }} role="tab" selected={sport} values={SPORTS} />
@@ -518,6 +533,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     onSelectSport={(next) => { closeLocalSurfaces(); setSport(next); }}
     period={period}
     rangeLabel={rangeLabel}
+    recommendationSourceRefs={recommendationSourceRefs}
     recommendations={snapshot.projection?.recommendations ?? []}
     staleRecommendation={staleRecommendation}
   />;
@@ -538,11 +554,20 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     <RunningHistorySheet
       goal={historyGoal}
       onClose={() => setHistoryGoal(null)}
+      registerSourceAction={(source, node) => {
+        if (!("activityId" in source)) return;
+        const key = `${source.activityId}:${source.sourceRevision}`;
+        if (node === null) runningSourceActionRefs.current.delete(key);
+        else runningSourceActionRefs.current.set(key, node);
+      }}
       {...(onOpenRunningSource === undefined ? {} : {
-        onOpenSource: (source: FactualHistorySource) => onOpenRunningSource(
-          source,
-          `running-history:${historyGoal?.distanceMeters ?? 0}`,
-        ),
+        onOpenSource: (source: FactualHistorySource) => {
+          if (!("activityId" in source)) return;
+          onOpenRunningSource(
+            source,
+            `running-history:${historyGoal?.distanceMeters ?? 0}:${source.activityId}:${source.sourceRevision}`,
+          );
+        },
       })}
       rangeLabel={rangeLabel}
       restoreFocusRef={historyTriggerRef}
@@ -572,7 +597,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
     <ProgressSettingsSheet
       bodyweightActionRef={bodyweightSettingsActionRef}
       onClose={() => setProgressSettingsVisible(false)}
-      onOpenBodyweightHistory={() => { void openBodyweight(); }}
+      onOpenBodyweightHistory={() => { void openBodyweight("settings"); }}
       restoreFocusRef={progressSettingsTriggerRef}
       visible={progressSettingsVisible}
     />
@@ -584,7 +609,10 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
         setBodyweightVisible(false);
         setBodyweightEditor({ mode: "add" });
       }}
-      onClose={() => setBodyweightVisible(false)}
+      onClose={() => {
+        setBodyweightVisible(false);
+        if (bodyweightInvoker === "settings") setProgressSettingsVisible(true);
+      }}
       onDelete={async (entry) => {
         const requestId = bodyweightDeleteRequestsRef.current.get(entry.entryId)
           ?? progressBodyweightRuntime.createId("bodyweight-delete");
@@ -600,7 +628,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
         setBodyweightVisible(false);
         setBodyweightEditor({ mode: "edit", entry });
       }}
-      restoreFocusRef={bodyMetricsTriggerRef}
+      restoreFocusRef={bodyweightInvoker === "settings" ? bodyweightSettingsActionRef : bodyMetricsTriggerRef}
       visible={bodyweightVisible}
     />}
     {progressBodyweightRuntime === undefined ? null : <BodyweightEditorSheet

@@ -124,9 +124,11 @@ describe("RecommendationSurface actionable review", () => {
     expect(screen.getAllByText(pendingReview.reason)).not.toHaveLength(0);
     expect(screen.getByText("No automatic change without confirmation.")).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByRole("button", {
+    const sourceAction = screen.getByRole("button", {
       name: "Open source workout for Bench Press",
-    }));
+    });
+    expect(sourceAction).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(sourceAction);
     expect(props.onOpenSource).toHaveBeenCalledWith("session-42");
   });
 

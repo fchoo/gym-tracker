@@ -18,6 +18,7 @@ export type RunningHistorySheetProps = Readonly<{
   goal: ProgressRunningGoal | null;
   onClose: () => void;
   onOpenSource?: (source: FactualHistorySource) => void;
+  registerSourceAction?: (source: FactualHistorySource, node: View | null) => void;
   onRetry?: () => void;
   rangeLabel: string;
   state?: RunningHistoryState;
@@ -78,6 +79,7 @@ export function RunningHistorySheet({
   onClose,
   onOpenSource,
   onRetry,
+  registerSourceAction,
   rangeLabel,
   state = "ready",
   visible,
@@ -98,7 +100,7 @@ export function RunningHistorySheet({
               <SheetFact label="Best" value={formatFactualDuration(goal?.best?.durationSeconds ?? null)} />
               <SheetFact label="Target" value={formatFactualDuration(goal!.target?.durationSeconds ?? null)} />
             </View>
-            <FactualHistoryChart series={series} {...(onOpenSource === undefined ? {} : { onOpenSource })} />
+            <FactualHistoryChart series={series} {...(onOpenSource === undefined ? {} : { onOpenSource })} {...(registerSourceAction === undefined ? {} : { registerSourceAction })} />
           </View>;
 
   return <BottomSheet
