@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^v12-samsung-acceptance-[a-z0-9-]{3,72}$/u;
@@ -162,4 +165,52 @@ export function createV12AttendedRecord({ checklist, observations, recorded_at: 
     recorded_at: recordedAt,
     rows,
   });
+}
+
+function parseModeArguments(args) {
+  const [mode, ...rest] = args;
+  const expected = mode === "prepare" ? ["identity", "output"]
+    : mode === "record" ? ["checklist", "observations", "output"]
+      : mode === "verify" ? ["checklist", "observations"] : undefined;
+  if (expected === undefined || rest.length !== expected.length * 2) fail("CLI arguments are malformed.");
+  const values = { mode };
+  for (let index = 0; index < rest.length; index += 2) {
+    const key = rest[index]?.slice(2); const value = rest[index + 1];
+    if (!expected.includes(key) || values[key] !== undefined || typeof value !== "string" || value.length < 1 || value.startsWith("--")) fail("CLI arguments are malformed.");
+    values[key] = value;
+  }
+  return values;
+}
+
+function readJson(file, label) {
+  try { return JSON.parse(readFileSync(file, "utf8")); } catch { fail(`${label} is not valid JSON.`); }
+}
+
+function writeJson(file, value) {
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+}
+
+function executeCli(args = process.argv.slice(2)) {
+  const options = parseModeArguments(args);
+  if (options.mode === "prepare") {
+    const checklist = buildV12AttendedChecklist({ identity: readJson(options.identity, "identity"), generated_at: new Date().toISOString() });
+    writeJson(options.output, checklist); return checklist;
+  }
+  const checklist = readJson(options.checklist, "checklist"); const observations = readJson(options.observations, "observations");
+  if (options.mode === "record") {
+    const record = createV12AttendedRecord({ checklist, observations, recorded_at: new Date().toISOString() });
+    writeJson(options.output, record); return record;
+  }
+  validateV12AttendedObservations(observations, { identity: checklist.identity }); return observations;
+}
+
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  try {
+    const result = executeCli();
+    process.stdout.write(`${JSON.stringify({ ok: true, mode: process.argv[2], status: result.status ?? "validated" })}\n`);
+  } catch (error) {
+    process.stderr.write(`${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : "v12_attended_invalid" })}\n`);
+    process.exitCode = 1;
+  }
 }
