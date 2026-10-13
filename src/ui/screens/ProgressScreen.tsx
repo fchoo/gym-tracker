@@ -70,10 +70,16 @@ const PERIODS: readonly Readonly<{ value: ProgressPeriod; label: string }>[] = [
 ];
 
 function rebuildText(diagnostic?: ProgressProjectionDiagnostic): string {
-  if (diagnostic?.code === "history_projection_unavailable") {
-    return "Progress is temporarily unavailable. Reload to try again.";
-  }
+  void diagnostic;
   return "Saved history is being recalculated. Results refresh automatically.";
+}
+
+function ProgressUnavailable({ onRetry }: Readonly<{ onRetry(): void }>) {
+  return <EmptyState
+    body="Your saved workouts and targets were not changed. Retry loading progress."
+    heading="Progress could not be loaded"
+    primaryAction={<PrimaryAction label="Retry loading progress" onPress={onRetry} />}
+  />;
 }
 
 function SegmentedControls<T extends string>({
@@ -408,7 +414,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, historyActionRefs, on
     </View>;
   }
   if (dashboard.state === "unavailable") {
-    return <InlineNotice body="The requested progress facts are unavailable. Reload to try again." heading="Progress is temporarily unavailable" tone="error" />;
+    return <ProgressUnavailable onRetry={onRetry} />;
   }
   if (dashboard.sport === "All") {
     const primaryGoal = dashboard.primaryGoal;
@@ -646,6 +652,7 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
   let content: React.ReactNode;
   if (failed) content = <EmptyState body="Your saved workouts and targets were not changed. Retry loading progress." heading="Progress could not be loaded" primaryAction={<PrimaryAction label="Retry loading progress" onPress={() => setRetry((current) => current + 1)} />} />;
   else if (snapshot === null) content = <View accessibilityLabel="Loading progress" accessibilityRole="progressbar" style={styles.content}><SkeletonBlock height={180} testID="progress-skeleton" /></View>;
+  else if (snapshot.freshness === "unavailable" || snapshot.diagnostic?.code === "history_projection_unavailable") content = <ProgressUnavailable onRetry={() => setRetry((current) => current + 1)} />;
   else if (snapshot.freshness !== "current" || snapshot.dashboard === null || snapshot.dashboard === undefined) content = <View style={styles.content}><InlineNotice body={rebuildText(snapshot.diagnostic)} heading="Updating progress" tone="neutral" />{retryAction}</View>;
   else if (snapshot.dashboard.sport === "Running") {
     const runningDashboard = snapshot.dashboard;

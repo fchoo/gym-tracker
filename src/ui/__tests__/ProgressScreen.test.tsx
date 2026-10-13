@@ -319,6 +319,29 @@ describe("ProgressScreen", () => {
     await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
   });
 
+  it.each(["projection", "dashboard"] as const)("renders exact unavailable copy and retry for the %s state", async (kind) => {
+    const loadProgress = jest.fn<React.ComponentProps<typeof ProgressScreen>["loadProgress"]>()
+      .mockResolvedValue(kind === "projection" ? {
+        sport: "All",
+        period: "4_weeks",
+        freshness: "unavailable",
+        dashboard: null,
+        diagnostic: { code: "history_projection_unavailable", affectedSubjects: ["all_period"] },
+      } : {
+        sport: "All",
+        period: "4_weeks",
+        freshness: "current",
+        dashboard: { sport: "All", state: "unavailable", primaryGoal: null, activeGoals: [] },
+      });
+    await renderProgress(loadProgress);
+
+    expect(await screen.findByText("Progress could not be loaded")).toBeOnTheScreen();
+    expect(screen.getByText("Your saved workouts and targets were not changed. Retry loading progress.")).toBeOnTheScreen();
+    expect(screen.queryByText("Updating progress")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry loading progress" }));
+    await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+  });
+
   it("runs only the declared bounded automatic refresh backoff and stops at current", async () => {
     jest.useFakeTimers();
     try {
