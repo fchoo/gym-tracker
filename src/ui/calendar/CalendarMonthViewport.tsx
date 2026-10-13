@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -29,6 +29,7 @@ import { calendarTrackMetrics } from "./CalendarWeekRow";
 const EASING = Easing.bezier(0.22, 0.8, 0.3, 1);
 const SLOP_DP = 7;
 const HORIZONTAL_INTENT_RATIO = 1.15;
+const SETTLE_FALLBACK_GRACE_MS = 32;
 
 type PanelOffset = -1 | 0 | 1;
 
@@ -48,6 +49,14 @@ export function calendarPanelTranslate(offset: PanelOffset, dx: number, viewport
 
 export function calendarMonthPanEnabled(phase: CalendarTransitionPhase): boolean {
   return phase === "idle" || phase === "dragging";
+}
+
+export function calendarFocusedAgendaMinimumHeight(fontScale: number): number {
+  const scale = Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
+  const heading = Math.max(62, Math.ceil((26 + 20) * scale + 10));
+  const collapse = Math.max(48, Math.ceil(22 * scale + 20));
+  const agendaRow = Math.max(82, Math.ceil((22 + 22 + 20 + 20) * scale + 20));
+  return heading + collapse + agendaRow + 20;
 }
 
 export function calendarAgendaMotion(command: Readonly<{
@@ -146,6 +155,7 @@ function FocusedAgenda({
 export function CalendarMonthViewport({
   agenda,
   command,
+  disabled = false,
   fontScale = 1,
   focusedWeek,
   layoutGeneration = 0,
@@ -163,6 +173,7 @@ export function CalendarMonthViewport({
 }: Readonly<{
   agenda?: React.ReactNode;
   command: CalendarMotionCommand | null;
+  disabled?: boolean;
   fontScale?: number;
   layoutGeneration?: number;
   focusedWeek: Readonly<{
@@ -195,8 +206,13 @@ export function CalendarMonthViewport({
   const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
-  const panEnabled = useSharedValue(calendarMonthPanEnabled(transition.phase));
+  const panEnabled = useSharedValue(!disabled && calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
+  const monthCompletionRef = useRef<Readonly<{
+    activeEpoch: number | null;
+    deliveredEpoch: number | null;
+    timer: ReturnType<typeof setTimeout> | null;
+  }>>({ activeEpoch: null, deliveredEpoch: null, timer: null });
   const diagnosticSequenceStarted = useRef(false);
   const diagnosticSequenceExpanded = useRef(false);
   const lastWidth = useRef(0);
@@ -209,29 +225,64 @@ export function CalendarMonthViewport({
     onInteractionDiagnosticStart?.();
   };
 
+  const cancelMonthCompletion = useCallback(() => {
+    const current = monthCompletionRef.current;
+    if (current.timer !== null) clearTimeout(current.timer);
+    monthCompletionRef.current = Object.freeze({
+      activeEpoch: null,
+      deliveredEpoch: current.deliveredEpoch,
+      timer: null,
+    });
+  }, []);
+
+  const publishMonthCompletion = useCallback((epoch: number) => {
+    const current = monthCompletionRef.current;
+    if (current.activeEpoch !== epoch || current.deliveredEpoch === epoch) return;
+    if (current.timer !== null) clearTimeout(current.timer);
+    monthCompletionRef.current = Object.freeze({
+      activeEpoch: epoch,
+      deliveredEpoch: epoch,
+      timer: null,
+    });
+    onComplete(epoch);
+  }, [onComplete]);
+
   useEffect(() => () => {
     mounted.current = false;
+    cancelMonthCompletion();
     cancelAnimation(pointerX);
-  }, [pointerX]);
+  }, [cancelMonthCompletion, pointerX]);
 
   useEffect(() => {
-    if (command?.kind !== "settle-month") return;
+    cancelMonthCompletion();
+    if (command?.kind !== "settle-month") return undefined;
     const width = viewportWidth.value;
     if (width <= 0) {
-      onComplete(command.epoch);
-      return;
+      monthCompletionRef.current = Object.freeze({ activeEpoch: command.epoch, deliveredEpoch: null, timer: null });
+      publishMonthCompletion(command.epoch);
+      return undefined;
     }
     completionEpoch.value = command.epoch;
+    const timer = setTimeout(
+      () => publishMonthCompletion(command.epoch),
+      command.durationMs + SETTLE_FALLBACK_GRACE_MS,
+    );
+    monthCompletionRef.current = Object.freeze({
+      activeEpoch: command.epoch,
+      deliveredEpoch: null,
+      timer,
+    });
     cancelAnimation(pointerX);
     pointerX.value = withTiming(command.toOffset * width, {
       duration: command.durationMs,
       easing: EASING,
     }, (finished) => {
       if (finished && completionEpoch.value === command.epoch) {
-        scheduleOnRN(onComplete, command.epoch);
+        scheduleOnRN(publishMonthCompletion, command.epoch);
       }
     });
-  }, [command, completionEpoch, onCancel, onComplete, pointerX, viewportWidth]);
+    return cancelMonthCompletion;
+  }, [cancelMonthCompletion, command, completionEpoch, pointerX, publishMonthCompletion, viewportWidth]);
 
   useEffect(() => {
     if (command?.kind !== "settle-week") return;
@@ -287,11 +338,11 @@ export function CalendarMonthViewport({
   }, [pointerX, previewPanel, transition.epoch, transition.phase]);
 
   useEffect(() => {
-    panEnabled.value = calendarMonthPanEnabled(transition.phase);
-  }, [panEnabled, transition.phase]);
+    panEnabled.value = !disabled && calendarMonthPanEnabled(transition.phase);
+  }, [disabled, panEnabled, transition.phase]);
 
   const pan = Gesture.Pan()
-    .enabled(calendarMonthPanEnabled(transition.phase))
+    .enabled(!disabled && calendarMonthPanEnabled(transition.phase))
     .manualActivation(true)
     .onTouchesDown((event) => {
       const touch = event.allTouches[0];
@@ -342,8 +393,10 @@ export function CalendarMonthViewport({
       }
     })
     .onEnd((event) => {
+      if (!panEnabled.value) return;
       const width = viewportWidth.value;
       if (width <= 0) return;
+      panEnabled.value = false;
       released.value = true;
       const dx = Math.max(-width, Math.min(width, event.translationX));
       const selectedMonth = (Math.abs(dx) >= width * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);
@@ -384,7 +437,7 @@ export function CalendarMonthViewport({
   const trackMetrics = calendarTrackMetrics(fontScale);
   const minimumHeight = trackMetrics.rowMinHeight
     * (transition.mode === "focused" ? 2 : weekCount)
-    + (transition.mode === "focused" ? 110 : 0);
+    + (transition.mode === "focused" ? calendarFocusedAgendaMinimumHeight(fontScale) : 0);
   const fallbackSelectedGeometry = Object.freeze({ y: 0, height: trackMetrics.rowMinHeight, generation: layoutGeneration });
   const fallbackFollowingGeometry = Object.freeze({
     y: Math.max(0, (weekCount - 1) * trackMetrics.rowMinHeight),

@@ -2018,6 +2018,37 @@ describe("plan impact exercise replacement", () => {
     })).resolves.toBeNull();
   });
 
+  it("commits a reviewed replacement without a schedule event when the owner plan is unscheduled", async () => {
+    const runtime = await setupRuntime();
+    const input = await replacementRepositoryInput(runtime, {
+      requestId: "repository-replace-unscheduled",
+      requestSha256: "c".repeat(64),
+    });
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision)
+         VALUES (
+           'schedule-holder', NULL, 'custom', NULL, NULL, 'Schedule holder',
+           1, 'Owner', 'Strength', 1, 'Owner-created', 0, 1
+         )`,
+      );
+      await transaction.execute(
+        "UPDATE owned_plan_schedules SET plan_id = 'schedule-holder' WHERE id = 'retained-schedule'",
+      );
+    });
+
+    await expect(runtime.repository.applyExerciseReplacement(input)).resolves.toMatchObject({
+      outcome: "committed",
+      planId: "retained-plan",
+    });
+    await expect(runtime.kernel.queryAll(
+      "SELECT id FROM owned_plan_schedule_events WHERE event_type = 'plan_exercise_replaced'",
+    )).resolves.toEqual([]);
+  });
+
   it("rejects repository-level stale previews, incompatible candidates, and incomplete scopes", async () => {
     const runtime = await setupRuntime();
     const input = await replacementRepositoryInput(runtime);

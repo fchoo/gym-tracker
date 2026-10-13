@@ -35,6 +35,10 @@ import type {
 import {
   creationTimezoneOffsetMinutes,
 } from "../migrations/0013_history_integrity";
+import {
+  captureStrengthOccurrenceSnapshot,
+  loadStrengthOccurrenceSnapshot,
+} from "./strengthOccurrenceSnapshot";
 const CONTENT_PACK_ID = "content_pack_full_body_foundation_v1";
 const BUNDLED_PLAN_ID = "plan_bundled_full_body_foundation_v1";
 const WEEKDAY_NUMBER = {
@@ -573,77 +577,11 @@ export function createPlansWorkoutRepository(
 }> {
   return Object.freeze({
     async loadPlannedStrengthOccurrence(occurrenceId: string) {
-      const [occurrence] = await kernel.queryAll<{
-        occurrence_id: string;
-        plan_id: string;
-        plan_name: string;
-        plan_day_id: string;
-        day_name: string;
-        schedule_id: string;
-        schedule_version_id: string;
-        local_date: string;
-        timezone: string;
-        plan_revision: number;
-        day_revision: number;
-        schedule_revision: number;
-      }>(
-        `SELECT opportunity.id AS occurrence_id, plan.id AS plan_id, plan.name AS plan_name,
-                opportunity.plan_day_id AS plan_day_id, day.name AS day_name,
-                schedule.id AS schedule_id,
-                version.id AS schedule_version_id,
-                opportunity.local_date AS local_date, version.timezone AS timezone,
-                plan.revision AS plan_revision, day.revision AS day_revision,
-                schedule.revision AS schedule_revision
-         FROM owned_plan_schedule_opportunities opportunity
-         JOIN owned_plan_schedules schedule ON schedule.id = opportunity.schedule_id
-         JOIN owned_plan_schedule_versions version
-           ON version.id = opportunity.schedule_version_id
-          AND version.schedule_id = schedule.id
-         JOIN plans plan ON plan.id = schedule.plan_id
-         JOIN plan_days day ON day.id = opportunity.plan_day_id
-          AND day.plan_id = plan.id
-         WHERE opportunity.id = ? AND opportunity.state = 'pending'
-           AND plan.plan_kind = 'strength' AND schedule.plan_kind = 'strength'`,
-        [occurrenceId],
-      );
-      if (occurrence === undefined) return null;
-      const exercises = await kernel.queryAll<{
-        id: string; exercise_id: string; exercise_name: string; ordinal: number;
-      }>(
-        `SELECT planned.id, planned.exercise_id, exercise.name AS exercise_name, planned.ordinal
-           FROM owned_plan_day_exercises planned
-           JOIN exercises exercise ON exercise.id = planned.exercise_id
-          WHERE planned.plan_day_id = ? ORDER BY planned.ordinal, planned.id`,
-        [occurrence.plan_day_id],
-      );
-      if (exercises.length === 0) return null;
-      const mapped = await Promise.all(exercises.map(async (exercise) => {
-        const targets = await kernel.queryAll<{
-          id: string; ordinal: number; target_json: string; unit_json: string;
-        }>(
-          `SELECT id, ordinal, target_json, unit_json
-           FROM owned_plan_working_set_targets
-           WHERE plan_day_exercise_id = ? ORDER BY ordinal, id`,
-          [exercise.id],
-        );
-        if (targets.length === 0) return null;
-        return Object.freeze({
-          id: exercise.id, exerciseId: exercise.exercise_id, exerciseName: exercise.exercise_name, ordinal: exercise.ordinal,
-          targets: Object.freeze(targets.map((target) => Object.freeze({
-            id: target.id, ordinal: target.ordinal,
-            targetJson: target.target_json, unitJson: target.unit_json,
-          }))),
-        });
-      }));
-      if (mapped.some((exercise) => exercise === null)) return null;
-      return Object.freeze({
-        occurrenceId: occurrence.occurrence_id, planId: occurrence.plan_id, planName: occurrence.plan_name,
-        planDayId: occurrence.plan_day_id, dayName: occurrence.day_name, scheduleId: occurrence.schedule_id,
-        scheduleVersionId: occurrence.schedule_version_id,
-        localDate: occurrence.local_date, timezone: occurrence.timezone,
-        sourceRevisions: Object.freeze({ plan: occurrence.plan_revision, day: occurrence.day_revision, schedule: occurrence.schedule_revision }),
-        exercises: Object.freeze(mapped as Exclude<typeof mapped[number], null>[]),
-      });
+      return kernel.readSnapshot === undefined
+        ? loadStrengthOccurrenceSnapshot(kernel, occurrenceId)
+        : kernel.readSnapshot((transaction) =>
+            loadStrengthOccurrenceSnapshot(transaction, occurrenceId)
+          );
     },
     activateStarterPlan(
       input: Parameters<PlansRepository["activateStarterPlan"]>[0],
@@ -769,6 +707,11 @@ export function createPlansWorkoutRepository(
               selected.scheduleVersionId, selected.scheduleId,
               selected.planId, selected.planDayId,
             ],
+          );
+          await captureStrengthOccurrenceSnapshot(
+            transaction,
+            selected.opportunityId,
+            request.startedAtMs,
           );
           const [current] = await transaction.queryAll<{
             opportunity_id: string;

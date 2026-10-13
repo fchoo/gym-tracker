@@ -52,6 +52,7 @@ export function calendarTrackMetrics(fontScale: number): CalendarTrackMetrics {
 export function CalendarWeekRow({
   dates,
   daysByDate,
+  disabled = false,
   eventsByDate,
   fontScale = 1,
   month,
@@ -65,6 +66,7 @@ export function CalendarWeekRow({
 }: Readonly<{
   dates: readonly LocalDate[];
   daysByDate?: ReadonlyMap<LocalDate, CalendarDay>;
+  disabled?: boolean;
   eventsByDate: ReadonlyMap<LocalDate, readonly CalendarEvent[]>;
   fontScale?: number;
   month: LocalDate;
@@ -107,7 +109,8 @@ export function CalendarWeekRow({
           <FocusablePressable
             accessibilityLabel={label}
             accessibilityRole="button"
-            accessibilityState={{ selected }}
+            accessibilityState={{ disabled, selected }}
+            disabled={disabled}
             key={date}
             onKeyDown={(event) => {
               const key = event.nativeEvent.key;

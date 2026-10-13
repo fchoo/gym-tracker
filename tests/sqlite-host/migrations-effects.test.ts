@@ -99,6 +99,10 @@ import {
   SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE,
   sessionExerciseRestDefaultsMigration,
 } from "../../src/platform/sqlite/migrations/0036_session_exercise_rest_defaults";
+import { exerciseInstructionSetsMigration } from "../../src/platform/sqlite/migrations/0037_exercise_instruction_sets";
+import { runningPlanLifecycleReceiptsMigration } from "../../src/platform/sqlite/migrations/0038_running_plan_lifecycle_receipts";
+import { runningSessionSlotMembershipMigration } from "../../src/platform/sqlite/migrations/0039_running_session_slot_membership";
+import { scheduleCollisionOutcomesMigration } from "../../src/platform/sqlite/migrations/0040_schedule_collision_outcomes";
 
 const MIGRATIONS_THROUGH_V18 = runtimeMigrations.filter(
   ({ version }) => version <= 18,
@@ -3767,5 +3771,21 @@ describe("Phase 13 schema contracts", () => {
     } finally {
       await runtime.close();
     }
+  });
+});
+
+describe("Phase 16 additive schema verification", () => {
+  it.each<readonly [Migration, string]>([
+    [exerciseInstructionSetsMigration, "exercise_instruction_sets_schema_incomplete"],
+    [runningPlanLifecycleReceiptsMigration, "running_plan_lifecycle_receipts_schema_incomplete"],
+    [runningSessionSlotMembershipMigration, "running_session_slot_membership_schema_incomplete"],
+    [scheduleCollisionOutcomesMigration, "schedule_collision_outcomes_schema_incomplete"],
+  ])("fails closed when %s cannot observe its required schema", async (migration, error) => {
+    const transaction: SqliteTransactionExecutor = {
+      execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+      queryAll: async () => [],
+    };
+
+    await expect(migration.verify(transaction)).rejects.toThrow(error);
   });
 });

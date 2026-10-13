@@ -66,16 +66,23 @@ function ManagementImportedActivityDetailRoute({
   const [state, setState] = useState<ImportedActivityDetailScreenState>(
     activityId === null ? { kind: "missing" } : { kind: "loading" },
   );
+  const requestIdentity = activityId === null
+    ? null
+    : `${activityId}:${sourceRevision ?? "current"}`;
+  const [loadedIdentity, setLoadedIdentity] = useState<string | null>(null);
   const [matchReturnFocusToken, setMatchReturnFocusToken] = useState<string>();
   const [matchReturnFocusVersion, setMatchReturnFocusVersion] = useState(0);
   const pendingMatchReturnFocusTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (activityId === null) {
+      setLoadedIdentity(null);
       setState({ kind: "missing" });
       return undefined;
     }
     let active = true;
+    setLoadedIdentity(null);
+    setState({ kind: "loading" });
     const load = sourceRevision === undefined
       ? runtime.loadImportedActivityDetail(activityId)
       : runtime.loadImportedActivityDetail(activityId, sourceRevision);
@@ -83,20 +90,27 @@ function ManagementImportedActivityDetailRoute({
       if (!active) return;
       if (result.kind !== "revision_review") {
         setState(result);
+        setLoadedIdentity(requestIdentity);
         return;
       }
       const review = await runtime.loadGarminRevisionReview(activityId);
       if (!active) return;
       setState(review === null ? result : { kind: "revision_review", review });
+      setLoadedIdentity(requestIdentity);
     }).catch(() => {
       if (active) {
         setState({ kind: "projection_error", code: "accepted_payload_unavailable" });
+        setLoadedIdentity(requestIdentity);
       }
     });
     return () => {
       active = false;
     };
-  }, [activityId, attempt, runtime.loadGarminRevisionReview, runtime.loadImportedActivityDetail, sourceRevision]);
+  }, [activityId, attempt, requestIdentity, runtime.loadGarminRevisionReview, runtime.loadImportedActivityDetail, sourceRevision]);
+
+  const visibleState: ImportedActivityDetailScreenState = activityId === null
+    ? { kind: "missing" }
+    : loadedIdentity === requestIdentity ? state : { kind: "loading" };
 
   useFocusEffect(useCallback(() => {
     const token = pendingMatchReturnFocusTokenRef.current;
@@ -120,7 +134,7 @@ function ManagementImportedActivityDetailRoute({
   }, [activityId, origin]);
 
   const resolveRevision = useCallback(async (action: "accept" | "keep") => {
-    if (activityId === null || !hasRevisionReview(state)) {
+    if (activityId === null || !hasRevisionReview(visibleState)) {
       return;
     }
     const requestId = `garmin-revision-${action}-${randomUUID()}`;
@@ -129,20 +143,20 @@ function ManagementImportedActivityDetailRoute({
       JSON.stringify({
         version: 1,
         action,
-        activityId: state.review.activityId,
-        expectedAggregateRevision: state.review.acceptedRevision,
-        proposedRevision: state.review.proposedRevision,
-        expectedProposedSha256: state.review.expectedProposedSha256,
+        activityId: visibleState.review.activityId,
+        expectedAggregateRevision: visibleState.review.acceptedRevision,
+        proposedRevision: visibleState.review.proposedRevision,
+        expectedProposedSha256: visibleState.review.expectedProposedSha256,
       }),
     );
     const result = await runtime.resolveGarminRevision({
       action,
       requestId,
       requestSha256,
-      activityId: state.review.activityId,
-      expectedAggregateRevision: state.review.acceptedRevision,
-      proposedRevision: state.review.proposedRevision,
-      expectedProposedSha256: state.review.expectedProposedSha256,
+      activityId: visibleState.review.activityId,
+      expectedAggregateRevision: visibleState.review.acceptedRevision,
+      proposedRevision: visibleState.review.proposedRevision,
+      expectedProposedSha256: visibleState.review.expectedProposedSha256,
       occurredAtMs: Date.now(),
     });
     if (result.kind === "conflict") {
@@ -150,7 +164,7 @@ function ManagementImportedActivityDetailRoute({
     }
     setState({ kind: "loading" });
     setAttempt((current) => current + 1);
-  }, [activityId, runtime, state]);
+  }, [activityId, runtime, visibleState]);
 
   return (
     <GarminRouteShell origin={origin}>
@@ -170,7 +184,7 @@ function ManagementImportedActivityDetailRoute({
               returnFocusMatchActionToken: matchReturnFocusToken,
               returnFocusMatchActionVersion: matchReturnFocusVersion,
             })}
-        state={state}
+        state={visibleState}
       />
     </GarminRouteShell>
   );

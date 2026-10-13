@@ -57,6 +57,7 @@ import {
 import {
   createPlansWorkoutRepository,
 } from "../../src/platform/sqlite/repositories/plansWorkoutRepository";
+import { captureStrengthOccurrenceSnapshot } from "../../src/platform/sqlite/repositories/strengthOccurrenceSnapshot";
 import {
   createScheduleRepository,
 } from "../../src/platform/sqlite/repositories/scheduleRepository";
@@ -1063,6 +1064,9 @@ describe("Today schedule workout integration", () => {
                  'plan-day-readback-empty', 'pending', NULL, NULL, 1, NULL)`,
         [ownedSchedule.id, ownedSchedule.id],
       );
+      await captureStrengthOccurrenceSnapshot(transaction, "planned-strength-occurrence", 100);
+      await captureStrengthOccurrenceSnapshot(transaction, "planned-strength-no-target", 101);
+      await captureStrengthOccurrenceSnapshot(transaction, "planned-strength-empty", 102);
     });
 
     await expect(plans.loadPlannedStrengthOccurrence?.(
@@ -1080,7 +1084,7 @@ describe("Today schedule workout integration", () => {
       scheduleVersionId: 'owned-schedule-version-copy',
       localDate: '2026-08-17',
       timezone: 'Asia/Singapore',
-      sourceRevisions: { plan: 8, day: 2, schedule: ownedSchedule.revision },
+      sourceRevisions: { plan: 8, day: 2, schedule: ownedSchedule.revision, opportunity: 4 },
       exercises: [expect.objectContaining({
         id: 'owned-day-exercise-squat-a', exerciseId: 'exercise-squat',
         exerciseName: 'Squat',
@@ -1097,6 +1101,52 @@ describe("Today schedule workout integration", () => {
     await expect(plans.loadPlannedStrengthOccurrence?.(
       'planned-strength-empty',
     )).resolves.toBeNull();
+
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE owned_plan_working_set_targets
+          SET target_json = json_set(target_json, '$.loadGrams', 999999),
+              revision = revision + 1
+        WHERE id = 'owned-working-target-a'`,
+    ));
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toMatchObject({
+      exercises: [{ targets: [{ targetJson: expect.not.stringContaining("999999") }] }],
+    });
+
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE owned_plan_schedules
+          SET lifecycle = 'inactive', deactivated_at_ms = 999999
+        WHERE id = ?`,
+      [ownedSchedule.id],
+    ));
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toBeNull();
+
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE owned_plan_schedules
+            SET lifecycle = 'active', deactivated_at_ms = NULL
+          WHERE id = ?`,
+        [ownedSchedule.id],
+      );
+      await transaction.execute(
+        `UPDATE plans SET revision = revision + 1 WHERE id = 'plan-copy'`,
+      );
+    });
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toBeNull();
+  });
+
+  it("loads a missing planned Strength occurrence without a snapshot executor", async () => {
+    const plans = createPlansWorkoutRepository({
+      queryAll: async () => [],
+    } as never);
+
+    await expect(plans.loadPlannedStrengthOccurrence?.("missing-occurrence"))
+      .resolves.toBeNull();
   });
 
   it("activates a valid unscheduled owned plan through Save schedule and projects Today", async () => {

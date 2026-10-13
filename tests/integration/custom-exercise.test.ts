@@ -216,6 +216,27 @@ async function reopenRuntime(
   };
 }
 
+function repositoryWithTransactionReceiptRace(
+  kernel: SqliteKernel,
+): CustomExerciseRepository {
+  const hiddenOuterReceipts = new Set<string>();
+  return createCustomExerciseRepository({
+    queryAll: async <Row extends Record<string, unknown>>(
+      sql: string,
+      parameters: readonly SQLInputValue[] = [],
+    ) => {
+      const requestId = String(parameters[0] ?? "");
+      if (sql.includes("FROM custom_exercise_mutation_receipts")
+        && !hiddenOuterReceipts.has(requestId)) {
+        hiddenOuterReceipts.add(requestId);
+        return [];
+      }
+      return kernel.queryAll<Row>(sql, parameters as never);
+    },
+    write: kernel.write,
+  } as unknown as SqliteKernel);
+}
+
 function createInput(
   changes: Partial<CreateCustomExerciseInput> = {},
 ): CreateCustomExerciseInput {
@@ -1216,6 +1237,136 @@ describe("LIB-05 custom archive and restore lifecycle", () => {
 });
 
 describe("custom exercise repository conflict and replay matrix", () => {
+  it("validates malformed receipts and reconstructs committed create state when its receipt is absent", async () => {
+    const malformed = await setupRuntime();
+    const malformedInput = createInput({ requestId: "malformed-create-receipt" });
+    await createCustomExercise({
+      repository: malformed.repository,
+      invalidate: async () => undefined,
+      input: malformedInput,
+    });
+    const malformedReceiptRepository = createCustomExerciseRepository({
+      queryAll: async <Row extends Record<string, unknown>>(
+        sql: string,
+        parameters: readonly SQLInputValue[] = [],
+      ) => {
+        const rows = await malformed.kernel.queryAll<Row>(sql, parameters as never);
+        return sql.includes("FROM custom_exercise_mutation_receipts")
+          ? rows.map((row) => ({ ...row, result_json: "null" })) as readonly Row[]
+          : rows;
+      },
+      write: malformed.kernel.write,
+    } as unknown as SqliteKernel);
+    await expect(createCustomExercise({
+      repository: malformedReceiptRepository,
+      invalidate: async () => undefined,
+      input: malformedInput,
+    })).rejects.toThrow("custom_exercise_receipt_invalid");
+
+    const reconstructed = await setupRuntime();
+    const reconstructedInput = createInput({ requestId: "reconstructed-create" });
+    const committed = await createCustomExercise({
+      repository: reconstructed.repository,
+      invalidate: async () => undefined,
+      input: reconstructedInput,
+    });
+    const replayInput = {
+      ...reconstructedInput,
+      requestId: "reconstructed-create-replay",
+    };
+    await expect(createCustomExercise({
+      repository: reconstructed.repository,
+      invalidate: async () => undefined,
+      input: replayInput,
+    })).resolves.toMatchObject({
+      outcome: "already_committed",
+      exercise: { exerciseId: committed.exercise.exerciseId },
+    });
+
+    await reconstructed.kernel.write((transaction) =>
+      transaction.execute(
+        "UPDATE exercise_search_terms SET normalized_text = 'drifted alias' WHERE exercise_id = ? AND kind = 'alias'",
+        [reconstructedInput.exerciseId],
+      )
+    );
+    await expect(createCustomExercise({
+      repository: reconstructed.repository,
+      invalidate: async () => undefined,
+      input: { ...reconstructedInput, requestId: "reconstructed-create-drift" },
+    })).rejects.toMatchObject({ code: "custom_exercise_idempotency_conflict" });
+  });
+
+  it("replays every mutation from a receipt committed between the outer read and writer transaction", async () => {
+    const { kernel, repository } = await setupRuntime();
+    await seedBundledSquatTaxonomy(kernel);
+    const create = createInput({
+      requestId: "race-create",
+      exerciseId: "race-custom",
+      name: "Race Custom",
+    });
+    await createCustomExercise({ repository, invalidate: async () => undefined, input: create });
+    const edit = {
+      ...create,
+      requestId: "race-edit",
+      name: "Race Custom Edited",
+      expectedExerciseRevision: 1,
+      editedAtMs: create.createdAtMs + 1,
+    };
+    await editCustomExercise({ repository, invalidate: async () => undefined, input: edit });
+    const hidden = {
+      requestId: "race-hidden",
+      exerciseId: "exercise-squat",
+      expectedPreferenceRevision: null,
+      hidden: true,
+      updatedAtMs: create.createdAtMs + 2,
+    } as const;
+    const hiddenResult = await setExerciseHidden({ repository, invalidate: async () => undefined, input: hidden });
+    const favorite = {
+      requestId: "race-favorite",
+      exerciseId: "exercise-squat",
+      expectedPreferenceRevision: hiddenResult.preferenceRevision,
+      favorite: true,
+      updatedAtMs: create.createdAtMs + 3,
+    } as const;
+    await setExerciseFavorite({ repository, invalidate: async () => undefined, input: favorite });
+    const copy = {
+      requestId: "race-copy",
+      sourceExerciseId: "exercise-squat",
+      expectedSourceRevision: 2,
+      exerciseId: "race-copy",
+      name: "Race Copy",
+      createdAtMs: create.createdAtMs + 4,
+    } as const;
+    await createCustomCopy({ repository, invalidate: async () => undefined, input: copy });
+    const preview = await previewCustomExerciseArchive({
+      repository,
+      input: { exerciseId: "exercise-plank", expectedExerciseRevision: 3 },
+    });
+    const archive = {
+      requestId: "race-archive",
+      exerciseId: "exercise-plank",
+      expectedExerciseRevision: 3,
+      expectedPreferenceRevision: null,
+      previewRevision: preview.previewRevision,
+      updatedAtMs: create.createdAtMs + 5,
+    } as const;
+    await archiveCustomExercise({ repository, invalidate: async () => undefined, input: archive });
+
+    const raced = repositoryWithTransactionReceiptRace(kernel);
+    await expect(createCustomExercise({ repository: raced, invalidate: async () => undefined, input: create }))
+      .resolves.toMatchObject({ outcome: "already_committed" });
+    await expect(editCustomExercise({ repository: raced, invalidate: async () => undefined, input: edit }))
+      .resolves.toMatchObject({ outcome: "already_committed" });
+    await expect(setExerciseHidden({ repository: raced, invalidate: async () => undefined, input: hidden }))
+      .resolves.toMatchObject({ outcome: "already_committed" });
+    await expect(setExerciseFavorite({ repository: raced, invalidate: async () => undefined, input: favorite }))
+      .resolves.toMatchObject({ outcome: "already_committed" });
+    await expect(createCustomCopy({ repository: raced, invalidate: async () => undefined, input: copy }))
+      .resolves.toMatchObject({ outcome: "already_committed" });
+    await expect(archiveCustomExercise({ repository: raced, invalidate: async () => undefined, input: archive }))
+      .resolves.toMatchObject({ outcome: "already_committed" });
+  });
+
   it("replays edit and hide requests exactly and rejects payload reuse", async () => {
     const { repository } = await setupRuntime();
     await createCustomExercise({

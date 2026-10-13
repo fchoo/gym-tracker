@@ -54,24 +54,28 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
 }>) {
   const runtime = useWorkoutAppRuntime();
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [sourceUnavailable, setSourceUnavailable] = useState(false);
+  const [loadedSessionId, setLoadedSessionId] = useState<string | null>(null);
+  const [failedSessionId, setFailedSessionId] = useState<string | null>(null);
+  const [sourceUnavailableSessionId, setSourceUnavailableSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    setFailed(false);
-    setSourceUnavailable(false);
+    setLoadedSessionId(null);
+    setDetail(null);
+    setFailedSessionId(null);
+    setSourceUnavailableSessionId(null);
     const read = expectedSourceRevision === undefined
       ? runtime.getSessionDetail(sessionId)
       : runtime.getSessionDetailAtRevision(sessionId, expectedSourceRevision);
     void read.then((next) => {
       if (active) {
         setDetail(next);
+        setLoadedSessionId(sessionId);
       }
     }).catch(() => {
       if (active) {
-        if (expectedSourceRevision === undefined) setFailed(true);
-        else setSourceUnavailable(true);
+        if (expectedSourceRevision === undefined) setFailedSessionId(sessionId);
+        else setSourceUnavailableSessionId(sessionId);
       }
     });
     return () => {
@@ -85,7 +89,7 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
     runtime.workoutRefreshGeneration,
   ]);
 
-  if (sourceUnavailable) {
+  if (sourceUnavailableSessionId === sessionId) {
     return (
       <AdaptiveScreen
         primary={
@@ -102,7 +106,7 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
     );
   }
 
-  if (failed) {
+  if (failedSessionId === sessionId) {
     return (
       <AdaptiveScreen
         primary={
@@ -121,7 +125,9 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
     );
   }
 
-  if (detail === null) {
+  const visibleDetail = loadedSessionId === sessionId ? detail : null;
+
+  if (visibleDetail === null) {
     return (
       <AdaptiveScreen
         primary={
@@ -138,16 +144,16 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
 
   return (
     <SessionDetailScreen
-      detail={detail}
+      detail={visibleDetail}
       onGoBack={() => router.back()}
       onCorrectWorkout={() => {
-        if (detail.status === "completed" || detail.status === "partial") {
-          router.push((`/session/${detail.id}/correct`) as Href);
+        if (visibleDetail.status === "completed" || visibleDetail.status === "partial") {
+          router.push((`/session/${visibleDetail.id}/correct`) as Href);
         }
       }}
       onRemoveFromHistory={() => runtime.removeHistorySession({
-        sessionId: detail.id,
-        expectedEffectiveRevision: detail.revision,
+        sessionId: visibleDetail.id,
+        expectedEffectiveRevision: visibleDetail.revision,
         confirmation: "remove_from_history",
       }).then(() => {
         router.back();
@@ -157,17 +163,17 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
           (`/exercise-history/${exercise.exerciseId}?exerciseName=${encodeURIComponent(exercise.name)}`) as Href,
         )}
       onResume={() => {
-        if (detail.status === "partial") {
+        if (visibleDetail.status === "partial") {
           void runtime.resumePartialWorkout({
-            sessionId: detail.id,
-            expectedSessionRevision: detail.revision,
+            sessionId: visibleDetail.id,
+            expectedSessionRevision: visibleDetail.revision,
             resumedAtMs: Date.now(),
           }).then(() => {
-            router.replace(`/workout/${detail.id}`);
+              router.replace(`/workout/${visibleDetail.id}`);
           }).catch(() => undefined);
           return;
         }
-        router.replace(`/workout/${detail.id}`);
+        router.replace(`/workout/${visibleDetail.id}`);
       }}
     />
   );

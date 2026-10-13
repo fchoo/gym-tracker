@@ -9,14 +9,17 @@ type CalendarWorkoutReadSource = Readonly<{
     startLocalDate: string;
     endLocalDateExclusive: string;
   }>): Promise<TrainingCalendarRange>;
-  getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
   loadPlannedStrengthOccurrence(occurrenceId: string): Promise<PlannedStrengthOccurrenceDetail | null>;
   loadImportedActivityDetail(activityId: string): Promise<ImportedActivityDetailReadResult>;
   loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
 }>;
 
 export type CalendarRangeReadPort = Pick<CalendarWorkoutReadSource, "loadCalendarRange">;
-export type CalendarSessionReadPort = Pick<CalendarWorkoutReadSource, "getSessionDetail">;
+type CalendarSessionReadSource = Pick<CalendarWorkoutReadSource, "getCalendarSessionDetail">;
+export type CalendarSessionReadPort = Readonly<{
+  loadCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+}>;
 export type CalendarStrengthOccurrenceReadPort = Pick<CalendarWorkoutReadSource, "loadPlannedStrengthOccurrence">;
 export type CalendarActivityReadPort = Pick<
   CalendarWorkoutReadSource,
@@ -37,9 +40,11 @@ export function createCalendarRangeReadPort(
 }
 
 export function createCalendarSessionReadPort(
-  source: CalendarSessionReadPort,
+  source: CalendarSessionReadSource,
 ): CalendarSessionReadPort {
-  return Object.freeze({ getSessionDetail: source.getSessionDetail });
+  return Object.freeze({
+    loadCalendarSessionDetail: source.getCalendarSessionDetail,
+  });
 }
 
 export function createCalendarStrengthOccurrenceReadPort(
@@ -60,17 +65,9 @@ export function createCalendarActivityReadPort(
 }
 
 export function createCalendarRunningPlanReadPort(
-  source: Readonly<{
-    loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
-  }>,
+  source: CalendarRunningPlanReadPort,
 ): CalendarRunningPlanReadPort {
   return Object.freeze({
-    async loadScheduledSessionPlan(planId, sessionRevisionId) {
-      const plan = await source.loadPlan(planId);
-      if (plan === null || plan.id !== planId) return null;
-      return plan.sessions.some(({ session }) =>
-        session.id === sessionRevisionId && session.planId === planId
-      ) ? plan : null;
-    },
+    loadScheduledSessionPlan: source.loadScheduledSessionPlan,
   });
 }

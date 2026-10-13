@@ -907,6 +907,35 @@ describe("D-01/D-02 session exercise write-back preview", () => {
         proposed: { target: changedTarget, units: writeBackUnits },
       }],
     });
+
+    const unscoredIdentity = {
+      profile: "unscored" as const,
+      contractVersion: 1,
+      exerciseMetricGeneration: 1,
+    };
+    const unscoredFacts = {
+      ...facts,
+      day: {
+        ...facts.day,
+        occurrences: facts.day.occurrences.map((occurrence) =>
+          occurrence.occurrenceId === "owned-deadlift"
+            ? { ...occurrence, metricIdentity: unscoredIdentity }
+            : occurrence
+        ),
+      },
+      sessionExercises: facts.sessionExercises.map((exercise) =>
+        exercise.sourceOccurrenceId === "owned-deadlift"
+          ? { ...exercise, metricIdentity: unscoredIdentity }
+          : exercise
+      ),
+    };
+    const unscoredPreview = await previewSessionExerciseEditsForPlan({
+      repository: { readSessionExerciseEditsForPlan: jest.fn(async () => unscoredFacts) },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    expect(unscoredPreview?.changes.some(({ exerciseId }) => exerciseId === "exercise-deadlift"))
+      .toBe(false);
   });
 
   it("returns no aggregate for excluded or composition-restored sessions and binds final order", async () => {

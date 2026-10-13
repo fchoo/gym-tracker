@@ -167,7 +167,7 @@ describe("GTBK backup envelope", () => {
 
   it.each([
     ["the magic", (archive: Uint8Array) => { archive[0] = (archive[0] ?? 0) ^ 1; }],
-    ["the format version", (archive: Uint8Array) => { archive[4] = 7; }],
+    ["the format version", (archive: Uint8Array) => { archive[4] = 255; }],
     ["one canonical header byte", (archive: Uint8Array) => { archive[9] = (archive[9] ?? 0) ^ 1; }],
     ["one ciphertext byte", (archive: Uint8Array) => { const index = archive.length - 17; archive[index] = (archive[index] ?? 0) ^ 1; }],
     ["the authentication tag", (archive: Uint8Array) => { const index = archive.length - 1; archive[index] = (archive[index] ?? 0) ^ 1; }],

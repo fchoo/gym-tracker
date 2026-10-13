@@ -4,10 +4,14 @@ import { StyleSheet, Text, View, type TextStyle } from "react-native";
 import type { PlannedStrengthOccurrenceDetail } from "../../domains/workout";
 import {
   METRIC_PROFILES,
+  parseMetricObservation,
   parseMetricTarget,
   type MetricProfile,
 } from "../../domains/metrics";
-import { formatWorkoutTarget } from "../../domains/workout/workoutPresentation";
+import {
+  formatWorkoutObservation,
+  formatWorkoutTarget,
+} from "../../domains/workout/workoutPresentation";
 import { EmptyState, FocusablePressable, PrimaryAction, ScreenHeader, SkeletonBlock } from "../components";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { calendarTypeScale, space, typeScale, useAppTheme } from "../theme";
@@ -33,6 +37,27 @@ function targetText(targetJson: string): string | null {
       contractVersion: version as number,
       exerciseMetricGeneration: 1,
     }, decoded));
+  } catch {
+    return null;
+  }
+}
+
+function previousText(
+  target: PlannedStrengthOccurrenceDetail["exercises"][number]["targets"][number],
+): string | null {
+  if (target.previousObservationJson === null) return null;
+  try {
+    const targetValue = JSON.parse(target.targetJson) as Readonly<Record<string, unknown>>;
+    const profile = targetValue.profile;
+    const version = targetValue.version;
+    if (typeof profile !== "string"
+      || !METRIC_PROFILES.includes(profile as MetricProfile)
+      || !Number.isSafeInteger(version)) return null;
+    return formatWorkoutObservation(parseMetricObservation({
+      profile: profile as MetricProfile,
+      contractVersion: version as number,
+      exerciseMetricGeneration: 1,
+    }, JSON.parse(target.previousObservationJson)));
   } catch {
     return null;
   }
@@ -150,7 +175,7 @@ export function PlannedWorkoutDetailScreen({
                   {exercise.targets.map((target) => (
                     <View key={target.id} style={styles.row} testID={`planned-target-${target.id}`}>
                       <Text style={[calendarTypeScale.numeric as TextStyle, styles.cell, { color: colors.textPrimary }]}>{String(target.ordinal + 1).padStart(2, "0")}</Text>
-                      <Text style={[calendarTypeScale.numeric as TextStyle, styles.cell, { color: colors.textSecondary }]}>—</Text>
+                      <Text style={[calendarTypeScale.numeric as TextStyle, styles.cell, { color: colors.textSecondary }]}>{previousText(target) ?? "—"}</Text>
                       <Text style={[calendarTypeScale.numeric as TextStyle, styles.cell, { color: colors.textPrimary }]}>{targetText(target.targetJson)!}</Text>
                       <Text accessibilityLabel="Planned" style={[calendarTypeScale.metadata as TextStyle, styles.cell, { color: colors.textSecondary }]}>—</Text>
                     </View>

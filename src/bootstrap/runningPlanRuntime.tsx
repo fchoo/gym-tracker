@@ -18,6 +18,7 @@ export type RunningPlanRuntimePort = Readonly<{
   createId(kind: string): string;
   createInactivePlan(input: Omit<CreateInactiveRunningPlanInput, "requestId" | "requestSha256"> & Readonly<{ requestId?: string }>): Promise<RunningPlanAggregate>;
   loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
+  loadScheduledSessionPlan(planId: string, sessionRevisionId: string): Promise<RunningPlanAggregate | null>;
   savePlan(input: Omit<RunningPlanAggregate, "active" | "lifecycle"> & Readonly<{ requestId?: string }>): Promise<RunningPlanAggregate>;
   saveRunningTarget(input: RunningTargetMutationInput): Promise<RunningTargetMutationResult>;
   saveSession(input: RunningSessionMutationInput): Promise<RunningSessionMutationResult>;
@@ -85,6 +86,8 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
   return Object.freeze({
     createId,
     loadPlan: (planId) => repository.readAggregate(planId),
+    loadScheduledSessionPlan: (planId, sessionRevisionId) =>
+      repository.readScheduledAggregate(planId, sessionRevisionId),
     createInactivePlan: async (input) => {
       const requestId = input.requestId ?? createId("running-plan-create");
       const requestSha256 = await dependencies.sha256(JSON.stringify({ requestId, plan: input.plan }));

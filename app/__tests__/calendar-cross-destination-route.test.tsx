@@ -211,7 +211,7 @@ const plannedOccurrence = (occurrenceId: string): PlannedStrengthOccurrenceDetai
   scheduleVersionId: "strength-schedule-version:calendar",
   localDate: localToday(),
   timezone: "Asia/Singapore",
-  sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }),
+  sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1, opportunity: 1 }),
   exercises: Object.freeze([Object.freeze({
     id: "strength-exercise:calendar",
     exerciseId: "squat",
@@ -222,6 +222,7 @@ const plannedOccurrence = (occurrenceId: string): PlannedStrengthOccurrenceDetai
       ordinal: 0,
       targetJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 80_000, minReps: 5, maxReps: 5, incrementGrams: 2_500, perSide: false }),
       unitJson: "{}",
+      previousObservationJson: null,
     })]),
   })]),
 }) as PlannedStrengthOccurrenceDetail;
@@ -253,7 +254,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
     loadImportedActivityDetail: mockLoadActivity,
   }),
   useCalendarRangeReadPort: () => ({ loadCalendarRange: mockLoadCalendarRange }),
-  useCalendarSessionReadPort: () => ({ getSessionDetail: mockGetSessionDetail }),
+  useCalendarSessionReadPort: () => ({ loadCalendarSessionDetail: mockGetSessionDetail }),
   useCalendarStrengthOccurrenceReadPort: () => ({
     loadPlannedStrengthOccurrence: mockLoadOccurrence,
   }),

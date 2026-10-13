@@ -74,6 +74,91 @@ function session(planId: string, kind: "recovery" | "tempo", ordinal: number): R
 }
 
 describe("Running plan lifecycle persistence", () => {
+  it("fails closed when an immutable scheduled read has no current plan or cannot join its slot root", async () => {
+    const missing = createRunningPlanRepository({ queryAll: async () => [] } as never);
+    await expect(missing.readScheduledAggregate("missing-plan", "missing-revision"))
+      .resolves.toBeNull();
+
+    const goal = {
+      version: 1 as const,
+      id: "goal-v1",
+      planId: "running",
+      revision: 1,
+      goalDistanceMeters: 5_000,
+      trainingDays: ["Monday" as const],
+      createdAtMs: 1,
+    };
+    const definition = (id: string, rootId: string) => JSON.stringify({
+      version: 1,
+      id,
+      rootId,
+      planId: "running",
+      sessionKind: "recovery",
+      revision: 1,
+      createdAtMs: 1,
+      phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }],
+      contextual: {},
+    });
+    const queryAll = async (sql: string) => {
+      if (sql.includes("FROM plans plan JOIN running_plans")) return [{
+        id: "running", name: "Running", revision: 1, is_active: 0, status: "ready", created_at_ms: 1,
+      }];
+      if (sql.includes("FROM running_goals")) return [{ goal_json: JSON.stringify(goal) }];
+      if (sql.includes("FROM running_session_slot_roots") && !sql.includes("LIMIT 1")) return [{
+        slot_id: "current-slot-v1", slot_root_id: "current-slot", weekday: "Monday", slot_revision: 1,
+        ordinal: 0, definition_json: definition("current-revision", "current-root"),
+      }];
+      if (sql.includes("FROM running_session_slot_revisions") && sql.includes("LIMIT 1")) return [{
+        slot_id: "historical-slot-v1", slot_root_id: "historical-slot", weekday: "Thursday", slot_revision: 1,
+        ordinal: 0, definition_json: definition("historical-revision", "historical-root"),
+      }];
+      return [];
+    };
+    const inconsistent = createRunningPlanRepository({ queryAll } as never);
+    await expect(inconsistent.readScheduledAggregate("running", "historical-revision"))
+      .resolves.toBeNull();
+  });
+
+  it("resolves the immutable scheduled session revision after the current slot advances", async () => {
+    const kernel = await migratedKernel();
+    const repository = createRunningPlanRepository(kernel);
+    const plan: CreateInactiveRunningPlanInput = {
+      requestId: "create-scheduled", requestSha256: "b".repeat(64),
+      plan: {
+        version: 1, id: "scheduled-running", name: "Scheduled Running", revision: 1, createdAtMs: 100,
+        goal: { version: 1, id: "scheduled-goal-v1", planId: "scheduled-running", revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday"], createdAtMs: 100 },
+        sessions: [session("scheduled-running", "tempo", 0)],
+      },
+    };
+    await repository.createInactiveAggregate(plan);
+
+    const original = session("scheduled-running", "tempo", 0);
+    const command: Omit<SaveRunningSourceGraphInput, "requestSha256"> = {
+      requestId: "advance-scheduled-session", operation: "edit", planId: "scheduled-running",
+      expectedPlanRevision: 1, createdAtMs: 200,
+      goal: { ...plan.plan.goal, id: "scheduled-goal-v2", revision: 2, createdAtMs: 200 },
+      sessions: [{ ...original.session, id: "tempo-v2", revision: 2, createdAtMs: 200 }],
+      slots: [{ id: "tempo-slot-v2", rootId: original.slot.rootId, weekday: "Monday", revision: 2, ordinal: 0, sessionRootId: original.session.rootId, sessionRevisionId: "tempo-v2" }],
+      completeMembership: true,
+    };
+    await saveRunningSourceGraph(repository, {
+      ...command,
+      requestSha256: canonicalRunningRequestHash(command),
+    });
+
+    await expect(repository.readAggregate("scheduled-running")).resolves.toMatchObject({
+      sessions: [expect.objectContaining({ session: expect.objectContaining({ id: "tempo-v2" }) })],
+    });
+    await expect(repository.readScheduledAggregate("scheduled-running", "tempo-v1")).resolves.toMatchObject({
+      id: "scheduled-running",
+      sessions: [expect.objectContaining({
+        slot: expect.objectContaining({ rootId: "tempo-slot" }),
+        session: expect.objectContaining({ id: "tempo-v1", revision: 1 }),
+      })],
+    });
+    await expect(repository.readScheduledAggregate("scheduled-running", "missing-revision")).resolves.toBeNull();
+  });
+
   it("applies a prospective exact-membership deletion once while preserving stable roots and replay receipts", async () => {
     const kernel = await migratedKernel();
     const repository = createRunningPlanRepository(kernel);

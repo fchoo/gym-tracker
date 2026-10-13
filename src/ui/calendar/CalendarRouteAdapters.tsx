@@ -58,10 +58,10 @@ export function CalendarSessionDetailRouteAdapter({
     let active = true;
     setDetail(null);
     setState("loading");
-    void readSession.getSessionDetail(sessionId).then((next) => {
+    void readSession.loadCalendarSessionDetail(sessionId).then((next) => {
       if (active) {
         setDetail(next);
-        setState("ready");
+        setState(next === null ? "missing" : "ready");
       }
     }).catch((error: unknown) => {
       if (!active) return;
@@ -71,7 +71,7 @@ export function CalendarSessionDetailRouteAdapter({
         : "error");
     });
     return () => { active = false; };
-  }, [readSession.getSessionDetail, retryGeneration, sessionId]);
+  }, [readSession.loadCalendarSessionDetail, retryGeneration, sessionId]);
 
   if (state === "missing") return <CalendarSessionUnavailable onBack={onBack} />;
   if (state === "error") {

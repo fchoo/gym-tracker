@@ -168,6 +168,15 @@ async function assertRunningActivePair(transaction: SqliteTransactionExecutor): 
   }
 }
 
+type RunningAggregateRow = Readonly<{
+  slot_id: string;
+  slot_root_id: string;
+  weekday: RunningPlanSession["slot"]["weekday"];
+  slot_revision: number;
+  ordinal: number;
+  definition_json: string;
+}>;
+
 export async function readRunningPlanAggregate(
   executor: SqliteReadTransactionExecutor,
   planId: string,
@@ -191,10 +200,7 @@ export async function readRunningPlanAggregate(
          ORDER BY revision DESC, created_at_ms DESC, id DESC LIMIT 1`, [planId],
       );
       if (goalRow === undefined) return null;
-      const rows = await executor.queryAll<{
-        slot_id: string; slot_root_id: string; weekday: RunningPlanSession["slot"]["weekday"];
-        slot_revision: number; ordinal: number; definition_json: string;
-      }>(
+      const rows = await executor.queryAll<RunningAggregateRow>(
         `SELECT slot_revision.id AS slot_id, slot_root.id AS slot_root_id, slot_root.weekday,
                 slot_revision.revision AS slot_revision, slot_revision.ordinal, session.definition_json
          FROM running_session_slot_roots slot_root
@@ -214,24 +220,74 @@ export async function readRunningPlanAggregate(
           AND current_slot.retired_at_ms IS NULL
          WHERE slot_root.plan_id = ?
          ORDER BY slot_root.weekday, slot_revision.ordinal, slot_root.id`, [planId],
-      );
-      const sessions = rows.map((row) => Object.freeze({
-        slot: Object.freeze({ id: row.slot_id, rootId: row.slot_root_id, weekday: row.weekday, revision: row.slot_revision, ordinal: row.ordinal }),
-        session: parseRunningSessionRevision(JSON.parse(row.definition_json)),
-      }));
-      return parseRunningPlanAggregate({
-        version: 1, id: plan.id, name: plan.name, revision: plan.revision,
-        active: plan.is_active === 1,
-        lifecycle: lifecycleFromFacts(plan.status, plan.is_active),
-        createdAtMs: plan.created_at_ms,
-        goal: parseRunningGoal(JSON.parse(goalRow.goal_json)), sessions,
-      });
+  );
+  const sessions = rows.map((row) => Object.freeze({
+    slot: Object.freeze({ id: row.slot_id, rootId: row.slot_root_id, weekday: row.weekday, revision: row.slot_revision, ordinal: row.ordinal }),
+    session: parseRunningSessionRevision(JSON.parse(row.definition_json)),
+  }));
+  return parseRunningPlanAggregate({
+    version: 1, id: plan.id, name: plan.name, revision: plan.revision,
+    active: plan.is_active === 1,
+    lifecycle: lifecycleFromFacts(plan.status, plan.is_active),
+    createdAtMs: plan.created_at_ms,
+    goal: parseRunningGoal(JSON.parse(goalRow.goal_json)), sessions,
+  });
+}
+
+async function readScheduledAggregate(
+  kernel: SqliteKernel,
+  planId: string,
+  sessionRevisionId: string,
+): Promise<RunningPlanAggregate | null> {
+  const current = await readRunningPlanAggregate(kernel, planId);
+  if (current === null) return null;
+  const [scheduled] = await kernel.queryAll<RunningAggregateRow>(
+    `SELECT slot_revision.id AS slot_id, slot_root.id AS slot_root_id,
+            slot_root.weekday, slot_revision.revision AS slot_revision,
+            slot_revision.ordinal, session.definition_json
+       FROM running_session_slot_revisions slot_revision
+       JOIN running_session_slot_roots slot_root
+         ON slot_root.id = slot_revision.slot_root_id
+        AND slot_root.plan_id = ?
+       JOIN running_session_revisions session
+         ON session.id = slot_revision.session_revision_id
+        AND session.plan_id = slot_root.plan_id
+        AND session.id = ?
+       JOIN running_session_slots current_slot
+         ON current_slot.id = slot_root.id
+        AND current_slot.plan_id = slot_root.plan_id
+        AND current_slot.retired_at_ms IS NULL
+      LIMIT 1`,
+    [planId, sessionRevisionId],
+  );
+  if (scheduled === undefined) return null;
+  const pinned = Object.freeze({
+    slot: Object.freeze({
+      id: scheduled.slot_id,
+      rootId: scheduled.slot_root_id,
+      weekday: scheduled.weekday,
+      revision: scheduled.slot_revision,
+      ordinal: scheduled.ordinal,
+    }),
+    session: parseRunningSessionRevision(JSON.parse(scheduled.definition_json)),
+  });
+  const sessions = current.sessions.map((entry) =>
+    entry.slot.rootId === pinned.slot.rootId ? pinned : entry
+  );
+  if (!sessions.some(({ session }) => session.id === sessionRevisionId)) return null;
+  return parseRunningPlanAggregate({ ...current, sessions });
 }
 
 export function createRunningPlanRepository(kernel: SqliteKernel) {
   return Object.freeze({
-    async readAggregate(planId: string): Promise<RunningPlanAggregate | null> {
+    readAggregate(planId: string): Promise<RunningPlanAggregate | null> {
       return readRunningPlanAggregate(kernel, planId);
+    },
+    readScheduledAggregate(
+      planId: string,
+      sessionRevisionId: string,
+    ): Promise<RunningPlanAggregate | null> {
+      return readScheduledAggregate(kernel, planId, sessionRevisionId);
     },
     async previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview> {
       return kernel.readSnapshot === undefined

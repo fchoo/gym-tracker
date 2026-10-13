@@ -837,6 +837,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
   getSessionDetailAtRevision(sessionId: string, sourceRevision: number): Promise<SessionDetail>;
+  getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
   loadGarminRevisionReview(activityId: string): Promise<GarminRevisionReviewDetail | null>;
   listGarminRevisionReviews(): Promise<readonly GarminRevisionReview[]>;
   resolveGarminRevision(input: GarminRevisionDecisionInput): Promise<GarminRevisionDecisionResult>;
@@ -2849,6 +2850,10 @@ export function WorkoutAppRuntimeProvider({
     const read = requireServices().outcomeRepository.getSessionDetailAtRevision;
     if (read === undefined) throw new Error("workout_source_revision_reader_unavailable");
     return read(sessionId, sourceRevision);
+  }, [requireServices]);
+
+  const getCalendarSessionDetail = useCallback((sessionId: string) => {
+    return requireServices().outcomeRepository.getCalendarSessionDetail(sessionId);
   }, [requireServices]);
 
   const confirmGarminImport = useCallback((input: ConfirmGarminImportInput): Promise<GarminImportResult> =>
@@ -5324,6 +5329,7 @@ export function WorkoutAppRuntimeProvider({
     getActiveWorkout,
     getSessionDetail,
     getSessionDetailAtRevision,
+    getCalendarSessionDetail,
     loadGarminRevisionReview,
     listGarminRevisionReviews,
     resolveGarminRevision,
@@ -5484,6 +5490,7 @@ export function WorkoutAppRuntimeProvider({
     getActiveWorkout,
     getSessionDetail,
     getSessionDetailAtRevision,
+    getCalendarSessionDetail,
     loadGarminRevisionReview,
     listGarminRevisionReviews,
     resolveGarminRevision,
@@ -5567,7 +5574,7 @@ export function WorkoutAppRuntimeProvider({
   );
   const calendarSessionRead = useMemo(
     () => createCalendarSessionReadPort(value),
-    [value.getSessionDetail],
+    [value.getCalendarSessionDetail],
   );
   const calendarStrengthOccurrenceRead = useMemo(
     () => createCalendarStrengthOccurrenceReadPort(value),

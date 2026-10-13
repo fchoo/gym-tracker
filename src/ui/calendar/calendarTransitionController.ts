@@ -209,6 +209,23 @@ export function transitionCalendar(
       return result(reset(state, true));
     case "set-reduced-motion":
       if (state.reducedMotion === event.reducedMotion && state.phase === "idle") return result(state);
+      if (state.phase === "adjacent-collapsing"
+        || state.phase === "adjacent-measuring"
+        || state.phase === "adjacent-expanding") {
+        return result(freezeState({
+          ...state,
+          currentMonthId: state.pendingMonthId ?? state.currentMonthId,
+          selectedLocalDate: state.pendingSelectedLocalDate ?? state.selectedLocalDate,
+          reducedMotion: event.reducedMotion,
+          mode: "focused",
+          phase: "idle",
+          titlePanel: "current",
+          dragDx: 0,
+          epoch: state.epoch + 1,
+          pendingSelectedLocalDate: null,
+          pendingMonthId: null,
+        }));
+      }
       return result(freezeState({
         ...state,
         reducedMotion: event.reducedMotion,

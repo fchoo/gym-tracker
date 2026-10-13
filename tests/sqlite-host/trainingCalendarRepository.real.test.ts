@@ -13,6 +13,7 @@ import { configureSqliteConnection } from "../../src/platform/sqlite/connection"
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createTrainingCalendarRepository } from "../../src/platform/sqlite/repositories/trainingCalendarRepository";
+import { captureStrengthOccurrenceSnapshot } from "../../src/platform/sqlite/repositories/strengthOccurrenceSnapshot";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
@@ -111,6 +112,8 @@ async function seedStrengthIntent(kernel: SqliteKernel): Promise<void> {
              ('strength-skipped', 'strength-schedule', 'strength-version', '2026-11-03', 'weekday', 'strength-day', 'consumed', 'skipped', NULL, 1, 3),
              ('strength-advanced', 'strength-schedule', 'strength-version', '2026-11-04', 'weekday', 'strength-day', 'consumed', 'advanced', NULL, 1, 4),
              ('inactive-planned', 'inactive-strength-schedule', 'inactive-strength-version', '2026-11-05', 'weekday', 'inactive-strength-day', 'pending', NULL, NULL, 1, NULL)`);
+    await captureStrengthOccurrenceSnapshot(transaction, "strength-planned", 10);
+    await captureStrengthOccurrenceSnapshot(transaction, "inactive-planned", 11);
   });
 }
 
@@ -219,6 +222,7 @@ async function seedRunningIntent(kernel: SqliteKernel): Promise<void> {
     version: 1, id, rootId: `${kind}-root`, planId: "running-plan", sessionKind: kind,
     revision: 1, createdAtMs: 1,
     phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }],
+    advisoryTarget: kind === "tempo" ? { paceMsPerKm: 300_000 } : { heartRateZone: 2 },
     contextual: kind === "tempo" ? { format: "continuous", work: { durationMs: 60_000 } } : {},
   });
   await kernel.write(async (transaction) => {
@@ -327,8 +331,79 @@ describe("training calendar repository with real SQLite", () => {
 
     expect(result.events.map(({ id }) => id)).toEqual(["running-z-first", "running-a-second"]);
     expect(result.events.map(({ displaySummary }) => displaySummary)).toEqual([
-      "Recovery session planned",
-      "Tempo session planned",
+      "1 min · easy Z2",
+      "continuous 1 min · 5:00 / km",
     ]);
+  });
+
+  it("keeps matched Garmin history outside the active range and lets malformed imports leave planned intent visible", async () => {
+    const kernel = await open();
+    await seedRunningIntent(kernel);
+    await seedImportedActivity(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute(`INSERT INTO running_opportunities
+        (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date,
+         timezone, session_revision_id, state, created_at_ms)
+        VALUES ('running-outside-range', 'running-plan', 'running-schedule',
+                'running-version', 'z-slot', '2026-10-31', 'Asia/Singapore',
+                'recovery-revision', 'planned', 1)`);
+      await transaction.execute(`INSERT INTO running_activity_match_events
+        (id, activity_id, opportunity_id, prior_opportunity_id, action,
+         activity_revision, opportunity_revision, prior_relation_revision,
+         relation_revision, request_sha256, created_at_ms)
+        VALUES ('match-outside', 'activity-local-1', 'running-outside-range', NULL,
+                'matched', 1, 1, 0, 1, ?, 200)`, ["b".repeat(64)]);
+      await transaction.execute(`INSERT INTO running_activity_current_matches
+        (opportunity_id, activity_id, relation_revision, event_id)
+        VALUES ('running-outside-range', 'activity-local-1', 1, 'match-outside')`);
+
+      const malformed = JSON.stringify({
+        confirmed_local_date: "2026-11-01",
+        normalized: { sport: "running" },
+      });
+      await transaction.execute(`INSERT INTO imported_activities
+        (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms)
+        VALUES ('activity-malformed', 'garmin_connect_account:private-owner',
+                'external-malformed', 300, ?, 301)`, [malformed]);
+      await transaction.execute(`INSERT INTO imported_activity_identities
+        (activity_id, source_kind, account_namespace, external_activity_id,
+         aggregate_revision, accepted_normalized_sha256, removal_state)
+        VALUES ('activity-malformed', 'garmin_connect_account', 'private-owner',
+                'external-malformed', 1, ?, 'active')`, ["c".repeat(64)]);
+      await transaction.execute(`INSERT INTO imported_activity_events
+        (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms)
+        VALUES ('activity-event-malformed', 'activity-malformed', 1, 'imported', '{}', 301)`);
+      await transaction.execute(`INSERT INTO imported_activity_current_lifecycle
+        (activity_id, aggregate_revision, removal_state, lifecycle_event_id)
+        VALUES ('activity-malformed', 1, 'active', 'activity-event-malformed')`);
+      await transaction.execute(`INSERT INTO running_activity_match_events
+        (id, activity_id, opportunity_id, prior_opportunity_id, action,
+         activity_revision, opportunity_revision, prior_relation_revision,
+         relation_revision, request_sha256, created_at_ms)
+        VALUES ('match-malformed', 'activity-malformed', 'running-a-second', NULL,
+                'matched', 1, 1, 0, 1, ?, 302)`, ["d".repeat(64)]);
+      await transaction.execute(`INSERT INTO running_activity_current_matches
+        (opportunity_id, activity_id, relation_revision, event_id)
+        VALUES ('running-a-second', 'activity-malformed', 1, 'match-malformed')`);
+    });
+
+    const result = await createTrainingCalendarRepository(kernel).loadRange({
+      startLocalDate: "2026-11-01",
+      endLocalDateExclusive: "2026-11-02",
+    });
+
+    expect(result.events.map(({ id }) => id)).toEqual([
+      "running-z-first",
+      "running-a-second",
+      "activity-local-1",
+    ]);
+    expect(result.events[2]).toMatchObject({
+      status: "matched",
+      scheduleId: "running-schedule",
+      scheduleVersionId: "running-version",
+      planId: "running-plan",
+      slotId: "z-slot",
+      destination: { kind: "activity", activityId: "activity-local-1" },
+    });
   });
 });

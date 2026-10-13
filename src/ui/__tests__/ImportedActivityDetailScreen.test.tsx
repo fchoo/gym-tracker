@@ -1,7 +1,9 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -62,6 +64,20 @@ async function renderScreen(overrides: Partial<React.ComponentProps<typeof Impor
 }
 
 describe("ImportedActivityDetailScreen accepted outdoor activity", () => {
+  it("moves Calendar-origin initial focus to Back", async () => {
+    await renderScreen({ mode: "calendar" });
+    await waitFor(() => {
+      expect(screen.getByTestId("activity-detail-back-action")).toHaveProp(
+        "hasTVPreferredFocus",
+        true,
+      );
+    });
+    expect(screen.getByTestId("activity-detail-heading")).not.toHaveProp(
+      "hasTVPreferredFocus",
+      true,
+    );
+  });
+
   it("renders factual summary, validated route alternative, optional HR, laps, and fidelity in order", async () => {
     await renderScreen();
 
@@ -195,6 +211,45 @@ describe("ImportedActivityDetailScreen missing-channel and reflow matrix", () =>
 });
 
 describe("ImportedActivityDetailScreen route states and shared shell", () => {
+  it("keeps revision decisions modal, reports stale/save failures, and retries explicitly", async () => {
+    let rejectAccept: ((error: Error) => void) | undefined;
+    const onAcceptRevision = jest.fn(() => new Promise<void>((_resolve, reject) => {
+      rejectAccept = reject;
+    }));
+    const onKeepRevision = jest.fn(async () => {
+      throw new Error("save failed");
+    });
+    const onBack = jest.fn();
+    const onRetry = jest.fn();
+    await renderScreen({
+      onAcceptRevision,
+      onBack,
+      onKeepRevision,
+      onRetry,
+      state: {
+        kind: "revision_review",
+        review: {
+          activityId: "activity-1",
+          acceptedRevision: 1,
+          proposedRevision: 2,
+          expectedProposedSha256: "a".repeat(64),
+          changedFields: [{ field: "distance", accepted: "5.00 km", proposed: "5.01 km" }],
+        },
+      },
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Use updated facts" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    expect(onBack).not.toHaveBeenCalled();
+    await act(async () => rejectAccept?.(new Error("stale")));
+    expect(await screen.findByText("Revision needs review")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Keep current facts" }));
+    expect(await screen.findByText("Revision decision failed")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry activity details" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   const cases: readonly Readonly<{
     state: React.ComponentProps<typeof ImportedActivityDetailScreen>["state"];
     heading: string;

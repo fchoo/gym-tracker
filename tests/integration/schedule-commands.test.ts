@@ -64,6 +64,7 @@ import {
 import {
   createSqliteKernel,
   type SqliteKernel,
+  type SqliteTransactionExecutor,
 } from "../../src/platform/sqlite/sqliteKernel";
 
 class NodePreparedResult<Row extends Record<string, unknown>>
@@ -2629,6 +2630,51 @@ describe("schedule repository edge contracts", () => {
         revision: 2,
       },
     ]);
+  });
+
+  it("fails closed when Running readiness aggregates are absent or omit recovery membership", async () => {
+    const activate = (readiness: readonly Record<string, unknown>[]) => {
+      const transaction: SqliteTransactionExecutor = {
+        execute: async () => ({ changes: 1, lastInsertRowId: 0 }),
+        queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+          if (sql.includes("FROM workout_sessions")) {
+            return [{ count: 0 }] as unknown as readonly Row[];
+          }
+          if (sql.includes("COUNT(*) AS slot_count")) {
+            return readiness as unknown as readonly Row[];
+          }
+          if (sql.includes("FROM plans plan")) {
+            return [{
+              plan_id: "running",
+              plan_revision: 1,
+              plan_kind: "running",
+              plan_active: 0,
+              plan_origin: "custom",
+              running_status: "ready",
+              schedule_id: "running-schedule",
+              schedule_revision: 1,
+              schedule_kind: "running",
+              schedule_lifecycle: "inactive",
+            }] as unknown as readonly Row[];
+          }
+          return [];
+        },
+      };
+      const kernel = {
+        write: async <Result>(operation: (value: SqliteTransactionExecutor) => Promise<Result>) => operation(transaction),
+      } as unknown as SqliteKernel;
+      return createScheduleRepository(kernel).activateRunningSchedule?.({
+        planId: "running",
+        scheduleId: "running-schedule",
+        expectedPlanRevision: 1,
+        expectedScheduleRevision: 1,
+        activatedAtMs: 2,
+      });
+    };
+
+    await expect(activate([])).rejects.toMatchObject({ code: "schedule_reference_invalid" });
+    await expect(activate([{ slot_count: 1, recovery_count: null }]))
+      .rejects.toMatchObject({ code: "schedule_reference_invalid" });
   });
 
   it("guards Running activation and translates failed SQLite readback paths", async () => {

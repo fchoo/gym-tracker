@@ -17,7 +17,7 @@ describe("Calendar capability ports", () => {
       occurrenceId: "strength-occurrence", planId: "strength-plan", planName: "Full Body Foundation",
       planDayId: "day-1", dayName: "Full Body A", scheduleId: "schedule-1",
       scheduleVersionId: "version-1", localDate: "2026-11-01", timezone: "Asia/Singapore",
-      sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }), exercises: Object.freeze([]),
+      sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1, opportunity: 1 }), exercises: Object.freeze([]),
     });
     const calendar: CalendarReadPort = Object.freeze({
       loadCalendarRange: jest.fn(async () => Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) })),

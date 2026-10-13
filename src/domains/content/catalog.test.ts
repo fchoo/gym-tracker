@@ -275,6 +275,90 @@ describe("accepted exercise catalog runtime boundary", () => {
       },
       "catalog_identity_conflict",
     ],
+    [
+      "invalid pinned instruction authority",
+      (catalog: Record<string, unknown>) => {
+        const exercise = (catalog.exercises as Array<Record<string, unknown>>)
+          .find(({ instructions }) =>
+            ((instructions as Record<string, unknown>).source as Record<string, unknown>).namespace
+              === "kinetic-place.exercises-db"
+          )!;
+        const instructions = exercise.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...(instructions.source as object),
+          license: "Original",
+          attribution: "Original Gym Tracker program",
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "invalid legacy instruction authority",
+      (catalog: Record<string, unknown>) => {
+        const exercise = (catalog.exercises as Array<Record<string, unknown>>)
+          .find(({ instructions }) =>
+            ((instructions as Record<string, unknown>).source as Record<string, unknown>).namespace
+              === "gym-tracker.original"
+          )!;
+        const instructions = exercise.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...(instructions.source as object),
+          license: "MIT",
+          attribution: "Copyright (c) 2026 Kinetic.place",
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "pinned instruction identity drift",
+      (catalog: Record<string, unknown>) => {
+        const exercises = catalog.exercises as Array<Record<string, unknown>>;
+        const pinned = exercises.filter(({ source }) =>
+          (source as Record<string, unknown>).namespace === "kinetic-place.exercises-db"
+        );
+        const instructions = pinned[0]!.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...((pinned[1]!.instructions as Record<string, unknown>).source as object),
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "legacy link-candidate instruction drift",
+      (catalog: Record<string, unknown>) => {
+        const exercises = catalog.exercises as Array<Record<string, unknown>>;
+        const legacy = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).legacyLinkStatus === "link_candidate"
+        )!;
+        const pinned = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).namespace === "kinetic-place.exercises-db"
+          && (source as Record<string, unknown>).upstreamId
+            !== (legacy.source as Record<string, unknown>).linkedUpstreamId
+        )!;
+        const instructions = legacy.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...((pinned.instructions as Record<string, unknown>).source as object),
+        };
+      },
+      "catalog_relation_invalid",
+    ],
+    [
+      "preserved legacy instruction drift",
+      (catalog: Record<string, unknown>) => {
+        const exercises = catalog.exercises as Array<Record<string, unknown>>;
+        const legacy = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).legacyLinkStatus === "preserve_original"
+        )!;
+        const pinned = exercises.find(({ source }) =>
+          (source as Record<string, unknown>).namespace === "kinetic-place.exercises-db"
+        )!;
+        const instructions = legacy.instructions as Record<string, unknown>;
+        instructions.source = {
+          ...((pinned.instructions as Record<string, unknown>).source as object),
+        };
+      },
+      "catalog_relation_invalid",
+    ],
   ])("rejects %s before persistence", async (_label, mutate, code) => {
     await expect(parseExerciseCatalog(
       rebindAcceptedInput(mutate),

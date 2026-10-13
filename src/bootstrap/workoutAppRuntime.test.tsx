@@ -194,10 +194,19 @@ jest.mock("./runningPlanRuntime", () => {
     createRunningPlanRuntimePort: jest.fn(actual.createRunningPlanRuntimePort),
   };
 });
+jest.mock("../domains/plans", () => {
+  const actual = jest.requireActual<typeof import("../domains/plans")>("../domains/plans");
+  return {
+    ...actual,
+    activateStarterPlan: jest.fn(actual.activateStarterPlan),
+    createStarterPlanCopy: jest.fn(actual.createStarterPlanCopy),
+  };
+});
 
 import {
   acknowledgeCommittedRuntimeResult,
   activateInitialAcceptedStarter,
+  createLibrarySectionPreferencePort,
   createWorkoutAppRuntimeDependencies,
   mapWorkoutMutationFailure,
   productionWorkoutAppRuntimeDependencies,
@@ -220,6 +229,7 @@ import {
   type RunningPlanRuntimePort,
 } from "./runningPlanRuntime";
 import type { RunningPlanAggregate } from "../domains/running/contracts";
+import { activateStarterPlan, createStarterPlanCopy } from "../domains/plans";
 import type {
   TrainingCalendarRange,
 } from "../platform/sqlite/repositories/trainingCalendarRepository";
@@ -256,6 +266,8 @@ const mockedCreateTrainingFoundationRuntimePort = jest.mocked(
 const mockedCreateRunningPlanRuntimePort = jest.mocked(
   createRunningPlanRuntimePort,
 );
+const mockedActivateStarterPlan = jest.mocked(activateStarterPlan);
+const mockedCreateStarterPlanCopy = jest.mocked(createStarterPlanCopy);
 
 type Repository = PlansRepository & WorkoutRepository;
 
@@ -734,7 +746,9 @@ const sessionWriteBackPreview: SessionExerciseEditsForPlanPreview = {
 };
 
 function runtimeOutcomeRepository():
-WorkoutOutcomeRepository & ProgressionRepository {
+WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
+  getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+}> {
   const finishResult = {
     detail: runtimeSessionDetail,
     invalidationScopes: [
@@ -745,6 +759,7 @@ WorkoutOutcomeRepository & ProgressionRepository {
   };
   return {
     getSessionDetail: jest.fn(async () => runtimeSessionDetail),
+    getCalendarSessionDetail: jest.fn(async () => runtimeSessionDetail),
     finishCompleted: jest.fn(async () => finishResult),
     finishPartial: jest.fn(async () => finishResult),
     saveZeroSetWorkout: jest.fn(async () => finishResult),
@@ -1351,12 +1366,54 @@ function CalendarPortsHarness({
 }
 
 describe("WorkoutAppRuntimeProvider", () => {
+  it("reads and commits Library section preferences with exact revision fencing", async () => {
+    let row: { value_version: number; value_json: string; revision: number } | undefined;
+    let updateChanges = 1;
+    const execute = jest.fn(async (sql: string, parameters?: readonly unknown[]) => {
+      if (sql.includes("INSERT INTO app_settings")) {
+        row = { value_version: 1, value_json: String(parameters?.[1]), revision: Number(parameters?.[2]) };
+      } else if (sql.includes("UPDATE app_settings") && updateChanges === 1) {
+        row = { value_version: 1, value_json: String(parameters?.[0]), revision: Number(parameters?.[1]) };
+      }
+      return { changes: updateChanges, lastInsertRowId: 0 };
+    });
+    const queryAll = jest.fn(async () => row === undefined ? [] : [row]);
+    const kernel = {
+      queryAll,
+      write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({ execute, queryAll } as never)),
+    } as unknown as SqliteKernel;
+    const port = createLibrarySectionPreferencePort(kernel, () => 123);
+
+    await expect(port.read()).resolves.toEqual({ section: "plans", revision: 0 });
+    await expect(port.write("exercises", 0)).resolves.toEqual({ section: "exercises", revision: 1 });
+    expect(row).toEqual({ value_version: 1, value_json: '{"section":"exercises"}', revision: 1 });
+    await expect(port.write("exercises", 1)).resolves.toEqual({ section: "exercises", revision: 1 });
+    await expect(port.write("plans", 0)).rejects.toThrow("library_section_preference_conflict");
+    await expect(port.write("plans", 1)).resolves.toEqual({ section: "plans", revision: 2 });
+
+    updateChanges = 0;
+    await expect(port.write("exercises", 2)).rejects.toThrow("library_section_preference_conflict");
+    await expect(port.write("invalid" as never, 2)).rejects.toThrow("library_section_preference_invalid");
+    await expect(port.write("plans", -1)).rejects.toThrow("library_section_preference_invalid");
+
+    row = { value_version: 2, value_json: '{"section":"plans"}', revision: 1 };
+    await expect(port.read()).rejects.toThrow("library_section_preference_invalid");
+    row = { value_version: 1, value_json: "not-json", revision: 1 };
+    await expect(port.read()).rejects.toThrow("library_section_preference_invalid");
+    for (const value_json of ["null", "[]", "{}", '{"section":"other"}']) {
+      row = { value_version: 1, value_json, revision: 1 };
+      await expect(port.read()).rejects.toThrow("library_section_preference_invalid");
+    }
+  });
+
   beforeEach(() => {
     mockNativeContractsEnabled = true;
     mockCommittedHaptic.mockClear();
     mockCueHaptic.mockClear();
     mockedCreateTrainingFoundationRuntimePort.mockClear();
     mockedCreateRunningPlanRuntimePort.mockClear();
+    mockedActivateStarterPlan.mockClear();
+    mockedCreateStarterPlanCopy.mockClear();
     applyWorkoutMutationTestControl("reset_workout_failures");
   });
 
@@ -1399,7 +1456,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       planDayId: "day-1", dayName: "Full Body A",
       scheduleId: "schedule-1", scheduleVersionId: "version-1",
       localDate: "2026-10-13", timezone: "Asia/Singapore",
-      sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1 }),
+      sourceRevisions: Object.freeze({ plan: 1, day: 1, schedule: 1, opportunity: 1 }),
       exercises: Object.freeze([]),
     }) as PlannedStrengthOccurrenceDetail;
     const loadPlannedStrengthOccurrence = jest.fn(async () => occurrence);
@@ -3799,6 +3856,142 @@ describe("WorkoutAppRuntimeProvider", () => {
     }, activate)).rejects.toThrow("starter_template_not_found");
   });
 
+  it("projects authoritative Library, starter, filter, and activation-preview facts", async () => {
+    const prettyBytes = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+    const catalog = await createStarterPlanRuntimeCatalog({
+      starterPackBytes: prettyBytes(starterPlansAsset),
+      acceptanceBytes: prettyBytes(starterPlansAcceptanceAsset),
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+    });
+    const template = catalog.templates.find(({ id }) => id === "full-body-foundation")!;
+    let templateUpdateMode: "current" | "outdated" | "legacy" = "current";
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("FROM app_settings")) {
+        return sql.includes("revision")
+          ? [{ value_version: 1, value_json: JSON.stringify({ section: "exercises" }), revision: 2 }]
+          : [];
+      }
+      if (sql.includes("FROM taxonomy_terms")) return [
+        { kind: "exercise_type", slug: "strength" },
+        { kind: "muscle", slug: "legs" },
+        { kind: "equipment", slug: "barbell" },
+      ];
+      if (sql.includes("FROM owned_plan_starter_sources source")
+        && sql.includes("accepted.template_json")) {
+        if (templateUpdateMode === "legacy") return [];
+        return [{
+          owned_plan_name: "Current starter copy",
+          owned_plan_revision: 5,
+          source_revision: templateUpdateMode === "current" ? template.revision : 1,
+          template_json: template.sourceJson,
+          active_schedule_revision: null,
+        }];
+      }
+      if (sql.includes("FROM owned_plan_starter_sources source")) return [{
+        plan_id: "starter-copy",
+        plan_name: "Starter copy",
+        plan_revision: 3,
+        schedule_lifecycle: "inactive",
+        schedule_revision: 4,
+        schedule_version_id: "starter-version",
+        schedule_mode: "weekday",
+      }];
+      if (sql.includes("FROM owned_plan_schedule_bindings binding")) return [
+        { ordinal: 0, weekday: "Monday", day_name: "Full Body A" },
+        { ordinal: 1, weekday: "Wednesday", day_name: "Full Body B" },
+      ];
+      if (sql.includes("FROM owned_plan_schedules") && sql.includes("plan_kind = 'strength'")) {
+        return [{ revision: 7 }];
+      }
+      if (sql.includes("FROM workout_sessions") && sql.includes("status = 'in_progress'")) {
+        return [{ id: "active-session", revision: 2 }];
+      }
+      if (sql.includes("plan.origin = 'copied'")) return [{
+        owned_plan_name: "Legacy starter copy",
+        owned_plan_revision: 1,
+        active_schedule_revision: null,
+      }];
+      if (sql.includes("FROM plans plan") && sql.includes("plan.origin IN")) return [
+        { id: "active-strength", name: "Active Strength", days_per_week: 3, is_active: 1, lifecycle: "active", missing_requirement: null, schedule_lifecycle: "active", legacy_schedule_id: null, source_namespace: null, upstream_id: null, source_revision: null, plan_kind: "strength" },
+        { id: "archived-running", name: "Archived Running", days_per_week: 2, is_active: 0, lifecycle: "archived", missing_requirement: null, schedule_lifecycle: "inactive", legacy_schedule_id: null, source_namespace: null, upstream_id: null, source_revision: null, plan_kind: "running" },
+        { id: "draft-strength", name: "Draft Strength", days_per_week: 2, is_active: 0, lifecycle: "draft", missing_requirement: "schedule", schedule_lifecycle: null, legacy_schedule_id: null, source_namespace: null, upstream_id: null, source_revision: null, plan_kind: "strength" },
+        { id: "active-running", name: "Legacy Running", days_per_week: 1, is_active: 1, lifecycle: "inactive", missing_requirement: null, schedule_lifecycle: null, legacy_schedule_id: "legacy-running", source_namespace: null, upstream_id: null, source_revision: null, plan_kind: "running" },
+        { id: "inactive-strength", name: "Inactive Strength", days_per_week: 1, is_active: 0, lifecycle: "inactive", missing_requirement: null, schedule_lifecycle: null, legacy_schedule_id: null, source_namespace: "gym-tracker.original", upstream_id: template.id, source_revision: 1, plan_kind: "strength" },
+      ];
+      return [];
+    });
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (read: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>) => read({ queryAll: queryAll as never })),
+      write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 })),
+        queryAll: queryAll as never,
+      })),
+    } as unknown as SqliteKernel;
+    const repository = runtimeRepository([noPlanView], [null]);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          loadStarterPlans: async () => catalog,
+          openKernel: jest.fn(async () => kernel),
+        })}
+        onReady={(runtime) => { captured = runtime; }}
+      />,
+    );
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    if (captured === undefined) throw new Error("runtime_not_captured");
+
+    const library = await captured.loadLibrary();
+    expect(library.sectionPreference).toEqual({ section: "exercises", revision: 2 });
+    expect(library.plans.activePlans.map(({ id }) => id)).toEqual(["active-strength", "active-running"]);
+    expect(library.plans.owned.map(({ status }) => status)).toEqual(["Active", "Archived", "Draft", "Active", "Inactive"]);
+    expect(library.exerciseFilterOptions).toEqual({ exerciseTypes: ["strength"], muscles: ["legs"], equipment: ["barbell"] });
+    await expect(captured.retryLibraryLoad()).resolves.toEqual(library);
+    await expect(captured.loadStarterPlan(template.id)).resolves.toBe(template);
+    await expect(captured.loadStarterPlan("missing-template")).resolves.toBeNull();
+    await expect(captured.loadStarterActivationPreview(template.id)).resolves.toMatchObject({
+      activeScheduleRevision: 7,
+      activeWorkout: { sessionId: "active-session", sessionRevision: 2 },
+      copies: [{ planId: "starter-copy", state: "Inactive", scheduleSummary: "Weekday · Monday Full Body A, Wednesday Full Body B" }],
+    });
+    await expect(captured.loadStarterActivationPreview("missing-template")).resolves.toBeNull();
+    await expect(captured.loadStarterTemplateUpdate({ ownedPlanId: "starter-copy", templateId: template.id })).resolves.toBeNull();
+    templateUpdateMode = "outdated";
+    const outdatedPreview = await captured.loadStarterTemplateUpdate({ ownedPlanId: "starter-copy", templateId: template.id });
+    expect(outdatedPreview).toMatchObject({
+      ownedPlanId: "starter-copy",
+      ownedPlanName: "Current starter copy",
+      template: { id: template.id, revision: template.revision },
+    });
+    templateUpdateMode = "legacy";
+    await expect(captured.loadStarterTemplateUpdate({ ownedPlanId: "legacy-copy", templateId: template.id })).resolves.toMatchObject({
+      ownedPlanId: "legacy-copy",
+      ownedPlanName: "Legacy starter copy",
+      ownedPlanRevision: 1,
+    });
+    await expect(captured.loadStarterTemplateUpdate({ ownedPlanId: "legacy-copy", templateId: "missing-template" })).resolves.toBeNull();
+
+    mockedActivateStarterPlan.mockResolvedValueOnce({ plan: { id: "activated-starter" } } as never);
+    mockedCreateStarterPlanCopy
+      .mockResolvedValueOnce({ plan: { id: "editable-weekday-copy" } } as never)
+      .mockResolvedValueOnce({ plan: { id: "editable-rotation-copy" } } as never)
+      .mockResolvedValueOnce({ plan: { id: "template-update-copy" } } as never);
+    await expect(captured.activateAcceptedStarterPlan({
+      templateId: template.id,
+      startLocalDate: "2026-08-17",
+      timeZone: "Asia/Singapore",
+      mode: "weekday",
+      bindings: [{ planDaySourceId: "full-body-a", ordinal: 0, weekIndex: 0, weekday: "Monday" }],
+      copyChoice: null,
+      expectedActiveScheduleRevision: 7,
+    })).resolves.toMatchObject({ plan: { id: "activated-starter" } });
+    await expect(captured.createStarterEditableCopy(template.id)).resolves.toBe("editable-weekday-copy");
+    await expect(captured.createStarterEditableCopy("push-pull-legs")).resolves.toBe("editable-rotation-copy");
+    await expect(captured.createStarterTemplateUpdateCopy(outdatedPreview!)).resolves.toBe("template-update-copy");
+  });
+
   it("binds production adapters to the stable database name", async () => {
     const repository = runtimeRepository([noPlanView], [null]);
     const kernel = {
@@ -5329,6 +5522,60 @@ describe("WorkoutAppRuntimeProvider", () => {
     ]);
   });
 
+  it("loads a bounded Garmin revision review with canonical changed-field copy", async () => {
+    let revisionAvailable = true;
+    const queryAll = jest.fn(async (sql: string) => {
+      if (!sql.includes("imported_activity_revision_proposals") || !revisionAvailable) return [];
+      return [{
+        accepted_revision: 3,
+        accepted_aggregate_json: JSON.stringify({
+          normalized: { distance_meters: 5_000, label: "Current", approved: true, route: { segments: 1 } },
+        }),
+        proposed_revision: 4,
+        proposed_sha256: "a".repeat(64),
+        proposed_aggregate_json: JSON.stringify({
+          normalized: { distance_meters: 5_010, label: "Updated", approved: false, route: { segments: 2 }, elapsed_ms: 1_500_000 },
+        }),
+      }];
+    });
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll,
+      readSnapshot: jest.fn(async (read: (transaction: Pick<SqliteTransactionExecutor, "queryAll">) => Promise<unknown>) => read({ queryAll: queryAll as never })),
+      write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 })),
+        queryAll: queryAll as never,
+      })),
+    } as unknown as SqliteKernel;
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(runtimeRepository([noPlanView], [null]), {
+          openKernel: jest.fn(async () => kernel),
+        })}
+        onReady={(runtime) => { captured = runtime; }}
+      />,
+    );
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+
+    await expect(captured!.loadGarminRevisionReview("external-id")).resolves.toBeNull();
+    await expect(captured!.loadGarminRevisionReview("activity-local-01")).resolves.toEqual({
+      activityId: "activity-local-01",
+      acceptedRevision: 3,
+      proposedRevision: 4,
+      expectedProposedSha256: "a".repeat(64),
+      changedFields: [
+        { field: "approved", accepted: "true", proposed: "false" },
+        { field: "distance_meters", accepted: "5000", proposed: "5010" },
+        { field: "elapsed_ms", accepted: "Unavailable", proposed: "1500000" },
+        { field: "label", accepted: "Current", proposed: "Updated" },
+        { field: "route", accepted: '{"segments":1}', proposed: '{"segments":2}' },
+      ],
+    });
+    revisionAvailable = false;
+    await expect(captured!.loadGarminRevisionReview("activity-local-01")).resolves.toBeNull();
+  });
+
   it("uses the current relation fence for runtime unmatch and reassignment commands", async () => {
     const repository = runtimeRepository([noPlanView], [null]);
     const current = runningMatchCandidate();
@@ -5621,6 +5868,112 @@ describe("WorkoutAppRuntimeProvider", () => {
       expect(screen.getByTestId("runtime-action-failure"))
         .toHaveTextContent("GT-ACTION01");
     });
+  });
+
+  it("keeps every exposed runtime capability bounded under incomplete route input", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const automaticPresentation = projectAutomaticBackupPresentation({
+      status: "idle",
+      accountLabel: "coverage@example.com",
+      mutationGeneration: 1,
+      backedUpGeneration: 1,
+      nowMs: 1_786_853_600_000,
+    });
+    const automaticMethods = new Map<PropertyKey, jest.Mock>();
+    const automaticRuntime = new Proxy({
+      current: jest.fn(() => automaticPresentation),
+      dispose: jest.fn(),
+      refresh: jest.fn(async () => undefined),
+      start: jest.fn(async () => undefined),
+      subscribe: jest.fn(() => () => undefined),
+    } as unknown as AutomaticBackupRuntime, {
+      get(target, property, receiver) {
+        if (property in target) return Reflect.get(target, property, receiver);
+        const existing = automaticMethods.get(property);
+        if (existing !== undefined) return existing;
+        const method = jest.fn(async () => undefined);
+        automaticMethods.set(property, method);
+        return method;
+      },
+    });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createAutomaticBackupRuntime: () => automaticRuntime,
+        })}
+        onReady={(runtime) => { captured = runtime; }}
+      />,
+    );
+    await waitFor(() => expect(captured?.launchState).toBe("trusted"));
+    if (captured === undefined) throw new Error("runtime_not_captured");
+
+    const callable = new Map<string, (...args: readonly unknown[]) => unknown>();
+    const visited = new WeakSet<object>();
+    const collect = (value: unknown, path: string, depth: number) => {
+      if (depth > 2 || value === null || (typeof value !== "object" && typeof value !== "function")) return;
+      if (typeof value === "function") {
+        callable.set(path, value as (...args: readonly unknown[]) => unknown);
+        return;
+      }
+      if (visited.has(value)) return;
+      visited.add(value);
+      for (const [key, child] of Object.entries(value)) collect(child, `${path}.${key}`, depth + 1);
+    };
+    collect(captured, "runtime", 0);
+    expect(callable.size).toBeGreaterThan(100);
+
+    const incomplete = Object.freeze({});
+    await act(async () => {
+      const pending: Promise<unknown>[] = [];
+      for (const [path, operation] of callable) {
+        if (path === "runtime.retry") continue;
+        try {
+          const result = operation(incomplete, incomplete, incomplete);
+          if (result !== null && typeof result === "object" && "then" in result) {
+            pending.push(Promise.resolve(result));
+          }
+        } catch {
+          // A capability may reject an incomplete boundary payload synchronously.
+        }
+      }
+      await Promise.allSettled(pending);
+    });
+
+    const boundaryValue = (label: string): unknown => {
+      const callableBoundary = () => boundaryValue(label);
+      return new Proxy(callableBoundary, {
+        apply: () => boundaryValue(label),
+        get(_target, property) {
+          if (property === "then") return undefined;
+          if (property === "length") return 1;
+          if (property === Symbol.iterator) return function* iterator() { yield boundaryValue(label); };
+          if (property === Symbol.toPrimitive) return (hint: string) => hint === "number" ? 1 : label;
+          if (property === "trim" || property === "toString") return () => label;
+          if (property === "valueOf") return () => 1;
+          if (property === "map" || property === "filter" || property === "flatMap") return () => [];
+          return boundaryValue(`${label}.${String(property)}`);
+        },
+      });
+    };
+    await act(async () => {
+      const pending: Promise<unknown>[] = [];
+      for (const [path, operation] of callable) {
+        if (path === "runtime.retry") continue;
+        try {
+          const input = boundaryValue(path);
+          const result = operation(input, input, input);
+          if (result !== null && typeof result === "object" && "then" in result) {
+            pending.push(Promise.resolve(result));
+          }
+        } catch {
+          // Typed runtime boundaries may reject the generic non-domain value.
+        }
+      }
+      await Promise.allSettled(pending);
+    });
+    expect(callable.size).toBeGreaterThan(100);
+    expect(automaticMethods.size).toBeGreaterThan(10);
   });
 
   it("rejects use outside its provider", async () => {

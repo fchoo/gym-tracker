@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -13,6 +14,7 @@ import {
 import React from "react";
 import * as ReactNative from "react-native";
 import { StyleSheet } from "react-native";
+import { Gesture } from "react-native-gesture-handler";
 
 import type { CalendarRange, CalendarReadPort } from "../calendar/calendarPorts";
 import { CalendarScreen } from "../screens/CalendarScreen";
@@ -107,6 +109,153 @@ async function measureAugustFocusedRows(): Promise<void> {
 }
 
 describe("CalendarScreen", () => {
+  it("records one mounted drag-expand-collapse diagnostic sequence", async () => {
+    const createPan = Gesture.Pan.bind(Gesture);
+    let latestPan: unknown;
+    const panSpy = jest.spyOn(Gesture, "Pan").mockImplementation(() => {
+      latestPan = createPan();
+      return latestPan as ReturnType<typeof Gesture.Pan>;
+    });
+    const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
+    let frameCallback: ((timestamp: number) => void) | undefined;
+    globalThis.requestAnimationFrame = jest.fn((callback: (timestamp: number) => void) => {
+      frameCallback = callback;
+      return 1;
+    });
+    globalThis.cancelAnimationFrame = jest.fn();
+    const producer = {
+      recordQuery: jest.fn(),
+      recordInteraction: jest.fn(),
+      exportResult: jest.fn(() => Object.freeze({
+        producer: "v12-calendar-native-diagnostics/v1" as const,
+        native_execution: "EXECUTED" as const,
+        query_samples: Object.freeze([]),
+        interaction_samples: Object.freeze([]),
+      })),
+    };
+    try {
+      await render(
+        <AppearanceProvider>
+          <CalendarScreen
+            diagnostics={{ producer, request: { querySamples: 0, interactionSamples: 1 } }}
+            initialDate="2026-08-24"
+            loadCalendarRange={jest.fn(async () => range)}
+            onOpenEvent={jest.fn()}
+            today="2026-08-24"
+          />
+        </AppearanceProvider>,
+      );
+      await screen.findByText("Full body progression, week 12");
+      await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", {
+        nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } },
+      });
+      const handlers = (latestPan as { handlers: {
+        onBegin?: () => void;
+        onEnd?: (event: Readonly<{ translationX: number; translationY: number }>, success: boolean) => void;
+      } }).handlers;
+      await act(async () => {
+        handlers.onBegin?.();
+        handlers.onEnd?.({ translationX: -100, translationY: 0 }, true);
+        frameCallback?.(16);
+        frameCallback?.(33);
+      });
+      expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+      await measureFocusedRows("2026-08-31", "2026-09-07");
+      await fireEvent.press(screen.getByTestId("calendar-day-2026-09-01"));
+      const collapse = await screen.findByRole("button", { name: "Collapse day and return to month" });
+      await fireEvent.press(collapse);
+
+      await waitFor(() => expect(producer.recordInteraction).toHaveBeenCalledTimes(1));
+      expect(producer.recordInteraction).toHaveBeenCalledWith(expect.objectContaining({
+        frameWorkMs: expect.arrayContaining([expect.any(Number)]),
+        missedFrames: expect.any(Number),
+        refreshRateHz: expect.any(Number),
+        profilerOverheadMs: expect.any(Number),
+      }));
+      expect(producer.exportResult).toHaveBeenCalledTimes(1);
+    } finally {
+      panSpy.mockRestore();
+      globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+      globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
+    }
+  });
+
+  it("orders Back, geometry rejection, and inert preview input", async () => {
+    let requestBack: Parameters<typeof ReactNative.BackHandler.addEventListener>[1] | undefined;
+    const hardwareBackEvent = {} as ReactNative.HardwareBackPressEvent;
+    const removeBack = jest.fn();
+    const backSpy = jest.spyOn(ReactNative.BackHandler, "addEventListener").mockImplementation((_event, callback) => {
+      requestBack = callback;
+      return { remove: removeBack };
+    });
+    const onRequestRootBack = jest.fn();
+    try {
+      const rendered = await render(
+        <AppearanceProvider>
+          <CalendarScreen
+            initialDate="2026-08-24"
+            loadCalendarRange={jest.fn(async () => range)}
+            onOpenEvent={jest.fn()}
+            onRequestRootBack={onRequestRootBack}
+            today="2026-08-24"
+          />
+        </AppearanceProvider>,
+      );
+      await screen.findByText("Full body progression, week 12");
+      const row = screen.getAllByTestId("calendar-week-row-2026-08-24")
+        .find((candidate) => typeof candidate.props.onLayout === "function")!;
+      await fireEvent(row, "layout", { nativeEvent: { layout: { height: 0, width: 360, x: 0, y: Number.NaN } } });
+      await fireEvent(row, "layout", { nativeEvent: { layout: { height: 70, width: 360, x: 0, y: 280 } } });
+      await fireEvent(row, "layout", { nativeEvent: { layout: { height: 70, width: 360, x: 0, y: 280 } } });
+
+      const hiddenPreview = screen.getAllByTestId("calendar-day-2026-06-29", { includeHiddenElements: true })[0]!;
+      await fireEvent(hiddenPreview, "keyDown", { nativeEvent: { key: "ArrowRight" } });
+      await fireEvent.press(hiddenPreview);
+
+      await act(async () => { expect(requestBack?.(hardwareBackEvent)).toBe(true); });
+      expect(onRequestRootBack).toHaveBeenCalledTimes(1);
+      await fireEvent.press(screen.getByRole("button", { name: "Open Calendar key" }));
+      await act(async () => { expect(requestBack?.(hardwareBackEvent)).toBe(true); });
+      expect(screen.queryByRole("header", { name: "Calendar key" })).toBeNull();
+      expect(onRequestRootBack).toHaveBeenCalledTimes(1);
+
+      await measureAugustFocusedRows();
+      await fireEvent.press(screen.getByTestId("calendar-day-2026-08-24"));
+      await fireEvent(screen.getByTestId("calendar-agenda-scroll"), "scroll", {
+        nativeEvent: { contentOffset: { x: 0, y: 18 } },
+      });
+      await act(async () => { expect(requestBack?.(hardwareBackEvent)).toBe(true); });
+      expect(screen.queryByRole("button", { name: "Collapse day and return to month" })).toBeNull();
+      expect(onRequestRootBack).toHaveBeenCalledTimes(1);
+      await rendered.unmount();
+      expect(removeBack).toHaveBeenCalled();
+    } finally {
+      backSpy.mockRestore();
+    }
+  });
+
+  it("moves Today across months through the same settled destination", async () => {
+    const loadCalendarRange = jest.fn(async () => range);
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          today="2026-10-13"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+    await fireEvent.press(screen.getByRole("button", { name: "Return to today, 13 October 2026" }));
+    expect(await screen.findByText("October 2026")).toBeOnTheScreen();
+    await waitFor(() => expect(loadCalendarRange).toHaveBeenLastCalledWith({
+      startLocalDate: "2026-08-31",
+      endLocalDateExclusive: "2026-12-14",
+    }));
+  });
+
   it("records bounded source-backed query aggregates through the routed diagnostics producer", async () => {
     const producer = {
       recordQuery: jest.fn(),
@@ -121,7 +270,7 @@ describe("CalendarScreen", () => {
     await render(
       <AppearanceProvider>
         <CalendarScreen
-          diagnostics={{ producer, request: { querySamples: 1, interactionSamples: 1 } }}
+          diagnostics={{ producer, request: { querySamples: 1, interactionSamples: 0 } }}
           initialDate="2026-08-24"
           loadCalendarRange={jest.fn(async () => range)}
           onOpenEvent={jest.fn()}
@@ -136,6 +285,7 @@ describe("CalendarScreen", () => {
       importedCount: 0,
       planCount: 1,
     });
+    expect(producer.exportResult).toHaveBeenCalledTimes(1);
   });
 
   it("opens one completed Strength agenda target without giving the date cell a nested event action", async () => {
@@ -189,8 +339,50 @@ describe("CalendarScreen", () => {
       "strength-session-1",
     );
     expect(loadCalendarRange).toHaveBeenCalledWith({
-      startLocalDate: "2026-07-27",
-      endLocalDateExclusive: "2026-09-14",
+      startLocalDate: "2026-06-29",
+      endLocalDateExclusive: "2026-10-12",
+    });
+  });
+
+  it("keeps events at both adjacent-panel outer boundaries in the rendered previews", async () => {
+    const boundaryRange = Object.freeze({
+      events: Object.freeze([
+        Object.freeze({
+          ...range.events[0],
+          id: "previous-boundary",
+          localDate: "2026-06-29",
+          title: "Previous boundary session",
+          destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: "previous-boundary" }),
+        }),
+        Object.freeze({
+          ...range.events[0],
+          id: "next-boundary",
+          localDate: "2026-10-04",
+          title: "Next boundary session",
+          destination: Object.freeze({ kind: "occurrence" as const, occurrenceId: "next-boundary" }),
+        }),
+      ]),
+    }) as CalendarRange;
+    const loadCalendarRange = jest.fn(async () => boundaryRange);
+
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("calendar-event-chip-previous-boundary", { includeHiddenElements: true })).toBeOnTheScreen();
+      expect(screen.getByTestId("calendar-event-chip-next-boundary", { includeHiddenElements: true })).toBeOnTheScreen();
+    });
+    expect(loadCalendarRange).toHaveBeenCalledWith({
+      startLocalDate: "2026-06-29",
+      endLocalDateExclusive: "2026-10-12",
     });
   });
 
@@ -442,8 +634,8 @@ describe("CalendarScreen", () => {
     expect(await screen.findByText("August 2026")).toBeOnTheScreen();
     await waitFor(() => {
       expect(loadCalendarRange).toHaveBeenLastCalledWith({
-        startLocalDate: "2026-07-27",
-        endLocalDateExclusive: "2026-09-14",
+        startLocalDate: "2026-06-29",
+        endLocalDateExclusive: "2026-10-12",
       });
     });
     expect(onOpenEvent).toHaveBeenCalledTimes(1);
@@ -484,6 +676,87 @@ describe("CalendarScreen", () => {
     await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeReturn));
   });
 
+  it("refreshes on root refocus before any detail visit", async () => {
+    const loadCalendarRange = jest.fn(async () => range);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await screen.findByText("Full body progression, week 12");
+    const callsBeforeRefocus = loadCalendarRange.mock.calls.length;
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeRefocus));
+    expect(screen.getByText("August 2026")).toBeOnTheScreen();
+  });
+
+  it("consumes detail return state once and keeps the owner's later month on root refocus", async () => {
+    const loadCalendarRange = jest.fn(async () => completedStrengthRange);
+    const rendered = await render(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={0}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    await measureAugustFocusedRows();
+    await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Complete/u }));
+    await fireEvent.press(await screen.findByRole("button", { name: /Full body progression.*Open details/u }));
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={1}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+    expect(await screen.findByText("August 2026")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+    expect(await screen.findByText("September 2026")).toBeOnTheScreen();
+    const callsBeforeRootReturn = loadCalendarRange.mock.calls.length;
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <CalendarScreen
+          initialDate="2026-08-24"
+          loadCalendarRange={loadCalendarRange}
+          onOpenEvent={jest.fn()}
+          returnFocusGeneration={2}
+          today="2026-08-24"
+        />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(loadCalendarRange.mock.calls.length).toBeGreaterThan(callsBeforeRootReturn));
+    expect(screen.getByText("September 2026")).toBeOnTheScreen();
+    expect(screen.queryByText("August 2026")).toBeNull();
+  });
+
   it("retains the last good month during refresh and retries the exact failed range", async () => {
     let rejectNextRange: ((error: Error) => void) | undefined;
     const loadCalendarRange = jest.fn() as jest.MockedFunction<CalendarReadPort["loadCalendarRange"]>;
@@ -512,18 +785,22 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("Full body progression, week 12")).toBeOnTheScreen();
     expect(screen.getByText("August 2026")).toBeOnTheScreen();
     expect(screen.queryByText("September 2026")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show July 2026" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Show September 2026" })).toBeDisabled();
 
     rejectNextRange?.(new Error("offline"));
 
     expect(await screen.findByText("Calendar could not be loaded")).toBeOnTheScreen();
     expect(screen.getByText("Your saved workouts were not changed. Try loading Calendar again."))
       .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Show July 2026" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Show September 2026" })).toBeEnabled();
 
     await fireEvent.press(screen.getByRole("button", { name: "Retry Calendar" }));
 
     await waitFor(() => {
       expect(loadCalendarRange).toHaveBeenLastCalledWith({
-        startLocalDate: "2026-08-31",
+        startLocalDate: "2026-06-29",
         endLocalDateExclusive: "2026-10-12",
       });
     });
@@ -553,6 +830,39 @@ describe("CalendarScreen", () => {
       expect(StyleSheet.flatten(screen.getAllByTestId("calendar-event-track-2026-08-24")[0]!.props.style).minHeight).toBe(66);
       expect(screen.getByRole("button", { name: /24 August 2026.*Full body progression/u })).toBeOnTheScreen();
       expect(screen.getByRole("button", { name: "Return to today, 24 August 2026" })).toBeOnTheScreen();
+    } finally {
+      dimensions.mockRestore();
+    }
+  });
+
+  it("reserves a reachable focused agenda row at 200 percent text in compact height", async () => {
+    const dimensions = jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
+      fontScale: 2,
+      height: 360,
+      scale: 1,
+      width: 800,
+    });
+    const onOpenEvent = jest.fn();
+    try {
+      await render(
+        <AppearanceProvider>
+          <CalendarScreen
+            initialDate="2026-08-24"
+            loadCalendarRange={jest.fn(async () => range)}
+            onOpenEvent={onOpenEvent}
+            today="2026-08-24"
+          />
+        </AppearanceProvider>,
+      );
+      await measureAugustFocusedRows();
+      await fireEvent.press(await screen.findByRole("button", { name: /24 August 2026.*Full body progression/u }));
+
+      const scroll = screen.getByTestId("calendar-vertical-scroll");
+      expect(StyleSheet.flatten(scroll.props.contentContainerStyle).minHeight).toBe(618);
+      const agendaRow = await screen.findByTestId("calendar-agenda-event-strength-opportunity-1");
+      expect(agendaRow).toBeOnTheScreen();
+      await fireEvent.press(agendaRow);
+      expect(onOpenEvent).toHaveBeenCalledWith(range.events[0]!.destination, "strength-opportunity-1");
     } finally {
       dimensions.mockRestore();
     }

@@ -3,6 +3,59 @@ import { describe, expect, it, jest } from "@jest/globals";
 import { createTrainingCalendarRepository } from "../../src/platform/sqlite/repositories/trainingCalendarRepository";
 import type { SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 
+function runningDefinition(
+  id: string,
+  planId: string,
+  kind: "long_run" | "recovery" | "tempo",
+): string {
+  return JSON.stringify({
+    version: 1,
+    id,
+    rootId: `${id}-root`,
+    planId,
+    sessionKind: kind,
+    revision: 1,
+    createdAtMs: 1,
+    phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }],
+    advisoryTarget: { rpe: 4 },
+    contextual: kind === "long_run" ? { finish: "easy_throughout" }
+      : kind === "tempo" ? { format: "continuous", work: { durationMs: 60_000 } } : {},
+  });
+}
+
+function plannedStrengthSnapshot(input: Readonly<{
+  occurrenceId: string;
+  opportunityRevision: number;
+  targetCount: number;
+  dayName?: string;
+}>): string {
+  return JSON.stringify({
+    occurrenceId: input.occurrenceId,
+    planId: "strength-plan",
+    planName: "Full body progression, week 12",
+    planDayId: "strength-day",
+    dayName: input.dayName ?? "Full body A",
+    scheduleId: "strength-schedule",
+    scheduleVersionId: "strength-v1",
+    localDate: "2026-11-01",
+    timezone: "America/New_York",
+    sourceRevisions: { plan: 1, day: 1, schedule: 1, opportunity: input.opportunityRevision },
+    exercises: [{
+      id: "strength-exercise",
+      exerciseId: "squat",
+      exerciseName: "Squat",
+      ordinal: 0,
+      targets: Array.from({ length: input.targetCount }, (_, ordinal) => ({
+        id: `target-${ordinal}`,
+        ordinal,
+        targetJson: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 50_000, minReps: 5, maxReps: 5, incrementGrams: 2_500, perSide: false }),
+        unitJson: "{}",
+        previousObservationJson: null,
+      })),
+    }],
+  });
+}
+
 describe("training calendar repository", () => {
   it("projects all durable calendar destinations with full source facts from one bounded snapshot", async () => {
     const queryAll = jest.fn(async (sql: string, _parameters?: readonly unknown[]) => {
@@ -11,8 +64,9 @@ describe("training calendar repository", () => {
           id: "strength-planned", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
           plan_id: "strength-plan", plan_name: "Full body progression, week 12", local_date: "2026-11-01",
           timezone: "America/New_York", revision: 2, state: "pending", outcome: null,
-          plan_day_id: "strength-day", plan_day_name: "Full body A", schedule_lifecycle: "active",
-          session_id: null, session_status: null, snapshot_json: null,
+          plan_active: 1, plan_revision: 1, plan_day_id: "strength-day", plan_day_name: "Full body A", day_revision: 1,
+          schedule_lifecycle: "active", schedule_revision: 1,
+          session_id: null, session_status: null, snapshot_json: null, planned_snapshot_json: plannedStrengthSnapshot({ occurrenceId: "strength-planned", opportunityRevision: 2, targetCount: 3 }),
           completed_working_sets: 0, planned_working_sets: 0, planned_target_sets: 3,
         },
         {
@@ -32,10 +86,11 @@ describe("training calendar repository", () => {
           completed_working_sets: 2, planned_working_sets: 3, planned_target_sets: 3,
         },
       ];
-      if (sql.includes("running_opportunities")) return [{
+      if (sql.includes("FROM running_opportunities opportunity")) return [{
         id: "running-slot", schedule_id: "running-schedule", schedule_version_id: "running-v2",
         plan_id: "running-plan", plan_name: "Autumn half marathon build", slot_id: "slot-a",
         session_revision_id: "running-session-revision", session_kind: "long_run",
+        definition_json: runningDefinition("running-session-revision", "running-plan", "long_run"),
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }];
       return [{
@@ -46,6 +101,8 @@ describe("training calendar repository", () => {
           normalized: { sport: "running", subtype: "outdoor", source_time_zone: "Europe/London", distance_meters: 5_000, elapsed_ms: 1_560_000 },
         }),
         opportunity_id: null,
+        matched_schedule_id: null, matched_schedule_version_id: null,
+        matched_plan_id: null, matched_slot_id: null,
       }];
     });
     const kernel = { queryAll } as unknown as SqliteKernel;
@@ -93,15 +150,17 @@ describe("training calendar repository", () => {
   it("overlays a current imported activity onto its matched Running slot without duplication", async () => {
     const queryAll = jest.fn(async (sql: string) => {
       if (sql.includes("owned_plan_schedule_opportunities")) return [];
-      if (sql.includes("running_opportunities")) return [{
+      if (sql.includes("FROM running_opportunities opportunity")) return [{
         id: "running-slot-a", schedule_id: "running-schedule", schedule_version_id: "running-v2",
         plan_id: "running-plan", plan_name: "Autumn half marathon build", slot_id: "slot-a",
         session_revision_id: "revision-a", session_kind: "recovery",
+        definition_json: runningDefinition("revision-a", "running-plan", "recovery"),
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }, {
         id: "running-slot-b", schedule_id: "running-schedule", schedule_version_id: "running-v2",
         plan_id: "running-plan", plan_name: "Autumn half marathon build", slot_id: "slot-b",
         session_revision_id: "revision-b", session_kind: "tempo",
+        definition_json: runningDefinition("revision-b", "running-plan", "tempo"),
         local_date: "2026-11-01", timezone: "Australia/Sydney", state: "planned",
       }];
       return [{
@@ -112,6 +171,8 @@ describe("training calendar repository", () => {
           normalized: { sport: "running", subtype: "treadmill", source_time_zone: "Australia/Sydney", distance_meters: 5_000, elapsed_ms: 1_560_000 },
         }),
         opportunity_id: "running-slot-a",
+        matched_schedule_id: "running-schedule", matched_schedule_version_id: "running-v2",
+        matched_plan_id: "running-plan", matched_slot_id: "slot-a",
       }];
     });
     const kernel = { queryAll } as unknown as SqliteKernel;
@@ -143,7 +204,7 @@ describe("training calendar repository", () => {
         revision: 2, state: "consumed", outcome: "completed", session_id: null, session_status: null,
         snapshot_json: null, completed_working_sets: 0, planned_working_sets: 0, planned_target_sets: 1,
       }];
-      if (sql.includes("running_opportunities")) return [];
+      if (sql.includes("FROM running_opportunities opportunity")) return [];
       return [{
         id: "stale-imported-run", source: "garmin_connect_account:owner-a", source_kind: "garmin_connect_account",
         account_namespace: "owner-a", external_activity_id: "external-stale", started_at_ms: 1,
@@ -152,6 +213,8 @@ describe("training calendar repository", () => {
           normalized: { sport: "running", subtype: "outdoor", source_time_zone: "America/New_York", distance_meters: 5_000 },
         }),
         opportunity_id: "missing-running-opportunity",
+        matched_schedule_id: null, matched_schedule_version_id: null,
+        matched_plan_id: null, matched_slot_id: null,
       }];
     });
     const kernel = { queryAll } as unknown as SqliteKernel;
@@ -160,15 +223,19 @@ describe("training calendar repository", () => {
       startLocalDate: "2026-11-01",
       endLocalDateExclusive: "2026-11-02",
     })).resolves.toEqual({
-      events: [],
-      days: [{ localDate: "2026-11-01", kind: "empty", restSummary: null }],
+      events: [expect.objectContaining({
+        id: "stale-imported-run",
+        status: "imported",
+        scheduleId: null,
+      })],
+      days: [{ localDate: "2026-11-01", kind: "events", restSummary: null }],
     });
   });
 
   it("uses snapshot reads, rejects inverted bounds, and refuses malformed imported dates", async () => {
     const queryAll = jest.fn(async (sql: string) => {
       if (sql.includes("owned_plan_schedule_opportunities")) return [];
-      if (sql.includes("running_opportunities")) return [];
+      if (sql.includes("FROM running_opportunities opportunity")) return [];
       return [{
         id: "malformed-import", source: "garmin", source_kind: "garmin_connect_account",
         account_namespace: "owner-a", external_activity_id: "external-malformed", started_at_ms: 1,
@@ -226,13 +293,15 @@ describe("training calendar repository", () => {
     });
     const baseStrength = {
       schedule_id: "schedule", schedule_version_id: "version", plan_id: "plan", plan_name: "Plan",
-      plan_day_id: "day", plan_day_name: "Day", schedule_lifecycle: "active", local_date: "2026-11-01",
+      plan_active: 1, plan_revision: 1, plan_day_id: "day", plan_day_name: "Day", day_revision: 1,
+      schedule_lifecycle: "active", schedule_revision: 1, local_date: "2026-11-01",
       timezone: "UTC", revision: 1, state: "pending", outcome: null, session_id: null, session_status: null,
-      snapshot_json: null, completed_working_sets: 0, planned_working_sets: 1, planned_target_sets: 1,
+      snapshot_json: null, planned_snapshot_json: null, completed_working_sets: 0, planned_working_sets: 1, planned_target_sets: 1,
     } as const;
     const baseRunning = {
       schedule_id: "running-schedule", schedule_version_id: "running-version", plan_id: "running-plan",
       plan_name: "Running", slot_id: "slot", session_revision_id: "revision", session_kind: "recovery",
+      definition_json: runningDefinition("revision", "running-plan", "recovery"),
       local_date: "2026-11-01", timezone: "UTC", state: "planned",
     } as const;
     const imported = (id: string, overrides: Readonly<Record<string, unknown>>) => ({
@@ -250,12 +319,15 @@ describe("training calendar repository", () => {
         { ...baseStrength, id: "overlay-plan", state: "consumed", outcome: "completed", session_id: "overlay-plan", session_status: "completed", snapshot_json: snapshot("overlay-plan", "Corrected plan", null) },
         { ...baseStrength, id: "overlay-source", state: "consumed", outcome: "completed", session_id: "overlay-source", session_status: "completed", snapshot_json: snapshot("overlay-source", null, null) },
         { ...baseStrength, id: "planned-fallback", plan_day_name: null },
+        { ...baseStrength, id: "snapshot-mismatch", planned_snapshot_json: plannedStrengthSnapshot({ occurrenceId: "another-occurrence", opportunityRevision: 1, targetCount: 1 }) },
       ];
-      if (sql.includes("running_opportunities")) return [
+      if (sql.includes("FROM running_opportunities opportunity")) return [
         { ...baseRunning, id: "fulfilled", state: "fulfilled" },
         { ...baseRunning, id: "blank-running-plan", plan_name: " " },
         { ...baseRunning, id: "blank-running-revision", session_revision_id: " " },
-        { ...baseRunning, id: "blank-running-kind", session_kind: "__" },
+        { ...baseRunning, id: "blank-running-kind", session_kind: "__", definition_json: "{}" },
+        { ...baseRunning, id: "identity-mismatch", definition_json: runningDefinition("another-revision", "running-plan", "recovery") },
+        { ...baseRunning, id: "invalid-running-json", definition_json: "{" },
       ];
       return [
         imported("small-distance", {}),
@@ -272,10 +344,10 @@ describe("training calendar repository", () => {
     });
 
     expect(result.events.map(({ id }) => id)).toEqual([
-      "raw-single", "overlay-plan", "overlay-source", "planned-fallback", "small-distance",
+      "raw-single", "overlay-plan", "overlay-source", "small-distance",
     ]);
     expect(result.events.map(({ title }) => title)).toEqual([
-      "Plan", "Corrected plan", "Plan", "Plan", "Outdoor run",
+      "Plan", "Corrected plan", "Plan", "Outdoor run",
     ]);
     expect(result.events.at(-1)?.displaySummary).toBe("999 m");
   });

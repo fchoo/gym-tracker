@@ -219,6 +219,58 @@ export type RunningPlanAggregate = Readonly<{
   sessions: readonly RunningPlanSession[];
 }>;
 
+function runningQuantity(value: { distanceMeters: number } | { durationMs: number }): string {
+  return "distanceMeters" in value
+    ? `${value.distanceMeters} m`
+    : `${Math.round(value.durationMs / 60_000)} min`;
+}
+
+function runningTarget(
+  value: RunningSessionRevision["advisoryTarget"] | undefined,
+): string {
+  if (value?.paceMsPerKm !== undefined) {
+    return `${Math.floor(value.paceMsPerKm / 60_000)}:${String(Math.floor((value.paceMsPerKm % 60_000) / 1000)).padStart(2, "0")} / km`;
+  }
+  if (value?.heartRateZone !== undefined) return `Z${value.heartRateZone}`;
+  return value?.rpe !== undefined ? `RPE ${value.rpe}` : "No target";
+}
+
+/** Bounded factual summary shared by persisted Running detail and Calendar intent. */
+export function runningSessionRevisionReadback(session: RunningSessionRevision): string {
+  const work = session.phases.flatMap((phase) => phase.steps).map((step) =>
+    step.kind === "distance" ? `${step.distanceMeters} m` : `${Math.round(step.durationMs / 60_000)} min`
+  ).join(" + ");
+  if (session.sessionKind === "recovery") return `${work} · easy ${runningTarget(session.advisoryTarget)}`;
+  if (session.sessionKind === "long_run") {
+    const contextual = session.contextual as { finish: "easy_throughout" | "steady_finish" | "progression_finish" };
+    return `${work} · ${runningTarget(session.advisoryTarget)} · ${contextual.finish.replaceAll("_", " ")}`;
+  }
+  if (session.sessionKind === "progression") {
+    const contextual = session.contextual as { stages: number; startTarget: RunningSessionRevision["advisoryTarget"]; finishTarget: RunningSessionRevision["advisoryTarget"] };
+    return `${work} · ${contextual.stages} stages · ${runningTarget(contextual.startTarget)} → ${runningTarget(contextual.finishTarget)}`;
+  }
+  if (session.sessionKind === "tempo") {
+    const contextual = session.contextual as { format: "continuous" | "tempo_repeats"; repetitions?: number; work: { distanceMeters: number } | { durationMs: number }; recovery?: { distanceMeters: number } | { durationMs: number } };
+    return `${contextual.format === "continuous" ? "continuous" : `${contextual.repetitions} ×`} ${runningQuantity(contextual.work)}${contextual.recovery === undefined ? "" : ` · recovery ${runningQuantity(contextual.recovery)}`} · ${runningTarget(session.advisoryTarget)}`;
+  }
+  if (session.sessionKind === "intervals") {
+    const contextual = session.contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; recovery: { distanceMeters: number } | { durationMs: number } };
+    return `${contextual.repetitions} × ${runningQuantity(contextual.work)} · recovery ${runningQuantity(contextual.recovery)} · ${runningTarget(session.advisoryTarget)}`;
+  }
+  if (session.sessionKind === "hills") {
+    const contextual = session.contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; returnRecovery: { distanceMeters: number } | { durationMs: number } };
+    return `${contextual.repetitions} × uphill ${runningQuantity(contextual.work)} · return recovery ${runningQuantity(contextual.returnRecovery)} · ${runningTarget(session.advisoryTarget)}`;
+  }
+  const contextual = session.contextual as { format: "structured" | "unstructured"; repetitions: number; work?: { distanceMeters: number } | { durationMs: number }; recovery?: { distanceMeters: number } | { durationMs: number }; fastCue?: string; easyRecoveryCue?: string };
+  return contextual.format === "structured"
+    ? `${contextual.repetitions} × ${runningQuantity(contextual.work!)} · easy ${runningQuantity(contextual.recovery!)} · ${runningTarget(session.advisoryTarget)}`
+    : `${contextual.repetitions} surges · ${contextual.fastCue} · recover ${contextual.easyRecoveryCue} · ${runningTarget(session.advisoryTarget)}`;
+}
+
+export function runningSessionReadback(entry: RunningPlanSession): string {
+  return runningSessionRevisionReadback(entry.session);
+}
+
 export function parseRunningSessionRevision(input: unknown): RunningSessionRevision {
   const result = RunningSessionRevisionV1Schema.safeParse(input);
   if (!result.success) {

@@ -9,6 +9,11 @@ import {
   type HistoryCorrectionSnapshot,
 } from "../../../domains/history";
 import type { SqliteKernel, SqliteReadTransactionExecutor } from "../sqliteKernel";
+import {
+  parseRunningSessionRevision,
+  runningSessionRevisionReadback,
+} from "../../../domains/running/contracts";
+import { parseStrengthOccurrenceSnapshot } from "./strengthOccurrenceSnapshot";
 
 type CalendarDestination =
   | Readonly<{ kind: "session"; sessionId: string }>
@@ -64,18 +69,24 @@ export type TrainingCalendarDay = Readonly<{
 
 type StrengthRow = Readonly<{
   id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
-  plan_day_id: string | null; plan_day_name: string | null; schedule_lifecycle: "active" | "inactive";
+  plan_active: number; plan_revision: number; plan_day_id: string | null;
+  plan_day_name: string | null; day_revision: number | null;
+  schedule_lifecycle: "active" | "inactive"; schedule_revision: number;
   local_date: string; timezone: string; revision: number; state: string; outcome: string | null;
   session_id: string | null; session_status: string | null; snapshot_json: string | null;
+  planned_snapshot_json: string | null;
   completed_working_sets: number; planned_working_sets: number; planned_target_sets: number;
 }>;
 type RunningRow = Readonly<{
   id: string; schedule_id: string; schedule_version_id: string; plan_id: string; plan_name: string;
-  slot_id: string; session_revision_id: string; session_kind: string; local_date: string; timezone: string; state: string;
+  slot_id: string; session_revision_id: string; session_kind: string; definition_json: string;
+  local_date: string; timezone: string; state: string;
 }>;
 type ImportedRow = Readonly<{
   id: string; source: string; source_kind: string; account_namespace: string; external_activity_id: string;
   started_at_ms: number; aggregate_json: string; opportunity_id: string | null;
+  matched_schedule_id: string | null; matched_schedule_version_id: string | null;
+  matched_plan_id: string | null; matched_slot_id: string | null;
 }>;
 
 function range(input: Readonly<{ startLocalDate: string; endLocalDateExclusive: string }>): Readonly<{ start: LocalDate; end: LocalDate }> {
@@ -226,13 +237,32 @@ function strengthProjection(row: StrengthRow): StrengthProjection {
     || row.session_id !== null
     || row.session_status !== null
     || row.plan_day_id === null
-    || row.planned_target_sets < 1) return Object.freeze({ event: null, rest: null });
-  const title = row.plan_day_name?.trim() || row.plan_name;
+    || row.plan_active !== 1
+    || row.day_revision === null
+    || row.planned_snapshot_json === null) return Object.freeze({ event: null, rest: null });
+  const snapshot = parseStrengthOccurrenceSnapshot(row.planned_snapshot_json);
+  if (snapshot === null
+    || snapshot.occurrenceId !== row.id
+    || snapshot.planId !== row.plan_id
+    || snapshot.planDayId !== row.plan_day_id
+    || snapshot.scheduleId !== row.schedule_id
+    || snapshot.scheduleVersionId !== row.schedule_version_id
+    || snapshot.sourceRevisions.plan !== row.plan_revision
+    || snapshot.sourceRevisions.day !== row.day_revision
+    || snapshot.sourceRevisions.schedule !== row.schedule_revision
+    || snapshot.sourceRevisions.opportunity !== row.revision) {
+    return Object.freeze({ event: null, rest: null });
+  }
+  const plannedTargetSets = snapshot.exercises.reduce(
+    (count, exercise) => count + exercise.targets.length,
+    0,
+  );
+  const title = snapshot.dayName;
   return Object.freeze({
     event: Object.freeze({
       id: row.id, source: "strength", sport: "strength", status: "planned",
-      title, displaySummary: `${title} · ${row.planned_target_sets} working set${row.planned_target_sets === 1 ? "" : "s"} planned`,
-      sourceLabel: "Strength", localDate: parseLocalDate(row.local_date), timeZone: row.timezone,
+      title, displaySummary: `${title} · ${plannedTargetSets} working set${plannedTargetSets === 1 ? "" : "s"} planned`,
+      sourceLabel: "Strength", localDate: parseLocalDate(snapshot.localDate), timeZone: snapshot.timezone,
       scheduleId: row.schedule_id, scheduleVersionId: row.schedule_version_id, planId: row.plan_id,
       slotId: null, revision: row.revision, state: "planned",
       destination: Object.freeze({ kind: "occurrence", occurrenceId: row.id }),
@@ -245,9 +275,17 @@ function runningEvent(row: RunningRow): TrainingCalendarEvent | null {
   if (row.state !== "planned" || row.plan_name.trim().length === 0 || row.session_revision_id.trim().length === 0) return null;
   const sourceLabel = displayWords(row.session_kind);
   if (sourceLabel.length === 0) return null;
+  let displaySummary: string;
+  try {
+    const session = parseRunningSessionRevision(JSON.parse(row.definition_json));
+    if (session.id !== row.session_revision_id || session.planId !== row.plan_id) return null;
+    displaySummary = runningSessionRevisionReadback(session);
+  } catch {
+    return null;
+  }
   return Object.freeze({
     id: row.id, source: "running", sport: "running", status: "planned", title: row.plan_name,
-    displaySummary: `${sourceLabel} session planned`, sourceLabel,
+    displaySummary, sourceLabel,
     localDate: parseLocalDate(row.local_date), timeZone: row.timezone, scheduleId: row.schedule_id,
     scheduleVersionId: row.schedule_version_id, planId: row.plan_id, slotId: row.slot_id, revision: null, state: "planned",
     destination: Object.freeze({ kind: "plan", planId: row.plan_id, sessionId: row.session_revision_id }),
@@ -261,13 +299,21 @@ async function queryRange(
   const [strengthRows, runningRows, importedRows] = await Promise.all([
     reader.queryAll<StrengthRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              schedule.plan_id, plan.name AS plan_name, opportunity.plan_day_id,
-              day.name AS plan_day_name, schedule.lifecycle AS schedule_lifecycle,
+              schedule.plan_id, plan.name AS plan_name, plan.is_active AS plan_active,
+              plan.revision AS plan_revision, opportunity.plan_day_id,
+              day.name AS plan_day_name, day.revision AS day_revision,
+              schedule.lifecycle AS schedule_lifecycle, schedule.revision AS schedule_revision,
               COALESCE(overlay.effective_local_date, session.local_date, projection.moved_local_date, opportunity.local_date) AS local_date,
               COALESCE(overlay.effective_timezone, session.timezone, version.timezone) AS timezone,
               opportunity.revision, opportunity.state, opportunity.outcome,
               session.id AS session_id, session.status AS session_status,
               overlay.snapshot_json,
+              (SELECT event.payload_json
+                 FROM owned_plan_schedule_events event
+                WHERE event.schedule_id = schedule.id
+                  AND event.event_type = 'planned_occurrence_snapshot'
+                  AND json_extract(event.payload_json, '$.occurrenceId') = opportunity.id
+                ORDER BY event.created_at_ms DESC, event.id DESC LIMIT 1) AS planned_snapshot_json,
               (SELECT COUNT(*) FROM session_sets completed_set
                 JOIN session_exercises completed_exercise
                   ON completed_exercise.id = completed_set.session_exercise_id
@@ -315,7 +361,8 @@ async function queryRange(
     ),
     reader.queryAll<RunningRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              opportunity.plan_id, plan.name AS plan_name, opportunity.slot_id, opportunity.session_revision_id, session.session_kind,
+              opportunity.plan_id, plan.name AS plan_name, opportunity.slot_id,
+              opportunity.session_revision_id, session.session_kind, session.definition_json,
               COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, opportunity.timezone, opportunity.state
          FROM running_opportunities opportunity
          JOIN plans plan ON plan.id = opportunity.plan_id
@@ -349,23 +396,61 @@ async function queryRange(
     reader.queryAll<ImportedRow>(
       `SELECT activity.id, activity.source, identity.source_kind, identity.account_namespace,
               identity.external_activity_id, activity.started_at_ms, activity.aggregate_json,
-              match.opportunity_id
+              match.opportunity_id,
+              matched_opportunity.schedule_id AS matched_schedule_id,
+              matched_opportunity.schedule_version_id AS matched_schedule_version_id,
+              matched_opportunity.plan_id AS matched_plan_id,
+              matched_opportunity.slot_id AS matched_slot_id
          FROM imported_activities activity
          JOIN imported_activity_identities identity ON identity.activity_id = activity.id
          JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
          LEFT JOIN running_activity_current_matches match ON match.activity_id = activity.id
+         LEFT JOIN running_opportunities matched_opportunity
+           ON matched_opportunity.id = match.opportunity_id
         WHERE lifecycle.removal_state = 'active'
           AND json_extract(activity.aggregate_json, '$.confirmed_local_date') >= ?
           AND json_extract(activity.aggregate_json, '$.confirmed_local_date') < ?
         ORDER BY json_extract(activity.aggregate_json, '$.confirmed_local_date'), activity.started_at_ms, activity.id`, [input.start, input.end],
     ),
   ]);
-  const matchedOpportunityIds = new Set(
-    importedRows.flatMap(({ opportunity_id }) => opportunity_id === null ? [] : [opportunity_id]),
-  );
   const strength = strengthRows.map(strengthProjection);
   const restByDate = new Map(
     strength.flatMap(({ rest }) => rest === null ? [] : [[rest.localDate, rest.summary] as const]),
+  );
+  const imported = importedRows.flatMap((row) => {
+    const facts = importedFacts(row);
+    if (facts === null) return [];
+    const matched = row.opportunity_id !== null
+      && row.matched_schedule_id !== null && row.matched_schedule_id.trim().length > 0
+      && row.matched_schedule_version_id !== null && row.matched_schedule_version_id.trim().length > 0
+      && row.matched_plan_id !== null && row.matched_plan_id.trim().length > 0
+      && row.matched_slot_id !== null && row.matched_slot_id.trim().length > 0;
+    return [{
+      matchedOpportunityId: matched ? row.opportunity_id : null,
+      event: Object.freeze({
+        id: row.id, source: "imported_activity" as const, sport: "running" as const,
+        status: matched ? "matched" as const : "imported" as const, title: facts.title,
+        displaySummary: facts.displaySummary, sourceLabel: "Garmin",
+        sourceIdentity: Object.freeze({
+          sourceKind: "garmin_connect_account" as const,
+          accountNamespace: row.account_namespace,
+          externalActivityId: row.external_activity_id,
+        }),
+        localDate: facts.localDate, timeZone: facts.timeZone,
+        scheduleId: matched ? row.matched_schedule_id : null,
+        scheduleVersionId: matched ? row.matched_schedule_version_id : null,
+        planId: matched ? row.matched_plan_id : null,
+        slotId: matched ? row.matched_slot_id : null,
+        revision: null,
+        state: matched ? "matched" : "imported",
+        destination: Object.freeze({ kind: "activity" as const, activityId: row.id }),
+      }),
+    }];
+  });
+  const matchedOpportunityIds = new Set(
+    imported.flatMap(({ matchedOpportunityId }) =>
+      matchedOpportunityId === null ? [] : [matchedOpportunityId]
+    ),
   );
   const events: TrainingCalendarEvent[] = [
     ...strength.flatMap(({ event }) => {
@@ -375,27 +460,7 @@ async function queryRange(
       const event = runningEvent(row);
       return event === null ? [] : [event];
     }),
-    ...importedRows.flatMap((row) => {
-      const facts = importedFacts(row);
-      const matched = row.opportunity_id === null
-        ? null
-        : runningRows.find(({ id }) => id === row.opportunity_id) ?? null;
-      if (facts === null || (row.opportunity_id !== null && matched === null)) return [];
-      return [Object.freeze({
-        id: row.id, source: "imported_activity" as const, sport: "running" as const,
-        status: matched === null ? "imported" as const : "matched" as const, title: facts.title,
-        displaySummary: facts.displaySummary, sourceLabel: "Garmin",
-        sourceIdentity: Object.freeze({
-          sourceKind: "garmin_connect_account" as const,
-          accountNamespace: row.account_namespace,
-          externalActivityId: row.external_activity_id,
-        }),
-        localDate: facts.localDate, timeZone: facts.timeZone,
-        scheduleId: matched?.schedule_id ?? null, scheduleVersionId: matched?.schedule_version_id ?? null,
-        planId: matched?.plan_id ?? null, slotId: matched?.slot_id ?? null, revision: null,
-        state: matched === null ? "imported" : "matched", destination: Object.freeze({ kind: "activity" as const, activityId: row.id }),
-      })];
-    }),
+    ...imported.map(({ event }) => event),
   ];
   const orderedEvents = Object.freeze(events.sort((left, right) => {
       const sourceOrder = { strength: 0, running: 1, imported_activity: 2 } as const;
