@@ -1,13 +1,16 @@
 ---
 phase: 16
 slug: calendar-parity
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-10-06
 requirements: [CAL-01, CAL-02, CAL-03, CAL-04, CAL-05, CAL-06, CAL-07, CAL-08, CAL-09, CAL-10, CAL-11, CAL-12, CAL-13, CAL-14, CAL-15, CAL-16, CAL-17, CAL-18, CAL-19, CAL-20, CAL-21, CAL-22, CAL-23]
 automated_gaps: 0
 manual_only: 2
+validated_at: 2026-10-14
+validated_head: f6c8e9cf7efdf4330a132320920b370f61c81e3d
+source_implementation_head: d97ea569
 ---
 
 # Phase 16 — Validation Strategy
@@ -43,27 +46,27 @@ manual_only: 2
 
 | Task ID | Plan | Wave | Requirements | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---|---:|---:|---|---|---|---|---|---|---|
-| 16-01-01 | 01 | 1 | CAL-07, CAL-08, CAL-09, CAL-15 | T-16-01-01..03 | Exact narrow upstream ports; current-epoch transitions only | component + coverage | `npm run test:components -- --runInBand src/ui/calendar/calendarPorts.test.ts src/ui/__tests__/CalendarTransitions.test.tsx && npm run test:coverage -- --runInBand` | ❌ W0 | ⬜ pending |
-| 16-01-02 | 01 | 1 | CAL-01 trace | T-16-01-02 | DEV-01 approved value is validated before inset implementation | artifact + automated record gate | Owner JSON says `adaptive-6-to-18dp`; summary records choice/date | approval ✅; native evidence ⬜ | ⬜ pending |
-| 16-01-03 | 01 | 1 | CAL-03 trace | T-16-01-02 | DEV-02 approved value is validated before title-color implementation | artifact + automated record gate | Owner JSON says `accessible-9b470b`; summary records choice/date | approval ✅; native evidence ⬜ | ⬜ pending |
-| 16-02-01 | 02 | 2 | CAL-01, CAL-03, CAL-04, CAL-05 | T-16-02-01..03 | Real typed event reaches query-only root; owner branch recorded | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | ✅ extend/new component | ⬜ pending |
-| 16-02-02 | 02 | 2 | CAL-01, CAL-04, CAL-05, CAL-06, CAL-10 | T-16-02-02 | Civil bounds and event identities never flatten or drift | unit | `npm run test:unit -- --runInBand src/domains/scheduling/localDate.test.ts src/domains/history/calendar.test.ts` | ✅ extend | ⬜ pending |
-| 16-02-03 | 02 | 2 | CAL-01..06, CAL-10, CAL-11, CAL-21 | T-16-02-01..04 | Last-good generation guard; no invented data or mutation | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | ✅ extend | ⬜ pending |
-| 16-03-01 | 03 | 2 | CAL-18, CAL-20 | T-16-03-01, T-16-03-02 | Exact session read and structurally command-free Calendar branch | component + route | `npm run test:components -- --runInBand app/__tests__/session-route.test.tsx src/ui/__tests__/SessionDetailScreen.test.tsx` | ❌ W0 | ⬜ pending |
-| 16-03-02 | 03 | 2 | CAL-18, CAL-20, CAL-22, CAL-23 | T-16-03-02, T-16-03-04 | Calendar zero commands/digest unchanged; management actions preserved | component | `npm run test:components -- --runInBand app/__tests__/session-route.test.tsx src/ui/__tests__/SessionDetailScreen.test.tsx src/ui/__tests__/SessionCorrectionScreen.test.tsx src/ui/__tests__/RemovedSessionsScreen.test.tsx` | mixed | ⬜ pending |
-| 16-03-03 | 03 | 2 | CAL-19 | T-16-03-01, T-16-03-03 | Exact occurrence only; no fabricated session/result/effect | component + route | `npm run test:components -- --runInBand app/__tests__/calendar-plan-route.test.tsx src/ui/__tests__/PlannedWorkoutDetailScreen.test.tsx` | ❌ W0 | ⬜ pending |
-| 16-04-01 | 04 | 3 | CAL-07, CAL-08, CAL-09 | T-16-04-01, T-16-04-02 | UI-thread 1:1 motion; distance-only one-month settle | component/controller | `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx` | ❌ W0 | ⬜ pending |
-| 16-04-02 | 04 | 3 | CAL-07..11, CAL-15 | T-16-04-01..04 | Intent, cancellation and reduced-motion epochs prevent stale state | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx src/ui/__tests__/CalendarScreen.test.tsx` | mixed | ⬜ pending |
-| 16-04-03 | 04 | 3 | CAL-12, CAL-13, CAL-14, CAL-15 | T-16-04-01, T-16-04-03 | Measured, revalidated geometry and ordered adjacent transition | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx src/ui/__tests__/CalendarScreen.test.tsx` | mixed | ⬜ pending |
-| 16-05-01 | 05 | 4 | CAL-16 | T-16-05-01, T-16-05-02, T-16-05-04 | One target and one exact completed-Strength dispatch | component + route | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx 'app/(tabs)/__tests__/calendar.test.tsx'` | route test ❌ W0 | ⬜ pending |
-| 16-05-02 | 05 | 4 | CAL-16, CAL-21 | T-16-05-01..04 | Exhaustive event union reaches boundary unchanged; no downstream completion claim | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | mixed | ⬜ pending |
-| 16-05-03 | 05 | 4 | CAL-20, CAL-22, CAL-23 | T-16-05-02, T-16-05-03 | Return state/ref validated before focus; management remains separate | component + route | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx 'app/(tabs)/__tests__/calendar.test.tsx' src/ui/__tests__/SessionDetailScreen.test.tsx` | mixed | ⬜ pending |
-| 16-06-01 | 06 | 5 | CAL-07, CAL-08, CAL-12 | T-16-06-01, T-16-06-05 | Test controls production-rejected; traces cannot authorize state | unit + component | `npm run test:unit -- --runInBand src/bootstrap/phase16CalendarTestControls.test.ts && npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx` | ❌ W0 | ⬜ pending |
-| 16-06-02 | 06 | 5 | CAL-01..16, CAL-18..21 | T-16-06-02..04 | Exact map and individual artifacts; blocked/unexplained results cannot pass | node test | `node --test scripts/v12-calendar-comparison.test.mjs` | ❌ W0 | ⬜ pending |
-| 16-06-03 | 06 | 5 | CAL-01..16, CAL-18..21 | T-16-06-02..05 | Complete pre-destination diagnostic matrix; no performance verdict | node comparator | `node --test scripts/v12-calendar-comparison.test.mjs && node scripts/compare-v12-calendar.mjs --fixture scripts/fixtures/v12-calendar-comparison/complete.json --verify` | ❌ W0 | ⬜ pending |
-| 16-07-01 | 07 | 6 | CAL-17, CAL-20 | T-16-07-01, T-16-07-02 | Actual Phase 17 loader/route and exact Calendar return focus | real route integration | `npm run test:components -- --runInBand app/__tests__/calendar-cross-destination-route.test.tsx` | ❌ W0; Phase 17 prerequisite | ⬜ pending |
-| 16-07-02 | 07 | 6 | CAL-17, CAL-20, CAL-22, CAL-23 | T-16-07-01, T-16-07-02 | Actual Phase 18 loader/route; all destinations zero-mutation | real route integration | `npm run test:components -- --runInBand app/__tests__/calendar-cross-destination-route.test.tsx src/ui/__tests__/SessionDetailScreen.test.tsx` | ❌ W0; Phase 18 prerequisite | ⬜ pending |
-| 16-07-03 | 07 | 6 | CAL-03, CAL-07, CAL-08, CAL-12..15, CAL-17, CAL-20 | T-16-07-03..05 | Final functional/comparison evidence; diagnostics carry Phase 20 ownership | node verifier + diagnostics | `node --test scripts/v12-evidence-scripts.test.mjs scripts/v12-calendar-comparison.test.mjs && npm run verify:v12:calendar -- --fixture scripts/fixtures/v12-calendar-evidence/complete.json` | ❌ W0 | ⬜ pending |
+| 16-01-01 | 01 | 1 | CAL-07, CAL-08, CAL-09, CAL-15 | T-16-01-01..03 | Exact narrow upstream ports; current-epoch transitions only | component + coverage | `npm run test:components -- --runInBand src/ui/calendar/calendarPorts.test.ts src/ui/__tests__/CalendarTransitions.test.tsx && npm run test:coverage:v12:calendar` | ✅ | green |
+| 16-01-02 | 01 | 1 | CAL-01 trace | T-16-01-02 | DEV-01 approved value is validated before inset implementation | artifact + automated record gate | Owner JSON says `adaptive-6-to-18dp`; summary records choice/date | approval ✅; native evidence deferred to Phase 20 | green (host gate); manual deferred |
+| 16-01-03 | 01 | 1 | CAL-03 trace | T-16-01-02 | DEV-02 approved value is validated before title-color implementation | artifact + automated record gate | Owner JSON says `accessible-9b470b`; summary records choice/date | approval ✅; native evidence deferred to Phase 20 | green (host gate); manual deferred |
+| 16-02-01 | 02 | 2 | CAL-01, CAL-03, CAL-04, CAL-05 | T-16-02-01..03 | Real typed event reaches query-only root; owner branch recorded | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | ✅ | green |
+| 16-02-02 | 02 | 2 | CAL-01, CAL-04, CAL-05, CAL-06, CAL-10 | T-16-02-02 | Civil bounds and event identities never flatten or drift | unit | `npm run test:unit -- --runInBand src/domains/scheduling/localDate.test.ts src/domains/history/calendar.test.ts` | ✅ | green |
+| 16-02-03 | 02 | 2 | CAL-01..06, CAL-10, CAL-11, CAL-21 | T-16-02-01..04 | Last-good generation guard; no invented data or mutation | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | ✅ | green |
+| 16-03-01 | 03 | 2 | CAL-18, CAL-20 | T-16-03-01, T-16-03-02 | Exact session read and structurally command-free Calendar branch | component + route | `npm run test:components -- --runInBand app/__tests__/session-route.test.tsx src/ui/__tests__/SessionDetailScreen.test.tsx` | ✅ | green |
+| 16-03-02 | 03 | 2 | CAL-18, CAL-20, CAL-22, CAL-23 | T-16-03-02, T-16-03-04 | Calendar zero commands/digest unchanged; management actions preserved | component | `npm run test:components -- --runInBand app/__tests__/session-route.test.tsx src/ui/__tests__/SessionDetailScreen.test.tsx src/ui/__tests__/SessionCorrectionScreen.test.tsx src/ui/__tests__/RemovedSessionsScreen.test.tsx` | ✅ | green |
+| 16-03-03 | 03 | 2 | CAL-19 | T-16-03-01, T-16-03-03 | Exact occurrence only; no fabricated session/result/effect | component + route | `npm run test:components -- --runInBand app/__tests__/calendar-plan-route.test.tsx src/ui/__tests__/PlannedWorkoutDetailScreen.test.tsx` | ✅ | green |
+| 16-04-01 | 04 | 3 | CAL-07, CAL-08, CAL-09 | T-16-04-01, T-16-04-02 | UI-thread 1:1 motion; distance-only one-month settle | component/controller | `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx` | ✅ | green (host); native deferred |
+| 16-04-02 | 04 | 3 | CAL-07..11, CAL-15 | T-16-04-01..04 | Intent, cancellation and reduced-motion epochs prevent stale state | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx src/ui/__tests__/CalendarScreen.test.tsx` | ✅ | green (host); native deferred |
+| 16-04-03 | 04 | 3 | CAL-12, CAL-13, CAL-14, CAL-15 | T-16-04-01, T-16-04-03 | Measured, revalidated geometry and ordered adjacent transition | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx src/ui/__tests__/CalendarScreen.test.tsx` | ✅ | green (host); native deferred |
+| 16-05-01 | 05 | 4 | CAL-16 | T-16-05-01, T-16-05-02, T-16-05-04 | One target and one exact completed-Strength dispatch | component + route | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx 'app/(tabs)/__tests__/calendar.test.tsx'` | ✅ | green |
+| 16-05-02 | 05 | 4 | CAL-16, CAL-21 | T-16-05-01..04 | Exhaustive event union reaches boundary unchanged; no downstream completion claim | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | ✅ | green |
+| 16-05-03 | 05 | 4 | CAL-20, CAL-22, CAL-23 | T-16-05-02, T-16-05-03 | Return state/ref validated before focus; management remains separate | component + route | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx 'app/(tabs)/__tests__/calendar.test.tsx' src/ui/__tests__/SessionDetailScreen.test.tsx` | ✅ | green |
+| 16-06-01 | 06 | 5 | CAL-07, CAL-08, CAL-12 | T-16-06-01, T-16-06-05 | Test controls production-rejected; traces cannot authorize state | unit + component | `npm run test:unit -- --runInBand src/bootstrap/phase16CalendarTestControls.test.ts && npm run test:components -- --runInBand src/ui/__tests__/CalendarTransitions.test.tsx` | ✅ | green |
+| 16-06-02 | 06 | 5 | CAL-01..16, CAL-18..21 | T-16-06-02..04 | Exact map and individual artifacts; blocked/unexplained results cannot pass | node test | `node --test scripts/v12-calendar-comparison.test.mjs` | ✅ | green |
+| 16-06-03 | 06 | 5 | CAL-01..16, CAL-18..21 | T-16-06-02..05 | Complete pre-destination diagnostic matrix; no performance verdict | node comparator | `node --test scripts/v12-calendar-comparison.test.mjs && node scripts/compare-v12-calendar.mjs --fixture scripts/fixtures/v12-calendar-comparison/complete.json --verify` | ✅ | green; native status REVIEW_REQUIRED |
+| 16-07-01 | 07 | 6 | CAL-17, CAL-20 | T-16-07-01, T-16-07-02 | Actual Phase 17 loader/route and exact Calendar return focus | real route integration | `npm run test:components -- --runInBand app/__tests__/calendar-cross-destination-route.test.tsx` | ✅ | green (host route); native deferred |
+| 16-07-02 | 07 | 6 | CAL-17, CAL-20, CAL-22, CAL-23 | T-16-07-01, T-16-07-02 | Actual Phase 18 loader/route; all destinations zero-mutation | real route integration | `npm run test:components -- --runInBand app/__tests__/calendar-cross-destination-route.test.tsx src/ui/__tests__/SessionDetailScreen.test.tsx` | ✅ | green (host route); native deferred |
+| 16-07-03 | 07 | 6 | CAL-03, CAL-07, CAL-08, CAL-12..15, CAL-17, CAL-20 | T-16-07-03..05 | Final functional/comparison evidence; diagnostics carry Phase 20 ownership | node verifier + diagnostics | `node --test scripts/v12-evidence-scripts.test.mjs scripts/v12-calendar-comparison.test.mjs && npm run verify:v12:calendar -- --fixture scripts/fixtures/v12-calendar-evidence/complete.json` | ✅ | green host verifier; native deferred |
 
 ## Wave 0 Requirements
 
@@ -178,4 +181,97 @@ No same-wave plan shares a `files_modified` path. Cross-phase dependencies are e
 - [ ] Incomplete DEV evidence remains REVIEW_REQUIRED; failed evidence remains FAIL; only complete passing evidence closes the approved adaptations.
 - [ ] `nyquist_compliant: true` and `wave_0_complete: true` are set only after the execution-time validation audit.
 
-**Approval:** DEV-01/DEV-02 finalized; execution and native technical verification pending
+**Approval:** DEV-01/DEV-02 finalized; host execution validated; native/attended evidence remains Phase 20-owned and deferred.
+
+## Execution-Time Audit (2026-10-14)
+
+This section supersedes the planning-time pending markers above. The audit was
+run at `f6c8e9cf7efdf4330a132320920b370f61c81e3d`; the Phase 16 source
+implementation is present through `d97ea569`. No implementation, review,
+security, Phase 14 evidence, `.coverage`, or native-evidence file was changed.
+
+### Requirement → task → behavioral test map
+
+`COVERED` means the host-observable behavior has a passing behavioral test and
+an executed command. `PARTIAL` means the host contract is green but the
+native/device or attended portion is explicitly owned by Phase 20 and was not
+claimed as PASS. There are no `MISSING` requirements and no new test files were
+needed: every mapped gap was already covered by an executable behavioral test.
+
+| Requirement | Task rows | Behavioral evidence and executed command | Status |
+|---|---|---|---|
+| CAL-01 | 16-01-02, 16-02-01..03, 16-06-02..03 | `CalendarScreen.test.tsx`; local-date/calendar unit tests; comparison/evidence suites; host verifier fixture | PARTIAL — native inset/geometry deferred |
+| CAL-02 | 16-02-01, 16-02-03, 16-06-02 | `CalendarScreen.test.tsx`; `calendar.test.tsx`; component focused command | COVERED |
+| CAL-03 | 16-01-03, 16-02-01, 16-06-02..03, 16-07-03 | Calendar screen state/color-pattern assertions; exact owner gate; evidence verifier | PARTIAL — native blended-fill/contrast deferred |
+| CAL-04 | 16-02-01..03, 16-04-03, 16-06-02..03 | Calendar rendering and transition tests; comparison schema/geometry checks | PARTIAL — native continuity trace deferred |
+| CAL-05 | 16-02-01..03, 16-06-02 | Calendar screen and repository projection tests; exact event registry | COVERED |
+| CAL-06 | 16-02-02..03, 16-06-02 | local-date/calendar unit tests and Calendar screen matrix | COVERED |
+| CAL-07 | 16-01-01, 16-04-01..02, 16-06-01..03, 16-07-03 | ports/transition tests; 100% control/evidence coverage; comparator/verifier | PARTIAL — native 1:1 gesture trace deferred |
+| CAL-08 | 16-01-01, 16-04-01..02, 16-06-01..03, 16-07-03 | inclusive-threshold, retreat/cancel, and bounded-control tests | PARTIAL — attended/native trace deferred |
+| CAL-09 | 16-01-01, 16-04-01..02, 16-06-01..03 | transition epoch/timing tests and fail-closed evidence validators | PARTIAL — native 240ms trace deferred |
+| CAL-10 | 16-02-02..03, 16-04-02, 16-06-02 | local-date clamp and Calendar navigation tests | COVERED |
+| CAL-11 | 16-02-03, 16-04-02, 16-06-02 | focus/activation assertions in Calendar screen and evidence contract | COVERED |
+| CAL-12 | 16-04-03, 16-06-01..03, 16-07-03 | measured overlay/controller tests and evidence schema | PARTIAL — device geometry deferred |
+| CAL-13 | 16-04-03, 16-06-01..03, 16-07-03 | reverse-collapse/focus tests and mapped comparison validation | PARTIAL — device geometry deferred |
+| CAL-14 | 16-04-03, 16-06-02..03, 16-07-03 | adjacent-selection ordering tests and evidence validation | PARTIAL — native sequence deferred |
+| CAL-15 | 16-01-01, 16-04-02..03, 16-06-02..03, 16-07-03 | reduced-motion semantic-equivalence tests and evidence contract | PARTIAL — native equivalence deferred |
+| CAL-16 | 16-05-01..02, 16-06-02 | agenda target/union tests and Calendar route tests | COVERED |
+| CAL-17 | 16-07-01..03 | real host cross-destination route suite; exact route identity and zero-mutation ledger | PARTIAL — Phase 20 native journey deferred |
+| CAL-18 | 16-03-01..02, 16-06-02, 16-07-02 | session route/detail and read-only capability tests | COVERED |
+| CAL-19 | 16-03-03, 16-06-02 | planned occurrence route/detail tests; exact missing/provenance behavior | COVERED |
+| CAL-20 | 16-03-01..02, 16-05-03, 16-07-01..03 | return-state/focus, detail, and cross-destination host route tests | COVERED — native focus attendance deferred |
+| CAL-21 | 16-02-03, 16-05-02, 16-06-02..03 | loading/empty/stale/error/retry and fail-closed evidence tests | COVERED |
+| CAL-22 | 16-03-02, 16-05-03, 16-07-02 | correction/revision management regressions and zero-command route ledger | COVERED |
+| CAL-23 | 16-03-02, 16-05-03, 16-07-02 | removal/resume management regressions and zero-command route ledger | COVERED |
+
+### Executed results
+
+| Area | Exact command | Result |
+|---|---|---|
+| Lockfile hydration | `npm ci` | PASS; 886 packages added, 0 vulnerabilities |
+| Unit focus | `npm run test:unit -- --runInBand src/domains/scheduling/localDate.test.ts src/domains/history/calendar.test.ts src/bootstrap/phase16CalendarTestControls.test.ts src/bootstrap/calendarReadPorts.test.ts` | PASS — 4 suites / 71 tests |
+| Component/route focus | `npm run test:components -- --runInBand` with the mapped Calendar, detail, route, agenda, and focus files | PASS — 10 suites / 104 tests |
+| SQLite/data focus | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/trainingCalendarRepository.test.ts tests/sqlite-host/trainingCalendarRepository.real.test.ts tests/sqlite-host/running-plans.test.ts tests/sqlite-host/historyRepository.test.ts` | PASS — 4 suites / 27 tests |
+| Evidence/control focus | `node --test scripts/v12-calendar-comparison.test.mjs scripts/v12-evidence-scripts.test.mjs scripts/v12-calendar-evidence-coverage.test.mjs` | PASS — 51/51 tests |
+| Exact comparator | `node scripts/compare-v12-calendar.mjs --fixture scripts/fixtures/v12-calendar-comparison/complete.json --verify` | PASS as fail-closed host result: `REVIEW_REQUIRED`, `native_execution=NOT_RUN`, `host_only=true` |
+| Exact verifier | `npm run verify:v12:calendar -- --fixture scripts/fixtures/v12-calendar-evidence/complete.json` | PASS as validator; `ok=true`, `status=REVIEW_REQUIRED`, `all_pass=false`, 9 native cases / 8 route journeys / 14 comparisons |
+| Focused coverage | `npm run test:coverage:v12:calendar` | PASS — evidence scripts 100% statements/branches/functions/lines; controls 100% all four metrics |
+| Static checks | `npm run typecheck && npm run check:boundaries` | PASS — TypeScript and 430-file boundary check |
+| Full host projects | Unit, components, SQLite results from the prior host run plus `npm run test:integration -- --runInBand` closure rerun | PASS — unit 150 suites/2,526 tests, components 99 suites/975 tests, SQLite 29 suites/607 tests, integration 34 suites/514 tests; all host-automatable projects green |
+
+### Native/manual boundary
+
+Phase 20 owns Android/device/Maestro execution, attended focus and geometry,
+native screenshots/overlays, and release/profile performance acceptance. The
+checked-in evidence fixture remains truthful (`NOT_RUN` / `REVIEW_REQUIRED` /
+`all_pass: false`). These are deferred inputs, not PASS claims. Host verifiers,
+identity binding, exact 96-case coverage, privacy checks, source-digest checks,
+zero-command ledgers, and fail-closed status derivation are automated and
+green.
+
+### Audit trail
+
+| Audit item | Exact value |
+|---|---|
+| Gap inventory | 21 task rows audited; 0 automated gaps; 0 new test files; 0 escalations; 2 Phase 20 manual/deferred inputs |
+| Requirement classification | 12 COVERED; 11 PARTIAL; 0 MISSING |
+| Validated HEAD | `f6c8e9cf7efdf4330a132320920b370f61c81e3d` |
+| Source implementation lineage | `d97ea569` (review/docs commits follow without source changes) |
+| Tracked tree count | 1,854 files |
+| Tracked test-file count | 375 files |
+| Tracked source/app/test/script count | 960 files |
+| Working-tree change | `16-VALIDATION.md` only before commit; implementation tree unchanged |
+
+**Execution sign-off:** all host-automatable requirements are green; `nyquist_compliant: true` and `wave_0_complete: true`; `PARTIAL` applies only to the explicitly listed Phase 20 native/attended items, which remain deferred.
+
+### Closure rerun
+
+The previously interrupted integration project was rerun alone with the pinned
+toolchain in this isolated worktree:
+
+```text
+npm run test:integration -- --runInBand
+PASS — 34 suites, 514 tests, 128.2s, exit 0
+```
+
+No native, device, Maestro, screenshot, or performance command was rerun.
