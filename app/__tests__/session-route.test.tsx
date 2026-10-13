@@ -99,7 +99,13 @@ describe("SessionDetailRoute", () => {
     await waitFor(() => expect(screen.getByText("Workout details unavailable")).toBeOnTheScreen());
     expect(StyleSheet.flatten(screen.getByText("Workout details").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
     expect(StyleSheet.flatten(screen.getByText("Workout details unavailable").props.style)).toMatchObject({ fontSize: 22, fontWeight: "800" });
-    expect(screen.getAllByRole("button", { name: "Back to Calendar agenda" })[0]).toHaveProp("hasTVPreferredFocus", true);
+    const headerBackActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
+    const missingStateActions = screen.getAllByRole("button", { name: "Back to Calendar" });
+    expect(headerBackActions).toHaveLength(1);
+    expect(headerBackActions[0]).toHaveProp("hasTVPreferredFocus", true);
+    expect(missingStateActions).toHaveLength(1);
+    await fireEvent.press(missingStateActions[0]!);
+    expect(mockBack).toHaveBeenCalledTimes(1);
     expect(mockLoadCalendarSessionDetail).not.toHaveBeenCalled();
   });
 

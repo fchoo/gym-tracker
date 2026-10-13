@@ -132,9 +132,13 @@ describe("Running plan contextual Garmin route", () => {
 
     expect(StyleSheet.flatten(screen.getByText("Running plan").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
     expect(StyleSheet.flatten(screen.getByText("Running plan not found").props.style)).toMatchObject({ fontFamily: "ArchivoVariable", fontSize: 22, fontWeight: "800" });
-    const backActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
-    expect(backActions).toHaveLength(2);
-    expect(backActions[0]).toHaveProp("hasTVPreferredFocus", true);
+    const headerBackActions = screen.getAllByRole("button", { name: "Back to Calendar agenda" });
+    const missingStateActions = screen.getAllByRole("button", { name: "Back to Calendar" });
+    expect(headerBackActions).toHaveLength(1);
+    expect(headerBackActions[0]).toHaveProp("hasTVPreferredFocus", true);
+    expect(missingStateActions).toHaveLength(1);
+    await fireEvent.press(missingStateActions[0]!);
+    expect(mockBack).toHaveBeenCalledTimes(1);
     expect(mockUseRunningPlanRuntime).not.toHaveBeenCalled();
   });
 
