@@ -48,7 +48,8 @@ test("rejects duplicate, unknown, and REQUIREMENTS.md-drifted source inventory",
   unknown.matrix.rows[0].requirement_id = "VER-99";
   assert.throws(() => deriveV12Ledger(unknown), /v12_contract_requirement_set_drift/u);
 
-  const driftedRequirements = canonicalInputs();
+  const canonical = canonicalInputs();
+  const driftedRequirements = { ...canonical, requirementsByPhase: clone(canonical.requirementsByPhase) };
   driftedRequirements.requirementsByPhase[13] = driftedRequirements.requirementsByPhase[13].slice(1);
   assert.throws(() => deriveV12Ledger(driftedRequirements), /v12_contract_requirement_set_drift/u);
 });
@@ -62,7 +63,7 @@ test("preserves 107 ordered browser occurrences and expands static coverage into
   assert.equal(V12_BROWSER_WALK_STATE_IDS.at(-1), "BW-107");
   assert.equal(ledger.browser_states.length, 107);
   assert.deepEqual(ledger.browser_states.map(({ id }) => id), V12_BROWSER_WALK_STATE_IDS);
-  assert.equal(ledger.browser_states.filter(({ name }) => name === "progress-settings").length, 3);
+  assert.equal(ledger.browser_states.filter(({ name }) => name === "progress-settings").length, 4);
   assert.equal(V12_CONFIG_IDS.length, 64);
   assert.equal(new Set(V12_CONFIG_IDS).size, 64);
   assert.equal(ledger.static_configurations.length, 64);
