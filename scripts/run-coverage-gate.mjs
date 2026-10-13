@@ -125,6 +125,47 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-case-evidence.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
+const phase20EvidenceTests = [
+  "scripts/benchmark-v12-interactions.test.mjs",
+  "scripts/capture-v12-visual.test.mjs",
+  "scripts/compare-v12-visual.test.mjs",
+  "scripts/create-v12-readiness-handoff.test.mjs",
+  "scripts/create-v12-run-manifest.test.mjs",
+  "scripts/generate-v12-attended-checklist.test.mjs",
+  "scripts/v12-accessibility-shard.test.mjs",
+  "scripts/v12-calendar-shard.test.mjs",
+  "scripts/v12-evidence-contract.test.mjs",
+  "scripts/v12-evidence-scripts.test.mjs",
+  "scripts/v12-garmin-shard.test.mjs",
+  "scripts/v12-recovery-shard.test.mjs",
+  "scripts/v12-sqlite-shard.test.mjs",
+];
+const phase20EvidenceFiles = [
+  "scripts/benchmark-v12-interactions.mjs",
+  "scripts/capture-v12-visual.mjs",
+  "scripts/compare-v12-visual.mjs",
+  "scripts/create-v12-readiness-handoff.mjs",
+  "scripts/create-v12-run-manifest.mjs",
+  "scripts/generate-v12-attended-checklist.mjs",
+  "scripts/generate-v12-parity-report.mjs",
+  "scripts/run-v12-maestro.mjs",
+  "scripts/v12-accessibility-shard.mjs",
+  "scripts/v12-calendar-shard.mjs",
+  "scripts/v12-evidence-contract.mjs",
+  "scripts/v12-garmin-shard.mjs",
+  "scripts/v12-performance-shard.mjs",
+  "scripts/v12-recovery-shard.mjs",
+  "scripts/v12-sqlite-shard.mjs",
+  "scripts/verify-v12-native-evidence.mjs",
+];
+const phase20IntegrityCriticalFiles = [
+  "src/bootstrap/v12AcceptanceBenchmark.ts",
+  "src/testing/contracts/v12Acceptance.contract.ts",
+  "src/testing/contracts/v12Accessibility.contract.ts",
+  "src/testing/contracts/v12CalendarAcceptance.contract.ts",
+  "src/testing/contracts/v12GarminAcceptance.contract.ts",
+  "src/testing/contracts/v12Recovery.contract.ts",
+];
 const phase19IntegrityCriticalFiles = phase19CoverageManifest.required_files;
 const integrityCriticalFiles = [
   "src/domains/content/catalog.ts",
@@ -179,6 +220,7 @@ const integrityCriticalFiles = [
   "src/bootstrap/trainingFoundationRuntime.ts",
   "src/bootstrap/workoutAppRuntime.tsx",
   "src/bootstrap/phase16CalendarTestControls.ts",
+  ...phase20IntegrityCriticalFiles,
   "src/ui/calendar/calendarTransitionController.ts",
   "src/ui/garmin/useGarminConnectionController.ts",
   "src/domains/bodyweight/commands.ts",
@@ -485,6 +527,7 @@ const jestForwarded = [];
 let focusPhase18 = false;
 let focusPhase16Evidence = false;
 let focusPhase19 = false;
+let focusPhase20 = false;
 for (let index = 0; index < forwarded.length; index += 1) {
   const argument = forwarded[index];
   if (argument === "--focus-phase18") {
@@ -493,6 +536,8 @@ for (let index = 0; index < forwarded.length; index += 1) {
     focusPhase16Evidence = true;
   } else if (argument === "--focus-phase19") {
     focusPhase19 = true;
+  } else if (argument === "--focus-phase20") {
+    focusPhase20 = true;
   } else if (argument.startsWith("--focus-integrity=")) {
     focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
   } else if (argument.startsWith("--focus-project=")) {
@@ -519,6 +564,18 @@ if (focusPhase19) {
   validatePhase19CoverageManifest();
   focusedIntegrityFiles.push(...phase19IntegrityCriticalFiles);
   focusedProjects.push("unit", "components", "sqlite-host", "integration");
+}
+if (focusPhase20) {
+  focusedIntegrityFiles.push(...phase20IntegrityCriticalFiles);
+  focusedProjects.push("unit", "components");
+  jestForwarded.push(
+    "src/bootstrap/v12AcceptanceBenchmark.test.ts",
+    "src/testing/contracts/v12Acceptance.contract.test.ts",
+    "src/testing/contracts/v12Accessibility.contract.test.ts",
+    "src/testing/contracts/v12CalendarAcceptance.contract.test.ts",
+    "src/testing/contracts/v12GarminAcceptance.contract.test.ts",
+    "src/testing/contracts/v12Recovery.contract.test.ts",
+  );
 }
 if (focusedIntegrityFiles.length > 0) {
   const invalidFiles = focusedIntegrityFiles.filter((file) => !integrityCriticalFiles.includes(file));
@@ -582,6 +639,24 @@ if (focusPhase18) {
   if (evidence.error !== undefined) throw evidence.error;
   if (evidence.status !== 0) process.exit(evidence.status ?? 1);
 }
+if (focusPhase20) {
+  const evidence = spawnSync(
+    process.execPath,
+    [
+      "--experimental-test-coverage",
+      "--test-concurrency=1",
+      ...phase20EvidenceFiles.map((file) => `--test-coverage-include=${file}`),
+      "--test-coverage-lines=100",
+      "--test-coverage-branches=100",
+      "--test-coverage-functions=100",
+      "--test",
+      ...phase20EvidenceTests,
+    ],
+    { cwd: projectRoot, encoding: "utf8", stdio: "inherit" },
+  );
+  if (evidence.error !== undefined) throw evidence.error;
+  if (evidence.status !== 0) process.exit(evidence.status ?? 1);
+}
 const outputDirectory = coverageDirectoryArgument(
   forwarded,
   focusPhase18
@@ -590,6 +665,8 @@ const outputDirectory = coverageDirectoryArgument(
       ? path.join(coverageDirectory, "phase16-jest")
       : focusPhase19
         ? path.join(coverageDirectory, "phase19-jest")
+        : focusPhase20
+          ? path.join(coverageDirectory, "phase20-jest")
       : coverageDirectory,
 );
 rmSync(outputDirectory, { force: true, recursive: true });
