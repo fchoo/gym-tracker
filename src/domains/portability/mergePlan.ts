@@ -12,14 +12,6 @@ import {
 import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "./restoreCommands";
-import {
-  parseRunningGoal,
-  parseRunningPlanAggregate,
-  parseRunningSessionRevision,
-  type RunningGoal,
-  type RunningPlanAggregate,
-  type RunningSessionRevision,
-} from "../running/contracts";
 
 type MergeTables = Readonly<Record<string, readonly LogicalBackupRow[]>>;
 
@@ -640,77 +632,87 @@ type RunningIdentityMaps = Readonly<{
   slotRoots: ReadonlyMap<string, string>;
 }>;
 
-function parseRunningGoalValue(value: unknown): RunningGoal {
-  try {
-    return parseRunningGoal(value);
-  } catch {
-    return invalid();
-  }
+function runningJsonIdentifier(value: unknown): string {
+  return typeof value === "string" && value.trim() === value && value.length > 0
+    ? value
+    : invalid();
 }
 
-function parseRunningSessionValue(value: unknown): RunningSessionRevision {
-  try {
-    return parseRunningSessionRevision(value);
-  } catch {
-    return invalid();
-  }
+function runningJsonRevision(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : invalid();
 }
 
 function rewriteRunningGoalValue(
   value: unknown,
   maps: RunningIdentityMaps,
-): RunningGoal {
-  const goal = parseRunningGoalValue(value);
-  return parseRunningGoalValue({
-    ...goal,
-    id: mappedIdentifier(maps.goals, goal.id),
-    planId: mappedIdentifier(maps.plans, goal.planId),
+): Record<string, unknown> {
+  if (!isPlainObject(value)
+    || value.version !== 1
+    || !Array.isArray(value.trainingDays)) invalid();
+  const id = runningJsonIdentifier(value.id);
+  const planId = runningJsonIdentifier(value.planId);
+  runningJsonRevision(value.revision);
+  runningJsonRevision(value.goalDistanceMeters);
+  return Object.freeze({
+    ...value,
+    id: mappedIdentifier(maps.goals, id),
+    planId: mappedIdentifier(maps.plans, planId),
   });
 }
 
 function rewriteRunningSessionValue(
   value: unknown,
   maps: RunningIdentityMaps,
-): RunningSessionRevision {
-  const session = parseRunningSessionValue(value);
-  return parseRunningSessionValue({
-    ...session,
-    id: mappedIdentifier(maps.sessionRevisions, session.id),
-    rootId: mappedIdentifier(maps.sessionRoots, session.rootId),
-    planId: mappedIdentifier(maps.plans, session.planId),
+): Record<string, unknown> {
+  if (!isPlainObject(value)
+    || value.version !== 1
+    || !Array.isArray(value.phases)
+    || !isPlainObject(value.contextual)) invalid();
+  const id = runningJsonIdentifier(value.id);
+  const rootId = runningJsonIdentifier(value.rootId);
+  const planId = runningJsonIdentifier(value.planId);
+  runningJsonIdentifier(value.sessionKind);
+  runningJsonRevision(value.revision);
+  return Object.freeze({
+    ...value,
+    id: mappedIdentifier(maps.sessionRevisions, id),
+    rootId: mappedIdentifier(maps.sessionRoots, rootId),
+    planId: mappedIdentifier(maps.plans, planId),
   });
 }
 
 function rewriteRunningAggregateValue(
   value: unknown,
   maps: RunningIdentityMaps,
-): RunningPlanAggregate {
-  let aggregate: RunningPlanAggregate;
-  try {
-    aggregate = parseRunningPlanAggregate(value);
-  } catch {
-    return invalid();
-  }
-  const rewritten = {
-    ...aggregate,
-    id: mappedIdentifier(maps.plans, aggregate.id),
-    goal: rewriteRunningGoalValue(aggregate.goal, maps),
-    currentTargets: aggregate.currentTargets?.map((goal) =>
-      rewriteRunningGoalValue(goal, maps)),
-    sessions: aggregate.sessions.map((entry) => ({
+): Record<string, unknown> {
+  if (!isPlainObject(value)
+    || value.version !== 1
+    || !Array.isArray(value.sessions)
+    || !isPlainObject(value.goal)
+    || (value.currentTargets !== undefined && !Array.isArray(value.currentTargets))) invalid();
+  const id = runningJsonIdentifier(value.id);
+  const sessions = value.sessions.map((entry) => {
+    if (!isPlainObject(entry) || !isPlainObject(entry.slot) || !isPlainObject(entry.session)) invalid();
+    return Object.freeze({
       slot: {
         ...entry.slot,
-        id: mappedIdentifier(maps.slotRevisions, entry.slot.id),
-        rootId: mappedIdentifier(maps.slotRoots, entry.slot.rootId),
+        id: mappedIdentifier(maps.slotRevisions, runningJsonIdentifier(entry.slot.id)),
+        rootId: mappedIdentifier(maps.slotRoots, runningJsonIdentifier(entry.slot.rootId)),
       },
       session: rewriteRunningSessionValue(entry.session, maps),
-    })),
-  };
-  try {
-    return parseRunningPlanAggregate(rewritten);
-  } catch {
-    return invalid();
-  }
+    });
+  });
+  return Object.freeze({
+    ...value,
+    id: mappedIdentifier(maps.plans, id),
+    goal: rewriteRunningGoalValue(value.goal, maps),
+    ...(value.currentTargets === undefined ? {} : {
+      currentTargets: value.currentTargets.map((goal) => rewriteRunningGoalValue(goal, maps)),
+    }),
+    sessions: Object.freeze(sessions),
+  });
 }
 
 function mappedIdentifierArray(
