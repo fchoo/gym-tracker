@@ -45,6 +45,7 @@ import {
 import {
   V12_MAESTRO_FLOW_CONTRACTS,
   executeV12Maestro,
+  validateV12LiveSourceLineage,
   validateV12CalendarManifest,
 } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
@@ -1435,6 +1436,36 @@ test("the generic v1.2 runner binds one synthetic shard to the canonical build-o
     });
     assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", manifest.run_id, "shards/sqlite.json")), true);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("the live v1.2 Maestro runner accepts a documentation-only descendant while preserving frozen artifact identity", () => {
+  const manifest = v12LiveManifest();
+  const descendant = "f".repeat(40);
+  const identity = validateV12LiveSourceLineage(manifest, {
+    currentHead: descendant,
+    sourceDigest: manifest.source.tree_sha256,
+    isAncestor: (ancestor, head) => ancestor === manifest.source.head && head === descendant,
+  });
+  assert.deepEqual(identity, {
+    head: manifest.source.head,
+    tree_sha256: manifest.source.tree_sha256,
+  });
+  assert.notEqual(identity.head, descendant);
+});
+
+test("the live v1.2 Maestro runner rejects implementation drift and rewritten source lineage", () => {
+  const manifest = v12LiveManifest();
+  const descendant = "f".repeat(40);
+  assert.throws(() => validateV12LiveSourceLineage(manifest, {
+    currentHead: descendant,
+    sourceDigest: "e".repeat(64),
+    isAncestor: () => true,
+  }), /v12_maestro_source_tree_mismatch/u);
+  assert.throws(() => validateV12LiveSourceLineage(manifest, {
+    currentHead: descendant,
+    sourceDigest: manifest.source.tree_sha256,
+    isAncestor: () => false,
+  }), /v12_maestro_source_lineage_mismatch/u);
 });
 
 test("the v1.2 build branch publishes bounded identity fields without changing historical manifest schemas", () => {
