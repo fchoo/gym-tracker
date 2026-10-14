@@ -593,10 +593,10 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   assert.throws(() => validateV12CalendarFlow(`${flow}\n# October 2026`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(`${flow}\n# phase16CalendarReducedMotion=true`), /flow_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_STAGE == 'drag-forward-10'", "PHASE16_CALENDAR_STAGE == 'missing'")), /stage_missing/u);
-  assert.throws(() => validateV12CalendarFlow(flow.replace(
+  assert.equal(validateV12CalendarFlow(flow.replace(
     "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:",
     "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:\n      - swipe: { start: \"70%, 45%\", end: \"40%, 45%\", duration: 240 }",
-  )), /flow_stage_invalid/u);
+  )), true);
   assert.throws(() => validateV12CalendarFlow(flow.replace(
     "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:",
     "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:\n      - pressKey: BACK",

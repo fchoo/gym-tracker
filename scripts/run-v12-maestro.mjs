@@ -412,7 +412,10 @@ export function validateV12CalendarFlow(flow) {
       if (block.split(expected).length - 1 !== requiredCount) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
     }
     if (IN_APP_GESTURE_STAGES.has(stage)) {
-      if (/(?:swipe:|pressKey: BACK)/u.test(block)) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
+      // Boundary stages must drive the measured pointer path.  A visibility
+      // assertion alone is not a Calendar gesture receipt.
+      if (!/swipe:\s*\{/u.test(block) || !/start:.*end:.*duration:/us.test(block)
+        || !block.includes("calendar-month-viewport") || /pressKey: BACK/u.test(block)) throw new Error(`v12_calendar_flow_stage_invalid:${stage}`);
     }
   }
   if (!flow.includes("takeScreenshot")) throw new Error("v12_calendar_capture_missing");

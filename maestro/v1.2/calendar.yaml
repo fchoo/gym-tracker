@@ -11,86 +11,104 @@ tags: [calendar-tracer, native-only, development-test, phase-16, phase-20, obser
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "65%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-24_9'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "50.1%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-25'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "50%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-25_1'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "49.9%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-release-below'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "50.1%, 45%", duration: 80 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-release-exact'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "50%, 45%", duration: 80 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-release-above'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "49.9%, 45%", duration: 80 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-10'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "25%, 45%", end: "35%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-24_9'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "25%, 45%", end: "49.9%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-25'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "25%, 45%", end: "50%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-25_1'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "25%, 45%", end: "50.1%, 45%", duration: 300 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-release-below'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "25%, 45%", end: "49.9%, 45%", duration: 80 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-release-exact'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "25%, 45%", end: "50%, 45%", duration: 80 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-backward-release-above'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "25%, 45%", end: "50.1%, 45%", duration: 80 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-fast-subthreshold'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "65%, 45%", duration: 80 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "55%, 45%", duration: 250 }
+      - swipe: { start: "55%, 45%", end: "75%, 45%", duration: 250 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }
     commands:
       - assertVisible: { id: "calendar-month-viewport" }
+      - swipe: { start: "75%, 45%", end: "65%, 45%", duration: 60 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
     when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-vertical'} }
