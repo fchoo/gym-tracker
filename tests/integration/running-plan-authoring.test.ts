@@ -111,16 +111,16 @@ describe("Running plan authoring boundary", () => {
     const kernel = await migratedKernel(); const repository = createRunningPlanRepository(kernel);
     const plan: CreateInactiveRunningPlanInput = { requestId: "typed-request", requestSha256: "4".repeat(64), plan: { version: 1, id: "typed", name: "Typed", revision: 1, createdAtMs: 100, goal: { version: 1, id: "typed-goal", planId: "typed", revision: 1, goalDistanceMeters: 10_000, trainingDays: ["Monday", "Thursday"], createdAtMs: 100 }, sessions: [] } };
     await repository.createInactiveAggregate(plan);
-    const graph = (expectedPlanRevision: number, requestId: string, session: SaveRunningSourceGraphInput["sessions"][number], slot: SaveRunningSourceGraphInput["slots"][number]): SaveRunningSourceGraphInput => {
+    const graph = async (expectedPlanRevision: number, requestId: string, session: SaveRunningSourceGraphInput["sessions"][number], slot: SaveRunningSourceGraphInput["slots"][number]): Promise<SaveRunningSourceGraphInput> => {
       const value = { requestId, operation: "edit" as const, planId: "typed", expectedPlanRevision, createdAtMs: 200 + expectedPlanRevision, goal: { ...plan.plan.goal, id: `typed-goal-${expectedPlanRevision}`, revision: expectedPlanRevision + 1, createdAtMs: 200 + expectedPlanRevision }, sessions: [session], slots: [slot] };
-      return { ...value, requestSha256: canonicalRunningRequestHash(value) };
+      return { ...value, requestSha256: await canonicalRunningRequestHash(value) };
     };
     const recovery = { version: 1 as const, id: "recovery-v1", rootId: "recovery-root", planId: "typed", revision: 1, createdAtMs: 201, sessionKind: "recovery" as const, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "distance" as const, distanceMeters: 5_000 }] }], advisoryTarget: { rpe: 4 }, contextual: {} };
-    await saveRunningSourceGraph(repository, graph(1, "typed-recovery", recovery, { id: "recovery-slot-v1", rootId: "recovery-slot", weekday: "Monday", revision: 1, ordinal: 0, sessionRootId: recovery.rootId, sessionRevisionId: recovery.id }));
+    await saveRunningSourceGraph(repository, await graph(1, "typed-recovery", recovery, { id: "recovery-slot-v1", rootId: "recovery-slot", weekday: "Monday", revision: 1, ordinal: 0, sessionRootId: recovery.rootId, sessionRevisionId: recovery.id }));
     const longRun = { version: 1 as const, id: "long-v1", rootId: "long-root", planId: "typed", revision: 1, createdAtMs: 202, sessionKind: "long_run" as const, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "distance" as const, distanceMeters: 14_000 }] }], advisoryTarget: { heartRateZone: 2 }, contextual: { finish: "steady_finish" as const } };
-    await saveRunningSourceGraph(repository, graph(2, "typed-long", longRun, { id: "long-slot-v1", rootId: "long-slot", weekday: "Thursday", revision: 1, ordinal: 0, sessionRootId: longRun.rootId, sessionRevisionId: longRun.id }));
+    await saveRunningSourceGraph(repository, await graph(2, "typed-long", longRun, { id: "long-slot-v1", rootId: "long-slot", weekday: "Thursday", revision: 1, ordinal: 0, sessionRootId: longRun.rootId, sessionRevisionId: longRun.id }));
     const progression = { version: 1 as const, id: "progression-v1", rootId: "progression-root", planId: "typed", revision: 1, createdAtMs: 203, sessionKind: "progression" as const, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "distance" as const, distanceMeters: 9_000 }] }], contextual: { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 290_000 } } };
-    await saveRunningSourceGraph(repository, graph(3, "typed-progression", progression, { id: "progression-slot-v1", rootId: "progression-slot", weekday: "Thursday", revision: 1, ordinal: 1, sessionRootId: progression.rootId, sessionRevisionId: progression.id }));
+    await saveRunningSourceGraph(repository, await graph(3, "typed-progression", progression, { id: "progression-slot-v1", rootId: "progression-slot", weekday: "Thursday", revision: 1, ordinal: 1, sessionRootId: progression.rootId, sessionRevisionId: progression.id }));
     const readBack = await repository.readAggregate("typed");
     expect(readBack?.active).toBe(false);
     expect(readBack?.sessions).toEqual(expect.arrayContaining([
@@ -158,7 +158,7 @@ describe("Running plan authoring boundary", () => {
     await create("running-b");
     const confirm = async (requestId: string, preview: Awaited<ReturnType<typeof repository.previewLifecycle>>) => {
       const input = { action: preview.action, requestId, preview, confirmationToken: preview.confirmationToken, committedAtMs: 200 };
-      return repository.confirmLifecycle({ ...input, requestSha256: canonicalRunningRequestHash(input) });
+      return repository.confirmLifecycle({ ...input, requestSha256: await canonicalRunningRequestHash(input) });
     };
     const strengthBefore = await kernel.queryAll<{ id: string; is_active: number }>(
       "SELECT id, is_active FROM plans WHERE plan_kind = 'strength' ORDER BY id",
@@ -172,7 +172,7 @@ describe("Running plan authoring boundary", () => {
     await expect(repository.confirmLifecycle({
       action: replacePreview.action, requestId: "activate-b", preview: replacePreview,
       confirmationToken: replacePreview.confirmationToken, committedAtMs: 200,
-      requestSha256: canonicalRunningRequestHash({ action: replacePreview.action, requestId: "activate-b", preview: replacePreview, confirmationToken: replacePreview.confirmationToken, committedAtMs: 200 }),
+      requestSha256: await canonicalRunningRequestHash({ action: replacePreview.action, requestId: "activate-b", preview: replacePreview, confirmationToken: replacePreview.confirmationToken, committedAtMs: 200 }),
     })).resolves.toEqual(replacement);
     await expect(repository.readAggregate("running-a")).resolves.toMatchObject({ lifecycle: "inactive", active: false });
     await expect(repository.readAggregate("running-b")).resolves.toMatchObject({ lifecycle: "active", active: true });

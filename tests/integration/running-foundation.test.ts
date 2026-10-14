@@ -83,10 +83,10 @@ describe("Running target source receipts", () => {
       requestId: "target-save", planId: source.id, expectedPlanRevision: 1, expectedGoalRevision: 1, savedAtMs: 2,
       goal: { ...source.goal, id: "target-goal-2", revision: 2, targetDurationMs: 660_000, trainingDays: ["Monday" as const, "Thursday" as const], createdAtMs: 2 },
     };
-    const input: SaveRunningTargetInput = { ...base, requestSha256: canonicalRunningRequestHash(base) };
+    const input: SaveRunningTargetInput = { ...base, requestSha256: await canonicalRunningRequestHash(base) };
     await expect(saveRunningTarget(repository, input)).resolves.toMatchObject({ outcome: "committed", targetRevision: 2 });
     await expect(saveRunningTarget(repository, input)).resolves.toMatchObject({ outcome: "already_committed", targetRevision: 2 });
-    await expect(saveRunningTarget(repository, { ...input, requestSha256: canonicalRunningRequestHash({ ...base, goal: { ...base.goal, targetDurationMs: 645_000 } }) })).rejects.toThrow("sqlite_transaction_failed");
+    await expect(saveRunningTarget(repository, { ...input, requestSha256: await canonicalRunningRequestHash({ ...base, goal: { ...base.goal, targetDurationMs: 645_000 } }) })).rejects.toThrow("sqlite_transaction_failed");
     await expect(saveRunningTarget(repository, { ...input, requestId: "target-stale", requestSha256: "b".repeat(64) })).rejects.toThrow("sqlite_transaction_failed");
     await expect(repository.readAggregate(source.id)).resolves.toMatchObject({ revision: 2, goal: { revision: 2, targetDurationMs: 660_000, trainingDays: ["Monday", "Thursday"] } });
     await expect(kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_goals WHERE plan_id = ?", [source.id])).resolves.toEqual([{ count: 2 }]);

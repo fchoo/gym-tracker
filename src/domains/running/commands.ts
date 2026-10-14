@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   parseRunningPlanAggregate,
   parseRunningGoal,
@@ -8,6 +6,7 @@ import {
   type RunningGoal,
   type RunningSessionRevision,
 } from "./contracts";
+import { runtimeSha256 } from "../../platform/crypto/runtimeSha256";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 
@@ -95,8 +94,8 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function canonicalRunningRequestHash(value: unknown): string {
-  return createHash("sha256").update(stableJson(value)).digest("hex");
+export async function canonicalRunningRequestHash(value: unknown): Promise<string> {
+  return runtimeSha256(stableJson(value));
 }
 
 function identifier(value: string): boolean {

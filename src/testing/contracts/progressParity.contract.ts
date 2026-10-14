@@ -110,7 +110,7 @@ async function seedRunningPlan(runtime: ProgressParityRuntime): Promise<ReturnTy
   const running = createRunningPlanRepository(runtime.kernel);
   const plan = Object.freeze({ version: 1 as const, id: "running-plan", name: "Synthetic running plan", revision: 1, createdAtMs: 100, goal: runningGoal, sessions: Object.freeze([]) });
   const envelope = { requestId: "running-create", plan };
-  await createInactiveRunningPlan(running, { ...envelope, requestSha256: canonicalRunningRequestHash(envelope) });
+  await createInactiveRunningPlan(running, { ...envelope, requestSha256: await canonicalRunningRequestHash(envelope) });
   await runtime.kernel.write(async (transaction) => {
     await transaction.execute("UPDATE plans SET is_active = 1 WHERE id = ?", [plan.id]);
     await transaction.execute("UPDATE owned_plan_schedules SET lifecycle = 'active', deactivated_at_ms = NULL WHERE plan_id = ?", [plan.id]);
@@ -153,7 +153,7 @@ async function runningTargetReplay(runtime: ProgressParityRuntime, recoveryBacku
   await migrate(runtime, recoveryBackup);
   const running = await seedRunningPlan(runtime);
   const targetBase = { requestId: "target-save", planId: "running-plan", expectedPlanRevision: 1, expectedGoalRevision: 1, savedAtMs: 300, goal: { ...runningGoal, id: "running-goal-r2", revision: 2, trainingDays: ["Monday", "Thursday"] as SaveRunningTargetInput["goal"]["trainingDays"], createdAtMs: 300 } };
-  const input = { ...targetBase, requestSha256: canonicalRunningRequestHash(targetBase) } satisfies SaveRunningTargetInput;
+  const input = { ...targetBase, requestSha256: await canonicalRunningRequestHash(targetBase) } satisfies SaveRunningTargetInput;
   await saveRunningTarget(running, input);
   const replay = await saveRunningTarget(running, input);
   const [goals, receipts, readBack] = await Promise.all([

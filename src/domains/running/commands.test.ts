@@ -10,7 +10,7 @@ import {
   type SaveRunningTargetInput,
 } from "./commands";
 
-function input(overrides: Partial<SaveRunningSourceGraphInput> = {}): SaveRunningSourceGraphInput {
+async function input(overrides: Partial<SaveRunningSourceGraphInput> = {}): Promise<SaveRunningSourceGraphInput> {
   const session = {
     version: 1 as const, id: "revision-1", rootId: "root-1", planId: "plan-1", revision: 1,
     createdAtMs: 1, sessionKind: "recovery" as const, contextual: {},
@@ -22,30 +22,36 @@ function input(overrides: Partial<SaveRunningSourceGraphInput> = {}): SaveRunnin
     sessions: [session],
     slots: [{ id: "slot-revision-1", rootId: "slot-root-1", weekday: "Monday" as const, revision: 1, ordinal: 0, sessionRootId: "root-1", sessionRevisionId: "revision-1" }],
   };
-  return { ...value, requestSha256: canonicalRunningRequestHash(value), ...overrides };
+  return { ...value, requestSha256: await canonicalRunningRequestHash(value), ...overrides };
 }
 
 describe("Running source graph commands", () => {
-  it("uses a canonical hash independent of object key order", () => {
-    expect(canonicalRunningRequestHash({ b: [2, 1], a: { y: 2, x: 1 } })).toBe(canonicalRunningRequestHash({ a: { x: 1, y: 2 }, b: [2, 1] }));
+  it("returns an asynchronous canonical hash with stable key order and exact digest", async () => {
+    const unordered = canonicalRunningRequestHash({ b: [2, 1], a: { y: 2, x: 1 } });
+    const ordered = canonicalRunningRequestHash({ a: { x: 1, y: 2 }, b: [2, 1] });
+
+    expect(unordered).toBeInstanceOf(Promise);
+    await expect(unordered).resolves.toBe("0179d4d546e9a05e1bd9ae05f07d669d29de9b281e01af9fd66d12bd722910f2");
+    await expect(ordered).resolves.toBe("0179d4d546e9a05e1bd9ae05f07d669d29de9b281e01af9fd66d12bd722910f2");
   });
 
   it("stages valid immutable identities once and rejects duplicate same-day ordinals", async () => {
     const repository = { saveSourceGraph: jest.fn(async () => ({ planId: "plan-1", planRevision: 2 })) };
-    await expect(saveRunningSourceGraph(repository, input())).resolves.toEqual({ planId: "plan-1", planRevision: 2 });
+    await expect(saveRunningSourceGraph(repository, await input())).resolves.toEqual({ planId: "plan-1", planRevision: 2 });
     expect(repository.saveSourceGraph).toHaveBeenCalledTimes(1);
-    await expect(saveRunningSourceGraph(repository, input({ slots: [
-      ...input().slots,
+    const valid = await input();
+    await expect(saveRunningSourceGraph(repository, await input({ slots: [
+      ...valid.slots,
       { id: "slot-revision-2", rootId: "slot-root-2", weekday: "Monday", revision: 1, ordinal: 0, sessionRootId: "root-1", sessionRevisionId: "revision-1" },
     ] }))).rejects.toThrow(RunningCommandError);
   });
 
   it("rejects invalid command fences, source graph identities, and slot ordering", async () => {
     const repository = { saveSourceGraph: jest.fn(async () => ({})) };
-    const valid = input();
-    await expect(saveRunningSourceGraph(repository, input({ requestId: "", requestSha256: "0".repeat(64) }))).rejects.toThrow("running_command_identity_invalid");
-    await expect(saveRunningSourceGraph(repository, input({ requestSha256: "A".repeat(64) }))).rejects.toThrow("running_command_hash_invalid");
-    await expect(saveRunningSourceGraph(repository, input({ expectedPlanRevision: -1 }))).rejects.toThrow("running_command_revision_invalid");
+    const valid = await input();
+    await expect(saveRunningSourceGraph(repository, await input({ requestId: "", requestSha256: "0".repeat(64) }))).rejects.toThrow("running_command_identity_invalid");
+    await expect(saveRunningSourceGraph(repository, await input({ requestSha256: "A".repeat(64) }))).rejects.toThrow("running_command_hash_invalid");
+    await expect(saveRunningSourceGraph(repository, await input({ expectedPlanRevision: -1 }))).rejects.toThrow("running_command_revision_invalid");
     await expect(saveRunningSourceGraph(repository, {
       ...valid,
       goal: {
@@ -85,7 +91,7 @@ describe("Running source graph commands", () => {
         createdAtMs: new Date(2026, 0, 2, 12).getTime(),
       },
     };
-    const input: SaveRunningTargetInput = { ...base, requestSha256: canonicalRunningRequestHash(base) };
+    const input: SaveRunningTargetInput = { ...base, requestSha256: await canonicalRunningRequestHash(base) };
     await expect(saveRunningTarget(repository, input)).resolves.toEqual({});
     await expect(saveRunningTarget(repository, {
       ...input, goal: { ...input.goal, targetLocalDate: "2026-02-31" },

@@ -160,7 +160,7 @@ async function createProductionRepository() {
   };
   await createInactiveRunningPlan(running, {
     ...createEnvelope,
-    requestSha256: canonicalRunningRequestHash(createEnvelope),
+    requestSha256: await canonicalRunningRequestHash(createEnvelope),
   });
   await kernel.write(async (transaction) => {
     await transaction.execute(

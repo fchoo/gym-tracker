@@ -143,7 +143,7 @@ describe("Running plan lifecycle persistence", () => {
     };
     await saveRunningSourceGraph(repository, {
       ...command,
-      requestSha256: canonicalRunningRequestHash(command),
+      requestSha256: await canonicalRunningRequestHash(command),
     });
 
     await expect(repository.readAggregate("scheduled-running")).resolves.toMatchObject({
@@ -180,7 +180,7 @@ describe("Running plan lifecycle persistence", () => {
       slots: [{ id: "recovery-slot-v2", rootId: recovery.slot.rootId, weekday: "Monday", revision: 2, ordinal: 0, sessionRootId: recovery.session.rootId, sessionRevisionId: "recovery-v2" }],
       completeMembership: true,
     };
-    const input = { ...command, requestSha256: canonicalRunningRequestHash(command) };
+    const input = { ...command, requestSha256: await canonicalRunningRequestHash(command) };
 
     const committed = await saveRunningSourceGraph(repository, input);
     await expect(saveRunningSourceGraph(repository, input)).resolves.toEqual(committed);

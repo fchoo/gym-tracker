@@ -125,7 +125,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       };
       const slots = command.slots.map((slot, index) => ({ ...slot, sessionRevisionId: command.sessions[index]!.id }));
       const hashInput = { ...command, slots };
-      await saveRunningSourceGraph(repository, { ...hashInput, completeMembership: true, requestSha256: canonicalRunningRequestHash({ ...hashInput, completeMembership: true }) });
+      await saveRunningSourceGraph(repository, { ...hashInput, completeMembership: true, requestSha256: await canonicalRunningRequestHash({ ...hashInput, completeMembership: true }) });
       const readBack = await repository.readAggregate(current.id);
       if (readBack === null) throw new Error("running_plan_readback_missing");
       return readBack;
@@ -164,7 +164,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
         };
         command = {
           ...hashInput,
-          requestSha256: canonicalRunningRequestHash(hashInput),
+          requestSha256: await canonicalRunningRequestHash(hashInput),
         };
         targetCommands.set(input.requestId, Object.freeze({ command, inputFingerprint }));
       }
@@ -206,7 +206,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       sessionCommands.set(input.requestId, command);
       await saveRunningSourceGraph(repository, {
         ...command, completeMembership: true,
-        requestSha256: canonicalRunningRequestHash({ ...command, completeMembership: true }),
+        requestSha256: await canonicalRunningRequestHash({ ...command, completeMembership: true }),
       });
       const readBack = await repository.readAggregate(plan.id);
       if (readBack === null) throw new Error("running_plan_readback_missing");
@@ -216,7 +216,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
     confirmLifecycle: async (input) => {
       const command = lifecycleCommands.get(input.requestId) ?? input;
       lifecycleCommands.set(input.requestId, command);
-      const requestSha256 = canonicalRunningRequestHash({
+      const requestSha256 = await canonicalRunningRequestHash({
         action: command.action,
         preview: command.preview,
         requestId: command.requestId,
