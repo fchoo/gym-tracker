@@ -572,6 +572,21 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
   return Object.freeze({
     ...baseLedger,
     run_id: validatedManifest.run_id,
+    identity: Object.freeze({
+      run_id: validatedManifest.run_id,
+      source_tree_sha256: validatedManifest.source.tree_sha256,
+      apk_sha256: validatedManifest.build.apk.sha256,
+      apk_signature_sha256: validatedManifest.build.apk.signature_sha256,
+      installed_apk_sha256: validatedManifest.device.installed_apk_sha256,
+      device_sha256: validatedManifest.device.identity_sha256,
+      config_sha256: sha256(validatedManifest.configuration.id),
+    }),
+    source_results: Object.freeze(evidence.map(({ row_id, artifact, sha256: evidence_sha256, result, configuration_id }) => Object.freeze({ row_id, artifact, evidence_sha256, result, configuration_id }))),
+    evidence_hashes: Object.freeze(evidence.map(({ sha256: evidence_sha256 }) => evidence_sha256)),
+    gates: Object.freeze([
+      Object.freeze({ id: "identity", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(validatedManifest)) }),
+      Object.freeze({ id: "automated", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(evidence)) }),
+    ]),
     readiness,
     accepted_exception_count: counts.ACCEPTED_EXCEPTION,
     policy: policy ?? null,
