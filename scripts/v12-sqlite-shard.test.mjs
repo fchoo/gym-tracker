@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -151,6 +151,7 @@ test('classifies every bounded native failure and rejects unsafe receipt input',
     stage: 'translation', code: 'translation_failed',
   };
   assert.equal(classifyV12SqliteNativeFailure(new Error('native contract route failed')), 'route_error');
+  assert.equal(classifyV12SqliteNativeFailure(new Error('Native contract result was not logged within 300000 ms.')), 'marker_timeout');
   assert.equal(classifyV12SqliteNativeFailure(new Error('contract_result_invalid')), 'malformed_result');
   assert.equal(classifyV12SqliteNativeFailure('not an error'), 'native_runner_failed');
   assert.doesNotThrow(() => createV12SqliteFailureReceipt(receiptInput));
@@ -164,6 +165,24 @@ test('classifies every bounded native failure and rejects unsafe receipt input',
     mutate(input);
     assert.throws(() => createV12SqliteFailureReceipt(input), /v12_sqlite_producer_/u);
   }
+});
+
+test('gives the V12 three-registry execution a finite source-derived polling budget and emits progress markers', () => {
+  const runner = readFileSync('scripts/run-native-sqlite-contracts.mjs', 'utf8');
+  const route = readFileSync('app/__native-contracts.tsx', 'utf8');
+
+  assert.match(runner, /V12_ACCEPTANCE_TIMEOUT_MS =/u);
+  assert.match(runner, /suite === 'v1\.2-acceptance'/u);
+  assert.match(runner, /V12_ACCEPTANCE_TIMEOUT_MS/u);
+  assert.match(route, /emitAggregateProgress\(runId, `v1\.2-acceptance:\$\{stage\}`\)/u);
+  assert.match(
+    readFileSync('src/testing/contracts/v12Acceptance.contract.ts', 'utf8'),
+    /onProgress\?\.\("migrations"\)[\s\S]*onProgress\?\.\("portable-merge"\)[\s\S]*onProgress\?\.\("multi-plan-running"\)/u,
+  );
+  assert.equal(
+    classifyV12SqliteNativeFailure(new Error('Native contract result was not logged within 300000 ms.')),
+    'marker_timeout',
+  );
 });
 
 test('retains exactly one immutable failure receipt for native timeout, route error, malformed output, and translation failure', async () => {

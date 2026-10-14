@@ -22,17 +22,29 @@ export const V12_ACCEPTANCE_SQLITE_CASE_IDS = [
   "backup", "restore", "merge", "noop-replay", "rebuild", "immutable-history",
 ] as const;
 
-const SOURCE_CASES: readonly (readonly string[])[] = Object.freeze([
-  ["migration-fresh-v27-schema23-registry"],
-  ["migration-fresh-v27-schema23-registry"],
-  ["migration-retained-v1"],
-  ["migration-statement-rollback"],
-  ["portable-merge-mixed-full-plan-success"],
-  ["portable-merge-same-identity-dedup-remap"],
-  ["portable-merge-mixed-full-plan-success"],
-  ["portable-merge-duplicate-only-ready"],
-  ["migration-recovery-backup"],
-  ["multi-plan-running-interleaved-completion"],
+const SOURCE_REGISTRY_CASE_IDS = Object.freeze({
+  migrations: MIGRATIONS_EFFECTS_CONTRACT_CASES,
+  "portable-merge": PORTABLE_MERGE_CONTRACT_CASES,
+  "multi-plan-running": MULTI_PLAN_RUNNING_CONTRACT_CASES,
+});
+
+type SourceRegistry = keyof typeof SOURCE_REGISTRY_CASE_IDS;
+export type V12AcceptanceSourceCaseDefinition = Readonly<{
+  sourceRegistry: SourceRegistry;
+  sourceCaseIds: readonly string[];
+}>;
+
+const SOURCE_CASES: readonly V12AcceptanceSourceCaseDefinition[] = Object.freeze([
+  { sourceRegistry: "migrations", sourceCaseIds: ["migration-fresh-v27-schema23-registry"] },
+  { sourceRegistry: "migrations", sourceCaseIds: ["migration-fresh-v27-schema23-registry"] },
+  { sourceRegistry: "migrations", sourceCaseIds: ["migration-retained-v1"] },
+  { sourceRegistry: "migrations", sourceCaseIds: ["migration-statement-rollback"] },
+  { sourceRegistry: "portable-merge", sourceCaseIds: ["portable-merge-mixed-full-plan-success"] },
+  { sourceRegistry: "portable-merge", sourceCaseIds: ["portable-merge-same-identity-dedup-remap"] },
+  { sourceRegistry: "portable-merge", sourceCaseIds: ["portable-merge-mixed-full-plan-success"] },
+  { sourceRegistry: "portable-merge", sourceCaseIds: ["portable-merge-duplicate-only-ready"] },
+  { sourceRegistry: "migrations", sourceCaseIds: ["migration-recovery-backup"] },
+  { sourceRegistry: "multi-plan-running", sourceCaseIds: ["phase13-source-generation-neutrality"] },
 ] as const);
 
 export const V12_ACCEPTANCE_SQLITE_CASES = Object.freeze(V12_ACCEPTANCE_SQLITE_CASE_IDS.map((id, index) =>
@@ -42,11 +54,10 @@ export const V12_ACCEPTANCE_SQLITE_CASES = Object.freeze(V12_ACCEPTANCE_SQLITE_C
     // is deliberately derived from the landed migration registry at execution.
     finalSchemaVersion: 27,
     currentSchemaVersion: CURRENT_SCHEMA_VERSION,
-    sourceCaseIds: SOURCE_CASES[index]!,
+    sourceCaseIds: SOURCE_CASES[index]!.sourceCaseIds,
+    sourceRegistry: SOURCE_CASES[index]!.sourceRegistry,
     sourceRegistries: Object.freeze([
-      MIGRATIONS_EFFECTS_CONTRACT_CASES,
-      PORTABLE_MERGE_CONTRACT_CASES,
-      MULTI_PLAN_RUNNING_CONTRACT_CASES,
+      SOURCE_REGISTRY_CASE_IDS[SOURCE_CASES[index]!.sourceRegistry],
       GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS,
       PHASE18_GARMIN_ACCEPTANCE_CASE_IDS,
       PROGRESS_PARITY_CONTRACT_CASES,
@@ -82,6 +93,8 @@ export type V12AcceptanceSqliteContractAdapter = Readonly<{
   }>>;
 }>;
 
+export type V12AcceptanceProgressReporter = (stage: "migrations" | "portable-merge" | "multi-plan-running") => void;
+
 function failedResult(id: V12AcceptanceSqliteCase["id"], sourceCases: number, error: unknown) {
   return {
     id,
@@ -93,22 +106,85 @@ function failedResult(id: V12AcceptanceSqliteCase["id"], sourceCases: number, er
   };
 }
 
+type SourceCaseResult = Readonly<{ id: string; status: "passed" | "failed"; errorCode?: string }>;
+type SourceRegistryResult = Readonly<{
+  status: "passed" | "failed";
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  cases: readonly SourceCaseResult[];
+}>;
+
+type SourceRegistryResults = Readonly<Record<SourceRegistry, SourceRegistryResult>>;
+
+function sourceCaseFailureCode(
+  definition: V12AcceptanceSqliteCase,
+  result: SourceRegistryResult,
+): string | undefined {
+  const registeredCaseIds = SOURCE_REGISTRY_CASE_IDS[definition.sourceRegistry];
+  if (!definition.sourceCaseIds.every((id) => registeredCaseIds.includes(id as never))) {
+    return "v12_acceptance_source_case_wrong_registry";
+  }
+  if (
+    result.total !== registeredCaseIds.length
+    || result.cases.length !== registeredCaseIds.length
+    || result.skipped !== 0
+  ) {
+    return result.skipped !== 0
+      ? "v12_acceptance_source_case_skipped"
+      : "v12_acceptance_source_registry_stale";
+  }
+  for (const sourceCaseId of definition.sourceCaseIds) {
+    const matchingCases = result.cases.filter(({ id }) => id === sourceCaseId);
+    if (matchingCases.length === 0) return "v12_acceptance_source_case_missing";
+    if (matchingCases.length !== 1) return "v12_acceptance_source_case_duplicate";
+    if (matchingCases[0]!.status !== "passed") return "v12_acceptance_source_case_failed";
+  }
+  if (result.status !== "passed" || result.passed !== result.total || result.failed !== 0) {
+    return "v12_acceptance_source_contract_failed";
+  }
+  return undefined;
+}
+
+export function assertV12AcceptanceSourceDefinitions(
+  sourceCases: readonly V12AcceptanceSourceCaseDefinition[] = SOURCE_CASES,
+): void {
+  if (sourceCases.length !== V12_ACCEPTANCE_SQLITE_CASE_IDS.length) {
+    throw new Error("v12_acceptance_source_definition_count_invalid");
+  }
+  for (const definition of sourceCases) {
+    const ids = SOURCE_REGISTRY_CASE_IDS[definition.sourceRegistry];
+    if (definition.sourceCaseIds.length === 0 || !definition.sourceCaseIds.every((id) => ids.includes(id as never))) {
+      throw new Error("v12_acceptance_source_definition_invalid");
+    }
+  }
+}
+
+assertV12AcceptanceSourceDefinitions();
+
 export async function createExpoV12AcceptanceSqliteContractAdapter(
   runId: string,
+  onProgress?: V12AcceptanceProgressReporter,
 ): Promise<V12AcceptanceSqliteContractAdapter> {
+  const sourceResults: Promise<SourceRegistryResults> = (async () => {
+    onProgress?.("migrations");
+    const migrations = await runMigrationsEffectsContract(
+      await createExpoMigrationsEffectsContractAdapter(`${runId}-v12-migrations`),
+    );
+    onProgress?.("portable-merge");
+    const merge = await runPortableMergeContract(
+      await createExpoPortableMergeContractAdapter(`${runId}-v12-portable-merge`),
+    );
+    onProgress?.("multi-plan-running");
+    const running = await runMultiPlanRunningContract(`${runId}-v12-multi-plan-running`);
+    return Object.freeze({ migrations, "portable-merge": merge, "multi-plan-running": running });
+  })();
   return Object.freeze({
     async runMixedUpgrade(definition) {
-      const migrations = await runMigrationsEffectsContract(
-        await createExpoMigrationsEffectsContractAdapter(`${runId}-schema27`),
-      );
-      const merge = await runPortableMergeContract(
-        await createExpoPortableMergeContractAdapter(`${runId}-merge`),
-      );
-      const running = await runMultiPlanRunningContract(`${runId}-running`);
-      if (migrations.status !== "passed" || merge.status !== "passed" || running.status !== "passed"
-        || migrations.skipped !== 0 || merge.skipped !== 0 || running.skipped !== 0) {
-        return failedResult(definition.id, definition.sourceCaseIds.length, new Error("v12_acceptance_source_contract_failed"));
-      }
+      const result = (await sourceResults)[definition.sourceRegistry];
+      const failureCode = sourceCaseFailureCode(definition, result);
+      if (failureCode !== undefined) return failedResult(definition.id, definition.sourceCaseIds.length, new Error(failureCode));
       return {
         id: definition.id,
         status: "passed",

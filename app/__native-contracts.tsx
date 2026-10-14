@@ -535,7 +535,10 @@ export default function NativeSqliteContractsScreen() {
 
         if (selectedSuite === "v1.2-acceptance") {
           const result = await verifyV12AcceptanceSqliteContracts(
-            await createExpoV12AcceptanceSqliteContractAdapter(runId),
+            await createExpoV12AcceptanceSqliteContractAdapter(
+              runId,
+              (stage) => emitAggregateProgress(runId, `v1.2-acceptance:${stage}`),
+            ),
           );
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
           setState({ status: "finished", result });

@@ -170,6 +170,17 @@ const V12_ACCEPTANCE_SQLITE_CASE_IDS = await deriveCaseIds(
   'v12Acceptance.contract.ts',
   'V12_ACCEPTANCE_SQLITE_CASE_IDS',
 );
+const V12_ACCEPTANCE_SOURCE_CASE_IDS = [
+  ...MIGRATIONS_EFFECTS_CASE_IDS,
+  ...PORTABLE_MERGE_CASE_IDS,
+  ...MULTI_PLAN_RUNNING_CONTRACT_CASES,
+];
+const V12_ACCEPTANCE_CASE_TIMEOUT_MS = 10_000;
+const V12_ACCEPTANCE_TIMEOUT_MS = Math.max(
+  300_000,
+  DEFAULT_NATIVE_TIMEOUT_MS
+    + V12_ACCEPTANCE_SOURCE_CASE_IDS.length * V12_ACCEPTANCE_CASE_TIMEOUT_MS,
+);
 const PHASE2_FTS_CASE_IDS = await deriveCaseIds(
   'phase2Fts.contract.ts',
   'PHASE2_FTS_CASE_IDS',
@@ -459,6 +470,8 @@ async function dumpResult(runId) {
         DEFAULT_NATIVE_TIMEOUT_MS
           + expectedPhase2Cases.length * PHASE2_CASE_TIMEOUT_MS,
       )
+    : suite === 'v1.2-acceptance'
+    ? V12_ACCEPTANCE_TIMEOUT_MS
     : DEFAULT_NATIVE_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
   let progressStage;
