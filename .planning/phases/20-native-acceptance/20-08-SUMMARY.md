@@ -8,7 +8,7 @@ requires:
     provides: committed native-acceptance contracts, readiness evidence, and build tooling
 provides:
   - one frozen-source development-test release-variant APK with retained and installed byte identity
-  - immutable V12 build-only run phase20-20261014T054728Z-c530ca0f24aa
+  - immutable V12 build-only run phase20-20261014T065837Z-335e0563d57f
   - exact Phase 20 integrity coverage registration and native-safe contract repairs
 affects: [20-09, native-evidence, acceptance-shards]
 actuals:
@@ -23,15 +23,15 @@ tech-stack:
 key-files:
   created:
     - .planning/phases/20-native-acceptance/20-08-SUMMARY.md
-    - artifacts/native/v1.2/phase20-20261014T054728Z-c530ca0f24aa/build.json
+    - artifacts/native/v1.2/phase20-20261014T065837Z-335e0563d57f/build.json
   modified:
     - scripts/run-coverage-gate.mjs
     - scripts/build-current-native-test-apk.sh
     - scripts/create-v12-run-manifest.mjs
     - src/domains/running/commands.ts
 key-decisions:
-  - "The only authoritative Phase 20 artifact is the frozen c530ca0f development-test build bound to phase20-20261014T054728Z-c530ca0f24aa."
-  - "The prior 147022cf build/run remains preserved as invalidated pre-private-device-selector evidence and is not reused."
+  - "The only authoritative Phase 20 artifact is the frozen 335e0563 development-test build bound to phase20-20261014T065837Z-335e0563d57f."
+  - "The prior c530ca0f build/run remains preserved as invalidated pre-SQLite-producer-hardening evidence and is not reused."
   - "Phase 20 source freeze permits no subsequent implementation edits before shard evidence; Plan 20-09 is next."
 requirements-completed: [VER-01, VER-11, VER-13]
 coverage:
@@ -51,7 +51,7 @@ coverage:
     requirement: VER-13
     verification:
       - kind: other
-        ref: node scripts/create-v12-run-manifest.mjs --run phase20-20261014T054728Z-c530ca0f24aa --verify-build-only
+        ref: node scripts/create-v12-run-manifest.mjs --run phase20-20261014T065837Z-335e0563d57f --verify-build-only
         status: pass
     human_judgment: false
 duration: 4h 19m
@@ -61,7 +61,7 @@ status: complete
 
 # Phase 20 Plan 08: Frozen development-test APK and immutable V12 build-only identity Summary
 
-**A single Android development-test release-variant APK was rebuilt from frozen source c530ca0f, installed by data-preserving replacement, byte-verified, and bound to immutable run `phase20-20261014T054728Z-c530ca0f24aa`. This supersedes the archived pre-private-device-selector build-only run and is the only run Plan 20-09 may consume.**
+**A single Android development-test release-variant APK was rebuilt from frozen source 335e0563, installed by data-preserving replacement, byte-verified, and bound to immutable run `phase20-20261014T065837Z-335e0563d57f`. This supersedes the archived pre-SQLite-producer-hardening build-only run and is the only run Plan 20-09 may consume.**
 
 ## Performance
 
@@ -75,20 +75,22 @@ status: complete
 
 - Registered all 164 integrity-critical modules, including the six Phase 20 decision-bearing modules, at exact 100% statements, branches, functions, and lines without collapsing default legacy coverage collection.
 - Passed the pinned host gate: 318 suites / 4,647 tests; 164 integrity-critical files at exact 100%; `test:evidence:v12` 36/36.
-- Re-froze `c530ca0f24aa1475f78d4938e378441cad0d569c` after the privacy-safe device-selector repair host gate, with source-tree SHA-256 `03fee51158e8698cd81b589528a1c8fcf73835208e3d0079d0af4521533c48e7`.
-- Built exactly one replacement development-test release APK, installed it using `adb install -r`, and verified retained/installed byte identity: APK SHA-256 `62b1eb023d28312c13147130af179dedf7712bf31279272b2cf3359a1e8cb5c5`.
-- Created and verified immutable build-only manifest [build.json](artifacts/native/v1.2/phase20-20261014T054728Z-c530ca0f24aa/build.json) for `phase20-20261014T054728Z-c530ca0f24aa`.
+- Re-froze `335e0563d57f872d69a3ef6377a70c80f0d2e011` after the SQLite-producer hardening host gate, with source-tree SHA-256 `7002d98d47e1c3976b7b7c6f9e68e836398dc28f9a93c1f1fda0a9aaefc24bd9`.
+- Built exactly one replacement development-test release APK, installed it using `adb install -r`, and verified retained/installed byte identity: APK SHA-256 `131b1e405d633dddac0aa91a35c0164e2e1e2a03541027dad1802a30fcdf37bf`.
+- Created and verified immutable build-only manifest [build.json](artifacts/native/v1.2/phase20-20261014T065837Z-335e0563d57f/build.json) for `phase20-20261014T065837Z-335e0563d57f`.
 
 ## Frozen Artifact Identity
 
 | Fact | Value |
 | --- | --- |
-| V12 run ID | `phase20-20261014T054728Z-c530ca0f24aa` |
-| Run manifest | `artifacts/native/v1.2/phase20-20261014T054728Z-c530ca0f24aa/build.json` |
+| V12 run ID | `phase20-20261014T065837Z-335e0563d57f` |
+| Run manifest | `artifacts/native/v1.2/phase20-20261014T065837Z-335e0563d57f/build.json` |
 | Active build record | `artifacts/native/v1.2-acceptance/build.json` |
-| Source HEAD | `c530ca0f24aa1475f78d4938e378441cad0d569c` |
-| Source tree SHA-256 | `03fee51158e8698cd81b589528a1c8fcf73835208e3d0079d0af4521533c48e7` |
-| APK / installed APK SHA-256 | `62b1eb023d28312c13147130af179dedf7712bf31279272b2cf3359a1e8cb5c5` (identical) |
+| Source HEAD | `335e0563d57f872d69a3ef6377a70c80f0d2e011` |
+| Source tree SHA-256 | `7002d98d47e1c3976b7b7c6f9e68e836398dc28f9a93c1f1fda0a9aaefc24bd9` |
+| APK / installed APK SHA-256 | `131b1e405d633dddac0aa91a35c0164e2e1e2a03541027dad1802a30fcdf37bf` (identical) |
+| Immutable manifest SHA-256 | `bab8d74fee1e87cdea271872d760ec7c634c078deca81f90760d4955336b029e` |
+| Active build manifest SHA-256 | `b8e76ffeff7f8f84f7b1fd187239724ba43eedfcd8ee902bcbdcad8c3e9e8e46` |
 | Package / version / variant | `com.fchoo.gymtracker.devtest` / `0.1.0 (1)` / release |
 | Signature SHA-256 | `779b75b032a8f23d45d558b304ab6276bf5894001fa1fafb79c17eaf8f89a272` |
 | Certificate SHA-256 | `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c` |
@@ -120,13 +122,14 @@ status: complete
 - `src/domains/running/commands.ts` - uses native-safe asynchronous hashing instead of Metro-incompatible `node:crypto`.
 - `scripts/source-tree-digest.mjs` - excludes only the protected generated root `.coverage` database from canonical source identity.
 - `scripts/native-device-selection.mjs` - selects a live device only ephemerally and binds its canonical identity hash without serial persistence.
-- `artifacts/native/v1.2/phase20-20261014T054728Z-c530ca0f24aa/build.json` - ignored immutable evidence artifact; no sensitive serial or OAuth value is stored.
+- `artifacts/native/v1.2/phase20-20261014T065837Z-335e0563d57f/build.json` - ignored immutable evidence artifact; no sensitive serial or OAuth value is stored.
 
 ## Decisions Made
 
 - The original `5917481c` run was archived as invalidated pre-shard evidence because immutable shard producers were added afterward; it was never used for shard execution.
 - The root generated `.coverage` database is excluded from canonical source identity, while similarly named source files remain included; the subsequent privacy-safe device-selector repair invalidated the prior 147022cf build before shard execution.
-- `--single-build` was used exactly once after the green host gate for `c530ca0f`; it is a development-test release-variant APK, not a signed production APK/AAB or release action.
+- `--single-build` was used exactly once after the green host gate for `335e0563`; it is a development-test release-variant APK, not a signed production APK/AAB or release action.
+- The prior c530ca0f build/run was archived as invalidated pre-SQLite-producer-hardening evidence; it was not reused after the hardening repair.
 - The d401 build was kept only at `artifacts/native/v1.2-invalidated/phase20-d401e3d4-manifest-timestamp/` because the timestamp-authority repair changed source after that build; it is not bound to a V12 run.
 - The new run is build-only. No evidence shard, Maestro flow, row verdict, final seal, production build, release, publish, deploy, uninstall, or data clear ran in this plan.
 
@@ -182,9 +185,9 @@ None. The installed development-test app remains on emulator-5554 with existing 
 
 ## Next Phase Readiness
 
-Plan 20-09 is next. It must consume only `phase20-20261014T054728Z-c530ca0f24aa` and its immutable `build.json`; any later implementation-source change invalidates this run and requires a new source freeze/build/run under the plan authority.
+Plan 20-09 is next. It must consume only `phase20-20261014T065837Z-335e0563d57f` and its immutable `build.json`; any later implementation-source change invalidates this run and requires a new source freeze/build/run under the plan authority.
 
 ## Self-Check: PASSED
 
-- Required source commits `82cec8a7`, `0286093b`, `8c3bfb8f`, `d2e7010a`, `d401e3d4`, `5917481c`, `9791cb47`, `114f1c85`, `6b8f16ab`, `147022cf`, `d852e9ab`, `c6750a42`, and `c530ca0f` exist.
-- The immutable run manifest exists at `artifacts/native/v1.2/phase20-20261014T054728Z-c530ca0f24aa/build.json` and `--verify-build-only` passed.
+- Required source commits `82cec8a7`, `0286093b`, `8c3bfb8f`, `d2e7010a`, `d401e3d4`, `5917481c`, `9791cb47`, `114f1c85`, `6b8f16ab`, `147022cf`, `d852e9ab`, `c6750a42`, `c530ca0f`, and `335e0563` exist.
+- The immutable run manifest exists at `artifacts/native/v1.2/phase20-20261014T065837Z-335e0563d57f/build.json` and `--verify-build-only` passed.

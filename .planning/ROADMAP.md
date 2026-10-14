@@ -333,8 +333,8 @@ Plans:
 - [x] 20-05-PLAN.md
 - [x] 20-06-PLAN.md
 - [x] 20-07-PLAN.md
-- [x] 20-08-PLAN.md — corrective immutable build-only run `phase20-20261014T054728Z-c530ca0f24aa` verified from gated source `c530ca0f`; prior runs are archived invalidated.
-- [ ] 20-09-PLAN.md — next; consume only `phase20-20261014T054728Z-c530ca0f24aa` and its immutable build.json.
+- [x] 20-08-PLAN.md — corrective immutable build-only run `phase20-20261014T065837Z-335e0563d57f` verified from gated source `335e0563`; prior runs are archived invalidated.
+- [ ] 20-09-PLAN.md — next; consume only `phase20-20261014T065837Z-335e0563d57f` and its immutable build.json.
 - [ ] 20-10-PLAN.md
 - [ ] 20-11-PLAN.md
 - [ ] 20-12-PLAN.md

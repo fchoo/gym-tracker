@@ -5,11 +5,11 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENT
 current_phase: 20
 current_phase_name: Native Acceptance
 status: executing
-stopped_at: Corrective 20-08 rebuild verified; next 20-09 uses immutable build-only run phase20-20261014T054728Z-c530ca0f24aa
-last_updated: "2026-10-14T05:47:28Z"
+stopped_at: Corrective 20-08 rebuild verified; next 20-09 uses immutable build-only run phase20-20261014T065837Z-335e0563d57f
+last_updated: "2026-10-14T06:58:37Z"
 last_activity: 2026-10-14
-last_activity_desc: Corrective 20-08 rebuild verified; immutable build-only run phase20-20261014T054728Z-c530ca0f24aa is ready for Plan 20-09
-state_head: c530ca0f24aa1475f78d4938e378441cad0d569c
+last_activity_desc: Corrective 20-08 rebuild verified; immutable build-only run phase20-20261014T065837Z-335e0563d57f is ready for Plan 20-09
+state_head: 335e0563d57f872d69a3ef6377a70c80f0d2e011
 progress:
   total_phases: 8
   completed_phases: 4
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 Phase: 20 (Native Acceptance) — EXECUTING
 Plan: 9 of 12
 Status: Ready to execute
-Last activity: 2026-10-14 — Corrective Plan 20-08 rebuild verified; immutable build-only run phase20-20261014T054728Z-c530ca0f24aa is ready for Plan 20-09
+Last activity: 2026-10-14 — Corrective Plan 20-08 rebuild verified; immutable build-only run phase20-20261014T065837Z-335e0563d57f is ready for Plan 20-09
 
 Progress: [█████░░░░░] 50%
 
@@ -263,7 +263,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 20]: Phase 20: Samsung attended observations are identity-bound and observation-only; N4/release-authority inheritance is rejected.
 - [Phase 20]: Phase 20: Readiness preserves non-PASS evidence and can be conditional only under reviewed accepted-exception policy with safe rollback boundaries.
 - [Phase 20]: The original 5917481c build/run was archived as invalidated pre-shard evidence after immutable producer repairs and was never used for shard execution.
-- [Phase 20]: Corrective Plan 20-08 freezes acceptance source at c530ca0f and binds the sole authoritative development-test build to phase20-20261014T054728Z-c530ca0f24aa; prior build-only runs, including the private-device-selector predecessor, are archived invalidated and Plan 20-09 must consume only this immutable run.
+- [Phase 20]: Corrective Plan 20-08 freezes acceptance source at 335e0563 and binds the sole authoritative development-test build to phase20-20261014T065837Z-335e0563d57f; prior build-only runs, including the pre-SQLite-producer-hardening predecessor, are archived invalidated and Plan 20-09 must consume only this immutable run.
 
 ### Pending Owner Review
 
@@ -288,7 +288,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-14T03:53:23Z
-Stopped at: Corrective 20-08 rebuild verified; next 20-09 uses immutable build-only run phase20-20261014T054728Z-c530ca0f24aa
+Last session: 2026-10-14T06:58:37Z
+Stopped at: Corrective 20-08 rebuild verified; next 20-09 uses immutable build-only run phase20-20261014T065837Z-335e0563d57f
 Resume file: None
-Next action: Execute Plan 20-09 against immutable build-only run phase20-20261014T054728Z-c530ca0f24aa; no evidence-time rebuild is authorized.
+Next action: Execute Plan 20-09 against immutable build-only run phase20-20261014T065837Z-335e0563d57f; no evidence-time rebuild is authorized.

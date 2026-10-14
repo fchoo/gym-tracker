@@ -207,8 +207,8 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **VER-04**: Verify required actions at 200% text, minimum 48dp touch targets, semantic labels and meaningful non-color state encoding.
 - [ ] **VER-05**: Verify keyboard/D-pad movement, visible focus, Back/Escape, focus restoration and keyboard-safe editing across all sheets and deep routes.
 - [ ] **VER-06**: Verify Calendar and other transitions keep identical destination/state semantics with motion disabled.
-- [ ] **VER-07**: Run real SQLite migration, backup/restore/merge, idempotency and historical-revision tests with old and new multi-plan databases.
-- [ ] **VER-08**: Verify offline strength workouts and process-death recovery at start/edit/commit/rest/finish/import/match boundaries, distinguishing committed and uncommitted work.
+- [ ] **VER-07**: Run real SQLite migration, backup/restore/merge, idempotency and historical-revision tests with old and new multi-plan databases. The next Plan 20-09 evidence run is bound to immutable build-only run `phase20-20261014T065837Z-335e0563d57f`.
+- [ ] **VER-08**: Verify offline strength workouts and process-death recovery at start/edit/commit/rest/finish/import/match boundaries, distinguishing committed and uncommitted work. The next Plan 20-09 evidence run is bound to immutable build-only run `phase20-20261014T065837Z-335e0563d57f`.
 - [ ] **VER-09**: Verify native 1:1 drag, 25% title/settle boundary, short-fast snap-back, vertical intent, expand/collapse/adjacent-week continuity and cancel.
 - [ ] **VER-10**: Verify a self-contained ARM64 APK's Python/native packaging, real account login/MFA/read, encrypted token refresh/cold restart/logout, JSON fidelity, idempotent sync and explicit matching; synthetic tests alone cannot close live account/network evidence, and partner approval/FIT decoding is not a prerequisite.
 - [x] **VER-11**: Preserve or improve existing p95 interaction and launch budgets with the full calendar, large histories, long active sessions and representative import loads.
