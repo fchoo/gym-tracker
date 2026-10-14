@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { executeV12AccessibilityShard, validateV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
+import { executeLiveV12AccessibilityShard, executeV12AccessibilityShard, validateV12AccessibilityShard, verifyV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
 
 const trace = () => ({
   configuration: { font_scale: 2, density: 3, content_bounds: { width: 360, height: 800 }, insets: { top: 24, bottom: 24 }, ime_bounds: { top: 500, bottom: 800 } },
@@ -27,4 +27,15 @@ test("rejects unmeasured F200, undersized/overlapping targets, duplicate command
   assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: [duplicate] }), /v12_accessibility_interaction_invalid/u);
   const motion = trace(); motion.motion.reduced.destination = "other";
   assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: [motion] }), /v12_accessibility_motion_invalid/u);
+});
+
+test("writes real semantic and geometry observations while keeping attended assistive-tech paths excluded", () => {
+  const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
+  const written = new Map();
+  const live = { ...trace(), fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED", restored_settings: true };
+  const result = executeLiveV12AccessibilityShard({ runId, observe: () => [live], write: (file, value) => written.set(file, value) });
+  assert.equal(result.geometry.targets.length, 1);
+  assert.equal(result.semantic.excludes.includes("live-talkback"), true);
+  assert.equal(verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file) }), true);
+  assert.throws(() => executeLiveV12AccessibilityShard({ runId, observe: () => [{ ...live, talkback: "claimed" }], write: () => {} }), /observation_invalid/u);
 });

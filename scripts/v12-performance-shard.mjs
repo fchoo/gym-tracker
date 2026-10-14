@@ -4,8 +4,11 @@ import {
   nearestRankP95,
   validateV12PerformanceEvidence,
 } from "./benchmark-v12-interactions.mjs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 const HASH = /^[a-f0-9]{64}$/u;
+const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 
 function fail(code) {
   throw new Error(`v12_performance_shard_${code}`);
@@ -118,3 +121,46 @@ export function validateV12PerformanceShard(observation, identity) {
   const extension = validateExtendedSamples(observation.raw_samples);
   return Object.freeze({ ...core, ...extension });
 }
+
+function immutableWrite(root, relativePath, value, write = undefined) {
+  if (typeof write === "function") return write(relativePath, value);
+  const absolute = path.resolve(root, relativePath);
+  if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) fail("immutable_output_invalid");
+  mkdirSync(path.dirname(absolute), { recursive: true });
+  writeFileSync(absolute, `${JSON.stringify(value)}\n`, { flag: "wx" });
+}
+
+/**
+ * Persists a complete release-native collection exactly once. The collector must
+ * expose every warm/cold/raw/frame sample; summaries are recomputed here rather
+ * than trusted from the device process, so outliers cannot be silently removed.
+ */
+export function writeV12PerformanceObservation({ runId, identity, collect, root = process.cwd(), write } = {}) {
+  if (!V12_RUN_ID.test(runId ?? "") || typeof collect !== "function") fail("collector_invalid");
+  const performance = collect(Object.freeze({ run_id: runId, workload: V12_PERFORMANCE_WORKLOAD, budgets: V12_PERFORMANCE_BUDGETS, build_variant: "release", sample_origin: "release-native-source-backed" }));
+  const observation = executeV12PerformanceShard({ identity, performance });
+  validateV12PerformanceShard(observation, identity);
+  const output = Object.freeze({ schema_version: 1, producer: "v12-release-performance-writer/v1", run_id: runId, build_variant: "release", sample_origin: "release-native-source-backed", observation });
+  immutableWrite(root, `artifacts/native/v1.2/${runId}/performance.json`, output, write);
+  return output;
+}
+
+export function verifyV12PerformanceObservation({ runId, root = process.cwd(), readJson, identity } = {}) {
+  if (!V12_RUN_ID.test(runId ?? "") || !identity) fail("arguments_invalid");
+  const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
+  const output = read(`artifacts/native/v1.2/${runId}/performance.json`);
+  if (!output || output.run_id !== runId || output.producer !== "v12-release-performance-writer/v1" || output.build_variant !== "release" || output.sample_origin !== "release-native-source-backed" || Object.hasOwn(output, "verdict") || Object.hasOwn(output, "readiness")) fail("output_invalid");
+  return validateV12PerformanceShard(output.observation, identity);
+}
+
+export function runV12PerformanceCli(args = process.argv.slice(2), io = process) {
+  try {
+    if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
+    // The executable collector is injected by the device launcher. A bare host
+    // invocation never substitutes fake timing data for release-native samples.
+    if (args[2] === "--execute") fail("native_collector_required");
+    fail("identity_required");
+  } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }
+}
+
+if (process.argv[1]?.endsWith("v12-performance-shard.mjs")) process.exitCode = runV12PerformanceCli();

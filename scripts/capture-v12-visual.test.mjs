@@ -9,6 +9,8 @@ import {
 } from "./v12-evidence-contract.mjs";
 import {
   executeV12VisualCapture,
+  executeLiveV12VisualCapture,
+  verifyV12VisualCapture,
   validateV12VisualCapture,
 } from "./capture-v12-visual.mjs";
 
@@ -52,4 +54,19 @@ test("binds each source-owned flow to immutable source content and semantic stag
   assert.deepEqual(plan.flows.map(({ id }) => id), ["multi-plan", "workout", "library-running"]);
   assert.equal(plan.flows.every(({ stages, source_sha256 }) => stages.length > 0 && /^[a-f0-9]{64}$/u.test(source_sha256)), true);
   assert.equal(plan.flows.every(({ source_path }) => readFileSync(source_path, "utf8").includes("appId:")), true);
+});
+
+test("writes every live native capture once and rejects fixture-only or un-restored state", () => {
+  const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
+  const written = new Map();
+  const index = executeLiveV12VisualCapture({
+    runId,
+    root: ROOT,
+    capture: () => ({ native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png: Buffer.from("native-png"), settings: { restored: true, privacy: "synthetic-only" } }),
+    write: (file, value) => written.set(file, value),
+  });
+  assert.equal(index.records.length, 107 * 64);
+  assert.equal(written.size, 1 + 2 * 107 * 64);
+  assert.equal(verifyV12VisualCapture({ runId, root: ROOT, readJson: (file) => written.get(file) }), true);
+  assert.throws(() => executeLiveV12VisualCapture({ runId, capture: () => ({ native_execution: "NOT_RUN" }) }), /capture_invalid/u);
 });

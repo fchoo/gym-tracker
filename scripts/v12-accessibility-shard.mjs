@@ -1,4 +1,8 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
 const SHA256 = /^[a-f0-9]{64}$/u;
+const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const REQUIRED_INPUTS = Object.freeze(["touch", "software-keyboard", "hardware-keyboard", "dpad"]);
 
 function fail(code) { throw new Error(`v12_accessibility_${code}`); }
@@ -38,3 +42,48 @@ export function validateV12AccessibilityShard(shard) {
   }
   return true;
 }
+
+function immutableWrite(root, relativePath, value, write = undefined) {
+  if (typeof write === "function") return write(relativePath, value);
+  const absolute = path.resolve(root, relativePath);
+  if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) fail("immutable_output_invalid");
+  mkdirSync(path.dirname(absolute), { recursive: true });
+  writeFileSync(absolute, `${JSON.stringify(value)}\n`, { flag: "wx" });
+}
+
+/** Collects measured semantics and geometry only; TalkBack and switch scanning remain attended gates. */
+export function executeLiveV12AccessibilityShard({ runId, root = process.cwd(), observe, write } = {}) {
+  if (!V12_RUN_ID.test(runId ?? "") || typeof observe !== "function") fail("adapter_invalid");
+  const observations = observe(Object.freeze({ run_id: runId, required_inputs: REQUIRED_INPUTS, font_scale: 2, focus_ring_dp: 3, excludes: Object.freeze(["live-talkback", "switch-scanning"]) }));
+  validateV12AccessibilityShard({ schema_version: 1, observations });
+  const bounded = observations.map((observation) => {
+    if (observation.fixture_id !== "v12-synthetic-fixtures-r18" || observation.native_execution !== "EXECUTED"
+      || observation.talkback !== undefined || observation.switch_scanning !== undefined || observation.restored_settings !== true) fail("observation_invalid");
+    return Object.freeze(structuredClone(observation));
+  });
+  const semantic = Object.freeze({ schema_version: 1, producer: "v12-accessibility-native-observation/v1", run_id: runId, scope: "semantics-input-focus-motion", excludes: Object.freeze(["live-talkback", "switch-scanning", "final-verdict"]), observations: Object.freeze(bounded) });
+  const geometry = Object.freeze({ schema_version: 1, producer: "v12-accessibility-geometry/v1", run_id: runId, targets: Object.freeze(bounded.flatMap((entry) => entry.targets.map((target) => Object.freeze({ configuration: entry.configuration, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap })))) });
+  immutableWrite(root, `artifacts/native/v1.2/${runId}/semantics/accessibility.json`, semantic, write);
+  immutableWrite(root, `artifacts/native/v1.2/${runId}/geometry/hit-targets.json`, geometry, write);
+  return Object.freeze({ semantic, geometry });
+}
+
+export function verifyV12AccessibilityShard({ runId, root = process.cwd(), readJson } = {}) {
+  if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
+  const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
+  const semantic = read(`artifacts/native/v1.2/${runId}/semantics/accessibility.json`);
+  if (!semantic || semantic.run_id !== runId || semantic.producer !== "v12-accessibility-native-observation/v1" || semantic.scope !== "semantics-input-focus-motion" || !Array.isArray(semantic.excludes) || !semantic.excludes.includes("live-talkback") || !semantic.excludes.includes("switch-scanning")) fail("semantic_invalid");
+  return validateV12AccessibilityShard({ schema_version: 1, observations: semantic.observations });
+}
+
+export function runV12AccessibilityCli(args = process.argv.slice(2), io = process) {
+  try {
+    if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
+    if (args[2] === "--verify") verifyV12AccessibilityShard({ runId: args[1] });
+    else fail("native_adapter_required");
+    io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
+    return 0;
+  } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }
+}
+
+if (process.argv[1]?.endsWith("v12-accessibility-shard.mjs")) process.exitCode = runV12AccessibilityCli();

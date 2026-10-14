@@ -396,9 +396,16 @@ export function validateV12PerformanceEvidence(evidence, expectedIdentity) {
   });
 }
 
-/** Native build/device collection is deliberately owned by a later Phase 20 execution plan. */
-export async function executeV12InteractionBenchmark() {
-  fail("performance_collection_deferred");
+/**
+ * Release-native collection entry point. It refuses host fallbacks: the device
+ * launcher supplies the collector and the shard owns immutable publication.
+ */
+export async function executeV12InteractionBenchmark(options = {}) {
+  if (!options || typeof options.collect !== "function" || typeof options.runId !== "string" || !options.identity) {
+    fail("performance_collection_deferred");
+  }
+  const { writeV12PerformanceObservation } = await import("./v12-performance-shard.mjs");
+  return writeV12PerformanceObservation(options);
 }
 
 export async function runV12CalendarDiagnosticsCli(args = process.argv.slice(2), io = process, dependencies = {}) {
