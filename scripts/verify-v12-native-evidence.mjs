@@ -544,7 +544,25 @@ function finalReadinessPolicy(policy) {
   return Object.freeze({ ...policy });
 }
 
-export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact } = {}) {
+function validateV12AttendedBinding(attended, manifest) {
+  if (!finalPlainObject(attended) || attended.schema_version !== 1 || attended.suite !== "v12-samsung-attended"
+    || attended.mode !== "observation-only" || attended.release_authorized !== false || !Array.isArray(attended.rows)
+    || attended.rows.length !== 7 || !finalPlainObject(attended.identity)) finalFail("attended_invalid");
+  const identity = attended.identity;
+  if (identity.run_id !== manifest.run_id || identity.source_tree_sha256 !== manifest.source.tree_sha256
+    || identity.apk_sha256 !== manifest.build.apk.sha256 || identity.apk_signature_sha256 !== manifest.build.apk.signature_sha256
+    || identity.installed_apk_sha256 !== manifest.device.installed_apk_sha256 || identity.config_sha256 !== sha256(manifest.configuration.id)
+    || identity.device?.device_sha256 !== manifest.device.identity_sha256) finalFail("attended_identity_invalid");
+  const hashes = new Set();
+  for (const row of attended.rows) {
+    if (!finalExact(row, ["id", "scope", "instructions", "status", "png_sha256"])
+      || !/^S20-0[1-7]$/u.test(row.id) || !["passed", "failed"].includes(row.status) || !HASH.test(row.png_sha256) || hashes.has(row.png_sha256)) finalFail("attended_row_invalid");
+    hashes.add(row.png_sha256);
+  }
+  return attended;
+}
+
+export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact, attended = undefined } = {}) {
   const validatedManifest = validateV12RunManifest(manifest);
   if (finalHasPrivateValue(evidence) || finalHasPrivateValue(exceptions)) finalFail("privacy_invalid");
   if (typeof readArtifact !== "function") finalFail("artifact_reader_required");
@@ -553,7 +571,13 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
   const verdicts = inputs.matrix.rows.map(({ requirement_id }) => {
     const item = evidenceByRow.get(requirement_id);
     const exception = exceptionsByRow.get(requirement_id);
-    if (exception !== undefined) return { row_id: requirement_id, verdict: "ACCEPTED_EXCEPTION", ...exception };
+    // An exception records an accepted deviation from otherwise successful
+    // evidence. It is never allowed to rewrite a missing, failed, or
+    // human-review-required result into a softer ledger state.
+    if (exception !== undefined) {
+      if (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result)) finalFail("exception_masks_blocking_result");
+      return { row_id: requirement_id, verdict: "ACCEPTED_EXCEPTION", ...exception };
+    }
     return item.result === "N_A_REVIEWED"
       ? { row_id: requirement_id, verdict: item.result, ...item.na }
       : { row_id: requirement_id, verdict: item.result };
@@ -565,6 +589,7 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
   const readiness = hardBlock ? "NOT_READY"
     : counts.ACCEPTED_EXCEPTION > 0 ? (policy === undefined ? "NOT_READY" : "CONDITIONALLY_READY")
       : "READY";
+  const attendedRecord = attended === undefined ? null : validateV12AttendedBinding(attended, validatedManifest);
   return Object.freeze({
     ...baseLedger,
     run_id: validatedManifest.run_id,
@@ -582,6 +607,7 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
     gates: Object.freeze([
       Object.freeze({ id: "identity", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(validatedManifest)) }),
       Object.freeze({ id: "automated", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(evidence)) }),
+      ...(attendedRecord === null ? [] : [Object.freeze({ id: "attended", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(attendedRecord)) })]),
     ]),
     readiness,
     accepted_exception_count: counts.ACCEPTED_EXCEPTION,
@@ -791,9 +817,6 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     preflightWriteOnce(root, `${runPrefix}/preseal-validation.json`, report);
     return report;
   }
-  // Final sealing is intentionally not synthesised here: the record and rich
-  // source ledger must be present and independently validated by the caller.
-  // This prevents a CLI invocation from turning raw shards into release facts.
   preflightSafeFile(root, `${runPrefix}/preseal-validation.json`);
   preflightSafeFile(root, `${runPrefix}/attended-observations.json`);
   preflightFail("final_inputs_required");
