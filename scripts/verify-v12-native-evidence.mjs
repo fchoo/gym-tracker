@@ -617,16 +617,22 @@ export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson 
 // The Phase 20 interface is deliberately distinct from the Calendar verifier
 // above. Calendar's legacy flags remain available only when no unified mode is
 // supplied; accepting a mixture would silently validate the wrong contract.
-const V12_PREFLIGHT_SHARDS = Object.freeze({
-  sqlite: ["sqlite.json", "recovery.json"],
-  garmin: ["garmin/packaging-auth.json", "garmin/sync-read.json", "garmin/dedupe.json", "garmin/matching.json"],
-  calendar: ["calendar-transitions.json"],
-  "multi-plan": ["maestro/multi-plan.xml"],
-  workout: ["maestro/workout.xml"],
-  "library-running": ["maestro/library-running.xml"],
-  visual: ["semantics/accessibility.json", "geometry/hit-targets.json"],
-  performance: ["performance.json"],
+// This is the sole Phase 20 artifact registry.  Do not add a convenient
+// aggregate here: every plan-declared output has an identity-bearing entry so
+// preseal cannot be satisfied by a substitute sqlite.json/recovery.json pair.
+export const V12_ARTIFACT_REGISTRY = Object.freeze({
+  sqlite: Object.freeze(["sqlite/migration.json", "sqlite/portability.json", "sqlite/history.json"]),
+  recovery: Object.freeze(["recovery/lifecycle.json", "maestro/recovery.xml"]),
+  garmin: Object.freeze(["garmin/packaging-auth.json", "garmin/sync-read.json", "garmin/dedupe.json", "garmin/matching.json", "maestro/garmin-progress.xml"]),
+  calendar: Object.freeze(["calendar-transitions.json", "maestro/calendar.xml"]),
+  "multi-plan": Object.freeze(["maestro/multi-plan.xml"]),
+  workout: Object.freeze(["maestro/workout.xml"]),
+  "library-running": Object.freeze(["maestro/library-running.xml"]),
+  visual: Object.freeze(["screenshots/index.json", "comparison/index.json"]),
+  accessibility: Object.freeze(["semantics/accessibility.json", "geometry/hit-targets.json"]),
+  performance: Object.freeze(["performance.json"]),
 });
+const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
 const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
 
 function preflightFail(code) { throw new Error(`v12_preflight_${code}`); }
