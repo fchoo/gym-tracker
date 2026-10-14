@@ -13,19 +13,20 @@ const base = () => ({
   visual: { geometry_dp: 1, baseline_icon_dp: 2, token_exact: true, ciede2000: 2, pixel_percent: 0.4 },
 });
 
-test("returns PASS only after semantic and measured gates pass", () => {
+test("returns a comparison classification only after semantic and measured gates pass", () => {
   const result = compareV12Capture(base());
-  assert.equal(result.verdict, "PASS");
+  assert.equal(result.classification, "PASS");
+  assert.equal(Object.hasOwn(result, "verdict"), false);
   assert.equal(validateV12ComparisonShard({ schema_version: 1, results: [result] }), true);
 });
 
 test("semantic failure always wins over a clean pixel score", () => {
   const input = base(); input.semantic.route = false;
-  assert.equal(compareV12Capture(input).verdict, "FAIL");
+  assert.equal(compareV12Capture(input).classification, "FAIL");
   input.semantic.route = true; input.semantic.targets[0].width_dp = 47;
-  assert.equal(compareV12Capture(input).verdict, "FAIL");
+  assert.equal(compareV12Capture(input).classification, "FAIL");
   input.semantic.targets[0].width_dp = 48; input.semantic.commit_read_only = false;
-  assert.equal(compareV12Capture(input).verdict, "FAIL");
+  assert.equal(compareV12Capture(input).classification, "FAIL");
 });
 
 test("accepted deviations require exact owner metadata and remain non-PASS", () => {
@@ -33,7 +34,7 @@ test("accepted deviations require exact owner metadata and remain non-PASS", () 
   input.visual.pixel_percent = 3;
   input.semantic.accepted_deviation = { deviation_id: "DEV-01", owner_decision: "adaptive layout approved", decided_at: "2026-10-07", configurations: [input.configuration_id], rationale: "48dp targets require the recorded adaptive layout.", evidence_hashes: [hash] };
   const result = compareV12Capture(input);
-  assert.equal(result.verdict, "ACCEPTED_EXCEPTION");
+  assert.equal(result.classification, "ACCEPTED_EXCEPTION");
   assert.equal(result.counts_as_pass, false);
   input.semantic.accepted_deviation.configurations = ["AP-D-C360-P-F100"];
   assert.throws(() => compareV12Capture(input), /v12_visual_compare_exception_scope_invalid/u);
@@ -43,7 +44,7 @@ test("rejects identity drift, malformed masks, unaccepted mismatch, and forged P
   const drift = base(); drift.artifacts.mask_sha256 = "bad";
   assert.throws(() => compareV12Capture(drift), /v12_visual_compare_artifact_hash_invalid/u);
   const review = base(); review.visual.pixel_percent = 1;
-  assert.equal(compareV12Capture(review).verdict, "REVIEW_REQUIRED");
-  const forged = { ...compareV12Capture(base()), verdict: "PASS", semantic_passed: false };
+  assert.equal(compareV12Capture(review).classification, "REVIEW_REQUIRED");
+  const forged = { ...compareV12Capture(base()), classification: "PASS", semantic_passed: false, verdict: "PASS" };
   assert.throws(() => validateV12ComparisonShard({ schema_version: 1, results: [forged] }), /v12_visual_compare_result_invalid/u);
 });

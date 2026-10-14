@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { validateV12RunManifest as validateGenericV12RunManifest } from "./create-v12-run-manifest.mjs";
@@ -27,9 +27,9 @@ export const V12_MAESTRO_FLOW_CONTRACTS = Object.freeze({
   recovery: Object.freeze({ flow: "maestro/v1.2/recovery.yaml", sources: Object.freeze(["scripts/v12-recovery-shard.mjs"]) }),
   garmin: Object.freeze({ flow: "maestro/v1.2/garmin-progress.yaml", sources: Object.freeze(["scripts/v12-garmin-shard.mjs"]) }),
   calendar: Object.freeze({ flow: "maestro/v1.2/calendar.yaml", sources: Object.freeze(["scripts/v12-calendar-shard.mjs"]) }),
-  "multi-plan": Object.freeze({ flow: "maestro/v1.2/multi-plan.yaml", sources: Object.freeze(["scripts/capture-v12-visual.mjs"]) }),
-  workout: Object.freeze({ flow: "maestro/v1.2/workout.yaml", sources: Object.freeze(["scripts/capture-v12-visual.mjs"]) }),
-  "library-running": Object.freeze({ flow: "maestro/v1.2/library-running.yaml", sources: Object.freeze(["scripts/capture-v12-visual.mjs"]) }),
+  "multi-plan": Object.freeze({ flow: "maestro/v1.2/multi-plan.yaml", sources: Object.freeze(["src/testing/contracts/multiPlanRunning.contract.ts"]), prefix: "phase13-" }),
+  workout: Object.freeze({ flow: "maestro/v1.2/workout.yaml", sources: Object.freeze(["src/testing/contracts/phase15Workout.contract.ts"]), prefix: "workout." }),
+  "library-running": Object.freeze({ flow: "maestro/v1.2/library-running.yaml", sources: Object.freeze(["src/testing/contracts/phase17LibraryRunning.contract.ts"]), prefix: "library." }),
   accessibility: Object.freeze({ flow: "maestro/v1.2/accessibility.yaml", sources: Object.freeze(["scripts/v12-accessibility-shard.mjs"]) }),
 });
 
@@ -68,6 +68,37 @@ function containsVerdictAuthority(value) {
   ));
 }
 
+function immutableWrite(root, relativePath, value, write = undefined) {
+  if (typeof write === "function") return write(relativePath, value);
+  const absolute = path.resolve(root, relativePath);
+  if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) genericFail("immutable_output_invalid");
+  mkdirSync(path.dirname(absolute), { recursive: true });
+  writeFileSync(absolute, `${JSON.stringify(value)}\n`, { encoding: "utf8", flag: "wx" });
+}
+
+function sourceOrderedCaseIds(bytes, prefix) {
+  if (typeof prefix !== "string") return Object.freeze([]);
+  const ids = [...bytes.toString("utf8").matchAll(/\[\s*["']([^"']+)["']/gu)]
+    .map(([, id]) => id)
+    .filter((id) => id.startsWith(prefix));
+  const ordered = [...new Set(ids)];
+  if (ordered.length === 0) genericFail("source_case_ids_invalid");
+  return Object.freeze(ordered);
+}
+
+function validateSourceOrderedObservations(observations, caseIds, shard) {
+  if (!Array.isArray(observations) || observations.length !== caseIds.length) genericFail("observation_count_invalid");
+  const seen = new Set();
+  for (const [index, observation] of observations.entries()) {
+    if (!observation || observation.case_id !== caseIds[index] || observation.ordinal !== index + 1
+      || observation.fixture_id !== "v12-synthetic-fixtures-r18" || typeof observation.report_sha256 !== "string"
+      || !SHA256.test(observation.report_sha256) || seen.has(observation.case_id)
+      || containsVerdictAuthority(observation)) genericFail("observation_mapping_invalid");
+    seen.add(observation.case_id);
+  }
+  if (seen.size !== caseIds.length || shard === "recovery") genericFail("observation_mapping_invalid");
+}
+
 export function executeGenericV12Maestro(args = process.argv.slice(2), dependencies = {}) {
   const { runId, shard } = exactGenericArguments(args);
   const root = dependencies.root ?? ROOT;
@@ -88,6 +119,7 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
     source_sha256: Object.freeze(Object.fromEntries(contract.sources.map((file) => [file, sha256(readBytes(file))]))),
   });
   const before = snapshot();
+  const caseIds = contract.prefix === undefined ? Object.freeze([]) : sourceOrderedCaseIds(readBytes(contract.sources[0]), contract.prefix);
   const adapter = dependencies.adapter;
   if (!adapter || typeof adapter.snapshotSettings !== "function" || typeof adapter.execute !== "function" || typeof adapter.restoreSettings !== "function") genericFail("adapter_invalid");
   const settings = adapter.snapshotSettings();
@@ -105,6 +137,8 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
   const after = snapshot();
   if (before.flow_sha256 !== after.flow_sha256) genericFail("flow_hash_mismatch");
   if (JSON.stringify(before.source_sha256) !== JSON.stringify(after.source_sha256)) genericFail("source_hash_mismatch");
+  const rawObservations = structuredClone(result?.observations ?? []);
+  if (caseIds.length > 0) validateSourceOrderedObservations(rawObservations, caseIds, shard);
   const record = Object.freeze({
     schema_version: 1,
     producer: "v12-maestro-runner/v1",
@@ -121,17 +155,85 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
     }),
     flow_sha256: before.flow_sha256,
     source_sha256: before.source_sha256,
-    observations: Object.freeze(structuredClone(result?.observations ?? [])),
+    case_ids: caseIds,
+    observations: Object.freeze(rawObservations),
   });
-  const outputPath = `artifacts/native/v1.2/${runId}/shards/${shard}.json`;
-  if (typeof dependencies.writeImmutableJson === "function") dependencies.writeImmutableJson(outputPath, record);
-  else {
-    const absoluteOutput = path.resolve(root, outputPath);
-    if (!absoluteOutput.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absoluteOutput)) genericFail("immutable_output_invalid");
-    mkdirSync(path.dirname(absoluteOutput), { recursive: true });
-    writeFileSync(absoluteOutput, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx" });
-  }
+  if (["multi-plan", "workout", "library-running"].includes(shard)) {
+    immutableWrite(root, `artifacts/native/v1.2/${runId}/mapping/${shard}.json`, record, dependencies.writeImmutableJson);
+  } else immutableWrite(root, `artifacts/native/v1.2/${runId}/shards/${shard}.json`, record, dependencies.writeImmutableJson);
   return record;
+}
+
+/**
+ * Executes a generic source-owned Maestro flow with an ephemeral device lease.
+ * It is intentionally separate from recovery: recovery carries destructive-cut
+ * semantics that cannot be safely inferred for normal product flows.
+ */
+export function executeLiveV12GenericMaestro(args = process.argv.slice(2), dependencies = {}) {
+  const { runId, shard } = exactGenericArguments(args);
+  if (shard === "recovery") return executeLiveV12RecoveryMaestro(args, dependencies);
+  const root = dependencies.root ?? ROOT;
+  const readJson = dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
+  const manifest = readJson(`artifacts/native/v1.2/${runId}/build.json`);
+  try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
+  if (manifest.run_id !== runId || manifest.mode !== "live" || manifest.build.package !== V12_PACKAGE) genericFail("manifest_invalid");
+  const sourceIdentity = validateV12LiveSourceLineage(manifest, dependencies);
+  genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root, sourceIdentity));
+  const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
+  const flowPath = path.join(root, contract.flow);
+  if (!existsSync(flowPath)) genericFail("artifact_missing");
+  const sourceBytes = readFileSync(path.join(root, contract.sources[0]));
+  const caseIds = sourceOrderedCaseIds(sourceBytes, contract.prefix);
+  const serial = dependencies.serial ?? process.env.V12_DEVICE_SERIAL;
+  if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]+$/u.test(serial) || serial.startsWith("emulator-")) genericFail("ephemeral_device_required");
+  const execute = dependencies.execFileSync ?? execFileSync;
+  assertMaestroVersion(execute);
+  const outputRoot = `artifacts/native/v1.2/${runId}`;
+  const reportPath = `${outputRoot}/maestro/${shard}.xml`;
+  const mappingPath = `${outputRoot}/mapping/${shard}.json`;
+  const leasePath = path.join(root, `${outputRoot}/.leases/${shard}-${serial}.lease`);
+  if ([reportPath, mappingPath].some((file) => existsSync(path.join(root, file))) || existsSync(leasePath)) genericFail("immutable_output_invalid");
+  mkdirSync(path.dirname(leasePath), { recursive: true });
+  writeFileSync(leasePath, `${sha256(serial)}\n`, { flag: "wx" });
+  const adb = dependencies.adb ?? ((...command) => execute("adb", ["-s", serial, ...command], { encoding: "utf8" }).trim());
+  const reports = [];
+  let restored = false;
+  let outcome;
+  let previousSettings;
+  try {
+    previousSettings = Object.freeze({
+      font_scale: adb("shell", "settings", "get", "system", "font_scale"),
+      animator_duration_scale: adb("shell", "settings", "get", "global", "animator_duration_scale"),
+    });
+    for (const [index, caseId] of caseIds.entries()) {
+      const temporary = path.join(root, `${outputRoot}/maestro/.${shard}-${index + 1}.xml`);
+      execute("maestro", ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", "V12_FIXTURE_ID=v12-synthetic-fixtures-r18", "--format", "junit", "--output", temporary, flowPath], { stdio: "inherit" });
+      if (!existsSync(temporary)) genericFail("report_missing");
+      reports.push(readFileSync(temporary, "utf8"));
+      unlinkSync(temporary);
+    }
+    const reportText = `<testsuites>${reports.join("")}</testsuites>\n`;
+    const flowSha256 = sha256(readFileSync(flowPath));
+    const observations = caseIds.map((caseId, index) => Object.freeze({ case_id: caseId, ordinal: index + 1, fixture_id: "v12-synthetic-fixtures-r18", report_sha256: sha256(reports[index]) }));
+    const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }), case_ids: caseIds, observations });
+    validateSourceOrderedObservations(observations, caseIds, shard);
+    const absoluteReport = path.join(root, reportPath);
+    mkdirSync(path.dirname(absoluteReport), { recursive: true });
+    writeFileSync(absoluteReport, reportText, { flag: "wx" });
+    immutableWrite(root, mappingPath, mapping, dependencies.writeImmutableJson);
+    outcome = Object.freeze({ run_id: runId, shard, report: reportPath, mapping: mappingPath, cases: caseIds.length });
+  } finally {
+    try {
+      if (previousSettings !== undefined) {
+        adb("shell", "settings", "put", "system", "font_scale", previousSettings.font_scale);
+        adb("shell", "settings", "put", "global", "animator_duration_scale", previousSettings.animator_duration_scale);
+        restored = adb("shell", "settings", "get", "system", "font_scale") === previousSettings.font_scale
+          && adb("shell", "settings", "get", "global", "animator_duration_scale") === previousSettings.animator_duration_scale;
+      }
+    } finally { unlinkSync(leasePath); }
+  }
+  if (!restored) genericFail("settings_restore_failed");
+  return outcome;
 }
 
 export function validateV12LiveSourceLineage(manifest, dependencies = {}) {
@@ -409,7 +511,7 @@ export function executeV12Maestro(args = process.argv.slice(2), dependencies = {
 
 export function runV12MaestroCli(args = process.argv.slice(2), io = process) {
   try {
-    io.stdout.write(`${JSON.stringify(args.includes("--run") ? executeLiveV12RecoveryMaestro(args) : executeV12Maestro(args))}\n`);
+    io.stdout.write(`${JSON.stringify(args.includes("--run") ? executeLiveV12GenericMaestro(args) : executeV12Maestro(args))}\n`);
     return 0;
   } catch (error) {
     io.stderr.write(`${error.message}\n`);
