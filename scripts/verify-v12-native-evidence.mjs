@@ -28,8 +28,10 @@ import {
 import { validateV12RunManifest as validateGenericRunManifest } from "./create-v12-run-manifest.mjs";
 import {
   deriveV12Ledger as deriveContractLedger,
+  loadV12ContractInputs,
   V12_VERDICTS as CONTRACT_VERDICTS,
 } from "./v12-evidence-contract.mjs";
+import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -800,6 +802,26 @@ function preflightValidateArtifacts(root, runId, shardIds) {
   return { required, hashes };
 }
 
+function preflightRowEvidence(root, runId) {
+  const expected = loadV12ContractInputs({ root }).matrix.rows.map(({ requirement_id }) => requirement_id);
+  const rows = [];
+  for (const relative of Object.values(V12_ARTIFACT_REGISTRY).flat()) {
+    if (relative.endsWith(".xml")) continue;
+    const value = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/${relative}`), "utf8"));
+    if (!Array.isArray(value.row_evidence)) continue;
+    rows.push(...value.row_evidence);
+  }
+  if (rows.length !== expected.length || rows.some((entry, index) => entry?.row_id !== expected[index])) preflightFail("row_evidence_incomplete");
+  const seen = new Set();
+  for (const entry of rows) {
+    if (!finalExact(entry, ["row_id", "artifact", "sha256", "result", "configuration_id"])
+      || seen.has(entry.row_id) || !FINAL_RESULTS.has(entry.result) || entry.result === "N_A_REVIEWED" || !HASH.test(entry.sha256)) preflightFail("row_evidence_invalid");
+    seen.add(entry.row_id); finalSafeArtifactPath(entry.artifact, runId);
+    if (sha256(readFileSync(preflightSafeFile(root, entry.artifact))) !== entry.sha256) preflightFail("row_evidence_hash_invalid");
+  }
+  return rows;
+}
+
 export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   const options = parseV12EvidenceCliArgs(args);
   const { manifest, build_sha256 } = preflightManifest(root, options.run_id);
@@ -813,13 +835,23 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     const requiredPaths = new Set([`${runPrefix}/build.json`, ...artifacts.required.map((item) => `${runPrefix}/${item}`)]);
     const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial"));
     if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
-    const report = Object.freeze({ schema_version: 1, run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
+    const report = Object.freeze({ schema_version: 2, producer: "v12-preseal-validation/v2", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
     preflightWriteOnce(root, `${runPrefix}/preseal-validation.json`, report);
     return report;
   }
-  preflightSafeFile(root, `${runPrefix}/preseal-validation.json`);
-  preflightSafeFile(root, `${runPrefix}/attended-observations.json`);
-  preflightFail("final_inputs_required");
+  let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
+  if (preseal?.producer !== "v12-preseal-validation/v2" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
+  // A final seal repeats the full shard validation after the owner checkpoint.
+  preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
+  let attended; try { attended = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/attended-observations.json`), "utf8")); } catch { preflightFail("attended_invalid"); }
+  const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence, attended, readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)) });
+  const write = (relative, value) => preflightWriteOnce(root, relative, value);
+  const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: options.run_id, ledger, writeImmutableJson: write });
+  write(`${runPrefix}/parity-report.md`, generateV12ParityReport({ ledger: finalEvidence }));
+  write(".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", { schema_version: 1, producer: "v12-readiness-handoff/v1", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) });
+  for (const output of ["ui-state-matrix.json", "final-evidence.json", "parity-report.md"]) preflightSafeFile(root, `${runPrefix}/${output}`);
+  preflightSafeFile(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md");
+  return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: ledger.rows.length, readiness: ledger.readiness, release_authorized: false });
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
