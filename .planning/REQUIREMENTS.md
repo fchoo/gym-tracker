@@ -215,7 +215,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **VER-12**: Record owner-attended Samsung visual/usability/accessibility acceptance in addition to automated evidence.
 - [x] **VER-13**: Prepare signed personal-use Android release verification, recovery/rollback evidence and a complete parity/deviation review before any later release authorization.
 
-**Phase 20 active build-only identity:** `phase20-20261014T035323Z-114f1c857cb5` from source `114f1c857cb52cad13197205f02b1ff6a8635683` supersedes the archived pre-shard-producer run. It is build-only evidence, not a production or release authorization.
+**Phase 20 active build-only identity:** `phase20-20261014T051837Z-147022cf4928` from source `147022cf492883d4fc2445ee14b51b56773bfe90` and canonical source-tree SHA-256 `c672d39c9c702ccce4efc4dbf86b5a8562b9bf7a4795aad343cb6dd3185478cb` supersedes all archived invalidated pre-shard runs. It is build-only evidence, not a production or release authorization.
 
 ## Out of Scope
 
