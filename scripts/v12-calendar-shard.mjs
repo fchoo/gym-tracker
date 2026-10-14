@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
+import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
@@ -33,8 +34,18 @@ function xml(stages, id) { return `<?xml version="1.0" encoding="UTF-8"?><testsu
 export async function executeV12CalendarShardCli(args = process.argv.slice(2), dependencies = {}) { const { runId, mode } = parseV12CalendarShardCliArgs(args); const root = dependencies.root ?? process.cwd(); const exists = dependencies.outputExists ?? ((file) => existsSync(path.join(root, file))); const files = ARTIFACTS.map((file) => outputPath(runId, file)); const manifest = (dependencies.readBuild ?? (() => JSON.parse(readFileSync(path.join(root, outputPath(runId, "build.json")), "utf8"))))(); const id = identity(manifest, runId, dependencies); if (mode === "verify") { if (files.some((file) => !exists(file))) fail("output_missing"); const read = dependencies.readArtifact ?? ((file) => readFileSync(path.join(root, file), "utf8")); const observation = JSON.parse(read(files[0])); noPrivate(observation); if (observation?.run_id !== runId || JSON.stringify(observation?.identity) !== JSON.stringify(id) || !Array.isArray(observation?.stages)) fail("verify_invalid"); validatedStages({ stages: observation.stages }); const report = read(files[1]); if (typeof report !== "string" || !report.includes(`source_digest=\"${id.source_digest}\"`)) fail("verify_invalid"); return Object.freeze({ ok: true, mode, run_id: runId }); } if (files.some(exists) || exists(outputPath(runId, "calendar-failure.json"))) fail("output_exists"); const acquireLease = dependencies.acquireLease ?? (() => { fail("lease_required"); }); const releaseLease = dependencies.releaseLease ?? (() => true); const snapshotSettings = dependencies.snapshotSettings ?? (() => { fail("settings_snapshot_required"); }); const restoreSettings = dependencies.restoreSettings ?? (() => false); const executeNative = dependencies.executeNative ?? (() => { fail("native_executor_required"); }); const write = dependencies.writeImmutable ?? ((file, value) => { const target = path.join(root, file); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, typeof value === "string" ? value : `${JSON.stringify(value)}\n`, { flag: "wx" }); }); const writeFailure = dependencies.writeFailureReceipt ?? ((value) => write(outputPath(runId, "calendar-failure.json"), value)); let lease; let settings; let restored = false; try { lease = await acquireLease(); settings = await snapshotSettings(lease); const stages = validatedStages(await executeNative(lease, settings)); const output = { schema_version: 1, producer: "v12-calendar-shard/v2", run_id: runId, identity: id, stages }; noPrivate(output); await write(files[0], output); await write(files[1], xml(stages, id)); return Object.freeze({ ok: true, mode, run_id: runId }); } catch (error) { try { await writeFailure({ schema_version: 1, producer: "v12-calendar-shard/v2", run_id: runId, identity: id, failure_stage: settings === undefined ? "lease" : "native", failure_code: "execution_failed", failure_digest: sha({ runId, source: id.source_digest, code: "execution_failed" }) }); } catch { fail("failure_receipt_write_failed"); } throw error; } finally { if (settings !== undefined) restored = await restoreSettings(settings, lease) === true; if (lease !== undefined) await releaseLease(lease); if (settings !== undefined && !restored) fail("settings_restore_failed"); } }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const adapter = createV12NativeAdapter();
-  executeV12CalendarShardCli(process.argv.slice(2), {
+  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  executeV12CalendarShardCli(args, {
     acquireLease: adapter.acquireLease, releaseLease: adapter.releaseLease, snapshotSettings: adapter.snapshotSettings,
-    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeCalendar(lease, settings, { run_id: process.argv[3] }),
-  }).then((value) => process.stdout.write(`${JSON.stringify(value)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : "calendar_cli_failed"); process.exitCode = 1; });
+    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeCalendar(lease, settings, { run_id: runId }),
+    outputExists: () => false,
+    writeImmutable: (file, value) => writes.push([file, value]),
+    writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/calendar-failure.json`, value]),
+  }).then((value) => {
+    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "calendar", produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
+    process.stdout.write(`${JSON.stringify(value)}\n`);
+  }).catch((error) => {
+    if (RUN_ID.test(runId ?? "")) { try { recordV12AtomicFailure({ runId, shard: "calendar", error }); } catch { /* the first immutable receipt wins */ } }
+    console.error(error instanceof Error ? error.message : "calendar_cli_failed"); process.exitCode = 1;
+  });
 }

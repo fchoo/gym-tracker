@@ -22,6 +22,36 @@ function noLinks(root, target) {
   }
 }
 function fsyncFile(file) { const descriptor = openSync(file, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
+function fsyncDirectory(directory) { const descriptor = openSync(directory, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
+function safeFailure(error, runId, shard) {
+  const code = error instanceof Error ? error.message.replace(/[^a-z0-9_-]/giu, "_").slice(0, 96) : "unknown";
+  return Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-failure/v2", run_id: runId, shard, stage: "publication", failure_code: code, failure_digest: sha256(`${runId}\n${shard}\n${code}`), identity_sha256: sha256(`${runId}\n${shard}`), privacy: "safe", retry_allowed: false });
+}
+export function recordV12AtomicFailure({ root = process.cwd(), runId, shard, error } = {}) {
+  if (!SAFE.test(shard ?? "")) fail("arguments_invalid");
+  const runRoot = safeRoot(root, runId); const failure = path.join(runRoot, "failures", `${shard}.json`);
+  if (existsSync(path.join(runRoot, "publication", `${shard}.json`)) || existsSync(failure)) fail("attempt_consumed");
+  mkdirSync(path.dirname(failure), { recursive: true }); noLinks(runRoot, failure);
+  writeFileSync(failure, `${JSON.stringify(safeFailure(error, runId, shard))}\n`, { flag: "wx" });
+  fsyncFile(failure); fsyncDirectory(path.dirname(failure));
+  return Object.freeze({ failure_path: path.relative(path.resolve(root), failure) });
+}
+function assertCompleteStage(stage, members) {
+  const actual = [];
+  const walk = (directory, prefix = "") => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const target = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) fail("symlink_forbidden");
+      if (entry.isDirectory()) walk(target, relativePath);
+      else if (entry.isFile()) actual.push(relativePath);
+      else fail("stage_member_invalid");
+    }
+  };
+  walk(stage);
+  const expected = new Set([...members.map(({ artifact }) => artifact), "manifest.json"]);
+  if (actual.length !== expected.size || actual.some((artifact) => !expected.has(artifact))) fail("stage_member_invalid");
+}
 
 /** Stage members privately, write a manifest last, then publish exactly once. */
 export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true } = {}) {
@@ -41,34 +71,39 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
   try {
     produce(Object.freeze({ write, stage_root: stage }));
     if (members.length === 0 || validate(Object.freeze([...members]), stage) !== true) fail("validation_failed");
-    const manifest = { schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, members, completed: true };
-    write("manifest.json", manifest);
+    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, members: Object.freeze([...members]), completed: true });
+    const stagedManifest = path.join(stage, "manifest.json");
+    writeFileSync(stagedManifest, `${JSON.stringify(manifest)}\n`, { flag: "wx" }); fsyncFile(stagedManifest);
+    assertCompleteStage(stage, members);
+    fsyncDirectory(stage);
     for (const member of members) {
       if (member.artifact === "manifest.json") continue;
       const from = path.join(stage, member.artifact); const to = path.join(runRoot, member.artifact); noLinks(runRoot, to);
       if (existsSync(to)) fail("output_exists");
-      mkdirSync(path.dirname(to), { recursive: true }); renameSync(from, to);
+      mkdirSync(path.dirname(to), { recursive: true }); fsyncDirectory(path.dirname(to)); renameSync(from, to); fsyncDirectory(path.dirname(to));
     }
-    mkdirSync(path.dirname(finalManifest), { recursive: true }); renameSync(path.join(stage, "manifest.json"), finalManifest);
+    mkdirSync(path.dirname(finalManifest), { recursive: true }); fsyncDirectory(path.dirname(finalManifest)); renameSync(path.join(stage, "manifest.json"), finalManifest); fsyncDirectory(path.dirname(finalManifest));
     rmSync(stage, { recursive: true, force: true });
     try { rmdirSync(path.dirname(stage)); } catch { /* another attempt may own the parent */ }
     return Object.freeze({ manifest, manifest_path: path.relative(path.resolve(root), finalManifest) });
   } catch (error) {
     rmSync(stage, { recursive: true, force: true });
     try { rmdirSync(path.dirname(stage)); } catch { /* preserve concurrent staging */ }
-    mkdirSync(path.dirname(failure), { recursive: true });
-    if (!existsSync(failure)) writeFileSync(failure, `${JSON.stringify({ schema_version: 1, producer: "v12-atomic-shard-failure/v1", run_id: runId, shard, failure_code: error instanceof Error ? error.message.replace(/[^a-z0-9_-]/giu, "_").slice(0, 96) : "unknown", privacy: "safe", retry_allowed: false })}\n`, { flag: "wx" });
+    if (!existsSync(failure)) recordV12AtomicFailure({ root, runId, shard, error });
     throw error;
   }
 }
 
 export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}) {
   const runRoot = safeRoot(root, runId); if (!SAFE.test(shard ?? "") || existsSync(path.join(runRoot, "failures", `${shard}.json`)) || existsSync(path.join(runRoot, ".staging"))) fail("incomplete_attempt");
-  const manifest = JSON.parse(readFileSync(path.join(runRoot, "publication", `${shard}.json`), "utf8"));
+  const manifestPath = path.join(runRoot, "publication", `${shard}.json`);
+  noLinks(runRoot, manifestPath);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (manifest?.run_id !== runId || manifest.shard !== shard || manifest.completed !== true || !Array.isArray(manifest.members)) fail("manifest_invalid");
   for (const member of manifest.members) {
     if (member.artifact === "manifest.json") continue;
     const file = path.join(runRoot, relative(member.artifact)); noLinks(runRoot, file);
+    if (!lstatSync(file).isFile()) fail("member_invalid");
     const bytes = readFileSync(file); if (sha256(bytes) !== member.sha256 || bytes.length !== member.size_bytes) fail("member_invalid");
   }
   return true;
