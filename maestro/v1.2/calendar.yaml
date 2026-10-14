@@ -163,6 +163,41 @@ tags: [calendar-tracer, native-only, development-test, phase-16, phase-20, obser
       - pressKey: DPAD_RIGHT
       - pressKey: ENTER
       - assertVisible: "Collapse day and return to month"
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'month-year-boundary'} }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'leap-february'} }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'four-row-month'} }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'five-row-month'} }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'six-row-month'} }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'dev-01-padding'} }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+      - assertVisible: { id: "calendar-month-title" }
+- runFlow:
+    when: { true: ${PHASE16_CALENDAR_STAGE == 'dev-02-light-title'} }
+    commands:
+      - assertVisible: { id: "calendar-month-viewport" }
+      - assertVisible: { id: "calendar-month-title" }
 - takeScreenshot: "calendar-${PHASE16_CALENDAR_STAGE}"
 # Phase 20's shard binds the emitted Phase 16 source trace to timestamps,
 # geometry, semantic order, callback generation, focused-week and motion fields.
