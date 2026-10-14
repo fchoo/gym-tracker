@@ -22,6 +22,10 @@ import {
   parseNativeContractLogOutput,
   parseNativeContractLogProgress,
 } from './native-contract-log-transport.mjs';
+import {
+  resolveEphemeralNativeDevice,
+  sanitizeNativeDeviceMessage,
+} from './native-device-selection.mjs';
 import { validatePhase19NativeManifest } from './run-phase19-native-evidence.mjs';
 
 const PHASE2_AGGREGATE_TIMEOUT_MS = 300_000;
@@ -36,6 +40,7 @@ const projectRoot = process.cwd();
 const argumentsList = process.argv.slice(2);
 let manifestArgument = '';
 let requestedSuite = '';
+let requestedDevice;
 let legacyExpectedCount;
 
 function fail(message) {
@@ -65,10 +70,15 @@ for (let index = 0; index < argumentsList.length; index += 1) {
     index += 1;
   } else if (argument.startsWith('--suite=')) {
     requestedSuite = argument.slice('--suite='.length);
+  } else if (argument === '--device') {
+    requestedDevice = argumentsList[index + 1] ?? '';
+    index += 1;
+  } else if (argument.startsWith('--device=')) {
+    requestedDevice = argument.slice('--device='.length);
   } else if (argument.startsWith('--assert-all=')) {
     legacyExpectedCount = Number(argument.slice('--assert-all='.length));
   } else {
-    fail(`unknown argument: ${argument}`);
+    fail('unknown argument.');
   }
 }
 
@@ -230,6 +240,7 @@ const suiteResultPath = path.join(path.dirname(manifestPath), `${suite}.json`);
 const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'gym-native-contracts-'));
 const installedApkCopy = path.join(temporaryDirectory, 'installed.apk');
 let adbCallCount = 0;
+let ephemeralDevice;
 
 function command(name, args, options = {}) {
   const {
@@ -254,9 +265,7 @@ function command(name, args, options = {}) {
           }
           settled = true;
           child.kill('SIGKILL');
-          reject(new Error(
-            `${name} timed out after ${timeoutMs} ms: ${args.join(' ')}`,
-          ));
+          reject(new Error(`${name} timed out after ${timeoutMs} ms.`));
         }, timeoutMs);
     const append = (target, chunk) => {
       outputBytes += chunk.length;
@@ -295,7 +304,7 @@ function command(name, args, options = {}) {
       if (code === 0) {
         resolve(stdout.trim());
       } else {
-        reject(new Error(`${name} exited ${code}: ${stderr || stdout}`));
+        reject(new Error(sanitizeNativeDeviceMessage(`${stderr}${stdout}`, ephemeralDevice)));
       }
     });
   });
@@ -316,7 +325,7 @@ function adb(...args) {
   }
   return command(
     'adb',
-    ['-s', manifest.device.serial, ...args],
+    ['-s', ephemeralDevice, ...args],
     { timeoutMs: NATIVE_ADB_COMMAND_TIMEOUT_MS },
   );
 }
@@ -456,7 +465,7 @@ async function dumpResult(runId) {
       'adb',
       [
         '-s',
-        manifest.device.serial,
+        ephemeralDevice,
         'logcat',
         '-d',
         '-v',
@@ -509,7 +518,7 @@ try {
       'manifest must be schema v1 embedded release development-test evidence.',
     );
   }
-  if (!manifest.device?.serial || !manifest.package || !manifest.apk?.sha256) {
+  if (!manifest.device || !manifest.package || !manifest.apk?.sha256) {
     throw new Error('manifest is missing device, package, or APK identity.');
   }
   if (!manifestSupportsRequestedSuite(manifest.suite, suite)) {
@@ -525,6 +534,13 @@ try {
       : '/opt/homebrew/share/android-commandlinetools/platform-tools',
     process.env.PATH,
   ].join(path.delimiter);
+
+  ephemeralDevice = await resolveEphemeralNativeDevice({
+    explicitDevice: requestedDevice,
+    androidSerial: process.env.ANDROID_SERIAL,
+    manifestDevice: manifest.device,
+    adb: (...args) => command('adb', args, { timeoutMs: NATIVE_ADB_COMMAND_TIMEOUT_MS }),
+  });
 
   const runId = `${suite}-${Date.now()}`;
   const deepLink = `gymtracker-devtest://__native-contracts?runId=${runId}&suite=${encodeURIComponent(suite)}`;
@@ -577,7 +593,6 @@ try {
     package: manifest.package,
     apk: manifest.apk,
     installed_apk: {
-      device_path: installedPath,
       sha256: installedSha256,
       matches_retained_apk: installedSha256 === manifest.apk.sha256,
     },
@@ -624,7 +639,7 @@ try {
     apk_sha256: result.apk.sha256,
   }));
 } catch (error) {
-  emitFailure(error.message);
+  emitFailure(sanitizeNativeDeviceMessage(error instanceof Error ? error.message : '', ephemeralDevice));
   process.exitCode = 1;
 } finally {
   await rm(temporaryDirectory, { force: true, recursive: true });

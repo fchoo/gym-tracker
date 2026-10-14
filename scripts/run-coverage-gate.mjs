@@ -112,11 +112,13 @@ const phase18EvidenceFiles = [
   "scripts/verify-phase18-garmin-proof.mjs",
 ];
 const phase16EvidenceTests = [
+  "scripts/native-device-selection.test.mjs",
   "scripts/v12-calendar-comparison.test.mjs",
   "scripts/v12-evidence-scripts.test.mjs",
   "scripts/v12-calendar-evidence-coverage.test.mjs",
 ];
 const phase16EvidenceFiles = [
+  "scripts/native-device-selection.mjs",
   "scripts/benchmark-v12-interactions.mjs",
   "scripts/compare-v12-calendar.mjs",
   "scripts/run-v12-maestro.mjs",

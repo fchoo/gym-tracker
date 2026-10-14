@@ -112,13 +112,16 @@ function nativeResultToInput(manifest, result) {
 }
 
 export function parseV12SqliteShardCliArgs(args) {
-  if (!Array.isArray(args) || args.length !== 3 || args[0] !== '--run' || !RUN_ID.test(args[1] ?? '')
+  if (!Array.isArray(args) || args[0] !== '--run' || !RUN_ID.test(args[1] ?? '')
     || !['--execute', '--verify'].includes(args[2])) fail('cli_invalid');
-  return Object.freeze({ runId: args[1], mode: args[2].slice(2) });
+  let device;
+  if (args.length === 5 && args[3] === '--device' && typeof args[4] === 'string' && /^[^\u0000\r\n]{1,512}$/u.test(args[4])) device = args[4];
+  else if (args.length !== 3) fail('cli_invalid');
+  return Object.freeze({ runId: args[1], mode: args[2].slice(2), ...(device === undefined ? {} : { device }) });
 }
 
 export async function executeV12SqliteShardCli(args = process.argv.slice(2), dependencies = {}) {
-  const { runId, mode } = parseV12SqliteShardCliArgs(args);
+  const { runId, mode, device } = parseV12SqliteShardCliArgs(args);
   const root = dependencies.root ?? process.cwd();
   const outputDirectory = safeRunPath(runId, 'sqlite');
   const outputPaths = ['migration.json', 'portability.json', 'history.json'].map((name) => path.join(root, outputDirectory, name));
@@ -140,15 +143,20 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
     }
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
-  const executeNative = dependencies.executeNative ?? (async () => {
-    execFileSync(process.execPath, ['scripts/run-native-sqlite-contracts.mjs', '--suite', 'v1.2-acceptance', '--manifest', 'artifacts/native/v1.2-acceptance/build.json'], { cwd: root, stdio: 'inherit' });
+  const executeNative = dependencies.executeNative ?? (async (ephemeralDevice) => {
+    const command = ['scripts/run-native-sqlite-contracts.mjs', '--suite', 'v1.2-acceptance', '--manifest', 'artifacts/native/v1.2-acceptance/build.json'];
+    if (ephemeralDevice !== undefined) command.push('--device', ephemeralDevice);
+    try { execFileSync(process.execPath, command, { cwd: root, stdio: 'inherit' }); }
+    catch { fail('native_runner_failed'); }
     return readJson(path.join(root, 'artifacts/native/v1.2-acceptance/v1.2-acceptance.json'));
   });
-  const observations = await executeV12SqliteShard(nativeResultToInput(manifest, await executeNative()), async (name, value) => {
+  const ephemeralDevice = device ?? dependencies.device ?? process.env.ANDROID_SERIAL;
+  const writeObservation = dependencies.writeObservation ?? (async (name, value) => {
     const file = path.join(root, outputDirectory, name);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, `${JSON.stringify(value)}\n`, { flag: 'wx' });
   });
+  const observations = await executeV12SqliteShard(nativeResultToInput(manifest, await executeNative(ephemeralDevice)), writeObservation);
   return Object.freeze({ ok: true, mode, run_id: runId, observations });
 }
 

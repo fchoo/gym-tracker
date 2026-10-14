@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { phase18DeviceIdentitySha256 } from './phase18-device-identity.mjs';
@@ -30,6 +31,21 @@ test('accepts an explicit ephemeral device only when its canonical live identity
     manifestDevice,
     adb: async (...args) => {
       assert.equal(args[0], '-s');
+      if (args.at(-1) === 'get-state') return 'device';
+      if (args.at(-1) === 'ro.product.cpu.abi') return facts.abi;
+      if (args.at(-1) === 'ro.build.version.sdk') return facts.apiLevel;
+      if (args.at(-1) === 'ro.product.model') return facts.model;
+      throw new Error('unexpected adb operation');
+    },
+  });
+  assert.equal(selected, serial);
+});
+
+test('accepts ANDROID_SERIAL as an equally ephemeral device lease', async () => {
+  const selected = await resolveEphemeralNativeDevice({
+    androidSerial: serial,
+    manifestDevice,
+    adb: async (...args) => {
       if (args.at(-1) === 'get-state') return 'device';
       if (args.at(-1) === 'ro.product.cpu.abi') return facts.abi;
       if (args.at(-1) === 'ro.build.version.sdk') return facts.apiLevel;
@@ -86,4 +102,40 @@ test('rejects raw manifest serial fields and keeps errors and log-safe messages 
   const safe = sanitizeNativeDeviceMessage(`adb -s ${serial} exited 1`, serial);
   assert.doesNotMatch(safe, new RegExp(serial, 'u'));
   assert.match(safe, /native_device_command_failed/u);
+  const runner = readFileSync('scripts/run-native-sqlite-contracts.mjs', 'utf8');
+  assert.match(runner, /resolveEphemeralNativeDevice/u);
+  assert.doesNotMatch(runner, /manifest\.device\.serial/u);
+  assert.doesNotMatch(runner, /device_path:/u);
+});
+
+test('rejects malformed manifests, leases, ADB state, duplicate listings, and malformed live facts', async () => {
+  assert.throws(() => assertPrivacySafeNativeDeviceManifest(null), /native_device_manifest_invalid/u);
+  assert.throws(() => assertPrivacySafeNativeDeviceManifest({ ...manifestDevice, identity_sha256: 'invalid' }), /native_device_manifest_invalid/u);
+  await assert.rejects(resolveEphemeralNativeDevice({ manifestDevice, adb: null }), /native_device_selection_invalid/u);
+  await assert.rejects(resolveEphemeralNativeDevice({ manifestDevice, adb: async () => undefined }), /native_device_selection_invalid/u);
+  await assert.rejects(resolveEphemeralNativeDevice({ explicitDevice: 'invalid\nserial', manifestDevice, adb: async () => 'device' }), /native_device_selection_invalid/u);
+  await assert.rejects(
+    resolveEphemeralNativeDevice({
+      manifestDevice,
+      adb: async () => `List of devices attached\n${serial}\tdevice\n${serial}\tdevice\n`,
+    }),
+    /native_device_selection_invalid/u,
+  );
+  await assert.rejects(
+    resolveEphemeralNativeDevice({ explicitDevice: serial, manifestDevice, adb: async () => 'offline' }),
+    /native_device_selection_invalid/u,
+  );
+  await assert.rejects(
+    resolveEphemeralNativeDevice({
+      explicitDevice: serial,
+      manifestDevice,
+      adb: async (...args) => {
+        if (args.at(-1) === 'get-state') return 'device';
+        if (args.at(-1) === 'ro.product.cpu.abi') return facts.abi;
+        if (args.at(-1) === 'ro.build.version.sdk') return facts.apiLevel;
+        return `${facts.model}\n`;
+      },
+    }),
+    /native_device_identity_mismatch/u,
+  );
 });

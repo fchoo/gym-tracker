@@ -7,6 +7,7 @@ import {
   parseV12SqliteShardCliArgs,
   validateV12SqliteShard,
 } from './v12-sqlite-shard.mjs';
+import { createV12RunManifest } from './create-v12-run-manifest.mjs';
 
 const digest = 'a'.repeat(64);
 const caseIds = [
@@ -62,9 +63,9 @@ test('forwards an ephemeral device lease to the native runner without retaining 
   const runId = 'phase20-20261014T031137Z-5917481c1fd1';
   const serial = 'emulator-5554';
   const invocation = [];
-  const manifest = {
-    run_id: runId,
-    source: { tree_sha256: digest, head: 'b'.repeat(40), dirty: false, package_json_sha256: digest, package_lock_sha256: digest },
+  const manifest = createV12RunManifest({ input: {
+    requested_run_id: runId, created_at: '2026-10-14T03:11:37Z',
+    source: { tree_sha256: digest, head: '5917481c1fd1' + 'b'.repeat(28), dirty: false, package_json_sha256: digest, package_lock_sha256: digest },
     fixtures: { registry_sha256: digest },
     build: { profile: 'development-test', package: 'com.fchoo.gymtracker.devtest', version_name: '1.2.0', version_code: 1, apk: { path: 'artifacts/native/v1.2-acceptance/app.apk', sha256: digest, size_bytes: 1, page_alignment_verified: true, signature_sha256: digest, certificate_sha256: digest } },
     device: { identity_sha256: digest, abi: 'arm64-v8a', installed_apk_sha256: digest, settings_sha256: digest, restoration_sha256: digest },
@@ -72,13 +73,13 @@ test('forwards an ephemeral device lease to the native runner without retaining 
     prototype: { revision: 18, approval_sha256: digest, html_sha256: digest },
     configuration: { id: 'AP-L-C390-P-F100' },
     created_at: '2026-10-14T03:11:37Z',
-  };
+  } });
   const native = { status: 'passed', contract: { total: 10, passed: 10, failed: 0, skipped: 0, cases: caseIds.map((id) => ({ id, status: 'passed', durationMs: 1 })) } };
   const writes = [];
   const result = await executeV12SqliteShardCli(['--run', runId, '--execute', '--device', serial], {
     root: '/synthetic-root', sourceDigest: digest, readBuild: () => manifest, outputExists: () => false,
     executeNative: async (device) => { invocation.push(device); return native; },
-    writeFile: (file, value) => writes.push({ file, value }),
+    writeObservation: async (file, value) => writes.push({ file, value }),
   });
   assert.deepEqual(invocation, [serial]);
   assert.doesNotMatch(JSON.stringify({ result, writes }), new RegExp(serial, 'u'));
