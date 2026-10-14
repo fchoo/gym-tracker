@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
+import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 
 const require = createRequire(import.meta.url);
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -145,7 +146,7 @@ export function runV12VisualComparisonCli(args = process.argv.slice(2), io = pro
   try {
     const { runId, command } = parseCli(args);
     if (command === "--verify") verifyV12VisualComparison({ runId });
-    else executeV12VisualComparison({ runId, comparisons: createV12NativeAdapter().compare({ run_id: runId }) });
+    else publishV12AtomicShard({ runId, shard: "comparison", produce: ({ write }) => executeV12VisualComparison({ runId, comparisons: createV12NativeAdapter().compare({ run_id: runId }), write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) }) });
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

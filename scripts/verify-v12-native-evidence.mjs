@@ -833,7 +833,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     const artifacts = preflightValidateArtifacts(root, options.run_id, Object.keys(V12_PREFLIGHT_SHARDS));
     const allFiles = preflightCollectFiles(root, options.run_id);
     const requiredPaths = new Set([`${runPrefix}/build.json`, ...artifacts.required.map((item) => `${runPrefix}/${item}`)]);
-    const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial"));
+    const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial") || item.includes("/.staging/") || item.includes("/failures/"));
     if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
     const report = Object.freeze({ schema_version: 2, producer: "v12-preseal-validation/v2", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
     preflightWriteOnce(root, `${runPrefix}/preseal-validation.json`, report);

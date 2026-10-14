@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
+import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 
 import {
   V12_BROWSER_WALK_STATE_IDS,
@@ -180,7 +181,7 @@ export function runV12VisualCaptureCli(args = process.argv.slice(2), io = proces
   try {
     const { runId, command } = parseVisualCli(args);
     if (command === "--verify") verifyV12VisualCapture({ runId });
-    else executeLiveV12VisualCapture({ runId, capture: createV12NativeAdapter().capture });
+    else publishV12AtomicShard({ runId, shard: "visual", produce: ({ write }) => executeLiveV12VisualCapture({ runId, capture: createV12NativeAdapter().capture, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) }) });
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }
