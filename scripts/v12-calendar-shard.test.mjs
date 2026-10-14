@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { executeV12CalendarShard, validateV12CalendarShard } from "./v12-calendar-shard.mjs";
+import {
+  executeV12CalendarShard,
+  executeV12CalendarShardCli,
+  parseV12CalendarShardCliArgs,
+  validateV12CalendarShard,
+  V12_CALENDAR_SHARD_STAGE_IDS,
+} from "./v12-calendar-shard.mjs";
 
 const observation = Object.freeze({
   sourceDigest: "a".repeat(64),
@@ -22,4 +28,72 @@ test("Calendar shard rejects final-only, stale callback, translation drift, and 
   assert.throws(() => validateV12CalendarShard({ ...observation, samples: observation.samples.map((sample) => ({ ...sample, callbackCount: 0 })) }), /calendar_callback_invalid/);
   assert.throws(() => validateV12CalendarShard({ ...observation, samples: observation.samples.map((sample) => ({ ...sample, translationDp: 97 })) }), /calendar_translation_invalid/);
   assert.throws(() => executeV12CalendarShard({ ...observation, finalVerdict: "PASS" }), /calendar_final_verdict_forbidden/);
+});
+
+test("Calendar shard exposes exhaustive stage order and strict immutable CLI arguments", () => {
+  assert.deepEqual(V12_CALENDAR_SHARD_STAGE_IDS, [
+    "drag-forward-10", "drag-forward-24_9", "drag-forward-25", "drag-forward-25_1",
+    "drag-forward-release-below", "drag-forward-release-exact", "drag-forward-release-above",
+    "drag-backward-10", "drag-backward-24_9", "drag-backward-25", "drag-backward-25_1",
+    "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above",
+    "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal",
+    "second-input-interrupt", "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row",
+    "adjacent-week", "month-year-boundary", "leap-february", "four-row-month", "five-row-month", "six-row-month",
+    "rapid-reverse-input", "rotation-during-transition", "background-during-transition", "reduced-motion", "dev-01-padding", "dev-02-light-title",
+  ]);
+  assert.deepEqual(
+    parseV12CalendarShardCliArgs(["--run", "phase20-20261014T031137Z-5917481c1fd1", "--execute"]),
+    { runId: "phase20-20261014T031137Z-5917481c1fd1", mode: "execute" },
+  );
+  assert.throws(() => parseV12CalendarShardCliArgs(["--run", "bad", "--execute"]), /calendar_cli_invalid/);
+});
+
+test("Calendar shard writes one privacy-safe immutable report and rejects placeholder, duplicate, stale, and verdict-injected traces", async () => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const manifest = {
+    run_id: runId,
+    source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) },
+    fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
+    configuration: { id: "AP-L-C390-P-F100" },
+  };
+  const native = {
+    stages: V12_CALENDAR_SHARD_STAGE_IDS.map((id, order) => ({
+      id, order, status: "NOT_RUN", samples: [
+        { timestampMs: order * 2 + 1, widthDp: 400, dxDp: id.includes("25") ? -100 : -40, dyDp: 0, intentOwner: "horizontal", translationDp: id.includes("25") ? -100 : -40, title: "synthetic", selectedCivilDate: "2026-11-01", generation: 1, focusedWeek: "synthetic-week", rowBounds: [0, 64], callbackCount: 1, focusIdentity: "synthetic-focus", motion: id === "reduced-motion" ? "reduced" : "normal" },
+        { timestampMs: order * 2 + 2, widthDp: 400, dxDp: id.includes("25") ? -100 : -40, dyDp: 0, intentOwner: "horizontal", translationDp: id.includes("25") ? -100 : -40, title: "synthetic", selectedCivilDate: "2026-11-01", generation: 1, focusedWeek: "synthetic-week", rowBounds: [0, 64], callbackCount: 1, focusIdentity: "synthetic-focus", motion: id === "reduced-motion" ? "reduced" : "normal" },
+      ],
+    })),
+  };
+  const writes = new Map();
+  const result = await executeV12CalendarShardCli(["--run", runId, "--execute"], {
+    root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+    isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
+    snapshotSettings: () => ({}), restoreSettings: () => true, executeNative: () => native,
+    writeImmutable: (file, value) => writes.set(file, value), outputExists: () => false,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(writes.size, 2);
+  assert.doesNotMatch(JSON.stringify([...writes.values()]), /serial|route|coordinate|payload|bodyweight|verdict|readiness|seal/i);
+  const malformed = structuredClone(native);
+  malformed.stages[1].id = malformed.stages[0].id;
+  await assert.rejects(
+    executeV12CalendarShardCli(["--run", runId, "--execute"], {
+      root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      isAncestor: () => true, acquireLease: () => ({}), releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
+      executeNative: () => malformed, writeImmutable: () => {}, outputExists: () => false,
+    }),
+    /calendar_native_stages_invalid/,
+  );
+  const injected = structuredClone(native);
+  injected.stages[0].samples[0].injected = true;
+  await assert.rejects(
+    executeV12CalendarShardCli(["--run", runId, "--execute"], {
+      root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      isAncestor: () => true, acquireLease: () => ({}), releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
+      executeNative: () => injected, writeImmutable: () => {}, outputExists: () => false,
+    }),
+    /calendar_native_stages_invalid/,
+  );
 });

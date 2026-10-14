@@ -1,53 +1,33 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
+
 const SHA256 = /^[a-f0-9]{64}$/u;
+const HEAD = /^[a-f0-9]{40}$/u;
+const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const PRIVATE = /(?:account|credential|password|token|secret|payload|route|coordinate|subject|serial|bodyweight|heart.?rate|sql|path)/iu;
+const AUTHORITY = /(?:^|_)(?:final.?verdict|verdict|readiness|seal)(?:$|_)/iu;
+export const V12_CALENDAR_SHARD_STAGE_IDS = Object.freeze([
+  "drag-forward-10", "drag-forward-24_9", "drag-forward-25", "drag-forward-25_1", "drag-forward-release-below", "drag-forward-release-exact", "drag-forward-release-above", "drag-backward-10", "drag-backward-24_9", "drag-backward-25", "drag-backward-25_1", "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above", "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal", "second-input-interrupt", "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "adjacent-week", "month-year-boundary", "leap-february", "four-row-month", "five-row-month", "six-row-month", "rapid-reverse-input", "rotation-during-transition", "background-during-transition", "reduced-motion", "dev-01-padding", "dev-02-light-title",
+]);
+const ARTIFACTS = Object.freeze(["calendar-transitions.json", "maestro/calendar.xml"]);
+function fail(code) { throw new Error(`calendar_${code}`); }
+function record(value, code) { if (value === null || typeof value !== "object" || Array.isArray(value)) fail(code); return value; }
+function exactKeys(value, keys) { return Object.keys(record(value, "schema_invalid")).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
+function sha(value) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
+function noPrivate(value, location = "observation") { if (typeof value === "string") { if (/(?:@|\/Users\/|\/home\/|\b(?:lat|lon|gps)\b)/iu.test(value)) fail(`private_value:${location}`); return; } if (Array.isArray(value)) return value.forEach((item, index) => noPrivate(item, `${location}[${index}]`)); if (value && typeof value === "object") for (const [key, child] of Object.entries(value)) { if (PRIVATE.test(key) || AUTHORITY.test(key)) fail(`private_field:${location}.${key}`); noPrivate(child, `${location}.${key}`); } }
+function outputPath(runId, artifact) { if (!RUN_ID.test(runId) || ![...ARTIFACTS, "calendar-failure.json", "build.json"].includes(artifact)) fail("cli_invalid"); return `artifacts/native/v1.2/${runId}/${artifact}`; }
+function execution(value) { if (!["NOT_RUN", "REVIEW_REQUIRED", "FAIL", "PASS"].includes(value)) fail("execution_invalid"); }
+function sample(value, previous) { record(value, "sample_invalid"); if (!exactKeys(value, ["timestampMs", "widthDp", "dxDp", "dyDp", "intentOwner", "translationDp", "title", "selectedCivilDate", "generation", "focusedWeek", "rowBounds", "callbackCount", "focusIdentity", "motion"])) fail("sample_invalid"); for (const [key, code] of [["timestampMs", "timestamp_invalid"], ["widthDp", "width_invalid"], ["dxDp", "dx_invalid"], ["dyDp", "dy_invalid"], ["translationDp", "translation_invalid"]]) if (!Number.isFinite(value[key])) fail(code); if (value.widthDp <= 0 || Math.abs(value.translationDp - value.dxDp) > 2) fail("translation_invalid"); if (!["horizontal", "vertical", "diagonal"].includes(value.intentOwner)) fail("intent_invalid"); if (typeof value.title !== "string" || !DATE.test(value.selectedCivilDate) || !Number.isInteger(value.generation) || value.generation < 1 || typeof value.focusedWeek !== "string" || !Array.isArray(value.rowBounds) || value.rowBounds.length !== 2 || !value.rowBounds.every(Number.isFinite) || value.rowBounds[1] <= value.rowBounds[0] || typeof value.focusIdentity !== "string" || !["normal", "reduced"].includes(value.motion)) fail("sample_invalid"); if (!Number.isInteger(value.callbackCount) || value.callbackCount < 1) fail("callback_invalid"); if (previous && value.timestampMs <= previous.timestampMs) fail("timestamp_non_monotonic"); if (previous && value.generation < previous.generation) fail("generation_stale"); if (previous && value.callbackCount < previous.callbackCount) fail("callback_stale"); }
+function identity(manifest, runId, dependencies) { record(manifest, "build_invalid"); const source = record(manifest.source, "build_invalid"); const build = record(manifest.build, "build_invalid"); const apk = record(build.apk, "build_invalid"); const device = record(manifest.device, "build_invalid"); const fixtures = record(manifest.fixtures, "build_invalid"); if (manifest.run_id !== runId || build.package !== "com.fchoo.gymtracker.devtest" || !HEAD.test(source.head ?? "") || !SHA256.test(source.tree_sha256 ?? "") || !SHA256.test(fixtures.registry_sha256 ?? "") || !SHA256.test(apk.sha256 ?? "") || apk.sha256 !== device.installed_apk_sha256 || !SHA256.test(device.identity_sha256 ?? "") || !SHA256.test(device.settings_sha256 ?? "") || !SHA256.test(device.restoration_sha256 ?? "")) fail("build_invalid"); const currentDigest = dependencies.sourceDigest ?? source.tree_sha256; const currentHead = dependencies.currentHead ?? source.head; if (currentDigest !== source.tree_sha256 || !HEAD.test(currentHead) || (dependencies.isAncestor ?? ((a, b) => a === b))(source.head, currentHead) !== true) fail("identity_mismatch"); return Object.freeze({ source_digest: source.tree_sha256, fixture_digest: fixtures.registry_sha256, apk_digest: apk.sha256, installed_apk_digest: device.installed_apk_sha256, device_digest: device.identity_sha256, settings_digest: device.settings_sha256, restoration_digest: device.restoration_sha256, configuration_id: manifest.configuration?.id }); }
 
-function record(value, code) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error(code);
-  return value;
-}
-
-function finite(value, code) {
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(code);
-}
-
-function text(value, code) {
-  if (typeof value !== "string" || value.trim().length === 0) throw new Error(code);
-}
-
-function execution(value) {
-  if (!["NOT_RUN", "REVIEW_REQUIRED", "FAIL"].includes(value)) throw new Error("calendar_execution_invalid");
-}
-
-function validateSample(value, previous) {
-  record(value, "calendar_sample_invalid");
-  for (const [key, code] of [["timestampMs", "calendar_timestamp_invalid"], ["widthDp", "calendar_width_invalid"], ["dxDp", "calendar_dx_invalid"], ["dyDp", "calendar_dy_invalid"], ["translationDp", "calendar_translation_invalid"]]) finite(value[key], code);
-  if (value.widthDp <= 0 || Math.abs(value.translationDp - value.dxDp) > 2) throw new Error("calendar_translation_invalid");
-  if (!["horizontal", "vertical", "diagonal"].includes(value.intentOwner)) throw new Error("calendar_intent_invalid");
-  text(value.title, "calendar_title_invalid");
-  if (typeof value.selectedCivilDate !== "string" || !DATE.test(value.selectedCivilDate)) throw new Error("calendar_date_invalid");
-  if (!Number.isInteger(value.generation) || value.generation < 1) throw new Error("calendar_generation_invalid");
-  text(value.focusedWeek, "calendar_focused_week_invalid");
-  if (!Array.isArray(value.rowBounds) || value.rowBounds.length !== 2 || !value.rowBounds.every(Number.isFinite) || value.rowBounds[1] <= value.rowBounds[0]) throw new Error("calendar_row_bounds_invalid");
-  if (!Number.isInteger(value.callbackCount) || value.callbackCount < 1) throw new Error("calendar_callback_invalid");
-  text(value.focusIdentity, "calendar_focus_identity_invalid");
-  if (!["normal", "reduced"].includes(value.motion)) throw new Error("calendar_motion_invalid");
-  if (previous && value.timestampMs <= previous.timestampMs) throw new Error("calendar_timestamp_non_monotonic");
-  if (previous && value.generation < previous.generation) throw new Error("calendar_generation_stale");
-  if (previous && value.callbackCount < previous.callbackCount) throw new Error("calendar_callback_stale");
-}
-
-export function validateV12CalendarShard(input) {
-  const value = record(input, "calendar_observation_invalid");
-  if (Object.hasOwn(value, "finalVerdict")) throw new Error("calendar_final_verdict_forbidden");
-  if (typeof value.sourceDigest !== "string" || !SHA256.test(value.sourceDigest)) throw new Error("calendar_source_digest_invalid");
-  execution(value.nativeExecution);
-  if (!Array.isArray(value.samples) || value.samples.length < 2) throw new Error("calendar_intermediate_samples_required");
-  value.samples.forEach((entry, index) => validateSample(entry, value.samples[index - 1]));
-  if (!value.samples.some(({ intentOwner, widthDp, dxDp }) => intentOwner === "horizontal" && Math.abs(Math.abs(dxDp) / widthDp - 0.25) < 0.0001)) throw new Error("calendar_threshold_boundary_invalid");
-  return Object.freeze({ status: value.nativeExecution, caseCount: 9 });
-}
-
-export function executeV12CalendarShard(observations) {
-  validateV12CalendarShard(observations);
-  return Object.freeze({ producer: "v12-calendar-shard/v1", status: "NOT_RUN", observations });
-}
+export function parseV12CalendarShardCliArgs(args) { if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("cli_invalid"); return Object.freeze({ runId: args[1], mode: args[2].slice(2) }); }
+export function validateV12CalendarShard(input) { const value = record(input, "observation_invalid"); if (Object.hasOwn(value, "finalVerdict")) fail("final_verdict_forbidden"); noPrivate(value); if (!exactKeys(value, ["sourceDigest", "nativeExecution", "samples"]) || typeof value.sourceDigest !== "string" || !SHA256.test(value.sourceDigest)) fail("source_digest_invalid"); execution(value.nativeExecution); if (!Array.isArray(value.samples) || value.samples.length < 2) fail("intermediate_samples_required"); value.samples.forEach((entry, index) => sample(entry, value.samples[index - 1])); if (!value.samples.some(({ intentOwner, widthDp, dxDp }) => intentOwner === "horizontal" && Math.abs(Math.abs(dxDp) / widthDp - 0.25) < 0.0001)) fail("threshold_boundary_invalid"); return Object.freeze({ status: value.nativeExecution, caseCount: 9 }); }
+export function executeV12CalendarShard(observations) { validateV12CalendarShard(observations); return Object.freeze({ producer: "v12-calendar-shard/v1", status: "NOT_RUN", observations }); }
+function validatedStages(result) { record(result, "native_stages_invalid"); if (!exactKeys(result, ["stages"]) || !Array.isArray(result.stages) || result.stages.length !== V12_CALENDAR_SHARD_STAGE_IDS.length) fail("native_stages_invalid"); try { result.stages.forEach((stage, order) => { record(stage, "native_stages_invalid"); noPrivate(stage, `stage[${order}]`); if (!exactKeys(stage, ["id", "order", "status", "samples"]) || stage.id !== V12_CALENDAR_SHARD_STAGE_IDS[order] || stage.order !== order || !["NOT_RUN", "REVIEW_REQUIRED", "FAIL", "PASS"].includes(stage.status) || !Array.isArray(stage.samples) || stage.samples.length < 2) fail("native_stages_invalid"); stage.samples.forEach((entry, index) => sample(entry, stage.samples[index - 1])); }); } catch { fail("native_stages_invalid"); } const allSamples = result.stages.flatMap((entry) => entry.samples); if (!allSamples.some(({ intentOwner, widthDp, dxDp }) => intentOwner === "horizontal" && Math.abs(Math.abs(dxDp) / widthDp - 0.25) < 0.0001)) fail("native_stages_invalid"); return result.stages; }
+function xml(stages, id) { return `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-calendar" tests="${stages.length}" source_digest="${id.source_digest}">${stages.map(({ id: stageId, status }) => `<testcase classname="v12.calendar" name="${stageId}">${status === "FAIL" ? "<failure message=\"observed failure\"/>" : status === "NOT_RUN" || status === "REVIEW_REQUIRED" ? "<skipped message=\"observation incomplete\"/>" : ""}</testcase>`).join("")}</testsuite>\n`; }
+export async function executeV12CalendarShardCli(args = process.argv.slice(2), dependencies = {}) { const { runId, mode } = parseV12CalendarShardCliArgs(args); const root = dependencies.root ?? process.cwd(); const exists = dependencies.outputExists ?? ((file) => existsSync(path.join(root, file))); const files = ARTIFACTS.map((file) => outputPath(runId, file)); const manifest = (dependencies.readBuild ?? (() => JSON.parse(readFileSync(path.join(root, outputPath(runId, "build.json")), "utf8"))))(); const id = identity(manifest, runId, dependencies); if (mode === "verify") { if (files.some((file) => !exists(file))) fail("output_missing"); const read = dependencies.readArtifact ?? ((file) => readFileSync(path.join(root, file), "utf8")); const observation = JSON.parse(read(files[0])); noPrivate(observation); if (observation?.run_id !== runId || JSON.stringify(observation?.identity) !== JSON.stringify(id) || !Array.isArray(observation?.stages)) fail("verify_invalid"); validatedStages({ stages: observation.stages }); const report = read(files[1]); if (typeof report !== "string" || !report.includes(`source_digest=\"${id.source_digest}\"`)) fail("verify_invalid"); return Object.freeze({ ok: true, mode, run_id: runId }); } if (files.some(exists) || exists(outputPath(runId, "calendar-failure.json"))) fail("output_exists"); const acquireLease = dependencies.acquireLease ?? (() => { fail("lease_required"); }); const releaseLease = dependencies.releaseLease ?? (() => true); const snapshotSettings = dependencies.snapshotSettings ?? (() => { fail("settings_snapshot_required"); }); const restoreSettings = dependencies.restoreSettings ?? (() => false); const executeNative = dependencies.executeNative ?? (() => { fail("native_executor_required"); }); const write = dependencies.writeImmutable ?? ((file, value) => { const target = path.join(root, file); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, typeof value === "string" ? value : `${JSON.stringify(value)}\n`, { flag: "wx" }); }); const writeFailure = dependencies.writeFailureReceipt ?? ((value) => write(outputPath(runId, "calendar-failure.json"), value)); let lease; let settings; let restored = false; try { lease = await acquireLease(); settings = await snapshotSettings(lease); const stages = validatedStages(await executeNative(lease, settings)); const output = { schema_version: 1, producer: "v12-calendar-shard/v2", run_id: runId, identity: id, stages }; noPrivate(output); await write(files[0], output); await write(files[1], xml(stages, id)); return Object.freeze({ ok: true, mode, run_id: runId }); } catch (error) { try { await writeFailure({ schema_version: 1, producer: "v12-calendar-shard/v2", run_id: runId, identity: id, failure_stage: settings === undefined ? "lease" : "native", failure_code: "execution_failed", failure_digest: sha({ runId, source: id.source_digest, code: "execution_failed" }) }); } catch { fail("failure_receipt_write_failed"); } throw error; } finally { if (settings !== undefined) restored = await restoreSettings(settings, lease) === true; if (lease !== undefined) await releaseLease(lease); if (settings !== undefined && !restored) fail("settings_restore_failed"); } }
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) executeV12CalendarShardCli().then((value) => process.stdout.write(`${JSON.stringify(value)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : "calendar_cli_failed"); process.exitCode = 1; });
