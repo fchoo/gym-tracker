@@ -324,7 +324,7 @@ Plans:
   4. Native Calendar drag/threshold/morph behavior and representative launch, root switch, set commit, editor, search, Calendar, Progress, import, backup, and merge workloads meet their reviewed numeric budgets with raw evidence retained.
   5. An attended Samsung review records visual, usability, accessibility, and interaction observations separately from automated proof, and signed personal-use release verification is prepared without treating either as release authorization.
 
-**Plans**: 7/12 plans executed
+**Plans**: 8/12 plans executed
 
 - [x] 20-01-PLAN.md
 - [x] 20-02-PLAN.md
@@ -333,7 +333,7 @@ Plans:
 - [x] 20-05-PLAN.md
 - [x] 20-06-PLAN.md
 - [x] 20-07-PLAN.md
-- [ ] 20-08-PLAN.md
+- [x] 20-08-PLAN.md
 - [ ] 20-09-PLAN.md
 - [ ] 20-10-PLAN.md
 - [ ] 20-11-PLAN.md
@@ -355,7 +355,7 @@ Plans:
 | 17. Library & Running Plans | 17-library-running-plans | 14/14 | Host complete; native deferred | 2026-10-12 |
 | 18. Garmin Account Sync | 18-garmin-import | 14/14 | Complete    | 2026-10-12 |
 | 19. Progress Parity | 19-progress-parity | 10/10 | Host complete; native deferred | 2026-10-14 |
-| 20. Native Acceptance | 20-native-acceptance | 7/12 | In Progress|  |
+| 20. Native Acceptance | 20-native-acceptance | 8/12 | In Progress|  |
 
 ## Backlog
 

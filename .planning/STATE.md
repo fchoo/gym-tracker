@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENT
 current_phase: 20
 current_phase_name: Native Acceptance
 status: executing
-stopped_at: Completed 20-07-PLAN.md; next 20-08 host/freeze/build gate
-last_updated: "2026-10-13T22:46:53.924Z"
+stopped_at: Completed 20-08-PLAN.md; next 20-09 uses immutable build-only run phase20-20261014T031137Z-5917481c1fd1
+last_updated: "2026-10-14T03:13:49.131Z"
 last_activity: 2026-10-14
-last_activity_desc: Plan 20-07 complete; Plan 20-08 is next for the host/freeze/build gate
-state_head: fa8e351ed094dbea0f9ccb5c990d2eb30e125719
+last_activity_desc: Plan 20-08 complete; immutable build-only run phase20-20261014T031137Z-5917481c1fd1 is ready for Plan 20-09
+state_head: 5917481c1fd177588e7ccb5bf35a8d94e0aa6985
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 98
-  completed_plans: 93
+  completed_plans: 94
   percent: 50
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 20 (Native Acceptance) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
-Last activity: 2026-10-14 — Plan 20-07 complete; Plan 20-08 is next for the host/freeze/build gate
+Last activity: 2026-10-14 — Plan 20-08 complete; immutable build-only run phase20-20261014T031137Z-5917481c1fd1 is ready for Plan 20-09
 
 Progress: [█████░░░░░] 50%
 
@@ -112,6 +112,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 20 P01 | 3m | 2 tasks | 4 files |
 | Phase 20 P06 | 7m | 2 tasks | 5 files |
 | Phase 20 P07 | 6m | 2 tasks | 5 files |
+| Phase 20 P08 | 4h 19m | 2 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -261,6 +262,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 20]: Phase 20: Accepted exceptions remain non-PASS and can support conditional readiness only with an explicit reviewed policy.
 - [Phase 20]: Phase 20: Samsung attended observations are identity-bound and observation-only; N4/release-authority inheritance is rejected.
 - [Phase 20]: Phase 20: Readiness preserves non-PASS evidence and can be conditional only under reviewed accepted-exception policy with safe rollback boundaries.
+- [Phase 20]: Phase 20 Plan 20-08 freezes acceptance source at 5917481c and binds the sole authoritative development-test build to phase20-20261014T031137Z-5917481c1fd1.
+- [Phase 20]: The preserved d401 artifact is invalidated manifest-timestamp evidence only; Plan 20-09 must consume the immutable 5917481c run.
 
 ### Pending Owner Review
 
@@ -285,7 +288,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-13T22:46:53.657Z
-Stopped at: Completed 20-07-PLAN.md; next 20-08 host/freeze/build gate
+Last session: 2026-10-14T03:13:48.874Z
+Stopped at: Completed 20-08-PLAN.md; next 20-09 uses immutable build-only run phase20-20261014T031137Z-5917481c1fd1
 Resume file: None
-Next action: Execute Plan 20-08 host/freeze/build gate; build/install/final artifact delivery remains blocked until every native acceptance gate passes.
+Next action: Execute Plan 20-09 against immutable build-only run phase20-20261014T031137Z-5917481c1fd1; no evidence-time rebuild is authorized.
