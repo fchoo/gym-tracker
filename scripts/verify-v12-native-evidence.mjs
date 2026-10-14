@@ -729,9 +729,48 @@ function preflightManifest(root, runId) {
   return { manifest, build_sha256: sha256(readFileSync(file)) };
 }
 
+function preflightPng(bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) preflightFail("png_invalid");
+  const width = bytes.readUInt32BE(16); const height = bytes.readUInt32BE(20);
+  if (width < 1 || height < 1) preflightFail("png_invalid");
+}
+
+function preflightIdentityText(text, manifest) {
+  const required = [manifest.source.tree_sha256, manifest.build.apk.sha256, manifest.device.installed_apk_sha256, manifest.device.identity_sha256];
+  if (required.some((value) => !text.includes(value))) preflightFail("artifact_identity_invalid");
+}
+
+function preflightVerifyArtifact(root, runId, relative, manifest) {
+  const full = `artifacts/native/v1.2/${runId}/${relative}`;
+  const file = preflightSafeFile(root, full); const bytes = readFileSync(file);
+  if (relative.endsWith(".xml")) {
+    const text = bytes.toString("utf8");
+    if (!/<testsuite[ >]/u.test(text) || !/<testcase[ >]/u.test(text)) preflightFail("xml_schema_invalid");
+    preflightIdentityText(text, manifest);
+  } else {
+    let value; try { value = JSON.parse(bytes.toString("utf8")); } catch { preflightFail("json_schema_invalid"); }
+    if (!finalPlainObject(value) || value.run_id !== runId || typeof value.producer !== "string") preflightFail("json_schema_invalid");
+    preflightIdentityText(JSON.stringify(value), manifest);
+    if (relative === "screenshots/index.json") {
+      if (!Array.isArray(value.records) || value.records.length !== 107 * 64) preflightFail("visual_index_invalid");
+      for (const record of value.records) {
+        const descriptor = record?.native_png;
+        if (!descriptor || typeof descriptor.path !== "string" || !HASH.test(descriptor.sha256)) preflightFail("visual_record_invalid");
+        const png = readFileSync(preflightSafeFile(root, descriptor.path)); preflightPng(png);
+        if (sha256(png) !== descriptor.sha256) preflightFail("visual_png_hash_invalid");
+      }
+    }
+    if (relative === "comparison/index.json" && (!Array.isArray(value.results) || value.results.length !== 107 * 64)) preflightFail("comparison_index_invalid");
+    if (relative === "performance.json" && (!value.observation || !Array.isArray(value.observation.raw_samples?.warm_interactive_ms))) preflightFail("performance_schema_invalid");
+    if (relative === "semantics/accessibility.json" && (!Array.isArray(value.observations) || value.observations.length === 0)) preflightFail("accessibility_schema_invalid");
+  }
+  return { path: full, sha256: sha256(bytes) };
+}
+
 function preflightValidateArtifacts(root, runId, shardIds) {
   const required = shardIds.flatMap((id) => V12_PREFLIGHT_SHARDS[id]);
-  const hashes = required.map((relative) => ({ path: `artifacts/native/v1.2/${runId}/${relative}`, sha256: preflightHashFile(root, `artifacts/native/v1.2/${runId}/${relative}`) }));
+  const manifest = preflightManifest(root, runId).manifest;
+  const hashes = required.map((relative) => preflightVerifyArtifact(root, runId, relative, manifest));
   return { required, hashes };
 }
 
