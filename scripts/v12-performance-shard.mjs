@@ -6,6 +6,7 @@ import {
 } from "./benchmark-v12-interactions.mjs";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -156,10 +157,12 @@ export function verifyV12PerformanceObservation({ runId, root = process.cwd(), r
 export function runV12PerformanceCli(args = process.argv.slice(2), io = process) {
   try {
     if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
-    // The executable collector is injected by the device launcher. A bare host
-    // invocation never substitutes fake timing data for release-native samples.
-    if (args[2] === "--execute") fail("native_collector_required");
-    fail("identity_required");
+    const adapter = createV12NativeAdapter();
+    const identity = adapter.collectPerformance({ run_id: args[1], request: "identity" }).identity;
+    if (args[2] === "--execute") writeV12PerformanceObservation({ runId: args[1], identity, collect: adapter.collectPerformance });
+    else verifyV12PerformanceObservation({ runId: args[1], identity });
+    io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
+    return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }
 }
 

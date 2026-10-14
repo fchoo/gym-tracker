@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 
 import {
   V12_BROWSER_WALK_STATE_IDS,
@@ -161,7 +162,7 @@ export function runV12VisualCaptureCli(args = process.argv.slice(2), io = proces
   try {
     const { runId, command } = parseVisualCli(args);
     if (command === "--verify") verifyV12VisualCapture({ runId });
-    else fail("native_adapter_required");
+    else executeLiveV12VisualCapture({ runId, capture: createV12NativeAdapter().capture });
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

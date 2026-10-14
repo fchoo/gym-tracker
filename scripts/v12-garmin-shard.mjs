@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
@@ -141,4 +142,10 @@ export async function executeV12GarminShardCli(args = process.argv.slice(2), dep
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) executeV12GarminShardCli().then((value) => process.stdout.write(`${JSON.stringify(value)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : "garmin_cli_failed"); process.exitCode = 1; });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const adapter = createV12NativeAdapter();
+  executeV12GarminShardCli(process.argv.slice(2), {
+    acquireLease: adapter.acquireLease, releaseLease: adapter.releaseLease, snapshotSettings: adapter.snapshotSettings,
+    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeGarmin(lease, settings, { run_id: process.argv[3] }),
+  }).then((value) => process.stdout.write(`${JSON.stringify(value)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : "garmin_cli_failed"); process.exitCode = 1; });
+}

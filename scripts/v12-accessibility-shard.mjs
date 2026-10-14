@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -80,7 +81,7 @@ export function runV12AccessibilityCli(args = process.argv.slice(2), io = proces
   try {
     if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
     if (args[2] === "--verify") verifyV12AccessibilityShard({ runId: args[1] });
-    else fail("native_adapter_required");
+    else executeLiveV12AccessibilityShard({ runId: args[1], observe: createV12NativeAdapter().observeAccessibility });
     io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

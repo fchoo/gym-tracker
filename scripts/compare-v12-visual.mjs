@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 
 const require = createRequire(import.meta.url);
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -144,7 +145,7 @@ export function runV12VisualComparisonCli(args = process.argv.slice(2), io = pro
   try {
     const { runId, command } = parseCli(args);
     if (command === "--verify") verifyV12VisualComparison({ runId });
-    else fail("native_comparison_input_required");
+    else executeV12VisualComparison({ runId, comparisons: createV12NativeAdapter().compare({ run_id: runId }) });
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }
