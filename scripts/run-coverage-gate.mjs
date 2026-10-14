@@ -125,39 +125,6 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-case-evidence.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
-const phase20EvidenceTests = [
-  "scripts/benchmark-v12-interactions.test.mjs",
-  "scripts/capture-v12-visual.test.mjs",
-  "scripts/compare-v12-visual.test.mjs",
-  "scripts/create-v12-readiness-handoff.test.mjs",
-  "scripts/create-v12-run-manifest.test.mjs",
-  "scripts/generate-v12-attended-checklist.test.mjs",
-  "scripts/v12-accessibility-shard.test.mjs",
-  "scripts/v12-calendar-shard.test.mjs",
-  "scripts/v12-evidence-contract.test.mjs",
-  "scripts/v12-evidence-scripts.test.mjs",
-  "scripts/v12-garmin-shard.test.mjs",
-  "scripts/v12-recovery-shard.test.mjs",
-  "scripts/v12-sqlite-shard.test.mjs",
-];
-const phase20EvidenceFiles = [
-  "scripts/benchmark-v12-interactions.mjs",
-  "scripts/capture-v12-visual.mjs",
-  "scripts/compare-v12-visual.mjs",
-  "scripts/create-v12-readiness-handoff.mjs",
-  "scripts/create-v12-run-manifest.mjs",
-  "scripts/generate-v12-attended-checklist.mjs",
-  "scripts/generate-v12-parity-report.mjs",
-  "scripts/run-v12-maestro.mjs",
-  "scripts/v12-accessibility-shard.mjs",
-  "scripts/v12-calendar-shard.mjs",
-  "scripts/v12-evidence-contract.mjs",
-  "scripts/v12-garmin-shard.mjs",
-  "scripts/v12-performance-shard.mjs",
-  "scripts/v12-recovery-shard.mjs",
-  "scripts/v12-sqlite-shard.mjs",
-  "scripts/verify-v12-native-evidence.mjs",
-];
 const phase20IntegrityCriticalFiles = [
   "src/bootstrap/v12AcceptanceBenchmark.ts",
   "src/testing/contracts/v12Acceptance.contract.ts",
@@ -639,24 +606,6 @@ if (focusPhase18) {
   if (evidence.error !== undefined) throw evidence.error;
   if (evidence.status !== 0) process.exit(evidence.status ?? 1);
 }
-if (focusPhase20) {
-  const evidence = spawnSync(
-    process.execPath,
-    [
-      "--experimental-test-coverage",
-      "--test-concurrency=1",
-      ...phase20EvidenceFiles.map((file) => `--test-coverage-include=${file}`),
-      "--test-coverage-lines=100",
-      "--test-coverage-branches=100",
-      "--test-coverage-functions=100",
-      "--test",
-      ...phase20EvidenceTests,
-    ],
-    { cwd: projectRoot, encoding: "utf8", stdio: "inherit" },
-  );
-  if (evidence.error !== undefined) throw evidence.error;
-  if (evidence.status !== 0) process.exit(evidence.status ?? 1);
-}
 const outputDirectory = coverageDirectoryArgument(
   forwarded,
   focusPhase18
@@ -674,7 +623,13 @@ rmSync(outputDirectory, { force: true, recursive: true });
 const selectedProjects = focusedIntegrityFiles.length > 0
   ? focusedProjects
   : ["unit", "components", "sqlite-host", "integration"];
-const collectionArguments = focusedIntegrityFiles.flatMap((file) => [`--collectCoverageFrom=${file}`]);
+// Jest's project-level coverage configuration deliberately excludes src/testing/**.
+// Phase 20 registers decision contracts there, so explicitly collect these files in
+// the default strict gate as well as in the focused Phase 20 mode.
+const collectionFiles = focusedIntegrityFiles.length > 0
+  ? focusedIntegrityFiles
+  : phase20IntegrityCriticalFiles;
+const collectionArguments = collectionFiles.flatMap((file) => [`--collectCoverageFrom=${file}`]);
 
 const jest = spawnSync(
   process.execPath,

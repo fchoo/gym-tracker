@@ -29,6 +29,8 @@ describe("v1.2 acceptance benchmark marker bridge", () => {
     const disabled = createV12AcceptanceBenchmark({ enabled: false, now: () => 1 });
     disabled.markRootSwitchStart("workout");
     disabled.markUsefulContent("workout");
+    disabled.markAuthoritativeSetCommit();
+    disabled.markVisibleDock();
     expect(disabled.result()).toEqual({
       marker: V12_ACCEPTANCE_BENCHMARK_MARKER,
       root_switch_ms: [],
@@ -37,5 +39,25 @@ describe("v1.2 acceptance benchmark marker bridge", () => {
 
     const enabled = createV12AcceptanceBenchmark({ enabled: true, now: () => 1 });
     expect(() => enabled.markVisibleDock()).toThrow("v12_benchmark_authoritative_commit_missing");
+    expect(() => enabled.markRootSwitchStart("")).toThrow("v12_benchmark_root_switch_invalid");
+
+    enabled.markRootSwitchStart("workout");
+    expect(() => enabled.markRootSwitchStart("calendar")).toThrow("v12_benchmark_root_switch_invalid");
+    expect(() => enabled.markUsefulContent("calendar")).toThrow("v12_benchmark_useful_content_invalid");
+
+    const nonFinite = createV12AcceptanceBenchmark({ enabled: true, now: () => Number.NaN });
+    nonFinite.markRootSwitchStart("workout");
+    expect(() => nonFinite.markUsefulContent("workout")).toThrow("v12_benchmark_root_switch_duration_invalid");
+
+    const negative = createV12AcceptanceBenchmark({ enabled: true, now: (() => {
+      const values = [10, 9];
+      return () => values.shift()!;
+    })() });
+    negative.markAuthoritativeSetCommit();
+    expect(() => negative.markVisibleDock()).toThrow("v12_benchmark_dock_duration_invalid");
+
+    const duplicateCommit = createV12AcceptanceBenchmark({ enabled: true, now: () => 1 });
+    duplicateCommit.markAuthoritativeSetCommit();
+    expect(() => duplicateCommit.markAuthoritativeSetCommit()).toThrow("v12_benchmark_authoritative_commit_duplicate");
   });
 });
