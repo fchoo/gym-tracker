@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -436,10 +436,6 @@ export function runV12CalendarEvidenceVerifierCli(options = {}, io = process) {
 }
 
 /* node:coverage ignore next 4 */
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exitCode = runV12CalendarEvidenceVerifierCli();
-}
-
 // Phase 20's v1.2 ledger is intentionally separate from the retained Calendar
 // verifier above.  Shards can state only measured observations; this module is
 // the sole place that turns those observations into row verdicts or writes the
@@ -583,10 +579,15 @@ export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson 
   if (!V12_FINAL_RUN.test(run_id ?? "") || ledger?.run_id !== run_id || ledger?.rows?.length !== 172
     || typeof writeImmutableJson !== "function") finalFail("seal_input_invalid");
   const base = `artifacts/native/v1.2/${run_id}`;
-  const matrix = Object.freeze({ schema_version: 1, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness });
+  const matrix = Object.freeze({ schema_version: 2, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
   const finalEvidence = Object.freeze({
-    schema_version: 1,
+    schema_version: 2,
     run_id,
+    identity: ledger.identity ?? null,
+    rows: ledger.rows,
+    source_results: ledger.source_results ?? [],
+    evidence_hashes: ledger.evidence_hashes ?? [],
+    gates: ledger.gates ?? [],
     readiness: ledger.readiness,
     verdict_counts: ledger.verdict_counts,
     accepted_exception_count: ledger.accepted_exception_count,
@@ -596,4 +597,155 @@ export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson 
   writeImmutableJson(`${base}/ui-state-matrix.json`, matrix);
   writeImmutableJson(`${base}/final-evidence.json`, finalEvidence);
   return finalEvidence;
+}
+
+// The Phase 20 interface is deliberately distinct from the Calendar verifier
+// above. Calendar's legacy flags remain available only when no unified mode is
+// supplied; accepting a mixture would silently validate the wrong contract.
+const V12_PREFLIGHT_SHARDS = Object.freeze({
+  sqlite: ["sqlite.json", "recovery.json"],
+  garmin: ["garmin/packaging-auth.json", "garmin/sync-read.json", "garmin/dedupe.json", "garmin/matching.json"],
+  calendar: ["calendar-transitions.json"],
+  "multi-plan": ["maestro/multi-plan.xml"],
+  workout: ["maestro/workout.xml"],
+  "library-running": ["maestro/library-running.xml"],
+  visual: ["semantics/accessibility.json", "geometry/hit-targets.json"],
+  performance: ["performance.json"],
+});
+const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
+
+function preflightFail(code) { throw new Error(`v12_preflight_${code}`); }
+
+function preflightRunId(value) {
+  if (!V12_FINAL_RUN.test(value ?? "")) preflightFail("run_id_invalid");
+  return value;
+}
+
+function preflightSafeRelative(value) {
+  if (typeof value !== "string" || value.length === 0 || value.includes("\\") || path.isAbsolute(value)
+    || path.posix.normalize(value) !== value || value.split("/").some((part) => part === "" || part === "." || part === "..")) preflightFail("path_invalid");
+  return value;
+}
+
+function preflightSafeFile(root, relative, { required = true } = {}) {
+  const projectRoot = path.resolve(root);
+  const safe = preflightSafeRelative(relative);
+  const resolved = path.resolve(projectRoot, safe);
+  if (!(resolved === projectRoot || resolved.startsWith(`${projectRoot}${path.sep}`))) preflightFail("path_invalid");
+  if (!existsSync(resolved)) { if (required) preflightFail("artifact_missing"); return null; }
+  let cursor = projectRoot;
+  for (const part of safe.split("/")) {
+    cursor = path.join(cursor, part);
+    if (lstatSync(cursor).isSymbolicLink()) preflightFail("symlink_forbidden");
+  }
+  const real = realpathSync(resolved);
+  if (!(real === projectRoot || real.startsWith(`${projectRoot}${path.sep}`)) || !lstatSync(real).isFile()) preflightFail("artifact_invalid");
+  return real;
+}
+
+function preflightHashFile(root, relative, options) {
+  const file = preflightSafeFile(root, relative, options);
+  return file === null ? null : sha256(readFileSync(file));
+}
+
+function preflightCollectFiles(root, runId) {
+  const runPrefix = `artifacts/native/v1.2/${runId}`;
+  const directory = preflightSafeFile(root, `${runPrefix}/build.json`).slice(0, -"build.json".length);
+  const result = [];
+  const walk = (absolute, relative) => {
+    for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+      const childRelative = `${relative}/${entry.name}`;
+      const childAbsolute = path.join(absolute, entry.name);
+      if (entry.isSymbolicLink()) preflightFail("symlink_forbidden");
+      if (entry.isDirectory()) walk(childAbsolute, childRelative);
+      else if (entry.isFile()) result.push(childRelative);
+      else preflightFail("artifact_invalid");
+    }
+  };
+  walk(directory, runPrefix);
+  return result.sort();
+}
+
+function preflightWriteOnce(root, relative, value) {
+  const target = path.resolve(root, preflightSafeRelative(relative));
+  const projectRoot = path.resolve(root);
+  if (!target.startsWith(`${projectRoot}${path.sep}`)) preflightFail("path_invalid");
+  if (existsSync(target)) preflightFail("output_exists");
+  const directory = path.dirname(target);
+  mkdirSync(directory, { recursive: true });
+  const temporary = `${target}.partial-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    if (existsSync(target)) preflightFail("output_exists");
+    renameSync(temporary, target);
+  } catch (error) {
+    if (existsSync(temporary)) unlinkSync(temporary);
+    throw error;
+  }
+}
+
+export function parseV12EvidenceCliArgs(args) {
+  if (!Array.isArray(args) || args[0] !== "--run" || args[2] !== "--mode" || args.length < 4) preflightFail("cli_invalid");
+  const run_id = preflightRunId(args[1]);
+  const mode = args[3];
+  if (mode === "shards-only" && args.length === 6 && args[4] === "--ids") {
+    const ids = args[5].split(",");
+    if (ids.length === 0 || ids.some((id) => !Object.hasOwn(V12_PREFLIGHT_SHARDS, id)) || new Set(ids).size !== ids.length) preflightFail("cli_invalid");
+    return Object.freeze({ run_id, mode, ids, no_final_write: false });
+  }
+  if (mode === "preseal" && args.length === 5 && args[4] === "--no-final-write") return Object.freeze({ run_id, mode, ids: null, no_final_write: true });
+  if (mode === "final" && args.length === 4) return Object.freeze({ run_id, mode, ids: null, no_final_write: false });
+  preflightFail("cli_invalid");
+}
+
+function preflightManifest(root, runId) {
+  const relative = `artifacts/native/v1.2/${runId}/build.json`;
+  const file = preflightSafeFile(root, relative);
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(file, "utf8")); } catch { preflightFail("build_invalid"); }
+  validateV12RunManifest(manifest);
+  if (manifest.run_id !== runId) preflightFail("build_invalid");
+  return { manifest, build_sha256: sha256(readFileSync(file)) };
+}
+
+function preflightValidateArtifacts(root, runId, shardIds) {
+  const required = shardIds.flatMap((id) => V12_PREFLIGHT_SHARDS[id]);
+  const hashes = required.map((relative) => ({ path: `artifacts/native/v1.2/${runId}/${relative}`, sha256: preflightHashFile(root, `artifacts/native/v1.2/${runId}/${relative}`) }));
+  return { required, hashes };
+}
+
+export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
+  const options = parseV12EvidenceCliArgs(args);
+  const { manifest, build_sha256 } = preflightManifest(root, options.run_id);
+  if (options.mode === "shards-only") return Object.freeze({ ok: true, ...options, build_sha256, artifacts: preflightValidateArtifacts(root, options.run_id, options.ids).hashes });
+
+  const runPrefix = `artifacts/native/v1.2/${options.run_id}`;
+  if (options.mode === "preseal") {
+    for (const output of V12_PREFLIGHT_FINAL_OUTPUTS) if (preflightSafeFile(root, `${runPrefix}/${output}`, { required: false }) !== null) preflightFail("final_output_present");
+    const artifacts = preflightValidateArtifacts(root, options.run_id, Object.keys(V12_PREFLIGHT_SHARDS));
+    const allFiles = preflightCollectFiles(root, options.run_id);
+    const requiredPaths = new Set([`${runPrefix}/build.json`, ...artifacts.required.map((item) => `${runPrefix}/${item}`)]);
+    const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial"));
+    if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
+    const report = Object.freeze({ schema_version: 1, run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
+    preflightWriteOnce(root, `${runPrefix}/preseal-validation.json`, report);
+    return report;
+  }
+  // Final sealing is intentionally not synthesised here: the record and rich
+  // source ledger must be present and independently validated by the caller.
+  // This prevents a CLI invocation from turning raw shards into release facts.
+  preflightSafeFile(root, `${runPrefix}/preseal-validation.json`);
+  preflightSafeFile(root, `${runPrefix}/attended-observations.json`);
+  preflightFail("final_inputs_required");
+}
+
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const unified = process.argv.slice(2);
+    if (unified.includes("--mode") || unified.includes("--run")) process.stdout.write(`${JSON.stringify(executeV12EvidenceCli(unified))}\n`);
+    else process.exitCode = runV12CalendarEvidenceVerifierCli();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : "v12_preflight_failed"}\n`);
+    process.exitCode = 1;
+  }
 }
