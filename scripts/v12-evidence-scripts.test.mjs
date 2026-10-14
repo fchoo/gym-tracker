@@ -1358,6 +1358,12 @@ test("Calendar manifest, package commands, and focused integrity registration ar
   ]) assert.match(coverage, new RegExp(file.replaceAll(".", "\\."), "u"));
 });
 
+test("default strict coverage keeps the complete integrity registry while Phase 20 focus stays narrow", () => {
+  const coverage = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
+  assert.match(coverage, /const collectionFiles = focusedIntegrityFiles\.length > 0\s*\? focusedIntegrityFiles\s*:\s*integrityCriticalFiles;/u);
+  assert.match(coverage, /if \(focusPhase20\) \{[\s\S]*?focusedIntegrityFiles\.push\(\.\.\.phase20IntegrityCriticalFiles\);/u);
+});
+
 test("the generic v1.2 runner binds one synthetic shard without native execution or verdict authority", () => {
   const manifest = v12LiveManifest();
   const flowBytes = Buffer.from("appId: com.fchoo.gymtracker.devtest\n---\n- launchApp\n");

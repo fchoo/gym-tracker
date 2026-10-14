@@ -624,11 +624,11 @@ const selectedProjects = focusedIntegrityFiles.length > 0
   ? focusedProjects
   : ["unit", "components", "sqlite-host", "integration"];
 // Jest's project-level coverage configuration deliberately excludes src/testing/**.
-// Phase 20 registers decision contracts there, so explicitly collect these files in
-// the default strict gate as well as in the focused Phase 20 mode.
+// The default strict gate must therefore collect the complete integrity registry,
+// which includes Phase 20's decision contracts without dropping legacy modules.
 const collectionFiles = focusedIntegrityFiles.length > 0
   ? focusedIntegrityFiles
-  : phase20IntegrityCriticalFiles;
+  : integrityCriticalFiles;
 const collectionArguments = collectionFiles.flatMap((file) => [`--collectCoverageFrom=${file}`]);
 
 const jest = spawnSync(
