@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
+import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
@@ -144,8 +145,18 @@ export async function executeV12GarminShardCli(args = process.argv.slice(2), dep
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const adapter = createV12NativeAdapter();
-  executeV12GarminShardCli(process.argv.slice(2), {
+  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  executeV12GarminShardCli(args, {
     acquireLease: adapter.acquireLease, releaseLease: adapter.releaseLease, snapshotSettings: adapter.snapshotSettings,
-    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeGarmin(lease, settings, { run_id: process.argv[3] }),
-  }).then((value) => process.stdout.write(`${JSON.stringify(value)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : "garmin_cli_failed"); process.exitCode = 1; });
+    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeGarmin(lease, settings, { run_id: runId }),
+    outputExists: () => false,
+    writeImmutable: (file, value) => writes.push([file, value]),
+    writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/garmin/failure.json`, value]),
+  }).then((value) => {
+    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "garmin", produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
+    process.stdout.write(`${JSON.stringify(value)}\n`);
+  }).catch((error) => {
+    if (RUN_ID.test(runId ?? "")) { try { recordV12AtomicFailure({ runId, shard: "garmin", error }); } catch { /* the first immutable receipt wins */ } }
+    console.error(error instanceof Error ? error.message : "garmin_cli_failed"); process.exitCode = 1;
+  });
 }

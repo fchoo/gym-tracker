@@ -26,6 +26,7 @@ import {
   stableCanonicalJson,
 } from "./v12-calendar-artifacts.mjs";
 import { validateV12RunManifest as validateGenericRunManifest } from "./create-v12-run-manifest.mjs";
+import { publishV12AtomicShard, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 import {
   deriveV12Ledger as deriveContractLedger,
   loadV12ContractInputs,
@@ -798,6 +799,9 @@ function preflightVerifyArtifact(root, runId, relative, manifest) {
 function preflightValidateArtifacts(root, runId, shardIds) {
   const required = shardIds.flatMap((id) => V12_PREFLIGHT_SHARDS[id]);
   const manifest = preflightManifest(root, runId).manifest;
+  for (const shard of shardIds.filter((id) => ["visual", "accessibility", "performance", "garmin", "calendar"].includes(id))) {
+    try { verifyV12AtomicShard({ root, runId, shard }); } catch { preflightFail("publication_invalid"); }
+  }
   const hashes = required.map((relative) => preflightVerifyArtifact(root, runId, relative, manifest));
   return { required, hashes };
 }
@@ -836,7 +840,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial") || item.includes("/.staging/") || item.includes("/failures/"));
     if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
     const report = Object.freeze({ schema_version: 2, producer: "v12-preseal-validation/v2", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
-    preflightWriteOnce(root, `${runPrefix}/preseal-validation.json`, report);
+    publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report) });
     return report;
   }
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
@@ -845,12 +849,13 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
   let attended; try { attended = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/attended-observations.json`), "utf8")); } catch { preflightFail("attended_invalid"); }
   const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence, attended, readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)) });
-  const write = (relative, value) => preflightWriteOnce(root, relative, value);
+  const finalWrites = [];
+  const write = (relative, value) => finalWrites.push([relative, value]);
   const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: options.run_id, ledger, writeImmutableJson: write });
-  write(`${runPrefix}/parity-report.md`, generateV12ParityReport({ ledger: finalEvidence }));
-  write(".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", { schema_version: 1, producer: "v12-readiness-handoff/v1", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) });
-  for (const output of ["ui-state-matrix.json", "final-evidence.json", "parity-report.md"]) preflightSafeFile(root, `${runPrefix}/${output}`);
-  preflightSafeFile(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md");
+  finalWrites.push([`${runPrefix}/parity-report.md`, generateV12ParityReport({ ledger: finalEvidence })]);
+  finalWrites.push([`${runPrefix}/readiness-handoff.md`, { schema_version: 1, producer: "v12-readiness-handoff/v1", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) }]);
+  publishV12AtomicShard({ root, runId: options.run_id, shard: "final", produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative.replace(`${runPrefix}/`, ""), value)) });
+  for (const output of ["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]) preflightSafeFile(root, `${runPrefix}/${output}`);
   return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: ledger.rows.length, readiness: ledger.readiness, release_authorized: false });
 }
 
