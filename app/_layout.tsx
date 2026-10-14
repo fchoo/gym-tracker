@@ -235,6 +235,17 @@ function Phase18GarminAdversarialNavigator() {
   );
 }
 
+function NativeContractsNavigator() {
+  return (
+    <Stack
+      initialRouteName="__native-contracts"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__native-contracts" />
+    </Stack>
+  );
+}
+
 function PreRuntimeFailure({
   category,
   onRetry,
@@ -304,13 +315,17 @@ function RootLayoutAttempt({
   const phase18GarminAdversarialEnabled = nativeContractsEnabled
     && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__phase18-garmin-adversarial";
+  const v12NativeContractsEnabled = nativeContractsEnabled
+    && nativeContractSuite === "v1.2-acceptance"
+    && pathname === "/__native-contracts";
 
   const isolatedNativeRoute = attendedPreviewEnabled
     || phase6GestureSmokeEnabled
     || phase12CleanupEnabled
     || phase12GoogleAuthSmokeEnabled
     || phase18GarminProofEnabled
-    || phase18GarminAdversarialEnabled;
+    || phase18GarminAdversarialEnabled
+    || v12NativeContractsEnabled;
   const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
     ? productionAppearanceStore.read()
     : null;
@@ -417,6 +432,18 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={phase12CleanupAppearanceStore}>
             <Phase18GarminAdversarialNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12NativeContractsEnabled) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+            <NativeContractsNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

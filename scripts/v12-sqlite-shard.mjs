@@ -7,6 +7,11 @@ import { pathToFileURL } from 'node:url';
 
 import { validateV12RunManifest } from './create-v12-run-manifest.mjs';
 import { sourceTreeSha256 } from './source-tree-digest.mjs';
+import {
+  assertV12AcceptanceNativeContractResult,
+  classifyV12SqliteNativeFailure,
+  createV12SqliteFailureReceipt,
+} from './v12-sqlite-producer-contract.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -56,6 +61,7 @@ export function validateV12SqliteShard(input) {
       source_digest: input.identity.source_digest,
       fixture_digest: input.identity.fixture_digest,
       apk_digest: input.identity.apk_digest,
+      installed_apk_digest: input.identity.installed_apk_digest,
       device_digest: input.identity.device_digest,
     }),
   });
@@ -85,9 +91,9 @@ function safeRunPath(runId, suffix) {
 }
 function readJson(file) { return JSON.parse(readFileSync(file, 'utf8')); }
 function nativeResultToInput(manifest, result) {
-  if (!result || result.status !== 'passed' || result.contract?.total !== V12_SQLITE_SHARD_CASE_IDS.length
-    || result.contract?.passed !== V12_SQLITE_SHARD_CASE_IDS.length || result.contract?.failed !== 0
-    || result.contract?.skipped !== 0 || !Array.isArray(result.contract.cases)) fail('native_result_invalid');
+  if (!result || result.status !== 'passed') fail('native_result_invalid');
+  try { assertV12AcceptanceNativeContractResult(result.contract, V12_SQLITE_SHARD_CASE_IDS); }
+  catch { fail('native_result_invalid'); }
   const identity = {
     source_digest: manifest.source.tree_sha256,
     fixture_digest: manifest.fixtures.registry_sha256,
@@ -100,9 +106,7 @@ function nativeResultToInput(manifest, result) {
     producer: 'v12-sqlite-shard',
     identity,
     cases: result.contract.cases.map((entry, order) => {
-      if (entry?.id !== V12_SQLITE_SHARD_CASE_IDS[order] || entry?.status !== 'passed'
-        || !Number.isFinite(entry?.durationMs) || entry.durationMs < 0) fail('native_result_invalid');
-      const base = { identity, id: entry.id, order, duration_ms: entry.durationMs };
+      const base = { identity, id: entry.id, order, code: entry.code, counts: entry.counts };
       return { id: entry.id, status: 'passed', order, digests: {
         pre: digest({ ...base, cut: 'pre' }), post: digest({ ...base, cut: 'post' }),
         reopen: digest({ ...base, cut: 'reopen' }), rebuild: digest({ ...base, cut: 'rebuild' }),
@@ -125,8 +129,9 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
   const root = dependencies.root ?? process.cwd();
   const outputDirectory = safeRunPath(runId, 'sqlite');
   const outputPaths = ['migration.json', 'portability.json', 'history.json'].map((name) => path.join(root, outputDirectory, name));
+  const failurePath = path.join(root, outputDirectory, 'failure.json');
   const outputExists = dependencies.outputExists ?? ((file) => existsSync(file));
-  if (mode === 'execute' && outputPaths.some(outputExists)) fail('output_exists');
+  if (mode === 'execute' && [...outputPaths, failurePath].some(outputExists)) fail('output_exists');
   const readBuild = dependencies.readBuild ?? (() => readJson(path.join(root, safeRunPath(runId, 'build.json'))));
   const manifest = readBuild();
   try { validateV12RunManifest(manifest); } catch { fail('build_invalid'); }
@@ -146,8 +151,16 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
   const executeNative = dependencies.executeNative ?? (async (ephemeralDevice) => {
     const command = ['scripts/run-native-sqlite-contracts.mjs', '--suite', 'v1.2-acceptance', '--manifest', 'artifacts/native/v1.2-acceptance/build.json'];
     if (ephemeralDevice !== undefined) command.push('--device', ephemeralDevice);
-    try { execFileSync(process.execPath, command, { cwd: root, stdio: 'inherit' }); }
-    catch { fail('native_runner_failed'); }
+    try { (dependencies.execFileSync ?? execFileSync)(process.execPath, command, { cwd: root, stdio: 'pipe', encoding: 'utf8' }); }
+    catch (error) {
+      const boundedOutput = [error?.stdout, error?.stderr]
+        .filter((value) => typeof value === 'string' || Buffer.isBuffer(value))
+        .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : value)
+        .join('');
+      const code = /"failure_code":"(marker_timeout|route_error|malformed_result|native_runner_failed)"/u.exec(boundedOutput)?.[1]
+        ?? 'native_runner_failed';
+      throw new Error(`v12_sqlite_native_${code}`);
+    }
     return readJson(path.join(root, 'artifacts/native/v1.2-acceptance/v1.2-acceptance.json'));
   });
   const ephemeralDevice = device ?? dependencies.device ?? process.env.ANDROID_SERIAL;
@@ -156,7 +169,46 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, `${JSON.stringify(value)}\n`, { flag: 'wx' });
   });
-  const observations = await executeV12SqliteShard(nativeResultToInput(manifest, await executeNative(ephemeralDevice)), writeObservation);
+  const identity = {
+    source_digest: manifest.source.tree_sha256,
+    fixture_digest: manifest.fixtures.registry_sha256,
+    apk_digest: manifest.build.apk.sha256,
+    installed_apk_digest: manifest.device.installed_apk_sha256,
+    device_digest: manifest.device.identity_sha256,
+  };
+  const writeFailureReceipt = dependencies.writeFailureReceipt ?? (async (value) => {
+    mkdirSync(path.dirname(failurePath), { recursive: true });
+    writeFileSync(failurePath, `${JSON.stringify(value)}\n`, { flag: 'wx' });
+  });
+  async function retainFailure(stage, code) {
+    try {
+      await writeFailureReceipt(createV12SqliteFailureReceipt({ runId, identity, stage, code }));
+    } catch {
+      fail('failure_receipt_write_failed');
+    }
+  }
+  let nativeResult;
+  try {
+    nativeResult = await executeNative(ephemeralDevice);
+  } catch (error) {
+    const code = classifyV12SqliteNativeFailure(error);
+    await retainFailure('native_runner', code);
+    fail(code);
+  }
+  let input;
+  try {
+    input = nativeResultToInput(manifest, nativeResult);
+  } catch {
+    await retainFailure('native_runner', 'malformed_result');
+    fail('malformed_result');
+  }
+  let observations;
+  try {
+    observations = await executeV12SqliteShard(input, writeObservation);
+  } catch {
+    await retainFailure('translation', 'translation_failed');
+    fail('translation_failed');
+  }
   return Object.freeze({ ok: true, mode, run_id: runId, observations });
 }
 

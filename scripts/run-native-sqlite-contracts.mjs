@@ -27,6 +27,10 @@ import {
   sanitizeNativeDeviceMessage,
 } from './native-device-selection.mjs';
 import { validatePhase19NativeManifest } from './run-phase19-native-evidence.mjs';
+import {
+  assertV12AcceptanceNativeContractResult,
+  classifyV12SqliteNativeFailure,
+} from './v12-sqlite-producer-contract.mjs';
 
 const PHASE2_AGGREGATE_TIMEOUT_MS = 300_000;
 const PHASE2_CASE_TIMEOUT_MS = 10_000;
@@ -53,7 +57,7 @@ function emitFailure(message) {
     JSON.stringify({
       ok: false,
       error: 'native_sqlite_contract_runner_failed',
-      message,
+      failure_code: classifyV12SqliteNativeFailure(message),
     }),
   );
 }
@@ -560,7 +564,9 @@ try {
     ].map(shellQuote).join(' '),
   );
   const contractResult = await dumpResult(runId);
-  if (suite === 'phase2-fts') {
+  if (suite === 'v1.2-acceptance') {
+    assertV12AcceptanceNativeContractResult(contractResult, V12_ACCEPTANCE_SQLITE_CASE_IDS);
+  } else if (suite === 'phase2-fts') {
     assertPhase2FtsContractResult(contractResult);
   } else if (suite === 'progress-parity') {
     assertProgressParityContractResult(contractResult);

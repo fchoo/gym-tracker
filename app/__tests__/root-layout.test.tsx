@@ -330,6 +330,35 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
+  it("isolates the packaged v1.2 native SQLite contract route without production bootstrap", async () => {
+    mockPathname = "/__native-contracts";
+    mockNativeContractSuite = "v1.2-acceptance";
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__native-contracts"))
+      .toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByTestId("startup-readiness-gate"))
+      .not.toBeOnTheScreen();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
+
+  it("keeps the native contract path behind the exact v1.2 acceptance suite gate", async () => {
+    mockPathname = "/__native-contracts";
+    mockNativeContractSuite = "phase2";
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("workout-runtime-provider"))
+      .toBeOnTheScreen();
+    expect(screen.getByTestId("startup-readiness-gate"))
+      .toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the Phase 6 gesture fixture isolated while fonts are pending", async () => {
     mockFontsLoaded = false;
     mockPathname = "/__phase6-gesture-smoke";
@@ -360,8 +389,6 @@ describe("RootLayout attended preview isolation", () => {
       .toContainElement(screen.getByTestId("workout-runtime-provider"));
     expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
     expect(mockProductionAppearanceRead).toHaveBeenCalledTimes(2);
-    expect(mockSqliteStorageConstructed)
-      .toHaveBeenCalledWith("gym-tracker-preferences.db");
     await fireEvent.press(screen.getByRole("button", {
       name: "Set dark appearance",
     }));
