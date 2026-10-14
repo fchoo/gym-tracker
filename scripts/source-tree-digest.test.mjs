@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   assertCleanCommittedTree,
+  sourceTreeSha256,
   sourceTreeUntrackedPaths,
   sourceTreeSha256AtHead,
 } from "./source-tree-digest.mjs";
@@ -77,6 +78,43 @@ test("ignores generated coverage directories without ignoring similarly named so
       () => assertCleanCommittedTree(head, root),
       /coverage-example\.ts/u,
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ignores only the generated root .coverage database while retaining similarly named source", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "gym-source-tree-dot-coverage-"));
+  try {
+    git(root, "init", "--quiet");
+    git(root, "config", "user.email", "test@example.invalid");
+    git(root, "config", "user.name", "Source Digest Test");
+    mkdirSync(path.join(root, "src", "nested"), { recursive: true });
+    writeFileSync(path.join(root, "app.ts"), "export const source = 1;\n");
+    git(root, "add", "app.ts");
+    git(root, "commit", "--quiet", "-m", "initial");
+    const head = git(root, "rev-parse", "HEAD");
+    const initialDigest = sourceTreeSha256(root);
+
+    writeFileSync(path.join(root, ".coverage"), "generated sqlite bytes\n");
+    mkdirSync(path.join(root, "coverage"), { recursive: true });
+    mkdirSync(path.join(root, "coverage-example"), { recursive: true });
+    writeFileSync(path.join(root, "coverage", "summary.json"), "{}\n");
+    writeFileSync(path.join(root, "coverage-example", "summary.json"), "{}\n");
+    assert.deepEqual(sourceTreeUntrackedPaths(root), []);
+    assert.equal(sourceTreeSha256(root), initialDigest);
+    assert.doesNotThrow(() => assertCleanCommittedTree(head, root));
+
+    writeFileSync(path.join(root, "coverage-example.ts"), "export const rootSource = true;\n");
+    writeFileSync(path.join(root, ".coverage-source.ts"), "export const dotSource = true;\n");
+    writeFileSync(path.join(root, "src", "nested", ".coverage-source.ts"), "export const nestedSource = true;\n");
+    assert.deepEqual(sourceTreeUntrackedPaths(root), [
+      ".coverage-source.ts",
+      "coverage-example.ts",
+      "src/nested/.coverage-source.ts",
+    ]);
+    assert.notEqual(sourceTreeSha256(root), initialDigest);
+    assert.throws(() => assertCleanCommittedTree(head, root), /coverage-source\.ts|coverage-example\.ts/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
