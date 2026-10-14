@@ -72,7 +72,7 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
   const { runId, shard } = exactGenericArguments(args);
   const root = dependencies.root ?? ROOT;
   const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
-  const manifestPath = `artifacts/native/v1.2/${runId}/run-manifest.json`;
+  const manifestPath = `artifacts/native/v1.2/${runId}/build.json`;
   const readJson = dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
   const readBytes = dependencies.readBytes ?? ((file) => readFileSync(path.join(root, file)));
   const exists = dependencies.exists ?? ((file) => existsSync(path.join(root, file)));
@@ -132,6 +132,63 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
     writeFileSync(absoluteOutput, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx" });
   }
   return record;
+}
+
+function liveIdentity(manifest, root) {
+  return {
+    head: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+    tree_sha256: sourceTreeSha256(root),
+    package: manifest.build.package,
+    apk_sha256: manifest.build.apk.sha256,
+    installed_apk_sha256: manifest.device.installed_apk_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256,
+    device_identity_sha256: manifest.device.identity_sha256,
+    settings_sha256: manifest.device.settings_sha256,
+    configuration_id: manifest.configuration.id,
+  };
+}
+
+function assertMaestroVersion(execute = execFileSync) {
+  const version = execute("maestro", ["--version"], { encoding: "utf8" }).trim();
+  if (!/(?:^|\s)2\.8\.0(?:\s|$)/u.test(version)) genericFail("maestro_version_invalid");
+}
+
+export function executeLiveV12RecoveryMaestro(args = process.argv.slice(2), dependencies = {}) {
+  const { runId, shard } = exactGenericArguments(args);
+  if (shard !== "recovery") genericFail("live_shard_invalid");
+  const root = dependencies.root ?? ROOT;
+  const manifest = (dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8"))))(`artifacts/native/v1.2/${runId}/build.json`);
+  try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
+  if (manifest.run_id !== runId || manifest.mode !== "live") genericFail("manifest_invalid");
+  genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root));
+  const flow = V12_MAESTRO_FLOW_CONTRACTS.recovery.flow;
+  if (!(dependencies.exists ?? ((file) => existsSync(path.join(root, file))))(flow)) genericFail("artifact_missing");
+  const execute = dependencies.execFileSync ?? execFileSync;
+  assertMaestroVersion(execute);
+  const output = path.join(root, `artifacts/native/v1.2/${runId}/maestro/recovery.xml`);
+  if (existsSync(output)) genericFail("immutable_output_invalid");
+  const serial = dependencies.serial ?? "emulator-5554";
+  const adb = dependencies.adb ?? ((...command) => execute("adb", ["-s", serial, ...command], { encoding: "utf8" }).trim());
+  const priorAirplane = adb("shell", "settings", "get", "global", "airplane_mode_on");
+  const reports = [];
+  let restored = false;
+  try {
+    for (const caseId of ["legacy-playback", "foreground-reconciliation", "queued-callback", "relaunch", "restore", "merge", "zero-cue", "between-set-rest-pointer"]) {
+      for (const cut of ["pre-transaction", "in-transaction", "post-commit-before-ack", "post-acknowledgement", "relaunch", "retry", "offline", "recovery"]) {
+        const temporary = path.join(root, `artifacts/native/v1.2/${runId}/maestro/.${caseId}-${cut}.xml`);
+        execute("maestro", ["test", "--device", serial, "-e", `V12_RECOVERY_CASE=${caseId}`, "-e", `V12_RECOVERY_STAGE=${cut}`, "--format", "junit", "--output", temporary, path.join(root, flow)], { stdio: "inherit" });
+        if (!existsSync(temporary)) genericFail("report_missing");
+        reports.push(readFileSync(temporary, "utf8"));
+      }
+    }
+    mkdirSync(path.dirname(output), { recursive: true });
+    writeFileSync(output, `<testsuites>${reports.join("")}</testsuites>\n`, { flag: "wx" });
+  } finally {
+    adb("shell", "settings", "put", "global", "airplane_mode_on", priorAirplane);
+    restored = adb("shell", "settings", "get", "global", "airplane_mode_on") === priorAirplane;
+  }
+  if (!restored) genericFail("settings_restore_failed");
+  return Object.freeze({ ok: true, run_id: runId, shard, report: path.relative(root, output), cases: 8, cuts: 64 });
 }
 export const V12_CALENDAR_TRACE_SAMPLE_MARKER = "GYM_TRACKER_V12_CALENDAR_TRACE_SAMPLE:";
 
@@ -322,7 +379,7 @@ export function executeV12Maestro(args = process.argv.slice(2), dependencies = {
 
 export function runV12MaestroCli(args = process.argv.slice(2), io = process) {
   try {
-    io.stdout.write(`${JSON.stringify(executeV12Maestro(args))}\n`);
+    io.stdout.write(`${JSON.stringify(args.includes("--run") ? executeLiveV12RecoveryMaestro(args) : executeV12Maestro(args))}\n`);
     return 0;
   } catch (error) {
     io.stderr.write(`${error.message}\n`);

@@ -18,23 +18,31 @@ import { PHASE18_GARMIN_ACCEPTANCE_CASE_IDS } from "./garminImport.contract";
 import { CURRENT_SCHEMA_VERSION } from "../../platform/sqlite/migrations";
 
 export const V12_ACCEPTANCE_SQLITE_CASE_IDS = [
-  "v12-schema27-mixed-upgrade",
+  "fresh-migration", "schema27-upgrade", "supported-legacy-upgrade", "failure-reopen",
+  "backup", "restore", "merge", "noop-replay", "rebuild", "immutable-history",
 ] as const;
 
-const MIXED_UPGRADE_SOURCE_CASE_IDS = [
-  "migration-fresh-v27-schema23-registry",
-  "portable-merge-mixed-full-plan-success",
-  "multi-plan-running-interleaved-completion",
-] as const;
+const SOURCE_CASES: readonly (readonly string[])[] = Object.freeze([
+  ["migration-fresh-v27-schema23-registry"],
+  ["migration-fresh-v27-schema23-registry"],
+  ["migration-retained-v1"],
+  ["migration-statement-rollback"],
+  ["portable-merge-mixed-full-plan-success"],
+  ["portable-merge-same-identity-dedup-remap"],
+  ["portable-merge-mixed-full-plan-success"],
+  ["portable-merge-duplicate-only-ready"],
+  ["migration-recovery-backup"],
+  ["multi-plan-running-interleaved-completion"],
+] as const);
 
-export const V12_ACCEPTANCE_SQLITE_CASES = Object.freeze([
+export const V12_ACCEPTANCE_SQLITE_CASES = Object.freeze(V12_ACCEPTANCE_SQLITE_CASE_IDS.map((id, index) =>
   Object.freeze({
-    id: V12_ACCEPTANCE_SQLITE_CASE_IDS[0],
+    id,
     // Schema 27 is the retained mixed-upgrade fixture. The active terminal schema
     // is deliberately derived from the landed migration registry at execution.
     finalSchemaVersion: 27,
     currentSchemaVersion: CURRENT_SCHEMA_VERSION,
-    sourceCaseIds: MIXED_UPGRADE_SOURCE_CASE_IDS,
+    sourceCaseIds: SOURCE_CASES[index]!,
     sourceRegistries: Object.freeze([
       MIGRATIONS_EFFECTS_CONTRACT_CASES,
       PORTABLE_MERGE_CONTRACT_CASES,
@@ -44,7 +52,7 @@ export const V12_ACCEPTANCE_SQLITE_CASES = Object.freeze([
       PROGRESS_PARITY_CONTRACT_CASES,
     ]),
   }),
-] as const);
+));
 
 export type V12AcceptanceSqliteCase = (typeof V12_ACCEPTANCE_SQLITE_CASES)[number];
 export type V12AcceptanceSqliteContractResult = Readonly<{

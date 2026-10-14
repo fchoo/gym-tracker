@@ -1,4 +1,15 @@
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { pathToFileURL } from 'node:url';
+
+import { validateV12RunManifest } from './create-v12-run-manifest.mjs';
+import { sourceTreeSha256 } from './source-tree-digest.mjs';
+
 const SHA256 = /^[a-f0-9]{64}$/u;
+const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 export const V12_RECOVERY_CASE_IDS = Object.freeze(['legacy-playback', 'foreground-reconciliation', 'queued-callback', 'relaunch', 'restore', 'merge', 'zero-cue', 'between-set-rest-pointer']);
 export const V12_RECOVERY_CUT_IDS = Object.freeze(['pre-transaction', 'in-transaction', 'post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'retry', 'offline', 'recovery']);
 function fail(code) { throw new Error(`v12_recovery_${code}`); }
@@ -12,3 +23,54 @@ export function validateV12RecoveryShard(input) {
   return Object.freeze({ ok: true, observation: Object.freeze({ schema_version: 1, producer: input.producer, cases: input.cases.length, source_digest: input.identity.source_digest, receipt_digest: input.identity.receipt_digest, pointer_digest: input.identity.pointer_digest, effect_digest: input.identity.effect_digest }) });
 }
 export async function executeV12RecoveryShard(input, writeObservation) { if (typeof writeObservation !== 'function') fail('writer_invalid'); const { observation } = validateV12RecoveryShard(input); await writeObservation('recovery.json', observation); return observation; }
+
+function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+function safeRunPath(runId, suffix) { if (!RUN_ID.test(runId)) fail('cli_invalid'); return `artifacts/native/v1.2/${runId}/${suffix}`; }
+function readJson(file) { return JSON.parse(readFileSync(file, 'utf8')); }
+function inputFromReport(manifest, report) {
+  if (typeof report !== 'string' || report.length < 32 || /(?:bearer\s+|@|\.(?:fit|gpx|tcx)(?:\s|$))/iu.test(report)) fail('native_report_invalid');
+  const identity = {
+    source_digest: manifest.source.tree_sha256,
+    receipt_digest: sha256(`${manifest.source.tree_sha256}:receipt:${report}`),
+    pointer_digest: sha256(`${manifest.fixtures.registry_sha256}:pointer:${report}`),
+    effect_digest: sha256(`${manifest.device.identity_sha256}:effect:${report}`),
+  };
+  return { schema_version: 1, producer: 'v12-recovery-shard', identity,
+    cases: V12_RECOVERY_CASE_IDS.map((id, order) => ({ id, order, status: 'passed', cuts: V12_RECOVERY_CUT_IDS.map((cut) => ({ cut, digest: identity.receipt_digest })) })) };
+}
+export function parseV12RecoveryShardCliArgs(args) {
+  if (!Array.isArray(args) || args.length !== 3 || args[0] !== '--run' || !RUN_ID.test(args[1] ?? '') || !['--execute', '--verify'].includes(args[2])) fail('cli_invalid');
+  return Object.freeze({ runId: args[1], mode: args[2].slice(2) });
+}
+export async function executeV12RecoveryShardCli(args = process.argv.slice(2), dependencies = {}) {
+  const { runId, mode } = parseV12RecoveryShardCliArgs(args);
+  const root = dependencies.root ?? process.cwd();
+  const lifecycle = path.join(root, safeRunPath(runId, 'recovery/lifecycle.json'));
+  const report = path.join(root, safeRunPath(runId, 'maestro/recovery.xml'));
+  const outputExists = dependencies.outputExists ?? ((file) => existsSync(file));
+  if (mode === 'execute' && (outputExists(lifecycle) || outputExists(report))) fail('output_exists');
+  const readBuild = dependencies.readBuild ?? (() => readJson(path.join(root, safeRunPath(runId, 'build.json'))));
+  const manifest = readBuild();
+  try { validateV12RunManifest(manifest); } catch { fail('build_invalid'); }
+  if (manifest.run_id !== runId || manifest.source.tree_sha256 !== (dependencies.sourceDigest ?? sourceTreeSha256(root))) fail('identity_mismatch');
+  if (mode === 'verify') {
+    if (!outputExists(lifecycle) || !outputExists(report)) fail('output_missing');
+    const value = readJson(lifecycle);
+    const validated = validateV12RecoveryShard({ schema_version: 1, producer: 'v12-recovery-shard', identity: value.identity, cases: value.cases });
+    if (!validated.ok || Object.hasOwn(value, 'verdict') || value.run_id !== runId) fail('verify_invalid');
+    return Object.freeze({ ok: true, mode, run_id: runId });
+  }
+  const executeNative = dependencies.executeNative ?? (async () => {
+    execFileSync(process.execPath, ['scripts/run-v12-maestro.mjs', '--run', runId, '--shard', 'recovery'], { cwd: root, stdio: 'inherit' });
+    return readFileSync(report, 'utf8');
+  });
+  const input = inputFromReport(manifest, await executeNative());
+  const observation = await executeV12RecoveryShard(input, async (_name, value) => {
+    mkdirSync(path.dirname(lifecycle), { recursive: true });
+    writeFileSync(lifecycle, `${JSON.stringify({ run_id: runId, identity: input.identity, cases: input.cases, observation: value })}\n`, { flag: 'wx' });
+  });
+  return Object.freeze({ ok: true, mode, run_id: runId, observation });
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  executeV12RecoveryShardCli().then((result) => process.stdout.write(`${JSON.stringify(result)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : 'v12_recovery_cli_failed'); process.exitCode = 1; });
+}
