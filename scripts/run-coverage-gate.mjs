@@ -112,13 +112,11 @@ const phase18EvidenceFiles = [
   "scripts/verify-phase18-garmin-proof.mjs",
 ];
 const phase16EvidenceTests = [
-  "scripts/native-device-selection.test.mjs",
   "scripts/v12-calendar-comparison.test.mjs",
   "scripts/v12-evidence-scripts.test.mjs",
   "scripts/v12-calendar-evidence-coverage.test.mjs",
 ];
 const phase16EvidenceFiles = [
-  "scripts/native-device-selection.mjs",
   "scripts/benchmark-v12-interactions.mjs",
   "scripts/compare-v12-calendar.mjs",
   "scripts/run-v12-maestro.mjs",
@@ -126,6 +124,12 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-artifacts.mjs",
   "scripts/v12-calendar-case-evidence.mjs",
   "scripts/v12-calendar-case-registry.mjs",
+];
+const phase20EvidenceTests = [
+  "scripts/native-device-selection.test.mjs",
+];
+const phase20EvidenceFiles = [
+  "scripts/native-device-selection.mjs",
 ];
 const phase20IntegrityCriticalFiles = [
   "src/bootstrap/v12AcceptanceBenchmark.ts",
@@ -523,6 +527,24 @@ if (focusPhase16Evidence) {
   focusedIntegrityFiles.push("src/bootstrap/phase16CalendarTestControls.ts");
   focusedProjects.push("unit");
   jestForwarded.push("src/bootstrap/phase16CalendarTestControls.test.ts");
+}
+if (!focusPhase16Evidence && !focusPhase18) {
+  const evidence = spawnSync(
+    process.execPath,
+    [
+      "--experimental-test-coverage",
+      "--test-concurrency=1",
+      ...phase20EvidenceFiles.map((file) => `--test-coverage-include=${file}`),
+      "--test-coverage-lines=100",
+      "--test-coverage-branches=100",
+      "--test-coverage-functions=100",
+      "--test",
+      ...phase20EvidenceTests,
+    ],
+    { cwd: projectRoot, encoding: "utf8", stdio: "inherit" },
+  );
+  if (evidence.error !== undefined) throw evidence.error;
+  if (evidence.status !== 0) process.exit(evidence.status ?? 1);
 }
 if (focusPhase18) {
   focusedIntegrityFiles.push(...phase18IntegrityCriticalFiles);
