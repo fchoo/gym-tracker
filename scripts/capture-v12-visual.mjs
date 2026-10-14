@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 
@@ -10,6 +11,7 @@ import {
 } from "./v12-evidence-contract.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
+const require = createRequire(import.meta.url);
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const FLOW_SOURCES = Object.freeze([
   Object.freeze({ id: "multi-plan", sourcePath: "maestro/v1.2/multi-plan.yaml", contractPath: "src/testing/contracts/multiPlanRunning.contract.ts", prefix: "phase13-" }),
@@ -23,6 +25,13 @@ function fail(code) {
 
 function hash(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function decodeNativePng(bytes) {
+  let image;
+  try { image = require("pngjs").PNG.sync.read(bytes); } catch { fail("png_invalid"); }
+  if (!Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height) || image.width < 1 || image.height < 1) fail("png_invalid");
+  return Object.freeze({ width: image.width, height: image.height });
 }
 
 function sourceCaseIds(root, { contractPath, prefix }) {
@@ -123,6 +132,7 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
     if (!measured || measured.native_execution !== "EXECUTED" || measured.fixture_id !== item.fixture_id
       || !Buffer.isBuffer(measured.png) || measured.png.length === 0 || !measured.settings
       || measured.settings.restored !== true || measured.settings.privacy !== "synthetic-only") fail("capture_invalid");
+    const dimensions = decodeNativePng(measured.png);
     const pngSha256 = hash(measured.png);
     const pngPath = `artifacts/native/v1.2/${runId}/screenshots/${item.state_id}/${item.configuration_id}/native.png`;
     const recordPath = `artifacts/native/v1.2/${runId}/screenshots/${item.state_id}/${item.configuration_id}/capture.json`;
@@ -133,7 +143,7 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
       mkdirSync(path.dirname(absolute), { recursive: true });
       writeFileSync(absolute, measured.png, { flag: "wx" });
     }
-    const record = Object.freeze({ schema_version: 1, producer: "v12-visual-capture/v1", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length }), settings: Object.freeze({ ...measured.settings }) });
+    const record = Object.freeze({ schema_version: 2, producer: "v12-visual-capture/v2", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) });
     immutableJson(root, recordPath, record, write);
     records.push(record);
   }
@@ -142,17 +152,25 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
   return index;
 }
 
-export function verifyV12VisualCapture({ runId, root = process.cwd(), readJson } = {}) {
+export function verifyV12VisualCapture({ runId, root = process.cwd(), readJson, readBytes } = {}) {
   if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
   const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
   const index = read(`artifacts/native/v1.2/${runId}/screenshots/index.json`);
   if (!index || index.producer !== "v12-visual-capture-index/v1" || index.run_id !== runId || !Array.isArray(index.records) || index.records.length !== 107 * 64) fail("index_invalid");
   const seen = new Set();
+  const contents = new Set();
+  const readPng = readBytes ?? ((file) => readFileSync(path.join(root, file)));
   for (const record of index.records) {
     const key = `${record?.state_id}\u0000${record?.configuration_id}`;
     if (!V12_BROWSER_WALK_STATE_IDS.includes(record?.state_id) || !V12_CONFIG_IDS.includes(record?.configuration_id)
       || seen.has(key) || record.native_execution !== "EXECUTED" || record.fixture_id !== "v12-synthetic-fixtures-r18"
-      || !SHA256.test(record.native_png?.sha256 ?? "") || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only") fail("record_invalid");
+      || !SHA256.test(record.native_png?.sha256 ?? "") || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only"
+      || record.native_png.path !== `artifacts/native/v1.2/${runId}/screenshots/${record.state_id}/${record.configuration_id}/native.png`) fail("record_invalid");
+    let png; try { png = readPng(record.native_png.path); } catch { fail("png_missing"); }
+    const dimensions = decodeNativePng(png);
+    if (hash(png) !== record.native_png.sha256 || png.length !== record.native_png.size_bytes
+      || dimensions.width !== record.native_png.width || dimensions.height !== record.native_png.height || contents.has(record.native_png.sha256)) fail("png_lineage_invalid");
+    contents.add(record.native_png.sha256);
     seen.add(key);
   }
   return true;

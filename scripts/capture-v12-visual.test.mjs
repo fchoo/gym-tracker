@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { PNG } from "pngjs";
 
 import {
   V12_BROWSER_WALK_STATE_IDS,
@@ -59,14 +60,18 @@ test("binds each source-owned flow to immutable source content and semantic stag
 test("writes every live native capture once and rejects fixture-only or un-restored state", () => {
   const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
   const written = new Map();
+  let captureOrdinal = 0;
   const index = executeLiveV12VisualCapture({
     runId,
     root: ROOT,
-    capture: () => ({ native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png: Buffer.from("native-png"), settings: { restored: true, privacy: "synthetic-only" } }),
+    capture: () => {
+      const seed = captureOrdinal++;
+      return { native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png: PNG.sync.write({ width: 1, height: 1, data: Buffer.from([seed & 255, (seed >>> 8) & 255, (seed >>> 16) & 255, 255]) }), settings: { restored: true, privacy: "synthetic-only" } };
+    },
     write: (file, value) => written.set(file, value),
   });
   assert.equal(index.records.length, 107 * 64);
   assert.equal(written.size, 1 + 2 * 107 * 64);
-  assert.equal(verifyV12VisualCapture({ runId, root: ROOT, readJson: (file) => written.get(file) }), true);
+  assert.equal(verifyV12VisualCapture({ runId, root: ROOT, readJson: (file) => written.get(file), readBytes: (file) => written.get(file) }), true);
   assert.throws(() => executeLiveV12VisualCapture({ runId, capture: () => ({ native_execution: "NOT_RUN" }) }), /capture_invalid/u);
 });
