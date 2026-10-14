@@ -134,10 +134,34 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
   return record;
 }
 
-function liveIdentity(manifest, root) {
+export function validateV12LiveSourceLineage(manifest, dependencies = {}) {
+  const root = dependencies.root ?? ROOT;
+  const currentHead = dependencies.currentHead
+    ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const sourceDigest = dependencies.sourceDigest ?? sourceTreeSha256(root);
+  const isAncestor = dependencies.isAncestor ?? ((ancestor, descendant) => {
+    try {
+      execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: root, stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!GIT_HEAD.test(manifest?.source?.head ?? "") || !SHA256.test(manifest?.source?.tree_sha256 ?? "") || !GIT_HEAD.test(currentHead)) {
+    genericFail("identity_mismatch");
+  }
+  if (isAncestor(manifest.source.head, currentHead) !== true) genericFail("source_lineage_mismatch");
+  if (sourceDigest !== manifest.source.tree_sha256) genericFail("source_tree_mismatch");
+  return Object.freeze({
+    head: manifest.source.head,
+    tree_sha256: manifest.source.tree_sha256,
+  });
+}
+
+function liveIdentity(manifest, root, sourceIdentity) {
   return {
-    head: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
-    tree_sha256: sourceTreeSha256(root),
+    head: sourceIdentity.head,
+    tree_sha256: sourceIdentity.tree_sha256,
     package: manifest.build.package,
     apk_sha256: manifest.build.apk.sha256,
     installed_apk_sha256: manifest.device.installed_apk_sha256,
@@ -160,7 +184,13 @@ export function executeLiveV12RecoveryMaestro(args = process.argv.slice(2), depe
   const manifest = (dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8"))))(`artifacts/native/v1.2/${runId}/build.json`);
   try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
   if (manifest.run_id !== runId || manifest.mode !== "live") genericFail("manifest_invalid");
-  genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root));
+  const sourceIdentity = validateV12LiveSourceLineage(manifest, {
+    root,
+    currentHead: dependencies.currentHead,
+    sourceDigest: dependencies.sourceDigest,
+    isAncestor: dependencies.isAncestor,
+  });
+  genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root, sourceIdentity));
   const flow = V12_MAESTRO_FLOW_CONTRACTS.recovery.flow;
   if (!(dependencies.exists ?? ((file) => existsSync(path.join(root, file))))(flow)) genericFail("artifact_missing");
   const execute = dependencies.execFileSync ?? execFileSync;
