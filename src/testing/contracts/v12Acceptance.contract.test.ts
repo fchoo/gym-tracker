@@ -11,17 +11,12 @@ import {
 } from "./v12Acceptance.contract";
 
 describe("v1.2 aggregate SQLite acceptance contract", () => {
-  it("derives one ordered schema-27 mixed migration case without skips", async () => {
-    expect(V12_ACCEPTANCE_SQLITE_CASES).toHaveLength(1);
-    expect(V12_ACCEPTANCE_SQLITE_CASES[0]).toMatchObject({
-      id: "v12-schema27-mixed-upgrade",
-      finalSchemaVersion: 27,
-      sourceCaseIds: [
-        "migration-fresh-v27-schema23-registry",
-        "portable-merge-mixed-full-plan-success",
-        "multi-plan-running-interleaved-completion",
-      ],
-    });
+  it("derives all ten ordered source-owned SQLite cases without skips", async () => {
+    expect(V12_ACCEPTANCE_SQLITE_CASES).toHaveLength(10);
+    expect(V12_ACCEPTANCE_SQLITE_CASES.map(({ id }) => id)).toEqual([
+      "fresh-migration", "schema27-upgrade", "supported-legacy-upgrade", "failure-reopen",
+      "backup", "restore", "merge", "noop-replay", "rebuild", "immutable-history",
+    ]);
 
     const result = await runV12AcceptanceSqliteContracts({
       runMixedUpgrade: async (definition) => ({
@@ -36,22 +31,19 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
       schemaVersion: 1,
       contractVersion: 1,
       status: "passed",
-      total: 1,
-      passed: 1,
+      total: 10,
+      passed: 10,
       failed: 0,
       skipped: 0,
-      cases: [{
-        id: "v12-schema27-mixed-upgrade",
-        status: "passed",
-        code: "v12_acceptance_case_passed",
-        counts: { sourceCases: 3 },
-      }],
+      cases: V12_ACCEPTANCE_SQLITE_CASES.map((definition) => ({
+        id: definition.id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: definition.sourceCaseIds.length },
+      })),
     });
   });
 
   it("fails closed for invalid adapter shapes, thrown probes, and unsafe error text", async () => {
     const shape = await runV12AcceptanceSqliteContracts({
-      runMixedUpgrade: async () => ({ id: "wrong" as "v12-schema27-mixed-upgrade", status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 3 } }),
+      runMixedUpgrade: async () => ({ id: "wrong" as never, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 3 } }),
     });
     const thrown = await runV12AcceptanceSqliteContracts({
       runMixedUpgrade: async () => { throw new Error("contains whitespace"); },
@@ -73,12 +65,12 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
     const running = jest.spyOn(multiPlanContracts, "runMultiPlanRunningContract").mockResolvedValue({ status: "passed", skipped: 0 } as never);
     try {
       const adapter = await createExpoV12AcceptanceSqliteContractAdapter("phase20");
-      await expect(adapter.runMixedUpgrade(V12_ACCEPTANCE_SQLITE_CASES[0])).resolves.toMatchObject({ status: "passed", counts: { sourceCases: 3 } });
+      await expect(adapter.runMixedUpgrade(V12_ACCEPTANCE_SQLITE_CASES[0]!)).resolves.toMatchObject({ status: "passed", counts: { sourceCases: 1 } });
       expect(migrationAdapter).toHaveBeenCalledWith("phase20-schema27");
       expect(mergeAdapter).toHaveBeenCalledWith("phase20-merge");
       expect(running).toHaveBeenCalledWith("phase20-running");
       mergeRun.mockResolvedValueOnce({ status: "failed", skipped: 0 } as never);
-      await expect(adapter.runMixedUpgrade(V12_ACCEPTANCE_SQLITE_CASES[0])).resolves.toMatchObject({ status: "failed", errorCode: "v12_acceptance_source_contract_failed" });
+      await expect(adapter.runMixedUpgrade(V12_ACCEPTANCE_SQLITE_CASES[0]!)).resolves.toMatchObject({ status: "failed", errorCode: "v12_acceptance_source_contract_failed" });
     } finally {
       jest.restoreAllMocks();
     }

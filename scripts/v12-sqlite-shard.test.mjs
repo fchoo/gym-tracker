@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { executeV12SqliteShard, validateV12SqliteShard } from './v12-sqlite-shard.mjs';
+import {
+  executeV12SqliteShard,
+  executeV12SqliteShardCli,
+  parseV12SqliteShardCliArgs,
+  validateV12SqliteShard,
+} from './v12-sqlite-shard.mjs';
 
 const digest = 'a'.repeat(64);
 const caseIds = [
@@ -43,4 +48,23 @@ test('writes observations only and never a verdict', async () => {
   await executeV12SqliteShard(valid(), async (path, value) => writes.push({ path, value }));
   assert.deepEqual(writes.map(({ path }) => path), ['migration.json', 'portability.json', 'history.json']);
   assert.equal(JSON.stringify(writes).includes('verdict'), false);
+});
+
+test('requires an explicit immutable run command instead of silently succeeding as a no-op', () => {
+  assert.deepEqual(
+    parseV12SqliteShardCliArgs(['--run', 'phase20-20261014T031137Z-5917481c1fd1', '--execute']),
+    { runId: 'phase20-20261014T031137Z-5917481c1fd1', mode: 'execute' },
+  );
+  assert.throws(() => parseV12SqliteShardCliArgs(['--run', 'phase20-20261014T031137Z-5917481c1fd1']), /v12_sqlite_cli_invalid/u);
+});
+
+test('refuses duplicate output and producer verdict authority before native execution', async () => {
+  await assert.rejects(
+    executeV12SqliteShardCli(['--run', 'phase20-20261014T031137Z-5917481c1fd1', '--execute'], {
+      readBuild: () => ({ run_id: 'phase20-20261014T031137Z-5917481c1fd1' }),
+      outputExists: () => true,
+      executeNative: async () => { throw new Error('must_not_execute'); },
+    }),
+    /v12_sqlite_output_exists/u,
+  );
 });

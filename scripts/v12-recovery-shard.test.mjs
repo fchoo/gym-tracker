@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { validateV12RecoveryShard } from './v12-recovery-shard.mjs';
+import {
+  executeV12RecoveryShardCli,
+  parseV12RecoveryShardCliArgs,
+  validateV12RecoveryShard,
+} from './v12-recovery-shard.mjs';
 
 const digest = 'a'.repeat(64);
 const ids = ['legacy-playback', 'foreground-reconciliation', 'queued-callback', 'relaunch', 'restore', 'merge', 'zero-cue', 'between-set-rest-pointer'];
@@ -21,4 +25,23 @@ test('rejects stale callbacks, duplicate effects, missing cuts, cross-session ow
     (input) => { input.cases[2].cuts[0].digest = 'b'.repeat(64); },
     (input) => { input.cases[3].owner_id = 'private'; },
   ]) { const input = valid(); mutate(input); assert.throws(() => validateV12RecoveryShard(input), /v12_recovery_/u); }
+});
+
+test('requires an explicit immutable run command instead of silently succeeding as a no-op', () => {
+  assert.deepEqual(
+    parseV12RecoveryShardCliArgs(['--run', 'phase20-20261014T031137Z-5917481c1fd1', '--verify']),
+    { runId: 'phase20-20261014T031137Z-5917481c1fd1', mode: 'verify' },
+  );
+  assert.throws(() => parseV12RecoveryShardCliArgs(['--execute']), /v12_recovery_cli_invalid/u);
+});
+
+test('refuses duplicate recovery evidence before the native flow can execute', async () => {
+  await assert.rejects(
+    executeV12RecoveryShardCli(['--run', 'phase20-20261014T031137Z-5917481c1fd1', '--execute'], {
+      readBuild: () => ({ run_id: 'phase20-20261014T031137Z-5917481c1fd1' }),
+      outputExists: () => true,
+      executeNative: async () => { throw new Error('must_not_execute'); },
+    }),
+    /v12_recovery_output_exists/u,
+  );
 });

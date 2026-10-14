@@ -1364,7 +1364,7 @@ test("default strict coverage keeps the complete integrity registry while Phase 
   assert.match(coverage, /if \(focusPhase20\) \{[\s\S]*?focusedIntegrityFiles\.push\(\.\.\.phase20IntegrityCriticalFiles\);/u);
 });
 
-test("the generic v1.2 runner binds one synthetic shard without native execution or verdict authority", () => {
+test("the generic v1.2 runner binds one synthetic shard to the canonical build-only manifest without verdict authority", () => {
   const manifest = v12LiveManifest();
   const flowBytes = Buffer.from("appId: com.fchoo.gymtracker.devtest\n---\n- launchApp\n");
   const sourceBytes = Buffer.from("export const source = 'fixed';\n");
@@ -1416,7 +1416,7 @@ test("the generic v1.2 runner binds one synthetic shard without native execution
 
   const root = mkdtempSync(path.join(tmpdir(), "gym-v12-runner-"));
   try {
-    const manifestPath = path.join(root, "artifacts/native/v1.2", manifest.run_id, "run-manifest.json");
+    const manifestPath = path.join(root, "artifacts/native/v1.2", manifest.run_id, "build.json");
     mkdirSync(path.dirname(manifestPath), { recursive: true });
     mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });
     mkdirSync(path.join(root, "scripts"), { recursive: true });
