@@ -55,7 +55,7 @@ function deepFreeze(value) {
 function createRunId(createdAt, head) {
   assertTimestamp(createdAt);
   if (!HEAD.test(head ?? "")) fail("source_invalid");
-  return `phase20-${createdAt.replaceAll(/[-:]/gu, "").replace(".000", "")}-${head.slice(0, 12)}`;
+  return `phase20-${createdAt.replaceAll(/[-:]/gu, "")}-${head.slice(0, 12)}`;
 }
 
 function normalizeSource(value) {
@@ -211,7 +211,7 @@ export function executeV12RunManifestCli(args, { root = process.cwd(), now = () 
   const sourceManifest = readJson(projectRoot, ".planning/design/v1.2-browser-evidence/source-manifest.json");
   const sources = sourceManifest.sources;
   if (!Array.isArray(sources) || sourceManifest.revision !== 18 || sources.length < 2) fail("input_invalid");
-  const createdAt = now().toISOString().replace(".000", "");
+  const createdAt = now().toISOString().replace(/\.\d{3}Z$/u, "Z");
   const input = {
     created_at: createdAt,
     source: { head, tree_sha256: buildManifest.source_tree_sha256, dirty: false, package_json_sha256: hashFile(projectRoot, "package.json"), package_lock_sha256: hashFile(projectRoot, "package-lock.json") },
