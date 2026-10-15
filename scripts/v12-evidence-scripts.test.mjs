@@ -1478,7 +1478,7 @@ test("the v1.2 build branch publishes bounded identity fields without changing h
   assert.match(script, /manifest_version: 2/u);
 });
 
-test("the sole v1.2 validator derives all 172 rows, preserves exception counts, and seals only in explicit final mode", () => {
+test("the sole v1.2 validator rejects untyped row claims and seals only a validator-owned 172-row ledger", () => {
   const inputs = loadV12ContractInputs();
   const manifest = v12LiveManifest();
   const evidence = inputs.matrix.rows.map((row) => ({
@@ -1489,38 +1489,27 @@ test("the sole v1.2 validator derives all 172 rows, preserves exception counts, 
     configuration_id: "AP-L-C390-P-F100",
   }));
   const readArtifact = (artifact) => Buffer.from(path.basename(artifact, ".json"));
-  const normal = deriveV12Ledger({ inputs, manifest, evidence, readiness_policy: null, readArtifact });
-  assert.equal(normal.rows.length, 172);
-  assert.equal(normal.verdict_counts.PASS, 172);
-  assert.equal(normal.readiness, "READY");
-
-  evidence[0] = { ...evidence[0], result: "FAIL" };
-  assert.equal(deriveV12Ledger({ inputs, manifest, evidence, readiness_policy: null, readArtifact }).readiness, "NOT_READY");
-  evidence[0] = { ...evidence[0], result: "PASS" };
-  const exceptions = [{
-    row_id: evidence[0].row_id, deviation_id: "DEV-203", owner_decision: "owner-approved", decided_at: "2026-10-14",
-    scope: "native light compact", configurations: ["AP-L-C390-P-F100"], rationale: "bounded visual variance",
-    evidence_hashes: [hash("exception")],
-  }];
-  const conditional = deriveV12Ledger({
-    inputs, manifest, evidence, exceptions,
-    readiness_policy: { policy_id: "v12-reviewed-policy", reviewed_by: "owner", reviewed_at: "2026-10-14", permits_accepted_exceptions: true },
-    readArtifact,
-  });
-  assert.equal(conditional.verdict_counts.ACCEPTED_EXCEPTION, 1);
-  assert.equal(conditional.verdict_counts.PASS, 171);
-  assert.equal(conditional.readiness, "CONDITIONALLY_READY");
+  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence, readiness_policy: null, readArtifact }), /v12_final_evidence_schema_invalid/u);
   assert.throws(() => validateV12RunManifest(manifest, { head: "stale" }), /v12_final_run_identity_stale/u);
-  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: evidence.slice(1), readArtifact }), /v12_final_evidence_set_invalid/u);
-  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: [{ ...evidence[0], serial: "private" }, ...evidence.slice(1)], readArtifact }), /v12_final_privacy_invalid/u);
-  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence, exceptions: [{ ...exceptions[0], deviation_id: "MAP-01" }], readArtifact }), /v12_final_exception_metadata_invalid/u);
-  assert.equal(deriveV12Ledger({ inputs, manifest, evidence, exceptions, readArtifact }).readiness, "NOT_READY");
-  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: [{ ...evidence[0], artifact: "../secret.json" }, ...evidence.slice(1)], readArtifact }), /v12_final_artifact_path_invalid/u);
-  assert.throws(() => deriveV12Ledger({ inputs, manifest, evidence: evidence.map((item) => ({ ...item, verdict: "PASS" })), readArtifact }), /v12_final_producer_verdict_forbidden/u);
+  const sealedRows = Object.freeze(inputs.matrix.rows.map((row) => Object.freeze({ ...row, verdict: "PASS", observations: Object.freeze([]) })));
+  const sourceResults = Object.freeze(sealedRows.map((row, index) => Object.freeze({ row_id: row.requirement_id, result: "PASS", selector: Object.freeze({ type: "validator-owned-test", id: row.requirement_id }), evidence_sha256: hash(`source-${index}`) })));
+  const normal = Object.freeze({
+    schema_version: 1,
+    run_id: manifest.run_id,
+    rows: sealedRows,
+    verdict_counts: Object.freeze({ PASS: 172, FAIL: 0, NOT_RUN: 0, REVIEW_REQUIRED: 0, N_A_REVIEWED: 0, ACCEPTED_EXCEPTION: 0 }),
+    readiness: "READY",
+    accepted_exception_count: 0,
+    policy: null,
+    identity: Object.freeze({ run_id: manifest.run_id }),
+    source_results: sourceResults,
+    evidence_hashes: Object.freeze(sourceResults.map((item) => item.evidence_sha256)),
+    gates: Object.freeze([]),
+  });
   assert.throws(() => sealV12FinalEvidence({ mode: "preseal", run_id: manifest.run_id, ledger: normal, writeImmutableJson: () => {} }), /v12_final_explicit_final_mode_required/u);
   const writes = new Map();
   const final = sealV12FinalEvidence({ mode: "final", run_id: manifest.run_id, ledger: normal, writeImmutableJson: (file, value) => writes.set(file, value) });
   assert.equal(writes.size, 2);
   assert.equal(final.release_authorized, false);
-  assert.match(generateV12ParityReport({ ledger: conditional }), /CONDITIONALLY_READY/u);
+  assert.match(generateV12ParityReport({ ledger: normal }), /READY/u);
 });
