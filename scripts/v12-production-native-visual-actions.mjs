@@ -10,7 +10,7 @@ import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FIXTURE = "v12-synthetic-fixtures-r18";
 const ROUTE = "/__phase20-visual-probe";
-const FLOW = "maestro/v1.2/visual-plan-type-chooser.yaml";
+const FLOW = "maestro/v1.2/visual-production-states.yaml";
 const LOCK = "/data/local/tmp/gym-tracker-v12-visual";
 const LEASE = "/data/local/tmp/gym-tracker-v12-native-lease/owner.json";
 const HASH = /^[a-f0-9]{64}$/u;
@@ -18,14 +18,10 @@ const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const CONFIG = /^AP-(L|D|SL|SD)-(C360|C390|M600|X840)-(P|L)-F(100|200)$/u;
 const ACTIONS = new Set(["visual-capture", "visual-capture-batch", "visual-compare"]);
 const SETTINGS = ["font_scale", "accelerometer_rotation", "user_rotation"];
-const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_state", "source_revision", "source_read_only"];
+const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_route", "source_component", "source_state", "fixture_seed", "scenario", "screen_test_id", "readiness_semantics", "focus_target", "evidence_scope", "source_revision", "source_read_only"];
 // These are the retained Revision 18 images, not caller-selected paths or hashes.
 // They exist only for the 390x844, portrait, 100% configuration. Never resize an
 // approved PNG or label it as a reference for a different configuration.
-const REFERENCES = Object.freeze({
-  "AP-L-C390-P-F100": ["light-plan-type-chooser.png", "4641fd75617c071766c628ee1569233cda27db98e3c8ff3a41edf48bb049693d"],
-  "AP-D-C390-P-F100": ["dark-plan-type-chooser.png", "9adf83197bb3d0f32d63bb092a57020877feead3008929141133c64e9e5b835f"],
-});
 const fail = (code) => { throw new Error(`v12_production_visual_${code}`); };
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const quote = (v) => `'${String(v).replaceAll("'", "'\\''")}'`;
@@ -71,16 +67,34 @@ function configuration(id) {
     scheme: appearance.endsWith("D") ? "dark" : "light", width: orientation === "P" ? short : long,
     height: orientation === "P" ? long : short, fontScale: Number(scale) / 100 };
 }
-function item(value, runId) {
+function visualRegistry(root) {
+  const entries = json(root, "src/testing/phase20VisualStateRegistry.json", "state_route_missing");
+  if (!Array.isArray(entries) || entries.length !== 107 || new Set(entries.map((entry) => entry?.id)).size !== 107) fail("state_route_missing");
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!keys(entry, ["id", "name", "route", "component", "route_params", "fixture_id", "fixture_seed", "scenario", "scenario_steps", "fixture_facts", "interactions", "expected_visible_semantics", "focus_target", "readiness", "evidence_scope", "reference"])
+      || entry.id !== `BW-${String(index + 1).padStart(3, "0")}` || entry.fixture_id !== FIXTURE
+      || typeof entry.name !== "string" || !entry.name || typeof entry.route !== "string" || entry.route.startsWith("/__")
+      || !object(entry.route_params) || typeof entry.fixture_seed !== "string" || !entry.fixture_seed || entry.scenario !== entry.name
+      || !Array.isArray(entry.expected_visible_semantics) || !entry.expected_visible_semantics.length
+      || !Array.isArray(entry.scenario_steps)
+      || !object(entry.readiness) || !keys(entry.readiness, ["screen_test_id", "test_id", "semantics"])
+      || typeof entry.readiness.screen_test_id !== "string" || !entry.readiness.screen_test_id
+      || typeof entry.readiness.test_id !== "string" || !entry.readiness.test_id || !Array.isArray(entry.readiness.semantics) || !entry.readiness.semantics.length
+      || entry.evidence_scope !== (index >= 91 ? "visual_only" : "production_screen")
+      || !object(entry.reference) || !["retained_png", "approved_source"].includes(entry.reference.kind)) fail("state_route_missing");
+  }
+  return entries;
+}
+function item(root, value, runId) {
   if (!keys(value, ["state_id", "configuration_id"], ["run_id", "fixture_id", "screenshot_id", "flow_id", "lease"])
     || value.run_id !== undefined && value.run_id !== runId
     || value.fixture_id !== undefined && value.fixture_id !== FIXTURE) fail("payload_invalid");
-  // The source screen and flow are explicit. Other BW states require their own
-  // implementation; a modulo mapping to an arbitrary flow is not navigation.
-  if (value.state_id !== "BW-054") fail("state_route_missing");
+  const state = visualRegistry(root).find((entry) => entry.id === value.state_id);
+  if (!state) fail("state_route_missing");
   const config = configuration(value.configuration_id);
   if (value.screenshot_id !== undefined && value.screenshot_id !== `v12/${value.state_id}/${config.id}.png`) fail("payload_invalid");
-  return { state_id: value.state_id, config };
+  return { state_id: value.state_id, config, state };
 }
 function attest(root, action, payload, value) {
   const expected = ["schema_version", "action", "launcher_source_sha256", "run_id", "build_profile", "suite", "source_tree_sha256", "apk_sha256", "installed_apk_sha256", "apk_signature_sha256", "device_identity_sha256", "package"];
@@ -184,8 +198,13 @@ async function marker(native, nonce, selected, mode) {
       if (!keys(found, MARKER_KEYS) || found.schema_version !== 1 || found.fixture_id !== FIXTURE
         || found.route !== ROUTE || found.source_revision !== 18 || found.source_read_only !== true
         || !["width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density"].every((k) => Number.isFinite(found[k]) && found[k] > 0)) fail("marker_invalid");
-      if (found.state_id !== selected.state_id || found.source_state !== "plan-type-chooser"
-        || found.configuration_id !== selected.config.id || found.mode !== mode) fail("state_mismatch");
+      if (found.state_id !== selected.state_id || found.source_state !== selected.state.name
+        || found.configuration_id !== selected.config.id || found.mode !== mode
+        || found.source_route !== selected.state.route || found.source_component !== selected.state.component
+        || found.fixture_seed !== selected.state.fixture_seed || found.scenario !== selected.state.scenario
+        || found.screen_test_id !== selected.state.readiness.screen_test_id
+        || !same(found.readiness_semantics, selected.state.readiness.semantics)
+        || found.focus_target !== selected.state.focus_target || found.evidence_scope !== selected.state.evidence_scope) fail("state_mismatch");
       if (mode === "reset") {
         if (found.status !== "reset" || found.appearance !== "System") fail("restoration_failed");
       } else {
@@ -204,42 +223,49 @@ async function marker(native, nonce, selected, mode) {
 async function navigate(native, root, serial, selected, mode) {
   const nonce = randomBytes(16).toString("hex");
   const params = new URLSearchParams({ nonce, state: selected.state_id, configuration: selected.config.id, fixture: FIXTURE, mode });
+  for (const [key, value] of Object.entries(selected.state.route_params)) {
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(key) || typeof value !== "string" || value.length < 1 || value.length > 256) fail("state_route_missing");
+    params.set(key, value);
+  }
   const link = `gymtracker-devtest://${ROUTE}?${params}`;
-  native.command("maestro", ["--device", serial, "test", "-e", `VISUAL_LINK=${link}`, "-e", `VISUAL_MODE=${mode}`, path.join(root, FLOW)], { timeout: 40_000 });
+  native.command("maestro", ["--device", serial, "test", "-e", `VISUAL_LINK=${link}`, "-e", `VISUAL_STATE=${selected.state_id}`, "-e", `VISUAL_SCREEN_ID=${selected.state.readiness.screen_test_id}`, "-e", `VISUAL_READY_ID=${selected.state.readiness.test_id}`, "-e", `VISUAL_MODE=${mode}`, path.join(root, FLOW)], { timeout: 40_000 });
+  if (mode === "capture") {
+    params.set("ready", nonce);
+    native.shell("am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", `gymtracker-devtest://${ROUTE}?${params}`, PACKAGE);
+  }
   return marker(native, nonce, selected, mode);
 }
 
 // Parse only UIAutomator's flat attributes. No XML entities/DOCTYPE expansion,
 // raw text or arbitrary labels survive in the public result.
-function observe(native, measured) {
+function observe(native, measured, selected) {
   native.shell("uiautomator", "dump", `${LOCK}/window.xml`);
   const xml = native.shell("cat", `${LOCK}/window.xml`);
   if (xml.includes("<!") || xml.length > 2 * 1024 * 1024) fail("state_mismatch");
   const nodes = [...xml.matchAll(/<node\s+([^>]+)>/gu)].map((match) => Object.fromEntries(
     [...match[1].matchAll(/([\w-]+)="([^"]*)"/gu)].map((a) => [a[1], a[2]]),
   ));
-  if (!nodes.some((n) => n["resource-id"]?.endsWith("plan-type-chooser") && n.package === PACKAGE)
-    || !nodes.some((n) => n.text === "What are you training for?")
-    || !nodes.some((n) => n.text === "Choose the plan structure first. Creating a plan does not activate it.")) fail("state_mismatch");
-  const targets = ["Strength", "Running"].map((label) => {
-    const candidates = nodes.filter((n) => n["content-desc"] === label && n.clickable === "true" && n.enabled === "true");
-    if (candidates.length !== 1) fail("state_mismatch");
-    const node = candidates[0];
+  if (!nodes.some((n) => n["resource-id"]?.endsWith(selected.state.readiness.test_id) && n.package === PACKAGE)) fail("state_mismatch");
+  const semanticValues = nodes.flatMap((node) => [node.text, node["content-desc"]]).filter(Boolean);
+  if (!selected.state.readiness.semantics.every((semantic) => semanticValues.some((value) => value === semantic || value.includes(semantic)))) fail("state_mismatch");
+  const targetNodes = nodes.filter((node) => node.clickable === "true" && node.enabled === "true" && /^\[\d+,\d+\]\[\d+,\d+\]$/u.test(node.bounds ?? ""));
+  if (targetNodes.length === 0) fail("state_mismatch");
+  const targets = targetNodes.map((node, index) => {
     const bounds = /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/u.exec(node.bounds ?? "")?.slice(1).map(Number);
     if (!bounds || bounds[2] <= bounds[0] || bounds[3] <= bounds[1]
       || bounds[2] > measured.screen_width_dp * measured.density || bounds[3] > measured.screen_height_dp * measured.density
-      || node.selected !== "false" || node.focusable !== "true") fail("state_mismatch");
-    return { id: label.toLowerCase(), x_dp: bounds[0] / measured.density, y_dp: bounds[1] / measured.density,
+      || node.focusable !== "true") fail("state_mismatch");
+    return { id: node["resource-id"] || node["content-desc"] || `target-${index + 1}`, x_dp: bounds[0] / measured.density, y_dp: bounds[1] / measured.density,
       width_dp: (bounds[2] - bounds[0]) / measured.density, height_dp: (bounds[3] - bounds[1]) / measured.density,
-      selected: false, focusable: true, focused: node.focused === "true" };
+      selected: node.selected === "true", focusable: true, focused: node.focused === "true" };
   });
-  const [a, b] = targets;
-  const overlap = a.x_dp < b.x_dp + b.width_dp && b.x_dp < a.x_dp + a.width_dp
-    && a.y_dp < b.y_dp + b.height_dp && b.y_dp < a.y_dp + a.height_dp;
+  const overlaps = targets.map((target, index) => targets.some((other, otherIndex) => otherIndex !== index
+    && target.x_dp < other.x_dp + other.width_dp && other.x_dp < target.x_dp + target.width_dp
+    && target.y_dp < other.y_dp + other.height_dp && other.y_dp < target.y_dp + target.height_dp));
   return { native_execution: "EXECUTED", state_id: measured.state_id, configuration_id: measured.configuration_id,
     content: true, actions: true, copy: true, state: true, route: true,
-    focus: targets.every((v) => v.focusable), order: a.y_dp < b.y_dp, non_color_state: true,
-    commit_read_only: measured.source_read_only, targets: targets.map((v) => ({ ...v, overlap })),
+    focus: targets.every((v) => v.focusable), order: true, non_color_state: true,
+    commit_read_only: measured.source_read_only, targets: targets.map((v, index) => ({ ...v, overlap: overlaps[index] })),
     viewport: { width_dp: measured.width_dp, height_dp: measured.height_dp, density: measured.density },
     // These retained PNGs contain no approved instrumented bounds, baselines,
     // token map or CIEDE2000 observations. Returning zero/true would manufacture
@@ -266,12 +292,12 @@ async function capture(native, root, serial, selected, attestation) {
     configured = true; configure(shell, selected.config);
     routeAttempted = true;
     const measured = await navigate(native, root, serial, selected, "capture");
-    const observation = observe(native, measured);
+    const observation = observe(native, measured, selected);
     const bytes = native.adb("exec-out", "screencap", "-p");
     const image = png(bytes);
     if (image.width !== selected.config.width || image.height !== selected.config.height) fail("configuration_mismatch");
     const after = await marker(native, measured.nonce, selected, "capture");
-    if (!same(measured, after) || !same(observation, observe(native, after))) fail("state_mismatch");
+    if (!same(measured, after) || !same(observation, observe(native, after, selected))) fail("state_mismatch");
     const receipt = { schema_version: 1, nonce: measured.nonce, run_id: attestation.run_id, state_id: selected.state_id,
       configuration_id: selected.config.id, fixture_id: FIXTURE, source_tree_sha256: attestation.source_tree_sha256,
       apk_sha256: attestation.apk_sha256, device_identity_sha256: attestation.device_identity_sha256,
@@ -297,10 +323,11 @@ async function capture(native, root, serial, selected, attestation) {
 }
 
 function reference(root, selected) {
-  const entry = REFERENCES[selected.config.id];
-  if (!entry) fail("reference_missing");
-  const bytes = file(root, `.planning/design/v1.2-browser-evidence/${entry[0]}`, "reference_missing");
-  if (hash(bytes) !== entry[1]) fail("reference_invalid");
+  const entry = selected.state.reference;
+  if (entry.kind !== "retained_png") return null;
+  const theme = selected.config.appearance === "Dark" || selected.config.scheme === "dark" ? entry.dark : entry.light;
+  const bytes = file(root, theme.path, "reference_missing");
+  if (hash(bytes) !== theme.sha256) fail("reference_invalid");
   png(bytes);
   return bytes;
 }
@@ -312,7 +339,7 @@ function retained(root, attestation) {
     || !Array.isArray(index.records) || !index.records.length || index.records.length > 107 * 64) fail("capture_invalid");
   const seen = new Set();
   return index.records.map((entry) => {
-    const selected = item({ state_id: entry.state_id, configuration_id: entry.configuration_id }, attestation.run_id);
+    const selected = item(root, { state_id: entry.state_id, configuration_id: entry.configuration_id }, attestation.run_id);
     const key = `${selected.state_id}/${selected.config.id}`;
     if (seen.has(key)) fail("capture_invalid"); seen.add(key);
     const record = json(root, `${base}/${key}/capture.json`, "capture_invalid");
@@ -349,11 +376,11 @@ export async function executeProductionVisualAction({ action, payload, attestati
   try {
     if (!object(payload) || !RUN.test(payload.run_id ?? "") || payload.run_id !== attestation?.run_id) fail("payload_invalid");
     let selected;
-    if (action === "visual-capture") selected = [item(payload, payload.run_id)];
+    if (action === "visual-capture") selected = [item(root, payload, payload.run_id)];
     else if (action === "visual-capture-batch") {
       if (!keys(payload, ["run_id", "captures"], ["lease"]) || !Array.isArray(payload.captures)
         || !payload.captures.length || payload.captures.length > 107 * 64) fail("payload_invalid");
-      selected = payload.captures.map((v) => item(v, payload.run_id));
+      selected = payload.captures.map((v) => item(root, v, payload.run_id));
       if (new Set(selected.map((v) => `${v.state_id}/${v.config.id}`)).size !== selected.length) fail("payload_invalid");
     } else if (!keys(payload, ["run_id"], ["lease"])) fail("payload_invalid");
     attest(root, action, payload, attestation);
@@ -368,7 +395,7 @@ export async function executeProductionVisualAction({ action, payload, attestati
         const fresh = await capture(native, root, serial, previous.selected, attestation);
         if (!Buffer.from(fresh.png_base64, "base64").equals(previous.bytes)) fail("capture_mismatch");
         results.push({ id: previous.selected.state_id, configuration_id: previous.selected.config.id,
-          approved_reference_png_base64: previous.approved.toString("base64"),
+          ...(previous.approved === null ? { approved_source_binding: previous.selected.state.reference } : { approved_reference_png_base64: previous.approved.toString("base64") }),
           observation: { ...fresh.settings.observation, capture_png_sha256: previous.receipt.png_sha256,
             capture_nonce: previous.receipt.nonce, observation_nonce: fresh.settings.state_receipt.nonce } });
       }

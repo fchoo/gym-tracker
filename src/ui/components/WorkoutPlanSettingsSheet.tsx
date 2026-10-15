@@ -61,7 +61,7 @@ export function WorkoutPlanSettingsSheet({
     finally { setSaving(false); }
   };
 
-  return <BottomSheet cancelDisabled={saving} cancelLabel="Return to Workout" contentStyle={styles.content} heading="Plan settings" onCancel={onClose} scrollTestID="workout-plan-settings-sheet-content" visible={visible}>
+  return <BottomSheet cancelDisabled={saving} cancelLabel="Return to Workout" contentStyle={styles.content} heading="Plan settings" onCancel={onClose} scrollTestID="workout-plan-settings-sheet-content" testID="workout-plan-settings-sheet" visible={visible}>
     <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>{planName}</Text>
     <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{scheduleSummary}</Text>
     <View style={[styles.section, { borderColor: colors.divider }]}>

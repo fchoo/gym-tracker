@@ -24,6 +24,7 @@ export function ProgressSettingsSheet({ visible, onClose, onOpenBodyweightHistor
       onCancel={onClose}
       restoreFocusRef={restoreFocusRef}
       scrollTestID="progress-settings-sheet-content"
+      testID="progress-settings-sheet"
       visible={visible}
     >
       <PrimaryAction label="Bodyweight history" onPress={onOpenBodyweightHistory} ref={bodyweightActionRef} />

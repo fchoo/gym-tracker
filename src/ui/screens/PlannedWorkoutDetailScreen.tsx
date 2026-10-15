@@ -141,6 +141,7 @@ export function PlannedWorkoutDetailScreen({
   const title = detail.dayName.trim() || detail.planName.trim();
   return (
     <AdaptiveScreen
+      testID="planned-workout-detail"
       primary={<>
         <ScreenHeader backAction={onBack} backActionLabel="Back to Calendar agenda" backActionRef={backActionRef} title={title} titleStyle={calendarTypeScale.heading as TextStyle} />
         <View style={styles.summary} testID="planned-workout-summary">

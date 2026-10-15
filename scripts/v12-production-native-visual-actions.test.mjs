@@ -32,6 +32,9 @@ function controlledTool(state, executable, args, options = {}) {
     state.stateId = link.searchParams.get("state");
     state.configurationId = link.searchParams.get("configuration");
     state.mode = link.searchParams.get("mode");
+    state.routeParams = Object.fromEntries(link.searchParams);
+    state.screenId = args.find((value) => value.startsWith("VISUAL_SCREEN_ID="))?.slice("VISUAL_SCREEN_ID=".length);
+    state.readyId = args.find((value) => value.startsWith("VISUAL_READY_ID="))?.slice("VISUAL_READY_ID=".length);
     return ok();
   }
   if (executable !== "adb" || args[0] !== "-s" || args[1] !== "device-private") return bad();
@@ -54,6 +57,11 @@ function controlledTool(state, executable, args, options = {}) {
       width_dp: state.wrongConfig ? 360 : 390, height_dp: 800, screen_width_dp: 390, screen_height_dp: 844,
       font_scale: state.mode === "reset" ? Number(state.settings.font_scale) : 1,
       density: 1, route: "/__phase20-visual-probe", source_state: "plan-type-chooser",
+      source_route: "/library/plan/create", source_component: "PlanTypeChooserScreen",
+      fixture_seed: "phase20-library-running", scenario: "plan-type-chooser",
+      screen_test_id: "plan-type-chooser",
+      readiness_semantics: ["What are you training for?"], focus_target: "root-settings",
+      evidence_scope: "production_screen",
       source_revision: 18, source_read_only: true,
     };
     if (state.mode === "reset" && state.badReset) marker.appearance = "Dark";
@@ -64,6 +72,7 @@ function controlledTool(state, executable, args, options = {}) {
   if (a[0] !== "shell") return bad();
   const s = a[1].match(/'([^']*)'/gu)?.map((v) => v.slice(1, -1)) ?? [];
   if (s[0] === "getprop") return ok(state.props[s[1]] ?? "");
+  if (s[0] === "am" && s[1] === "start") return ok("Status: ok");
   if (s[0] === "pm") return ok("package:/data/app/controlled/base.apk");
   if (s[0] === "sha256sum") return ok(`${state.wrongApk ? "0".repeat(64) : state.apkHash}  base.apk`);
   if (s[0] === "cat" && s[1].endsWith("owner.json")) return ok(JSON.stringify(state.lease));
@@ -104,7 +113,7 @@ function controlledTool(state, executable, args, options = {}) {
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-visual-controlled-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const relative of ["scripts", "app/__phase20-visual-probe.tsx", "src/testing/phase20VisualProbe.tsx", "maestro/v1.2/visual-plan-type-chooser.yaml", ".planning/design/v1.2-browser-evidence"]) {
+  for (const relative of ["scripts", "app/__phase20-visual-probe.tsx", "src/testing/phase20VisualProbe.tsx", "src/testing/phase20VisualStateRegistry.json", "maestro/v1.2/visual-production-states.yaml", ".planning/design/v1.2-browser-evidence"]) {
     mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
     cpSync(path.join(project, relative), path.join(root, relative), { recursive: true });
   }
@@ -143,6 +152,8 @@ test("capture binds actual PNG, state/configuration and UI geometry, then reads 
   assert.deepEqual(f.state.settings, { font_scale: "1.15", accelerometer_rotation: "1", user_rotation: "0" });
   assert.equal(f.state.size, null); assert.equal(f.state.density, null); assert.equal(f.state.night, "auto");
   assert.equal(f.state.lock, false);
+  assert.equal(f.state.screenId, "plan-type-chooser");
+  assert.equal(f.state.readyId, "plan-type-chooser");
   assert.doesNotMatch(JSON.stringify(result), /device-private|\/private\/|\/Users\//u);
 });
 test("batch preserves requested configuration order and individually bound receipts", async (t) => {
@@ -164,7 +175,7 @@ for (const [mutation, code] of [["wrongState", "state_mismatch"], ["wrongConfig"
 }
 test("invalid input, state mapping and identity fail before configuration work", async (t) => {
   const f = fixture(t);
-  for (const payload of [{ ...f.payload, run_id: "other" }, { ...f.payload, state_id: "BW-001" }, { ...f.payload, png_sha256: "a".repeat(64) }]) {
+  for (const payload of [{ ...f.payload, run_id: "other" }, { ...f.payload, state_id: "BW-000" }, { ...f.payload, png_sha256: "a".repeat(64) }]) {
     await assert.rejects(f.call("visual-capture", payload), /v12_production_visual_(?:payload_invalid|state_route_missing)/u);
   }
   assert.equal(f.state.commands.length, 0);

@@ -426,6 +426,7 @@ import {
 } from "./phase17FamilyCFixture";
 import {
   createRunningPlanRuntimePort,
+  RunningPlanRuntimeProvider,
   type RunningPlanRuntimePort,
   type RunningTargetMutationInput,
   type RunningTargetMutationResult,
@@ -5611,7 +5612,11 @@ export function WorkoutAppRuntimeProvider({
         <CalendarSessionReadContext.Provider value={calendarSessionRead}>
           <CalendarStrengthOccurrenceReadContext.Provider value={calendarStrengthOccurrenceRead}>
             <CalendarActivityReadContext.Provider value={calendarActivityRead}>
-              {children}
+              {servicesRef.current === null ? children : (
+                <RunningPlanRuntimeProvider runtime={servicesRef.current.runningPlans}>
+                  {children}
+                </RunningPlanRuntimeProvider>
+              )}
             </CalendarActivityReadContext.Provider>
           </CalendarStrengthOccurrenceReadContext.Provider>
         </CalendarSessionReadContext.Provider>

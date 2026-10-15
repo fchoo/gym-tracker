@@ -23,6 +23,8 @@ describe("Phase 20 visual state registry", () => {
       !state.route.startsWith("/__")
       && state.fixture_seed.length > 0
       && state.scenario === state.name
+      && Array.isArray(state.scenario_steps)
+      && state.readiness.screen_test_id.length > 0
       && state.readiness.test_id.length > 0
       && state.readiness.semantics.length > 0
       && state.focus_target.length > 0,

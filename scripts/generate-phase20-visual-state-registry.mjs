@@ -8,13 +8,14 @@ const evidence = ".planning/design/v1.2-browser-evidence";
 const approvedRoot = "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFile = (relative) => readFileSync(path.join(root, relative));
+const phase20ActiveSessionId = "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0";
 
 const destinationFor = (name) => {
   if (["appearance", "workout-root", "workout-day-0", "workout-day-1", "workout-day-2", "workout-day-3", "workout-day-4"].includes(name)) {
     return { route: "/(tabs)", component: "TodayScreen", route_params: {} };
   }
   if (name.startsWith("active-") || name.startsWith("warmup-") || name.startsWith("working-") || name.startsWith("rest-") || ["view-back-squat-trend", "open-back-squat-menu", "set-action-menu"].includes(name)) {
-    return { route: "/workout/[sessionId]", component: "ActiveWorkoutScreen", route_params: { sessionId: "phase20-session-active", returnTo: "/(tabs)" } };
+    return { route: "/workout/[sessionId]", component: "ActiveWorkoutScreen", route_params: { sessionId: phase20ActiveSessionId, returnTo: "/(tabs)" } };
   }
   if (name === "calendar-planned-strength-detail") {
     return { route: "/calendar/plan/[occurrenceId]", component: "PlannedWorkoutDetailScreen", route_params: { occurrenceId: "phase20-strength-occurrence", origin: "calendar" } };
@@ -22,8 +23,8 @@ const destinationFor = (name) => {
   if (name.startsWith("calendar-")) return { route: "/(tabs)/calendar", component: "CalendarScreen", route_params: {} };
   if (["library-plans", "plan-filters", "library-actions", "library-exercises"].includes(name)) return { route: "/(tabs)/library", component: "LibraryScreen", route_params: {} };
   if (["library-plan-foundation", "library-plan-strength", "archive-confirmation"].includes(name)) return { route: "/library/plan/[planId]", component: "OwnedPlanDetailScreen", route_params: { planId: name === "library-plan-strength" ? "phase20-strength-reset" : "phase20-strength-foundation" } };
-  if (["library-plan-beginner", "library-plan-home"].includes(name)) return { route: "/library/starter/[templateId]", component: "StarterPlanDetailScreen", route_params: { templateId: name === "library-plan-home" ? "bodyweight-basics" : "starter-strength" } };
-  if (name === "starter-activation-preview") return { route: "/library/starter/[templateId]/activate", component: "StarterActivationScreen", route_params: { templateId: "starter-strength" } };
+  if (["library-plan-beginner", "library-plan-home"].includes(name)) return { route: "/library/starter/[templateId]", component: "StarterPlanDetailScreen", route_params: { templateId: name === "library-plan-home" ? "minimal-equipment-full-body" : "full-body-foundation" } };
+  if (name === "starter-activation-preview") return { route: "/library/starter/[templateId]/activate", component: "StarterActivationScreen", route_params: { templateId: "full-body-foundation" } };
   if (name === "strength-editor") return { route: "/library/plan/[planId]/edit", component: "OwnedPlanEditorScreen", route_params: { planId: "phase20-strength-foundation" } };
   if (name === "schedule-editor") return { route: "/library/plan/[planId]/schedule", component: "ScheduleEditorScreen", route_params: { planId: "phase20-strength-foundation" } };
   if (name === "library-plan-running-2k") return { route: "/library/running/[planId]", component: "RunningPlanDetailScreen", route_params: { planId: "phase20-running-2k" } };
@@ -32,10 +33,18 @@ const destinationFor = (name) => {
   if (name === "plan-type-chooser") return { route: "/library/plan/create", component: "PlanTypeChooserScreen", route_params: {} };
   if (name === "create-strength") return { route: "/library/plan/create-strength", component: "OwnedPlanEditorScreen", route_params: {} };
   if (name === "create-running") return { route: "/library/running/create", component: "RunningPlanEditorScreen", route_params: {} };
-  if (name === "exercise-back-squat") return { route: "/library/exercise/[exerciseId]", component: "ExerciseDetailScreen", route_params: { exerciseId: "back-squat" } };
+  if (name === "exercise-back-squat") return { route: "/library/exercise/[exerciseId]", component: "ExerciseDetailScreen", route_params: { exerciseId: "5f140001-7e35-4a6d-9100-000000000001" } };
   if (name === "exercise-tempo-goblet") return { route: "/library/exercise/[exerciseId]/edit", component: "ExerciseEditorScreen", route_params: { exerciseId: "phase20-tempo-goblet-squat" } };
   if (name === "custom-exercise-create") return { route: "/library/exercise/create", component: "ExerciseEditorScreen", route_params: {} };
-  if (name.startsWith("progress-") || name.startsWith("strength-detail-") || name.startsWith("running-effort-") || name.startsWith("running-target-") || name === "bodyweight-history") return { route: "/(tabs)/progress", component: "ProgressScreen", route_params: {} };
+  if (name.startsWith("strength-detail-")) {
+    const exercise = name.endsWith("squat")
+      ? ["5f140001-7e35-4a6d-9100-000000000001", "Back Squat"]
+      : name.endsWith("bench")
+        ? ["5f140001-7e35-4a6d-9100-000000000002", "Bench Press"]
+        : ["5f140001-7e35-4a6d-9100-000000000005", "Plank"];
+    return { route: "/exercise-history/[exerciseId]", component: "ExerciseHistoryScreen", route_params: { exerciseId: exercise[0], exerciseName: exercise[1], origin: "progress" } };
+  }
+  if (name.startsWith("progress-") || name.startsWith("running-effort-") || name.startsWith("running-target-") || name === "bodyweight-history") return { route: "/(tabs)/progress", component: "ProgressScreen", route_params: {} };
   if (["garmin-outdoor", "garmin-treadmill"].includes(name)) return { route: "/garmin/activity/[activityId]", component: "ImportedActivityDetailScreen", route_params: { activityId: name === "garmin-outdoor" ? "phase20-garmin-outdoor" : "phase20-garmin-treadmill", origin: "workout" } };
   if (name.includes("match") || name.includes("confirmed")) return { route: "/garmin/match/[activityId]", component: "ActivityMatchScreen", route_params: { activityId: name.includes("treadmill") ? "phase20-garmin-treadmill" : "phase20-garmin-outdoor", origin: "workout" } };
   if (name.startsWith("garmin-")) return { route: "/garmin/index", component: "GarminSyncScreen", route_params: { origin: "workout" } };
@@ -49,7 +58,27 @@ const fixtureSeedFor = (index) => index < 7 ? "phase20-shell-workout"
   : index < 91 ? "phase20-progress"
   : "phase20-garmin-visual";
 
-const readinessTestIdFor = (component) => ({
+const readinessTestIdFor = (component, name) => ({
+  appearance: "app-settings-sheet",
+  "active-set-editor": "workout-set-editor-sheet",
+  "active-plan-settings": "workout-plan-settings-sheet",
+  "view-back-squat-trend": "exercise-trend-sheet",
+  "open-back-squat-menu": "exercise-actions-sheet",
+  "active-exercise-picker": "add-exercise-sheet",
+  "set-action-menu": "add-set-sheet",
+  "calendar-key": "calendar-key-sheet",
+  "plan-filters": "starter-filter-sheet-frame",
+  "library-actions": "library-actions-sheet-frame",
+  "progress-recommendation": "recommendation-review-sheet",
+  "running-effort-2.4": "running-history-sheet",
+  "running-effort-10": "running-history-sheet",
+  "running-effort-hm": "running-history-sheet",
+  "running-target-2.4": "running-target-sheet",
+  "running-target-10": "running-target-sheet",
+  "running-target-hm": "running-target-sheet",
+  "bodyweight-history": "bodyweight-history-sheet",
+  "progress-settings": "progress-settings-sheet",
+}[name] ?? ({
   TodayScreen: "today-screen", ActiveWorkoutScreen: "active-workout", CalendarScreen: "calendar-screen",
   PlannedWorkoutDetailScreen: "planned-workout-detail", LibraryScreen: "library-screen",
   OwnedPlanDetailScreen: "owned-plan-detail", StarterPlanDetailScreen: "starter-plan-detail",
@@ -57,10 +86,65 @@ const readinessTestIdFor = (component) => ({
   ScheduleEditorScreen: "schedule-editor", RunningPlanDetailScreen: "running-plan-detail",
   RunningPlanEditorScreen: "running-plan-editor", RunningSessionEditorScreen: "running-session-editor",
   PlanTypeChooserScreen: "plan-type-chooser", ExerciseDetailScreen: "exercise-detail-screen",
-  ExerciseEditorScreen: "exercise-editor-screen", ProgressScreen: "progress-screen",
+  ExerciseEditorScreen: "exercise-editor-screen", ExerciseHistoryScreen: "exercise-history-screen", ProgressScreen: "progress-screen",
   GarminSyncScreen: "garmin-sync-screen", ImportedActivityDetailScreen: "imported-activity-detail-screen",
   ActivityMatchScreen: "activity-match-screen",
-}[component]);
+}[component]));
+
+const scenarioStepsFor = (name) => {
+  if (name === "appearance") return [{ action: "tap_id", value: "root-settings-trigger-index" }];
+  if (name.startsWith("workout-day-")) {
+    const dates = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"];
+    return [{ action: "tap_id", value: `workout-day-preview-${dates[Number(name.at(-1))]}` }];
+  }
+  if (name === "active-set-editor") return [{ action: "tap_text", value: "Current" }];
+  if (name === "active-plan-settings") return [{ action: "tap_text", value: "More workout actions" }, { action: "tap_text", value: "Plan settings" }];
+  if (name === "view-back-squat-trend") return [{ action: "tap_text", value: "View Back Squat trend" }];
+  if (name === "open-back-squat-menu") return [{ action: "tap_text", value: "Open Back Squat menu" }];
+  if (name === "active-exercise-picker") return [{ action: "tap_id", value: "add-exercise" }];
+  if (name === "set-action-menu") return [{ action: "tap_text", value: "Add set" }];
+  if (name === "calendar-key") return [{ action: "tap_id", value: "calendar-info-action" }];
+  if (name === "plan-filters") return [{ action: "tap_id", value: "library-filters-chip" }];
+  if (name === "library-actions") return [{ action: "tap_text", value: "Actions" }];
+  if (name === "archive-confirmation") return [{ action: "tap_text", value: "Archive plan" }];
+  const steps = [];
+  if (name === "progress-strength" || name.startsWith("progress-strength-") || name === "progress-recommendation") steps.push({ action: "tap_text", value: "Strength" });
+  if (name.startsWith("progress-running") || name.startsWith("running-effort-") || name.startsWith("running-target-")) steps.push({ action: "tap_text", value: "Running" });
+  if (name.endsWith("-12w")) steps.push({ action: "tap_text", value: "12 weeks" });
+  if (name.endsWith("-all") && name !== "progress-all") steps.push({ action: "tap_text", value: "All time" });
+  if (name.startsWith("running-effort-")) steps.push({ action: "tap_text", value: `Open best efforts for ${name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon"}` });
+  if (name.startsWith("running-target-")) steps.push({ action: "tap_text", value: `Set target for ${name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon"}` });
+  if (name === "bodyweight-history") return [{ action: "tap_text", value: "Body metrics" }];
+  if (name === "progress-settings") return [{ action: "tap_text", value: "Settings" }];
+  if (name === "garmin-consent") return [{ action: "tap_text", value: "Connect Garmin" }];
+  if (["garmin-syncing", "garmin-synced", "garmin-idempotent", "garmin-error"].includes(name)) return [{ action: "tap_text", value: "Sync now" }];
+  return steps;
+};
+
+const readinessSemanticsFor = (component, name) => {
+  if (component === "TodayScreen") return ["Workout"];
+  if (component === "ActiveWorkoutScreen") return ["Active"];
+  if (component === "CalendarScreen") return ["Calendar"];
+  if (component === "PlannedWorkoutDetailScreen") return ["Workout preview"];
+  if (component === "LibraryScreen") return ["Library"];
+  if (component === "OwnedPlanDetailScreen") return [name === "library-plan-strength" ? "Strength Reset" : "Full Body Foundation"];
+  if (component === "StarterPlanDetailScreen") return [name === "library-plan-home" ? "Bodyweight Basics" : "Starter Strength"];
+  if (component === "StarterActivationScreen") return ["Activate starter"];
+  if (component === "OwnedPlanEditorScreen") return [name === "create-strength" ? "Create plan" : "Plan editor"];
+  if (component === "ScheduleEditorScreen") return ["Schedule"];
+  if (component === "RunningPlanDetailScreen") return ["Running"];
+  if (component === "RunningPlanEditorScreen") return [name === "create-running" ? "Create running plan" : "Edit running plan"];
+  if (component === "RunningSessionEditorScreen") return ["Workout type"];
+  if (component === "PlanTypeChooserScreen") return ["What are you training for?"];
+  if (component === "ExerciseDetailScreen") return ["Back Squat"];
+  if (component === "ExerciseEditorScreen") return [name === "custom-exercise-create" ? "Create exercise" : "Tempo Goblet Squat"];
+  if (component === "ExerciseHistoryScreen") return [name.endsWith("squat") ? "Back Squat" : name.endsWith("bench") ? "Bench Press" : "Plank"];
+  if (component === "ProgressScreen") return ["Progress"];
+  if (component === "GarminSyncScreen") return ["Garmin Sync"];
+  if (component === "ImportedActivityDetailScreen") return ["Activity detail"];
+  if (component === "ActivityMatchScreen") return ["Match activity"];
+  throw new Error(`phase20_visual_state_readiness_missing:${name}`);
+};
 
 const walk = JSON.parse(sourceFile(`${evidence}/serial-walk.json`));
 if (!Array.isArray(walk) || walk.length !== 214) throw new Error("phase20_visual_walk_invalid");
@@ -85,7 +169,8 @@ const states = walk.slice(0, 107).map((light, index) => {
     fixture_facts: { date: "2026-10-01", locale: "en-SG", timezone: "Asia/Singapore", sqlite: "authoritative-synthetic" },
     interactions: controls, expected_visible_semantics: controls.filter((control) => control.text).map((control) => control.text),
     focus_target: controls.find((control) => control.id)?.id || controls.find((control) => control.text)?.text || "screen-heading",
-    readiness: { test_id: readinessTestIdFor(destination.component), semantics: controls.filter((control) => control.text).map((control) => control.text) },
+    scenario_steps: scenarioStepsFor(name),
+    readiness: { screen_test_id: readinessTestIdFor(destination.component, ""), test_id: readinessTestIdFor(destination.component, name), semantics: readinessSemanticsFor(destination.component, name) },
     evidence_scope: index >= 91 ? "visual_only" : "production_screen",
     reference: hasPng
       ? { kind: "retained_png", light: { path: `${evidence}/${png.light}`, sha256: sha256(sourceFile(`${evidence}/${png.light}`)) }, dark: { path: `${evidence}/${png.dark}`, sha256: sha256(sourceFile(`${evidence}/${png.dark}`)) } }
@@ -96,3 +181,49 @@ if (new Set(states.map((state) => state.id)).size !== 107 || new Set(states.map(
 const output = `// Generated by scripts/generate-phase20-visual-state-registry.mjs; do not edit.\nexport const PHASE20_VISUAL_STATE_REGISTRY = ${JSON.stringify(states, null, 2)} as const;\nexport type Phase20VisualState = (typeof PHASE20_VISUAL_STATE_REGISTRY)[number];\n`;
 writeFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.generated.ts"), output);
 writeFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.json"), `${JSON.stringify(states, null, 2)}\n`);
+
+const yamlStep = (step) => step.action === "tap_id"
+  ? `      - tapOn: { id: ${JSON.stringify(step.value)} }`
+  : `      - tapOn: { text: ${JSON.stringify(step.value)} }`;
+const scenarioFlows = states.filter(({ scenario_steps: steps }) => steps.length > 0).flatMap((state) => [
+  "- runFlow:",
+  "    when:",
+  `      true: \${VISUAL_MODE == 'capture' && VISUAL_STATE == '${state.id}'}`,
+  "    commands:",
+  ...state.scenario_steps.map(yamlStep),
+]);
+const flow = [
+  "appId: com.fchoo.gymtracker.devtest",
+  "name: Phase 20 production visual registry probe",
+  "tags: [v1.2, phase-20, visual, synthetic-fixture]",
+  "---",
+  "- assertTrue: \${VISUAL_LINK != null && VISUAL_STATE != null && VISUAL_SCREEN_ID != null && VISUAL_READY_ID != null && (VISUAL_MODE == 'capture' || VISUAL_MODE == 'reset')}",
+  "- openLink: \"\${VISUAL_LINK}\"",
+  "- runFlow:",
+  "    when:",
+  "      true: \${VISUAL_MODE == 'capture'}",
+  "    commands:",
+  "      - extendedWaitUntil:",
+  "          visible: { id: \"\${VISUAL_SCREEN_ID}\" }",
+  "          timeout: 15000",
+  ...scenarioFlows,
+  "- runFlow:",
+  "    when:",
+  "      true: \${VISUAL_MODE == 'capture'}",
+  "    commands:",
+  "      - extendedWaitUntil:",
+  "          visible: { id: \"\${VISUAL_READY_ID}\" }",
+  "          timeout: 15000",
+  "      - extendedWaitUntil:",
+  "          visible: { id: \"phase20-visual-capture\" }",
+  "          timeout: 15000",
+  "- runFlow:",
+  "    when:",
+  "      true: \${VISUAL_MODE == 'reset'}",
+  "    commands:",
+  "      - extendedWaitUntil:",
+  "          visible: { id: \"phase20-visual-reset\" }",
+  "          timeout: 15000",
+  "",
+].join("\n");
+writeFileSync(path.join(root, "maestro/v1.2/visual-production-states.yaml"), flow);

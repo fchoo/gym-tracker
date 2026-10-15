@@ -152,27 +152,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "System"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "root-settings-trigger-index"
+      }
+    ],
     "readiness": {
-      "test_id": "today-screen",
+      "screen_test_id": "today-screen",
+      "test_id": "app-settings-sheet",
       "semantics": [
-        "Open App Settings",
-        "Mon\n29",
-        "Tue\n30",
-        "Wed\n01",
-        "Thu\n02",
-        "Fri\n03",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body A\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close App Settings",
-        "Light",
-        "Dark",
-        "System"
+        "Workout"
       ]
     },
     "evidence_scope": "production_screen",
@@ -299,22 +289,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "today-screen",
       "test_id": "today-screen",
       "semantics": [
-        "Open App Settings",
-        "Mon\n29",
-        "Tue\n30",
-        "Wed\n01",
-        "Thu\n02",
-        "Fri\n03",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body A\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout"
       ]
     },
     "evidence_scope": "production_screen",
@@ -446,22 +426,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "workout-day-preview-2026-09-28"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "today-screen",
       "test_id": "today-screen",
       "semantics": [
-        "Open App Settings",
-        "Mon\n29",
-        "Tue\n30",
-        "Wed\n01",
-        "Thu\n02",
-        "Fri\n03",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout"
       ]
     },
     "evidence_scope": "production_screen",
@@ -588,22 +563,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "workout-day-preview-2026-09-29"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "today-screen",
       "test_id": "today-screen",
       "semantics": [
-        "Open App Settings",
-        "Mon\n29",
-        "Tue\n30",
-        "Wed\n01",
-        "Thu\n02",
-        "Fri\n03",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout"
       ]
     },
     "evidence_scope": "production_screen",
@@ -730,22 +700,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "workout-day-preview-2026-09-30"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "today-screen",
       "test_id": "today-screen",
       "semantics": [
-        "Open App Settings",
-        "Mon\n29",
-        "Tue\n30",
-        "Wed\n01",
-        "Thu\n02",
-        "Fri\n03",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body A\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout"
       ]
     },
     "evidence_scope": "production_screen",
@@ -872,22 +837,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "workout-day-preview-2026-10-01"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "today-screen",
       "test_id": "today-screen",
       "semantics": [
-        "Open App Settings",
-        "Mon\n29",
-        "Tue\n30",
-        "Wed\n01",
-        "Thu\n02",
-        "Fri\n03",
-        "View plan",
-        "Sync Garmin",
-        "Nothing scheduled\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout"
       ]
     },
     "evidence_scope": "production_screen",
@@ -1014,22 +974,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "workout-day-preview-2026-10-02"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "today-screen",
       "test_id": "today-screen",
       "semantics": [
-        "Open App Settings",
-        "Mon\n29",
-        "Tue\n30",
-        "Wed\n01",
-        "Thu\n02",
-        "Fri\n03",
-        "View plan",
-        "Sync Garmin",
-        "Start Full Body B\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout"
       ]
     },
     "evidence_scope": "production_screen",
@@ -1046,7 +1001,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -1183,25 +1138,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Complete set 2"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -1223,7 +1165,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -1360,25 +1302,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Complete set 2"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Current"
+      }
+    ],
     "readiness": {
-      "test_id": "active-workout",
+      "screen_test_id": "active-workout",
+      "test_id": "workout-set-editor-sheet",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -1400,7 +1334,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -1585,32 +1519,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Edit plan after workout\nSchedule"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "More workout actions"
+      },
+      {
+        "action": "tap_text",
+        "value": "Plan settings"
+      }
+    ],
     "readiness": {
-      "test_id": "active-workout",
+      "screen_test_id": "active-workout",
+      "test_id": "workout-plan-settings-sheet",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2",
-        "Close bottom sheet",
-        "Close Plan settings",
-        "Default between-set rest seconds",
-        "1.25",
-        "2.5",
-        "5",
-        "Edit plan after workout\nSchedule"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -1627,7 +1550,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -1776,27 +1699,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close exercise trend"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "View Back Squat trend"
+      }
+    ],
     "readiness": {
-      "test_id": "active-workout",
+      "screen_test_id": "active-workout",
+      "test_id": "exercise-trend-sheet",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2",
-        "Close bottom sheet",
-        "Close exercise trend"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -1813,7 +1726,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -1980,30 +1893,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Delete exercise\n×"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Open Back Squat menu"
+      }
+    ],
     "readiness": {
-      "test_id": "active-workout",
+      "screen_test_id": "active-workout",
+      "test_id": "exercise-actions-sheet",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2",
-        "Close bottom sheet",
-        "Close exercise menu",
-        "Between-set rest seconds",
-        "Replace exercise\nLibrary",
-        "Delete exercise\n×"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -2020,7 +1920,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -2220,33 +2120,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Side Plank\nCore"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "add-exercise"
+      }
+    ],
     "readiness": {
-      "test_id": "active-workout",
+      "screen_test_id": "active-workout",
+      "test_id": "add-exercise-sheet",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2",
-        "Close bottom sheet",
-        "Close exercise picker",
-        "Search exercises",
-        "Romanian Deadlift\nPosterior",
-        "Dumbbell Row\nBack",
-        "Walking Lunge\nLegs",
-        "Single-Arm Cable Lat Pulldown\nBack",
-        "Side Plank\nCore"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -2263,7 +2147,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -2424,29 +2308,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Add working set\nUse target"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Add set"
+      }
+    ],
     "readiness": {
-      "test_id": "active-workout",
+      "screen_test_id": "active-workout",
+      "test_id": "add-set-sheet",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2",
-        "Close bottom sheet",
-        "Close set actions",
-        "Add warm-up set\n40 kg",
-        "Add working set\nUse target"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -2463,7 +2335,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -2608,26 +2480,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Complete warm-up W1"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "W1\n—\nprevious\n40 × 5\nkg × reps\nCurrent",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete warm-up W1"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -2644,7 +2502,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -2789,26 +2647,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Complete set 2"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 2"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -2825,7 +2669,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -2982,28 +2826,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Skip"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "−15",
-        "Pause",
-        "+15",
-        "Skip"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -3025,7 +2853,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -3182,28 +3010,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Skip"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "−15",
-        "Resume",
-        "+15",
-        "Skip"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -3220,7 +3032,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -3377,28 +3189,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Skip"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "−15",
-        "Resume",
-        "+15",
-        "Skip"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -3415,7 +3211,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -3572,28 +3368,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Skip"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "−15",
-        "Pause",
-        "+15",
-        "Skip"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -3610,7 +3390,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/workout/[sessionId]",
     "component": "ActiveWorkoutScreen",
     "route_params": {
-      "sessionId": "phase20-session-active",
+      "sessionId": "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0",
       "returnTo": "/(tabs)"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
@@ -3755,26 +3535,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Complete set 3"
     ],
     "focus_target": "open-plan-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "active-workout",
       "test_id": "active-workout",
       "semantics": [
-        "Back to workout plan",
-        "Open Plan settings",
-        "View Back Squat trend",
-        "Open Back Squat menu",
-        "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
-        "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
-        "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
-        "+ Add set",
-        "View Bench Press trend",
-        "Open Bench Press menu",
-        "View Lat Pulldown trend",
-        "Open Lat Pulldown menu",
-        "View Plank trend",
-        "Open Plank menu",
-        "+ Add exercise",
-        "Complete set 3"
+        "Active"
       ]
     },
     "evidence_scope": "production_screen",
@@ -4147,53 +3913,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "28",
-        "29",
-        "30",
-        "1\nFull A",
-        "2",
-        "3\nFull A",
-        "4\nEasy",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "19",
-        "20",
-        "21",
-        "22",
-        "23",
-        "24",
-        "25",
-        "26",
-        "27",
-        "28",
-        "29",
-        "30",
-        "31",
-        "1",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -4583,55 +4308,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close Calendar key"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-info-action"
+      }
+    ],
     "readiness": {
-      "test_id": "calendar-screen",
+      "screen_test_id": "calendar-screen",
+      "test_id": "calendar-key-sheet",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "28",
-        "29",
-        "30",
-        "1\nFull A",
-        "2",
-        "3\nFull A",
-        "4\nEasy",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "19",
-        "20",
-        "21",
-        "22",
-        "23",
-        "24",
-        "25",
-        "26",
-        "27",
-        "28",
-        "29",
-        "30",
-        "31",
-        "1",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Calendar key"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -5065,60 +4752,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "26",
-        "27",
-        "28",
-        "29",
-        "30",
-        "31",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "10",
-        "11",
-        "12",
-        "13",
-        "14",
-        "15",
-        "16",
-        "17",
-        "18",
-        "19",
-        "20",
-        "21",
-        "22",
-        "23",
-        "24",
-        "25",
-        "26",
-        "27",
-        "28",
-        "29",
-        "30",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -5491,53 +5130,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "28",
-        "29",
-        "30",
-        "1\nFull A",
-        "2",
-        "3\nFull A",
-        "4\nEasy",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "19",
-        "20",
-        "21",
-        "22",
-        "23",
-        "24",
-        "25",
-        "26",
-        "27",
-        "28",
-        "29",
-        "30",
-        "31",
-        "1",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -5771,35 +5369,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "Collapse day and return to month",
-        "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
-        "Easy Run\nPlanned · 25 minutes\nRunning · planned\nRunning plan\n›",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -6079,40 +5654,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "planned-workout-detail",
       "test_id": "planned-workout-detail",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "Collapse day and return to month",
-        "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
-        "Easy Run\nPlanned · 25 minutes\nRunning · planned\nRunning plan\n›",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "Back to Calendar agenda",
-        "Deadlift\n3 × 5 · 95 kg · 0/3 complete\n›",
-        "Incline Dumbbell Press\n3 × 8 · 24 kg · 0/3 complete\n›",
-        "Seated Cable Row\n3 × 10 · 55 kg · 0/3 complete\n›",
-        "Bulgarian Split Squat\n3 × 8 · 20 kg · 0/3 complete\n›",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout preview"
       ]
     },
     "evidence_scope": "production_screen",
@@ -6343,34 +5890,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "28",
-        "29",
-        "30",
-        "1\nFull A",
-        "2",
-        "3\nFull A",
-        "4\nEasy",
-        "Collapse day and return to month",
-        "Outdoor Run\nComplete · 3.2 km · 18:42\nRunning · completed\nGarmin imported\n›",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -6596,34 +6121,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "Collapse day and return to month",
-        "6 × 400 m\nPlanned · 1:50/lap\nRunning · planned\nRunning plan\n›",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -6849,34 +6352,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "Collapse day and return to month",
-        "Treadmill Run\nImported · 2.4 km · 11:31\nRunning · completed\nGarmin imported\n›",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -7094,33 +6575,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "Collapse day and return to month",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -7346,34 +6806,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "Collapse day and return to month",
-        "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
-        "19",
-        "20",
-        "21",
-        "22",
-        "23",
-        "24",
-        "25",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -7746,53 +7184,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "calendar-screen",
       "test_id": "calendar-screen",
       "semantics": [
-        "Open Calendar legend",
-        "Open App Settings",
-        "Previous month",
-        "Today",
-        "Next month",
-        "28",
-        "29",
-        "30",
-        "1\nFull A",
-        "2",
-        "3\nFull A",
-        "4\nEasy",
-        "5\n−",
-        "6",
-        "7\nFull B\nEasy",
-        "8",
-        "9\n6×400",
-        "10\nTread",
-        "11",
-        "12\nFull B",
-        "13",
-        "14\nTempo",
-        "15",
-        "16",
-        "17",
-        "18\nLong",
-        "19",
-        "20",
-        "21",
-        "22",
-        "23",
-        "24",
-        "25",
-        "26",
-        "27",
-        "28",
-        "29",
-        "30",
-        "31",
-        "1",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Calendar"
       ]
     },
     "evidence_scope": "production_screen",
@@ -7967,28 +7364,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "library-screen",
       "test_id": "library-screen",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Library"
       ]
     },
     "evidence_scope": "production_screen",
@@ -8240,38 +7621,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Show results"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "library-filters-chip"
+      }
+    ],
     "readiness": {
-      "test_id": "library-screen",
+      "screen_test_id": "library-screen",
+      "test_id": "starter-filter-sheet-frame",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Library filters",
-        "All",
-        "My plans",
-        "Starter",
-        "Any",
-        "3 days",
-        "4 days",
-        "Clear filters",
-        "Show results"
+        "Library"
       ]
     },
     "evidence_scope": "production_screen",
@@ -8482,33 +7842,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Import plan\nLater"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Actions"
+      }
+    ],
     "readiness": {
-      "test_id": "library-screen",
+      "screen_test_id": "library-screen",
+      "test_id": "library-actions-sheet-frame",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Library actions",
-        "Create plan\nStrength or Running",
-        "Create exercise\n+",
-        "Import plan\nLater"
+        "Library"
       ]
     },
     "evidence_scope": "production_screen",
@@ -8723,33 +8067,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "owned-plan-detail",
       "test_id": "owned-plan-detail",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Edit plan",
-        "Edit schedule",
-        "Duplicate",
-        "Archive plan",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Full Body Foundation"
       ]
     },
     "evidence_scope": "production_screen",
@@ -8959,32 +8282,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "owned-plan-editor",
       "test_id": "owned-plan-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "↑",
-        "+",
-        "Save plan",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Plan editor"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9231,37 +8534,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "schedule-editor",
       "test_id": "schedule-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "M",
-        "T",
-        "W",
-        "T",
-        "F",
-        "S",
-        "S",
-        "Save schedule",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Schedule"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9476,33 +8754,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Archive plan"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "owned-plan-detail",
       "test_id": "owned-plan-detail",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Edit plan",
-        "Edit schedule",
-        "Duplicate",
-        "Confirm archive Full Body Foundation",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Full Body Foundation"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9717,33 +8979,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "owned-plan-detail",
       "test_id": "owned-plan-detail",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Edit plan",
-        "Edit schedule",
-        "Duplicate",
-        "Reactivate plan",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Strength Reset"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9760,7 +9001,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/library/starter/[templateId]",
     "component": "StarterPlanDetailScreen",
     "route_params": {
-      "templateId": "starter-strength"
+      "templateId": "full-body-foundation"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
@@ -9942,31 +9183,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Preview activation",
-        "Save editable copy",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Starter Strength"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9983,7 +9205,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/library/starter/[templateId]/activate",
     "component": "StarterActivationScreen",
     "route_params": {
-      "templateId": "starter-strength"
+      "templateId": "full-body-foundation"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
@@ -10165,31 +9387,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "starter-activation",
       "test_id": "starter-activation",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Create and activate copy",
-        "Save without activating",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Activate starter"
       ]
     },
     "evidence_scope": "production_screen",
@@ -10206,7 +9409,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/library/starter/[templateId]",
     "component": "StarterPlanDetailScreen",
     "route_params": {
-      "templateId": "bodyweight-basics"
+      "templateId": "minimal-equipment-full-body"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
@@ -10388,31 +9591,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Preview activation",
-        "Save editable copy",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Bodyweight Basics"
       ]
     },
     "evidence_scope": "production_screen",
@@ -10619,32 +9803,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-plan-detail",
       "test_id": "running-plan-detail",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Sync Garmin / match activity",
-        "Edit running plan",
-        "Resolve Friday conflict",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Running"
       ]
     },
     "evidence_scope": "production_screen",
@@ -10944,41 +10108,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-plan-editor",
       "test_id": "running-plan-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "2.4 km\n10 km\nHalf Marathon",
-        "Tue\nRecovery\n30 min · RPE 2–3 · conversational\n›",
-        "Fri\nIntervals\n6 × 400 m · 90 sec jog\n›",
-        "Sun\nLong run\n60 min · Easy throughout\n›",
-        "Recovery\nShort, easy aerobic running",
-        "Long run\nSustained easy endurance",
-        "Progression\nStart easy and finish faster",
-        "Tempo\nContinuous or repeated threshold work",
-        "Intervals\nMeasured work with recovery",
-        "Hills\nUphill repetitions with return recovery",
-        "Fartlek\nFlexible fast and easy speed play",
-        "Save running plan",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Edit running plan"
       ]
     },
     "evidence_scope": "production_screen",
@@ -11205,32 +10340,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-        "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-        "Save session",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout type"
       ]
     },
     "evidence_scope": "production_screen",
@@ -11458,33 +10573,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-        "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-        "Easy throughout\nSteady finish\nProgression finish",
-        "Save session",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout type"
       ]
     },
     "evidence_scope": "production_screen",
@@ -11716,32 +10810,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-        "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-        "Save session",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout type"
       ]
     },
     "evidence_scope": "production_screen",
@@ -11979,33 +11053,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-        "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-        "Continuous\nTempo repeats",
-        "Save session",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout type"
       ]
     },
     "evidence_scope": "production_screen",
@@ -12237,32 +11290,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-        "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-        "Save session",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout type"
       ]
     },
     "evidence_scope": "production_screen",
@@ -12499,32 +11532,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-        "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-        "Save session",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout type"
       ]
     },
     "evidence_scope": "production_screen",
@@ -12762,33 +11775,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
-        "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
-        "Structured\nUnstructured",
-        "Save session",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Workout type"
       ]
     },
     "evidence_scope": "production_screen",
@@ -12985,31 +11977,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "plan-type-chooser",
       "test_id": "plan-type-chooser",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "GYM\nStrength\nExercises, sets, targets, and a gym schedule.\n›",
-        "RUN\nRunning\nDistance and time goal, benchmark, and structured weekly sessions.\n›",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "What are you training for?"
       ]
     },
     "evidence_scope": "production_screen",
@@ -13211,30 +12184,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "owned-plan-editor",
       "test_id": "owned-plan-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "Continue to editor",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Create plan"
       ]
     },
     "evidence_scope": "production_screen",
@@ -13527,41 +12482,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "running-plan-editor",
       "test_id": "running-plan-editor",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search plans",
-        "Open plan filters",
-        "•••",
-        "›",
-        "›",
-        "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
-        "›",
-        "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
-        "›",
-        "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
-        "›",
-        "Create plan\n+",
-        "Back to Library",
-        "2.4 km\n10 km\nHalf Marathon",
-        "Tue\nRecovery\n30 min · RPE 2–3 · conversational\n›",
-        "Fri\nIntervals\n6 × 400 m · 90 sec jog\n›",
-        "Sun\nLong run\n60 min · Easy throughout\n›",
-        "Recovery\nShort, easy aerobic running",
-        "Long run\nSustained easy endurance",
-        "Progression\nStart easy and finish faster",
-        "Tempo\nContinuous or repeated threshold work",
-        "Intervals\nMeasured work with recovery",
-        "Hills\nUphill repetitions with return recovery",
-        "Fartlek\nFlexible fast and easy speed play",
-        "Create running plan",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Create running plan"
       ]
     },
     "evidence_scope": "production_screen",
@@ -13872,45 +12798,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "library-screen",
       "test_id": "library-screen",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search exercises",
-        "Open exercise filters",
-        "•••",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Deadlift\n\nkg × reps · Strength · Barbell",
-        "☆",
-        "Dead Bug\n\nreps · Core · Bodyweight",
-        "☆",
-        "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-        "☆",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Library"
       ]
     },
     "evidence_scope": "production_screen",
@@ -13932,7 +12825,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "route": "/library/exercise/[exerciseId]",
     "component": "ExerciseDetailScreen",
     "route_params": {
-      "exerciseId": "back-squat"
+      "exerciseId": "5f140001-7e35-4a6d-9100-000000000001"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
@@ -14250,48 +13143,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "exercise-detail-screen",
       "test_id": "exercise-detail-screen",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search exercises",
-        "Open exercise filters",
-        "•••",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Deadlift\n\nkg × reps · Strength · Barbell",
-        "☆",
-        "Dead Bug\n\nreps · Core · Bodyweight",
-        "☆",
-        "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-        "☆",
-        "Back to Library",
-        "Toggle favorite",
-        "Hide from pickers",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Back Squat"
       ]
     },
     "evidence_scope": "production_screen",
@@ -14640,49 +13497,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "exercise-editor-screen",
       "test_id": "exercise-editor-screen",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search exercises",
-        "Open exercise filters",
-        "•••",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Deadlift\n\nkg × reps · Strength · Barbell",
-        "☆",
-        "Dead Bug\n\nreps · Core · Bodyweight",
-        "☆",
-        "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-        "☆",
-        "Back to Library",
-        "Weight × reps\nDuration\nReps",
-        "Save custom exercise",
-        "Archive custom exercise",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Tempo Goblet Squat"
       ]
     },
     "evidence_scope": "production_screen",
@@ -15021,48 +13841,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "exercise-editor-screen",
       "test_id": "exercise-editor-screen",
       "semantics": [
-        "Open App Settings",
-        "Plans",
-        "Exercises",
-        "Search exercises",
-        "Open exercise filters",
-        "•••",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Back Squat\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Bench Press\n\nkg × reps · Strength · Barbell",
-        "★",
-        "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
-        "☆",
-        "Plank\n\nseconds · Core · Bodyweight",
-        "★",
-        "Deadlift\n\nkg × reps · Strength · Barbell",
-        "☆",
-        "Dead Bug\n\nreps · Core · Bodyweight",
-        "☆",
-        "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
-        "☆",
-        "Back to Library",
-        "Weight × reps\nDuration\nReps",
-        "Create exercise",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Create exercise"
       ]
     },
     "evidence_scope": "production_screen",
@@ -15215,24 +13999,11 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-        "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -15391,24 +14162,11 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-        "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -15562,24 +14320,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "12 weeks"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-        "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -15733,24 +14483,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "All time"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
-        "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -15920,26 +14662,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Strength"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -16114,26 +14846,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Strength"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -16303,26 +15025,20 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Strength"
+      },
+      {
+        "action": "tap_text",
+        "value": "12 weeks"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -16492,26 +15208,20 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Strength"
+      },
+      {
+        "action": "tap_text",
+        "value": "All time"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -16697,28 +15407,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -16909,28 +15607,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -17116,28 +15802,20 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "12 weeks"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -17323,28 +16001,20 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "All time"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -17359,9 +16029,13 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   {
     "id": "BW-073",
     "name": "strength-detail-squat",
-    "route": "/(tabs)/progress",
-    "component": "ProgressScreen",
-    "route_params": {},
+    "route": "/exercise-history/[exerciseId]",
+    "component": "ExerciseHistoryScreen",
+    "route_params": {
+      "exerciseId": "5f140001-7e35-4a6d-9100-000000000001",
+      "exerciseName": "Back Squat",
+      "origin": "progress"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "strength-detail-squat",
@@ -17526,29 +16200,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close history"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "exercise-history-screen",
+      "test_id": "exercise-history-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close history"
+        "Back Squat"
       ]
     },
     "evidence_scope": "production_screen",
@@ -17562,9 +16219,13 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   {
     "id": "BW-074",
     "name": "strength-detail-bench",
-    "route": "/(tabs)/progress",
-    "component": "ProgressScreen",
-    "route_params": {},
+    "route": "/exercise-history/[exerciseId]",
+    "component": "ExerciseHistoryScreen",
+    "route_params": {
+      "exerciseId": "5f140001-7e35-4a6d-9100-000000000002",
+      "exerciseName": "Bench Press",
+      "origin": "progress"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "strength-detail-bench",
@@ -17729,29 +16390,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close history"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "exercise-history-screen",
+      "test_id": "exercise-history-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close history"
+        "Bench Press"
       ]
     },
     "evidence_scope": "production_screen",
@@ -17765,9 +16409,13 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   {
     "id": "BW-075",
     "name": "strength-detail-plank",
-    "route": "/(tabs)/progress",
-    "component": "ProgressScreen",
-    "route_params": {},
+    "route": "/exercise-history/[exerciseId]",
+    "component": "ExerciseHistoryScreen",
+    "route_params": {
+      "exerciseId": "5f140001-7e35-4a6d-9100-000000000005",
+      "exerciseName": "Plank",
+      "origin": "progress"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "strength-detail-plank",
@@ -17932,29 +16580,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close history"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "exercise-history-screen",
+      "test_id": "exercise-history-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close history"
+        "Plank"
       ]
     },
     "evidence_scope": "production_screen",
@@ -18147,31 +16778,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Use target"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Strength"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "recommendation-review-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 62.5",
-        "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
-        "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
-        "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
-        "Plank\n45 sec · target 50 sec\nOn track\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close recommendation",
-        "Keep current",
-        "Use target"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -18368,31 +16985,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close history"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "Open best efforts for 2.4 km"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "running-history-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close history"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -18678,41 +17285,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Save target"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "Set target for 2.4 km"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "running-target-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close target editor",
-        "2.4 km\n10 km\nHalf Marathon",
-        "M",
-        "T",
-        "W",
-        "T",
-        "F",
-        "S",
-        "S",
-        "Cancel",
-        "Save target"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -18909,31 +17496,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close history"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "Open best efforts for 10 km"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "running-history-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close history"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -19219,41 +17796,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Save target"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "Set target for 10 km"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "running-target-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close target editor",
-        "2.4 km\n10 km\nHalf Marathon",
-        "M",
-        "T",
-        "W",
-        "T",
-        "F",
-        "S",
-        "S",
-        "Cancel",
-        "Save target"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -19450,31 +18007,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Close history"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "Open best efforts for Half Marathon"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "running-history-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close history"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -19760,41 +18307,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Save target"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      },
+      {
+        "action": "tap_text",
+        "value": "Set target for Half Marathon"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "running-target-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close target editor",
-        "2.4 km\n10 km\nHalf Marathon",
-        "M",
-        "T",
-        "W",
-        "T",
-        "F",
-        "S",
-        "S",
-        "Cancel",
-        "Save target"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -19999,32 +18526,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Add first entry"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Body metrics"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "bodyweight-history-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Bodyweight history",
-        "Add first entry"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -20259,36 +18771,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Loading"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Settings"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "progress-settings-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Progress settings",
-        "Bodyweight history\n→",
-        "Ready",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -20441,24 +18934,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -20662,32 +19147,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Loading"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Settings"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "progress-settings-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Progress settings",
-        "Bodyweight history\n→",
-        "Ready",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -20848,25 +19318,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -21078,33 +19539,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Loading"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Settings"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "progress-settings-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Progress settings",
-        "Bodyweight history\n→",
-        "Ready",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -21233,21 +19678,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -21427,29 +19867,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Loading"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Settings"
+      }
+    ],
     "readiness": {
-      "test_id": "progress-screen",
+      "screen_test_id": "progress-screen",
+      "test_id": "progress-settings-sheet",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress",
-        "Close App Settings",
-        "Close Progress settings",
-        "Bodyweight history\n→",
-        "Ready",
-        "Sparse",
-        "Empty",
-        "Loading"
+        "Progress"
       ]
     },
     "evidence_scope": "production_screen",
@@ -21634,28 +20062,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Running"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
       "semantics": [
-        "Open App Settings",
-        "Body metrics",
-        "Settings",
-        "All",
-        "Strength",
-        "Running",
-        "4 weeks",
-        "12 weeks",
-        "All time",
-        "Personal history\nOpen →\nGoal 11:00",
-        "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
-        "10 km · Set target\nBest 54:20\nMore data needed\n→",
-        "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
-        "10 km\n2 imported efforts\n54:20\n→",
-        "2.4 km\n4 imported efforts\n11:24\n→",
-        "Half Marathon\n0 imported efforts\nNo effort\n→",
-        "Workout",
-        "Calendar",
-        "Library",
         "Progress"
       ]
     },
@@ -21749,17 +20165,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Connect Garmin",
-        "Import FIT fallback",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -21857,17 +20268,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Connect Garmin"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Continue simulated consent",
-        "Cancel",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -21997,21 +20408,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Sync now",
-        "Import FIT",
-        "Preview error",
-        "Revoke",
-        "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-        "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22088,15 +20490,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Sync now"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22221,21 +20625,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Sync now"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Sync now",
-        "Import FIT",
-        "Preview error",
-        "Revoke",
-        "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-        "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22360,21 +20760,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Sync now"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Sync now",
-        "Import FIT",
-        "Preview error",
-        "Revoke",
-        "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-        "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22467,17 +20863,17 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Sync now"
+      }
+    ],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Try again",
-        "Import FIT",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22575,17 +20971,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Preview Outdoor FIT",
-        "Preview Treadmill FIT",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22671,16 +21062,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "imported-activity-detail-screen",
       "test_id": "imported-activity-detail-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Match to scheduled workout",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Activity detail"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22791,19 +21178,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "activity-match-screen",
       "test_id": "activity-match-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Match to 6 by 400 metre speed session",
-        "Match to Easy Run",
-        "Confirm match",
-        "Leave unmatched",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Match activity"
       ]
     },
     "evidence_scope": "visual_only",
@@ -22929,21 +21309,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "activity-match-screen",
       "test_id": "activity-match-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Sync now",
-        "Import FIT",
-        "Preview error",
-        "Revoke",
-        "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported · Matched\n›",
-        "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Match activity"
       ]
     },
     "evidence_scope": "visual_only",
@@ -23041,17 +21412,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Preview Outdoor FIT",
-        "Preview Treadmill FIT",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -23137,16 +21503,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "imported-activity-detail-screen",
       "test_id": "imported-activity-detail-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Match to scheduled workout",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Activity detail"
       ]
     },
     "evidence_scope": "visual_only",
@@ -23257,19 +21619,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "activity-match-screen",
       "test_id": "activity-match-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Match to 6 by 400 metre speed session",
-        "Match to Easy Run",
-        "Confirm match",
-        "Leave unmatched",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Match activity"
       ]
     },
     "evidence_scope": "visual_only",
@@ -23395,21 +21750,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "activity-match-screen",
       "test_id": "activity-match-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Sync now",
-        "Import FIT",
-        "Preview error",
-        "Revoke",
-        "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported · Matched\n›",
-        "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported · Matched\n›",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Match activity"
       ]
     },
     "evidence_scope": "visual_only",
@@ -23502,17 +21848,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
     "readiness": {
+      "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
       "semantics": [
-        "Back to Garmin activities",
-        "Open Garmin appearance",
-        "Connect Garmin",
-        "Import FIT fallback",
-        "Workout",
-        "Calendar",
-        "Library",
-        "Progress"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",

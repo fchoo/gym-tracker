@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Dimensions, StyleSheet, useWindowDimensions, View } from "react-native";
 
-import { PlanTypeChooserScreen } from "../ui/screens/PlanTypeChooserScreen";
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
@@ -15,33 +14,44 @@ import {
   resolvePhase20VisualRequest,
   type Phase20VisualRequest,
 } from "./phase20VisualRequest";
+import { Phase20VisualContextProvider } from "./phase20VisualContext";
 
 export const resolvePhase20VisualProbe = resolvePhase20VisualRequest;
 
-/** Isolated synthetic, read-only route: the actual production screen owns its
- * copy, target geometry and unselected state. No database/runtime is opened.
- * A press invalidates observation rather than pretending an action succeeded.
- */
-export function Phase20VisualProbe({ request }: Readonly<{ request: Phase20VisualRequest }>) {
+/** Isolated fixture route: the selected production route owns all rendered UI. */
+export function Phase20VisualProbe({
+  children,
+  ready,
+  request,
+}: Readonly<{
+  children: React.ReactNode;
+  ready: boolean;
+  request: Phase20VisualRequest;
+}>) {
   const store = useMemo(() => createMemoryAppearanceStore(
     request.appearance === "System" ? null : request.appearance,
   ), [request.appearance]);
   return (
     <AppearanceProvider store={store}>
-      <ObservedScreen request={request} />
+      <Phase20VisualContextProvider request={request}>
+        <ObservedScreen ready={ready} request={request}>{children}</ObservedScreen>
+      </Phase20VisualContextProvider>
     </AppearanceProvider>
   );
 }
 
-function ObservedScreen({ request }: Readonly<{ request: Phase20VisualRequest }>) {
+function ObservedScreen({ children, ready, request }: Readonly<{
+  children: React.ReactNode;
+  ready: boolean;
+  request: Phase20VisualRequest;
+}>) {
   const { appearance, colorScheme } = useAppTheme();
   const window = useWindowDimensions();
   const [laidOut, setLaidOut] = useState(false);
-  const [invalidated, setInvalidated] = useState(false);
   const state = phase20VisualState(request.state);
   if (state === null) return null;
   useEffect(() => {
-    if (!laidOut) return;
+    if (!laidOut || !ready) return;
     let second: number | undefined;
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(() => {
@@ -53,7 +63,7 @@ function ObservedScreen({ request }: Readonly<{ request: Phase20VisualRequest }>
           configuration_id: request.configuration,
           fixture_id: PHASE20_VISUAL_FIXTURE_ID,
           mode: request.mode,
-          status: invalidated ? "invalidated" : request.mode === "reset" ? "reset" : "ready",
+          status: request.mode === "reset" ? "reset" : "ready",
           appearance,
           color_scheme: colorScheme,
           width_dp: window.width,
@@ -63,7 +73,15 @@ function ObservedScreen({ request }: Readonly<{ request: Phase20VisualRequest }>
           font_scale: window.fontScale,
           density: window.scale,
           route: "/__phase20-visual-probe",
+          source_route: state.route,
+          source_component: state.component,
           source_state: state.name,
+          fixture_seed: state.fixture_seed,
+          scenario: state.scenario,
+          screen_test_id: state.readiness.screen_test_id,
+          readiness_semantics: state.readiness.semantics,
+          focus_target: state.focus_target,
+          evidence_scope: state.evidence_scope,
           source_revision: 18,
           source_read_only: true,
         })}`);
@@ -73,17 +91,11 @@ function ObservedScreen({ request }: Readonly<{ request: Phase20VisualRequest }>
       cancelAnimationFrame(first);
       if (second !== undefined) cancelAnimationFrame(second);
     };
-  }, [appearance, colorScheme, invalidated, laidOut, request, window.fontScale, window.height, window.scale, window.width]);
+  }, [appearance, colorScheme, laidOut, ready, request, state, window.fontScale, window.height, window.scale, window.width]);
   return (
     <View onLayout={() => setLaidOut(true)} style={styles.root}
-      testID={request.mode === "reset" ? "phase20-visual-reset" : invalidated ? "phase20-visual-invalidated" : "phase20-visual-capture"}>
-      {request.mode === "capture" && !invalidated && state.component === "PlanTypeChooserScreen" && (
-        <PlanTypeChooserScreen
-          onBack={() => setInvalidated(true)}
-          onChooseRunning={() => setInvalidated(true)}
-          onChooseStrength={() => setInvalidated(true)}
-        />
-      )}
+      testID={request.mode === "reset" ? "phase20-visual-reset" : "phase20-visual-capture"}>
+      {request.mode === "capture" ? children : null}
     </View>
   );
 }

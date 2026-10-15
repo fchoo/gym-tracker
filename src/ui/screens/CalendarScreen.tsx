@@ -708,6 +708,7 @@ export function CalendarScreen({
     <AdaptiveScreen
       onRequestBack={requestCalendarBack}
       scrollable={false}
+      testID="calendar-screen"
       primary={(
         <React.Profiler id="phase16-calendar" onRender={recordDiagnosticRender}>
         <View style={styles.screen}>
@@ -886,6 +887,7 @@ export function CalendarScreen({
             horizontalInset={14}
             onCancel={() => setCalendarKeyOpen(false)}
             restoreFocusRef={infoActionRef}
+            testID="calendar-key-sheet"
             visible={isCalendarKeyOpen}
           >
             <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>Color identifies the activity. Fill and border style identify its status.</Text>

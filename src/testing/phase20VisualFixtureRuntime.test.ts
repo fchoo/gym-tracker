@@ -80,7 +80,7 @@ describe("Phase 20 visual fixture runtime", () => {
   });
 
   it("does not manufacture an active workout for non-Active families", async () => {
-    await bootstrapPhase20VisualFixture(kernel, request("BW-061"));
+    await bootstrapPhase20VisualFixture(kernel, request("BW-022"));
     expect(mockActivateStarterPlan).toHaveBeenCalledTimes(1);
     expect(mockStartWorkout).not.toHaveBeenCalled();
   });

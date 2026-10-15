@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const generated = path.join(root, "src/testing/phase20VisualStateRegistry.generated.ts");
+const generatedJson = path.join(root, "src/testing/phase20VisualStateRegistry.json");
+const generatedFlow = path.join(root, "maestro/v1.2/visual-production-states.yaml");
 
 test("generates all 107 ordered browser-walk occurrences with an approved reference binding", () => {
   execFileSync(process.execPath, ["scripts/generate-phase20-visual-state-registry.mjs"], { cwd: root });
@@ -21,4 +23,11 @@ test("generates all 107 ordered browser-walk occurrences with an approved refere
   assert.match(output, /"readiness": \{/u);
   assert.match(output, /"evidence_scope": "visual_only"/u);
   assert.doesNotMatch(output, /BW-054-only|placeholder|fake UI|\/__v12-production-visual/u);
+  const registry = JSON.parse(readFileSync(generatedJson, "utf8"));
+  const flow = readFileSync(generatedFlow, "utf8");
+  for (const state of registry.filter(({ scenario_steps }) => scenario_steps.length > 0)) {
+    assert.match(flow, new RegExp(`VISUAL_STATE == '${state.id}'`, "u"));
+  }
+  assert.match(flow, /VISUAL_SCREEN_ID/u);
+  assert.match(flow, /VISUAL_READY_ID/u);
 });

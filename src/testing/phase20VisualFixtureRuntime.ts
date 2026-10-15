@@ -1,9 +1,18 @@
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
 import { createProductionWorkoutAppRuntimeDependencies, type WorkoutAppRuntimeDependencies } from "../bootstrap/workoutAppRuntime";
+import { createOwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
+import { createRunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
 import { parseFullBodyFoundation } from "../domains/content";
+import { createCustomExercise as createCustomExerciseCommand } from "../domains/library/customExerciseCommands";
+import { confirmGarminImportDate, prepareGarminImport } from "../domains/activities/importCommands";
+import { canonicalJson } from "../domains/activities/importContracts";
+import type { GarminSourceEnvelope } from "../domains/activities/garminActivitySourcePort";
 import { activateStarterPlan } from "../domains/plans";
+import type { RunningPlanAggregate, RunningSessionKind, RunningSessionRevision } from "../domains/running/contracts";
 import type { RestAlertPreferences, RestNotificationPort, RestNotificationScheduleInput } from "../domains/rest";
 import { startWorkout } from "../domains/workout";
+import { createCustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
+import { createImportedActivityRepository } from "../platform/sqlite/repositories/importedActivityRepository";
 import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
 import type { SqliteKernel } from "../platform/sqlite";
 import { phase20VisualState } from "./phase20VisualStateRegistry";
@@ -15,6 +24,14 @@ const PHASE20_VISUAL_ACTIVATED_AT_MS = PHASE20_VISUAL_NOW_MS - 3_600_000;
 export const PHASE20_VISUAL_STRENGTH_PLAN_ID = `plan_copy_${PHASE20_VISUAL_ACTIVATED_AT_MS}`;
 export const PHASE20_VISUAL_STRENGTH_DAY_ID = `plan_day_${PHASE20_VISUAL_STRENGTH_PLAN_ID}_0`;
 export const PHASE20_VISUAL_ACTIVE_SESSION_ID = `session_${PHASE20_VISUAL_NOW_MS}_alternate_day_${PHASE20_VISUAL_STRENGTH_DAY_ID}`;
+export const PHASE20_VISUAL_OWNED_PLAN_ID = "phase20-strength-foundation";
+export const PHASE20_VISUAL_RUNNING_PLAN_ID = "phase20-running-2k";
+export const PHASE20_VISUAL_CUSTOM_EXERCISE_ID = "phase20-tempo-goblet-squat";
+
+async function fixtureSha256(value: string): Promise<string> {
+  const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+  return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+}
 
 export function phase20VisualDatabaseName(nonce: string): string {
   if (!/^[a-f0-9]{32}$/u.test(nonce)) {
@@ -44,14 +61,10 @@ function createFixtureNotificationPort(): RestNotificationPort {
   });
 }
 
-export async function bootstrapPhase20VisualFixture(
+async function seedLegacyStrengthWorkout(
   kernel: SqliteKernel,
-  request: Phase20VisualRequest,
+  includeActiveSession: boolean,
 ): Promise<void> {
-  const state = phase20VisualState(request.state);
-  if (state === null || state.fixture_id !== "v12-synthetic-fixtures-r18") {
-    throw new Error("phase20_visual_fixture_state_invalid");
-  }
   const repository = createPlansWorkoutRepository(kernel);
   const activation = await activateStarterPlan({
     fixture: parseFullBodyFoundation(fullBodyFoundationAsset),
@@ -60,23 +73,261 @@ export async function bootstrapPhase20VisualFixture(
     startLocalDate: "2026-09-28",
     timezone: "Asia/Singapore",
   });
-  if (state.fixture_seed === "phase20-active-workout") {
-    const day = activation.days[0];
-    if (day === undefined) throw new Error("phase20_visual_fixture_day_missing");
-    const started = await startWorkout({
-      repository,
-      request: {
-        mode: "alternate",
-        planId: activation.plan.id,
-        planDayId: day.id,
-        localDate: "2026-10-01",
-        timezone: "Asia/Singapore",
-        startedAtMs: PHASE20_VISUAL_NOW_MS,
+  if (!includeActiveSession) return;
+  const day = activation.days[0];
+  if (day === undefined) throw new Error("phase20_visual_fixture_day_missing");
+  const started = await startWorkout({
+    repository,
+    request: {
+      mode: "alternate",
+      planId: activation.plan.id,
+      planDayId: day.id,
+      localDate: "2026-10-01",
+      timezone: "Asia/Singapore",
+      startedAtMs: PHASE20_VISUAL_NOW_MS,
+    },
+  });
+  if (started.id !== PHASE20_VISUAL_ACTIVE_SESSION_ID) {
+    throw new Error("phase20_visual_fixture_session_identity_invalid");
+  }
+}
+
+function runningSession(
+  kind: RunningSessionKind,
+  ordinal: number,
+): RunningPlanAggregate["sessions"][number] {
+  const rootId = `phase20-${kind.replaceAll("_", "-")}`;
+  const weekday = (["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const)[ordinal]!;
+  const phase = [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 1_800_000 }] }];
+  const common = { version: 1 as const, id: `${rootId}-revision-1`, rootId, planId: PHASE20_VISUAL_RUNNING_PLAN_ID, revision: 1, createdAtMs: PHASE20_VISUAL_NOW_MS, phases: phase };
+  let session: RunningSessionRevision;
+  switch (kind) {
+    case "recovery": session = { ...common, sessionKind: kind, advisoryTarget: { rpe: 3 }, contextual: {} }; break;
+    case "long_run": session = { ...common, sessionKind: kind, advisoryTarget: { rpe: 4 }, contextual: { finish: "easy_throughout" } }; break;
+    case "progression": session = { ...common, sessionKind: kind, contextual: { stages: 3, startTarget: { rpe: 3 }, finishTarget: { rpe: 7 } } }; break;
+    case "tempo": session = { ...common, sessionKind: kind, advisoryTarget: { rpe: 7 }, contextual: { format: "continuous", work: { durationMs: 1_200_000 } } }; break;
+    case "intervals": session = { ...common, sessionKind: kind, advisoryTarget: { paceMsPerKm: 275_000 }, contextual: { repetitions: 6, work: { distanceMeters: 400 }, recovery: { durationMs: 90_000 } } }; break;
+    case "hills": session = { ...common, sessionKind: kind, advisoryTarget: { rpe: 8 }, contextual: { repetitions: 8, work: { durationMs: 45_000 }, returnRecovery: { durationMs: 60_000 } } }; break;
+    case "fartlek": session = { ...common, sessionKind: kind, advisoryTarget: { rpe: 7 }, contextual: { format: "structured", repetitions: 10, work: { durationMs: 60_000 }, recovery: { durationMs: 60_000 } } }; break;
+  }
+  return Object.freeze({
+    session: Object.freeze(session),
+    slot: Object.freeze({ id: `${rootId}-slot-revision-1`, rootId: `${rootId}-slot`, weekday, revision: 1, ordinal, sessionRootId: rootId, sessionRevisionId: session.id }),
+  });
+}
+
+async function seedLibraryAndRunning(kernel: SqliteKernel): Promise<void> {
+  let generated = 0;
+  const ids = () => `phase20-generated-${String(++generated)}`;
+  const owned = createOwnedPlanRuntimePort(kernel, {
+    nowMs: () => PHASE20_VISUAL_NOW_MS,
+    randomUUID: ids,
+    sha256: fixtureSha256,
+  });
+  const exercises = await owned.listExercises();
+  const backSquat = exercises.find(({ name }) => name === "Back Squat") ?? exercises[0];
+  if (backSquat === undefined) throw new Error("phase20_visual_fixture_exercise_missing");
+  for (const [planId, name] of [[PHASE20_VISUAL_OWNED_PLAN_ID, "Full Body Foundation"], ["phase20-strength-reset", "Strength Reset"]] as const) {
+    const dayId = `${planId}-day-a`;
+    const created = await owned.createFixtureDraft({ requestId: `${planId}-create`, planId, dayId, name, dayName: name === "Strength Reset" ? "Reset A" : "Full Body A" });
+    if (created.outcome === "requires_schedule_impact") throw new Error("phase20_visual_fixture_owned_plan_create_failed");
+    const saved = await owned.savePlan({
+      requestId: `${planId}-save`,
+      expectedRevision: created.plan.revision,
+      plan: {
+        id: planId,
+        name,
+        days: [{
+          id: dayId,
+          name: name === "Strength Reset" ? "Reset A" : "Full Body A",
+          ordinal: 0,
+          occurrences: [{
+            id: `${planId}-back-squat`, exerciseId: backSquat.id, ordinal: 0,
+            restSeconds: 90, metricIdentity: backSquat.metricIdentity,
+            warmups: [{ id: `${planId}-warmup-1`, ordinal: 0, loadGrams: 20_000, reps: 5 }],
+            targets: [{ id: `${planId}-target-1`, ordinal: 0, target: { version: 1, profile: "load_reps", loadGrams: 80_000, minReps: 5, maxReps: 5, incrementGrams: 2_500, perSide: false }, units: { version: 1, load: "grams", count: "repetitions" } }],
+            policy: { id: `${planId}-policy`, kind: "manual_hold", policyId: "manual-hold-v1", version: 1, rule: { kind: "manual_hold", id: "manual-hold-v1", version: 1 } },
+          }],
+        }],
       },
     });
-    if (started.id !== PHASE20_VISUAL_ACTIVE_SESSION_ID) {
-      throw new Error("phase20_visual_fixture_session_identity_invalid");
-    }
+    if (saved.outcome === "requires_schedule_impact") throw new Error("phase20_visual_fixture_owned_plan_save_failed");
+  }
+  await createCustomExerciseCommand({
+    repository: createCustomExerciseRepository(kernel),
+    invalidate: async () => undefined,
+    input: {
+      requestId: "phase20-tempo-goblet-create",
+      exerciseId: PHASE20_VISUAL_CUSTOM_EXERCISE_ID,
+      name: "Tempo Goblet Squat",
+      aliases: ["Goblet squat"],
+      exerciseType: "strength",
+      movementClass: "compound",
+      primaryMuscles: ["quadriceps"],
+      secondaryMuscles: ["glutes"],
+      equipment: ["dumbbell"],
+      metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+      defaultRestSeconds: 90,
+      progression: { kind: "manual_hold", version: 1 },
+      createdAtMs: PHASE20_VISUAL_NOW_MS,
+    },
+  });
+  const kinds = ["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const;
+  const running = createRunningPlanRuntimePort(kernel, { nowMs: () => PHASE20_VISUAL_NOW_MS, randomUUID: ids, sha256: fixtureSha256 });
+  await running.createInactivePlan({
+    requestId: "phase20-running-create",
+    plan: {
+      version: 1,
+      id: PHASE20_VISUAL_RUNNING_PLAN_ID,
+      name: "2.4 km speed plan",
+      revision: 1,
+      createdAtMs: PHASE20_VISUAL_NOW_MS,
+      goal: {
+        version: 1, id: "phase20-running-goal", planId: PHASE20_VISUAL_RUNNING_PLAN_ID,
+        revision: 1, goalDistanceMeters: 2_400, targetDurationMs: 660_000,
+        benchmark: { source: "manual", distanceMeters: 2_400, durationMs: 684_000, localDate: "2026-09-24" },
+        trainingDays: ["Tuesday", "Friday", "Sunday"], runsPerWeek: 3,
+        longRunDay: "Sunday", currentWeeklyDistanceMeters: 12_000, createdAtMs: PHASE20_VISUAL_NOW_MS,
+      },
+      sessions: kinds.map(runningSession),
+    },
+  });
+}
+
+async function seedImportedActivity(
+  kernel: SqliteKernel,
+  input: Readonly<{
+    activityId: string;
+    externalActivityId: string;
+    localDate: string;
+    startedAtMs: number;
+    subtype: "outdoor" | "treadmill";
+    distanceMeters: number;
+    elapsedMs: number;
+  }>,
+): Promise<void> {
+  const normalized = Object.freeze({
+    version: 1 as const,
+    started_at_ms: input.startedAtMs,
+    source_local_date_time: `${input.localDate}T07:12:00`,
+    source_time_zone: "Asia/Singapore",
+    source_utc_offset_minutes: 480,
+    sport: "running" as const,
+    subtype: input.subtype,
+    distance_meters: input.distanceMeters,
+    elapsed_ms: input.elapsedMs,
+    timer_ms: input.elapsedMs - 8_000,
+    moving_ms: input.elapsedMs - 12_000,
+    average_heart_rate_bpm: input.subtype === "outdoor" ? 148 : 154,
+    laps: [
+      { ordinal: 0, distance_meters: Math.min(1_000, input.distanceMeters), elapsed_ms: Math.round(input.elapsedMs / Math.max(1, input.distanceMeters / 1_000)), average_heart_rate_bpm: 146 },
+    ],
+    ...(input.subtype === "outdoor" ? {
+      route: [
+        { latitude_e6: 1_290_000, longitude_e6: 103_850_000, elapsed_ms: 0 },
+        { latitude_e6: 1_291_000, longitude_e6: 103_851_000, elapsed_ms: input.elapsedMs },
+      ],
+    } : {}),
+  });
+  const envelope: GarminSourceEnvelope = Object.freeze({
+    version: 1,
+    source_kind: "garmin_connect_account",
+    account_namespace: "phase20-visual-account",
+    external_activity_id: input.externalActivityId,
+    normalization_version: 1,
+    normalized_json_sha256: await fixtureSha256(canonicalJson({ normalization_version: 1, normalized })),
+    raw_component_sha256: Object.freeze({ activity: await fixtureSha256(`${input.activityId}:activity`), splits: await fixtureSha256(`${input.activityId}:splits`), details: await fixtureSha256(`${input.activityId}:details`) }),
+    sample_fidelity: "source_laps",
+    fidelity_by_channel: Object.freeze({ summary: "source_summary", laps: "source_laps", ...(input.subtype === "outdoor" ? { route: "sampled" as const } : {}), exact_effort_basis: "source_laps" }),
+    normalized,
+  });
+  const staged = await prepareGarminImport(envelope, fixtureSha256);
+  await confirmGarminImportDate(createImportedActivityRepository(kernel), {
+    requestId: `${input.activityId}-import`,
+    requestSha256: await fixtureSha256(`${input.activityId}:request`),
+    activityId: input.activityId,
+    expectedAggregateRevision: 0,
+    confirmedLocalDate: input.localDate,
+    staged,
+  });
+}
+
+async function seedProgressAndGarmin(kernel: SqliteKernel): Promise<void> {
+  await seedImportedActivity(kernel, {
+    activityId: "phase20-garmin-outdoor",
+    externalActivityId: "phase20-outdoor-001",
+    localDate: "2026-10-04",
+    startedAtMs: Date.parse("2026-10-03T23:12:00.000Z"),
+    subtype: "outdoor",
+    distanceMeters: 3_200,
+    elapsedMs: 1_122_000,
+  });
+  await seedImportedActivity(kernel, {
+    activityId: "phase20-garmin-treadmill",
+    externalActivityId: "phase20-treadmill-001",
+    localDate: "2026-10-10",
+    startedAtMs: Date.parse("2026-10-10T10:34:00.000Z"),
+    subtype: "treadmill",
+    distanceMeters: 2_400,
+    elapsedMs: 691_000,
+  });
+}
+
+async function seedCompletedStrengthHistory(kernel: SqliteKernel): Promise<void> {
+  await seedLegacyStrengthWorkout(kernel, true);
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `UPDATE session_sets
+       SET status = 'completed',
+           observed_load_grams = CASE WHEN metric_profile = 'load_reps' THEN target_load_grams ELSE NULL END,
+           observed_reps = CASE WHEN metric_profile = 'load_reps' THEN target_min_reps ELSE NULL END,
+           observed_json = CASE
+             WHEN metric_profile = 'timed_hold' THEN json_object('version', 1, 'profile', 'timed_hold', 'durationSeconds', 45, 'source', 'manual')
+             ELSE json_object('version', 1, 'profile', 'load_reps', 'loadGrams', target_load_grams, 'reps', target_min_reps, 'source', 'manual')
+           END,
+           completed_at_ms = ?,
+           revision = revision + 1
+       WHERE session_exercise_id IN (
+         SELECT id FROM session_exercises WHERE session_id = ?
+       )`,
+      [PHASE20_VISUAL_NOW_MS + 1_000, PHASE20_VISUAL_ACTIVE_SESSION_ID],
+    );
+    await transaction.execute(
+      `UPDATE session_exercises
+       SET status = 'completed', revision = revision + 1
+       WHERE session_id = ?`,
+      [PHASE20_VISUAL_ACTIVE_SESSION_ID],
+    );
+    await transaction.execute(
+      `UPDATE workout_sessions
+       SET status = 'completed', completed_at_ms = ?,
+           active_session_exercise_id = NULL, active_set_id = NULL,
+           revision = revision + 1
+       WHERE id = ?`,
+      [PHASE20_VISUAL_NOW_MS + 2_000, PHASE20_VISUAL_ACTIVE_SESSION_ID],
+    );
+  });
+}
+
+export async function bootstrapPhase20VisualFixture(
+  kernel: SqliteKernel,
+  request: Phase20VisualRequest,
+): Promise<void> {
+  const state = phase20VisualState(request.state);
+  if (state === null || state.fixture_id !== "v12-synthetic-fixtures-r18") {
+    throw new Error("phase20_visual_fixture_state_invalid");
+  }
+  if (state.fixture_seed === "phase20-shell-workout" || state.fixture_seed === "phase20-active-workout" || state.fixture_seed === "phase20-calendar") {
+    await seedLegacyStrengthWorkout(kernel, state.fixture_seed === "phase20-active-workout");
+  }
+  if (state.fixture_seed === "phase20-library-running" || state.fixture_seed === "phase20-progress" || state.fixture_seed === "phase20-garmin-visual") {
+    await seedLibraryAndRunning(kernel);
+  }
+  if (state.fixture_seed === "phase20-progress") {
+    await seedCompletedStrengthHistory(kernel);
+  }
+  if (state.fixture_seed === "phase20-progress" || state.fixture_seed === "phase20-garmin-visual") {
+    await seedProgressAndGarmin(kernel);
   }
   await kernel.write(async (transaction) => {
     await transaction.execute(
