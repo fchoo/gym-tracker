@@ -8,7 +8,7 @@ import { V12_MAESTRO_FLOW_CONTRACTS } from './run-v12-maestro.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
 import { V12_SQLITE_SHARD_CASE_IDS } from './v12-sqlite-shard.mjs';
-import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS, validateV12RecoveryShard } from './v12-recovery-shard.mjs';
+import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_UNCOMMITTED_CUT_IDS, validateV12RecoveryShard } from './v12-recovery-shard.mjs';
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, nearestRankP95 } from './benchmark-v12-interactions.mjs';
 import { validateV12PerformanceShard } from './v12-performance-shard.mjs';
 
@@ -299,6 +299,12 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     exactIds(entry.cuts?.map(x => `${x.step_id}:${x.cut_id}`), expectedCuts, 'recovery_cut_invalid');
     entry.cuts.forEach(cut => {
       ensure(HASH.test(cut.receipt_sha256), 'recovery_cut_digest_invalid');
+      if (V12_RECOVERY_UNCOMMITTED_CUT_IDS.includes(cut.cut_id)) {
+        ensure(same(cut.snapshots.after_reopen, cut.snapshots.before)
+          && cut.snapshots.after_retry.receipt_count === cut.snapshots.before.receipt_count + 1
+          && cut.snapshots.after_retry.command_receipt_facts.length === 1,
+        'recovery_uncommitted_cut_invalid');
+      }
       if (entry.id === 'between-set-rest-pointer') {
         const pointer = cut.snapshots.after_retry.pointer_facts.find(fact => HASH.test(fact.committed_set_sha256 ?? ''));
         const rest = pointer && cut.snapshots.after_retry.rest_facts.find(fact => fact.session_sha256 === pointer.session_sha256);

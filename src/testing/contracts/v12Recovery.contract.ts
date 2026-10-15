@@ -13,6 +13,13 @@ export const V12_RECOVERY_CUTS = Object.freeze(
   V12_RECOVERY_CUT_DEFINITIONS.map(({ id }) => id),
 ) as readonly (typeof V12_RECOVERY_CUT_DEFINITIONS)[number]["id"][];
 
+export const V12_RECOVERY_UNCOMMITTED_CUTS = Object.freeze([
+  "pre-transaction",
+  "in-transaction",
+  "retry",
+  "offline",
+] as const);
+
 export const V12_RECOVERY_SCENARIOS = Object.freeze([
   Object.freeze({ id: "legacy-playback", steps: Object.freeze([
     Object.freeze({ id: "legacy-start", boundaryId: "start", operationId: "legacy-workout-start", receiptKind: "workout-start" }),
@@ -111,8 +118,8 @@ export type V12RecoveryContractAdapter = Readonly<{
 }>;
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const UNCOMMITTED = new Set<string>(["pre-transaction", "in-transaction", "retry"]);
-const COMMITTED = new Set<string>(["post-commit-before-ack", "post-acknowledgement", "relaunch", "offline"]);
+const UNCOMMITTED = new Set<string>(V12_RECOVERY_UNCOMMITTED_CUTS);
+const COMMITTED = new Set<string>(["post-commit-before-ack", "post-acknowledgement", "relaunch"]);
 
 function validSnapshot(value: V12RecoveryContractSnapshot): boolean {
   return [value.sourceCount, value.receiptCount, value.effectCount, value.pointerCount,

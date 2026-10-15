@@ -113,6 +113,98 @@ describe("v1.2 native Recovery producer boundary", () => {
     expect(lines).toEqual([]);
   });
 
+  it.each(["setup", "command", "barrier"])(
+    "cleans up after an arm %s failure before rejecting",
+    async (stage) => {
+      const events: string[] = [];
+      const executor: V12ProductionRecoveryExecutor = {
+        arm: jest.fn(async () => {
+          events.push(`${stage}:failed`);
+          throw new Error(`${stage}_failed`);
+        }),
+        recover: jest.fn(async () => { throw new Error("must_not_recover"); }),
+        cleanup: jest.fn(async () => {
+          events.push("cleanup:complete");
+        }),
+      };
+      const lines: string[] = [];
+
+      await expect(collectV12ProductionRecoveryPhase({
+        identity,
+        phase: "arm",
+        emit: (line) => lines.push(line),
+        signal: { aborted: false },
+        executor,
+      })).rejects.toThrow(`${stage}_failed`);
+
+      expect(events).toEqual([`${stage}:failed`, "cleanup:complete"]);
+      expect(lines).toEqual([]);
+    },
+  );
+
+  it("cleans up after arm progress validation fails", async () => {
+    const events: string[] = [];
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: jest.fn(async (input: V12RecoveryExecutionIdentity) => {
+        events.push("validation:started");
+        input.progress({
+          barrier_id: "wrong-barrier",
+          process_state: "writer-open",
+          acknowledgement: "pending",
+          connectivity: "online",
+          first_attempt: "committed",
+          provenance: "post-commit-command-pending",
+          first_attempt_code: "commit-durable-command-pending",
+          before: snapshot(0, "a"),
+          after_cut: snapshot(1, "b"),
+        });
+      }),
+      recover: jest.fn(async () => { throw new Error("must_not_recover"); }),
+      cleanup: jest.fn(async () => {
+        events.push("cleanup:complete");
+      }),
+    };
+    const lines: string[] = [];
+
+    await expect(collectV12ProductionRecoveryPhase({
+      identity,
+      phase: "arm",
+      emit: (line) => lines.push(line),
+      signal: { aborted: false },
+      executor,
+    })).rejects.toThrow("v12_recovery_progress_invalid");
+
+    expect(events).toEqual(["validation:started", "cleanup:complete"]);
+    expect(lines).toEqual([]);
+  });
+
+  it("surfaces only cleanup failure when arm and strict database deletion both fail", async () => {
+    const events: string[] = [];
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: jest.fn(async () => {
+        events.push("command:failed");
+        throw new Error("command_failed");
+      }),
+      recover: jest.fn(async () => { throw new Error("must_not_recover"); }),
+      cleanup: jest.fn(async () => {
+        events.push("delete:failed");
+        throw new Error("delete_failed");
+      }),
+    };
+    const lines: string[] = [];
+
+    await expect(collectV12ProductionRecoveryPhase({
+      identity,
+      phase: "arm",
+      emit: (line) => lines.push(line),
+      signal: { aborted: false },
+      executor,
+    })).rejects.toThrow("delete_failed");
+
+    expect(events).toEqual(["command:failed", "delete:failed"]);
+    expect(lines).toEqual([]);
+  });
+
   it("emits a nonce-bound rich ARMED progress marker from the exact causal barrier", async () => {
     const before = snapshot(0, "a");
     const afterCut = snapshot(1, "b");

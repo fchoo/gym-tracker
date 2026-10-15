@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_SCENARIOS } from '../../v12-recovery-shard.mjs';
+import { V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_SCENARIOS, V12_RECOVERY_UNCOMMITTED_CUT_IDS } from '../../v12-recovery-shard.mjs';
 
 const [tool, ...args] = process.argv.slice(2);
 const file = path.join(process.env.V12_CONTROLLED_STATE, 'state.json');
@@ -85,7 +85,7 @@ if (tool === 'adb' && args[2] === 'logcat') {
   let value;
   if (state.stage) value = { kind: 'calendar', flow_sha256: state.wrongFlow ? '0'.repeat(64) : state.flow, flow_revision: 'calendar-flow-r35', stage: state.calendar.find((entry) => entry.id === state.stage) };
   else if (state.cut) {
-    const uncommitted = ['pre-transaction', 'in-transaction', 'retry'].includes(state.cut);
+    const uncommitted = V12_RECOVERY_UNCOMMITTED_CUT_IDS.includes(state.cut);
     const scenario = scenarios[state.caseId]; const step = scenario.steps.find(({ id }) => id === state.stepId); const barrier = cuts[state.cut];
     const before = recoverySnapshot(false, 'baseline');
     const afterCut = uncommitted ? before : recoverySnapshot(true, 'committed');

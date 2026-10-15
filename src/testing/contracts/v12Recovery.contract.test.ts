@@ -6,6 +6,7 @@ import {
   V12_RECOVERY_STEPS,
   V12_RECOVERY_CUTS,
   V12_RECOVERY_CUT_DEFINITIONS,
+  V12_RECOVERY_UNCOMMITTED_CUTS,
   runV12RecoveryContract,
   type V12RecoveryContractSnapshot,
 } from "./v12Recovery.contract";
@@ -43,7 +44,9 @@ function observation(
   receiptSeed: string,
 ) {
   const cutDefinition = V12_RECOVERY_CUT_DEFINITIONS.find(({ id }) => id === cut)!;
-  const uncommitted = cut === "pre-transaction" || cut === "in-transaction" || cut === "retry";
+  const uncommitted = V12_RECOVERY_UNCOMMITTED_CUTS.includes(
+    cut as (typeof V12_RECOVERY_UNCOMMITTED_CUTS)[number],
+  );
   const before = snapshot(0, "a");
   const committed = { ...snapshot(1, "b"), receiptKinds: [step.receiptKind] };
   const afterCut = uncommitted ? before : committed;
@@ -106,6 +109,27 @@ describe("v1.2 recovery host contract", () => {
     const provenances = V12_RECOVERY_CUT_DEFINITIONS.map(({ provenance }) => provenance);
     expect(provenances.every((value) => typeof value === "string" && value.length > 0)).toBe(true);
     expect(new Set(provenances).size).toBe(8);
+  });
+
+  it("classifies an offline death before COMMIT as uncommitted and retries exactly once", async () => {
+    const observedOffline: Array<ReturnType<typeof observation>> = [];
+    const result = await runV12RecoveryContract({
+      observe: async (definition, step, cut) => {
+        const index = V12_RECOVERY_STEPS.indexOf(step) * V12_RECOVERY_CUTS.length
+          + V12_RECOVERY_CUTS.indexOf(cut) + 1;
+        const value = observation(definition, step, cut, index.toString(16));
+        if (cut === "offline") observedOffline.push(value);
+        return value;
+      },
+    });
+
+    expect(result.status).toBe("passed");
+    expect(observedOffline).toHaveLength(V12_RECOVERY_STEPS.length);
+    for (const value of observedOffline) {
+      expect(value.afterReopen).toEqual(value.before);
+      expect(value.afterRetry.receiptCount).toBe(value.before.receiptCount + 1);
+      expect(value.afterRetry.receiptKinds).toEqual([value.receiptKind]);
+    }
   });
 
   it("derives all 64 outcomes from reopen and retry facts without accepting app status", async () => {

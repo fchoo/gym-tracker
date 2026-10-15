@@ -7,6 +7,7 @@ import {
   validateV12RecoveryShard,
   V12_RECOVERY_CUT_DEFINITIONS,
   V12_RECOVERY_SCENARIOS,
+  V12_RECOVERY_UNCOMMITTED_CUT_IDS,
 } from './v12-recovery-shard.mjs';
 
 const digest = 'a'.repeat(64);
@@ -34,7 +35,7 @@ const snapshot = (committed, step) => {
   });
 };
 const cutObservation = (scenario, step, definition, index) => {
-  const uncommitted = ['pre-transaction', 'in-transaction', 'retry'].includes(definition.id);
+  const uncommitted = V12_RECOVERY_UNCOMMITTED_CUT_IDS.includes(definition.id);
   const before = snapshot(false, step); const afterCut = uncommitted ? before : snapshot(true, step);
   const afterReopen = uncommitted ? before : afterCut;
   return ({
@@ -118,6 +119,19 @@ test('rejects uncommitted retries that create more than one command receipt', ()
   uncommitted.snapshots.after_retry.receipt_count = 2;
   uncommitted.snapshots.after_retry.source_sha256 = 'd'.repeat(64);
   uncommitted.snapshots.after_retry.receipt_sha256 = 'e'.repeat(64);
+  assert.throws(() => validateV12RecoveryShard(input), /v12_recovery_/u);
+});
+
+test('treats offline death before COMMIT as uncommitted and requires one retry receipt', () => {
+  const input = valid();
+  const offline = input.cases[0].cuts.find(({ cut_id }) => cut_id === 'offline');
+  assert.deepEqual(offline.snapshots.after_reopen, offline.snapshots.before);
+  assert.equal(offline.snapshots.after_retry.receipt_count, offline.snapshots.before.receipt_count + 1);
+  assert.equal(offline.snapshots.after_retry.command_receipt_facts.length, 1);
+  assert.equal(validateV12RecoveryShard(input).ok, true);
+
+  offline.snapshots.after_retry.command_receipt_facts.push({ ...offline.snapshots.after_retry.command_receipt_facts[0] });
+  offline.snapshots.after_retry.receipt_count += 1;
   assert.throws(() => validateV12RecoveryShard(input), /v12_recovery_/u);
 });
 

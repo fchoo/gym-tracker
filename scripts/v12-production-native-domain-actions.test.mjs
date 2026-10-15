@@ -91,8 +91,13 @@ test('Recovery returns eight causal scenarios, eight distinct barriers, and per-
       && cut.snapshots[name]?.merge_receipt_facts && cut.snapshots[name]?.command_receipt_facts)));
   assert.ok(cuts.every((cut) => cut.snapshots.after_retry.command_receipt_facts.length === 1
     && cut.snapshots.after_retry.command_receipt_facts[0].kind === cut.receipt_kind));
-  assert.ok(cuts.filter((cut) => ['post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'offline'].includes(cut.cut_id))
+  assert.ok(cuts.filter((cut) => ['post-commit-before-ack', 'post-acknowledgement', 'relaunch'].includes(cut.cut_id))
     .every((cut) => JSON.stringify(cut.snapshots.after_retry) === JSON.stringify(cut.snapshots.after_reopen)));
+  assert.ok(cuts.filter((cut) => cut.cut_id === 'offline').every((cut) => (
+    JSON.stringify(cut.snapshots.after_reopen) === JSON.stringify(cut.snapshots.before)
+      && cut.snapshots.after_retry.receipt_count === cut.snapshots.before.receipt_count + 1
+      && cut.snapshots.after_retry.command_receipt_facts.length === 1
+  )));
   const byId = Object.fromEntries(report.cases.map((entry) => [entry.id, entry]));
   assert.ok(byId['legacy-playback'].cuts.filter((cut) => cut.step_id === 'legacy-edit').every((cut) => cut.snapshots.after_retry.timing_count > 0
     && cut.snapshots.after_retry.history_count > 0 && cut.snapshots.after_retry.cue_count === 0));

@@ -574,6 +574,36 @@ describe("production SQLite kernel host behavior", () => {
 });
 
 describe("serialized writer failure behavior", () => {
+  it("runs the pre-commit barrier inside the transaction and the post-commit barrier after COMMIT", async () => {
+    const writer = new FakeSqliteConnection();
+    const ordering: string[] = [];
+    const kernel = createSqliteKernel({
+      reader: new FakeSqliteConnection(),
+      writer,
+    }, {
+      beforeCommit: async () => {
+        ordering.push(`before:${await writer.isInTransactionAsync()}`);
+      },
+      afterCommit: async () => {
+        ordering.push(`after:${await writer.isInTransactionAsync()}`);
+      },
+    });
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute("INSERT INTO source_fact VALUES (?)", ["offline"]);
+      return "committed";
+    });
+
+    expect(writer.events).toEqual([
+      "BEGIN IMMEDIATE",
+      "prepare:INSERT INTO source_fact VALUES (?)",
+      "execute:INSERT INTO source_fact VALUES (?)",
+      "finalize:INSERT INTO source_fact VALUES (?)",
+      "COMMIT",
+    ]);
+    expect(ordering).toEqual(["before:true", "after:false"]);
+  });
+
   it("does not resolve authoritative state until COMMIT settles", async () => {
     const writer = new FakeSqliteConnection();
     const reader = new FakeSqliteConnection();

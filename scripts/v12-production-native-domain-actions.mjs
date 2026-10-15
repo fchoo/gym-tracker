@@ -6,7 +6,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createProductionNativeRuntime } from './v12-production-native-runtime.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
-import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_SCENARIOS as RECOVERY_SCENARIO_DEFINITIONS } from './v12-recovery-shard.mjs';
+import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_SCENARIOS as RECOVERY_SCENARIO_DEFINITIONS, V12_RECOVERY_UNCOMMITTED_CUT_IDS } from './v12-recovery-shard.mjs';
 import { calendarStage, exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
 
 const PACKAGE = 'com.fchoo.gymtracker.devtest';
@@ -23,8 +23,8 @@ const RECOVERY_SNAPSHOT_KEYS = [
   'cue_sha256', 'effect_facts', 'pointer_facts', 'rest_facts', 'timing_facts',
   'history_facts', 'restore_facts', 'merge_receipt_facts', 'command_receipt_facts',
 ];
-const RECOVERY_UNCOMMITTED_CUTS = new Set(['pre-transaction', 'in-transaction', 'retry']);
-const RECOVERY_COMMITTED_CUTS = new Set(['post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'offline']);
+const RECOVERY_UNCOMMITTED_CUTS = new Set(V12_RECOVERY_UNCOMMITTED_CUT_IDS);
+const RECOVERY_COMMITTED_CUTS = new Set(['post-commit-before-ack', 'post-acknowledgement', 'relaunch']);
 const RECOVERY_SCENARIOS = Object.freeze(Object.fromEntries(RECOVERY_SCENARIO_DEFINITIONS.map((scenario) => [scenario.id, scenario])));
 const RECOVERY_CUTS = Object.freeze(Object.fromEntries(V12_RECOVERY_CUT_DEFINITIONS.map((cut) => [cut.id, cut])));
 

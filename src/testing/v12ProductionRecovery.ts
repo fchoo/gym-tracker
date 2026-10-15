@@ -348,9 +348,14 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
   });
   const executor = input.executor ?? nativeExecutor();
   if (input.phase === "arm") {
-    await executor.arm(executionIdentity);
-    active(input.signal);
-    return "armed";
+    try {
+      await executor.arm(executionIdentity);
+      active(input.signal);
+      return "armed";
+    } catch (error) {
+      await executor.cleanup(executionIdentity);
+      throw error;
+    }
   }
 
   let observation: V12RecoveryNativeObservation;

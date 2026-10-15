@@ -76,6 +76,7 @@ import type {
 import {
   V12_RECOVERY_CUT_DEFINITIONS,
   V12_RECOVERY_SCENARIOS,
+  V12_RECOVERY_UNCOMMITTED_CUTS,
 } from "./contracts/v12Recovery.contract";
 
 type OperationId =
@@ -94,7 +95,7 @@ type OperationId =
   | "between-set-commit"
   | "between-set-rest-transition";
 
-const UNCOMMITTED_CUTS = new Set(["pre-transaction", "in-transaction", "retry"]);
+const UNCOMMITTED_CUTS = new Set<string>(V12_RECOVERY_UNCOMMITTED_CUTS);
 const PASSWORD = "synthetic-recovery-password";
 const TIMING_CONFIG = Object.freeze({
   version: 1,
@@ -161,21 +162,26 @@ async function digestRows(rows: readonly Record<string, unknown>[]) {
 
 async function migrate(databaseName: string): Promise<SqliteKernel> {
   const kernel = await openSqliteKernel(databaseName);
-  await createMigrationRunner({
-    databaseName,
-    kernel,
-    migrations,
-    recoveryBackup: {
-      async createAndValidate(request) {
-        return Object.freeze({
-          ...request,
-          backupId: `v12-recovery-${request.fromVersion}-${request.toVersion}`,
-          validated: true as const,
-        });
+  try {
+    await createMigrationRunner({
+      databaseName,
+      kernel,
+      migrations,
+      recoveryBackup: {
+        async createAndValidate(request) {
+          return Object.freeze({
+            ...request,
+            backupId: `v12-recovery-${request.fromVersion}-${request.toVersion}`,
+            validated: true as const,
+          });
+        },
       },
-    },
-  }).run();
-  return kernel;
+    }).run();
+    return kernel;
+  } catch (error) {
+    await kernel.close();
+    throw error;
+  }
 }
 
 function baseTime(caseId: string): number {
@@ -1365,7 +1371,7 @@ function cutDefinition(cutId: string) {
   return cut;
 }
 
-async function emitArmed(
+function emitArmed(
   input: V12RecoveryExecutionIdentity,
   before: V12RecoveryDurableSnapshot,
   afterCut: V12RecoveryDurableSnapshot,
@@ -1386,86 +1392,139 @@ async function emitArmed(
   return holdOpen();
 }
 
-export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecoveryExecutor {
+type RecoveryClosable = Readonly<{ close(): Promise<void> }>;
+
+async function closeRecoveryResources(
+  resources: Set<RecoveryClosable>,
+): Promise<void> {
+  const pending = [...resources].reverse();
+  resources.clear();
+  const results = await Promise.allSettled(pending.map((resource) => resource.close()));
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+}
+
+async function deleteRecoveryDatabases(names: Readonly<{
+  target: string;
+  source: string;
+}>, removeDatabase: (name: string) => Promise<void>): Promise<void> {
+  const results = await Promise.allSettled([
+    removeDatabase(names.target),
+    removeDatabase(names.source),
+  ]);
+  const failure = results.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+}
+
+type V12ProductionRecoveryNativeDependencies = Readonly<{
+  deleteDatabase(name: string): Promise<void>;
+  migrateDatabase: typeof migrate;
+  setupDatabase: typeof setup;
+  openKernel: typeof openSqliteKernel;
+  openTestRuntime: typeof openSqliteKernelTestRuntime;
+  readSnapshot: typeof snapshot;
+  runOperation: typeof executeOperation;
+  runDomainRecovery: typeof executeDomainRecovery;
+  seedRecoveryEffect: typeof ensureRecoveryEffect;
+}>;
+
+const productionDependencies: V12ProductionRecoveryNativeDependencies = Object.freeze({
+  deleteDatabase: deleteDatabaseAsync,
+  migrateDatabase: migrate,
+  setupDatabase: setup,
+  openKernel: openSqliteKernel,
+  openTestRuntime: openSqliteKernelTestRuntime,
+  readSnapshot: snapshot,
+  runOperation: executeOperation,
+  runDomainRecovery: executeDomainRecovery,
+  seedRecoveryEffect: ensureRecoveryEffect,
+});
+
+export function createV12ProductionRecoveryNativeExecutor(
+  overrides: Partial<V12ProductionRecoveryNativeDependencies> = {},
+): V12ProductionRecoveryExecutor {
+  const dependencies = Object.freeze({ ...productionDependencies, ...overrides });
   return Object.freeze({
     async arm(input) {
       const names = databaseNames(input);
-      await Promise.all([
-        deleteDatabaseAsync(names.target),
-        deleteDatabaseAsync(names.source),
-      ]);
-      const operation = operationForStep(input.caseId, input.stepId);
-      const target = await migrate(names.target);
-      const source = operation === "secure-restore-commit" || operation === "secure-merge-commit"
-        ? await migrate(names.source)
-        : undefined;
-      try {
-        await setup(target, source, operation, input);
-      } finally {
-        await source?.close();
-        await target.close();
-      }
-      active(input);
-      const baseline = await openSqliteKernel(names.target);
-      const before = await snapshot(baseline, operation, input);
-      await baseline.close();
-      let runtime: Awaited<ReturnType<typeof openSqliteKernelTestRuntime>>;
+      const resources = new Set<RecoveryClosable>();
       let armed = false;
-      const armOnce = async (code: string) => {
-        if (armed) throw new Error("v12_recovery_barrier_duplicate");
-        const afterCut = await snapshot(runtime.kernel, operation, input);
-        armed = true;
-        await emitArmed(input, before, afterCut, code);
-      };
-      const observer: SqliteKernelTestObserver = ["in-transaction", "offline"].includes(input.cutId)
-        ? { beforeCommit: () => armOnce("transaction-open") }
-        : input.cutId === "post-commit-before-ack"
-          ? { afterCommit: () => armOnce("commit-durable-command-pending") }
-          : input.cutId === "retry"
-            ? { beforeCommit: async () => { throw new Error("v12_recovery_first_attempt_failed"); } }
-            : {};
-      runtime = await openSqliteKernelTestRuntime(
-        names.target,
-        observer,
-      );
       try {
+        await deleteRecoveryDatabases(names, dependencies.deleteDatabase);
+        const operation = operationForStep(input.caseId, input.stepId);
+        const target = await dependencies.migrateDatabase(names.target);
+        resources.add(target);
+        const source = operation === "secure-restore-commit" || operation === "secure-merge-commit"
+          ? await dependencies.migrateDatabase(names.source)
+          : undefined;
+        if (source !== undefined) resources.add(source);
+        await dependencies.setupDatabase(target, source, operation, input);
+        await closeRecoveryResources(resources);
+        active(input);
+        const baseline = await dependencies.openKernel(names.target);
+        resources.add(baseline);
+        const before = await dependencies.readSnapshot(baseline, operation, input);
+        await closeRecoveryResources(resources);
+        let runtime: Awaited<ReturnType<typeof openSqliteKernelTestRuntime>>;
+        const armOnce = async (code: string) => {
+          if (armed) throw new Error("v12_recovery_barrier_duplicate");
+          const afterCut = await dependencies.readSnapshot(runtime.kernel, operation, input);
+          const barrier = emitArmed(input, before, afterCut, code);
+          armed = true;
+          return barrier;
+        };
+        const observer: SqliteKernelTestObserver = UNCOMMITTED_CUTS.has(input.cutId)
+          && !["pre-transaction", "retry"].includes(input.cutId)
+          ? { beforeCommit: () => armOnce("transaction-open") }
+          : input.cutId === "post-commit-before-ack"
+            ? { afterCommit: () => armOnce("commit-durable-command-pending") }
+            : input.cutId === "retry"
+              ? { beforeCommit: async () => { throw new Error("v12_recovery_first_attempt_failed"); } }
+              : {};
+        runtime = await dependencies.openTestRuntime(
+          names.target,
+          observer,
+        );
+        resources.add(runtime);
         if (input.cutId === "pre-transaction") {
           return armOnce("writer-not-entered");
         }
         try {
-          await executeOperation(runtime.kernel, operation, names.source, input);
+          await dependencies.runOperation(runtime.kernel, operation, names.source, input);
         } catch (error) {
           if (input.cutId !== "retry" || !(error instanceof Error)
             || !String(error.cause ?? error.message).includes("v12_recovery_first_attempt_failed")) {
             throw error;
           }
-          const afterCut = await snapshot(runtime.kernel, operation, input);
-          return emitArmed(input, before, afterCut, "first-attempt-failed");
+          const afterCut = await dependencies.readSnapshot(runtime.kernel, operation, input);
+          const barrier = emitArmed(input, before, afterCut, "first-attempt-failed");
+          armed = true;
+          return barrier;
         }
         if (input.cutId === "relaunch") {
-          await runtime.close();
-          runtime = await openSqliteKernelTestRuntime(names.target);
+          await closeRecoveryResources(resources);
+          runtime = await dependencies.openTestRuntime(names.target);
+          resources.add(runtime);
           return armOnce("relaunch-runtime-open");
         }
         if (input.cutId === "recovery") {
-          await ensureRecoveryEffect(runtime.kernel, input);
-          await runtime.close();
-          runtime = await openSqliteKernelTestRuntime(names.target, {
+          await dependencies.seedRecoveryEffect(runtime.kernel, input);
+          await closeRecoveryResources(resources);
+          runtime = await dependencies.openTestRuntime(names.target, {
             beforeCommit: () => armOnce("recovery-reconciliation-open"),
           });
-          await executeDomainRecovery(runtime.kernel, input);
+          resources.add(runtime);
+          await dependencies.runDomainRecovery(runtime.kernel, input);
           throw new Error("v12_recovery_barrier_not_reached");
         }
         if (input.cutId === "post-acknowledgement") {
           return armOnce("acknowledgement-returned");
         }
         throw new Error("v12_recovery_barrier_not_reached");
-      } catch (error) {
-        throw error;
       } finally {
         // A successful arm never reaches this close: the host kills the open
         // process at the nonce-bound ARMED barrier. Error paths close normally.
-        if (!armed) await runtime.close();
+        if (!armed) await closeRecoveryResources(resources);
       }
     },
 
@@ -1500,10 +1559,7 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
 
     async cleanup(input) {
       const names = databaseNames(input);
-      await Promise.all([
-        deleteDatabaseAsync(names.target),
-        deleteDatabaseAsync(names.source),
-      ]);
+      await deleteRecoveryDatabases(names, dependencies.deleteDatabase);
     },
   });
 }

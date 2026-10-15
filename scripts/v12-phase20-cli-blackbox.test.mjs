@@ -153,6 +153,30 @@ function completeMultiPlanFixture(root) {
   rewriteFixturePublication(root, "multi-plan");
 }
 
+test("Phase 20 fake-device Recovery path proves offline rollback and one retry", () => {
+  const root = fixtureRoot();
+  try {
+    pass(root, "scripts/v12-recovery-shard.mjs", ["--run", run, "--execute"]);
+    pass(root, "scripts/v12-recovery-shard.mjs", ["--run", run, "--verify"]);
+    const lifecycle = JSON.parse(readFileSync(path.join(
+      root,
+      "artifacts/native/v1.2",
+      run,
+      "recovery/lifecycle.json",
+    ), "utf8"));
+    const offline = lifecycle.cases.flatMap(({ cuts }) => cuts)
+      .filter(({ cut_id }) => cut_id === "offline");
+    assert.equal(offline.length, 14);
+    assert.ok(offline.every(({ snapshots }) => (
+      JSON.stringify(snapshots.after_reopen) === JSON.stringify(snapshots.before)
+        && snapshots.after_retry.receipt_count === snapshots.before.receipt_count + 1
+        && snapshots.after_retry.command_receipt_facts.length === 1
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY from incomplete retained contracts", async (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   // Every call below is the documented CLI order. The test intentionally does

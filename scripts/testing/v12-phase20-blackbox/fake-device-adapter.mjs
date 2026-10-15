@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../../v12-evidence-contract.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "../../benchmark-v12-interactions.mjs";
-import { V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_SCENARIOS } from "../../v12-recovery-shard.mjs";
+import { V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_SCENARIOS, V12_RECOVERY_UNCOMMITTED_CUT_IDS } from "../../v12-recovery-shard.mjs";
 const sha = (value) => createHash("sha256").update(String(value)).digest("hex");
 const read = await new Promise((resolve) => { let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }); process.stdin.on("end", () => resolve(JSON.parse(body))); });
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
@@ -52,7 +52,7 @@ function recoverySnapshot(scenario, step, committed, recovered = false) {
 }
 function recoveryReport() {
   const cases = V12_RECOVERY_SCENARIOS.map((scenario, order) => ({ id: scenario.id, steps: scenario.steps, order, status: 'PASS', cuts: scenario.steps.flatMap((step, stepOrder) => V12_RECOVERY_CUT_DEFINITIONS.map((definition, cutOrder) => {
-    const uncommitted = ['pre-transaction', 'in-transaction', 'retry'].includes(definition.id);
+    const uncommitted = V12_RECOVERY_UNCOMMITTED_CUT_IDS.includes(definition.id);
     const before = recoverySnapshot(scenario, step, false); const afterCut = uncommitted ? before : recoverySnapshot(scenario, step, true);
     const afterReopen = uncommitted ? before : afterCut; const afterRecovery = definition.id === 'recovery' ? recoverySnapshot(scenario, step, true, true) : afterReopen;
     const afterRetry = definition.id === 'recovery' ? afterRecovery : uncommitted ? recoverySnapshot(scenario, step, true) : afterReopen;

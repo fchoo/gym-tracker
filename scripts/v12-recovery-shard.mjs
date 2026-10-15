@@ -56,9 +56,10 @@ export const V12_RECOVERY_CUT_DEFINITIONS = Object.freeze([
 export const V12_RECOVERY_CASE_IDS = Object.freeze(V12_RECOVERY_SCENARIOS.map(({ id }) => id));
 export const V12_RECOVERY_STEPS = Object.freeze(V12_RECOVERY_SCENARIOS.flatMap(({ id: case_id, steps }) => steps.map((step) => Object.freeze({ case_id, ...step }))));
 export const V12_RECOVERY_CUT_IDS = Object.freeze(V12_RECOVERY_CUT_DEFINITIONS.map(({ id }) => id));
+export const V12_RECOVERY_UNCOMMITTED_CUT_IDS = Object.freeze(['pre-transaction', 'in-transaction', 'retry', 'offline']);
 const RECOVERY_STATES = new Set(['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED']);
-const UNCOMMITTED_CUTS = new Set(['pre-transaction', 'in-transaction', 'retry']);
-const COMMITTED_CUTS = new Set(['post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'offline']);
+const UNCOMMITTED_CUTS = new Set(V12_RECOVERY_UNCOMMITTED_CUT_IDS);
+const COMMITTED_CUTS = new Set(['post-commit-before-ack', 'post-acknowledgement', 'relaunch']);
 const IDENTITY_KEYS = ['source_digest', 'receipt_digest', 'scenario_digest', 'cut_digest', 'pointer_digest', 'effect_digest', 'rest_digest', 'history_digest', 'timing_digest', 'restore_digest', 'merge_receipt_digest', 'cue_digest'];
 const SNAPSHOT_KEYS = ['source_count', 'receipt_count', 'effect_count', 'pointer_count', 'rest_count', 'history_count', 'timing_count', 'restore_count', 'merge_receipt_count', 'cue_count', 'source_sha256', 'receipt_sha256', 'effect_sha256', 'pointer_sha256', 'rest_sha256', 'history_sha256', 'timing_sha256', 'restore_sha256', 'merge_receipt_sha256', 'cue_sha256', 'command_receipt_facts', 'effect_facts', 'pointer_facts', 'rest_facts', 'timing_facts', 'history_facts', 'restore_facts', 'merge_receipt_facts'];
 const CUT_KEYS = ['step_id', 'boundary_id', 'receipt_kind', 'cut_id', 'status', 'operation_id', 'barrier', 'first_attempt_code', 'recovery_code', 'retry_code', 'receipt_sha256', 'snapshots'];
