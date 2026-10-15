@@ -97,3 +97,34 @@ test("Calendar shard writes one privacy-safe immutable report and rejects placeh
     /calendar_native_stages_invalid/,
   );
 });
+
+test("Calendar shard rejects visibility-only stages that do not carry an executed flow-bound receipt", async () => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const manifest = {
+    run_id: runId,
+    source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) },
+    fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
+    configuration: { id: "AP-L-C390-P-F100" },
+  };
+  const visibilityOnly = {
+    stages: V12_CALENDAR_SHARD_STAGE_IDS.map((id, order) => ({
+      id,
+      order,
+      status: "PASS",
+      samples: [
+        { timestampMs: order * 2 + 1, widthDp: 400, dxDp: -100, dyDp: 0, intentOwner: "horizontal", translationDp: -100, title: "visible", selectedCivilDate: "2026-11-01", generation: 1, focusedWeek: "week", rowBounds: [0, 64], callbackCount: 1, focusIdentity: "calendar", motion: "normal" },
+        { timestampMs: order * 2 + 2, widthDp: 400, dxDp: -100, dyDp: 0, intentOwner: "horizontal", translationDp: -100, title: "visible", selectedCivilDate: "2026-11-01", generation: 2, focusedWeek: "week", rowBounds: [0, 64], callbackCount: 2, focusIdentity: "calendar", motion: "normal" },
+      ],
+    })),
+  };
+  await assert.rejects(
+    executeV12CalendarShardCli(["--run", runId, "--execute"], {
+      root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      isAncestor: () => true, acquireLease: () => ({}), releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
+      executeNative: () => visibilityOnly, writeImmutable: () => {}, outputExists: () => false,
+    }),
+    /calendar_native_stages_invalid/u,
+  );
+});
