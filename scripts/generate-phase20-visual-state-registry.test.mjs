@@ -16,5 +16,9 @@ test("generates all 107 ordered browser-walk occurrences with an approved refere
   assert.equal((output.match(/"id": "BW-/gu) ?? []).length, 107);
   assert.match(output, /"kind": "retained_png"/u);
   assert.match(output, /"kind": "approved_source"/u);
-  assert.doesNotMatch(output, /BW-054-only|placeholder|fake UI/u);
+  assert.match(output, /"scenario": "appearance"/u);
+  assert.match(output, /"fixture_seed": "phase20-shell-workout"/u);
+  assert.match(output, /"readiness": \{/u);
+  assert.match(output, /"evidence_scope": "visual_only"/u);
+  assert.doesNotMatch(output, /BW-054-only|placeholder|fake UI|\/__v12-production-visual/u);
 });
