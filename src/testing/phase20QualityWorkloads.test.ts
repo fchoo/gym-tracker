@@ -9,7 +9,18 @@ const unused = async (): Promise<never> => { throw new Error("unused"); };
 describe("Phase 20 real heavy workloads", () => {
   it("maps the existing Phase 12 producer without inventing timing samples", async () => {
     const result = await runPhase20HeavyWorkload("phase12-backup", {
-      phase12: async () => ({
+      phase12: async (observe) => {
+        for (const [operation, count, duration] of [
+          ["dirty-trigger", 1, 1],
+          ["writer-occupancy", 1, 2],
+          ["merge-preflight", 1, 4],
+          ["merge-materialization", 1, 5],
+        ] as const) {
+          for (let sequence = 1; sequence <= count; sequence += 1) {
+            observe?.({ operation, sequence, startMs: 10, endMs: 10 + duration });
+          }
+        }
+        return ({
         schemaVersion: 1,
         suite: "phase12",
         status: "passed",
@@ -29,7 +40,8 @@ describe("Phase 20 real heavy workloads", () => {
         },
         startedAt: "2026-10-15T00:00:00.000Z",
         finishedAt: "2026-10-15T00:00:01.000Z",
-      }) as Phase12BackupBenchmarkResult,
+        }) as Phase12BackupBenchmarkResult;
+      },
       phase2: unused,
       garmin: unused,
     });
@@ -62,7 +74,7 @@ describe("Phase 20 real heavy workloads", () => {
     await expect(runPhase20HeavyWorkload("garmin-json-normalization", {
       phase12: unused,
       phase2: unused,
-      garmin: async () => ({ normalization_ms: [], peak_rss_bytes: [], database_name: "" }),
+      garmin: async () => ({ normalization_ms: [], normalization_spans: [], peak_rss_bytes: [], database_name: "" }),
     })).rejects.toThrow("phase20_quality_garmin_result_invalid");
   });
 });

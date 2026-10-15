@@ -101,21 +101,13 @@ function rootForOperation(operation: Phase20QualityOperation): Phase20QualityRoo
   return "workout";
 }
 
-function isolatedDependencies(
-  databaseName: string,
-  operation: Phase20QualityOperation,
-): WorkoutAppRuntimeDependencies {
+function isolatedDependencies(databaseName: string): WorkoutAppRuntimeDependencies {
   return Object.freeze({
     ...productionWorkoutAppRuntimeDependencies,
     openKernel: () => openSqliteKernel(databaseName),
     migrate: async (kernel) => {
       await productionWorkoutAppRuntimeDependencies.migrate(kernel);
       await seedPhase20ProgressQualityFixture(kernel);
-      if (operation === "progress-targeted-rebuild") {
-        await kernel.write((transaction) => transaction.execute(
-          "UPDATE history_projection_freshness SET applied_revision = applied_revision - 1 WHERE applied_revision > 0",
-        ));
-      }
     },
   });
 }
@@ -173,6 +165,7 @@ function useQualityMarkerEmitter(
       // The native consumer times out and rejects the action. Never replace a
       // missing source receipt with a success-shaped marker.
     });
+    return queue.current;
   }, [databaseName, request.action, request.nonce, request.operation, request.sequence]);
 }
 
@@ -495,6 +488,9 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
   const [searchPrepared, setSearchPrepared] = useState(
     request.operation !== "search-after-debounce",
   );
+  const [progressPrepared, setProgressPrepared] = useState(
+    request.operation !== "progress-targeted-rebuild",
+  );
   const [displayRoot, setDisplayRoot] = useState<Phase20QualityRoot>(() =>
     request.operation.startsWith("root-switch-")
       ? targetRoot === "workout" ? "progress" : "workout"
@@ -523,7 +519,16 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
   }, [request.operation, runtime, searchPrepared]);
 
   useEffect(() => {
-    if (runtime.launchState !== "trusted" || activeOperation || heavyOperation
+    if (runtime.launchState !== "trusted"
+      || request.operation !== "progress-targeted-rebuild"
+      || progressPrepared) return;
+    void runtime.triggerPhase20ProgressRebuild().then(() => {
+      setProgressPrepared(true);
+    }).catch(() => undefined);
+  }, [progressPrepared, request.operation, runtime]);
+
+  useEffect(() => {
+    if (runtime.launchState !== "trusted" || !progressPrepared || activeOperation || heavyOperation
       || request.operation === "search-after-debounce"
       || request.operation === "calendar-month-selection"
       || started.current) return;
@@ -541,7 +546,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
     }
     void emit("start", performance.now(), { root: targetRoot });
     setArmed(true);
-  }, [activeOperation, benchmark, emit, heavyOperation, request.operation, runtime.launchState, targetRoot]);
+  }, [activeOperation, benchmark, emit, heavyOperation, progressPrepared, request.operation, runtime.launchState, targetRoot]);
 
   useEffect(() => {
     if (runtime.launchState !== "trusted" || !heavyOperation || finished.current) return;
@@ -554,19 +559,34 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
       request.nonce,
     ).then((result) => {
       if (result === null) throw new Error("phase20_quality_workload_missing");
-      const completedAt = performance.now();
-      void emit("result", completedAt, {
+      const retained = {
         command_receipt_sha256: result.command_receipt_sha256,
         native_execution: result.native_execution,
         producer: result.producer,
         result_database_name: result.database_name,
         samples: result.samples,
-      });
-      requestAnimationFrame(() => {
-        void emit("ready", performance.now(), {
+        timings: result.timings,
+      };
+      const serialized = JSON.stringify(retained);
+      return digestStringAsync(CryptoDigestAlgorithm.SHA256, serialized).then(async (payloadSha256) => {
+        const chunks = Array.from(
+          { length: Math.ceil(serialized.length / 1_500) },
+          (_, index) => serialized.slice(index * 1_500, (index + 1) * 1_500),
+        );
+        for (const [index, chunk] of chunks.entries()) {
+          await emit("chunk", performance.now(), {
+            chunk,
+            chunk_sequence: index + 1,
+            chunk_total: chunks.length,
+          });
+        }
+        await emit("result", performance.now(), { payload_sha256: payloadSha256 });
+        requestAnimationFrame(() => {
+          void emit("ready", performance.now(), {
           command_receipt_sha256: result.command_receipt_sha256,
           native_execution: result.native_execution,
           producer: result.producer,
+          });
         });
       });
     }).catch(() => {
@@ -608,7 +628,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
     settingsContent={<QualitySettingsContent />}
   >
     <View style={styles.root} testID={`phase20-quality-root-${displayRoot}`}>
-      {!searchPrepared
+      {!searchPrepared || !progressPrepared
         ? <View accessibilityLabel="Preparing isolated library fixture" accessibilityRole="progressbar" style={styles.center}><Text>Preparing library</Text></View>
         : activeOperation
         ? <ActiveWorkoutQualityRoot acceptanceBenchmark={benchmark} request={request} onReady={() => {
@@ -635,10 +655,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
 export function Phase20QualityProbe({ request }: Readonly<{ request: Phase20QualityRequest }>) {
   const dimensions = useWindowDimensions();
   const databaseName = phase20QualityDatabaseName(request.nonce);
-  const dependencies = useMemo(
-    () => isolatedDependencies(databaseName, request.operation),
-    [databaseName, request.operation],
-  );
+  const dependencies = useMemo(() => isolatedDependencies(databaseName), [databaseName]);
   const appearance = useMemo(() => createMemoryAppearanceStore(null), []);
   return <AppearanceProvider store={appearance}>
     <WorkoutAppRuntimeProvider dependencies={dependencies}>
@@ -647,7 +664,11 @@ export function Phase20QualityProbe({ request }: Readonly<{ request: Phase20Qual
         style={[styles.root, { minHeight: dimensions.height, minWidth: dimensions.width }]}
         testID="phase20-quality-probe"
       >
-        <Phase20QualityRuntime databaseName={databaseName} request={request} />
+        <Phase20QualityRuntime
+          databaseName={databaseName}
+          key={`${request.action}:${request.operation}:${request.sequence}`}
+          request={request}
+        />
       </View>
     </WorkoutAppRuntimeProvider>
   </AppearanceProvider>;

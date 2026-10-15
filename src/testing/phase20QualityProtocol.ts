@@ -63,6 +63,7 @@ export type Phase20QualityMarkerKind =
   | "commit"
   | "ready"
   | "result"
+  | "chunk"
   | "error";
 
 export type Phase20QualityMarker = Readonly<{
@@ -200,15 +201,18 @@ export function collectPhase20QualityMarkers(
   duration_ms: number;
   readiness_sha256: string;
 }> {
-  const seen = new Set<Phase20QualityMarkerKind>();
+  const seen = new Set<string>();
   let previous = -1;
   let start: Phase20QualityMarker | undefined;
   let commit: Phase20QualityMarker | undefined;
   let ready: Phase20QualityMarker | undefined;
   for (const marker of markers) {
     assertMarker(marker, request);
-    if (seen.has(marker.kind)) throw new Error("phase20_quality_marker_duplicate");
-    seen.add(marker.kind);
+    const markerKey = marker.kind === "chunk"
+      ? `${marker.kind}:${String(marker.payload?.chunk_sequence ?? "missing")}`
+      : marker.kind;
+    if (seen.has(markerKey)) throw new Error("phase20_quality_marker_duplicate");
+    seen.add(markerKey);
     if (marker.monotonic_ms <= previous) {
       throw new Error("phase20_quality_marker_clock_invalid");
     }

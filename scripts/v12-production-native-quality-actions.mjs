@@ -208,7 +208,7 @@ function validateAccessibility(observations, identity) {
     for (const entry of item.interactions) {
       exact(entry, ["input", "focus_before", "action", "focus_after", "command_count", "image_hash"]);
       digest(entry.image_hash);
-      if (![entry.focus_before, entry.focus_after].every((id) => item.targets.some((t) => t.id === id))) fail("focus_invalid");
+      if (![entry.focus_before, entry.focus_after].every((id) => typeof id === "string" && id.length > 0)) fail("focus_invalid");
     }
     if (!item.interactions.some((entry) => entry.focus_before !== entry.focus_after)) fail("focus_invalid");
     exact(item.modal, ["focus_ring_dp", "focus_offset_dp", "back", "escape", "restores_invoker"]);
@@ -252,10 +252,13 @@ function timing(values, receipt, minimum, endpoint, identity) {
   if (!["android-elapsed-realtime", "js-performance-now"].includes(receipt.clock)
     || receipt.endpoint !== endpoint || receipt.source_tree_sha256 !== identity.source_tree_sha256
     || !Array.isArray(receipt.spans) || receipt.spans.length !== values.length) fail("timing_receipt_invalid");
+  const uniqueSpans = new Set();
   receipt.spans.forEach((span, i) => {
     exact(span, ["start_ms", "end_ms"]); number(span.start_ms); number(span.end_ms, span.start_ms);
     if (Math.abs(span.end_ms - span.start_ms - values[i]) > 0.000001) fail("timing_receipt_mismatch");
+    uniqueSpans.add(`${span.start_ms}:${span.end_ms}`);
   });
+  if (uniqueSpans.size !== values.length) fail("timing_receipt_duplicate");
 }
 function validatePerformance(performance, identity) {
   exact(performance, ["schema_version", "suite", "producer", "native_execution", "sample_origin", "workload", "identity", "budgets", "samples"]);

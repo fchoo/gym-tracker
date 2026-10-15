@@ -215,16 +215,21 @@ for (const [name, mutate] of [
   ["partial Phase12 merge", (p) => { p.samples.phase12_merge_materialization_ms.pop(); }],
   ["host clock", (p) => { p.samples.native_receipts.timings.ordinary_js_task_ms.clock = "host-date-now"; }],
   ["invented elapsed time", (p) => { p.samples.ordinary_js_task_ms[0] += 1; }],
+  ["duplicated idle spans", (p) => {
+    p.samples.ordinary_js_task_ms.fill(1);
+    p.samples.native_receipts.timings.ordinary_js_task_ms.spans = p.samples.ordinary_js_task_ms.map(() => ({ start_ms: 0, end_ms: 1 }));
+  }],
+  ["missing real command receipt", (p) => { delete p.samples.native_receipts.receipts.command_receipt_sha256; }],
   ["private raw payload", (p) => { p.samples.private_payload = "private-native /Users/private"; }],
 ]) test(`performance rejects ${name}`, (t) => {
   const runner = fixture(t); mutate(runner.measured.performance);
-  rejected(runner.invoke(), "(?:schema_invalid|sample_count_invalid|timing_receipt_invalid|timing_receipt_mismatch)"); released(runner);
+  rejected(runner.invoke(), "(?:schema_invalid|sample_count_invalid|timing_receipt_duplicate|timing_receipt_invalid|timing_receipt_mismatch)"); released(runner);
 });
 for (const [name, mutate] of [
   ["absent geometry", (o) => { delete o.targets[0].bounds_dp.width; }],
   ["unreported overlap", (o) => { o.targets[1].bounds_dp.left = 47; }],
   ["out of bounds", (o) => { o.targets[0].bounds_dp.top = 799; }],
-  ["unresolved focus", (o) => { o.interactions[0].focus_after = "missing"; }],
+  ["unresolved focus", (o) => { o.interactions[0].focus_after = ""; }],
   ["absent IME", (o) => { o.configuration.ime_bounds.top = 800; }],
   ["missing hardware keyboard", (o) => { o.interactions.splice(2, 1); }],
   ["claimed TalkBack", (o) => { o.talkback = true; }],

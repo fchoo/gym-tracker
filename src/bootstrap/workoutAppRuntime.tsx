@@ -752,6 +752,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase20QualitySourceProof(): Promise<Phase14SourceStateProof>;
+  triggerPhase20ProgressRebuild(): Promise<void>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
   probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe>;
@@ -5195,6 +5196,14 @@ export function WorkoutAppRuntimeProvider({
         sha256: (value) =>
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
+    },
+    triggerPhase20ProgressRebuild: async () => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("phase20_quality_progress_rebuild_unavailable");
+      }
+      await requireServices().kernel.write((transaction) => transaction.execute(
+        "UPDATE history_projection_freshness SET applied_revision = applied_revision - 1 WHERE applied_revision > 0",
+      ));
     },
     collectPhase17SourceStateProof: () => {
       if (!phase17NativeContractEnabled()) {

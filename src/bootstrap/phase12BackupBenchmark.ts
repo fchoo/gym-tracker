@@ -429,7 +429,16 @@ export async function measureReaderSnapshotWithConcurrentMutation(input: Readonl
   });
 }
 
-export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenchmarkResult> {
+export type Phase12BackupBenchmarkObserver = (sample: Readonly<{
+  operation: "dirty-trigger" | "writer-occupancy" | "merge-preflight" | "merge-materialization";
+  sequence: number;
+  startMs: number;
+  endMs: number;
+}>) => void;
+
+export async function performPhase12BackupBenchmark(
+  observeSample?: Phase12BackupBenchmarkObserver,
+): Promise<Phase12BackupBenchmarkResult> {
   const startedAt = new Date().toISOString();
   const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
   const databaseName = phase12BenchmarkDatabaseName(randomUUID());
@@ -464,6 +473,9 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         sample: index,
       });
       writerOccupancyMs.push(measured.writerOccupancyMs);
+      const writerObservedAt = performance.now();
+      observeSample?.({ operation: "writer-occupancy", sequence: index + 1,
+        startMs: writerObservedAt - measured.writerOccupancyMs, endMs: writerObservedAt });
       captureTotalMs.push(measured.captureTotalMs);
       if (snapshotBytes === undefined) {
         snapshotBytes = phase12EncodedDriveObjectBytes(measured.snapshot);
@@ -482,7 +494,9 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         [index + 1_000_000, "k000000"],
       ));
       if (mutation.changes !== 1) throw new Error("phase12_dirty_trigger_mutation_missing");
-      dirtyTriggerMs.push(performance.now() - started);
+      const ended = performance.now();
+      dirtyTriggerMs.push(ended - started);
+      observeSample?.({ operation: "dirty-trigger", sequence: index + 1, startMs: started, endMs: ended });
     }
     const mergePreflightMs: number[] = [];
     const mergeSerializationMs: number[] = [];
@@ -503,7 +517,9 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
             return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
           },
         });
-        mergePreflightMs.push(performance.now() - started);
+        const ended = performance.now();
+        mergePreflightMs.push(ended - started);
+        observeSample?.({ operation: "merge-preflight", sequence: index + 1, startMs: started, endMs: ended });
         if (shouldMaterializePhase12MergeSample(index)) materializationSampleCount += 1;
         if (shouldSerializePhase12MergeSample(index)) {
           const serializationStarted = performance.now();
@@ -602,6 +618,8 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       } catch (error) { throw phase12BenchmarkError(error, index, mergeStage); }
       const materializationElapsedMs = performance.now() - materializationStarted;
       mergeMaterializationMs.push(materializationElapsedMs);
+      observeSample?.({ operation: "merge-materialization", sequence: index + 1,
+        startMs: materializationStarted, endMs: materializationStarted + materializationElapsedMs });
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
         stage: "materialization",
         sample: index,

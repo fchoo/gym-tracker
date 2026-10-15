@@ -8,7 +8,7 @@ export default function Phase20QualityProbeRoute() {
   const request = resolvePhase20QualityRequest(useLocalSearchParams());
   if (!phase20QualityEnabled(Constants.expoConfig?.extra) || request === null) return <Redirect href="/" />;
   return <Phase20QualityProbe
-    key={`${request.nonce}:${request.action}:${request.operation}:${request.sequence}`}
+    key={request.nonce}
     request={request}
   />;
 }

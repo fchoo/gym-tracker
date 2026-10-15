@@ -73,6 +73,12 @@ export type Phase2BenchmarkDependencies = Readonly<{
   performWorkingSet(samples: number): Promise<Phase1BenchmarkResult>;
   now(): number;
   yield(): Promise<void>;
+  observeSample?(sample: Readonly<{
+    operation: "search-page" | "ordinary-js-task";
+    sequence: number;
+    startMs: number;
+    endMs: number;
+  }>): void;
 }>;
 
 export function phase2BenchmarkStartupAction({
@@ -141,10 +147,11 @@ export function boundedPhase2BenchmarkSamples(
 
 export async function performPhase2Benchmark(
   samples: number,
+  observeSample?: Phase2BenchmarkDependencies["observeSample"],
 ): Promise<Phase2BenchmarkResult> {
   return performPhase2BenchmarkWithDependencies(
     samples,
-    productionDependencies,
+    { ...productionDependencies, ...(observeSample === undefined ? {} : { observeSample }) },
   );
 }
 
@@ -169,10 +176,24 @@ export async function performPhase2BenchmarkWithDependencies(
       throw new Error("phase2_search_benchmark_page_missing");
     }
     searchDurationsMs.push(responseAt - sampleStartedAt);
+    dependencies.observeSample?.({
+      operation: "search-page",
+      sequence: index + 1,
+      startMs: sampleStartedAt,
+      endMs: responseAt,
+    });
+    const jsTaskStartedAt = responseAt;
+    const jsTaskFinishedAt = dependencies.now();
     searchMaxJsTaskMs = Math.max(
       searchMaxJsTaskMs,
-      dependencies.now() - responseAt,
+      jsTaskFinishedAt - jsTaskStartedAt,
     );
+    dependencies.observeSample?.({
+      operation: "ordinary-js-task",
+      sequence: index + 1,
+      startMs: jsTaskStartedAt,
+      endMs: jsTaskFinishedAt,
+    });
     await dependencies.yield();
   }
 
