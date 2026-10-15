@@ -16,7 +16,7 @@ import {
   V12_CALENDAR_SHARD_STAGE_IDS,
 } from "./v12-calendar-shard.mjs";
 import { createV12CalendarObservationResult } from "./testing/v12-calendar-observation-fixture.mjs";
-import { V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
+import { createV12CalendarProbeReceipt, V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
 
 const observation = Object.freeze({
   sourceDigest: "a".repeat(64),
@@ -58,20 +58,28 @@ const productionResult = (flowSha256) => {
     ];
   });
   const requirementTrace = Buffer.from("<hierarchy><node resource-id=\"calendar-month-viewport\" text=\"Calendar isolated fixture\"/></hierarchy>");
-  const requirementArtifacts = V12_CALENDAR_REQUIREMENT_DEFINITIONS.flatMap((definition) => {
-    const stem = `${definition.requirement_id}-${definition.evidence_id}`;
-    return [
-      { requirement_id: definition.requirement_id, kind: "png", relative_path: `calendar/requirements/${stem}.png`, sha256: createHash("sha256").update(png).digest("hex"), size_bytes: png.length, bytes_base64: png.toString("base64") },
-      { requirement_id: definition.requirement_id, kind: "trace", relative_path: `calendar/requirements/${stem}.trace.xml`, sha256: createHash("sha256").update(requirementTrace).digest("hex"), size_bytes: requirementTrace.length, bytes_base64: requirementTrace.toString("base64") },
-    ];
-  });
+  let probeOrder = 0;
   const requirementRecords = V12_CALENDAR_REQUIREMENT_DEFINITIONS.map((definition) => ({
     requirement_id: definition.requirement_id, evidence_id: definition.evidence_id, native_execution: "EXECUTED",
     fixture_id: "v12-calendar-isolated-facts-v1", fixture_storage: "isolated-in-memory", fixture_source_sha256: "4".repeat(64),
-    source_digest_before: "4".repeat(64), source_digest_after: "4".repeat(64), probe_ids: definition.probe_ids,
+    source_digest_before: "4".repeat(64), source_digest_after: "4".repeat(64),
+    probe_receipts: definition.probe_ids.map((probeId) => createV12CalendarProbeReceipt({ nonce: (10_000 + probeOrder++).toString(16).padStart(32, "0"),
+      flowSha256: "5".repeat(64), fixtureSourceSha256: "4".repeat(64), requirementId: definition.requirement_id, evidenceId: definition.evidence_id, probeId })),
   }));
+  let artifactOrder = 0;
+  const requirementArtifacts = requirementRecords.flatMap((record) => record.probe_receipts.flatMap((receipt) => {
+    const stem = `${String(artifactOrder++).padStart(2, "0")}-${record.requirement_id}-${receipt.probe_id}`;
+    return [
+      { requirement_id: record.requirement_id, probe_id: receipt.probe_id, kind: "png", relative_path: `calendar/requirements/${stem}.png`, sha256: createHash("sha256").update(png).digest("hex"), size_bytes: png.length, bytes_base64: png.toString("base64") },
+      { requirement_id: record.requirement_id, probe_id: receipt.probe_id, kind: "trace", relative_path: `calendar/requirements/${stem}.trace.xml`, sha256: createHash("sha256").update(requirementTrace).digest("hex"), size_bytes: requirementTrace.length, bytes_base64: requirementTrace.toString("base64") },
+    ];
+  }));
+  let junitOrder = 0;
   const requirements = { flow_sha256: "5".repeat(64), fixture_id: "v12-calendar-isolated-facts-v1", records: requirementRecords,
-    junit_cases: requirementRecords.map(({ evidence_id }, order) => ({ id: evidence_id, order, status: "PASS" })) };
+    junit_cases: requirementRecords.flatMap((record) => record.probe_receipts.map((receipt) => ({ id: `${record.requirement_id}:${receipt.probe_id}`,
+      requirement_id: record.requirement_id, probe_id: receipt.probe_id,
+      order: junitOrder++,
+      status: "PASS" }))) };
   const artifacts = [...stageArtifacts, ...requirementArtifacts];
   const evidenceSetSha256 = createHash("sha256").update(JSON.stringify({ stages, requirements,
     artifacts: artifacts.map(({ bytes_base64: _bytes, ...descriptor }) => descriptor) })).digest("hex");
@@ -80,14 +88,39 @@ const productionResult = (flowSha256) => {
   stages,
   execution_origin: productionOrigin,
   requirements,
-  native_receipt: { schema_version: 1, producer: "v12-calendar-native-receipt/v1", native_execution: "EXECUTED",
+  native_receipt: { schema_version: 2, producer: "v12-calendar-native-receipt/v2", native_execution: "EXECUTED",
     run_id: "phase20-20261014T031137Z-5917481c1fd1", source_tree_sha256: "a".repeat(64), apk_sha256: "c".repeat(64),
     installed_apk_sha256: "c".repeat(64), apk_signature_sha256: "1".repeat(64), device_identity_sha256: "d".repeat(64),
     launcher_source_sha256: productionOrigin.launcher_source_sha256, flow_sha256: flowSha256, requirements_flow_sha256: requirements.flow_sha256,
-    fixture_id: requirements.fixture_id, stage_count: 35, requirement_count: 23, evidence_set_sha256: evidenceSetSha256 },
+    fixture_id: requirements.fixture_id, stage_count: 35, requirement_count: 23, probe_count: 69, evidence_set_sha256: evidenceSetSha256 },
   artifacts,
   };
 };
+
+test("Calendar shard rejects missing, duplicated, or non-PASS probe receipts", () => {
+  for (const mutate of [
+    (value) => { value.requirements.records[0].probe_receipts.pop(); },
+    (value) => { value.requirements.records[0].probe_receipts[1] = structuredClone(value.requirements.records[0].probe_receipts[0]); },
+    (value) => { value.requirements.records[0].probe_receipts[0].status = "FAIL"; },
+    (value) => { value.requirements.junit_cases[0].status = "FAIL"; },
+    (value) => {
+      const first = value.requirements.records[0].probe_receipts[0];
+      const second = value.requirements.records[0].probe_receipts[1];
+      value.requirements.records[0].probe_receipts[1] = createV12CalendarProbeReceipt({
+        nonce: first.nonce,
+        flowSha256: value.requirements.flow_sha256,
+        fixtureSourceSha256: value.requirements.records[0].fixture_source_sha256,
+        requirementId: second.requirement_id,
+        evidenceId: second.evidence_id,
+        probeId: second.probe_id,
+      });
+    },
+  ]) {
+    const value = structuredClone(productionResult("9".repeat(64)));
+    mutate(value);
+    assert.throws(() => validateV12CalendarShard(value, "9".repeat(64)), /calendar_native_requirements_invalid/u);
+  }
+});
 
 test("Calendar shard rejects the retired generic observation envelope", () => {
   assert.throws(() => validateV12CalendarShard(observation), /calendar_native_stages_invalid/u);
@@ -140,10 +173,10 @@ test("Calendar shard writes the exact stage-specific host-derived observation se
     writeImmutable: (file, value) => writes.set(file, value), outputExists: () => false,
   });
   assert.deepEqual(result, { ok: true, mode: "execute", run_id: runId });
-  assert.equal(writes.size, 121);
-  assert.match(JSON.stringify(writes.get(`artifacts/native/v1.2/${runId}/calendar-transitions.json`)), /v12-calendar-shard\/v5/u);
+  assert.equal(writes.size, 213);
+  assert.match(JSON.stringify(writes.get(`artifacts/native/v1.2/${runId}/calendar-transitions.json`)), /v12-calendar-shard\/v6/u);
   const registry = writes.get(`artifacts/native/v1.2/${runId}/calendar/artifact-registry.json`);
-  assert.equal(registry.members.length, 116);
+  assert.equal(registry.members.length, 208);
   assert.equal(registry.members.every(({ path, sha256 }) => writes.has(`artifacts/native/v1.2/${runId}/${path}`)
     && createHash("sha256").update(writes.get(`artifacts/native/v1.2/${runId}/${path}`)).digest("hex") === sha256), true);
   assert.doesNotMatch(JSON.stringify([...writes.values()]), /expected_outcome|synthetic/u);

@@ -26,7 +26,13 @@ import {
 } from "./v12-calendar-observation-contract.mjs";
 import { junitOutcome, worse } from "./v12-production-domain-receipts.mjs";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
-import { V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
+import {
+  V12_CALENDAR_PROBE_RECEIPT_MARKER,
+  V12_CALENDAR_REQUIREMENT_DEFINITIONS,
+  V12_CALENDAR_REQUIREMENT_PROBE_COUNT,
+  createV12CalendarProbeReceipt,
+  validateV12CalendarProbeReceipt,
+} from "./v12-calendar-requirement-map.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -101,20 +107,57 @@ export function createV12CalendarStageInvocation({ stageId, order, nonce, flowSh
   });
 }
 
-export function createV12CalendarRequirementInvocation({ definition, order, nonce, flowSha256 }) {
-  if (V12_CALENDAR_REQUIREMENT_DEFINITIONS[order] !== definition || !NONCE.test(nonce ?? "") || !HASH.test(flowSha256 ?? "")) fail("requirement_identity_invalid");
+export function createV12CalendarProbeInvocation({ definition, probeId, order, nonce, flowSha256, fixtureSourceSha256 }) {
+  if (!V12_CALENDAR_REQUIREMENT_DEFINITIONS.includes(definition)
+    || !definition.probe_ids.includes(probeId)
+    || !Number.isSafeInteger(order) || order < 0
+    || !NONCE.test(nonce ?? "") || !HASH.test(flowSha256 ?? "") || !HASH.test(fixtureSourceSha256 ?? "")) fail("requirement_identity_invalid");
   return Object.freeze({
-    stageId: `${definition.requirement_id}-${definition.evidence_id}`,
-    kind: "requirement",
+    stageId: `${definition.requirement_id}-${probeId}`,
+    testcaseId: `${definition.requirement_id}:${probeId}`,
+    kind: "requirement-probe",
     order,
     nonce,
+    definition,
+    probeId,
     flow: REQUIREMENTS_FLOW,
     variables: Object.freeze({
       V12_CALENDAR_REQUIREMENT: definition.requirement_id,
+      V12_CALENDAR_EVIDENCE_ID: definition.evidence_id,
+      V12_CALENDAR_PROBE: probeId,
       V12_CALENDAR_EVIDENCE_NONCE: nonce,
       V12_CALENDAR_REQUIREMENTS_SHA256: flowSha256,
+      V12_CALENDAR_FIXTURE_SOURCE_SHA256: fixtureSourceSha256,
     }),
   });
+}
+
+function probeReceiptRows(logs) {
+  if (typeof logs !== "string" || logs.length > 8 * 1024 * 1024) fail("probe_receipt_logs_invalid");
+  const rows = [];
+  for (const line of logs.split(/\r?\n/u)) {
+    const index = line.indexOf(V12_CALENDAR_PROBE_RECEIPT_MARKER);
+    if (index < 0) continue;
+    try { rows.push(JSON.parse(line.slice(index + V12_CALENDAR_PROBE_RECEIPT_MARKER.length))); }
+    catch { fail("probe_receipt_invalid"); }
+  }
+  return rows;
+}
+
+export function selectV12CalendarProbeReceipt({ beforeLogs, afterLogs, invocation }) {
+  if (probeReceiptRows(beforeLogs).some(({ nonce }) => nonce === invocation.nonce)) fail("probe_receipt_stale");
+  const rows = probeReceiptRows(afterLogs).filter(({ nonce }) => nonce === invocation.nonce);
+  if (rows.length === 0) fail("probe_receipt_missing");
+  if (rows.length !== 1) fail("probe_receipt_duplicate");
+  try { validateV12CalendarProbeReceipt(rows[0], {
+    nonce: invocation.nonce,
+    flowSha256: invocation.variables.V12_CALENDAR_REQUIREMENTS_SHA256,
+    fixtureSourceSha256: invocation.variables.V12_CALENDAR_FIXTURE_SOURCE_SHA256,
+    requirementId: invocation.definition.requirement_id,
+    evidenceId: invocation.definition.evidence_id,
+    probeId: invocation.probeId,
+  }); } catch { fail("probe_receipt_invalid"); }
+  return rows[0];
 }
 
 function privacySafeTrace(value) {
@@ -125,7 +168,7 @@ function privacySafeTrace(value) {
 function createDeviceSession(root, runId) {
   const serial = process.env.V12_DEVICE_SERIAL;
   if (typeof serial !== "string" || serial.trim().length === 0) fail("device_missing");
-  const deadline = Date.now() + 35 * (180_000 + 60_000) + 23 * 180_000;
+  const deadline = Date.now() + 35 * (180_000 + 60_000) + V12_CALENDAR_REQUIREMENT_PROBE_COUNT * (180_000 + 60_000);
   const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail("timeout");
     const result = spawnSync(executable, args, {
@@ -259,7 +302,19 @@ function createDeviceSession(root, runId) {
     }
     fail("marker_timeout");
   };
-  return Object.freeze({ clearLogs, cleanup, configureStage, drive, logs, maestro, awaitMarker, temporary, screenshot, settings, uiDump,
+  const awaitProbeReceipt = async (beforeLogs, invocation) => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 60_000) {
+      const afterLogs = logs();
+      try { return selectV12CalendarProbeReceipt({ beforeLogs, afterLogs, invocation }); }
+      catch (error) {
+        if (error?.message !== "calendar_action_probe_receipt_missing") throw error;
+      }
+      await delay(200);
+    }
+    fail("probe_receipt_timeout");
+  };
+  return Object.freeze({ clearLogs, cleanup, configureStage, drive, logs, maestro, awaitMarker, awaitProbeReceipt, temporary, screenshot, settings, uiDump,
     version: () => { if (command("maestro", ["--version"]).stdout.trim() !== "2.8.0") fail("maestro_version_invalid"); },
     standalone: () => {
       const manifest = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", runId, "build.json"), "utf8"));
@@ -328,23 +383,31 @@ export async function collectV12ProductionCalendarStages({ root, payload, io }) 
   const fixtureSha256 = hashBytes(readFileSync(path.join(root, FIXTURE_SOURCE)));
   const requirementRecords = [];
   const requirementJunitCases = [];
-  for (const [order, definition] of V12_CALENDAR_REQUIREMENT_DEFINITIONS.entries()) {
-    const invocation = createV12CalendarRequirementInvocation({ definition, order, nonce: randomBytes(16).toString("hex"), flowSha256: requirementsFlowSha256 });
-    io.configureStage("requirement");
-    const junit = io.maestro(invocation);
-    const trace = Buffer.from(io.uiDump()); privacySafeTrace(trace.toString("utf8"));
-    const png = io.screenshot(); if (!validPng(png)) fail("screenshot_invalid");
-    const stem = `${definition.requirement_id}-${definition.evidence_id}`;
-    writeFileSync(path.join(io.temporary(), `${stem}.png`), png, { flag: "wx", mode: 0o600 });
-    writeFileSync(path.join(io.temporary(), `${stem}.trace.xml`), trace, { flag: "wx", mode: 0o600 });
-    const record = Object.freeze({ requirement_id: definition.requirement_id, evidence_id: definition.evidence_id,
+  let probeOrder = 0;
+  for (const definition of V12_CALENDAR_REQUIREMENT_DEFINITIONS) {
+    const probeReceipts = [];
+    for (const probeId of definition.probe_ids) {
+      const invocation = createV12CalendarProbeInvocation({ definition, probeId, order: probeOrder, nonce: randomBytes(16).toString("hex"), flowSha256: requirementsFlowSha256, fixtureSourceSha256: fixtureSha256 });
+      io.configureStage("requirement");
+      io.clearLogs();
+      const beforeLogs = io.logs();
+      const junit = io.maestro(invocation);
+      const receipt = await io.awaitProbeReceipt(beforeLogs, invocation);
+      const trace = Buffer.from(io.uiDump()); privacySafeTrace(trace.toString("utf8"));
+      const png = io.screenshot(); if (!validPng(png)) fail("screenshot_invalid");
+      const stem = `${String(probeOrder).padStart(2, "0")}-${definition.requirement_id}-${probeId}`;
+      writeFileSync(path.join(io.temporary(), `${stem}.png`), png, { flag: "wx", mode: 0o600 });
+      writeFileSync(path.join(io.temporary(), `${stem}.trace.xml`), trace, { flag: "wx", mode: 0o600 });
+      probeReceipts.push(receipt);
+      requirementJunitCases.push(Object.freeze({ id: invocation.testcaseId, requirement_id: definition.requirement_id, probe_id: probeId, order: probeOrder, status: junit.status }));
+      artifacts.push(Object.freeze({ requirement_id: definition.requirement_id, probe_id: probeId, kind: "png", relative_path: `calendar/requirements/${stem}.png`, sha256: hashBytes(png), size_bytes: png.length, bytes_base64: png.toString("base64") }));
+      artifacts.push(Object.freeze({ requirement_id: definition.requirement_id, probe_id: probeId, kind: "trace", relative_path: `calendar/requirements/${stem}.trace.xml`, sha256: hashBytes(trace), size_bytes: trace.length, bytes_base64: trace.toString("base64") }));
+      probeOrder += 1;
+    }
+    requirementRecords.push(Object.freeze({ requirement_id: definition.requirement_id, evidence_id: definition.evidence_id,
       native_execution: "EXECUTED", fixture_id: FIXTURE_ID, fixture_storage: "isolated-in-memory",
       fixture_source_sha256: fixtureSha256, source_digest_before: fixtureSha256, source_digest_after: fixtureSha256,
-      probe_ids: definition.probe_ids });
-    requirementRecords.push(record);
-    requirementJunitCases.push(Object.freeze({ id: definition.evidence_id, order, status: junit.status }));
-    artifacts.push(Object.freeze({ requirement_id: definition.requirement_id, kind: "png", relative_path: `calendar/requirements/${stem}.png`, sha256: hashBytes(png), size_bytes: png.length, bytes_base64: png.toString("base64") }));
-    artifacts.push(Object.freeze({ requirement_id: definition.requirement_id, kind: "trace", relative_path: `calendar/requirements/${stem}.trace.xml`, sha256: hashBytes(trace), size_bytes: trace.length, bytes_base64: trace.toString("base64") }));
+      probe_receipts: Object.freeze(probeReceipts) }));
   }
   return Object.freeze({
     flow_sha256: flowSha256,
@@ -381,13 +444,14 @@ export async function executeProductionCalendarAction(payload, attestation) {
         try {
           const collected = await collectV12ProductionCalendarStages({ root, payload, io });
           const receiptBody = {
-            schema_version: 1, producer: "v12-calendar-native-receipt/v1", native_execution: "EXECUTED",
+            schema_version: 2, producer: "v12-calendar-native-receipt/v2", native_execution: "EXECUTED",
             run_id: attestation.run_id, source_tree_sha256: attestation.source_tree_sha256,
             apk_sha256: attestation.apk_sha256, installed_apk_sha256: attestation.installed_apk_sha256,
             apk_signature_sha256: attestation.apk_signature_sha256, device_identity_sha256: attestation.device_identity_sha256,
             launcher_source_sha256: attestation.launcher_source_sha256, flow_sha256: collected.flow_sha256,
             requirements_flow_sha256: collected.requirements.flow_sha256, fixture_id: collected.requirements.fixture_id,
             stage_count: collected.stages.length, requirement_count: collected.requirements.records.length,
+            probe_count: collected.requirements.junit_cases.length,
             evidence_set_sha256: hashBytes(JSON.stringify({ stages: collected.stages, requirements: collected.requirements, artifacts: collected.artifacts.map(({ bytes_base64: _bytes, ...descriptor }) => descriptor) })),
           };
           return Object.freeze({ ...collected, native_receipt: Object.freeze(receiptBody) });
@@ -412,3 +476,4 @@ export async function executeProductionCalendarAction(payload, attestation) {
 }
 
 export { FLOW as V12_CALENDAR_FLOW_PATH, V12_CALENDAR_CHUNK_MARKER };
+export { createV12CalendarProbeReceipt };

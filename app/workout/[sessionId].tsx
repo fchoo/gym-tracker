@@ -4,6 +4,7 @@ import {
   useLocalSearchParams,
   type Href,
 } from "expo-router";
+import Constants from "expo-constants";
 import React, {
   useCallback,
   useEffect,
@@ -42,15 +43,60 @@ import {
 import {
   WorkoutPlanSettingsSheet,
 } from "../../src/ui/components/WorkoutPlanSettingsSheet";
+import { parseScalarRouteParam } from "../../src/navigation/routeOrigin";
+import {
+  emitPhase20CalendarProbeReceipt,
+  phase20CalendarActiveWorkout,
+  phase20CalendarFixtureRequestFromNativeContract,
+  phase20CalendarProbeReceiptRequestFromNativeContract,
+} from "../../src/testing/phase20CalendarFixture";
 
 export default function ActiveWorkoutRoute() {
-  const { sessionId, returnTo } = useLocalSearchParams<{
-    sessionId: string;
+  const { sessionId, returnTo, phase20CalendarFixture, phase20CalendarEvidenceNonce, phase20CalendarRequirementsSha256, phase20CalendarFixtureSourceSha256, phase20CalendarRequirement, phase20CalendarEvidenceId, phase20CalendarProbe, phase20CalendarProbeReceipt } = useLocalSearchParams<{
+    sessionId: string | string[];
     returnTo?: string;
+    phase20CalendarFixture?: string | string[];
+    phase20CalendarEvidenceNonce?: string | string[];
+    phase20CalendarRequirementsSha256?: string | string[];
+    phase20CalendarFixtureSourceSha256?: string | string[];
+    phase20CalendarRequirement?: string | string[];
+    phase20CalendarEvidenceId?: string | string[];
+    phase20CalendarProbe?: string | string[];
+    phase20CalendarProbeReceipt?: string | string[];
   }>();
   const runtime = useWorkoutAppRuntime();
   const countdownCue = useRestCountdownCue();
-  const resolvedSessionId = sessionId ?? "unknown";
+  const resolvedSessionId = typeof sessionId === "string" ? sessionId : "unknown";
+  const scalar = (value: string | readonly string[] | undefined) => {
+    const parsed = parseScalarRouteParam(value);
+    return parsed.kind === "value" ? parsed.value : undefined;
+  };
+  const extra = Constants.expoConfig?.extra;
+  const fixtureEnabled = phase20CalendarFixtureRequestFromNativeContract({
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: extra?.buildProfile,
+    nativeContractsEnabled: extra?.nativeContractsEnabled,
+    suite: extra?.nativeContractSuite,
+    fixtureId: scalar(phase20CalendarFixture),
+    nonce: scalar(phase20CalendarEvidenceNonce),
+    requirementsSha256: scalar(phase20CalendarRequirementsSha256),
+  });
+  const fixtureProbeReceipt = React.useMemo(() => phase20CalendarProbeReceiptRequestFromNativeContract({
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: extra?.buildProfile,
+    nativeContractsEnabled: extra?.nativeContractsEnabled,
+    suite: extra?.nativeContractSuite,
+    fixtureId: scalar(phase20CalendarFixture),
+    nonce: scalar(phase20CalendarEvidenceNonce),
+    flowSha256: scalar(phase20CalendarRequirementsSha256),
+    fixtureSourceSha256: scalar(phase20CalendarFixtureSourceSha256),
+    requirementId: scalar(phase20CalendarRequirement),
+    evidenceId: scalar(phase20CalendarEvidenceId),
+    probeId: scalar(phase20CalendarProbe),
+    status: scalar(phase20CalendarProbeReceipt),
+  }), [extra?.buildProfile, extra?.nativeContractSuite, extra?.nativeContractsEnabled, phase20CalendarEvidenceId,
+    phase20CalendarEvidenceNonce, phase20CalendarFixture, phase20CalendarFixtureSourceSha256,
+    phase20CalendarProbe, phase20CalendarProbeReceipt, phase20CalendarRequirement, phase20CalendarRequirementsSha256]);
   const [view, setView] = useState<WorkoutSessionView | null>(null);
   const [failed, setFailed] = useState(false);
   const [readAttempt, setReadAttempt] = useState(0);
@@ -124,9 +170,13 @@ export default function ActiveWorkoutRoute() {
     let active = true;
     setFailed(false);
     setView((current) => current?.id === resolvedSessionId ? current : null);
-    void runtime.getActiveWorkout(resolvedSessionId).then((nextView) => {
+    const read = fixtureEnabled
+      ? Promise.resolve(phase20CalendarActiveWorkout(resolvedSessionId))
+      : runtime.getActiveWorkout(resolvedSessionId);
+    void read.then((nextView) => {
       if (active) {
-        setView(nextView);
+        if (nextView === null) setFailed(true);
+        else setView(nextView);
       }
     }).catch(() => {
       if (active) {
@@ -139,9 +189,13 @@ export default function ActiveWorkoutRoute() {
   }, [
     readAttempt,
     resolvedSessionId,
+    fixtureEnabled,
     runtime.getActiveWorkout,
     runtime.workoutRefreshGeneration,
   ]);
+  const emitFixtureProbeReceipt = useCallback(() => {
+    void emitPhase20CalendarProbeReceipt(fixtureProbeReceipt);
+  }, [fixtureProbeReceipt]);
   const returnToWorkout = useCallback(() => {
     if (returnTo === "/(tabs)") {
       router.replace(returnTo);
@@ -155,7 +209,8 @@ export default function ActiveWorkoutRoute() {
   useEffect(() => {
     let active = true;
     setAvailableExercisesState("loading");
-    void runtime.listOwnedPlanExercises().then((exercises) => {
+    const read = fixtureEnabled ? Promise.resolve([]) : runtime.listOwnedPlanExercises();
+    void read.then((exercises) => {
       if (active) {
         setAvailableExercises(exercises.map(({ id, name }) => ({ id, name })));
         setAvailableExercisesState("ready");
@@ -167,7 +222,7 @@ export default function ActiveWorkoutRoute() {
       }
     });
     return () => { active = false; };
-  }, [availableExercisesAttempt, runtime.listOwnedPlanExercises]);
+  }, [availableExercisesAttempt, fixtureEnabled, runtime.listOwnedPlanExercises]);
 
   if (failed) {
     return (
@@ -279,6 +334,8 @@ export default function ActiveWorkoutRoute() {
       }}
       onOpenPlanSettings={() => { void openPlanSettings(); }}
       loadExerciseHistory={runtime.loadExerciseMetricHistory}
+      initialHeaderFocus={fixtureEnabled}
+      {...(fixtureEnabled ? { onInitialHeaderFocused: emitFixtureProbeReceipt } : {})}
       sessionId={resolvedSessionId}
       view={view}
       key={`${resolvedSessionId}:${focusGeneration}`}

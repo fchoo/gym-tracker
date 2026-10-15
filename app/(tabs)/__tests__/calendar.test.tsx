@@ -169,7 +169,7 @@ describe("CalendarRoute", () => {
     const loadCalendarRange = mockCalendarScreenProps?.loadCalendarRange as (input: { startLocalDate: string; endLocalDateExclusive: string }) => Promise<{ events: readonly { id: string }[] }>;
     const isolated = await loadCalendarRange({ startLocalDate: "2026-10-01", endLocalDateExclusive: "2026-11-01" });
     expect(isolated.events.map(({ id }) => id)).toEqual([
-      "v12-cal-strength-complete", "v12-cal-strength-partial", "v12-cal-strength-planned",
+      "v12-cal-strength-complete", "v12-cal-strength-partial", "v12-cal-strength-extra", "v12-cal-strength-planned",
       "v12-cal-running-planned", "v12-cal-running-imported",
     ]);
   });
@@ -283,5 +283,28 @@ describe("CalendarRoute", () => {
       },
     });
     expect(mockPush.mock.calls.join(" ")).not.toMatch(/resume|correct|remove|match|workout/u);
+  });
+
+  it("forwards the exact Phase 20 fixture identity to the Garmin activity route", async () => {
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockLocalSearchParams = {
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "b".repeat(32),
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+    await render(<CalendarRoute />);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open imported Running event" }));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/garmin/activity/[activityId]",
+      params: {
+        activityId: "activity-17",
+        origin: "calendar",
+        phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+        phase20CalendarEvidenceNonce: "b".repeat(32),
+        phase20CalendarRequirementsSha256: "a".repeat(64),
+      },
+    });
   });
 });

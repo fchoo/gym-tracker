@@ -183,13 +183,18 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
 }
 
 export default function SessionDetailRoute() {
-  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision, phase20CalendarFixture, phase20CalendarEvidenceNonce, phase20CalendarRequirementsSha256 } = useLocalSearchParams() as Readonly<{
+  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision, phase20CalendarFixture, phase20CalendarEvidenceNonce, phase20CalendarRequirementsSha256, phase20CalendarFixtureSourceSha256, phase20CalendarRequirement, phase20CalendarEvidenceId, phase20CalendarProbe, phase20CalendarProbeReceipt } = useLocalSearchParams() as Readonly<{
     sessionId?: RouteParam;
     origin?: RouteParam;
     sourceRevision?: RouteParam;
     phase20CalendarFixture?: RouteParam;
     phase20CalendarEvidenceNonce?: RouteParam;
     phase20CalendarRequirementsSha256?: RouteParam;
+    phase20CalendarFixtureSourceSha256?: RouteParam;
+    phase20CalendarRequirement?: RouteParam;
+    phase20CalendarEvidenceId?: RouteParam;
+    phase20CalendarProbe?: RouteParam;
+    phase20CalendarProbeReceipt?: RouteParam;
   }>;
   const resolvedSessionId = exactRouteParam(sessionId);
   const origin = parseCalendarRouteOrigin(rawOrigin, {
@@ -231,8 +236,20 @@ export default function SessionDetailRoute() {
       phase20CalendarFixture: exactRouteParam(phase20CalendarFixture)!,
       phase20CalendarEvidenceNonce: exactRouteParam(phase20CalendarEvidenceNonce)!,
       phase20CalendarRequirementsSha256: exactRouteParam(phase20CalendarRequirementsSha256)!,
+      ...(exactRouteParam(phase20CalendarFixtureSourceSha256) === null ? {} : { phase20CalendarFixtureSourceSha256: exactRouteParam(phase20CalendarFixtureSourceSha256)! }),
+      ...(exactRouteParam(phase20CalendarRequirement) === null ? {} : { phase20CalendarRequirement: exactRouteParam(phase20CalendarRequirement)! }),
+      ...(exactRouteParam(phase20CalendarEvidenceId) === null ? {} : { phase20CalendarEvidenceId: exactRouteParam(phase20CalendarEvidenceId)! }),
+      ...(exactRouteParam(phase20CalendarProbe) === null ? {} : { phase20CalendarProbe: exactRouteParam(phase20CalendarProbe)! }),
+      ...(exactRouteParam(phase20CalendarProbeReceipt) === null ? {} : { phase20CalendarProbeReceipt: exactRouteParam(phase20CalendarProbeReceipt)! }),
     }).toString();
-    return <SessionDetailScreen detail={fixtureDetail} onGoBack={() => router.back()} onCorrectWorkout={() => router.push(`/session/${fixtureDetail.id}/correct?${fixtureQuery}` as Href)} onRemoveFromHistory={() => Promise.resolve()} onOpenExerciseHistory={() => undefined} onResume={() => undefined} />;
+    return <SessionDetailScreen
+      detail={fixtureDetail}
+      onGoBack={() => router.back()}
+      onCorrectWorkout={() => router.push(`/session/${fixtureDetail.id}/correct?${fixtureQuery}` as Href)}
+      {...(fixtureDetail.status === "completed" ? { onRemoveFromHistory: () => Promise.resolve() } : {})}
+      onOpenExerciseHistory={() => undefined}
+      {...(fixtureDetail.resumable ? { onResume: () => router.replace(`/workout/${fixtureDetail.id}?${fixtureQuery}` as Href) } : {})}
+    />;
   }
   return resolvedSessionId === null
     ? <SessionRouteUnavailable />

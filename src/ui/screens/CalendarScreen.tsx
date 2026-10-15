@@ -19,6 +19,7 @@ import type {
 } from "../../bootstrap/phase16CalendarTestControls";
 import {
   recordPhase20CalendarBaseline,
+  recordPhase20CalendarCallback,
   recordPhase20CalendarFocus,
   recordPhase20CalendarLifecycle,
   recordPhase20CalendarMotion,
@@ -143,6 +144,7 @@ export function CalendarScreen({
   const selectedDateRef = useRef<LocalDate>(parseLocalDate(initialDate));
   const [selectedDate, setSelectedDate] = useState(() => selectedDateRef.current);
   const [range, setRange] = useState<CalendarRange | null>(null);
+  const rangeRef = useRef<CalendarRange | null>(null);
   const [lastGoodMonth, setLastGoodMonth] = useState(() => startOfLocalMonth(parseLocalDate(initialDate)));
   const [lastGoodSelectedDate, setLastGoodSelectedDate] = useState(() => parseLocalDate(initialDate));
   const [isLoading, setIsLoading] = useState(true);
@@ -176,6 +178,9 @@ export function CalendarScreen({
     raf: number;
   } | null>(null);
   const calendarTransitionRef = useRef(calendarTransition);
+  const monthRef = useRef(month);
+  rangeRef.current = range;
+  monthRef.current = month;
   const pendingMonthRef = useRef<Readonly<{ month: LocalDate; selectedDate: LocalDate }> | null>(null);
   const infoActionRef = useRef<View>(null);
   const collapseActionRef = useRef<View>(null);
@@ -399,6 +404,24 @@ export function CalendarScreen({
       after: observationTransitionState(result.state),
       commandKinds: result.commands.map(({ kind }) => kind),
     });
+    if (rangeRef.current !== null && previousState.phase === "idle"
+      && (event.type === "drag"
+        || previousState.currentMonthId !== result.state.currentMonthId
+        || previousState.pendingMonthId !== result.state.pendingMonthId)) {
+      setLastGoodMonth(monthRef.current);
+      setLastGoodSelectedDate(selectedDateRef.current);
+      lastGoodTransitionRef.current = previousState;
+    }
+    if (result.commands.length === 0
+      && result.state.reducedMotion
+      && result.state.epoch > previousState.epoch
+      && ["move", "expand", "collapse", "select-adjacent"].includes(event.type)) {
+      recordPhase20CalendarCallback({
+        callback: event.type === "move" ? "month-settle" : "week-settle",
+        epoch: result.state.epoch,
+        callbackGeneration: result.state.epoch,
+      });
+    }
     calendarTransitionRef.current = result.state;
     setCalendarTransition(result.state);
     setCalendarCommand(result.commands[0] ?? null);

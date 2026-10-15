@@ -11,8 +11,11 @@ import {
   V12_CALENDAR_STAGE_IDS,
 } from "./v12-calendar-observation-contract.mjs";
 import {
+  createV12CalendarProbeInvocation,
   createV12CalendarStageInvocation,
   collectV12ProductionCalendarStages,
+  createV12CalendarProbeReceipt,
+  selectV12CalendarProbeReceipt,
   validateProductionCalendarActionRequest,
 } from "./v12-production-native-calendar-action.mjs";
 import { V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
@@ -74,6 +77,41 @@ test("every stage invocation binds a fresh nonce, exact flow identity, and the p
   });
 });
 
+test("every Calendar matrix probe gets its own nonce-bound invocation and receipt", () => {
+  const probes = V12_CALENDAR_REQUIREMENT_DEFINITIONS.flatMap((definition) => definition.probe_ids.map((probeId) => ({ definition, probeId })));
+  assert.equal(probes.length, 69);
+  const invocations = probes.map(({ definition, probeId }, order) => createV12CalendarProbeInvocation({
+    definition,
+    probeId,
+    order,
+    nonce: (order + 100).toString(16).padStart(32, "0"),
+    flowSha256: HASH,
+    fixtureSourceSha256: "f".repeat(64),
+  }));
+  assert.equal(new Set(invocations.map(({ nonce }) => nonce)).size, probes.length);
+  invocations.forEach((invocation, order) => {
+    assert.equal(invocation.order, order);
+    assert.equal(invocation.probeId, probes[order].probeId);
+    assert.equal(invocation.variables.V12_CALENDAR_PROBE, probes[order].probeId);
+    assert.equal(invocation.variables.V12_CALENDAR_REQUIREMENT, probes[order].definition.requirement_id);
+  });
+
+  const invocation = invocations[0];
+  const receipt = createV12CalendarProbeReceipt({
+    nonce: invocation.nonce,
+    flowSha256: HASH,
+    fixtureSourceSha256: "f".repeat(64),
+    requirementId: invocation.definition.requirement_id,
+    evidenceId: invocation.definition.evidence_id,
+    probeId: invocation.probeId,
+  });
+  const line = `GYM_TRACKER_V12_CALENDAR_PROBE_RECEIPT:${JSON.stringify(receipt)}`;
+  assert.deepEqual(selectV12CalendarProbeReceipt({ beforeLogs: "", afterLogs: line, invocation }), receipt);
+  assert.throws(() => selectV12CalendarProbeReceipt({ beforeLogs: line, afterLogs: line, invocation }), /calendar_action_probe_receipt_stale/u);
+  assert.throws(() => selectV12CalendarProbeReceipt({ beforeLogs: "", afterLogs: `${line}\n${line}`, invocation }), /calendar_action_probe_receipt_duplicate/u);
+  assert.throws(() => selectV12CalendarProbeReceipt({ beforeLogs: "", afterLogs: line.replace('"status":"PASS"', '"status":"FAIL"'), invocation }), /calendar_action_probe_receipt_invalid/u);
+});
+
 test("the Maestro flow drives all 35 real stages and passes the complete route identity", () => {
   const flow = readFileSync(new URL("../maestro/v1.2/calendar.yaml", import.meta.url), "utf8");
   assert.match(flow, /gymtracker-devtest:\/\/calendar\?phase20CalendarStage=\$\{V12_CALENDAR_STAGE\}&phase20CalendarNonce=\$\{V12_CALENDAR_NONCE\}&phase20CalendarFlowSha256=\$\{V12_CALENDAR_FLOW_SHA256\}&phase20CalendarFlowRevision=\$\{V12_CALENDAR_FLOW_REVISION\}/u);
@@ -92,13 +130,18 @@ test("the Maestro flow drives all 35 real stages and passes the complete route i
 
 test("the requirement flow names every parity row and all high-risk Calendar destinations", () => {
   const flow = readFileSync(new URL("../maestro/v1.2/calendar-requirements.yaml", import.meta.url), "utf8");
-  for (const { requirement_id } of V12_CALENDAR_REQUIREMENT_DEFINITIONS) {
-    assert.equal(flow.split(`V12_CALENDAR_REQUIREMENT == '${requirement_id}'`).length - 1, 1, requirement_id);
+  for (const { requirement_id, probe_ids } of V12_CALENDAR_REQUIREMENT_DEFINITIONS) {
+    for (const probeId of probe_ids) {
+      assert.equal(flow.split(`V12_CALENDAR_REQUIREMENT == '${requirement_id}' && V12_CALENDAR_PROBE == '${probeId}'`).length - 1, 1, `${requirement_id}:${probeId}`);
+    }
   }
   for (const identity of ["v12-cal-strength-complete", "v12-cal-strength-partial", "v12-cal-strength-planned", "v12-cal-running-planned", "v12-cal-running-imported"]) assert.match(flow, new RegExp(identity, "u"));
   assert.match(flow, /CAL-13[\s\S]*Collapse day and return to month/u);
-  assert.match(flow, /CAL-22[\s\S]*Correct workout[\s\S]*Workout changed elsewhere[\s\S]*Save failed/u);
-  assert.match(flow, /CAL-23[\s\S]*Resume workout[\s\S]*Remove from history\?/u);
+  assert.match(flow, /CAL-20'[\s\S]*exercise-disclosure[\s\S]*calendar-exercise-disclosure-v12-exercise[\s\S]*calendar-read-only-set-v12-set-complete/u);
+  assert.match(flow, /CAL-21'[\s\S]*loading-empty-error[\s\S]*Loading Calendar[\s\S]*Calendar could not be loaded[\s\S]*Retry Calendar/u);
+  assert.match(flow, /CAL-22'[\s\S]*revision-conflict-retry[\s\S]*Correction needs attention[\s\S]*Workout changed elsewhere[\s\S]*Save failed[\s\S]*Workout details/u);
+  assert.match(flow, /CAL-23'[\s\S]*management-resume[\s\S]*Resume workout[\s\S]*active-workout[\s\S]*CAL-23'[\s\S]*management-remove-confirmation[\s\S]*Remove from history\?/u);
+  assert.match(flow, /GYM_TRACKER_V12_CALENDAR_PROBE_RECEIPT|phase20CalendarProbeReceipt=PASS/u);
 });
 
 test("the Calendar action collects every stage in order and retains raw traces and screenshots", async (t) => {
@@ -131,6 +174,14 @@ test("the Calendar action collects every stage in order and retains raw traces a
       maestro: (invocation) => { invocations.push(invocation); return { status: "PASS", xml: "<testsuite><testcase/></testsuite>" }; },
       drive: (driver) => { driven.push(driver); },
       awaitMarker: (_before, invocation) => Promise.resolve(createV12CalendarMarkerFixture(invocation.stageId, invocation.order, flowSha256, invocation.nonce)),
+      awaitProbeReceipt: (_before, invocation) => Promise.resolve(createV12CalendarProbeReceipt({
+        nonce: invocation.nonce,
+        flowSha256: invocation.variables.V12_CALENDAR_REQUIREMENTS_SHA256,
+        fixtureSourceSha256: invocation.variables.V12_CALENDAR_FIXTURE_SOURCE_SHA256,
+        requirementId: invocation.definition.requirement_id,
+        evidenceId: invocation.definition.evidence_id,
+        probeId: invocation.probeId,
+      })),
       screenshot: () => screenshot,
       uiDump: () => "<hierarchy><node resource-id=\"calendar-month-viewport\" text=\"Calendar isolated fixture\"/></hierarchy>",
       temporary: () => retained,
@@ -139,13 +190,13 @@ test("the Calendar action collects every stage in order and retains raw traces a
   assert.deepEqual(result.stages.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
   assert.deepEqual(result.junit_cases.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
   assert.equal(invocations.filter(({ kind }) => kind === "stage").length, 35);
-  assert.equal(invocations.filter(({ kind }) => kind === "requirement").length, 23);
-  assert.equal(new Set(invocations.map(({ nonce }) => nonce)).size, 58);
+  assert.equal(invocations.filter(({ kind }) => kind === "requirement-probe").length, 69);
+  assert.equal(new Set(invocations.map(({ nonce }) => nonce)).size, 104);
   assert.equal(driven.length, 21);
   assert.equal(driven.filter(({ protocol }) => protocol === "adb-input-motionevent/v1").length, 20);
   assert.equal(driven.filter(({ protocol }) => protocol === "adb-runtime-toggle/v1").length, 1);
   assert.equal(result.stages.every(({ observation, assertion_results }) => !Object.hasOwn(observation, "status") && assertion_results.length > 0), true);
-  assert.equal(result.artifacts.length, 116);
+  assert.equal(result.artifacts.length, 208);
   assert.equal(result.artifacts.every(({ relative_path, sha256, size_bytes, bytes_base64 }) => {
     const bytes = Buffer.from(bytes_base64, "base64");
     return /^calendar\/(?:stages|requirements)\//u.test(relative_path)
@@ -153,7 +204,14 @@ test("the Calendar action collects every stage in order and retains raw traces a
       && bytes.length === size_bytes;
   }), true);
   assert.equal(result.requirements.records.length, 23);
+  assert.equal(result.requirements.junit_cases.length, 69);
+  assert.equal(result.requirements.records.flatMap(({ probe_receipts }) => probe_receipts).length, 69);
+  assert.equal(result.requirements.records.every(({ probe_receipts }, requirementOrder) => probe_receipts.every((receipt, probeOrder) => (
+    receipt.requirement_id === V12_CALENDAR_REQUIREMENT_DEFINITIONS[requirementOrder].requirement_id
+    && receipt.probe_id === V12_CALENDAR_REQUIREMENT_DEFINITIONS[requirementOrder].probe_ids[probeOrder]
+    && receipt.status === "PASS"
+  ))), true);
   assert.equal(result.requirements.records.every(({ fixture_id, fixture_storage, source_digest_before, source_digest_after }) => fixture_id === "v12-calendar-isolated-facts-v1"
     && fixture_storage === "isolated-in-memory" && source_digest_before === source_digest_after), true);
-  assert.equal(readdirSync(retained).length, 116);
+  assert.equal(readdirSync(retained).length, 208);
 });

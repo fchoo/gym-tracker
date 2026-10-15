@@ -188,6 +188,50 @@ test("host validation rejects duplicate callbacks, modeled clocks, and wrong mon
   }
 });
 
+test("settlement proof rejects wrong epochs, duplicate callbacks, and duplicate completion navigation", () => {
+  const wrongEpoch = structuredClone(pointerStage());
+  wrongEpoch.callback_events[0].epoch = 2;
+  delete wrongEpoch.observation_digest_sha256;
+  wrongEpoch.observation_digest_sha256 = hashV12CalendarObservationBody(wrongEpoch);
+  assert.throws(() => derive(wrongEpoch), /calendar_observation_settle_contract_invalid/u);
+
+  const wrongKind = structuredClone(pointerStage());
+  wrongKind.callback_events[0].callback = "week-settle";
+  delete wrongKind.observation_digest_sha256;
+  wrongKind.observation_digest_sha256 = hashV12CalendarObservationBody(wrongKind);
+  assert.throws(() => derive(wrongKind), /calendar_observation_settle_contract_invalid/u);
+
+  const duplicateCallback = structuredClone(pointerStage());
+  duplicateCallback.callback_events[0] = {
+    ...duplicateCallback.callback_events[0],
+    sequence: 13,
+    observed_at_monotonic_ms: event(13, "unused").observed_at_monotonic_ms,
+  };
+  duplicateCallback.callback_events.push(event(14, "callback", { callback: "month-settle", epoch: 1 }));
+  duplicateCallback.transition_events[2].sequence = 15;
+  duplicateCallback.transition_events[2].observed_at_monotonic_ms = event(15, "unused").observed_at_monotonic_ms;
+  duplicateCallback.semantic_samples[1].sequence = 16;
+  duplicateCallback.semantic_samples[1].observed_at_monotonic_ms = event(16, "unused").observed_at_monotonic_ms;
+  duplicateCallback.completed_at_monotonic_ms = duplicateCallback.semantic_samples[1].observed_at_monotonic_ms;
+  delete duplicateCallback.observation_digest_sha256;
+  duplicateCallback.observation_digest_sha256 = hashV12CalendarObservationBody(duplicateCallback);
+  assert.throws(() => derive(duplicateCallback), /calendar_observation_settle_contract_invalid/u);
+
+  const duplicateCompletion = structuredClone(pointerStage());
+  duplicateCompletion.transition_events.push(transition(
+    16,
+    "settle-complete",
+    state("settling", { current_month_id: "2026-11", selected_civil_date: "2026-11-15", epoch: 1 }),
+    state("idle", { current_month_id: "2026-11", selected_civil_date: "2026-11-15", epoch: 1 }),
+  ));
+  duplicateCompletion.semantic_samples[1].sequence = 17;
+  duplicateCompletion.semantic_samples[1].observed_at_monotonic_ms = event(17, "unused").observed_at_monotonic_ms;
+  duplicateCompletion.completed_at_monotonic_ms = duplicateCompletion.semantic_samples[1].observed_at_monotonic_ms;
+  delete duplicateCompletion.observation_digest_sha256;
+  duplicateCompletion.observation_digest_sha256 = hashV12CalendarObservationBody(duplicateCompletion);
+  assert.throws(() => derive(duplicateCompletion), /calendar_observation_settle_contract_invalid/u);
+});
+
 test("a structurally real threshold miss becomes FAIL instead of trusting a requested expected outcome", () => {
   const stage = structuredClone(pointerStage());
   for (const sample of stage.pointer_events) {
@@ -225,7 +269,10 @@ test("the validator rejects sequential fake clocks, missing callbacks, generic l
 
 test("cancel ends with the actual cancelled callback and rejects a fabricated pointer-up", () => {
   const stage = structuredClone(createV12CalendarObservationFixture("drag-cancel", V12_CALENDAR_STAGE_IDS.indexOf("drag-cancel"), FLOW_SHA, NONCE).observation);
-  assert.equal(derive(stage).status, "PASS");
+  const result = derive(stage);
+  assert.equal(result.status, "PASS");
+  assert.equal(result.assertion_results.find(({ id }) => id === "cancel-reset-rendered-zero")?.passed, true);
+  assert.equal(result.assertion_results.find(({ id }) => id === "cancel-semantics-unchanged")?.passed, true);
 
   const malformed = structuredClone(stage);
   const prior = [...malformed.pointer_events, ...malformed.rendered_panel_samples, ...malformed.transition_events, ...malformed.semantic_samples]
@@ -235,6 +282,30 @@ test("cancel ends with the actual cancelled callback and rejects a fabricated po
   delete malformed.observation_digest_sha256;
   malformed.observation_digest_sha256 = hashV12CalendarObservationBody(malformed);
   assert.throws(() => derive(malformed), /calendar_observation_cancel_invalid/u);
+});
+
+test("collapse proves the inverse morph endpoint and selected-day focus restoration", () => {
+  const stage = structuredClone(createV12CalendarObservationFixture("week-collapse-middle-row", V12_CALENDAR_STAGE_IDS.indexOf("week-collapse-middle-row"), FLOW_SHA, NONCE).observation);
+  const result = derive(stage);
+  assert.equal(result.assertion_results.find(({ id }) => id === "inverse-morph-endpoint")?.passed, true);
+  assert.equal(result.assertion_results.find(({ id }) => id === "selected-day-focus-restored")?.passed, true);
+
+  stage.focus_events[0].identity = "calendar-collapse-day";
+  delete stage.observation_digest_sha256;
+  stage.observation_digest_sha256 = hashV12CalendarObservationBody(stage);
+  assert.equal(derive(stage).status, "FAIL");
+});
+
+test("reduced motion contains separate normal and runtime-toggled callback sequences", () => {
+  const stage = structuredClone(createV12CalendarObservationFixture("reduced-motion", V12_CALENDAR_STAGE_IDS.indexOf("reduced-motion"), FLOW_SHA, NONCE).observation);
+  const result = derive(stage);
+  assert.ok(stage.callback_events.length >= 2);
+  assert.equal(result.assertion_results.find(({ id }) => id === "normal-reduced-callback-comparison")?.passed, true);
+
+  stage.callback_events = stage.callback_events.slice(0, 1);
+  delete stage.observation_digest_sha256;
+  stage.observation_digest_sha256 = hashV12CalendarObservationBody(stage);
+  assert.throws(() => derive(stage), /calendar_observation_settle_contract_invalid/u);
 });
 
 test("row geometry rejects duplicated fixed bounds", () => {

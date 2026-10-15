@@ -148,12 +148,18 @@ export function CalendarRunningPlanRouteAdapter({
 
 export function CalendarImportedActivityRouteAdapter({
   activityId,
+  loadActivityDetail,
+  loadRevisionReview,
   onBack,
 }: Readonly<{
   activityId: string | null;
+  loadActivityDetail?(activityId: string): ReturnType<ReturnType<typeof useCalendarActivityReadPort>["loadImportedActivityDetail"]>;
+  loadRevisionReview?(activityId: string): ReturnType<ReturnType<typeof useCalendarActivityReadPort>["loadGarminRevisionReview"]>;
   onBack(): void;
 }>) {
   const readActivity = useCalendarActivityReadPort();
+  const loadActivity = loadActivityDetail ?? readActivity.loadImportedActivityDetail;
+  const loadReview = loadRevisionReview ?? readActivity.loadGarminRevisionReview;
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<ImportedActivityDetailScreenState>(
     activityId === null ? { kind: "missing" } : { kind: "loading" },
@@ -166,13 +172,13 @@ export function CalendarImportedActivityRouteAdapter({
     }
     let active = true;
     setState({ kind: "loading" });
-    void readActivity.loadImportedActivityDetail(activityId).then(async (result) => {
+    void loadActivity(activityId).then(async (result) => {
       if (!active) return;
       if (result.kind !== "revision_review") {
         setState(result);
         return;
       }
-      const review = await readActivity.loadGarminRevisionReview(activityId);
+      const review = await loadReview(activityId);
       if (active) setState(review === null ? result : { kind: "revision_review", review });
     }).catch(() => {
       if (active) setState({ kind: "projection_error", code: "accepted_payload_unavailable" });
@@ -181,8 +187,8 @@ export function CalendarImportedActivityRouteAdapter({
   }, [
     activityId,
     attempt,
-    readActivity.loadGarminRevisionReview,
-    readActivity.loadImportedActivityDetail,
+    loadActivity,
+    loadReview,
   ]);
 
   return (

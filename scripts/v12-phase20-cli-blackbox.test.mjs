@@ -118,7 +118,7 @@ function rewriteFixturePublication(root, shard) {
     const registry = JSON.parse(readFileSync(path.join(base, "calendar/artifact-registry.json"), "utf8"));
     const nativeRequirements = { flow_sha256: requirements.flow_sha256, fixture_id: requirements.fixture_id, records: requirements.records, junit_cases: requirements.junit_cases };
     const artifacts = registry.members.map((member) => member.stage_id === undefined
-      ? { requirement_id: member.requirement_id, kind: member.kind, relative_path: member.path, sha256: member.sha256, size_bytes: member.size_bytes }
+      ? { requirement_id: member.requirement_id, probe_id: member.probe_id, kind: member.kind, relative_path: member.path, sha256: member.sha256, size_bytes: member.size_bytes }
       : { stage_id: member.stage_id, kind: member.kind, relative_path: member.path, sha256: member.sha256, size_bytes: member.size_bytes });
     transitions.native_receipt.evidence_set_sha256 = createHash("sha256").update(JSON.stringify({ stages: transitions.stages, requirements: nativeRequirements, artifacts })).digest("hex");
     writeFileSync(transitionsPath, JSON.stringify(transitions));
@@ -271,6 +271,16 @@ async function assertSourceMutations(t, root) {
         assert.equal(selected.selector.resolution.result, selected.result);
       } finally { cleanOutputs(); for (const [file, content] of saved) writeFileSync(file, content); }
     });
+  }
+  for (const [name, mutateReceipt] of [
+    ["Calendar resolver rejects a missing probe receipt", (record) => { record.probe_receipts.pop(); }],
+    ["Calendar resolver rejects a duplicate probe receipt", (record) => { record.probe_receipts[1] = structuredClone(record.probe_receipts[0]); }],
+    ["Calendar resolver rejects a non-PASS probe receipt", (record) => { record.probe_receipts[0].status = "FAIL"; }],
+  ]) {
+    await mutation(name, "CAL-01", "FAIL", ["calendar"], edit => {
+      edit("calendar-transitions.json", value => value);
+      edit("calendar-requirements.json", value => { mutateReceipt(value.records[0]); return value; });
+    }, { invalid: true });
   }
   for (const state of ["FAIL", "NOT_RUN", "REVIEW_REQUIRED"]) {
     await mutation(`Calendar stage retains ${state}`, "CAL-07", state, ["calendar"], edit => edit("calendar-transitions.json", value => { value.stages[0].status = state; value.junit_cases[0].status = state; return value; }));

@@ -297,6 +297,35 @@ function callbackEvent(value) {
   integer(value.epoch, "callback_invalid");
 }
 
+function validateSettleContract(stage, callback, { includeReducedImmediate = false } = {}) {
+  const settleKind = callback === "month-settle" ? "settle-month" : "settle-week";
+  const commanded = stage.transition_events.filter(({ command_kinds }) => command_kinds.includes(settleKind));
+  const immediate = includeReducedImmediate
+    ? stage.transition_events.filter(({ trigger, before, after, command_kinds }) => (
+      command_kinds.length === 0
+      && ["expand", "collapse", "select-adjacent", "move"].includes(trigger)
+      && after.reduced_motion
+      && after.phase === "idle"
+      && after.epoch > before.epoch
+    ))
+    : [];
+  const expected = [...commanded, ...immediate].sort((left, right) => left.sequence - right.sequence);
+  const callbacks = stage.callback_events.filter((entry) => entry.callback === callback);
+  const completions = stage.transition_events.filter(({ trigger }) => trigger === "settle-complete");
+  if (stage.callback_events.length !== callbacks.length || callbacks.length !== expected.length
+    || new Set(callbacks.map(({ epoch }) => epoch)).size !== callbacks.length
+    || completions.length !== commanded.length) fail("settle_contract_invalid");
+  for (const transition of expected) {
+    const matches = callbacks.filter(({ epoch }) => epoch === transition.after.epoch);
+    if (matches.length !== 1 || matches[0].sequence <= transition.sequence) fail("settle_contract_invalid");
+    if (transition.command_kinds.includes(settleKind)) {
+      const matchingCompletions = completions.filter(({ before }) => before.epoch === transition.after.epoch);
+      if (matchingCompletions.length !== 1 || matchingCompletions[0].sequence <= matches[0].sequence) fail("settle_contract_invalid");
+    }
+  }
+  if (expected.length > 0 && callbacks.at(-1)?.epoch !== expected.at(-1)?.after.epoch) fail("settle_contract_invalid");
+}
+
 function focusEvent(value) {
   exact(value, ["sequence", "observed_at_monotonic_ms", "callback_generation", "kind", "identity"], "focus_invalid");
   commonEvent(value, "focus");
@@ -453,6 +482,7 @@ function validatePointer(stage, stageId, group, driver) {
     assertion("terminal-kind", cancelled ? stage.pointer_events.at(-1).phase === "finalize-cancel"
       : stageId === "rapid-reverse-input" ? callbacks.includes("onFinalize") : stage.pointer_events.at(-1).phase === "finalize-release", stage.pointer_events.at(-1).phase),
   ];
+  validateSettleContract(stage, "month-settle");
   const command = driver === undefined ? null : validateDriverReceipt(driver, stageId);
   const terminalPoint = command?.sequences[0]?.points.at(-1);
   const commandedRatio = terminalPoint === undefined ? null : Math.abs(terminalPoint.dx_ratio);
@@ -461,8 +491,22 @@ function validatePointer(stage, stageId, group, driver) {
   const finalSemantic = stage.semantic_samples.at(-1);
   assertions.push(assertion("semantic-month-date-title", monthIdFromTitle(finalSemantic.title) === finalSemantic.current_month_id
     && finalSemantic.selected_civil_date.startsWith(`${finalSemantic.current_month_id}-`), finalSemantic));
-  if (!cancelled) assertions.push(assertion("settle-callback", stage.callback_events.some(({ callback }) => callback === "month-settle")
+  if (!cancelled) assertions.push(assertion("settle-callback", stage.callback_events.length === 1
     && stage.transition_events.some(({ trigger, after }) => trigger === "settle-complete" && after.phase === "idle"), { callbacks: stage.callback_events, transitions: stage.transition_events.map(({ trigger, after }) => ({ trigger, phase: after.phase })) }));
+  else {
+    const finalized = stage.pointer_events.at(-1);
+    const resetPanel = stage.rendered_panel_samples.find((sample) => sample.sequence > finalized.sequence
+      && Math.abs(sample.current_x_dp - sample.viewport_x_dp) <= 2);
+    const initialSemantic = stage.semantic_samples[0];
+    const settledSemantic = stage.semantic_samples.find((sample) => sample.sequence > finalized.sequence);
+    assertions.push(assertion("cancel-reset-rendered-zero", resetPanel !== undefined, stage.rendered_panel_samples));
+    assertions.push(assertion("cancel-semantics-unchanged", settledSemantic !== undefined
+      && initialSemantic?.title === settledSemantic.title
+      && initialSemantic?.current_month_id === settledSemantic.current_month_id
+      && initialSemantic?.selected_civil_date === settledSemantic.selected_civil_date
+      && initialSemantic?.focused_week_start === settledSemantic.focused_week_start,
+    { initialSemantic, settledSemantic }));
+  }
   const ratioMatch = /-(10|24_9|25|25_1)$/u.exec(stageId)?.[1]
     ?? (/release-(below|exact|above)$/u.exec(stageId)?.[1]);
   if (ratioMatch !== undefined) {
@@ -515,10 +559,11 @@ function validateRows(stage, stageId) {
   if (![stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events].every(Array.isArray)) fail("row_geometry_invalid");
   stage.row_measurements.forEach(rowEvent); stage.rendered_overlay_samples.forEach((event) => renderedOverlayEvent(event, stage.viewport.height_dp)); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent); stage.callback_events.forEach(callbackEvent); stage.focus_events.forEach(focusEvent);
   validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, [stage.motion]]);
+  validateSettleContract(stage, "week-settle");
   const rows = [...stage.row_measurements].sort((left, right) => left.y_dp - right.y_dp);
   if (rows.length < 2 || new Set(rows.map(({ week_start }) => week_start)).size !== rows.length
     || new Set(rows.map(({ y_dp }) => y_dp)).size !== rows.length) fail("row_geometry_invalid");
-  const focused = stage.semantic_samples.at(-1)?.focused_week_start;
+  const focused = stage.semantic_samples.find(({ focused_week_start }) => focused_week_start !== null)?.focused_week_start;
   const selectedIndex = rows.findIndex(({ week_start }) => week_start === focused);
   if (selectedIndex < 0) fail("row_geometry_invalid");
   const positionPass = stageId === "week-expand-first-row" ? selectedIndex === 0
@@ -534,26 +579,37 @@ function validateRows(stage, stageId) {
   const expanded = stage.rendered_overlay_samples.some((sample) => sample.phase === "expand" && sample.progress === 1
     && Math.abs(sample.selected_y_dp) <= 2
     && Math.abs(sample.following_y_dp - (sample.viewport_height_dp - followingRow.height_dp)) <= 2);
-  const collapsed = stageId !== "week-collapse-middle-row" || stage.rendered_overlay_samples.some((sample) => sample.phase === "collapse" && sample.progress === 0
+  const collapseTransition = stage.transition_events.find(({ trigger }) => trigger === "collapse");
+  const collapseCallback = collapseTransition === undefined ? undefined : stage.callback_events.find(({ epoch }) => epoch === collapseTransition.after.epoch);
+  const collapseEndpoint = stage.rendered_overlay_samples.find((sample) => sample.phase === "collapse" && sample.progress === 0
     && Math.abs(sample.selected_y_dp - focusedRow.y_dp) <= 2
     && Math.abs(sample.following_y_dp - followingRow.y_dp) <= 2);
+  const collapsed = stageId !== "week-collapse-middle-row" || (collapseEndpoint !== undefined
+    && collapseCallback !== undefined && collapseEndpoint.sequence > collapseCallback.sequence);
+  const selectedFocus = stageId !== "week-collapse-middle-row" || stage.focus_events.some(({ identity, sequence }) => (
+    identity === `calendar-day-${stage.transition_events.at(-1)?.after.selected_civil_date}`
+    && collapseEndpoint !== undefined && sequence > collapseEndpoint.sequence
+  ));
   return [
     assertion("measured-row-geometry", true, rows.map(({ week_start, y_dp, height_dp }) => ({ week_start, y_dp, height_dp }))),
     assertion("focused-row-position", positionPass, { focused, selectedIndex, rowCount: rows.length }),
     assertion("ordered-transition", adjacentPass && collapsePass && triggers.includes("settle-complete"), triggers),
     assertion("rendered-overlay-positions", expanded && collapsed, stage.rendered_overlay_samples),
+    assertion("inverse-morph-endpoint", collapsed, collapseEndpoint ?? null),
+    assertion("selected-day-focus-restored", selectedFocus, stage.focus_events),
     assertion("focus-callback", stage.focus_events.length > 0, stage.focus_events.map(({ identity }) => identity)),
     assertion("week-settle-callback", stage.callback_events.some(({ callback }) => callback === "week-settle"), stage.callback_events),
   ];
 }
 
 function validateMonthGeometry(stage, stageId) {
-  const keys = ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "row_measurements", "transition_events", "semantic_samples", "motion"];
+  const keys = ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "row_measurements", "transition_events", "semantic_samples", "callback_events", "motion"];
   baseStage(stage, stageId, "month-geometry", keys);
   viewportEvent(stage.viewport); motionEvent(stage.motion);
-  if (![stage.row_measurements, stage.transition_events, stage.semantic_samples].every(Array.isArray)) fail("month_geometry_invalid");
-  stage.row_measurements.forEach(rowEvent); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent);
-  validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.transition_events, stage.semantic_samples, [stage.motion]]);
+  if (![stage.row_measurements, stage.transition_events, stage.semantic_samples, stage.callback_events].every(Array.isArray)) fail("month_geometry_invalid");
+  stage.row_measurements.forEach(rowEvent); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent); stage.callback_events.forEach(callbackEvent);
+  validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.transition_events, stage.semantic_samples, stage.callback_events, [stage.motion]]);
+  validateSettleContract(stage, "month-settle");
   const semantic = stage.semantic_samples.at(-1);
   const rowCount = stage.row_measurements.length;
   const expectedRows = stageId === "four-row-month" ? 4 : stageId === "five-row-month" ? 5 : stageId === "six-row-month" ? 6 : semantic.week_count;
@@ -592,6 +648,7 @@ function validateReducedMotion(stage, stageId) {
   if (![stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, stage.motion_events].every(Array.isArray)) fail("reduced_motion_invalid");
   stage.row_measurements.forEach(rowEvent); stage.rendered_overlay_samples.forEach((event) => renderedOverlayEvent(event, stage.viewport.height_dp)); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent); stage.callback_events.forEach(callbackEvent); stage.focus_events.forEach(focusEvent); stage.motion_events.forEach(motionEvent);
   validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, stage.motion_events]);
+  validateSettleContract(stage, "week-settle", { includeReducedImmediate: true });
   const final = stage.transition_events.at(-1)?.after;
   const motionModes = stage.motion_events.map(({ reduced_motion }) => reduced_motion);
   const normal = stage.rendered_overlay_samples.find(({ reduced_motion, phase, progress }) => !reduced_motion && phase === "expand" && progress === 1);
@@ -603,7 +660,9 @@ function validateReducedMotion(stage, stageId) {
     assertion("normal-vs-reduced-destination", final?.phase === "idle" && final?.mode === "focused"
       && firstSemantic?.selected_civil_date === lastSemantic?.selected_civil_date
       && triggers.filter((trigger) => trigger === "expand").length >= 2 && triggers.includes("collapse"), { final, firstSemantic, lastSemantic, triggers }),
-    assertion("normal-callback-only", stage.callback_events.filter(({ callback }) => callback === "week-settle").length === 1, stage.callback_events),
+    assertion("normal-reduced-callback-comparison", stage.callback_events.filter(({ callback }) => callback === "week-settle").length >= 2
+      && stage.callback_events.some(({ epoch }) => epoch === stage.transition_events.find(({ trigger, after }) => trigger === "expand" && !after.reduced_motion)?.after.epoch)
+      && stage.callback_events.some(({ epoch }) => epoch === stage.transition_events.findLast(({ trigger, after }) => trigger === "expand" && after.reduced_motion)?.after.epoch), stage.callback_events),
     assertion("identical-rendered-destination", normal !== undefined && reduced !== undefined
       && Math.abs(normal.selected_y_dp - reduced.selected_y_dp) <= 2 && Math.abs(normal.following_y_dp - reduced.following_y_dp) <= 2, { normal, reduced }),
     assertion("focus-callback", stage.focus_events.length > 0, stage.focus_events),

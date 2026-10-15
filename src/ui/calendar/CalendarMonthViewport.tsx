@@ -244,6 +244,10 @@ export function CalendarMonthViewport({
     deliveredEpoch: number | null;
     timer: ReturnType<typeof setTimeout> | null;
   }>>({ activeEpoch: null, deliveredEpoch: null, timer: null });
+  const weekCompletionRef = useRef<Readonly<{
+    activeEpoch: number | null;
+    deliveredEpoch: number | null;
+  }>>({ activeEpoch: null, deliveredEpoch: null });
   const diagnosticSequenceStarted = useRef(false);
   const diagnosticSequenceExpanded = useRef(false);
   const diagnosticStageDriven = useRef(false);
@@ -327,11 +331,27 @@ export function CalendarMonthViewport({
     onComplete(epoch);
   }, [onComplete]);
 
+  const cancelWeekCompletion = useCallback(() => {
+    weekCompletionRef.current = Object.freeze({
+      activeEpoch: null,
+      deliveredEpoch: weekCompletionRef.current.deliveredEpoch,
+    });
+  }, []);
+
+  const publishWeekCompletion = useCallback((epoch: number) => {
+    const current = weekCompletionRef.current;
+    if (current.activeEpoch !== epoch || current.deliveredEpoch === epoch) return;
+    weekCompletionRef.current = Object.freeze({ activeEpoch: epoch, deliveredEpoch: epoch });
+    recordPhase20CalendarCallback({ callback: "week-settle", epoch, callbackGeneration: epoch });
+    onComplete(epoch);
+  }, [onComplete]);
+
   useEffect(() => () => {
     mounted.current = false;
     cancelMonthCompletion();
+    cancelWeekCompletion();
     cancelAnimation(pointerX);
-  }, [cancelMonthCompletion, pointerX]);
+  }, [cancelMonthCompletion, cancelWeekCompletion, pointerX]);
 
   useEffect(() => {
     cancelMonthCompletion();
@@ -365,6 +385,7 @@ export function CalendarMonthViewport({
   }, [cancelMonthCompletion, command, completionEpoch, pointerX, publishMonthCompletion, viewportWidth]);
 
   useEffect(() => {
+    cancelWeekCompletion();
     if (command?.kind !== "settle-week") return;
     if (command.phase === "expand" && diagnosticSequenceStarted.current) diagnosticSequenceExpanded.current = true;
     const agendaMotion = calendarAgendaMotion(command);
@@ -377,6 +398,10 @@ export function CalendarMonthViewport({
     if (selectedGeometry === null || followingGeometry === null) {
       return;
     }
+    weekCompletionRef.current = Object.freeze({
+      activeEpoch: command.epoch,
+      deliveredEpoch: weekCompletionRef.current.deliveredEpoch,
+    });
     weekCompletionEpoch.value = command.epoch;
     setTimeout(() => measureRenderedOverlays(command.phase, command.phase === "expand" ? 0 : 1, command.epoch), 0);
     recordPhase16CalendarFocus({
@@ -396,11 +421,6 @@ export function CalendarMonthViewport({
         const viewportMeasurement = measure(viewportRef);
         const selectedMeasurement = measure(selectedOverlayRef);
         const followingMeasurement = measure(followingOverlayRef);
-        scheduleOnRN(recordPhase20CalendarCallback, {
-          callback: "week-settle",
-          epoch: command.epoch,
-          callbackGeneration: command.epoch,
-        });
         if (viewportMeasurement !== null && selectedMeasurement !== null && followingMeasurement !== null) {
           scheduleOnRN(recordPhase20CalendarRenderedOverlay, {
             phase: command.phase,
@@ -414,7 +434,7 @@ export function CalendarMonthViewport({
             callbackGeneration: command.epoch,
           });
         }
-        scheduleOnRN(onComplete, command.epoch);
+        scheduleOnRN(publishWeekCompletion, command.epoch);
         if (command.phase === "collapse" && diagnosticSequenceExpanded.current) {
           diagnosticSequenceStarted.current = false;
           diagnosticSequenceExpanded.current = false;
@@ -422,7 +442,8 @@ export function CalendarMonthViewport({
         }
       }
     });
-  }, [agendaOpacity, command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, measureRenderedOverlays, onCancel, onComplete, onInteractionDiagnosticComplete, transition.reducedMotion, viewportHeight, viewportRef, selectedOverlayRef, followingOverlayRef, weekCompletionEpoch]);
+    return cancelWeekCompletion;
+  }, [agendaOpacity, cancelWeekCompletion, command, focusProgress, focusedWeek?.followingGeometry, focusedWeek?.selectedGeometry, layoutGeneration, measureRenderedOverlays, onCancel, onInteractionDiagnosticComplete, publishWeekCompletion, transition.reducedMotion, viewportHeight, viewportRef, selectedOverlayRef, followingOverlayRef, weekCompletionEpoch]);
 
   useEffect(() => {
     if (!transition.reducedMotion) return;
@@ -611,6 +632,7 @@ export function CalendarMonthViewport({
         completionEpoch.value += 1;
         cancelAnimation(pointerX);
         pointerX.value = 0;
+        scheduleOnRN(measureRenderedPanels, completionEpoch.value);
         scheduleOnRN(recordPhase16CalendarCancel);
         scheduleOnRN(onCancel);
       }

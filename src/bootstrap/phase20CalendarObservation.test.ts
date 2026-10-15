@@ -175,15 +175,20 @@ describe("Phase 20 real Calendar observation collector", () => {
     collector.recordMotion({ reducedMotion: false });
     collector.recordSemantic({ title: "October 2026", currentMonthId: "2026-10", selectedCivilDate: "2026-10-15", focusedWeekStart: null, weekCount: 5, callbackGeneration: 4 });
     collector.recordPointer({ callback: "onTouchesDown", phase: "down", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, intentOwner: "undetermined", callbackGeneration: 4 });
-    collector.recordPointer({ callback: "onTouchesMove", phase: "intent", xDp: 290, yDp: 280, dxDp: -10, dyDp: 60, viewportWidthDp: 354, intentOwner: "vertical", callbackGeneration: 4 });
-    collector.recordRenderedPanel({ viewportXDp: 18, previousXDp: -336, currentXDp: 18, nextXDp: 372, widthDp: 354, callbackGeneration: 4 });
-    collector.recordPointer({ callback: "onFinalize", phase: "finalize-cancel", xDp: 290, yDp: 280, dxDp: -10, dyDp: 60, viewportWidthDp: 354, intentOwner: "vertical", callbackGeneration: 5 });
+    collector.recordPointer({ callback: "onTouchesMove", phase: "intent", xDp: 236.28, yDp: 220, dxDp: -63.72, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 4 });
+    collector.recordPointer({ callback: "onBegin", phase: "begin", xDp: 236.28, yDp: 220, dxDp: -63.72, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 4 });
+    collector.recordPointer({ callback: "onChange", phase: "change", xDp: 236.28, yDp: 220, dxDp: -63.72, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 4 });
+    collector.recordRenderedPanel({ viewportXDp: 18, previousXDp: -399.72, currentXDp: -45.72, nextXDp: 308.28, widthDp: 354, callbackGeneration: 4 });
+    collector.recordPointer({ callback: "onFinalize", phase: "finalize-cancel", xDp: 236.28, yDp: 220, dxDp: -63.72, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 5 });
     collector.recordTransition({ trigger: "cancel", before: transition("idle"), after: { ...transition("idle"), epoch: 1 }, commandKinds: [] });
+    collector.recordRenderedPanel({ viewportXDp: 18, previousXDp: -336, currentXDp: 18, nextXDp: 372, widthDp: 354, callbackGeneration: 5 });
+    collector.recordSemantic({ title: "October 2026", currentMonthId: "2026-10", selectedCivilDate: "2026-10-15", focusedWeekStart: null, weekCount: 5, callbackGeneration: 5 });
     await collector.flush();
 
     const terminal = terminalFromChunks(emitted);
     expect(terminal.stage.pointer_events.at(-1)).toMatchObject({ callback: "onFinalize", phase: "finalize-cancel" });
     expect(terminal.stage.pointer_events).not.toEqual(expect.arrayContaining([expect.objectContaining({ callback: "onEnd" })]));
+    expect(terminal.stage.rendered_panel_samples.at(-1)).toMatchObject({ viewport_x_dp: 18, current_x_dp: 18 });
   });
 
   it("uses row, lifecycle, reduced-motion, and baseline-specific terminal schemas", async () => {

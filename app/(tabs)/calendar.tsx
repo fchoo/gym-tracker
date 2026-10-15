@@ -36,7 +36,12 @@ import {
   phase20CalendarRequestFromNativeContract,
 } from "../../src/bootstrap/phase20CalendarObservation";
 import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
-import { phase20CalendarFixtureReadPort, phase20CalendarFixtureRequestFromNativeContract } from "../../src/testing/phase20CalendarFixture";
+import {
+  createPhase20CalendarFixtureReadPort,
+  emitPhase20CalendarProbeReceipt,
+  phase20CalendarFixtureRequestFromNativeContract,
+  phase20CalendarProbeReceiptRequestFromNativeContract,
+} from "../../src/testing/phase20CalendarFixture";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -73,6 +78,11 @@ export default function CalendarRoute() {
     phase20CalendarFixture?: string | string[];
     phase20CalendarEvidenceNonce?: string | string[];
     phase20CalendarRequirementsSha256?: string | string[];
+    phase20CalendarFixtureSourceSha256?: string | string[];
+    phase20CalendarRequirement?: string | string[];
+    phase20CalendarEvidenceId?: string | string[];
+    phase20CalendarProbe?: string | string[];
+    phase20CalendarProbeReceipt?: string | string[];
   }>();
   const extra = Constants.expoConfig?.extra;
   const nativeIdentity = {
@@ -98,7 +108,21 @@ export default function CalendarRoute() {
     nonce: scalarRouteParam(routeParams.phase20CalendarEvidenceNonce),
     requirementsSha256: scalarRouteParam(routeParams.phase20CalendarRequirementsSha256),
   });
-  const calendarRangeRead = phase20FixtureRequested ? phase20CalendarFixtureReadPort : calendarRead;
+  const phase20ProbeId = scalarRouteParam(routeParams.phase20CalendarProbe);
+  const calendarRangeRead = React.useMemo(() => phase20FixtureRequested
+    ? createPhase20CalendarFixtureReadPort(phase20ProbeId)
+    : calendarRead, [calendarRead, phase20FixtureRequested, phase20ProbeId]);
+  const phase20ProbeReceipt = phase20CalendarProbeReceiptRequestFromNativeContract({
+    ...nativeIdentity,
+    fixtureId: scalarRouteParam(routeParams.phase20CalendarFixture),
+    nonce: scalarRouteParam(routeParams.phase20CalendarEvidenceNonce),
+    flowSha256: scalarRouteParam(routeParams.phase20CalendarRequirementsSha256),
+    fixtureSourceSha256: scalarRouteParam(routeParams.phase20CalendarFixtureSourceSha256),
+    requirementId: scalarRouteParam(routeParams.phase20CalendarRequirement),
+    evidenceId: scalarRouteParam(routeParams.phase20CalendarEvidenceId),
+    probeId: phase20ProbeId,
+    status: scalarRouteParam(routeParams.phase20CalendarProbeReceipt),
+  });
   const phase20EvidenceEntries: readonly [string, string][] = phase20FixtureRequested
     ? [
         ["phase20CalendarFixture", scalarRouteParam(routeParams.phase20CalendarFixture) ?? "v12-calendar-isolated-facts-v1"],
@@ -187,6 +211,10 @@ export default function CalendarRoute() {
     configurePhase20CalendarObservationCollector({ request: phase20Request });
     return clearPhase20CalendarObservationCollector;
   }, [phase20Request?.flowRevision, phase20Request?.flowSha256, phase20Request?.nonce, phase20Request?.stage]);
+
+  React.useEffect(() => {
+    void emitPhase20CalendarProbeReceipt(phase20ProbeReceipt);
+  }, [phase20ProbeReceipt?.evidenceId, phase20ProbeReceipt?.fixtureSourceSha256, phase20ProbeReceipt?.flowSha256, phase20ProbeReceipt?.nonce, phase20ProbeReceipt?.probeId, phase20ProbeReceipt?.requirementId]);
 
   return (
     <CalendarScreen

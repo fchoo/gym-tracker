@@ -865,6 +865,33 @@ describe("CalendarScreen", () => {
     });
   });
 
+  it("restores the exact selected day through a failed adjacent-month load and retry", async () => {
+    let rejectNextRange: ((error: Error) => void) | undefined;
+    const loadCalendarRange = jest.fn() as jest.MockedFunction<CalendarReadPort["loadCalendarRange"]>;
+    loadCalendarRange
+      .mockResolvedValueOnce(range)
+      .mockImplementationOnce(() => new Promise<CalendarRange>((_resolve, reject) => { rejectNextRange = reject; }))
+      .mockResolvedValueOnce(range);
+    await render(
+      <AppearanceProvider>
+        <CalendarScreen initialDate="2026-08-24" loadCalendarRange={loadCalendarRange} onOpenEvent={jest.fn()} today="2026-08-24" />
+      </AppearanceProvider>,
+    );
+    expect(await screen.findByText("Full body progression, week 12")).toBeOnTheScreen();
+    await measureAugustFocusedRows();
+    await fireEvent.press(screen.getByTestId("calendar-day-2026-08-25"));
+    expect(screen.getByText("25 August 2026")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Show September 2026" }));
+
+    rejectNextRange?.(new Error("offline"));
+    expect(await screen.findByText("Calendar could not be loaded")).toBeOnTheScreen();
+    expect(screen.getByText("25 August 2026")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Retry Calendar" }));
+    await waitFor(() => expect(loadCalendarRange).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("25 August 2026")).toBeOnTheScreen();
+  });
+
   it("mounts a vertically scrollable full-height month with scaled tracks in compact landscape", async () => {
     const dimensions = jest.spyOn(ReactNative, "useWindowDimensions").mockReturnValue({
       fontScale: 2,

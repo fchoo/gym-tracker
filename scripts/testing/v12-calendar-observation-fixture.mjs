@@ -9,7 +9,10 @@ import {
   deriveV12CalendarStageResult,
   hashV12CalendarObservationBody,
 } from "../v12-calendar-observation-contract.mjs";
-import { V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "../v12-calendar-requirement-map.mjs";
+import {
+  V12_CALENDAR_REQUIREMENT_DEFINITIONS,
+  createV12CalendarProbeReceipt,
+} from "../v12-calendar-requirement-map.mjs";
 
 const HASH = "f".repeat(64);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -66,6 +69,7 @@ function pointerBody(id, order) {
     } else renderedPanels.push(rendered(event, 0));
     movement.push(pointer(event, "onFinalize", "finalize-cancel", id === "drag-cancel" ? -63.72 : -10, id === "drag-cancel" ? "horizontal" : owner));
     const transitions = [transition(event, "cancel", state("idle"), state("idle", { epoch: 1 }))];
+    renderedPanels.push(rendered(event, 0));
     const semantics = [semanticBefore, semantic(event)];
     return digest({ schema_version: 1, id, group: "pointer", started_at_monotonic_ms: base, completed_at_monotonic_ms: last(), viewport: view, pointer_events: movement, rendered_panel_samples: renderedPanels, transition_events: transitions, semantic_samples: semantics, callback_events: [], focus_events: [], motion: motionSample });
   }
@@ -134,19 +138,22 @@ function rowBody(id, order) {
     overlays.push(renderedOverlay(event, "collapse", 0, selectedRow, followingRow));
   }
   const semantics = [semantic(event, { focused_week_start: first })];
-  const focus = [event("focus", { identity: "calendar-collapse-day" })];
+  if (id === "week-collapse-middle-row") semantics.push(semantic(event, { focused_week_start: null }));
+  const focus = [event("focus", { identity: id === "week-collapse-middle-row" ? "calendar-day-2026-10-15" : "calendar-collapse-day" })];
   return digest({ schema_version: 1, id, group: "row-geometry", started_at_monotonic_ms: base, completed_at_monotonic_ms: last(), viewport: view, row_measurements: measuredRows, rendered_overlay_samples: overlays, transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motionSample });
 }
 
 function monthBody(id, order) {
-  const { base, event, last } = factory(order); const view = viewport(event); const count = id === "four-row-month" ? 4 : id === "six-row-month" ? 6 : 5; const measuredRows = rows(event, count); const motionSample = motion(event); const transitions = [];
+  const { base, event, last } = factory(order); const view = viewport(event); const count = id === "four-row-month" ? 4 : id === "six-row-month" ? 6 : 5; const measuredRows = rows(event, count); const motionSample = motion(event); const transitions = []; const callbacks = [];
   let semanticSample = semantic(event, { week_count: count });
   if (id === "leap-february") semanticSample = semantic(event, { title: "February 2028", current_month_id: "2028-02", selected_civil_date: "2028-02-29", week_count: count });
   if (id === "month-year-boundary") {
     transitions.push(transition(event, "move", state("idle", { current_month_id: "2026-12", selected_civil_date: "2026-12-15" }), state("settling", { current_month_id: "2027-01", selected_civil_date: "2027-01-15" }), ["settle-month"]));
+    callbacks.push(event("callback", { callback: "month-settle", epoch: 1 }));
+    transitions.push(transition(event, "settle-complete", state("settling", { current_month_id: "2027-01", selected_civil_date: "2027-01-15", epoch: 1 }), state("idle", { current_month_id: "2027-01", selected_civil_date: "2027-01-15", epoch: 1 })));
     semanticSample = semantic(event, { title: "January 2027", current_month_id: "2027-01", selected_civil_date: "2027-01-15", week_count: count });
   }
-  return digest({ schema_version: 1, id, group: "month-geometry", started_at_monotonic_ms: base, completed_at_monotonic_ms: last(), viewport: view, row_measurements: measuredRows, transition_events: transitions, semantic_samples: [semanticSample], motion: motionSample });
+  return digest({ schema_version: 1, id, group: "month-geometry", started_at_monotonic_ms: base, completed_at_monotonic_ms: last(), viewport: view, row_measurements: measuredRows, transition_events: transitions, semantic_samples: [semanticSample], callback_events: callbacks, motion: motionSample });
 }
 
 function lifecycleBody(id, order) {
@@ -170,13 +177,17 @@ function reducedMotionBody(id, order) {
   const { base, event, last } = factory(order); const view = viewport(event); const measuredRows = rows(event); const motionEvents = [motion(event, false)];
   const transitions = [
     transition(event, "expand", state("idle"), state("settling", { mode: "focused", epoch: 1 }), ["settle-week"]),
-    transition(event, "settle-complete", state("settling", { mode: "focused", epoch: 1 }), state("idle", { mode: "focused", epoch: 1 })),
   ];
   const callbacks = [event("callback", { callback: "week-settle", epoch: 1 })];
+  transitions.push(transition(event, "settle-complete", state("settling", { mode: "focused", epoch: 1 }), state("idle", { mode: "focused", epoch: 1 })));
   const overlays = [renderedOverlay(event, "expand", 1, measuredRows[2], measuredRows[3], false)];
   motionEvents.push(motion(event, true));
-  transitions.push(transition(event, "collapse", state("idle", { mode: "focused", epoch: 1, reduced_motion: true }), state("idle", { mode: "month", epoch: 2, reduced_motion: true })));
-  transitions.push(transition(event, "expand", state("idle", { mode: "month", epoch: 2, reduced_motion: true }), state("idle", { mode: "focused", epoch: 3, reduced_motion: true })));
+  transitions.push(transition(event, "set-reduced-motion", state("idle", { mode: "focused", epoch: 1 }), state("idle", { mode: "focused", epoch: 2, reduced_motion: true })));
+  transitions.push(transition(event, "collapse", state("idle", { mode: "focused", epoch: 2, reduced_motion: true }), state("idle", { mode: "month", epoch: 3, reduced_motion: true })));
+  callbacks.push(event("callback", { callback: "week-settle", epoch: 3 }));
+  overlays.push(renderedOverlay(event, "collapse", 0, measuredRows[2], measuredRows[3], true));
+  transitions.push(transition(event, "expand", state("idle", { mode: "month", epoch: 3, reduced_motion: true }), state("idle", { mode: "focused", epoch: 4, reduced_motion: true })));
+  callbacks.push(event("callback", { callback: "week-settle", epoch: 4 }));
   overlays.push(renderedOverlay(event, "expand", 1, measuredRows[2], measuredRows[3], true));
   const semantics = [semantic(event, { focused_week_start: measuredRows[2].week_start }), semantic(event, { focused_week_start: measuredRows[2].week_start })]; const focus = [event("focus", { identity: "calendar-collapse-day" })];
   return digest({ schema_version: 1, id, group: "reduced-motion", started_at_monotonic_ms: base, completed_at_monotonic_ms: last(), viewport: view, row_measurements: measuredRows, rendered_overlay_samples: overlays, transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion_events: motionEvents });
@@ -241,23 +252,33 @@ export function createV12CalendarNativeFixtureResult({ flowSha256, requirementsF
     ];
   });
   const trace = Buffer.from("<hierarchy><node resource-id=\"calendar-month-viewport\" text=\"Calendar isolated fixture\"/></hierarchy>");
+  let probeOrder = 0;
   const requirementRecords = V12_CALENDAR_REQUIREMENT_DEFINITIONS.map((definition) => ({ requirement_id: definition.requirement_id,
     evidence_id: definition.evidence_id, native_execution: "EXECUTED", fixture_id: "v12-calendar-isolated-facts-v1", fixture_storage: "isolated-in-memory",
-    fixture_source_sha256: fixtureSourceSha256, source_digest_before: fixtureSourceSha256, source_digest_after: fixtureSourceSha256, probe_ids: definition.probe_ids }));
+    fixture_source_sha256: fixtureSourceSha256, source_digest_before: fixtureSourceSha256, source_digest_after: fixtureSourceSha256,
+    probe_receipts: definition.probe_ids.map((probeId) => createV12CalendarProbeReceipt({ nonce: (10_000 + probeOrder++).toString(16).padStart(32, "0"),
+      flowSha256: requirementsFlowSha256, fixtureSourceSha256, requirementId: definition.requirement_id, evidenceId: definition.evidence_id, probeId })) }));
+  let junitOrder = 0;
   const requirements = { flow_sha256: requirementsFlowSha256, fixture_id: "v12-calendar-isolated-facts-v1", records: requirementRecords,
-    junit_cases: requirementRecords.map(({ evidence_id }, order) => ({ id: evidence_id, order, status: "PASS" })) };
-  const requirementArtifacts = V12_CALENDAR_REQUIREMENT_DEFINITIONS.flatMap((definition) => {
-    const stem = `${definition.requirement_id}-${definition.evidence_id}`;
+    junit_cases: requirementRecords.flatMap((record) => record.probe_receipts.map((receipt) => ({
+      id: `${record.requirement_id}:${receipt.probe_id}`, requirement_id: record.requirement_id, probe_id: receipt.probe_id,
+      order: junitOrder++,
+      status: "PASS",
+    }))) };
+  let artifactOrder = 0;
+  const requirementArtifacts = requirementRecords.flatMap((record) => record.probe_receipts.flatMap((receipt) => {
+    const stem = `${String(artifactOrder++).padStart(2, "0")}-${record.requirement_id}-${receipt.probe_id}`;
     return [
-      { requirement_id: definition.requirement_id, kind: "png", relative_path: `calendar/requirements/${stem}.png`, sha256: pngSha256, size_bytes: png.length, bytes_base64: png.toString("base64") },
-      { requirement_id: definition.requirement_id, kind: "trace", relative_path: `calendar/requirements/${stem}.trace.xml`, sha256: sha256(trace), size_bytes: trace.length, bytes_base64: trace.toString("base64") },
+      { requirement_id: record.requirement_id, probe_id: receipt.probe_id, kind: "png", relative_path: `calendar/requirements/${stem}.png`, sha256: pngSha256, size_bytes: png.length, bytes_base64: png.toString("base64") },
+      { requirement_id: record.requirement_id, probe_id: receipt.probe_id, kind: "trace", relative_path: `calendar/requirements/${stem}.trace.xml`, sha256: sha256(trace), size_bytes: trace.length, bytes_base64: trace.toString("base64") },
     ];
-  });
+  }));
   const artifacts = [...stageArtifacts, ...requirementArtifacts];
-  const nativeReceipt = { schema_version: 1, producer: "v12-calendar-native-receipt/v1", native_execution: "EXECUTED", run_id: attestation.run_id,
+  const nativeReceipt = { schema_version: 2, producer: "v12-calendar-native-receipt/v2", native_execution: "EXECUTED", run_id: attestation.run_id,
     source_tree_sha256: attestation.source_tree_sha256, apk_sha256: attestation.apk_sha256, installed_apk_sha256: attestation.installed_apk_sha256,
     apk_signature_sha256: attestation.apk_signature_sha256, device_identity_sha256: attestation.device_identity_sha256, launcher_source_sha256: launcherSourceSha256,
     flow_sha256: flowSha256, requirements_flow_sha256: requirementsFlowSha256, fixture_id: requirements.fixture_id, stage_count: stages.length,
-    requirement_count: requirements.records.length, evidence_set_sha256: sha256(JSON.stringify({ stages, requirements, artifacts: artifacts.map(({ bytes_base64: _bytes, ...descriptor }) => descriptor) })) };
+    requirement_count: requirements.records.length, probe_count: requirements.junit_cases.length,
+    evidence_set_sha256: sha256(JSON.stringify({ stages, requirements, artifacts: artifacts.map(({ bytes_base64: _bytes, ...descriptor }) => descriptor) })) };
   return { flow_sha256: flowSha256, flow_revision: V12_CALENDAR_FLOW_REVISION, stages, junit_cases: stages.map(({ id, order, status }) => ({ id, order, status })), requirements, native_receipt: nativeReceipt, artifacts };
 }

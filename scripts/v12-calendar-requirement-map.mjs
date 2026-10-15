@@ -1,4 +1,11 @@
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+
 import { V12_CALENDAR_STAGE_IDS } from "./v12-calendar-observation-contract.mjs";
+
+const HASH = /^[a-f0-9]{64}$/u;
+const NONCE = /^[a-f0-9]{32}$/u;
+export const V12_CALENDAR_PROBE_RECEIPT_MARKER = "GYM_TRACKER_V12_CALENDAR_PROBE_RECEIPT:";
 
 const STAGES = new Set(V12_CALENDAR_STAGE_IDS);
 const CALENDAR_IDS = Array.from({ length: 23 }, (_, index) => `CAL-${String(index + 1).padStart(2, "0")}`);
@@ -72,6 +79,38 @@ export const V12_CALENDAR_REQUIREMENT_DEFINITIONS = Object.freeze(
     probe_ids: V12_CALENDAR_REQUIREMENT_PROBE_IDS[evidenceId],
   })),
 );
+
+export const V12_CALENDAR_REQUIREMENT_PROBE_COUNT = V12_CALENDAR_REQUIREMENT_DEFINITIONS.reduce(
+  (count, definition) => count + definition.probe_ids.length,
+  0,
+);
+
+export function createV12CalendarProbeReceipt({ nonce, flowSha256, fixtureSourceSha256, requirementId, evidenceId, probeId }) {
+  if (!NONCE.test(nonce ?? "") || !HASH.test(flowSha256 ?? "") || !HASH.test(fixtureSourceSha256 ?? "")
+    || !/^CAL-(?:0[1-9]|1\d|2[0-3])$/u.test(requirementId ?? "")
+    || !/^calendar\.[a-z0-9-]+$/u.test(evidenceId ?? "") || !/^[a-z0-9][a-z0-9-]*$/u.test(probeId ?? "")) {
+    throw new Error("v12_calendar_probe_receipt_invalid");
+  }
+  const body = {
+    schema_version: 1,
+    kind: "calendar-probe",
+    nonce,
+    requirement_id: requirementId,
+    evidence_id: evidenceId,
+    probe_id: probeId,
+    status: "PASS",
+    flow_sha256: flowSha256,
+    fixture_id: "v12-calendar-isolated-facts-v1",
+    fixture_source_sha256: fixtureSourceSha256,
+  };
+  return Object.freeze({ ...body, receipt_sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") });
+}
+
+export function validateV12CalendarProbeReceipt(value, expected) {
+  const canonical = createV12CalendarProbeReceipt(expected);
+  if (!isDeepStrictEqual(value, canonical)) throw new Error("v12_calendar_probe_receipt_invalid");
+  return true;
+}
 
 export function deriveV12CalendarRequirementSelectors(matrixRows) {
   const rows = matrixRows.filter(({ requirement_id: id }) => id.startsWith("CAL-"));

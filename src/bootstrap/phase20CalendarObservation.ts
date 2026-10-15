@@ -10,6 +10,7 @@ export const PHASE20_CALENDAR_FLOW_REVISION = "calendar-flow-r35-real-v1";
 export const PHASE20_CALENDAR_CHUNK_MARKER = "GYM_TRACKER_V12_CALENDAR_CHUNK:";
 const PHASE20_CALENDAR_CHUNK_SIZE = 1_800;
 const PHASE20_CALENDAR_MAX_CHUNKS = 256;
+const PHASE20_CALENDAR_QUIESCENCE_MS = 200;
 
 export const PHASE20_CALENDAR_STAGE_GROUPS = Object.freeze({
   pointer: Object.freeze([
@@ -309,9 +310,20 @@ function pointerReady(stage: Phase20CalendarStage, events: readonly ObservationE
   if (!callbacks.has("onTouchesDown") || !callbacks.has("onFinalize")
     || !events.some((event) => event.kind === "rendered-panel")) return false;
   if (["drag-cancel", "drag-vertical", "drag-diagonal"].includes(stage)) {
-    return pointers.at(-1)?.phase === "finalize-cancel"
+    const finalized = pointers.at(-1);
+    const semantics = events.filter((event): event is SemanticEvent => event.kind === "semantic");
+    const firstSemantic = semantics[0];
+    const settledSemantic = semantics.find(({ sequence }) => sequence > (finalized?.sequence ?? Number.MAX_SAFE_INTEGER));
+    const resetPanel = events.find((event): event is RenderedPanelEvent => event.kind === "rendered-panel"
+      && event.sequence > (finalized?.sequence ?? Number.MAX_SAFE_INTEGER)
+      && Math.abs(event.current_x_dp - event.viewport_x_dp) <= 2);
+    return finalized?.phase === "finalize-cancel"
       && !pointers.some(({ callback }) => callback === "onEnd")
-      && (hasTransition(events, "cancel") || hasTransition(events, "invalidate"));
+      && (hasTransition(events, "cancel") || hasTransition(events, "invalidate"))
+      && resetPanel !== undefined && settledSemantic !== undefined
+      && firstSemantic?.title === settledSemantic.title
+      && firstSemantic.current_month_id === settledSemantic.current_month_id
+      && firstSemantic.selected_civil_date === settledSemantic.selected_civil_date;
   }
   if (!["onBegin", "onChange", "onEnd"].every((callback) => callbacks.has(callback as PointerEvent["callback"]))) return false;
   const finalized = pointers.filter(({ phase }) => phase === "finalize-release").length;
@@ -356,6 +368,7 @@ function monthReady(stage: Phase20CalendarStage, events: readonly ObservationEve
     const boundary = events.find((event): event is TransitionEvent => event.kind === "transition"
       && event.before.current_month_id.slice(0, 4) !== event.after.current_month_id.slice(0, 4));
     return boundary !== undefined && hasTransition(events, "settle-complete", "idle")
+      && events.some((event) => event.kind === "callback" && event.callback === "month-settle" && event.epoch === boundary.after.epoch)
       && semantic.current_month_id === boundary.after.current_month_id;
   }
   if (stage === "leap-february") return semantic.selected_civil_date.endsWith("-02-29");
@@ -400,6 +413,7 @@ function ready(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup, ev
     && uniqueRows(events).length >= 2
     && events.filter((event) => event.kind === "transition" && event.trigger === "expand").length >= 2
     && hasTransition(events, "collapse") && events.some((event) => event.kind === "focus")
+    && events.filter((event) => event.kind === "callback" && event.callback === "week-settle").length >= 3
     && new Set(events.filter((event): event is RenderedOverlayEvent => event.kind === "rendered-overlay").map(({ reduced_motion }) => reduced_motion)).size === 2;
   const semantic = events.filter((event): event is SemanticEvent => event.kind === "semantic").at(-1);
   return semantic !== undefined && uniqueRows(events).length === semantic.week_count
@@ -419,7 +433,7 @@ function stageBody(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup
   if (group === "pointer") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), rendered_panel_samples: events.filter((event): event is RenderedPanelEvent => event.kind === "rendered-panel"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
   if (group === "input-interrupt") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), rendered_panel_samples: events.filter((event): event is RenderedPanelEvent => event.kind === "rendered-panel"), input_attempts: events.filter((event): event is InputAttemptEvent => event.kind === "input-attempt"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion: motion.at(-1) });
   if (group === "row-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), rendered_overlay_samples: events.filter((event): event is RenderedOverlayEvent => event.kind === "rendered-overlay"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
-  if (group === "month-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), transition_events: transitions, semantic_samples: semantics, motion: motion.at(-1) });
+  if (group === "month-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion: motion.at(-1) });
   if (group === "lifecycle") return Object.freeze({ ...base, viewport_events: viewportEvents, lifecycle_events: events.filter((event): event is LifecycleEvent => event.kind === "lifecycle"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion_events: motion });
   if (group === "reduced-motion") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), rendered_overlay_samples: events.filter((event): event is RenderedOverlayEvent => event.kind === "rendered-overlay"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion_events: motion });
   const requiredMeasurement = stage === "dev-01-padding" ? "content-bounds" : "screenshot-request";
@@ -452,24 +466,30 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
   let sequence = 0;
   let terminal: Promise<void> | null = null;
   let emitted = false;
+  let finalizing = false;
+  let quietTimer: ReturnType<typeof setTimeout> | null = null;
+  let resolveTerminal: (() => void) | null = null;
+  let rejectTerminal: ((error: unknown) => void) | null = null;
   const events: ObservationEvent[] = [];
 
-  const append = (callbackGeneration: number, value: ObservationPayload) => {
-    if (emitted || terminal !== null) return;
-    const observedAt = safeNumber(now());
-    if (observedAt <= previousTimestamp) throw new Error("phase20_calendar_clock_non_monotonic");
-    previousTimestamp = observedAt;
-    sequence += 1;
-    events.push(Object.freeze({
-      sequence,
-      observed_at_monotonic_ms: observedAt,
-      callback_generation: safeGeneration(callbackGeneration),
-      ...value,
-    }) as unknown as ObservationEvent);
-    if (!ready(request.stage, group, events)) return;
-    const completedAt = observedAt;
+  const ensureTerminal = () => {
+    if (terminal !== null) return;
+    terminal = new Promise<void>((resolve, reject) => {
+      resolveTerminal = resolve;
+      rejectTerminal = reject;
+    });
+    void terminal.catch(() => undefined);
+  };
+
+  const finalize = () => {
+    if (emitted || finalizing || !ready(request.stage, group, events)) return;
+    finalizing = true;
+    if (quietTimer !== null) clearTimeout(quietTimer);
+    quietTimer = null;
+    ensureTerminal();
+    const completedAt = events.at(-1)!.observed_at_monotonic_ms;
     const body = stageBody(request.stage, group, startedAt, completedAt, Object.freeze([...events]));
-    terminal = Promise.resolve(digest(JSON.stringify(body))).then((observationDigest) => {
+    void Promise.resolve(digest(JSON.stringify(body))).then((observationDigest) => {
       if (!SHA256.test(observationDigest)) throw new Error("phase20_calendar_digest_invalid");
       const marker = JSON.stringify({
         schema_version: 1,
@@ -496,8 +516,28 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
       });
     }).then(() => {
       emitted = true;
+      resolveTerminal?.();
+    }).catch((error: unknown) => {
+      rejectTerminal?.(error);
     });
-    void terminal.catch(() => undefined);
+  };
+
+  const append = (callbackGeneration: number, value: ObservationPayload) => {
+    if (emitted || finalizing) return;
+    const observedAt = safeNumber(now());
+    if (observedAt <= previousTimestamp) throw new Error("phase20_calendar_clock_non_monotonic");
+    previousTimestamp = observedAt;
+    sequence += 1;
+    events.push(Object.freeze({
+      sequence,
+      observed_at_monotonic_ms: observedAt,
+      callback_generation: safeGeneration(callbackGeneration),
+      ...value,
+    }) as unknown as ObservationEvent);
+    if (!ready(request.stage, group, events)) return;
+    ensureTerminal();
+    if (quietTimer !== null) clearTimeout(quietTimer);
+    quietTimer = setTimeout(finalize, PHASE20_CALENDAR_QUIESCENCE_MS);
   };
 
   return Object.freeze({
@@ -593,7 +633,10 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
           : Object.freeze({ kind: value.kind, color_scheme: value.colorScheme }),
       });
     },
-    flush: async () => { if (terminal !== null) await terminal; },
+    flush: async () => {
+      if (!emitted && ready(request.stage, group, events)) finalize();
+      if (terminal !== null) await terminal;
+    },
   });
 }
 

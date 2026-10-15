@@ -121,7 +121,7 @@ export function SessionDetailScreen({
   onCorrectWorkout?: () => void;
   onRemoveFromHistory?: () => void | Promise<void>;
   onOpenExerciseHistory(exercise: SessionDetail["exercises"][number]): void;
-  onResume: () => void;
+  onResume?: () => void;
 }>) {
   const { colors } = useAppTheme();
   const [removeConfirmationVisible, setRemoveConfirmationVisible] = useState(false);
@@ -391,7 +391,7 @@ export function SessionDetailScreen({
               ref={removeActionRef}
             />
           ) : null}
-          {detail.resumable ? (
+          {detail.resumable && onResume !== undefined ? (
             <PrimaryAction label="Resume workout" onPress={onResume} />
           ) : null}
         </>
