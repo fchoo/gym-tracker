@@ -149,6 +149,25 @@ async function seedRecommendationGraph(runtime: ProgressParityRuntime): Promise<
     await transaction.execute("INSERT INTO progression_recommendations (id, exercise_id, plan_working_set_target_id, rule_type, rule_version, evidence_version, evidence_json, current_target_json, proposed_target_json, metric_profile, metric_contract_version, exercise_metric_generation, status, source_revision, target_revision, created_at_ms, decided_at_ms) VALUES ('recommendation', 'recommendation-exercise', 'recommendation-target', 'load_reps', 1, 2, ?, ?, ?, 'load_reps', 1, 1, 'pending', 1, 1, 1, NULL)", [recommendationEvidence, recommendationTarget, recommendationProposedTarget]);
   });
 }
+
+/** Reuses the parity contract's source graph in the isolated Phase 20 runtime.
+ * The fixed ids are safe because the quality database is nonce-scoped and the
+ * existence check makes repeated Instrumentation launches idempotent. */
+export async function seedPhase20ProgressQualityFixture(
+  kernel: SqliteKernel,
+): Promise<void> {
+  const existing = await kernel.queryAll<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM progression_recommendations WHERE id = 'recommendation'",
+  );
+  if ((existing[0]?.count ?? 0) > 0) return;
+  const runtime: ProgressParityRuntime = {
+    databaseName: "phase20-quality-fixture",
+    kernel,
+    close: async () => undefined,
+  };
+  await seedHistorySource(runtime);
+  await seedRecommendationGraph(runtime);
+}
 async function runningTargetReplay(runtime: ProgressParityRuntime, recoveryBackup: RecoveryBackupPort): Promise<{ counts: Counts; projection: unknown; receipt: unknown }> {
   await migrate(runtime, recoveryBackup);
   const running = await seedRunningPlan(runtime);

@@ -22,6 +22,9 @@ import type {
 import type {
   SearchFilters,
 } from "../../domains/library/search";
+import type {
+  V12AcceptanceBenchmarkPort,
+} from "../../bootstrap/v12AcceptanceBenchmark";
 import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
@@ -178,6 +181,11 @@ type LibraryScreenProps = Readonly<{
     section: LibrarySection,
     expectedRevision: number,
   ): Promise<LibrarySectionPreference>;
+  acceptanceBenchmark?: Pick<
+    V12AcceptanceBenchmarkPort,
+    "markSearchDebounceEnded" | "markSearchResultsVisible"
+  >;
+  onUsefulContent?: () => void;
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
@@ -1214,6 +1222,7 @@ function StarterFilterSheet({
 }
 
 export function LibraryScreen({
+  acceptanceBenchmark,
   contentUpdateFailed,
   contentUpdateResult,
   loadLibrary,
@@ -1236,6 +1245,7 @@ export function LibraryScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
+  onUsefulContent,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -1281,6 +1291,12 @@ export function LibraryScreen({
   const exercisesResultCount = exerciseBrowse.items.length;
 
   useEffect(() => {
+    if (snapshot === null) return;
+    const frame = requestAnimationFrame(() => onUsefulContent?.());
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, snapshot]);
+
+  useEffect(() => {
     mountedRef.current = true;
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
@@ -1314,6 +1330,9 @@ export function LibraryScreen({
       pageError: false,
     }));
     const timer = setTimeout(() => {
+      const measuredSearch = acceptanceBenchmark !== undefined
+        && processState.exercises.query.trim().length > 0;
+      if (measuredSearch) acceptanceBenchmark.markSearchDebounceEnded();
       void Promise.all([
         searchExercises({
           query: processState.exercises.query,
@@ -1353,6 +1372,9 @@ export function LibraryScreen({
           initialError: false,
           pageError: false,
         });
+        if (measuredSearch) {
+          requestAnimationFrame(() => acceptanceBenchmark.markSearchResultsVisible());
+        }
       }).catch(() => {
         if (
           mountedRef.current
@@ -1370,6 +1392,7 @@ export function LibraryScreen({
     return () => clearTimeout(timer);
   }, [
     listRecentExercises,
+    acceptanceBenchmark,
     processState.exercises.filters,
     processState.exercises.query,
     searchExercises,

@@ -1,4 +1,5 @@
 import React, {
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -93,6 +94,7 @@ export type TodayScreenProps = Readonly<{
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
+  onUsefulContent?: () => void;
 }>;
 
 export type WorkoutOccurrencePreview = Readonly<{
@@ -441,11 +443,18 @@ export function TodayScreen({
   headingRef,
   settingsActionRef,
   settingsActionNativeID,
+  onUsefulContent,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
   const { colors } = useAppTheme();
   const trusted = launchState === "trusted";
   const adaptiveWidth = width === undefined ? {} : { width };
+
+  useEffect(() => {
+    if (!trusted || view === undefined) return;
+    const frame = requestAnimationFrame(() => onUsefulContent?.());
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, trusted, view]);
 
   let content: React.ReactNode;
   if (launchState === "failed") {

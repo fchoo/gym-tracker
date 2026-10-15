@@ -15,14 +15,17 @@ jest.mock("expo-router", () => ({
 describe("Phase 20 quality probe route", () => {
   beforeEach(() => {
     mockExtra = { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" };
-    mockParams = { nonce: "a".repeat(48), action: "accessibility" };
+    mockParams = {
+      nonce: "a".repeat(48),
+      action: "accessibility",
+      operation: "accessibility-workout-normal",
+      sequence: "1",
+    };
   });
   it("renders real semantic controls only under the exact acceptance gate", async () => {
     const rendered = await render(<Phase20QualityProbeRoute />);
     expect(rendered.getByTestId("phase20-quality-probe")).toBeOnTheScreen();
-    expect(rendered.getByRole("radio", { name: "Strength" })).toBeOnTheScreen();
-    expect(rendered.getByRole("radio", { name: "Running" })).toBeOnTheScreen();
-    expect(rendered.getByText("TalkBack and switch scanning require attended observation.")).toBeOnTheScreen();
+    expect(rendered.getByTestId("phase20-quality-root-workout")).toBeOnTheScreen();
   });
   it("does not expose a production or malformed-request substitute", async () => {
     mockExtra.buildProfile = "production";

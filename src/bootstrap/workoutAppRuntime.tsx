@@ -751,6 +751,7 @@ function revisionDisplayValue(value: unknown): string {
 type RuntimeValue = RuntimeState & Readonly<{
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
+  collectPhase20QualitySourceProof(): Promise<Phase14SourceStateProof>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
   probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe>;
@@ -1488,6 +1489,13 @@ function phase17NativeContractEnabled(): boolean {
   return Constants.expoConfig?.extra?.buildProfile === "development-test"
     && Constants.expoConfig.extra.nativeContractsEnabled === true
     && Constants.expoConfig.extra.nativeContractSuite === "phase17";
+}
+
+function phase20QualitySourceProofEnabled(): boolean {
+  const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+  return Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig.extra.nativeContractsEnabled === true
+    && Constants.expoConfig.extra.nativeContractSuite === "v1.2-acceptance";
 }
 
 function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
@@ -5163,6 +5171,20 @@ export function WorkoutAppRuntimeProvider({
     collectPhase14SourceStateProof: () => {
       if (!phase14NativeRecoveryFixtureEnabled()) {
         return Promise.reject(new Error("phase14_source_state_proof_unavailable"));
+      }
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      return collectPhase14SourceStateProofFromKernel({
+        kernel: requireServices().kernel,
+        sha256: (value) =>
+          digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
+    collectPhase20QualitySourceProof: () => {
+      if (!phase20QualitySourceProofEnabled()) {
+        return Promise.reject(new Error("phase20_quality_source_proof_unavailable"));
       }
       const {
         CryptoDigestAlgorithm,

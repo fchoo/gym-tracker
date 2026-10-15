@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
+import { readFileSync } from "node:fs";
 
 import {
   collectPhase20QualityObservation,
@@ -21,9 +22,9 @@ describe("Phase 20 quality instrumentation contract", () => {
   });
 
   it("accepts only nonce-bound quality actions", () => {
-    expect(resolvePhase20QualityRequest({ nonce: "a".repeat(48), action: "accessibility" })).toEqual({ nonce: "a".repeat(48), action: "accessibility" });
-    expect(resolvePhase20QualityRequest({ nonce: "a".repeat(47), action: "accessibility" })).toBeNull();
-    expect(resolvePhase20QualityRequest({ nonce: "a".repeat(48), action: "release" })).toBeNull();
+    expect(resolvePhase20QualityRequest({ nonce: "a".repeat(48), action: "accessibility", operation: "accessibility-workout-normal", sequence: "1" })).toEqual({ nonce: "a".repeat(48), action: "accessibility", operation: "accessibility-workout-normal", sequence: 1 });
+    expect(resolvePhase20QualityRequest({ nonce: "a".repeat(47), action: "accessibility", operation: "accessibility-workout-normal", sequence: "1" })).toBeNull();
+    expect(resolvePhase20QualityRequest({ nonce: "a".repeat(48), action: "release", operation: "accessibility-workout-normal", sequence: "1" })).toBeNull();
   });
 
   it("uses controlled native measurement seams and rejects absent or undersampled measurements", () => {
@@ -47,5 +48,16 @@ describe("Phase 20 quality instrumentation contract", () => {
       layout: () => ({ width: 390, height: 844, density: 3, fontScale: 2, imeTop: 600, imeBottom: 844 }),
       semantics: () => [], frame: () => ({ workMs: 1, missedFrames: 0, refreshRateHz: 60, profilerOverheadMs: 0 }),
     })).toThrow("phase20_quality_semantics_missing");
+  });
+
+  it("composes the production roots and existing SQLite benchmark producers", () => {
+    const source = readFileSync(require.resolve("./phase20QualityInstrumentation"), "utf8");
+    for (const symbol of ["TodayScreen", "CalendarScreen", "LibraryScreen", "ProgressScreen", "ActiveWorkoutScreen"]) {
+      expect(source).toContain(symbol);
+    }
+    expect(source).toContain("openSqliteKernel(databaseName)");
+    expect(source).toContain("runPhase20HeavyWorkload");
+    expect(source).toContain("seedPhase20ProgressQualityFixture");
+    expect(source).not.toContain("PlanTypeChooserScreen");
   });
 });

@@ -91,8 +91,9 @@ describe("Phase 20 quality workload protocol", () => {
     expect(() => collectPhase20QualityMarkers([
       marker("start"), marker("commit", { monotonic_ms: 10 }), marker("ready"),
     ], request)).toThrow("phase20_quality_marker_clock_invalid");
+    const { sqlite_receipt_sha256: _receipt, ...withoutSqliteReceipt } = marker("commit");
     expect(() => collectPhase20QualityMarkers([
-      marker("start"), marker("commit", { sqlite_receipt_sha256: undefined }), marker("ready"),
+      marker("start"), withoutSqliteReceipt as Phase20QualityMarker, marker("ready"),
     ], request)).toThrow("phase20_quality_sqlite_receipt_missing");
   });
 

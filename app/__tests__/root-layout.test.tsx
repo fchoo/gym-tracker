@@ -346,6 +346,22 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
+  it("isolates the Phase 20 quality workload from the production database bootstrap", async () => {
+    mockPathname = "/__phase20-quality-probe";
+    mockNativeContractSuite = "v1.2-acceptance";
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__phase20-quality-probe"))
+      .toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByTestId("startup-readiness-gate"))
+      .not.toBeOnTheScreen();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
+
   it("keeps the native contract path behind the exact v1.2 acceptance suite gate", async () => {
     mockPathname = "/__native-contracts";
     mockNativeContractSuite = "phase2";
