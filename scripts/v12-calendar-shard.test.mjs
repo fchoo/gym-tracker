@@ -48,7 +48,7 @@ test("Calendar shard exposes exhaustive stage order and strict immutable CLI arg
   assert.throws(() => parseV12CalendarShardCliArgs(["--run", "bad", "--execute"]), /calendar_cli_invalid/);
 });
 
-test("Calendar shard writes one privacy-safe immutable report and rejects placeholder, duplicate, stale, and verdict-injected traces", async () => {
+test("Calendar shard rejects the legacy homogeneous pointer receipt for all stage groups", async () => {
   const runId = "phase20-20261014T031137Z-5917481c1fd1";
   const manifest = {
     run_id: runId,
@@ -78,15 +78,13 @@ test("Calendar shard writes one privacy-safe immutable report and rejects placeh
     junit_cases: V12_CALENDAR_SHARD_STAGE_IDS.map((id, order) => ({ id, order, status: "NOT_RUN" })),
   };
   const writes = new Map();
-  const result = await executeV12CalendarShardCli(["--run", runId, "--execute"], {
+  await assert.rejects(executeV12CalendarShardCli(["--run", runId, "--execute"], {
       root: "/synthetic-root", flowSha256: "9".repeat(64), readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
     isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
     snapshotSettings: () => ({}), restoreSettings: () => true, executeNative: () => native,
     writeImmutable: (file, value) => writes.set(file, value), outputExists: () => false,
-  });
-  assert.equal(result.ok, true);
-  assert.equal(writes.size, 2);
-  assert.doesNotMatch(JSON.stringify([...writes.values()]), /serial|route|coordinate|payload|bodyweight|verdict|readiness|seal/i);
+  }), /calendar_native_stages_invalid/u);
+  assert.equal(writes.size, 1);
   const malformed = structuredClone(native);
   malformed.stages[1].id = malformed.stages[0].id;
   await assert.rejects(
