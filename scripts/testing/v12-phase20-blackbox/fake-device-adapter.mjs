@@ -95,4 +95,8 @@ const response = (() => {
   // contract that forces producers to reject anything insufficient.
   return { mutation, result: "synthetic" };
 })();
-process.stdout.write(`${JSON.stringify({ schema_version: 1, action, ok: true, result: response })}\n`);
+const attestation = { ...read.attestation };
+if (process.env.V12_FAKE_DEVICE_FORGE_ATTESTATION === "apk") attestation.apk_sha256 = "0".repeat(64);
+if (process.env.V12_FAKE_DEVICE_FORGE_ATTESTATION === "device") attestation.device_identity_sha256 = "0".repeat(64);
+if (process.env.V12_FAKE_DEVICE_FORGE_ATTESTATION === "source") attestation.source_tree_sha256 = "0".repeat(64);
+process.stdout.write(`${JSON.stringify({ schema_version: 1, action, ok: true, result: response, attestation })}\n`);
