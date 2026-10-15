@@ -19,6 +19,11 @@ import {
   recordPhase16CalendarRelease,
   type Phase16CalendarStage,
 } from "../../bootstrap/phase16CalendarTestControls";
+import {
+  recordPhase20CalendarCallback,
+  recordPhase20CalendarPointer,
+  recordPhase20CalendarViewport,
+} from "../../bootstrap/phase20CalendarObservation";
 import { addLocalMonthsClamped, startOfLocalMonth, type LocalDate } from "../../domains/scheduling/localDate";
 import {
   clampMonthDrag,
@@ -218,6 +223,11 @@ export function CalendarMonthViewport({
   const diagnosticThresholdMask = useSharedValue(0);
   const touchStartX = useSharedValue(0);
   const touchStartY = useSharedValue(0);
+  const touchLastX = useSharedValue(0);
+  const touchLastY = useSharedValue(0);
+  const touchLastDx = useSharedValue(0);
+  const touchLastDy = useSharedValue(0);
+  const touchIntent = useSharedValue<"undetermined" | "horizontal" | "vertical" | "diagonal">("undetermined");
   const panEnabled = useSharedValue(!disabled && calendarMonthPanEnabled(transition.phase));
   const mounted = useRef(true);
   const monthCompletionRef = useRef<Readonly<{
@@ -257,6 +267,7 @@ export function CalendarMonthViewport({
       deliveredEpoch: epoch,
       timer: null,
     });
+    recordPhase20CalendarCallback({ callback: "month-settle", epoch, callbackGeneration: epoch });
     onComplete(epoch);
   }, [onComplete]);
 
@@ -325,6 +336,11 @@ export function CalendarMonthViewport({
       easing: Easing.bezier(command.easing[0], command.easing[1], command.easing[2], command.easing[3]),
     }, (finished) => {
       if (finished && weekCompletionEpoch.value === command.epoch) {
+        scheduleOnRN(recordPhase20CalendarCallback, {
+          callback: "week-settle",
+          epoch: command.epoch,
+          callbackGeneration: command.epoch,
+        });
         scheduleOnRN(onComplete, command.epoch);
         if (command.phase === "collapse" && diagnosticSequenceExpanded.current) {
           diagnosticSequenceStarted.current = false;
@@ -362,6 +378,23 @@ export function CalendarMonthViewport({
       if (touch === undefined) return;
       touchStartX.value = touch.absoluteX;
       touchStartY.value = touch.absoluteY;
+      touchLastX.value = touch.absoluteX;
+      touchLastY.value = touch.absoluteY;
+      touchLastDx.value = 0;
+      touchLastDy.value = 0;
+      touchIntent.value = "undetermined";
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onTouchesDown",
+        phase: "down",
+        xDp: touch.absoluteX,
+        yDp: touch.absoluteY,
+        dxDp: 0,
+        dyDp: 0,
+        viewportWidthDp: viewportWidth.value,
+        translationXDp: pointerX.value,
+        intentOwner: "undetermined",
+        callbackGeneration: completionEpoch.value,
+      });
     })
     .onTouchesMove((event, manager) => {
       if (!panEnabled.value) {
@@ -372,8 +405,28 @@ export function CalendarMonthViewport({
       if (touch === undefined) return;
       const dx = touch.absoluteX - touchStartX.value;
       const dy = touch.absoluteY - touchStartY.value;
+      touchLastX.value = touch.absoluteX;
+      touchLastY.value = touch.absoluteY;
+      touchLastDx.value = dx;
+      touchLastDy.value = dy;
       if (Math.abs(dx) < SLOP_DP && Math.abs(dy) < SLOP_DP) return;
-      if (Math.abs(dx) >= Math.abs(dy) * HORIZONTAL_INTENT_RATIO) manager.activate();
+      const owner = Math.abs(dx) >= Math.abs(dy) * HORIZONTAL_INTENT_RATIO
+        ? "horizontal"
+        : Math.abs(dy) >= Math.abs(dx) * HORIZONTAL_INTENT_RATIO ? "vertical" : "diagonal";
+      touchIntent.value = owner;
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onTouchesMove",
+        phase: "intent",
+        xDp: touch.absoluteX,
+        yDp: touch.absoluteY,
+        dxDp: dx,
+        dyDp: dy,
+        viewportWidthDp: viewportWidth.value,
+        translationXDp: pointerX.value,
+        intentOwner: owner,
+        callbackGeneration: completionEpoch.value,
+      });
+      if (owner === "horizontal") manager.activate();
       else manager.fail();
     })
     .onBegin(() => {
@@ -382,12 +435,42 @@ export function CalendarMonthViewport({
       diagnosticThresholdMask.value = 0;
       completionEpoch.value += 1;
       cancelAnimation(pointerX);
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onBegin",
+        phase: "begin",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: touchLastDx.value,
+        dyDp: touchLastDy.value,
+        viewportWidthDp: viewportWidth.value,
+        translationXDp: pointerX.value,
+        intentOwner: "horizontal",
+        callbackGeneration: completionEpoch.value,
+      });
     })
     .onChange((event) => {
       const width = viewportWidth.value;
       if (width <= 0) return;
       const dx = Math.max(-width, Math.min(width, event.translationX));
+      const dy = event.translationY;
       pointerX.value = dx;
+      touchLastX.value = touchStartX.value + dx;
+      touchLastY.value = touchStartY.value + dy;
+      touchLastDx.value = dx;
+      touchLastDy.value = dy;
+      touchIntent.value = "horizontal";
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onChange",
+        phase: "change",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: dx,
+        dyDp: dy,
+        viewportWidthDp: width,
+        translationXDp: pointerX.value,
+        intentOwner: "horizontal",
+        callbackGeneration: completionEpoch.value,
+      });
       const nextPanel: PanelOffset = Math.abs(dx) >= width * 0.25 ? (dx < 0 ? 1 : -1) : 0;
       const progress = Math.abs(dx) / width;
       const markers = [0.1, 0.249, 0.25, 0.251];
@@ -412,17 +495,48 @@ export function CalendarMonthViewport({
       panEnabled.value = false;
       released.value = true;
       const dx = Math.max(-width, Math.min(width, event.translationX));
+      const dy = event.translationY;
+      touchLastX.value = touchStartX.value + dx;
+      touchLastY.value = touchStartY.value + dy;
+      touchLastDx.value = dx;
+      touchLastDy.value = dy;
+      touchIntent.value = "horizontal";
       const selectedMonth = (Math.abs(dx) >= width * 0.25 ? (dx < 0 ? nextMonth : previousMonth) : month).slice(0, 7);
       if (onInteractionDiagnosticStart !== undefined) scheduleOnRN(beginDiagnosticSequence);
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onEnd",
+        phase: "release",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: dx,
+        dyDp: dy,
+        viewportWidthDp: width,
+        translationXDp: dx,
+        intentOwner: "horizontal",
+        callbackGeneration: completionEpoch.value,
+      });
       scheduleOnRN(recordPhase16CalendarRelease, { dx, viewportWidth: width, semanticMonth: selectedMonth, titleMonth: selectedMonth });
       scheduleOnRN(onRelease, {
         dx,
-        dy: event.translationY,
+        dy,
         targetMonthId: event.translationX < 0 ? nextMonth.slice(0, 7) : previousMonth.slice(0, 7),
         viewportWidth: width,
       });
     })
-    .onFinalize(() => {
+    .onFinalize((_event, success) => {
+      const finalizedAsRelease = released.value && success !== false;
+      scheduleOnRN(recordPhase20CalendarPointer, {
+        callback: "onFinalize",
+        phase: finalizedAsRelease ? "finalize-release" : "finalize-cancel",
+        xDp: touchLastX.value,
+        yDp: touchLastY.value,
+        dxDp: touchLastDx.value,
+        dyDp: touchLastDy.value,
+        viewportWidthDp: viewportWidth.value,
+        translationXDp: pointerX.value,
+        intentOwner: touchIntent.value,
+        callbackGeneration: completionEpoch.value,
+      });
       if (!released.value) {
         completionEpoch.value += 1;
         cancelAnimation(pointerX);
@@ -441,6 +555,12 @@ export function CalendarMonthViewport({
     lastWidth.current = nextWidth;
     lastHeight.current = nextHeight;
     viewportWidth.value = nextWidth;
+    recordPhase20CalendarViewport({
+      widthDp: nextWidth,
+      heightDp: nextHeight,
+      orientation: nextWidth > nextHeight ? "landscape" : "portrait",
+      layoutGeneration,
+    });
     cancelAnimation(pointerX);
     pointerX.value = 0;
     previewPanel.value = 0;

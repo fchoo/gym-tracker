@@ -26,22 +26,21 @@ import {
   clearPhase16CalendarTestControls,
   configurePhase16CalendarTestControls,
   createPhase16CalendarDiagnosticsProducer,
-  PHASE16_CALENDAR_STAGES,
   phase16CalendarDiagnosticsRequestFromNativeContract,
-  type Phase16CalendarStage,
+  phase16CalendarStageFromNativeContract,
 } from "../../src/bootstrap/phase16CalendarTestControls";
+import {
+  clearPhase20CalendarObservationCollector,
+  configurePhase20CalendarObservationCollector,
+  phase20CalendarInitialDate,
+  phase20CalendarRequestFromNativeContract,
+} from "../../src/bootstrap/phase20CalendarObservation";
 import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? encodeURIComponent(value)
     : null;
-}
-
-function phase16CalendarStage(value: string | readonly string[] | undefined): Phase16CalendarStage | undefined {
-  return typeof value === "string" && (PHASE16_CALENDAR_STAGES as readonly string[]).includes(value)
-    ? value as Phase16CalendarStage
-    : undefined;
 }
 
 function scalarRouteParam(value: string | readonly string[] | undefined): string | undefined {
@@ -66,8 +65,11 @@ export default function CalendarRoute() {
     querySamples?: string | string[];
     interactionSamples?: string | string[];
     diagnosticStreamId?: string | string[];
+    phase20CalendarStage?: string | string[];
+    phase20CalendarNonce?: string | string[];
+    phase20CalendarFlowSha256?: string | string[];
+    phase20CalendarFlowRevision?: string | string[];
   }>();
-  const phase16Stage = phase16CalendarStage(routeParams.phase16CalendarStage);
   const extra = Constants.expoConfig?.extra;
   const nativeIdentity = {
     packageName: Constants.expoConfig?.android?.package,
@@ -75,6 +77,17 @@ export default function CalendarRoute() {
     nativeContractsEnabled: extra?.nativeContractsEnabled === true,
     suite: typeof extra?.nativeContractSuite === "string" ? extra.nativeContractSuite : undefined,
   } as const;
+  const phase16Stage = phase16CalendarStageFromNativeContract({
+    ...nativeIdentity,
+    stage: scalarRouteParam(routeParams.phase16CalendarStage),
+  }) ?? undefined;
+  const phase20Request = phase20CalendarRequestFromNativeContract({
+    ...nativeIdentity,
+    stage: scalarRouteParam(routeParams.phase20CalendarStage),
+    nonce: scalarRouteParam(routeParams.phase20CalendarNonce),
+    flowSha256: scalarRouteParam(routeParams.phase20CalendarFlowSha256),
+    flowRevision: scalarRouteParam(routeParams.phase20CalendarFlowRevision),
+  });
   const diagnosticsEnabled = scalarRouteParam(routeParams.phase16CalendarDiagnostics);
   const diagnosticsQuerySamples = scalarRouteParam(routeParams.querySamples);
   const diagnosticsInteractionSamples = scalarRouteParam(routeParams.interactionSamples);
@@ -97,6 +110,9 @@ export default function CalendarRoute() {
   const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
   const hasFocused = React.useRef(false);
   const initialDate = useCurrentLocalDate();
+  const routedInitialDate = phase20Request === null
+    ? initialDate
+    : phase20CalendarInitialDate(phase20Request.stage);
   const openEvent = (destination: CalendarEventDestination, returnEventId?: string) => {
     switch (destination.kind) {
       case "session": {
@@ -145,10 +161,15 @@ export default function CalendarRoute() {
     return clearPhase16CalendarTestControls;
   }, [phase16Stage]);
 
+  React.useLayoutEffect(() => {
+    configurePhase20CalendarObservationCollector({ request: phase20Request });
+    return clearPhase20CalendarObservationCollector;
+  }, [phase20Request?.flowRevision, phase20Request?.flowSha256, phase20Request?.nonce, phase20Request?.stage]);
+
   return (
     <CalendarScreen
       {...(phase16Stage === undefined ? {} : { diagnosticStage: phase16Stage })}
-      initialDate={initialDate}
+      initialDate={routedInitialDate}
       {...(diagnosticsRuntime === undefined ? {} : { diagnostics: diagnosticsRuntime })}
       loadCalendarRange={calendarRead.loadCalendarRange}
       onOpenSettings={() => rootSettings.openRootSettings({

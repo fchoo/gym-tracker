@@ -18,6 +18,16 @@ import type {
   Phase16CalendarStage,
 } from "../../bootstrap/phase16CalendarTestControls";
 import {
+  recordPhase20CalendarBaseline,
+  recordPhase20CalendarFocus,
+  recordPhase20CalendarLifecycle,
+  recordPhase20CalendarMotion,
+  recordPhase20CalendarSemantic,
+  recordPhase20CalendarTransition,
+  recordPhase20CalendarWeekLayout,
+  type Phase20CalendarTransitionSnapshot,
+} from "../../bootstrap/phase20CalendarObservation";
+import {
   addLocalMonthsClamped,
   calendarGridForMonth,
   startOfLocalMonth,
@@ -99,6 +109,19 @@ function monthIdDate(monthId: string): LocalDate {
   return `${monthId}-01` as LocalDate;
 }
 
+function observationTransitionState(state: CalendarTransitionState): Phase20CalendarTransitionSnapshot {
+  return Object.freeze({
+    currentMonthId: state.currentMonthId,
+    selectedCivilDate: state.selectedLocalDate,
+    mode: state.mode,
+    phase: state.phase,
+    titlePanel: state.titlePanel,
+    dragDxDp: state.dragDx,
+    epoch: state.epoch,
+    reducedMotion: state.reducedMotion,
+  });
+}
+
 export function CalendarScreen({
   diagnostics,
   diagnosticStage,
@@ -113,7 +136,7 @@ export function CalendarScreen({
   onRequestRootBack = NOOP,
   returnFocusGeneration = 0,
 }: CalendarScreenProps) {
-  const { colors, reduceMotion } = useAppTheme();
+  const { colorScheme, colors, reduceMotion } = useAppTheme();
   const { fontScale, height: safeHeight, width: safeWidth } = useWindowDimensions();
   const parsedToday = parseLocalDate(today);
   const [month, setMonth] = useState(() => startOfLocalMonth(parseLocalDate(initialDate)));
@@ -370,6 +393,12 @@ export function CalendarScreen({
   const dispatchCalendarTransition = useCallback((event: CalendarTransitionEvent) => {
     const previousState = calendarTransitionRef.current;
     const result = transitionCalendar(previousState, event);
+    recordPhase20CalendarTransition({
+      trigger: event.type,
+      before: observationTransitionState(previousState),
+      after: observationTransitionState(result.state),
+      commandKinds: result.commands.map(({ kind }) => kind),
+    });
     calendarTransitionRef.current = result.state;
     setCalendarTransition(result.state);
     setCalendarCommand(result.commands[0] ?? null);
@@ -407,6 +436,7 @@ export function CalendarScreen({
   }, [onRequestRootBack]);
 
   useEffect(() => {
+    recordPhase20CalendarMotion({ reducedMotion: reduceMotion });
     dispatchCalendarTransition({ type: "set-reduced-motion", reducedMotion: reduceMotion });
   }, [dispatchCalendarTransition, reduceMotion]);
 
@@ -418,11 +448,35 @@ export function CalendarScreen({
   }, [cancelDiagnosticInteraction, dispatchCalendarTransition]);
 
   useEffect(() => {
+    recordPhase20CalendarLifecycle({
+      event: "orientation",
+      value: safeWidth > safeHeight ? "landscape" : "portrait",
+      callbackGeneration: calendarTransitionRef.current.epoch,
+    });
+    const horizontalInsetDp = calendarHorizontalInsetForSafeWidth(safeWidth);
+    recordPhase20CalendarBaseline({
+      kind: "adaptive-padding",
+      safeWidthDp: safeWidth,
+      horizontalInsetDp,
+      viewportWidthDp: safeWidth - horizontalInsetDp * 2,
+    });
+    recordPhase20CalendarBaseline({
+      kind: "light-strength-title",
+      colorScheme,
+      strengthTitleColor: colors.calendarStrengthTextLight,
+    });
     invalidateLayout();
-  }, [fontScale, invalidateLayout, safeHeight, safeWidth]);
+  }, [colorScheme, colors.calendarStrengthTextLight, fontScale, invalidateLayout, safeHeight, safeWidth]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" || nextState === "background" || nextState === "inactive") {
+        recordPhase20CalendarLifecycle({
+          event: "app-state",
+          value: nextState,
+          callbackGeneration: calendarTransitionRef.current.epoch,
+        });
+      }
       if (nextState !== "active") invalidateLayout();
     });
     return () => subscription.remove();
@@ -525,10 +579,14 @@ export function CalendarScreen({
     setRetryGeneration((generation) => generation + 1);
   }, [returnFocusGeneration]);
 
-  const focusTarget = useCallback((target: (View & Readonly<{ focus?: () => void }>) | null | undefined) => {
+  const focusTarget = useCallback((
+    target: (View & Readonly<{ focus?: () => void }>) | null | undefined,
+    identity: string,
+  ) => {
     if (target === undefined || target === null) return;
     target.focus?.();
     AccessibilityInfo.sendAccessibilityEvent(target, "focus");
+    recordPhase20CalendarFocus({ identity, callbackGeneration: calendarTransitionRef.current.epoch });
   }, []);
 
   useEffect(() => {
@@ -542,7 +600,10 @@ export function CalendarScreen({
     const target = eventStillExists
       ? agendaRowRefs.current.get(pending.retained.eventId)
       : dateCellRefs.current.get(pending.retained.selectedDate);
-    focusTarget(target ?? dateCellRefs.current.get(pending.retained.selectedDate));
+    focusTarget(
+      target ?? dateCellRefs.current.get(pending.retained.selectedDate),
+      eventStillExists ? `calendar-agenda-${pending.retained.eventId}` : `calendar-day-${pending.retained.selectedDate}`,
+    );
     if (!eventStillExists) {
       AccessibilityInfo.announceForAccessibility("Calendar refreshed. The previous event is no longer available.");
     }
@@ -551,7 +612,7 @@ export function CalendarScreen({
   useEffect(() => {
     if (!pendingCollapseFocusRef.current || calendarTransition.mode !== "focused") return;
     pendingCollapseFocusRef.current = false;
-    focusTarget(collapseActionRef.current);
+    focusTarget(collapseActionRef.current, "calendar-collapse-day");
   }, [calendarTransition.mode, focusTarget]);
 
   useEffect(() => {
@@ -560,11 +621,17 @@ export function CalendarScreen({
     const target = dateCellRefs.current.get(pendingDate);
     if (target === undefined) return;
     pendingDateFocusRef.current = null;
-    focusTarget(target);
+    focusTarget(target, `calendar-day-${pendingDate}`);
   }, [calendarTransition.mode, calendarTransition.phase, focusTarget, layoutGeneration, selectedDate]);
 
   const recordWeekGeometry = useCallback((weekStart: LocalDate, geometry: Readonly<{ y: number; height: number }>) => {
     if (!Number.isFinite(geometry.y) || !Number.isFinite(geometry.height) || geometry.height <= 0) return;
+    recordPhase20CalendarWeekLayout({
+      weekStart,
+      yDp: geometry.y,
+      heightDp: geometry.height,
+      layoutGeneration,
+    });
     setWeekMeasurements((current) => {
       const existing = current.get(weekStart);
       if (existing?.y === geometry.y && existing.height === geometry.height) return current;
@@ -645,6 +712,16 @@ export function CalendarScreen({
     : calendarTransition.titlePanel === "next" ? nextMonth(titleBaseMonth, 1)
       : titleBaseMonth;
   const visibleMonthLabel = monthLabel(titleMonth ?? month);
+  useEffect(() => {
+    recordPhase20CalendarSemantic({
+      title: visibleMonthLabel,
+      currentMonthId: calendarTransition.currentMonthId,
+      selectedCivilDate: visibleSelectedDate,
+      focusedWeekStart: calendarTransition.mode === "focused" ? selectedWeek?.[0] ?? null : null,
+      weekCount: visibleWeekRows.length,
+      callbackGeneration: calendarTransition.epoch,
+    });
+  }, [calendarTransition.currentMonthId, calendarTransition.epoch, calendarTransition.mode, selectedWeek, visibleMonthLabel, visibleSelectedDate, visibleWeekRows.length]);
   const selectedEvents = (range?.events ?? []).filter((event) => event.localDate === visibleSelectedDate);
   const selectedDay = range?.days?.find((day) => day.localDate === visibleSelectedDate);
   const registerDateCell = (date: LocalDate, node: CalendarDateCellHandle | null) => {

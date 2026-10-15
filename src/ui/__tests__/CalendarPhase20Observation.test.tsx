@@ -16,7 +16,7 @@ const initial = createCalendarTransitionState({
 });
 
 describe("CalendarMonthViewport Phase 20 observation wiring", () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => { jest.restoreAllMocks(); });
 
   it("records actual gesture-worklet callbacks and measured viewport geometry without driving input", async () => {
     const recordPointer = jest.spyOn(Observation, "recordPhase20CalendarPointer");
