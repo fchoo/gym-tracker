@@ -24,7 +24,7 @@ function controlledTool(state, executable, args, options = {}) {
   const bad = () => ({ status: 1, stdout: Buffer.alloc(0), stderr: Buffer.from("/private/device-private bearer") });
   state.commands.push([executable, ...args]);
   if (executable === "maestro") {
-    if (state.noRoute) return bad();
+    if (state.noRoute && args.includes("VISUAL_MODE=capture")) return bad();
     const entry = args.find((v) => v.startsWith("VISUAL_LINK="));
     if (!entry) return bad();
     const link = new URL(entry.slice("VISUAL_LINK=".length));
@@ -46,7 +46,7 @@ function controlledTool(state, executable, args, options = {}) {
     const parts = state.configurationId.split("-");
     const marker = {
       schema_version: 1, nonce: state.staleMarker ? "0".repeat(32) : state.nonce,
-      state_id: state.wrongState ? "BW-002" : state.stateId,
+      state_id: state.wrongState && state.mode === "capture" ? "BW-002" : state.stateId,
       configuration_id: state.configurationId, fixture_id: fixtureId,
       mode: state.mode, status: state.mode === "reset" ? "reset" : "ready",
       appearance: state.mode === "reset" ? "System" : parts[1] === "L" ? "Light" : parts[1] === "D" ? "Dark" : "System",
@@ -57,7 +57,7 @@ function controlledTool(state, executable, args, options = {}) {
       source_revision: 18, source_read_only: true,
     };
     if (state.mode === "reset" && state.badReset) marker.appearance = "Dark";
-    if (state.extraMarkerField) marker.private = "/private/device-private";
+    if (state.extraMarkerField && state.mode === "capture") marker.private = "/private/device-private";
     return ok(`PHASE20_VISUAL_RESULT ${JSON.stringify(marker)}`);
   }
   // The production module uses shell-quoted argument strings, never payload text.
@@ -67,9 +67,11 @@ function controlledTool(state, executable, args, options = {}) {
   if (s[0] === "pm") return ok("package:/data/app/controlled/base.apk");
   if (s[0] === "sha256sum") return ok(`${state.wrongApk ? "0".repeat(64) : state.apkHash}  base.apk`);
   if (s[0] === "cat" && s[1].endsWith("owner.json")) return ok(JSON.stringify(state.lease));
+  if (s[0] === "cat" && s[1].endsWith("restore.json")) return ok(state.badSnapshot ? "{}" : state.savedSnapshot);
   if (s[0] === "mkdir") { if (state.lock) return bad(); state.lock = true; return ok(); }
   if (s[0] === "rmdir") { state.lock = false; return ok(); }
-  if (s[0] === "rm" || a[1].startsWith("cat >")) return ok();
+  if (a[1].startsWith("cat >")) { state.savedSnapshot = options.input; return ok(); }
+  if (s[0] === "rm") return ok();
   if (s[0] === "settings") {
     const key = s[3];
     if (s[1] === "get") return ok(state.settings[key] ?? "null");
@@ -176,6 +178,33 @@ test("source/launcher/manifest attestation mismatch is rejected before ADB", asy
   await assert.rejects(f.call(), /source_mismatch/u);
   assert.equal(f.state.commands.length, 0);
 });
+test("display snapshot must be durable before changing any setting", async (t) => {
+  const f = fixture(t); f.state.badSnapshot = true;
+  await assert.rejects(f.call(), /snapshot_failed/u);
+  assert.ok(!f.state.commands.some((x) => x.join(" ").includes("'put'")));
+  assert.equal(f.state.lock, false);
+});
+test("busy visual lock never reads or overwrites the previous owner's snapshot", async (t) => {
+  const f = fixture(t); f.state.lock = true;
+  await assert.rejects(f.call(), /command_failed/u);
+  assert.equal(f.state.savedSnapshot, undefined);
+  assert.ok(!f.state.commands.some((x) => x.join(" ").includes("'settings'")));
+});
+for (const mutation of ["missingMarker", "staleMarker"]) test(`${mutation} times out without evidence and restores OS settings`, async (t) => {
+  const f = fixture(t); f.state[mutation] = true;
+  const started = Date.now();
+  await assert.rejects(f.call(), /restoration_failed/u);
+  assert.ok(Date.now() - started < 15_000);
+  assert.equal(f.state.settings.font_scale, "1.15");
+  assert.equal(f.state.lock, true);
+});
+test("absent settings and existing display overrides are restored exactly", async (t) => {
+  const f = fixture(t); delete f.state.settings.font_scale;
+  f.state.size = "720x1280"; f.state.density = "240"; f.state.night = "yes";
+  await f.call();
+  assert.equal(f.state.settings.font_scale, undefined);
+  assert.equal(f.state.size, "720x1280"); assert.equal(f.state.density, "240"); assert.equal(f.state.night, "yes");
+});
 
 function retain(f, result) {
   const base = path.join(f.runDir, "screenshots/BW-054", config); mkdirSync(base, { recursive: true });
@@ -223,7 +252,7 @@ test("controlled non-test launcher runs default ADB/Maestro transport through pr
   const scratch = path.join(f.root, "artifacts/controlled"); mkdirSync(scratch, { recursive: true });
   const bin = path.join(scratch, "bin"); mkdirSync(bin);
   const tool = path.join(scratch, "tool.mjs");
-  writeFileSync(tool, `import fs from 'node:fs';\nconst fixtureId=${JSON.stringify(fixtureId)};\nconst controlledTool=${controlledTool.toString()};\nconst file=process.env.VISUAL_CONTROLLED_STATE; const state=JSON.parse(fs.readFileSync(file)); const r=controlledTool(state,process.argv[2],process.argv.slice(3)); fs.writeFileSync(file,JSON.stringify(state));process.stdout.write(r.stdout);process.stderr.write(r.stderr);process.exitCode=r.status;`);
+  writeFileSync(tool, `import fs from 'node:fs';\nconst fixtureId=${JSON.stringify(fixtureId)};\nconst controlledTool=${controlledTool.toString()};\nconst file=process.env.VISUAL_CONTROLLED_STATE; const state=JSON.parse(fs.readFileSync(file)); const r=controlledTool(state,process.argv[2],process.argv.slice(3), {input:fs.readFileSync(0,'utf8')}); fs.writeFileSync(file,JSON.stringify(state));process.stdout.write(r.stdout);process.stderr.write(r.stderr);process.exitCode=r.status;`);
   const quote = (v) => `'${v.replaceAll("'", "'\\''")}'`;
   for (const exe of ["adb", "maestro"]) writeFileSync(path.join(bin, exe), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(tool)} ${exe} "$@"\n`, { mode: 0o755 });
   const statePath = path.join(scratch, "state.json"); writeFileSync(statePath, JSON.stringify(f.state));
@@ -232,11 +261,35 @@ test("controlled non-test launcher runs default ADB/Maestro transport through pr
   const attestation = { ...f.attestation, source_tree_sha256: f.manifest.source.tree_sha256, launcher_source_sha256: hash(readFileSync(launcher)) };
   const env = { ...process.env, NODE_ENV: "production", PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: "device-private", VISUAL_CONTROLLED_STATE: statePath };
   for (const key of ["NODE_TEST_CONTEXT", "V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS"]) delete env[key];
-  const result = spawnSync(process.execPath, [launcher, "--action", "visual-capture"], { cwd: f.root, env, input: JSON.stringify({ schema_version: 1, action: "visual-capture", payload: { ...f.payload, lease: { lease_id: f.state.lease.lease_id, native_execution: "EXECUTED" } }, attestation }), encoding: "utf8", timeout: 30_000, maxBuffer: 8 * 1024 * 1024 });
+  const invoke = (action, payload) => spawnSync(process.execPath, [launcher, "--action", action], { cwd: f.root, env, input: JSON.stringify({ schema_version: 1, action, payload: { ...payload, lease: { lease_id: f.state.lease.lease_id, native_execution: "EXECUTED" } }, attestation: { ...attestation, action } }), encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024 });
+  const result = invoke("visual-capture", f.payload);
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout); assert.equal(output.ok, true); assert.equal(output.result.settings.restored, true);
   const recorded = JSON.parse(readFileSync(statePath));
   assert.ok(recorded.commands.some((x) => x[0] === "maestro" && x.includes("test")));
   assert.ok(recorded.commands.some((x) => x.includes("screencap")));
   assert.equal(recorded.settings.font_scale, "1.15");
+  const batch = invoke("visual-capture-batch", { run_id: runId, captures: [{ ...f.payload, configuration_id: "AP-D-C390-P-F100" }, f.payload] });
+  assert.equal(batch.status, 0, batch.stderr);
+  assert.deepEqual(JSON.parse(batch.stdout).result.map((v) => v.settings.state_receipt.configuration_id), ["AP-D-C390-P-F100", config]);
+  retain(f, output.result);
+  const compared = invoke("visual-compare", { run_id: runId });
+  assert.equal(compared.status, 0, compared.stderr);
+  assert.equal(JSON.parse(compared.stdout).result[0].observation.capture_png_sha256, output.result.settings.state_receipt.png_sha256);
+  const bounded = (result) => {
+    assert.notEqual(result.status, 0); assert.equal(result.stdout, "");
+    assert.match(result.stderr, /^v12_production_native_launcher_[a-z_]+\n$/u);
+    assert.doesNotMatch(result.stderr, /device-private|\/private\/|bearer/u);
+  };
+  for (const flag of ["wrongState", "failedRestore"]) {
+    const state = JSON.parse(readFileSync(statePath)); state[flag] = true;
+    writeFileSync(statePath, JSON.stringify(state)); bounded(invoke("visual-capture", f.payload));
+    const after = JSON.parse(readFileSync(statePath));
+    if (flag === "failedRestore") assert.equal(after.lock, true);
+    // Reset the controlled tool state between independent negative cases.
+    after[flag] = false; after.lock = false; after.settings.font_scale = "1.15";
+    writeFileSync(statePath, JSON.stringify(after));
+  }
+  rmSync(path.join(f.root, ".planning/design/v1.2-browser-evidence/light-plan-type-chooser.png"));
+  bounded(invoke("visual-compare", { run_id: runId }));
 });
