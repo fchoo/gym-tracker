@@ -22,12 +22,10 @@ export type Phase20QualityWorkloadProof = Readonly<{
 type Sha256 = (value: string) => Promise<string>;
 
 async function fixtureCounts(query: SqliteReadTransactionExecutor) {
-  const [sets, corrections, plans, kinds] = await Promise.all([
-    query.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM session_sets WHERE id LIKE ?", [`${PREFIX}set-%`]),
-    query.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM history_audit_events WHERE id LIKE ?", [`${PREFIX}correction-%`]),
-    query.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM plans WHERE id LIKE ?", [`${PREFIX}plan-%`]),
-    query.queryAll<{ plan_kind: string }>("SELECT DISTINCT plan_kind FROM plans WHERE id LIKE ? ORDER BY plan_kind", [`${PREFIX}plan-%`]),
-  ]);
+  const sets = await query.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM session_sets WHERE id LIKE ?", [`${PREFIX}set-%`]);
+  const corrections = await query.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM history_audit_events WHERE id LIKE ?", [`${PREFIX}correction-%`]);
+  const plans = await query.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM plans WHERE id LIKE ?", [`${PREFIX}plan-%`]);
+  const kinds = await query.queryAll<{ plan_kind: string }>("SELECT DISTINCT plan_kind FROM plans WHERE id LIKE ? ORDER BY plan_kind", [`${PREFIX}plan-%`]);
   return Object.freeze({
     set_count: sets[0]?.count ?? -1,
     correction_count: corrections[0]?.count ?? -1,
@@ -106,13 +104,33 @@ export async function collectPhase20QualityWorkloadProof(input: Readonly<{
   const snapshot = await input.kernel.readSnapshot(async (transaction) => {
     const counts = await fixtureCounts(transaction);
     assertCounts(counts);
-    const [sets, corrections, plans] = await Promise.all([
-      transaction.queryAll("SELECT id, ordinal, observed_json, revision FROM session_sets WHERE id LIKE ? ORDER BY id", [`${PREFIX}set-%`]),
-      transaction.queryAll("SELECT id, effective_revision, field_identity, before_json, after_json, occurred_at_ms FROM history_audit_events WHERE id LIKE ? ORDER BY id", [`${PREFIX}correction-%`]),
-      transaction.queryAll("SELECT plan.id, plan.plan_kind, plan.revision, running.status AS running_status, running.revision AS running_revision FROM plans plan LEFT JOIN running_plans running ON running.plan_id = plan.id WHERE plan.id LIKE ? ORDER BY plan.id", [`${PREFIX}plan-%`]),
-    ]);
+    const sets = await transaction.queryAll("SELECT id, ordinal, observed_json, revision FROM session_sets WHERE id LIKE ? ORDER BY id", [`${PREFIX}set-%`]);
+    const corrections = await transaction.queryAll("SELECT id, effective_revision, field_identity, before_json, after_json, occurred_at_ms FROM history_audit_events WHERE id LIKE ? ORDER BY id", [`${PREFIX}correction-%`]);
+    const plans = await transaction.queryAll("SELECT plan.id, plan.plan_kind, plan.revision, running.status AS running_status, running.revision AS running_revision FROM plans plan LEFT JOIN running_plans running ON running.plan_id = plan.id WHERE plan.id LIKE ? ORDER BY plan.id", [`${PREFIX}plan-%`]);
     return { counts, sets, corrections, plans };
   });
+  const expectedSets = Array.from({ length: PHASE20_QUALITY_SET_COUNT }, (_, index) => ({
+    id: `${PREFIX}set-${String(index + 1).padStart(5, "0")}`, ordinal: index,
+    observed_json: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 40_000, reps: 8, source: "manual" }),
+    revision: index < PHASE20_QUALITY_CORRECTION_COUNT ? 2 : 1,
+  }));
+  const expectedCorrections = Array.from({ length: PHASE20_QUALITY_CORRECTION_COUNT }, (_, index) => ({
+    id: `${PREFIX}correction-${String(index + 1).padStart(3, "0")}`, effective_revision: index + 2,
+    field_identity: `session_sets:${PREFIX}set-${String(index + 1).padStart(5, "0")}:observation`,
+    before_json: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 40_000, reps: 8, source: "manual" }),
+    after_json: JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 40_000, reps: 9, source: "manual" }),
+    occurred_at_ms: index + 3,
+  }));
+  const expectedPlans = [
+    { id: `${PREFIX}plan-running`, plan_kind: "running", revision: 1, running_status: "ready", running_revision: 1 },
+    { id: `${PREFIX}plan-strength-a`, plan_kind: "strength", revision: 1, running_status: null, running_revision: null },
+    { id: `${PREFIX}plan-strength-b`, plan_kind: "strength", revision: 1, running_status: null, running_revision: null },
+  ];
+  if (canonicalJson(snapshot.sets) !== canonicalJson(expectedSets)
+    || canonicalJson(snapshot.corrections) !== canonicalJson(expectedCorrections)
+    || canonicalJson(snapshot.plans) !== canonicalJson(expectedPlans)) {
+    throw new Error("phase20_quality_workload_digest_invalid");
+  }
   const base = Object.freeze({
     producer: "phase20-quality-workload-proof/v1" as const,
     set_count: PHASE20_QUALITY_SET_COUNT as 15_000,
