@@ -38,7 +38,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   executeV12CalendarShardCli(args, {
     acquireLease: adapter.acquireLease, releaseLease: adapter.releaseLease, snapshotSettings: adapter.snapshotSettings,
     restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeCalendar(lease, settings, { run_id: runId }),
-    outputExists: () => false,
     writeImmutable: (file, value) => writes.push([file, value]),
     writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/calendar-failure.json`, value]),
   }).then((value) => {

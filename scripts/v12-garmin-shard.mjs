@@ -68,12 +68,13 @@ function exactCases(value, expected) {
 
 function observations(result, id) {
   record(result, "native_cases_invalid"); exactCases(result.cases, V12_GARMIN_SHARD_CASE_IDS);
+  const { run_id, ...artifactIdentity } = id;
   const byId = Object.fromEntries(result.cases.map((entry) => [entry.id, entry]));
   const summarize = (ids) => ids.reduce((status, caseId) => {
     const next = byId[caseId].status;
     return next === "FAIL" || status === "FAIL" ? "FAIL" : next === "REVIEW_REQUIRED" || status === "REVIEW_REQUIRED" ? "REVIEW_REQUIRED" : next === "NOT_RUN" || status === "NOT_RUN" ? "NOT_RUN" : "PASS";
   }, "PASS");
-  const base = { schema_version: 1, producer: "v12-garmin-shard/v2", run_id: id.run_id, identity: id };
+  const base = { schema_version: 1, producer: "v12-garmin-shard/v2", run_id, identity: artifactIdentity };
   return Object.freeze({
     "garmin/packaging-auth.json": { ...base, observation: { source: "bundled-chaquopy", bridge_methods: METHODS, case_ids: ["packaging", "bridge-allowlist", "account-lifecycle", "recovery"], status: summarize(["packaging", "bridge-allowlist", "account-lifecycle", "recovery"]) } },
     "garmin/sync-read.json": { ...base, observation: { fixture_manifest_sha256: id.fixture_digest, case_ids: ["canonical-json", "sync-read", "privacy"], status: summarize(["canonical-json", "sync-read", "privacy"]) } },
@@ -149,7 +150,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   executeV12GarminShardCli(args, {
     acquireLease: adapter.acquireLease, releaseLease: adapter.releaseLease, snapshotSettings: adapter.snapshotSettings,
     restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeGarmin(lease, settings, { run_id: runId }),
-    outputExists: () => false,
     writeImmutable: (file, value) => writes.push([file, value]),
     writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/garmin/failure.json`, value]),
   }).then((value) => {

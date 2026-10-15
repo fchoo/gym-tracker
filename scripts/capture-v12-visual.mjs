@@ -124,12 +124,16 @@ function parseVisualCli(args) {
  * The adapter must return retained PNG bytes and measured settings; fixture-only
  * rows are refused so this path can never manufacture native evidence on host.
  */
-export function executeLiveV12VisualCapture({ runId, root = process.cwd(), capture, write } = {}) {
+export function executeLiveV12VisualCapture({ runId, root = process.cwd(), capture, captureAll, write } = {}) {
   if (!V12_RUN_ID.test(runId ?? "") || typeof capture !== "function") fail("adapter_invalid");
   const plan = executeV12VisualCapture({ root, mode: "plan" });
+  const batch = typeof captureAll === "function"
+    ? captureAll(Object.freeze({ run_id: runId, captures: plan.captures }))
+    : undefined;
+  if (batch !== undefined && (!Array.isArray(batch) || batch.length !== plan.captures.length)) fail("capture_invalid");
   const records = [];
-  for (const item of plan.captures) {
-    const measured = capture(Object.freeze({ ...item, run_id: runId }));
+  for (const [captureIndex, item] of plan.captures.entries()) {
+    const measured = batch?.[captureIndex] ?? capture(Object.freeze({ ...item, run_id: runId }));
     if (!measured || measured.native_execution !== "EXECUTED" || measured.fixture_id !== item.fixture_id
       || !Buffer.isBuffer(measured.png) || measured.png.length === 0 || !measured.settings
       || measured.settings.restored !== true || measured.settings.privacy !== "synthetic-only") fail("capture_invalid");
@@ -181,7 +185,10 @@ export function runV12VisualCaptureCli(args = process.argv.slice(2), io = proces
   try {
     const { runId, command } = parseVisualCli(args);
     if (command === "--verify") verifyV12VisualCapture({ runId });
-    else publishV12AtomicShard({ runId, shard: "visual", produce: ({ write }) => executeLiveV12VisualCapture({ runId, capture: createV12NativeAdapter().capture, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) }) });
+    else publishV12AtomicShard({ runId, shard: "visual", produce: ({ write }) => {
+      const adapter = createV12NativeAdapter();
+      return executeLiveV12VisualCapture({ runId, capture: adapter.capture, ...(process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? { captureAll: adapter.captureBatch } : {}), write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
+    } });
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

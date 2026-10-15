@@ -4,7 +4,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const RUN_ID = /^v12-samsung-acceptance-[a-z0-9-]{3,72}$/u;
+const RUN_ID = /^(?:v12-samsung-acceptance-[a-z0-9-]{3,72}|phase20-\d{8}T\d{6}Z-[a-f0-9]{12})$/u;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const FORBIDDEN_KEYS = new Set([
   "approval",

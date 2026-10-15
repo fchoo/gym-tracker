@@ -27,6 +27,25 @@ function safeFailure(error, runId, shard) {
   const code = error instanceof Error ? error.message.replace(/[^a-z0-9_-]/giu, "_").slice(0, 96) : "unknown";
   return Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-failure/v2", run_id: runId, shard, stage: "publication", failure_code: code, failure_digest: sha256(`${runId}\n${shard}\n${code}`), identity_sha256: sha256(`${runId}\n${shard}`), privacy: "safe", retry_allowed: false });
 }
+function publicationIdentity(runRoot) {
+  const buildPath = path.join(runRoot, "build.json");
+  if (!existsSync(buildPath)) return null;
+  let build;
+  try { build = JSON.parse(readFileSync(buildPath, "utf8")); } catch { fail("build_identity_invalid"); }
+  const identity = {
+    source_tree_sha256: build?.source?.tree_sha256,
+    apk_sha256: build?.build?.apk?.sha256,
+    installed_apk_sha256: build?.device?.installed_apk_sha256,
+    device_identity_sha256: build?.device?.identity_sha256,
+    fixture_sha256: build?.fixtures?.registry_sha256,
+    configuration_id: build?.configuration?.id,
+  };
+  if (identity.apk_sha256 !== identity.installed_apk_sha256
+    || Object.entries(identity).some(([key, value]) => key === "configuration_id"
+      ? typeof value !== "string" || value.length === 0
+      : typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value))) fail("build_identity_invalid");
+  return Object.freeze(identity);
+}
 export function recordV12AtomicFailure({ root = process.cwd(), runId, shard, error } = {}) {
   if (!SAFE.test(shard ?? "")) fail("arguments_invalid");
   const runRoot = safeRoot(root, runId); const failure = path.join(runRoot, "failures", `${shard}.json`);
@@ -71,7 +90,7 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
   try {
     produce(Object.freeze({ write, stage_root: stage }));
     if (members.length === 0 || validate(Object.freeze([...members]), stage) !== true) fail("validation_failed");
-    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, members: Object.freeze([...members]), completed: true });
+    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, identity: publicationIdentity(runRoot), members: Object.freeze([...members]), completed: true });
     const stagedManifest = path.join(stage, "manifest.json");
     writeFileSync(stagedManifest, `${JSON.stringify(manifest)}\n`, { flag: "wx" }); fsyncFile(stagedManifest);
     assertCompleteStage(stage, members);
@@ -100,6 +119,8 @@ export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}
   noLinks(runRoot, manifestPath);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (manifest?.run_id !== runId || manifest.shard !== shard || manifest.completed !== true || !Array.isArray(manifest.members)) fail("manifest_invalid");
+  const expectedIdentity = publicationIdentity(runRoot);
+  if (expectedIdentity !== null && JSON.stringify(manifest.identity) !== JSON.stringify(expectedIdentity)) fail("manifest_identity_invalid");
   for (const member of manifest.members) {
     if (member.artifact === "manifest.json") continue;
     const file = path.join(runRoot, relative(member.artifact)); noLinks(runRoot, file);

@@ -7,6 +7,9 @@ import { pathToFileURL } from 'node:url';
 
 import { validateV12RunManifest } from './create-v12-run-manifest.mjs';
 import { sourceTreeSha256 } from './source-tree-digest.mjs';
+import { createV12NativeAdapter } from './v12-native-adapter.mjs';
+import { executeLiveV12RecoveryMaestro } from './run-v12-maestro.mjs';
+import { publishV12AtomicShard, recordV12AtomicFailure } from './v12-atomic-shard-publication.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -61,16 +64,37 @@ export async function executeV12RecoveryShardCli(args = process.argv.slice(2), d
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
   const executeNative = dependencies.executeNative ?? (async () => {
-    execFileSync(process.execPath, ['scripts/run-v12-maestro.mjs', '--run', runId, '--shard', 'recovery'], { cwd: root, stdio: 'inherit' });
-    return readFileSync(report, 'utf8');
+    if (process.env.V12_NATIVE_ADAPTER_COMMAND) return createV12NativeAdapter({ root }).executeRecovery({ run_id: runId });
+    let captured;
+    executeLiveV12RecoveryMaestro(['--run', runId, '--shard', 'recovery'], { root, writeReport: (_file, content) => { captured = content; } });
+    return captured;
   });
-  const input = inputFromReport(manifest, await executeNative());
-  const observation = await executeV12RecoveryShard(input, async (_name, value) => {
+  const nativeReport = await executeNative();
+  const input = inputFromReport(manifest, nativeReport);
+  const writeLifecycle = dependencies.writeLifecycle ?? (async (value) => {
     mkdirSync(path.dirname(lifecycle), { recursive: true });
-    writeFileSync(lifecycle, `${JSON.stringify({ run_id: runId, identity: input.identity, cases: input.cases, observation: value })}\n`, { flag: 'wx' });
+    writeFileSync(lifecycle, `${JSON.stringify(value)}\n`, { flag: 'wx' });
   });
+  const writeReport = dependencies.writeReport ?? (async (value) => {
+    mkdirSync(path.dirname(report), { recursive: true });
+    writeFileSync(report, value, { flag: 'wx' });
+  });
+  const observation = await executeV12RecoveryShard(input, async (_name, value) => {
+    await writeLifecycle({ schema_version: 1, producer: 'v12-recovery-shard', run_id: runId, identity: input.identity, cases: input.cases, observation: value });
+  });
+  await writeReport(nativeReport);
   return Object.freeze({ ok: true, mode, run_id: runId, observation });
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  executeV12RecoveryShardCli().then((result) => process.stdout.write(`${JSON.stringify(result)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : 'v12_recovery_cli_failed'); process.exitCode = 1; });
+  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  executeV12RecoveryShardCli(args, {
+    writeLifecycle: async (value) => writes.push(['recovery/lifecycle.json', value]),
+    writeReport: async (value) => writes.push(['maestro/recovery.xml', value]),
+  }).then((result) => {
+    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'recovery', produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  }).catch((error) => {
+    if (RUN_ID.test(runId ?? '')) { try { recordV12AtomicFailure({ runId, shard: 'recovery', error }); } catch { /* first receipt wins */ } }
+    console.error(error instanceof Error ? error.message : 'v12_recovery_cli_failed'); process.exitCode = 1;
+  });
 }

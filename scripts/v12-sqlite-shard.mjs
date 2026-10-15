@@ -12,6 +12,8 @@ import {
   classifyV12SqliteNativeFailure,
   createV12SqliteFailureReceipt,
 } from './v12-sqlite-producer-contract.mjs';
+import { createV12NativeAdapter } from './v12-native-adapter.mjs';
+import { publishV12AtomicShard, recordV12AtomicFailure } from './v12-atomic-shard-publication.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -149,6 +151,9 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
   const executeNative = dependencies.executeNative ?? (async (ephemeralDevice) => {
+    if (process.env.V12_NATIVE_ADAPTER_COMMAND) {
+      return createV12NativeAdapter({ root }).executeSqlite({ run_id: runId });
+    }
     const command = ['scripts/run-native-sqlite-contracts.mjs', '--suite', 'v1.2-acceptance', '--manifest', 'artifacts/native/v1.2-acceptance/build.json'];
     if (ephemeralDevice !== undefined) command.push('--device', ephemeralDevice);
     try { (dependencies.execFileSync ?? execFileSync)(process.execPath, command, { cwd: root, stdio: 'pipe', encoding: 'utf8' }); }
@@ -213,5 +218,15 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  executeV12SqliteShardCli().then((result) => process.stdout.write(`${JSON.stringify(result)}\n`)).catch((error) => { console.error(error instanceof Error ? error.message : 'v12_sqlite_cli_failed'); process.exitCode = 1; });
+  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  executeV12SqliteShardCli(args, {
+    writeObservation: async (name, value) => writes.push([`sqlite/${name}`, value]),
+    writeFailureReceipt: async () => {},
+  }).then((result) => {
+    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'sqlite', produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  }).catch((error) => {
+    if (RUN_ID.test(runId ?? '')) { try { recordV12AtomicFailure({ runId, shard: 'sqlite', error }); } catch { /* first receipt wins */ } }
+    console.error(error instanceof Error ? error.message : 'v12_sqlite_cli_failed'); process.exitCode = 1;
+  });
 }

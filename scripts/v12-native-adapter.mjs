@@ -40,9 +40,12 @@ export function createV12NativeAdapter(options = {}) {
       const result = call("visual-capture", payload);
       return { ...result, png: Buffer.from(result.png_base64 ?? "", "base64") };
     },
+    captureBatch: (payload) => call("visual-capture-batch", payload).map((result) => ({ ...result, png: Buffer.from(result.png_base64 ?? "", "base64") })),
     compare: (payload) => call("visual-compare", payload),
     observeAccessibility: (payload) => call("accessibility", payload),
     collectPerformance: (payload) => call("performance", payload),
+    executeSqlite: (payload) => call("sqlite", payload),
+    executeRecovery: (payload) => call("recovery", payload),
     executeGarmin: (lease, settings, payload) => call("garmin", { lease, settings, ...payload }),
     executeCalendar: (lease, settings, payload) => call("calendar", { lease, settings, ...payload }),
   });

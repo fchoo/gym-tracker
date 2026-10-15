@@ -11,6 +11,7 @@ import {
   readV12CalendarRunState,
   recordV12CalendarStageResult,
 } from "./v12-calendar-artifacts.mjs";
+import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -212,14 +213,17 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
       reports.push(readFileSync(temporary, "utf8"));
       unlinkSync(temporary);
     }
-    const reportText = `<testsuites>${reports.join("")}</testsuites>\n`;
+    const reportText = `<testsuites source_tree_sha256="${manifest.source.tree_sha256}" apk_sha256="${manifest.build.apk.sha256}" installed_apk_sha256="${manifest.device.installed_apk_sha256}" device_identity_sha256="${manifest.device.identity_sha256}">${reports.join("")}</testsuites>\n`;
     const flowSha256 = sha256(readFileSync(flowPath));
     const observations = caseIds.map((caseId, index) => Object.freeze({ case_id: caseId, ordinal: index + 1, fixture_id: "v12-synthetic-fixtures-r18", report_sha256: sha256(reports[index]) }));
     const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }), case_ids: caseIds, observations });
     validateSourceOrderedObservations(observations, caseIds, shard);
-    const absoluteReport = path.join(root, reportPath);
-    mkdirSync(path.dirname(absoluteReport), { recursive: true });
-    writeFileSync(absoluteReport, reportText, { flag: "wx" });
+    const writeReport = dependencies.writeReport ?? ((file, value) => {
+      const absoluteReport = path.join(root, file);
+      mkdirSync(path.dirname(absoluteReport), { recursive: true });
+      writeFileSync(absoluteReport, value, { flag: "wx" });
+    });
+    writeReport(reportPath, reportText);
     immutableWrite(root, mappingPath, mapping, dependencies.writeImmutableJson);
     outcome = Object.freeze({ run_id: runId, shard, report: reportPath, mapping: mappingPath, cases: caseIds.length });
   } finally {
@@ -298,7 +302,11 @@ export function executeLiveV12RecoveryMaestro(args = process.argv.slice(2), depe
   const execute = dependencies.execFileSync ?? execFileSync;
   assertMaestroVersion(execute);
   const output = path.join(root, `artifacts/native/v1.2/${runId}/maestro/recovery.xml`);
-  if (existsSync(output)) genericFail("immutable_output_invalid");
+  const writeReport = dependencies.writeReport ?? ((file, content) => {
+    if (existsSync(file)) genericFail("immutable_output_invalid");
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, content, { flag: "wx" });
+  });
   const serial = dependencies.serial ?? "emulator-5554";
   const adb = dependencies.adb ?? ((...command) => execute("adb", ["-s", serial, ...command], { encoding: "utf8" }).trim());
   const priorAirplane = adb("shell", "settings", "get", "global", "airplane_mode_on");
@@ -313,8 +321,7 @@ export function executeLiveV12RecoveryMaestro(args = process.argv.slice(2), depe
         reports.push(readFileSync(temporary, "utf8"));
       }
     }
-    mkdirSync(path.dirname(output), { recursive: true });
-    writeFileSync(output, `<testsuites>${reports.join("")}</testsuites>\n`, { flag: "wx" });
+    writeReport(output, `<testsuites>${reports.join("")}</testsuites>\n`);
   } finally {
     adb("shell", "settings", "put", "global", "airplane_mode_on", priorAirplane);
     restored = adb("shell", "settings", "get", "global", "airplane_mode_on") === priorAirplane;
@@ -514,9 +521,25 @@ export function executeV12Maestro(args = process.argv.slice(2), dependencies = {
 
 export function runV12MaestroCli(args = process.argv.slice(2), io = process) {
   try {
-    io.stdout.write(`${JSON.stringify(args.includes("--run") ? executeLiveV12GenericMaestro(args) : executeV12Maestro(args))}\n`);
+    if (args.includes("--run")) {
+      const { runId, shard } = exactGenericArguments(args);
+      if (shard === "recovery") {
+        io.stdout.write(`${JSON.stringify(executeLiveV12RecoveryMaestro(args))}\n`);
+      } else {
+        const writes = [];
+        const result = executeLiveV12GenericMaestro(args, {
+          writeReport: (file, value) => writes.push([file.replace(`artifacts/native/v1.2/${runId}/`, ""), value]),
+          writeImmutableJson: (file, value) => writes.push([file.replace(`artifacts/native/v1.2/${runId}/`, ""), value]),
+        });
+        publishV12AtomicShard({ runId, shard, produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+        io.stdout.write(`${JSON.stringify(result)}\n`);
+      }
+    } else io.stdout.write(`${JSON.stringify(executeV12Maestro(args))}\n`);
     return 0;
   } catch (error) {
+    const runIndex = args.indexOf("--run"); const shardIndex = args.indexOf("--shard");
+    const runId = runIndex >= 0 ? args[runIndex + 1] : undefined; const shard = shardIndex >= 0 ? args[shardIndex + 1] : undefined;
+    if (V12_RUN_ID.test(runId ?? "") && typeof shard === "string" && shard !== "recovery") { try { recordV12AtomicFailure({ runId, shard, error }); } catch { /* first receipt wins */ } }
     io.stderr.write(`${error.message}\n`);
     return 1;
   }
