@@ -4752,7 +4752,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Show November 2026"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
@@ -5130,7 +5135,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Show September 2026"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
@@ -5369,10 +5379,15 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-day-2026-10-07"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
-      "test_id": "adaptive-screen",
+      "test_id": "calendar-agenda-region",
       "semantics": [
         "Calendar"
       ]
@@ -5890,10 +5905,15 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-day-2026-10-04"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
-      "test_id": "adaptive-screen",
+      "test_id": "calendar-agenda-region",
       "semantics": [
         "Calendar"
       ]
@@ -6121,10 +6141,15 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-day-2026-10-09"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
-      "test_id": "adaptive-screen",
+      "test_id": "calendar-agenda-region",
       "semantics": [
         "Calendar"
       ]
@@ -6352,10 +6377,15 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-day-2026-10-10"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
-      "test_id": "adaptive-screen",
+      "test_id": "calendar-agenda-region",
       "semantics": [
         "Calendar"
       ]
@@ -6575,10 +6605,15 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-day-2026-10-05"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
-      "test_id": "adaptive-screen",
+      "test_id": "calendar-agenda-region",
       "semantics": [
         "Calendar"
       ]
@@ -6806,10 +6841,15 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-day-2026-11-01"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
-      "test_id": "adaptive-screen",
+      "test_id": "calendar-agenda-region",
       "semantics": [
         "Calendar"
       ]
@@ -7184,7 +7224,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "calendar-info",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_id",
+        "value": "calendar-day-2026-10-01"
+      },
+      {
+        "action": "tap_text",
+        "value": "Collapse day and return to month"
+      }
+    ],
     "readiness": {
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
@@ -12798,7 +12847,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "root-settings",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Exercises"
+      }
+    ],
     "readiness": {
       "screen_test_id": "library-screen",
       "test_id": "library-screen",
@@ -16821,6 +16875,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       {
         "action": "tap_text",
         "value": "Strength"
+      },
+      {
+        "action": "tap_text",
+        "value": "Review target for Back Squat"
       }
     ],
     "readiness": {
@@ -20272,7 +20330,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-093",
-    "name": "garmin-consent",
+    "name": "garmin-login",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -20280,7 +20338,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-consent",
+    "scenario": "garmin-login",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20380,7 +20438,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-094",
-    "name": "garmin-connected",
+    "name": "garmin-mfa",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -20388,7 +20446,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-connected",
+    "scenario": "garmin-mfa",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20510,7 +20568,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-095",
-    "name": "garmin-syncing",
+    "name": "garmin-connected",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -20518,7 +20576,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-syncing",
+    "scenario": "garmin-connected",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20574,6 +20632,136 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
+    "scenario_steps": [],
+    "readiness": {
+      "screen_test_id": "garmin-sync-screen",
+      "test_id": "garmin-sync-screen",
+      "semantics": [
+        "Garmin Sync"
+      ]
+    },
+    "evidence_scope": "visual_only",
+    "reference": {
+      "kind": "approved_source",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "state_name": "garmin-syncing"
+    }
+  },
+  {
+    "id": "BW-096",
+    "name": "garmin-syncing",
+    "route": "/garmin/index",
+    "component": "GarminSyncScreen",
+    "route_params": {
+      "origin": "workout"
+    },
+    "fixture_id": "v12-synthetic-fixtures-r18",
+    "fixture_seed": "phase20-garmin-visual",
+    "scenario": "garmin-syncing",
+    "fixture_facts": {
+      "date": "2026-10-01",
+      "locale": "en-SG",
+      "timezone": "Asia/Singapore",
+      "sqlite": "authoritative-synthetic"
+    },
+    "interactions": [
+      {
+        "id": "garmin-back",
+        "text": "Back to Garmin activities",
+        "data": {}
+      },
+      {
+        "id": "garmin-settings",
+        "text": "Open Garmin appearance",
+        "data": {}
+      },
+      {
+        "id": "",
+        "text": "Sync now",
+        "data": {
+          "garminAction": "sync"
+        }
+      },
+      {
+        "id": "",
+        "text": "Import FIT",
+        "data": {
+          "garminAction": "import"
+        }
+      },
+      {
+        "id": "",
+        "text": "Preview error",
+        "data": {
+          "garminAction": "sync-error"
+        }
+      },
+      {
+        "id": "",
+        "text": "Revoke",
+        "data": {
+          "garminAction": "revoke"
+        }
+      },
+      {
+        "id": "",
+        "text": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+        "data": {
+          "garminActivity": "garmin-948201"
+        }
+      },
+      {
+        "id": "",
+        "text": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+        "data": {
+          "garminActivity": "garmin-948315"
+        }
+      },
+      {
+        "id": "",
+        "text": "Workout",
+        "data": {
+          "garminRoot": "workout"
+        }
+      },
+      {
+        "id": "",
+        "text": "Calendar",
+        "data": {
+          "garminRoot": "calendar"
+        }
+      },
+      {
+        "id": "",
+        "text": "Library",
+        "data": {
+          "garminRoot": "library"
+        }
+      },
+      {
+        "id": "",
+        "text": "Progress",
+        "data": {
+          "garminRoot": "progress"
+        }
+      }
+    ],
+    "expected_visible_semantics": [
+      "Back to Garmin activities",
+      "Open Garmin appearance",
+      "Sync now",
+      "Import FIT",
+      "Preview error",
+      "Revoke",
+      "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+      "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+      "Workout",
+      "Calendar",
+      "Library",
+      "Progress"
+    ],
+    "focus_target": "garmin-back",
     "scenario_steps": [
       {
         "action": "tap_text",
@@ -20592,11 +20780,11 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "kind": "approved_source",
       "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
-      "state_name": "garmin-syncing"
+      "state_name": "garmin-synced"
     }
   },
   {
-    "id": "BW-096",
+    "id": "BW-097",
     "name": "garmin-synced",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
@@ -20727,11 +20915,11 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "kind": "approved_source",
       "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
-      "state_name": "garmin-synced"
+      "state_name": "garmin-idempotent"
     }
   },
   {
-    "id": "BW-097",
+    "id": "BW-098",
     "name": "garmin-idempotent",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
@@ -20741,141 +20929,6 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-idempotent",
-    "fixture_facts": {
-      "date": "2026-10-01",
-      "locale": "en-SG",
-      "timezone": "Asia/Singapore",
-      "sqlite": "authoritative-synthetic"
-    },
-    "interactions": [
-      {
-        "id": "garmin-back",
-        "text": "Back to Garmin activities",
-        "data": {}
-      },
-      {
-        "id": "garmin-settings",
-        "text": "Open Garmin appearance",
-        "data": {}
-      },
-      {
-        "id": "",
-        "text": "Sync now",
-        "data": {
-          "garminAction": "sync"
-        }
-      },
-      {
-        "id": "",
-        "text": "Import FIT",
-        "data": {
-          "garminAction": "import"
-        }
-      },
-      {
-        "id": "",
-        "text": "Preview error",
-        "data": {
-          "garminAction": "sync-error"
-        }
-      },
-      {
-        "id": "",
-        "text": "Revoke",
-        "data": {
-          "garminAction": "revoke"
-        }
-      },
-      {
-        "id": "",
-        "text": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-        "data": {
-          "garminActivity": "garmin-948201"
-        }
-      },
-      {
-        "id": "",
-        "text": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-        "data": {
-          "garminActivity": "garmin-948315"
-        }
-      },
-      {
-        "id": "",
-        "text": "Workout",
-        "data": {
-          "garminRoot": "workout"
-        }
-      },
-      {
-        "id": "",
-        "text": "Calendar",
-        "data": {
-          "garminRoot": "calendar"
-        }
-      },
-      {
-        "id": "",
-        "text": "Library",
-        "data": {
-          "garminRoot": "library"
-        }
-      },
-      {
-        "id": "",
-        "text": "Progress",
-        "data": {
-          "garminRoot": "progress"
-        }
-      }
-    ],
-    "expected_visible_semantics": [
-      "Back to Garmin activities",
-      "Open Garmin appearance",
-      "Sync now",
-      "Import FIT",
-      "Preview error",
-      "Revoke",
-      "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-      "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-      "Workout",
-      "Calendar",
-      "Library",
-      "Progress"
-    ],
-    "focus_target": "garmin-back",
-    "scenario_steps": [
-      {
-        "action": "tap_text",
-        "value": "Sync now"
-      }
-    ],
-    "readiness": {
-      "screen_test_id": "garmin-sync-screen",
-      "test_id": "garmin-sync-screen",
-      "semantics": [
-        "Garmin Sync"
-      ]
-    },
-    "evidence_scope": "visual_only",
-    "reference": {
-      "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
-      "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
-      "state_name": "garmin-idempotent"
-    }
-  },
-  {
-    "id": "BW-098",
-    "name": "garmin-error",
-    "route": "/garmin/index",
-    "component": "GarminSyncScreen",
-    "route_params": {
-      "origin": "workout"
-    },
-    "fixture_id": "v12-synthetic-fixtures-r18",
-    "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-error",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20970,7 +21023,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-099",
-    "name": "garmin-file-import",
+    "name": "garmin-error",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -20978,7 +21031,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-file-import",
+    "scenario": "garmin-error",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21055,7 +21108,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
-    "scenario_steps": [],
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Sync now"
+      }
+    ],
     "readiness": {
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
@@ -21411,15 +21469,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-103",
-    "name": "garmin-file-import",
-    "route": "/garmin/index",
-    "component": "GarminSyncScreen",
+    "name": "garmin-treadmill",
+    "route": "/garmin/activity/[activityId]",
+    "component": "ImportedActivityDetailScreen",
     "route_params": {
+      "activityId": "phase20-garmin-treadmill",
       "origin": "workout"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-file-import",
+    "scenario": "garmin-treadmill",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21498,10 +21557,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "garmin-sync-screen",
-      "test_id": "garmin-sync-screen",
+      "screen_test_id": "imported-activity-detail-screen",
+      "test_id": "imported-activity-detail-screen",
       "semantics": [
-        "Garmin Sync"
+        "Activity detail"
       ]
     },
     "evidence_scope": "visual_only",
@@ -21514,16 +21573,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-104",
-    "name": "garmin-treadmill",
-    "route": "/garmin/activity/[activityId]",
-    "component": "ImportedActivityDetailScreen",
+    "name": "garmin-match-treadmill",
+    "route": "/garmin/match/[activityId]",
+    "component": "ActivityMatchScreen",
     "route_params": {
       "activityId": "phase20-garmin-treadmill",
       "origin": "workout"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-treadmill",
+    "scenario": "garmin-match-treadmill",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21589,10 +21648,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "imported-activity-detail-screen",
-      "test_id": "imported-activity-detail-screen",
+      "screen_test_id": "activity-match-screen",
+      "test_id": "activity-match-screen",
       "semantics": [
-        "Activity detail"
+        "Match activity"
       ]
     },
     "evidence_scope": "visual_only",
@@ -21610,7 +21669,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-105",
-    "name": "garmin-match-treadmill",
+    "name": "garmin-confirmed-treadmill",
     "route": "/garmin/match/[activityId]",
     "component": "ActivityMatchScreen",
     "route_params": {
@@ -21619,7 +21678,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-match-treadmill",
+    "scenario": "garmin-confirmed-treadmill",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21721,16 +21780,15 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-106",
-    "name": "garmin-confirmed-treadmill",
-    "route": "/garmin/match/[activityId]",
-    "component": "ActivityMatchScreen",
+    "name": "garmin-session-expired",
+    "route": "/garmin/index",
+    "component": "GarminSyncScreen",
     "route_params": {
-      "activityId": "phase20-garmin-treadmill",
       "origin": "workout"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-confirmed-treadmill",
+    "scenario": "garmin-session-expired",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21836,10 +21894,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "activity-match-screen",
-      "test_id": "activity-match-screen",
+      "screen_test_id": "garmin-sync-screen",
+      "test_id": "garmin-sync-screen",
       "semantics": [
-        "Match activity"
+        "Garmin Sync"
       ]
     },
     "evidence_scope": "visual_only",
@@ -21852,7 +21910,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
   },
   {
     "id": "BW-107",
-    "name": "garmin-revoked",
+    "name": "garmin-logged-out",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -21860,7 +21918,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-revoked",
+    "scenario": "garmin-logged-out",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",

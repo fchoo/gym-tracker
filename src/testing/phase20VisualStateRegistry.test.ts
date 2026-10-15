@@ -8,7 +8,7 @@ describe("Phase 20 visual state registry", () => {
     expect(PHASE20_VISUAL_STATE_REGISTRY).toHaveLength(107);
     expect(PHASE20_VISUAL_CONFIGURATIONS).toHaveLength(64);
     expect(phase20VisualState("BW-001")?.name).toBe("appearance");
-    expect(phase20VisualState("BW-107")?.name).toBe("garmin-revoked");
+    expect(phase20VisualState("BW-107")?.name).toBe("garmin-logged-out");
   });
 
   it("uses retained bytes only where both approved screenshots actually exist", () => {
@@ -36,6 +36,13 @@ describe("Phase 20 visual state registry", () => {
     const product = PHASE20_VISUAL_STATE_REGISTRY.filter(({ id }) => Number(id.slice(3)) < 92);
     expect(garmin).toHaveLength(16);
     expect(garmin.every(({ evidence_scope }) => evidence_scope === "visual_only")).toBe(true);
+    expect(garmin.map(({ name }) => name)).toEqual([
+      "garmin-disconnected", "garmin-login", "garmin-mfa", "garmin-connected",
+      "garmin-syncing", "garmin-synced", "garmin-idempotent", "garmin-error",
+      "garmin-outdoor", "garmin-match-outdoor", "garmin-confirmed-outdoor",
+      "garmin-treadmill", "garmin-match-treadmill", "garmin-confirmed-treadmill",
+      "garmin-session-expired", "garmin-logged-out",
+    ]);
     expect(product.every(({ evidence_scope }) => evidence_scope === "production_screen")).toBe(true);
   });
 

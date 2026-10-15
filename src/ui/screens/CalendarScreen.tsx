@@ -708,7 +708,6 @@ export function CalendarScreen({
     <AdaptiveScreen
       onRequestBack={requestCalendarBack}
       scrollable={false}
-      testID="calendar-screen"
       primary={(
         <React.Profiler id="phase16-calendar" onRender={recordDiagnosticRender}>
         <View style={styles.screen}>

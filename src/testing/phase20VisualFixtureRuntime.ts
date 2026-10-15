@@ -271,6 +271,29 @@ async function seedLibraryAndRunning(kernel: SqliteKernel): Promise<void> {
   await kernel.write(async (transaction) => {
     await transaction.execute(
       "UPDATE plans SET is_active = 1, revision = revision + 1 WHERE id = ?",
+      [PHASE20_VISUAL_OWNED_PLAN_ID],
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_schedules
+        (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind)
+       VALUES ('phase20-strength-schedule', ?, 'active', 1, ?, NULL, 'strength')`,
+      [PHASE20_VISUAL_OWNED_PLAN_ID, PHASE20_VISUAL_NOW_MS],
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_schedule_versions
+        (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms)
+       VALUES ('phase20-strength-schedule-v1', 'phase20-strength-schedule', 1,
+               '2026-09-28', 'weekday', 'Asia/Singapore', NULL, ?)`,
+      [PHASE20_VISUAL_NOW_MS],
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_schedule_bindings
+        (id, schedule_version_id, mode, ordinal, week_index, weekday, plan_day_id)
+       VALUES ('phase20-strength-binding', 'phase20-strength-schedule-v1',
+               'weekday', 0, 0, 'Thursday', 'phase20-strength-foundation-day-a')`,
+    );
+    await transaction.execute(
+      "UPDATE plans SET is_active = 1, revision = revision + 1 WHERE id = ?",
       [PHASE20_VISUAL_RUNNING_PLAN_ID],
     );
     await transaction.execute(
@@ -389,29 +412,6 @@ async function seedProgressAndGarmin(kernel: SqliteKernel, scenario: string): Pr
 async function seedCalendar(kernel: SqliteKernel): Promise<void> {
   await seedLibraryAndRunning(kernel);
   await kernel.write(async (transaction) => {
-    await transaction.execute(
-      "UPDATE plans SET is_active = 1, revision = revision + 1 WHERE id = ?",
-      [PHASE20_VISUAL_OWNED_PLAN_ID],
-    );
-    await transaction.execute(
-      `INSERT INTO owned_plan_schedules
-        (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind)
-       VALUES ('phase20-strength-schedule', ?, 'active', 1, ?, NULL, 'strength')`,
-      [PHASE20_VISUAL_OWNED_PLAN_ID, PHASE20_VISUAL_NOW_MS],
-    );
-    await transaction.execute(
-      `INSERT INTO owned_plan_schedule_versions
-        (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms)
-       VALUES ('phase20-strength-schedule-v1', 'phase20-strength-schedule', 1,
-               '2026-09-28', 'weekday', 'Asia/Singapore', NULL, ?)`,
-      [PHASE20_VISUAL_NOW_MS],
-    );
-    await transaction.execute(
-      `INSERT INTO owned_plan_schedule_bindings
-        (id, schedule_version_id, mode, ordinal, week_index, weekday, plan_day_id)
-       VALUES ('phase20-strength-binding', 'phase20-strength-schedule-v1',
-               'weekday', 0, 0, 'Thursday', 'phase20-strength-foundation-day-a')`,
-    );
     await transaction.execute(
       `INSERT INTO owned_plan_schedule_opportunities
         (id, schedule_id, schedule_version_id, local_date, source, plan_day_id,

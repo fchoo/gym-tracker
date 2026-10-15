@@ -54,22 +54,22 @@ export function createPhase20VisualGarminSource(
     throw new Error("phase20_visual_garmin_state_invalid");
   }
   const scenario = request.state;
-  const connected = !["BW-092", "BW-093", "BW-107"].includes(scenario);
+  const initialConnection = scenario === "BW-094"
+    ? { kind: "mfa_required" as const, challenge_handle: "phase20-visual-mfa", generation: 1 }
+    : ["BW-092", "BW-093", "BW-106", "BW-107"].includes(scenario)
+      ? { kind: "disconnected" as const }
+      : { kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 };
   return Object.freeze({
-    connectionState: async () => connected
-      ? { kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 }
-      : { kind: "disconnected" as const },
-    restoreSession: async () => connected
-      ? { kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 }
-      : { kind: "disconnected" as const },
-    login: async () => scenario === "BW-093"
+    connectionState: async () => initialConnection,
+    restoreSession: async () => initialConnection,
+    login: async () => scenario === "BW-094"
       ? { kind: "mfa_required" as const, challenge_handle: "phase20-visual-mfa", generation: 1 }
       : { kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 },
     resumeMfa: async () => ({ kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 }),
     logout: async () => undefined,
     listRunningSummaries: async () => {
-      if (scenario === "BW-095") return new Promise<never>(() => undefined);
-      if (scenario === "BW-098") throw new Error("garmin_rate_limited");
+      if (scenario === "BW-096") return new Promise<never>(() => undefined);
+      if (scenario === "BW-099") throw new Error("garmin_rate_limited");
       return Object.freeze({ items: Object.freeze([
         { account_namespace: ACCOUNT, external_activity_id: "phase20-outdoor-001" },
         { account_namespace: ACCOUNT, external_activity_id: "phase20-treadmill-001" },

@@ -542,7 +542,6 @@ export function TodayScreen({
     <>
       <AdaptiveScreen
         {...adaptiveWidth}
-        testID="today-screen"
         primary={
           <>
             <ScreenHeader

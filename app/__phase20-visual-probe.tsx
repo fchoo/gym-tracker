@@ -11,6 +11,7 @@ import {
 } from "../src/testing/phase20VisualProbe";
 import { phase20VisualState } from "../src/testing/phase20VisualStateRegistry";
 import { AppLoadingShell } from "../src/ui/screens/RootScreens";
+import { AppTabs, rootDestinations } from "../src/ui/components";
 import { AppRootShell } from "../src/ui/shell/AppRootShell";
 import type { RootRouteKey } from "../src/ui/shell/rootFocus";
 import { RootSettingsContent } from "./(tabs)/_layout";
@@ -59,6 +60,8 @@ function ProductionVisualState({
   const dataAndRecoveryTriggerRef = React.useRef<View>(null);
   const screen = <Route />;
   if (root === undefined) return screen;
+  const routes = rootDestinations.map(({ name }) => ({ key: `phase20-${name}`, name }));
+  const index = Math.max(0, routes.findIndex(({ name }) => name === root));
   return (
     <AppRootShell
       activeRoot={root}
@@ -74,6 +77,13 @@ function ProductionVisualState({
       settingsTriggerRef={settingsTriggerRef}
     >
       {screen}
+      <AppTabs
+        navigation={{
+          emit: () => ({ defaultPrevented: false }),
+          navigate: () => undefined,
+        }}
+        state={{ index, routes }}
+      />
     </AppRootShell>
   );
 }

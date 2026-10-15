@@ -79,6 +79,52 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       - tapOn: { id: "calendar-info-action" }
 - runFlow:
     when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-024'}
+    commands:
+      - tapOn: { text: "Show November 2026" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-025'}
+    commands:
+      - tapOn: { text: "Show September 2026" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-026'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-07" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-028'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-04" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-029'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-09" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-030'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-10" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-031'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-05" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-032'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-11-01" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-033'}
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-01" }
+      - tapOn: { text: "Collapse day and return to month" }
+- runFlow:
+    when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-035'}
     commands:
       - tapOn: { id: "library-filters-chip" }
@@ -92,6 +138,11 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-040'}
     commands:
       - tapOn: { text: "Archive plan" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-057'}
+    commands:
+      - tapOn: { text: "Exercises" }
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-063'}
@@ -151,6 +202,7 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-076'}
     commands:
       - tapOn: { text: "Strength" }
+      - tapOn: { text: "Review target for Back Squat" }
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-077'}
@@ -239,11 +291,6 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       - tapOn: { text: "Connect Garmin" }
 - runFlow:
     when:
-      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-095'}
-    commands:
-      - tapOn: { text: "Sync now" }
-- runFlow:
-    when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-096'}
     commands:
       - tapOn: { text: "Sync now" }
@@ -255,6 +302,11 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-098'}
+    commands:
+      - tapOn: { text: "Sync now" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-099'}
     commands:
       - tapOn: { text: "Sync now" }
 - runFlow:

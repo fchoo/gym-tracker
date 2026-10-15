@@ -9,6 +9,13 @@ const approvedRoot = "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/design
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFile = (relative) => readFileSync(path.join(root, relative));
 const phase20ActiveSessionId = "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0";
+const canonicalGarminStates = [
+  "garmin-disconnected", "garmin-login", "garmin-mfa", "garmin-connected",
+  "garmin-syncing", "garmin-synced", "garmin-idempotent", "garmin-error",
+  "garmin-outdoor", "garmin-match-outdoor", "garmin-confirmed-outdoor",
+  "garmin-treadmill", "garmin-match-treadmill", "garmin-confirmed-treadmill",
+  "garmin-session-expired", "garmin-logged-out",
+];
 const progressRouteParams = (name) => ({
   sport: name.includes("running") ? "Running" : name.includes("strength") || name === "progress-recommendation" ? "Strength" : "All",
   period: name.endsWith("-12w") ? "12_weeks" : name.endsWith("-all") && name !== "progress-all" ? "all_time" : "4_weeks",
@@ -71,6 +78,12 @@ const readinessTestIdFor = (component, name) => ({
   "active-exercise-picker": "add-exercise-sheet",
   "set-action-menu": "add-set-sheet",
   "calendar-key": "calendar-key-sheet",
+  "calendar-agenda-2026-10-07": "calendar-agenda-region",
+  "calendar-agenda-2026-10-04": "calendar-agenda-region",
+  "calendar-agenda-2026-10-09": "calendar-agenda-region",
+  "calendar-agenda-2026-10-10": "calendar-agenda-region",
+  "calendar-agenda-2026-10-05": "calendar-agenda-region",
+  "calendar-adjacent-week": "calendar-agenda-region",
   "plan-filters": "starter-filter-sheet-frame",
   "library-actions": "library-actions-sheet-frame",
   "create-strength": "owned-plan-create",
@@ -109,8 +122,14 @@ const scenarioStepsFor = (name) => {
   if (name === "active-exercise-picker") return [{ action: "tap_id", value: "add-exercise" }];
   if (name === "set-action-menu") return [{ action: "tap_text", value: "Add set" }];
   if (name === "calendar-key") return [{ action: "tap_id", value: "calendar-info-action" }];
+  if (name === "calendar-next") return [{ action: "tap_text", value: "Show November 2026" }];
+  if (name === "calendar-previous") return [{ action: "tap_text", value: "Show September 2026" }];
+  if (name.startsWith("calendar-agenda-")) return [{ action: "tap_id", value: `calendar-day-${name.slice("calendar-agenda-".length)}` }];
+  if (name === "calendar-adjacent-week") return [{ action: "tap_id", value: "calendar-day-2026-11-01" }];
+  if (name === "calendar-collapsed") return [{ action: "tap_id", value: "calendar-day-2026-10-01" }, { action: "tap_text", value: "Collapse day and return to month" }];
   if (name === "plan-filters") return [{ action: "tap_id", value: "library-filters-chip" }];
   if (name === "library-actions") return [{ action: "tap_text", value: "Actions" }];
+  if (name === "library-exercises") return [{ action: "tap_text", value: "Exercises" }];
   if (name === "archive-confirmation") return [{ action: "tap_text", value: "Archive plan" }];
   const steps = [];
   if (name === "progress-strength" || name.startsWith("progress-strength-") || name === "progress-recommendation") steps.push({ action: "tap_text", value: "Strength" });
@@ -119,9 +138,10 @@ const scenarioStepsFor = (name) => {
   if (name.endsWith("-all") && name !== "progress-all") steps.push({ action: "tap_text", value: "All time" });
   if (name.startsWith("running-effort-")) steps.push({ action: "tap_text", value: `Open best efforts for ${name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon"}` });
   if (name.startsWith("running-target-")) steps.push({ action: "tap_text", value: `Set target for ${name.endsWith("2.4") ? "2.4 km" : name.endsWith("10") ? "10 km" : "Half Marathon"}` });
+  if (name === "progress-recommendation") steps.push({ action: "tap_text", value: "Review target for Back Squat" });
   if (name === "bodyweight-history") return [{ action: "tap_text", value: "Body metrics" }];
   if (name === "progress-settings") return [{ action: "tap_text", value: "Settings" }];
-  if (name === "garmin-consent") return [{ action: "tap_text", value: "Connect Garmin" }];
+  if (name === "garmin-login") return [{ action: "tap_text", value: "Connect Garmin" }];
   if (["garmin-syncing", "garmin-synced", "garmin-idempotent", "garmin-error"].includes(name)) return [{ action: "tap_text", value: "Sync now" }];
   return steps;
 };
@@ -163,9 +183,11 @@ for (const required of ["approved-hybrid.html", "approved.json"]) {
 const states = walk.slice(0, 107).map((light, index) => {
   const dark = walk[index + 107];
   if (!light || !dark || light.name !== dark.name || light.theme !== "light" || dark.theme !== "dark") throw new Error(`phase20_visual_walk_pair_invalid:${index}`);
-  const name = light.name;
+  const browserStateName = light.name;
+  const name = index < 91 ? browserStateName : canonicalGarminStates[index - 91];
+  if (name === undefined) throw new Error(`phase20_visual_state_name_missing:${index}`);
   const destination = destinationFor(name);
-  const png = { light: `light-${name}.png`, dark: `dark-${name}.png` };
+  const png = { light: `light-${browserStateName}.png`, dark: `dark-${browserStateName}.png` };
   const hasPng = existsSync(path.join(root, evidence, png.light)) && existsSync(path.join(root, evidence, png.dark));
   const controls = light.controls.map((control) => ({ id: control.id, text: control.text, data: control.data }));
   return {
@@ -179,7 +201,7 @@ const states = walk.slice(0, 107).map((light, index) => {
     evidence_scope: index >= 91 ? "visual_only" : "production_screen",
     reference: hasPng
       ? { kind: "retained_png", light: { path: `${evidence}/${png.light}`, sha256: sha256(sourceFile(`${evidence}/${png.light}`)) }, dark: { path: `${evidence}/${png.dark}`, sha256: sha256(sourceFile(`${evidence}/${png.dark}`)) } }
-      : { kind: "approved_source", approved_hybrid_html_sha256: sourceHash["approved-hybrid.html"], approved_json_sha256: sourceHash["approved.json"], state_name: name },
+      : { kind: "approved_source", approved_hybrid_html_sha256: sourceHash["approved-hybrid.html"], approved_json_sha256: sourceHash["approved.json"], state_name: browserStateName },
   };
 });
 if (new Set(states.map((state) => state.id)).size !== 107 || new Set(states.map((state) => `${state.id}:${state.name}`)).size !== 107) throw new Error("phase20_visual_state_duplicate");

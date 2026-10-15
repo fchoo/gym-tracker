@@ -19,12 +19,12 @@ describe("Phase 20 visual Garmin source", () => {
   it("keeps disconnected and connected states deterministic inside the visual gate", async () => {
     await expect(createPhase20VisualGarminSource(request("BW-092")).restoreSession())
       .resolves.toEqual({ kind: "disconnected" });
-    await expect(createPhase20VisualGarminSource(request("BW-094")).restoreSession())
+    await expect(createPhase20VisualGarminSource(request("BW-095")).restoreSession())
       .resolves.toEqual({ kind: "connected", account_namespace: "phase20-visual-account", generation: 1 });
   });
 
   it("returns valid source envelopes and explicit failure behavior", async () => {
-    const source = createPhase20VisualGarminSource(request("BW-096"));
+    const source = createPhase20VisualGarminSource(request("BW-097"));
     await expect(source.listRunningSummaries({ limit: 20 })).resolves.toHaveProperty("items", [
       { account_namespace: "phase20-visual-account", external_activity_id: "phase20-outdoor-001" },
       { account_namespace: "phase20-visual-account", external_activity_id: "phase20-treadmill-001" },
@@ -35,7 +35,7 @@ describe("Phase 20 visual Garmin source", () => {
       external_activity_id: "phase20-outdoor-001",
       sample_fidelity: "source_laps",
     });
-    await expect(createPhase20VisualGarminSource(request("BW-098")).listRunningSummaries({ limit: 20 }))
+    await expect(createPhase20VisualGarminSource(request("BW-099")).listRunningSummaries({ limit: 20 }))
       .rejects.toThrow("garmin_rate_limited");
   });
 
