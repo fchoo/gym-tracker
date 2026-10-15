@@ -1,27 +1,20 @@
 appId: com.fchoo.gymtracker.devtest
-name: V1.2 recovery fixture flow (deferred native evidence)
-tags:
-  - phase-20
-  - recovery
-  - deferred-native-evidence
+name: V1.2 real SQLite recovery cut and retry
+tags: [phase-20, recovery, development-test, real-sqlite]
 ---
-# This source-bound flow is intentionally not run until Plan 20-08's frozen APK gate.
-- launchApp:
-    clearState: false
-    stopApp: true
-- assertVisible: "Today"
-- runFlow:
-    when:
-      true: ${V12_RECOVERY_STAGE == 'post-commit-before-ack'}
-    commands:
-      - stopApp
-      - launchApp:
-          clearState: false
-          stopApp: true
-      - assertVisible: "Resume workout"
-- runFlow:
-    when:
-      true: ${V12_RECOVERY_STAGE == 'offline-retry'}
-    commands:
-      - assertVisible: "Workout in progress"
-      - pressKey: "Back"
+- assertTrue: ${V12_RECOVERY_CASE != null}
+- assertTrue: ${V12_RECOVERY_STAGE != null}
+- assertTrue: ${V12_DOMAIN_NONCE != null}
+- launchApp: { clearState: false, stopApp: true }
+- openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&cutId=${V12_RECOVERY_STAGE}&phase=arm"
+- extendedWaitUntil:
+    visible: "Recovery cut armed"
+    timeout: 120000
+# This stop is the real process boundary. The arm route has already closed its
+# writer, and no final marker exists until a fresh process reopens and retries.
+- stopApp
+- launchApp: { clearState: false, stopApp: true }
+- openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&cutId=${V12_RECOVERY_STAGE}&phase=recover"
+- extendedWaitUntil:
+    visible: "Recovery observation complete"
+    timeout: 120000
