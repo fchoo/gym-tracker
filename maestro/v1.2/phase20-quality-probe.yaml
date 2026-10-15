@@ -1,0 +1,12 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 20 installed quality probe support
+tags: [v1.2, phase-20, quality, development-test]
+---
+- assertTrue: ${PHASE20_QUALITY_NONCE != null}
+- assertTrue: ${PHASE20_QUALITY_ACTION == 'accessibility' || PHASE20_QUALITY_ACTION == 'performance'}
+- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- openLink: "gymtracker-devtest://__phase20-quality-probe?nonce=${PHASE20_QUALITY_NONCE}&action=${PHASE20_QUALITY_ACTION}"
+- extendedWaitUntil: { visible: "What are you training for?", timeout: 30000 }
+- assertVisible: "Strength"
+- assertVisible: "Running"
+- assertVisible: "TalkBack and switch scanning require attended observation."
