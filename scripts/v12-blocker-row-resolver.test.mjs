@@ -1,0 +1,59 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { loadV12ContractInputs } from './v12-evidence-contract.mjs';
+import { parseV12SourceJUnit, resolveV12PerformanceGates, createV12RowSelectorTable, resolveV12SqliteReceipt } from './v12-blocker-row-resolver.mjs';
+
+const inputs = loadV12ContractInputs();
+test('canonical matrix has exactly 172 typed selectors in source order', () => {
+  const table = createV12RowSelectorTable({ inputs });
+  assert.equal(table.length, 172);
+  assert.deepEqual(table.map(x => x.row_id), inputs.matrix.rows.map(x => x.requirement_id));
+  assert.equal(new Set(table.map(x => x.row_id)).size, 172);
+  assert.ok(table.every(x => x.selector.type && x.selector.id && x.selector.contract));
+  const dom = table.filter(x => x.row_id.startsWith('DOM'));
+  assert.equal(dom.find(x => x.row_id === 'DOM-01').selector.id, 'phase13-map01-activation');
+  assert.equal(table.find(x => x.row_id === 'WRK-36').selector.id, 'workout.completion-writeback');
+  assert.equal(table.find(x => x.row_id === 'LIB-36').selector.id, 'library.running-conflict');
+  assert.throws(() => createV12RowSelectorTable({ inputs: { ...inputs, matrix: { ...inputs.matrix, rows: [...inputs.matrix.rows.slice(1), inputs.matrix.rows[1]] } } }), /row_resolver_.*matrix/);
+});
+
+for (const [body, expected] of [['', 'PASS'], ['<failure/>', 'FAIL'], ['<error/>', 'FAIL'], ['<skipped/>', 'REVIEW_REQUIRED']]) {
+  test(`JUnit concrete result ${expected}: ${body || 'executed'}`, () => {
+    const entries = parseV12SourceJUnit(`<testsuite><testcase name="case-1">${body}</testcase></testsuite>`, ['case-1']);
+    assert.equal(entries[0].result, expected);
+  });
+}
+test('JUnit NOT_RUN requires an explicit registry state and failure always wins', () => {
+  const xml = '<testsuite><testcase name="case-1"><skipped/></testcase></testsuite>';
+  assert.equal(parseV12SourceJUnit(xml, ['case-1'], { 'case-1': 'NOT_RUN' })[0].result, 'NOT_RUN');
+  assert.equal(parseV12SourceJUnit(xml.replace('<skipped/>', '<error/><skipped/>'), ['case-1'], { 'case-1': 'NOT_RUN' })[0].result, 'FAIL');
+});
+test('JUnit rejects missing, unknown, duplicate and malformed selectors', () => {
+  for (const xml of ['<testsuite/>', '<testsuite><testcase name="other"/></testsuite>', '<testsuite><testcase name="case-1"/><testcase name="case-1"/></testsuite>', '<testsuite><testcase name="case-1">', '<!DOCTYPE testsuite><testsuite><testcase name="case-1"/></testsuite>']) {
+    assert.throws(() => parseV12SourceJUnit(xml, ['case-1']), /row_resolver_.*junit/);
+  }
+});
+test('count-only SQLite receipts cannot certify ten concrete cases', () => {
+  const receipt = { schema_version: 1, producer: 'v12-sqlite-shard', cases: 4, digest: 'a'.repeat(64) };
+  const result = resolveV12SqliteReceipt(receipt, 'migration');
+  assert.equal(result.result, 'REVIEW_REQUIRED');
+  assert.match(result.reason, /case.*status/);
+  assert.throws(() => resolveV12SqliteReceipt({ ...receipt, cases: 3 }, 'migration'), /row_resolver_sqlite/);
+});
+test('performance gates retain explicit unreviewed Garmin baseline', () => {
+  const gates = resolveV12PerformanceGates({ raw_samples: { garmin_sync_normalization: { state: 'REVIEW_REQUIRED', limit_source: 'phase18-exact-artifact-baseline', fixture_sha256: 'a'.repeat(64) } } });
+  assert.equal(gates.garmin_sync_normalization.result, 'REVIEW_REQUIRED');
+  assert.equal(gates.warm_launch_to_interactive.result, 'NOT_RUN');
+});
+for (const [samples, expected] of [[Array(20).fill(100), 'PASS'], [Array(20).fill(1001), 'FAIL'], [[], 'NOT_RUN'], [[100], 'REVIEW_REQUIRED']]) {
+  test(`warm launch numeric gate derives ${expected} from raw samples`, () => {
+    assert.equal(resolveV12PerformanceGates({ raw_samples: { warm_launch_to_interactive_ms: samples } }).warm_launch_to_interactive.result, expected);
+  });
+}
+test('multi-plan registry reads the complete source array, not just its first string', () => {
+  const source = readFileSync('src/testing/contracts/multiPlanRunning.contract.ts', 'utf8');
+  assert.match(source, /MULTI_PLAN_RUNNING_CONTRACT_CASES/);
+  const table = createV12RowSelectorTable({ inputs });
+  assert.ok(table.filter(x => x.row_id.startsWith('DOM')).some(x => x.selector.id === 'phase13-merge-rebuild'));
+});
