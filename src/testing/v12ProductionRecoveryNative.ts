@@ -1093,8 +1093,8 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
     async arm(input) {
       const names = databaseNames(input);
       await Promise.all([
-        deleteDatabaseAsync(names.target).catch(() => undefined),
-        deleteDatabaseAsync(names.source).catch(() => undefined),
+        deleteDatabaseAsync(names.target),
+        deleteDatabaseAsync(names.source),
       ]);
       const operation = operationFor(input.caseId);
       const target = await migrate(names.target);
@@ -1190,7 +1190,7 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
       const names = databaseNames(input);
       await Promise.all([
         deleteDatabaseAsync(names.target),
-        deleteDatabaseAsync(names.source).catch(() => undefined),
+        deleteDatabaseAsync(names.source),
       ]);
     },
   });

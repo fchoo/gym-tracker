@@ -248,4 +248,52 @@ describe("v1.2 native Recovery producer boundary", () => {
     expect(executor.cleanup).toHaveBeenCalledTimes(1);
     expect(lines).toEqual([]);
   });
+
+  it("runs cleanup in finally when native recovery fails", async () => {
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: jest.fn(async () => undefined),
+      recover: jest.fn(async () => { throw new Error("recovery_failed"); }),
+      cleanup: jest.fn(async () => undefined),
+    };
+    const lines: string[] = [];
+
+    await expect(collectV12ProductionRecoveryPhase({
+      identity,
+      phase: "recover",
+      emit: (line) => lines.push(line),
+      signal: { aborted: false },
+      executor,
+    })).rejects.toThrow("recovery_failed");
+
+    expect(executor.cleanup).toHaveBeenCalledTimes(1);
+    expect(lines).toEqual([]);
+  });
+
+  it("runs cleanup in finally when durable observation validation fails", async () => {
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: jest.fn(async () => undefined),
+      recover: jest.fn(async () => ({
+        operation_id: "workout-rest-set-pointer",
+        boundary_ids: ["commit", "rest"],
+        after_reopen: snapshot(1, "b"),
+        recovery_code: "not-required",
+        after_recovery: snapshot(1, "b"),
+        retry_code: "already-completed",
+        after_retry: { ...snapshot(1, "b"), receipt_count: -1 },
+      })),
+      cleanup: jest.fn(async () => undefined),
+    };
+    const lines: string[] = [];
+
+    await expect(collectV12ProductionRecoveryPhase({
+      identity,
+      phase: "recover",
+      emit: (line) => lines.push(line),
+      signal: { aborted: false },
+      executor,
+    })).rejects.toThrow("v12_recovery_observation_invalid");
+
+    expect(executor.cleanup).toHaveBeenCalledTimes(1);
+    expect(lines).toEqual([]);
+  });
 });

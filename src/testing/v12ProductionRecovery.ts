@@ -314,12 +314,16 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
     return "armed";
   }
 
-  const observation = await executor.recover(executionIdentity);
-  active(input.signal);
-  if (!validObservation(observation)) {
-    throw new Error("v12_recovery_observation_invalid");
+  let observation: V12RecoveryNativeObservation;
+  try {
+    observation = await executor.recover(executionIdentity);
+    active(input.signal);
+    if (!validObservation(observation)) {
+      throw new Error("v12_recovery_observation_invalid");
+    }
+  } finally {
+    await executor.cleanup(executionIdentity);
   }
-  await executor.cleanup(executionIdentity);
   active(input.signal);
   input.emit(`${RESULT_PREFIX}${JSON.stringify({
     schema_version: 2,
