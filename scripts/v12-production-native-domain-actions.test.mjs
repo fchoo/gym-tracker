@@ -46,55 +46,62 @@ test('Calendar executes all 35 source-bound stages with exact receipts', (t) => 
 for (const [key, code] of [['noReceipt', 'calendar_receipt_invalid'], ['wrongFlow', 'calendar_flow_invalid'], ['missingJunit', 'junit_missing']]) test(`Calendar rejects ${key}`, (t) => { const r = fixture(t); r.updateState({ [key]: true }); bounded(r.invoke('calendar'), code); });
 test('Calendar binds requested flow before Maestro', (t) => { const r = fixture(t); bounded(r.invoke('calendar', { flow_sha256: '0'.repeat(64) }), 'calendar_flow_invalid'); assert.equal(r.readState().domainCalls.length, 0); });
 test('Calendar keeps real failing JUnit outcomes and no private failure text', (t) => { const r = fixture(t); r.updateState({ junitFailure: true }); const result = success(r.invoke('calendar')); assert.ok(result.stages.every((s) => s.status === 'FAIL')); assert.doesNotMatch(JSON.stringify(result), /private-native|bearer|\/Users\//u); });
-test('Recovery derives exact 8 by 8 outcomes from durable native readback facts', (t) => {
+test('Recovery derives all 14 command steps by 8 cuts from durable native readback facts', (t) => {
   const r = fixture(t); const report = success(r.invoke('recovery')); const xml = report.junit_xml;
-  assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 64);
+  assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 112);
   for (const key of [
-    'case_id', 'cut_id', 'operation_id', 'boundary_digest', 'barrier_id',
+    'case_id', 'step_id', 'cut_id', 'operation_id', 'boundary_id', 'receipt_kind', 'barrier_id', 'barrier_provenance',
     'process_state', 'acknowledgement', 'connectivity', 'first_attempt',
     'first_attempt_code', 'recovery_code', 'retry_code', 'receipt_sha256',
     'before_sha256', 'after_cut_sha256', 'after_reopen_sha256',
     'after_recovery_sha256', 'after_retry_sha256',
-  ]) assert.equal((xml.match(new RegExp(`name="${key}"`, 'gu')) ?? []).length, 64);
+  ]) assert.equal((xml.match(new RegExp(`name="${key}"`, 'gu')) ?? []).length, 112);
   assert.doesNotMatch(xml, /name="app_status"|name="app_verdict"/u);
-  assert.equal(r.readState().domainCalls.length, 128);
+  assert.equal(r.readState().domainCalls.length, 224);
 });
 test('Recovery is reachable through the production adapter and checked-in default launcher subprocess', (t) => {
   const r = fixture(t); const xml = success(r.invokeDefault('recovery')).junit_xml;
-  assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 64);
-  assert.equal(r.readState().domainCalls.length, 128);
+  assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 112);
+  assert.equal(r.readState().domainCalls.length, 224);
 });
 test('Recovery returns eight causal scenarios, eight distinct barriers, and per-cut rich facts', (t) => {
   const r = fixture(t); const report = success(r.invokeDefault('recovery'));
   assert.equal(report.schema_version, 2);
   assert.equal(report.producer, 'v12-production-recovery-host');
   assert.equal(report.cases.length, 8);
-  assert.deepEqual(report.cases.map((entry) => entry.operation_id), [
-    'tim01-legacy-playback', 'tim01-foreground-reconciliation', 'tim01-queued-callback',
-    'workout-relaunch-replay', 'secure-restore', 'secure-merge', 'tim01-zero-cue',
-    'workout-rest-set-pointer',
+  assert.deepEqual(report.cases.flatMap((entry) => entry.steps.map((step) => step.operation_id)), [
+    'legacy-workout-start', 'legacy-workout-edit', 'foreground-rest-reconcile',
+    'queued-set-commit', 'relaunch-workout-finish', 'secure-restore-commit',
+    'restore-garmin-import', 'secure-merge-commit', 'merge-activity-match',
+    'zero-cue-workout-start', 'zero-cue-workout-edit', 'zero-cue-workout-finish',
+    'between-set-commit', 'between-set-rest-transition',
   ]);
   const cuts = report.cases.flatMap((entry) => entry.cuts);
-  assert.equal(cuts.length, 64);
-  assert.deepEqual([...new Set(report.cases[0].cuts.map((cut) => cut.barrier.barrier_id))], [
+  assert.equal(cuts.length, 112);
+  assert.deepEqual([...new Set(report.cases[0].cuts.slice(0, 8).map((cut) => cut.barrier.barrier_id))], [
     'before-transaction', 'writer-transaction-open', 'commit-durable-ack-pending',
-    'acknowledgement-observed', 'replay-process-open', 'first-attempt-failed',
-    'post-boundary-offline', 'domain-reconciliation-pending',
+    'acknowledgement-observed', 'relaunch-runtime-open', 'first-attempt-failed',
+    'offline-toggle-before-commit', 'recovery-replay-writer-open',
   ]);
-  assert.equal(new Set(cuts.map((cut) => cut.receipt_sha256)).size, 64);
+  assert.equal(new Set(cuts.map((cut) => cut.barrier.provenance)).size, 8);
+  assert.equal(new Set(cuts.map((cut) => cut.receipt_sha256)).size, 112);
   assert.ok(cuts.every((cut) => ['before', 'after_cut', 'after_reopen', 'after_recovery', 'after_retry']
     .every((name) => cut.snapshots[name]?.rest_facts && cut.snapshots[name]?.timing_facts
       && cut.snapshots[name]?.history_facts && cut.snapshots[name]?.restore_facts
-      && cut.snapshots[name]?.merge_receipt_facts)));
+      && cut.snapshots[name]?.merge_receipt_facts && cut.snapshots[name]?.command_receipt_facts)));
+  assert.ok(cuts.every((cut) => cut.snapshots.after_retry.command_receipt_facts.length === 1
+    && cut.snapshots.after_retry.command_receipt_facts[0].kind === cut.receipt_kind));
+  assert.ok(cuts.filter((cut) => ['post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'offline'].includes(cut.cut_id))
+    .every((cut) => JSON.stringify(cut.snapshots.after_retry) === JSON.stringify(cut.snapshots.after_reopen)));
   const byId = Object.fromEntries(report.cases.map((entry) => [entry.id, entry]));
-  assert.ok(byId['legacy-playback'].cuts.every((cut) => cut.snapshots.after_retry.timing_count > 0
+  assert.ok(byId['legacy-playback'].cuts.filter((cut) => cut.step_id === 'legacy-edit').every((cut) => cut.snapshots.after_retry.timing_count > 0
     && cut.snapshots.after_retry.history_count > 0 && cut.snapshots.after_retry.cue_count === 0));
   assert.equal(byId['foreground-reconciliation'].cuts.find((cut) => cut.cut_id === 'recovery').recovery_code, 'foreground-reconciled');
-  assert.ok(byId['queued-callback'].cuts.every((cut) => cut.snapshots.after_reopen.effect_count > 0));
-  assert.equal(byId.relaunch.operation_id, 'workout-relaunch-replay');
+  assert.ok(byId['queued-callback'].cuts.every((cut) => cut.snapshots.after_retry.effect_count > 0));
   assert.ok(byId.restore.cuts.every((cut) => cut.snapshots.after_retry.restore_facts.length === 1));
-  assert.ok(byId.merge.cuts.every((cut) => cut.snapshots.after_retry.merge_receipt_facts.length > 0));
-  assert.equal(byId['zero-cue'].operation_id, 'tim01-zero-cue');
+  assert.ok(byId.restore.cuts.filter((cut) => cut.step_id === 'restore-import').every((cut) => cut.snapshots.after_retry.merge_receipt_facts.some((fact) => fact.table === 'imported_activity_receipts')));
+  assert.ok(byId.merge.cuts.filter((cut) => cut.step_id === 'merge-commit').every((cut) => cut.snapshots.after_retry.merge_receipt_facts.some((fact) => fact.table === 'metric_profile_migration_events')));
+  assert.ok(byId.merge.cuts.filter((cut) => cut.step_id === 'merge-match').every((cut) => cut.snapshots.after_retry.merge_receipt_facts.some((fact) => fact.table === 'running_activity_match_receipts')));
   assert.ok(byId['between-set-rest-pointer'].cuts.every((cut) => cut.snapshots.after_retry.pointer_facts.length > 0
     && cut.snapshots.after_retry.rest_facts.length > 0));
 });
@@ -112,6 +119,6 @@ test('Recovery quarantines and deletes raw Maestro JUnit even when diagnostics c
   }
 });
 test('Recovery rejects missing cut and restores settings in finally', (t) => { const r = fixture(t); r.updateState({ missingCut: true, changeSettings: true }); bounded(r.invoke('recovery'), 'recovery_receipt_invalid'); assert.equal(r.readState().settings.font_scale, '1.15'); assert.equal(r.readState().settings.airplane_mode_on, '0'); assert.equal(existsSync(path.join(r.scratch, 'lock')), false); });
-for (const key of ['junitFailure', 'junitSkip']) test(`Recovery preserves ${key} and restores settings`, (t) => { const r = fixture(t); r.updateState({ [key]: true, changeSettings: true }); const xml = success(r.invoke('recovery')).junit_xml; assert.equal((xml.match(key === 'junitFailure' ? /<failure\b/gu : /<skipped\b/gu) ?? []).length, 64); assert.doesNotMatch(xml, /private-native|bearer|\/Users\//u); assert.equal(r.readState().settings.font_scale, '1.15'); assert.equal(r.readState().settings.airplane_mode_on, '0'); });
+for (const key of ['junitFailure', 'junitSkip']) test(`Recovery preserves ${key} and restores settings`, (t) => { const r = fixture(t); r.updateState({ [key]: true, changeSettings: true }); const xml = success(r.invoke('recovery')).junit_xml; assert.equal((xml.match(key === 'junitFailure' ? /<failure\b/gu : /<skipped\b/gu) ?? []).length, 112); assert.doesNotMatch(xml, /private-native|bearer|\/Users\//u); assert.equal(r.readState().settings.font_scale, '1.15'); assert.equal(r.readState().settings.airplane_mode_on, '0'); });
 test('Recovery keeps the device lease when connectivity restore fails', (t) => { const r = fixture(t); r.updateState({ failAirplaneRestore: true, missingCut: true }); bounded(r.invoke('recovery'), 'settings_restore_failed'); assert.equal(existsSync(path.join(r.scratch, 'lock')), true); });
 for (const key of ['missingBundle', 'wrongSuite']) test(`standalone APK rejects ${key} before native actions`, (t) => { const r = fixture(t); r.updateState({ [key]: true }); bounded(r.invoke('garmin'), 'standalone_required'); assert.equal(r.readState().domainCalls.length, 0); });

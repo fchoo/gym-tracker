@@ -19,6 +19,7 @@ export type V12ProductionRecoveryIdentity = Readonly<{
   suite?: unknown;
   nonce?: unknown;
   caseId?: unknown;
+  stepId?: unknown;
   cutId?: unknown;
 }>;
 
@@ -58,8 +59,13 @@ export type V12RecoveryDurableSnapshot = Readonly<{
     status: string;
     revision: number;
     active_exercise_sha256: string | null;
+    active_set_exercise_sha256: string | null;
     active_set_sha256: string | null;
+    active_set_ordinal: number | null;
+    committed_set_exercise_sha256: string | null;
     committed_set_sha256: string | null;
+    committed_set_ordinal: number | null;
+    transition_sha256: string | null;
   }>[];
   rest_facts: readonly Readonly<{
     session_sha256: string;
@@ -70,7 +76,10 @@ export type V12RecoveryDurableSnapshot = Readonly<{
     deadline_at_ms: number | null;
     paused_remaining_ms: number | null;
     expired_at_ms: number | null;
+    next_set_exercise_sha256: string | null;
     next_set_sha256: string | null;
+    next_set_ordinal: number | null;
+    transition_sha256: string | null;
   }>[];
   timing_facts: readonly Readonly<{
     session_sha256: string;
@@ -108,11 +117,22 @@ export type V12RecoveryDurableSnapshot = Readonly<{
     committed_at_ms: number;
     result: string;
   }>[];
+  command_receipt_facts: readonly Readonly<{
+    step_id: string;
+    boundary_id: string;
+    kind: string;
+    receipt_sha256: string;
+    request_sha256: string;
+    committed_at_ms: number;
+    result: string;
+  }>[];
 }>;
 
 export type V12RecoveryNativeObservation = Readonly<{
+  step_id: string;
+  boundary_id: string;
+  receipt_kind: string;
   operation_id: string;
-  boundary_ids: readonly string[];
   after_reopen: V12RecoveryDurableSnapshot;
   recovery_code: string;
   after_recovery: V12RecoveryDurableSnapshot;
@@ -123,6 +143,7 @@ export type V12RecoveryNativeObservation = Readonly<{
 export type V12RecoveryExecutionIdentity = Readonly<{
   nonce: string;
   caseId: string;
+  stepId: string;
   cutId: string;
   signal: Readonly<{ aborted: boolean }>;
   progress(value: V12RecoveryArmProgress): void;
@@ -134,6 +155,7 @@ export type V12RecoveryArmProgress = Readonly<{
   acknowledgement: string;
   connectivity: string;
   first_attempt: string;
+  provenance: string;
   first_attempt_code: string;
   before: V12RecoveryDurableSnapshot;
   after_cut: V12RecoveryDurableSnapshot;
@@ -166,7 +188,7 @@ function validSnapshot(value: unknown): value is V12RecoveryDurableSnapshot {
     "merge_receipt_count", "cue_count", "source_sha256", "receipt_sha256",
     "effect_sha256", "pointer_sha256", "rest_sha256", "history_sha256",
     "timing_sha256", "restore_sha256", "merge_receipt_sha256", "cue_sha256",
-    "effect_facts", "pointer_facts", "rest_facts", "timing_facts",
+    "command_receipt_facts", "effect_facts", "pointer_facts", "rest_facts", "timing_facts",
     "history_facts", "restore_facts", "merge_receipt_facts",
   ])) {
     return false;
@@ -183,6 +205,7 @@ function validSnapshot(value: unknown): value is V12RecoveryDurableSnapshot {
       value.timing_sha256, value.restore_sha256, value.merge_receipt_sha256,
       value.cue_sha256,
     ].every((digest) => typeof digest === "string" && HASH.test(digest))
+    && Array.isArray(value.command_receipt_facts)
     && Array.isArray(value.effect_facts)
     && Array.isArray(value.pointer_facts)
     && Array.isArray(value.rest_facts)
@@ -190,6 +213,7 @@ function validSnapshot(value: unknown): value is V12RecoveryDurableSnapshot {
     && Array.isArray(value.history_facts)
     && Array.isArray(value.restore_facts)
     && Array.isArray(value.merge_receipt_facts)
+    && value.command_receipt_facts.length === value.receipt_count
     && value.effect_facts.length === value.effect_count
     && value.pointer_facts.length === value.pointer_count
     && value.rest_facts.length === value.rest_count
@@ -204,14 +228,17 @@ function validObservation(
 ): value is V12RecoveryNativeObservation {
   return isObject(value)
     && exactKeys(value, [
-      "operation_id", "boundary_ids", "after_reopen", "recovery_code",
+      "step_id", "boundary_id", "receipt_kind", "operation_id", "after_reopen", "recovery_code",
       "after_recovery", "retry_code", "after_retry",
     ])
+    && typeof value.step_id === "string"
+    && /^[a-z0-9-]{3,60}$/u.test(value.step_id)
+    && typeof value.boundary_id === "string"
+    && /^[a-z0-9-]{3,40}$/u.test(value.boundary_id)
+    && typeof value.receipt_kind === "string"
+    && /^[a-z0-9-]{3,40}$/u.test(value.receipt_kind)
     && typeof value.operation_id === "string"
     && /^[a-z0-9-]{3,60}$/u.test(value.operation_id)
-    && Array.isArray(value.boundary_ids)
-    && value.boundary_ids.length > 0
-    && value.boundary_ids.every((boundary) => typeof boundary === "string" && /^[a-z0-9-]{3,60}$/u.test(boundary))
     && typeof value.recovery_code === "string"
     && /^[a-z0-9-]{3,60}$/u.test(value.recovery_code)
     && typeof value.retry_code === "string"
@@ -230,20 +257,24 @@ function active(signal: Readonly<{ aborted: boolean }>): void {
 function validArmProgress(
   value: V12RecoveryArmProgress,
   caseId: string,
+  stepId: string,
   cutId: string,
 ): boolean {
   const cut = V12_RECOVERY_CUT_DEFINITIONS.find(({ id }) => id === cutId);
   const scenario = V12_RECOVERY_SCENARIOS.find(({ id }) => id === caseId);
+  const step = scenario?.steps.find(({ id }) => id === stepId);
   return cut !== undefined && scenario !== undefined
+    && step !== undefined
     && exactKeys(value as unknown as Record<string, unknown>, [
       "barrier_id", "process_state", "acknowledgement", "connectivity",
-      "first_attempt", "first_attempt_code", "before", "after_cut",
+      "first_attempt", "provenance", "first_attempt_code", "before", "after_cut",
     ])
     && value.barrier_id === cut.barrierId
     && value.process_state === cut.processState
     && value.acknowledgement === cut.acknowledgement
     && value.connectivity === cut.connectivity
     && value.first_attempt === cut.firstAttempt
+    && value.provenance === cut.provenance
     && /^[a-z0-9-]{3,60}$/u.test(value.first_attempt_code)
     && validSnapshot(value.before)
     && validSnapshot(value.after_cut);
@@ -260,6 +291,9 @@ export function v12ProductionRecoveryEnabled(
     && NONCE.test(value.nonce)
     && typeof value.caseId === "string"
     && caseIds.has(value.caseId)
+    && typeof value.stepId === "string"
+    && V12_RECOVERY_SCENARIOS.some(({ id, steps }) => id === value.caseId
+      && steps.some(({ id: stepId }) => stepId === value.stepId))
     && typeof value.cutId === "string"
     && cutIds.has(value.cutId);
 }
@@ -285,24 +319,29 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
   const executionIdentity: V12RecoveryExecutionIdentity = Object.freeze({
     nonce: input.identity.nonce as string,
     caseId: input.identity.caseId as string,
+    stepId: input.identity.stepId as string,
     cutId: input.identity.cutId as string,
     signal: input.signal,
     progress: (value) => {
       const caseId = input.identity.caseId as string;
+      const stepId = input.identity.stepId as string;
       const cutId = input.identity.cutId as string;
-      if (!validArmProgress(value, caseId, cutId)) {
+      if (!validArmProgress(value, caseId, stepId, cutId)) {
         throw new Error("v12_recovery_progress_invalid");
       }
       const scenario = V12_RECOVERY_SCENARIOS.find(({ id }) => id === caseId)!;
+      const step = scenario.steps.find(({ id }) => id === executionIdentity.stepId)!;
       input.emit(`${PROGRESS_PREFIX}${JSON.stringify({
         schema_version: 2,
         nonce: input.identity.nonce,
         sequence: 1,
         kind: "ARMED",
         case_id: caseId,
+        step_id: step.id,
         cut_id: cutId,
-        operation_id: scenario.operationId,
-        boundary_ids: scenario.boundaryIds,
+        operation_id: step.operationId,
+        boundary_id: step.boundaryId,
+        receipt_kind: step.receiptKind,
         ...value,
       })}`);
     },
@@ -318,7 +357,11 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
   try {
     observation = await executor.recover(executionIdentity);
     active(input.signal);
-    if (!validObservation(observation)) {
+    const scenario = V12_RECOVERY_SCENARIOS.find(({ id }) => id === executionIdentity.caseId);
+    const step = scenario?.steps.find(({ id }) => id === executionIdentity.stepId);
+    if (!validObservation(observation) || step === undefined
+      || observation.step_id !== step.id || observation.operation_id !== step.operationId
+      || observation.boundary_id !== step.boundaryId || observation.receipt_kind !== step.receiptKind) {
       throw new Error("v12_recovery_observation_invalid");
     }
   } finally {

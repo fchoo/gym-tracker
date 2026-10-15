@@ -46,6 +46,7 @@ describe("V12ProductionRecoveryRoute", () => {
     mockParams = {
       nonce: "a".repeat(32),
       caseId: "queued-callback",
+      stepId: "queued-set-commit",
       cutId: "post-commit-before-ack",
       phase: "arm",
     };
@@ -63,6 +64,7 @@ describe("V12ProductionRecoveryRoute", () => {
       phase: "arm",
       identity: expect.objectContaining({
         caseId: "queued-callback",
+        stepId: "queued-set-commit",
         cutId: "post-commit-before-ack",
       }),
     }));

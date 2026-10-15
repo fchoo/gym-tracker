@@ -125,7 +125,7 @@ function recoveryIdentity(build, cases, report) {
   return {
     source_digest: build.source.tree_sha256,
     receipt_digest: digest(report),
-    scenario_digest: digest(cases.map(({ id, order, operation_id, boundary_ids }) => ({ id, order, operation_id, boundary_ids }))),
+    scenario_digest: digest(cases.map(({ id, order, steps }) => ({ id, order, steps }))),
     cut_digest: digest(cases.flatMap(({ cuts }) => cuts.map(({ receipt_sha256 }) => receipt_sha256))),
     pointer_digest: digest(retryFacts('pointer_facts')),
     effect_digest: digest(retryFacts('effect_facts')),

@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 import {
   V12_RECOVERY_CASES,
   V12_RECOVERY_SCENARIOS,
+  V12_RECOVERY_STEPS,
   V12_RECOVERY_CUTS,
   V12_RECOVERY_CUT_DEFINITIONS,
   runV12RecoveryContract,
@@ -21,6 +22,7 @@ function snapshot(receiptCount: number, digest: string): V12RecoveryContractSnap
     restoreCount: 1,
     mergeReceiptCount: receiptCount,
     cueCount: 0,
+    receiptKinds: receiptCount === 0 ? [] : ["set-completion"],
     sourceDigest: digest.repeat(64),
     receiptDigest: digest.repeat(64),
     effectDigest: digest.repeat(64),
@@ -36,19 +38,25 @@ function snapshot(receiptCount: number, digest: string): V12RecoveryContractSnap
 
 function observation(
   definition: (typeof V12_RECOVERY_CASES)[number],
+  step: (typeof V12_RECOVERY_STEPS)[number],
   cut: (typeof V12_RECOVERY_CUTS)[number],
   receiptSeed: string,
 ) {
   const cutDefinition = V12_RECOVERY_CUT_DEFINITIONS.find(({ id }) => id === cut)!;
   const uncommitted = cut === "pre-transaction" || cut === "in-transaction" || cut === "retry";
-  const before = snapshot(0, "a"); const afterCut = uncommitted ? before : snapshot(1, "b");
+  const before = snapshot(0, "a");
+  const committed = { ...snapshot(1, "b"), receiptKinds: [step.receiptKind] };
+  const afterCut = uncommitted ? before : committed;
   const afterReopen = uncommitted ? before : afterCut;
   return {
     caseId: definition.id,
+    stepId: step.id,
     cutId: cut,
-    operationId: definition.operationId,
-    boundaryIds: definition.boundaryIds,
+    operationId: step.operationId,
+    boundaryId: step.boundaryId,
+    receiptKind: step.receiptKind,
     barrierId: cutDefinition.barrierId,
+    barrierProvenance: cutDefinition.provenance,
     firstAttempt: cutDefinition.firstAttempt,
     before,
     afterCut,
@@ -56,67 +64,84 @@ function observation(
     recoveryCode: cut === "recovery" ? "domain-reconciled" : "not-required",
     afterRecovery: afterReopen,
     retryCode: uncommitted ? "committed" : "replayed",
-    afterRetry: snapshot(1, "b"),
+    afterRetry: committed,
     receiptDigest: receiptSeed.padStart(64, "0"),
   };
 }
 
 describe("v1.2 recovery host contract", () => {
   it("names eight causal scenarios and eight distinct host barriers", () => {
-    expect(V12_RECOVERY_SCENARIOS).toEqual([
-      { id: "legacy-playback", operationId: "tim01-legacy-playback", boundaryIds: ["start", "edit"] },
-      { id: "foreground-reconciliation", operationId: "tim01-foreground-reconciliation", boundaryIds: ["rest"] },
-      { id: "queued-callback", operationId: "tim01-queued-callback", boundaryIds: ["commit"] },
-      { id: "relaunch", operationId: "workout-relaunch-replay", boundaryIds: ["finish"] },
-      { id: "restore", operationId: "secure-restore", boundaryIds: ["restore", "import"] },
-      { id: "merge", operationId: "secure-merge", boundaryIds: ["merge", "match"] },
-      { id: "zero-cue", operationId: "tim01-zero-cue", boundaryIds: ["start", "edit", "finish"] },
-      { id: "between-set-rest-pointer", operationId: "workout-rest-set-pointer", boundaryIds: ["commit", "rest"] },
+    expect(V12_RECOVERY_SCENARIOS.map(({ id }) => id)).toEqual([
+      "legacy-playback", "foreground-reconciliation", "queued-callback", "relaunch",
+      "restore", "merge", "zero-cue", "between-set-rest-pointer",
     ]);
-    expect(new Set(V12_RECOVERY_SCENARIOS.map(({ operationId }) => operationId)).size).toBe(8);
-    expect(new Set(V12_RECOVERY_SCENARIOS.flatMap(({ boundaryIds }) => boundaryIds)))
+    const steps = V12_RECOVERY_STEPS;
+    expect(new Set(steps.map(({ operationId }) => operationId)).size).toBe(14);
+    expect(new Set(steps.map(({ boundaryId }) => boundaryId)))
       .toEqual(new Set(["start", "edit", "commit", "rest", "finish", "import", "match", "restore", "merge"]));
     expect(V12_RECOVERY_CUT_DEFINITIONS.map(({ barrierId }) => barrierId)).toEqual([
       "before-transaction", "writer-transaction-open", "commit-durable-ack-pending",
-      "acknowledgement-observed", "replay-process-open", "first-attempt-failed",
-      "post-boundary-offline", "domain-reconciliation-pending",
+      "acknowledgement-observed", "relaunch-runtime-open", "first-attempt-failed",
+      "offline-toggle-before-commit", "recovery-replay-writer-open",
     ]);
     expect(new Set(V12_RECOVERY_CUT_DEFINITIONS.map(({ barrierId }) => barrierId)).size).toBe(8);
+  });
+
+  it("declares every required boundary as an explicit command step", () => {
+    const steps = V12_RECOVERY_STEPS;
+    expect(steps).toHaveLength(14);
+    expect(steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ boundaryId: "start", receiptKind: "workout-start" }),
+      expect.objectContaining({ boundaryId: "edit", receiptKind: "workout-edit" }),
+      expect.objectContaining({ boundaryId: "finish", receiptKind: "workout-finish" }),
+      expect.objectContaining({ boundaryId: "import", receiptKind: "garmin-import" }),
+      expect.objectContaining({ boundaryId: "match", receiptKind: "activity-match" }),
+      expect.objectContaining({ boundaryId: "restore", receiptKind: "secure-restore" }),
+      expect.objectContaining({ boundaryId: "merge", receiptKind: "secure-merge" }),
+    ]));
+    expect(new Set(steps.map((step) => step.id)).size).toBe(steps.length);
+  });
+
+  it("records eight unique protocol provenances for the host actions", () => {
+    const provenances = V12_RECOVERY_CUT_DEFINITIONS.map(({ provenance }) => provenance);
+    expect(provenances.every((value) => typeof value === "string" && value.length > 0)).toBe(true);
+    expect(new Set(provenances).size).toBe(8);
   });
 
   it("derives all 64 outcomes from reopen and retry facts without accepting app status", async () => {
     const observe = jest.fn(async (
       definition: (typeof V12_RECOVERY_CASES)[number],
+      step: (typeof V12_RECOVERY_STEPS)[number],
       cut: (typeof V12_RECOVERY_CUTS)[number],
     ) => {
-      const index = V12_RECOVERY_CASES.indexOf(definition) * V12_RECOVERY_CUTS.length
+      const index = V12_RECOVERY_STEPS.indexOf(step) * V12_RECOVERY_CUTS.length
         + V12_RECOVERY_CUTS.indexOf(cut) + 1;
-      return observation(definition, cut, index.toString(16));
+      return observation(definition, step, cut, index.toString(16));
     });
 
     const result = await runV12RecoveryContract({ observe });
 
-    expect(observe).toHaveBeenCalledTimes(64);
+    expect(observe).toHaveBeenCalledTimes(112);
     expect(result).toMatchObject({
       status: "passed",
-      total: 64,
-      passed: 64,
+      total: 112,
+      passed: 112,
       failed: 0,
       skipped: 0,
     });
     expect(result.cases).toHaveLength(8);
-    expect(result.cases.every(({ cuts }) => cuts.length === 8)).toBe(true);
+    expect(result.cases.map(({ cuts }) => cuts.length)).toEqual([16, 8, 8, 8, 16, 16, 24, 16]);
   });
 
   it("fails forged committed, rollback, identity, and thrown observations", async () => {
     const result = await runV12RecoveryContract({
-      observe: async (definition, cut) => {
-        if (definition.id === "legacy-playback" && cut === "pre-transaction") {
+      observe: async (definition, step, cut) => {
+        if (definition.id === "legacy-playback" && step.id === "legacy-start" && cut === "pre-transaction") {
           throw new Error("private details stay outside the result");
         }
-        const index = V12_RECOVERY_CASES.indexOf(definition) * V12_RECOVERY_CUTS.length
+        const index = V12_RECOVERY_STEPS.indexOf(step) * V12_RECOVERY_CUTS.length
           + V12_RECOVERY_CUTS.indexOf(cut) + 1;
-        const value = observation(definition, cut, index.toString(16));
+        const value = observation(definition, step, cut, index.toString(16));
         if (definition.id === "foreground-reconciliation" && cut === "in-transaction") {
           return { ...value, caseId: "wrong" };
         }
@@ -127,7 +152,7 @@ describe("v1.2 recovery host contract", () => {
       },
     });
 
-    expect(result).toMatchObject({ status: "failed", total: 64, passed: 61, failed: 3 });
+    expect(result).toMatchObject({ status: "failed", total: 112, passed: 109, failed: 3 });
     expect(result.cases.flatMap(({ cuts }) => cuts).filter(({ status }) => status === "failed"))
       .toHaveLength(3);
   });

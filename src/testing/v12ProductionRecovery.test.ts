@@ -14,6 +14,7 @@ const identity = Object.freeze({
   suite: "v1.2-acceptance",
   nonce: "a".repeat(32),
   caseId: "between-set-rest-pointer",
+  stepId: "between-set-commit",
   cutId: "post-commit-before-ack",
 });
 
@@ -46,18 +47,29 @@ function snapshot(receiptCount: number, digest: string) {
     }],
     pointer_facts: [{
       session_sha256: digest.repeat(64), status: "in_progress", revision: 1,
-      active_exercise_sha256: digest.repeat(64), active_set_sha256: digest.repeat(64),
+      active_exercise_sha256: digest.repeat(64), active_set_exercise_sha256: digest.repeat(64),
+      active_set_sha256: digest.repeat(64), active_set_ordinal: 1,
+      committed_set_exercise_sha256: receiptCount === 0 ? null : digest.repeat(64),
       committed_set_sha256: receiptCount === 0 ? null : digest.repeat(64),
+      committed_set_ordinal: receiptCount === 0 ? null : 0,
+      transition_sha256: receiptCount === 0 ? null : digest.repeat(64),
     }],
     rest_facts: receiptCount === 0 ? [] : [{
       session_sha256: digest.repeat(64), status: "running" as const, revision: 1,
       started_at_ms: 1, ends_at_ms: 2, deadline_at_ms: 2,
-      paused_remaining_ms: null, expired_at_ms: null, next_set_sha256: digest.repeat(64),
+      paused_remaining_ms: null, expired_at_ms: null,
+      next_set_exercise_sha256: digest.repeat(64), next_set_sha256: digest.repeat(64),
+      next_set_ordinal: 1, transition_sha256: digest.repeat(64),
     }],
     timing_facts: [],
     history_facts: [],
     restore_facts: [{ state: "ready" as const, updated_at_ms: 0 }],
     merge_receipt_facts: [],
+    command_receipt_facts: receiptCount === 0 ? [] : [{
+      step_id: "between-set-commit", boundary_id: "commit", kind: "set-completion",
+      receipt_sha256: digest.repeat(64), request_sha256: digest.repeat(64),
+      committed_at_ms: 1, result: "set-completed",
+    }],
   });
 }
 
@@ -109,10 +121,11 @@ describe("v1.2 native Recovery producer boundary", () => {
         input.progress({
           barrier_id: "commit-durable-ack-pending",
           process_state: "writer-open",
-          acknowledgement: "lost",
+          acknowledgement: "pending",
           connectivity: "online",
-          first_attempt: "committed-ack-lost",
-          first_attempt_code: "acknowledgement-lost",
+          first_attempt: "committed",
+          provenance: "post-commit-command-pending",
+          first_attempt_code: "commit-durable-command-pending",
           before,
           after_cut: afterCut,
         });
@@ -138,8 +151,10 @@ describe("v1.2 native Recovery producer boundary", () => {
         kind: "ARMED",
         case_id: identity.caseId,
         cut_id: identity.cutId,
-        operation_id: "workout-rest-set-pointer",
-        boundary_ids: ["commit", "rest"],
+        step_id: "between-set-commit",
+        operation_id: "between-set-commit",
+        boundary_id: "commit",
+        receipt_kind: "set-completion",
         barrier_id: "commit-durable-ack-pending",
         before,
         after_cut: afterCut,
@@ -150,8 +165,10 @@ describe("v1.2 native Recovery producer boundary", () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async () => undefined),
       recover: jest.fn(async () => ({
-        operation_id: "workout-rest-set-pointer",
-        boundary_ids: ["commit", "rest"],
+        step_id: "between-set-commit",
+        boundary_id: "commit",
+        receipt_kind: "set-completion",
+        operation_id: "between-set-commit",
         after_reopen: snapshot(1, "b"),
         recovery_code: "not-required",
         after_recovery: snapshot(1, "b"),
@@ -180,8 +197,10 @@ describe("v1.2 native Recovery producer boundary", () => {
       kind: "recovery",
       case_id: identity.caseId,
       cut_id: identity.cutId,
-      operation_id: "workout-rest-set-pointer",
-      boundary_ids: ["commit", "rest"],
+      step_id: "between-set-commit",
+      boundary_id: "commit",
+      receipt_kind: "set-completion",
+      operation_id: "between-set-commit",
       after_reopen: snapshot(1, "b"),
       recovery_code: "not-required",
       after_recovery: snapshot(1, "b"),
@@ -197,8 +216,10 @@ describe("v1.2 native Recovery producer boundary", () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async () => undefined),
       recover: jest.fn(async () => ({
-        operation_id: "workout-rest-set-pointer",
-        boundary_ids: ["commit", "rest"],
+        step_id: "between-set-commit",
+        boundary_id: "commit",
+        receipt_kind: "set-completion",
+        operation_id: "between-set-commit",
         after_reopen: snapshot(1, "c"),
         recovery_code: "not-required",
         after_recovery: snapshot(1, "c"),
@@ -225,8 +246,10 @@ describe("v1.2 native Recovery producer boundary", () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async () => undefined),
       recover: jest.fn(async () => ({
-        operation_id: "workout-rest-set-pointer",
-        boundary_ids: ["commit", "rest"],
+        step_id: "between-set-commit",
+        boundary_id: "commit",
+        receipt_kind: "set-completion",
+        operation_id: "between-set-commit",
         after_reopen: snapshot(1, "d"),
         recovery_code: "not-required",
         after_recovery: snapshot(1, "d"),
@@ -273,8 +296,10 @@ describe("v1.2 native Recovery producer boundary", () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async () => undefined),
       recover: jest.fn(async () => ({
-        operation_id: "workout-rest-set-pointer",
-        boundary_ids: ["commit", "rest"],
+        step_id: "between-set-commit",
+        boundary_id: "commit",
+        receipt_kind: "set-completion",
+        operation_id: "between-set-commit",
         after_reopen: snapshot(1, "b"),
         recovery_code: "not-required",
         after_recovery: snapshot(1, "b"),

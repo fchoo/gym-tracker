@@ -6,7 +6,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createProductionNativeRuntime } from './v12-production-native-runtime.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
-import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS } from './v12-recovery-shard.mjs';
+import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_SCENARIOS as RECOVERY_SCENARIO_DEFINITIONS } from './v12-recovery-shard.mjs';
 import { calendarStage, exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
 
 const PACKAGE = 'com.fchoo.gymtracker.devtest';
@@ -21,29 +21,12 @@ const RECOVERY_SNAPSHOT_KEYS = [
   'source_sha256', 'receipt_sha256', 'effect_sha256', 'pointer_sha256', 'rest_sha256',
   'history_sha256', 'timing_sha256', 'restore_sha256', 'merge_receipt_sha256',
   'cue_sha256', 'effect_facts', 'pointer_facts', 'rest_facts', 'timing_facts',
-  'history_facts', 'restore_facts', 'merge_receipt_facts',
+  'history_facts', 'restore_facts', 'merge_receipt_facts', 'command_receipt_facts',
 ];
 const RECOVERY_UNCOMMITTED_CUTS = new Set(['pre-transaction', 'in-transaction', 'retry']);
-const RECOVERY_SCENARIOS = Object.freeze({
-  'legacy-playback': Object.freeze({ operation_id: 'tim01-legacy-playback', boundary_ids: Object.freeze(['start', 'edit']) }),
-  'foreground-reconciliation': Object.freeze({ operation_id: 'tim01-foreground-reconciliation', boundary_ids: Object.freeze(['rest']) }),
-  'queued-callback': Object.freeze({ operation_id: 'tim01-queued-callback', boundary_ids: Object.freeze(['commit']) }),
-  relaunch: Object.freeze({ operation_id: 'workout-relaunch-replay', boundary_ids: Object.freeze(['finish']) }),
-  restore: Object.freeze({ operation_id: 'secure-restore', boundary_ids: Object.freeze(['restore', 'import']) }),
-  merge: Object.freeze({ operation_id: 'secure-merge', boundary_ids: Object.freeze(['merge', 'match']) }),
-  'zero-cue': Object.freeze({ operation_id: 'tim01-zero-cue', boundary_ids: Object.freeze(['start', 'edit', 'finish']) }),
-  'between-set-rest-pointer': Object.freeze({ operation_id: 'workout-rest-set-pointer', boundary_ids: Object.freeze(['commit', 'rest']) }),
-});
-const RECOVERY_CUTS = Object.freeze({
-  'pre-transaction': Object.freeze({ barrier_id: 'before-transaction', process_state: 'route-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'not-started' }),
-  'in-transaction': Object.freeze({ barrier_id: 'writer-transaction-open', process_state: 'writer-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'transaction-open' }),
-  'post-commit-before-ack': Object.freeze({ barrier_id: 'commit-durable-ack-pending', process_state: 'writer-open', acknowledgement: 'lost', connectivity: 'online', first_attempt: 'committed-ack-lost' }),
-  'post-acknowledgement': Object.freeze({ barrier_id: 'acknowledgement-observed', process_state: 'route-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged' }),
-  relaunch: Object.freeze({ barrier_id: 'replay-process-open', process_state: 'replay-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged' }),
-  retry: Object.freeze({ barrier_id: 'first-attempt-failed', process_state: 'route-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'failed' }),
-  offline: Object.freeze({ barrier_id: 'post-boundary-offline', process_state: 'route-open', acknowledgement: 'observed', connectivity: 'switch-offline', first_attempt: 'acknowledged' }),
-  recovery: Object.freeze({ barrier_id: 'domain-reconciliation-pending', process_state: 'recovery-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged' }),
-});
+const RECOVERY_COMMITTED_CUTS = new Set(['post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'offline']);
+const RECOVERY_SCENARIOS = Object.freeze(Object.fromEntries(RECOVERY_SCENARIO_DEFINITIONS.map((scenario) => [scenario.id, scenario])));
+const RECOVERY_CUTS = Object.freeze(Object.fromEntries(V12_RECOVERY_CUT_DEFINITIONS.map((cut) => [cut.id, cut])));
 
 function validate(action, payload, a, root) {
   if (!exact(a, ATTESTATION) || a.schema_version !== 1 || a.action !== action || a.build_profile !== 'development-test'
@@ -58,7 +41,7 @@ function validate(action, payload, a, root) {
 function session(root, a, action) {
   const serial = process.env.V12_DEVICE_SERIAL;
   let nonce = randomBytes(16).toString('hex');
-  // Recovery owns 128 bounded arm/recover flows. Leave five minutes for the
+  // Recovery owns 224 bounded arm/recover flows. Leave five minutes for the
   // launcher's identity/settings cleanup; shorter domain actions keep 3 minutes.
   const deadline = Date.now() + (action === 'recovery' ? 40 : 3) * 60_000;
   const command = (exe, args, { timeout = 20_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
@@ -223,14 +206,24 @@ function recoverySnapshot(value) {
     if (!HASH.test(value[key] ?? '')) fail('recovery_receipt_invalid');
   }
   for (const [key, count] of [
+    ['command_receipt_facts', 'receipt_count'],
     ['effect_facts', 'effect_count'], ['pointer_facts', 'pointer_count'],
     ['rest_facts', 'rest_count'], ['timing_facts', 'timing_count'],
     ['history_facts', 'history_count'], ['restore_facts', 'restore_count'],
     ['merge_receipt_facts', 'merge_receipt_count'],
   ]) if (!Array.isArray(value[key]) || value[key].length !== value[count]) fail('recovery_receipt_invalid');
+  for (const fact of value.command_receipt_facts) {
+    if (!exact(fact, ['step_id', 'boundary_id', 'kind', 'receipt_sha256', 'request_sha256', 'committed_at_ms', 'result'])
+      || ![fact.receipt_sha256, fact.request_sha256].every((entry) => HASH.test(entry ?? ''))) fail('recovery_receipt_invalid');
+  }
+  for (const fact of value.pointer_facts) {
+    if (!exact(fact, ['session_sha256', 'status', 'revision', 'active_exercise_sha256', 'active_set_exercise_sha256', 'active_set_sha256', 'active_set_ordinal', 'committed_set_exercise_sha256', 'committed_set_sha256', 'committed_set_ordinal', 'transition_sha256'])
+      || !HASH.test(fact.session_sha256)
+      || ['active_exercise_sha256', 'active_set_exercise_sha256', 'active_set_sha256', 'committed_set_exercise_sha256', 'committed_set_sha256', 'transition_sha256'].some((key) => fact[key] !== null && !HASH.test(fact[key]))) fail('recovery_receipt_invalid');
+  }
   for (const fact of value.rest_facts) {
-    if (!exact(fact, ['session_sha256', 'status', 'revision', 'started_at_ms', 'ends_at_ms', 'deadline_at_ms', 'paused_remaining_ms', 'expired_at_ms', 'next_set_sha256'])
-      || !HASH.test(fact.session_sha256) || (fact.next_set_sha256 !== null && !HASH.test(fact.next_set_sha256))
+    if (!exact(fact, ['session_sha256', 'status', 'revision', 'started_at_ms', 'ends_at_ms', 'deadline_at_ms', 'paused_remaining_ms', 'expired_at_ms', 'next_set_exercise_sha256', 'next_set_sha256', 'next_set_ordinal', 'transition_sha256'])
+      || !HASH.test(fact.session_sha256) || ['next_set_exercise_sha256', 'next_set_sha256', 'transition_sha256'].some((key) => fact[key] !== null && !HASH.test(fact[key]))
       || fact.deadline_at_ms !== fact.ends_at_ms) fail('recovery_receipt_invalid');
   }
   for (const fact of value.timing_facts) {
@@ -251,23 +244,24 @@ function recoverySnapshot(value) {
   return value;
 }
 
-function deriveArmedObservation(value, nonce, caseId, cutId) {
+function deriveArmedObservation(value, nonce, caseId, stepId, cutId) {
   const scenario = RECOVERY_SCENARIOS[caseId]; const cut = RECOVERY_CUTS[cutId];
-  if (!scenario || !cut || !exact(value, ['schema_version', 'nonce', 'sequence', 'kind', 'case_id', 'cut_id', 'operation_id', 'boundary_ids', 'barrier_id', 'process_state', 'acknowledgement', 'connectivity', 'first_attempt', 'first_attempt_code', 'before', 'after_cut'])
+  const step = scenario?.steps.find(({ id }) => id === stepId);
+  if (!scenario || !step || !cut || !exact(value, ['schema_version', 'nonce', 'sequence', 'kind', 'case_id', 'step_id', 'cut_id', 'operation_id', 'boundary_id', 'receipt_kind', 'barrier_id', 'process_state', 'acknowledgement', 'connectivity', 'first_attempt', 'provenance', 'first_attempt_code', 'before', 'after_cut'])
     || value.schema_version !== 2 || value.nonce !== nonce || value.sequence !== 1 || value.kind !== 'ARMED'
-    || value.case_id !== caseId || value.cut_id !== cutId || value.operation_id !== scenario.operation_id
-    || JSON.stringify(value.boundary_ids) !== JSON.stringify(scenario.boundary_ids)
+    || value.case_id !== caseId || value.step_id !== stepId || value.cut_id !== cutId || value.operation_id !== step.operation_id
+    || value.boundary_id !== step.boundary_id || value.receipt_kind !== step.receipt_kind || value.provenance !== cut.provenance
     || ['barrier_id', 'process_state', 'acknowledgement', 'connectivity', 'first_attempt'].some((key) => value[key] !== cut[key])
     || !/^[a-z0-9-]{3,60}$/u.test(value.first_attempt_code ?? '')) fail('recovery_receipt_invalid');
   return Object.freeze({ ...value, before: recoverySnapshot(value.before), after_cut: recoverySnapshot(value.after_cut) });
 }
 
-function deriveRecoveryObservation(value, nonce, caseId, cutId, armed) {
-  const scenario = RECOVERY_SCENARIOS[caseId];
-  if (!scenario || !exact(value, ['schema_version', 'nonce', 'kind', 'case_id', 'cut_id', 'operation_id', 'boundary_ids', 'after_reopen', 'recovery_code', 'after_recovery', 'retry_code', 'after_retry'])
+function deriveRecoveryObservation(value, nonce, caseId, stepId, cutId, armed) {
+  const scenario = RECOVERY_SCENARIOS[caseId]; const step = scenario?.steps.find(({ id }) => id === stepId);
+  if (!scenario || !step || !exact(value, ['schema_version', 'nonce', 'kind', 'case_id', 'step_id', 'cut_id', 'operation_id', 'boundary_id', 'receipt_kind', 'after_reopen', 'recovery_code', 'after_recovery', 'retry_code', 'after_retry'])
     || value.schema_version !== 2 || value.nonce !== nonce || value.kind !== 'recovery'
-    || value.case_id !== caseId || value.cut_id !== cutId || value.operation_id !== scenario.operation_id
-    || JSON.stringify(value.boundary_ids) !== JSON.stringify(scenario.boundary_ids)
+    || value.case_id !== caseId || value.step_id !== stepId || value.cut_id !== cutId || value.operation_id !== step.operation_id
+    || value.boundary_id !== step.boundary_id || value.receipt_kind !== step.receipt_kind
     || ![value.recovery_code, value.retry_code].every((code) => /^[a-z0-9-]{3,60}$/u.test(code ?? ''))) fail('recovery_receipt_invalid');
   const afterReopen = recoverySnapshot(value.after_reopen);
   const afterRecovery = recoverySnapshot(value.after_recovery);
@@ -276,23 +270,41 @@ function deriveRecoveryObservation(value, nonce, caseId, cutId, armed) {
   if (JSON.stringify(afterReopen) !== JSON.stringify(committed ? armed.after_cut : armed.before)) fail('recovery_receipt_invalid');
   if (cutId !== 'recovery' && JSON.stringify(afterRecovery) !== JSON.stringify(afterReopen)) fail('recovery_receipt_invalid');
   if (cutId === 'recovery' && value.recovery_code === 'not-required') fail('recovery_receipt_invalid');
+  if (cutId === 'recovery' && JSON.stringify(afterRetry) !== JSON.stringify(afterRecovery)) fail('recovery_receipt_invalid');
+  if (RECOVERY_COMMITTED_CUTS.has(cutId) && JSON.stringify(afterRetry) !== JSON.stringify(afterReopen)) fail('recovery_receipt_invalid');
+  if (RECOVERY_UNCOMMITTED_CUTS.has(cutId) && afterRetry.receipt_count !== armed.before.receipt_count + 1) fail('recovery_receipt_invalid');
+  if (cutId === 'recovery' && (afterRetry.receipt_count !== afterReopen.receipt_count
+    || afterRetry.receipt_sha256 !== afterReopen.receipt_sha256
+    || JSON.stringify(afterRetry.command_receipt_facts) !== JSON.stringify(afterReopen.command_receipt_facts))) fail('recovery_receipt_invalid');
+  const commandReceipts = afterRetry.command_receipt_facts.filter((fact) => fact.step_id === step.id
+    && fact.boundary_id === step.boundary_id && fact.kind === step.receipt_kind);
+  if (commandReceipts.length !== 1) fail('recovery_receipt_invalid');
   if (afterRetry.cue_count !== 0 || afterRetry.restore_facts.length !== 1) fail('recovery_receipt_invalid');
-  if (['legacy-playback', 'zero-cue'].includes(caseId)
+  if (['legacy-edit', 'zero-cue-edit', 'zero-cue-finish'].includes(stepId)
     && (afterRetry.timing_count < 1 || afterRetry.history_count < 1)) fail('recovery_receipt_invalid');
-  if (caseId === 'queued-callback' && afterReopen.effect_count < 1) fail('recovery_receipt_invalid');
+  if (caseId === 'queued-callback' && afterRetry.effect_count < 1) fail('recovery_receipt_invalid');
   if (caseId === 'foreground-reconciliation' && afterRetry.rest_count < 1) fail('recovery_receipt_invalid');
-  if (caseId === 'restore' && !afterRetry.restore_facts.some((fact) => fact.state === 'rebuild_pending')) fail('recovery_receipt_invalid');
-  if (caseId === 'merge' && afterRetry.merge_receipt_facts.length < 1) fail('recovery_receipt_invalid');
+  if (step.receipt_kind === 'garmin-import' && !afterRetry.merge_receipt_facts.some((fact) => fact.table === 'imported_activity_receipts')) fail('recovery_receipt_invalid');
+  if (step.receipt_kind === 'activity-match' && !afterRetry.merge_receipt_facts.some((fact) => fact.table === 'running_activity_match_receipts')) fail('recovery_receipt_invalid');
+  if (step.receipt_kind === 'secure-restore' && !afterRetry.restore_facts.some((fact) => fact.state === 'rebuild_pending')) fail('recovery_receipt_invalid');
+  if (step.receipt_kind === 'secure-merge' && !afterRetry.merge_receipt_facts.some((fact) => fact.table === 'metric_profile_migration_events' && fact.result === 'metric-migrated')) fail('recovery_receipt_invalid');
   if (['restore', 'merge'].includes(caseId) && (afterRetry.pointer_facts.length < 1 || afterRetry.rest_facts.length < 1
     || afterRetry.timing_facts.length < 1 || afterRetry.history_facts.length < 1)) fail('recovery_receipt_invalid');
-  if (caseId === 'between-set-rest-pointer' && (afterRetry.pointer_facts.length < 1 || afterRetry.rest_facts.length < 1
-    || !afterRetry.pointer_facts.some((fact) => HASH.test(fact.committed_set_sha256 ?? '')))) fail('recovery_receipt_invalid');
+  if (caseId === 'between-set-rest-pointer') {
+    const pointer = afterRetry.pointer_facts.find((fact) => HASH.test(fact.committed_set_sha256 ?? ''));
+    const rest = pointer && afterRetry.rest_facts.find((fact) => fact.session_sha256 === pointer.session_sha256);
+    if (!pointer || !rest || pointer.active_exercise_sha256 !== pointer.active_set_exercise_sha256
+      || pointer.active_exercise_sha256 !== pointer.committed_set_exercise_sha256 || pointer.active_exercise_sha256 !== rest.next_set_exercise_sha256
+      || pointer.active_set_sha256 !== rest.next_set_sha256 || pointer.transition_sha256 !== rest.transition_sha256
+      || pointer.committed_set_ordinal + 1 !== pointer.active_set_ordinal || pointer.active_set_ordinal !== rest.next_set_ordinal) fail('recovery_receipt_invalid');
+  }
   const receiptSha256 = hash(JSON.stringify({ armed, value }));
   return Object.freeze({
+    step_id: stepId, boundary_id: value.boundary_id, receipt_kind: value.receipt_kind,
     cut_id: cutId, status: 'PASS', operation_id: value.operation_id,
-    boundary_ids: value.boundary_ids, barrier: Object.freeze({ barrier_id: armed.barrier_id,
+    barrier: Object.freeze({ barrier_id: armed.barrier_id,
       process_state: armed.process_state, acknowledgement: armed.acknowledgement,
-      connectivity: armed.connectivity, first_attempt: armed.first_attempt }),
+      connectivity: armed.connectivity, first_attempt: armed.first_attempt, provenance: armed.provenance }),
     first_attempt_code: armed.first_attempt_code, recovery_code: value.recovery_code,
     retry_code: value.retry_code, receipt_sha256: receiptSha256,
     snapshots: Object.freeze({ before: armed.before, after_cut: armed.after_cut,
@@ -304,41 +316,44 @@ async function recovery(io) {
   io.version(); const cases = []; const entries = []; const receipts = new Set();
   for (const [order, id] of V12_RECOVERY_CASE_IDS.entries()) {
     const cuts = [];
-    for (const cut of V12_RECOVERY_CUT_IDS) {
-      io.renewNonce();
-      io.shell('cmd', 'connectivity', 'airplane-mode', 'disable');
-      const armStatus = io.recoveryMaestro('maestro/v1.2/recovery.yaml', { V12_RECOVERY_CASE: id, V12_RECOVERY_STAGE: cut, V12_RECOVERY_PHASE: 'arm' });
-      const armed = deriveArmedObservation(await io.marker('ARMED'), io.nonce, id, cut);
-      if (cut === 'offline') io.shell('cmd', 'connectivity', 'airplane-mode', 'enable');
-      io.stop();
-      let recoverStatus; let value;
-      try {
-        recoverStatus = io.recoveryMaestro('maestro/v1.2/recovery.yaml', { V12_RECOVERY_CASE: id, V12_RECOVERY_STAGE: cut, V12_RECOVERY_PHASE: 'recover' });
-        value = await io.marker('recovery');
-      } finally { io.stop(); }
-      const observed = deriveRecoveryObservation(value, io.nonce, id, cut, armed);
-      const state = worse(worse(armStatus, recoverStatus), 'PASS');
-      const rich = Object.freeze({ ...observed, status: state }); cuts.push(rich);
-      if (receipts.has(rich.receipt_sha256)) fail('recovery_receipt_invalid'); receipts.add(rich.receipt_sha256);
-      const snapshots = Object.fromEntries(Object.entries(rich.snapshots).map(([key, snapshot]) => [key, hash(JSON.stringify(snapshot))]));
-      entries.push(`<testcase classname="v12.recovery" name="${id}:${cut}"><properties>`
-        + `<property name="case_id" value="${id}"/><property name="cut_id" value="${cut}"/>`
-        + `<property name="operation_id" value="${rich.operation_id}"/><property name="boundary_digest" value="${hash(JSON.stringify(rich.boundary_ids))}"/>`
-        + `<property name="barrier_id" value="${rich.barrier.barrier_id}"/><property name="process_state" value="${rich.barrier.process_state}"/>`
-        + `<property name="acknowledgement" value="${rich.barrier.acknowledgement}"/><property name="connectivity" value="${rich.barrier.connectivity}"/>`
-        + `<property name="first_attempt" value="${rich.barrier.first_attempt}"/><property name="first_attempt_code" value="${rich.first_attempt_code}"/>`
-        + `<property name="recovery_code" value="${rich.recovery_code}"/><property name="retry_code" value="${rich.retry_code}"/>`
-        + `<property name="receipt_sha256" value="${rich.receipt_sha256}"/>`
-        + Object.entries(snapshots).map(([key, digest]) => `<property name="${key}_sha256" value="${digest}"/>`).join('')
-        + `<property name="state" value="${state}"/></properties>`
-        + `${state === 'FAIL' ? '<failure message="observed failure"/>' : state === 'PASS' ? '' : '<skipped message="observation incomplete"/>'}</testcase>`);
+    const scenario = RECOVERY_SCENARIOS[id];
+    for (const step of scenario.steps) {
+      for (const cut of V12_RECOVERY_CUT_IDS) {
+        io.renewNonce();
+        io.shell('cmd', 'connectivity', 'airplane-mode', 'disable');
+        const variables = { V12_RECOVERY_CASE: id, V12_RECOVERY_STEP: step.id, V12_RECOVERY_STAGE: cut };
+        const armStatus = io.recoveryMaestro('maestro/v1.2/recovery.yaml', { ...variables, V12_RECOVERY_PHASE: 'arm' });
+        const armed = deriveArmedObservation(await io.marker('ARMED'), io.nonce, id, step.id, cut);
+        if (cut === 'offline') io.shell('cmd', 'connectivity', 'airplane-mode', 'enable');
+        io.stop();
+        let recoverStatus; let value;
+        try {
+          recoverStatus = io.recoveryMaestro('maestro/v1.2/recovery.yaml', { ...variables, V12_RECOVERY_PHASE: 'recover' });
+          value = await io.marker('recovery');
+        } finally { io.stop(); }
+        const observed = deriveRecoveryObservation(value, io.nonce, id, step.id, cut, armed);
+        const state = worse(worse(armStatus, recoverStatus), 'PASS');
+        const rich = Object.freeze({ ...observed, status: state }); cuts.push(rich);
+        if (receipts.has(rich.receipt_sha256)) fail('recovery_receipt_invalid'); receipts.add(rich.receipt_sha256);
+        const snapshots = Object.fromEntries(Object.entries(rich.snapshots).map(([key, snapshot]) => [key, hash(JSON.stringify(snapshot))]));
+        entries.push(`<testcase classname="v12.recovery" name="${id}:${step.id}:${cut}"><properties>`
+          + `<property name="case_id" value="${id}"/><property name="step_id" value="${step.id}"/><property name="cut_id" value="${cut}"/>`
+          + `<property name="operation_id" value="${rich.operation_id}"/><property name="boundary_id" value="${rich.boundary_id}"/><property name="receipt_kind" value="${rich.receipt_kind}"/>`
+          + `<property name="barrier_id" value="${rich.barrier.barrier_id}"/><property name="barrier_provenance" value="${rich.barrier.provenance}"/><property name="process_state" value="${rich.barrier.process_state}"/>`
+          + `<property name="acknowledgement" value="${rich.barrier.acknowledgement}"/><property name="connectivity" value="${rich.barrier.connectivity}"/>`
+          + `<property name="first_attempt" value="${rich.barrier.first_attempt}"/><property name="first_attempt_code" value="${rich.first_attempt_code}"/>`
+          + `<property name="recovery_code" value="${rich.recovery_code}"/><property name="retry_code" value="${rich.retry_code}"/>`
+          + `<property name="receipt_sha256" value="${rich.receipt_sha256}"/>`
+          + Object.entries(snapshots).map(([key, digest]) => `<property name="${key}_sha256" value="${digest}"/>`).join('')
+          + `<property name="state" value="${state}"/></properties>`
+          + `${state === 'FAIL' ? '<failure message="observed failure"/>' : state === 'PASS' ? '' : '<skipped message="observation incomplete"/>'}</testcase>`);
+      }
     }
     const status = cuts.some((cut) => cut.status === 'FAIL') ? 'FAIL' : cuts.some((cut) => cut.status === 'NOT_RUN') ? 'NOT_RUN' : cuts.some((cut) => cut.status === 'REVIEW_REQUIRED') ? 'REVIEW_REQUIRED' : 'PASS';
-    cases.push(Object.freeze({ id, order, operation_id: RECOVERY_SCENARIOS[id].operation_id,
-      boundary_ids: RECOVERY_SCENARIOS[id].boundary_ids, status, cuts: Object.freeze(cuts) }));
+    cases.push(Object.freeze({ id, order, steps: scenario.steps, status, cuts: Object.freeze(cuts) }));
   }
-  if (receipts.size !== 64) fail('recovery_receipt_invalid');
-  const junit = `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-recovery" tests="64">${entries.join('')}</testsuite>\n`;
+  if (receipts.size !== entries.length || entries.length !== 112) fail('recovery_receipt_invalid');
+  const junit = `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-recovery" tests="112">${entries.join('')}</testsuite>\n`;
   return Object.freeze({ schema_version: 2, producer: 'v12-production-recovery-host', cases: Object.freeze(cases), junit_xml: junit });
 }
 

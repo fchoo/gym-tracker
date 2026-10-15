@@ -63,11 +63,13 @@ export default function V12ProductionRecoveryRoute() {
   const {
     nonce,
     caseId,
+    stepId,
     cutId,
     phase,
   } = useLocalSearchParams<{
     nonce?: string;
     caseId?: string;
+    stepId?: string;
     cutId?: string;
     phase?: string;
   }>();
@@ -79,8 +81,9 @@ export default function V12ProductionRecoveryRoute() {
     suite: extra?.nativeContractSuite,
     nonce,
     caseId,
+    stepId,
     cutId,
-  }), [caseId, cutId, extra, nonce]);
+  }), [caseId, cutId, extra, nonce, stepId]);
   const enabled = (phase === "arm" || phase === "recover")
     && v12ProductionRecoveryEnabled(identity);
   if (!enabled) return <Redirect href="/" />;

@@ -17,13 +17,14 @@ import {
 } from "../domains/running/activityMatchCommands";
 import { parseFullBodyFoundation } from "../domains/content";
 import { activateStarterPlan } from "../domains/plans";
+import { createCustomExercise } from "../domains/library/customExerciseCommands";
 import { completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
 import { startWorkout } from "../domains/workout/startWorkout";
 import {
   finishPartial,
   PARTIAL_CONFIRMATION,
 } from "../domains/workout/finishWorkout";
-import { expireRestWithForegroundFeedback, startManualRest } from "../domains/rest/restCommands";
+import { expireRestWithForegroundFeedback, pauseRest, startManualRest } from "../domains/rest/restCommands";
 import {
   createBackupCommands,
 } from "../domains/portability/backupCommands";
@@ -55,6 +56,7 @@ import {
 import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
 import { createWorkoutOutcomeRepository } from "../platform/sqlite/repositories/workoutOutcomeRepository";
 import { createWorkoutRepository } from "../platform/sqlite/repositories/workoutRepository";
+import { createCustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
 import { createRestRepository } from "../platform/sqlite/repositories/restRepository";
 import { createEffectRunner } from "../platform/sqlite/effects/effectRunner";
 import { createEffectStore, enqueuePendingEffect } from "../platform/sqlite/effects/effectStore";
@@ -77,16 +79,22 @@ import {
 } from "./contracts/v12Recovery.contract";
 
 type OperationId =
-  | "tim01-legacy-playback"
-  | "tim01-foreground-reconciliation"
-  | "tim01-queued-callback"
-  | "workout-relaunch-replay"
-  | "secure-restore"
-  | "secure-merge"
-  | "tim01-zero-cue"
-  | "workout-rest-set-pointer";
+  | "legacy-workout-start"
+  | "legacy-workout-edit"
+  | "foreground-rest-reconcile"
+  | "queued-set-commit"
+  | "relaunch-workout-finish"
+  | "secure-restore-commit"
+  | "restore-garmin-import"
+  | "secure-merge-commit"
+  | "merge-activity-match"
+  | "zero-cue-workout-start"
+  | "zero-cue-workout-edit"
+  | "zero-cue-workout-finish"
+  | "between-set-commit"
+  | "between-set-rest-transition";
 
-const UNCOMMITTED_CUTS = new Set(["pre-transaction", "in-transaction"]);
+const UNCOMMITTED_CUTS = new Set(["pre-transaction", "in-transaction", "retry"]);
 const PASSWORD = "synthetic-recovery-password";
 const TIMING_CONFIG = Object.freeze({
   version: 1,
@@ -110,7 +118,7 @@ function active(input: V12RecoveryExecutionIdentity): void {
 }
 
 function databaseNames(input: V12RecoveryExecutionIdentity) {
-  const suffix = `${input.nonce}-${input.caseId}-${input.cutId}`;
+  const suffix = `${input.nonce}-${input.caseId}-${input.stepId}-${input.cutId}`;
   return Object.freeze({
     target: `v12-recovery-${suffix}.db`,
     source: `v12-recovery-source-${suffix}.db`,
@@ -123,8 +131,14 @@ function scenarioFor(caseId: string) {
   return scenario;
 }
 
-function operationFor(caseId: string): OperationId {
-  return scenarioFor(caseId).operationId;
+function stepFor(caseId: string, stepId: string) {
+  const step = scenarioFor(caseId).steps.find(({ id }) => id === stepId);
+  if (step === undefined) throw new Error("v12_recovery_step_missing");
+  return step;
+}
+
+function operationForStep(caseId: string, stepId: string): OperationId {
+  return stepFor(caseId, stepId).operationId;
 }
 
 function stableJson(value: unknown): string {
@@ -177,41 +191,71 @@ function completionKey(input: V12RecoveryExecutionIdentity): string {
   return `v12-recovery:${input.nonce}:${input.caseId}`;
 }
 
-async function seedActiveWorkout(
+async function seedWorkoutPlan(
   kernel: SqliteKernel,
   input: V12RecoveryExecutionIdentity,
 ): Promise<void> {
   const fixture = parseFullBodyFoundation(fullBodyFoundationAsset);
   const startedAtMs = baseTime(input.caseId);
   const plans = createPlansWorkoutRepository(kernel);
-  const activation = await activateStarterPlan({
+  await activateStarterPlan({
     fixture,
     repository: plans,
     activatedAtMs: startedAtMs - 1_000,
     startLocalDate: "2027-01-15",
     timezone: "UTC",
   });
-  const session = await startWorkout({
+}
+
+async function executeWorkoutStart(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<string> {
+  const plans = createPlansWorkoutRepository(kernel);
+  const startedAtMs = baseTime(input.caseId);
+  const [existing] = await kernel.queryAll<{ id: string }>(
+    "SELECT id FROM workout_sessions WHERE status = 'in_progress' LIMIT 1",
+  );
+  if (existing !== undefined) return "already-started";
+  const [plan] = await kernel.queryAll<{ plan_id: string; day_id: string }>(
+    `SELECT plans.id AS plan_id, days.id AS day_id
+     FROM plans
+     JOIN plan_days days ON days.plan_id = plans.id
+     WHERE plans.is_active = 1
+     ORDER BY days.ordinal LIMIT 1`,
+  );
+  if (plan === undefined) throw new Error("v12_recovery_plan_missing");
+  await startWorkout({
     repository: plans,
     request: {
       mode: "scheduled",
-      planId: activation.plan.id,
-      planDayId: activation.days[0]!.id,
+      planId: plan.plan_id,
+      planDayId: plan.day_id,
       localDate: "2027-01-15",
       timezone: "UTC",
       startedAtMs,
     },
   });
+  return "started";
+}
+
+async function executeWorkoutEdit(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<string> {
   const workout = createWorkoutRepository(kernel);
-  const activeWorkout = await workout.getActiveWorkout(session.id);
+  const startedAtMs = baseTime(input.caseId);
+  const identity = await activeWorkoutIdentity(kernel);
+  const activeWorkout = await workout.getActiveWorkout(identity.session_id);
   const set = activeWorkout.currentExercise.workingSets[0];
   if (set === undefined || set.metricIdentity.profile !== "load_reps") {
     throw new Error("v12_recovery_set_missing");
   }
+  if (set.revision >= 2) return "already-edited";
   await updateActiveSetDraft({
     repository: workout,
     input: {
-      sessionId: session.id,
+      sessionId: identity.session_id,
       setId: set.id,
       expectedSetRevision: set.revision,
       metricIdentity: set.metricIdentity,
@@ -225,6 +269,16 @@ async function seedActiveWorkout(
       updatedAtMs: startedAtMs + 500,
     },
   });
+  return "edited";
+}
+
+async function seedActiveWorkout(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<void> {
+  await seedWorkoutPlan(kernel, input);
+  await executeWorkoutStart(kernel, input);
+  await executeWorkoutEdit(kernel, input);
 }
 
 async function activeWorkoutIdentity(kernel: SqliteKernel) {
@@ -306,7 +360,7 @@ async function seedScenarioWorkoutFacts(
 ): Promise<void> {
   await seedActiveWorkout(kernel, input);
   await seedRetiredTimingHistory(kernel, input);
-  if (["foreground-reconciliation", "queued-callback", "restore", "merge"].includes(input.caseId)) {
+  if (["restore", "merge"].includes(input.caseId)) {
     await seedRestReconciliation(kernel, input);
   }
 }
@@ -376,6 +430,96 @@ async function seedPortableArchiveSource(
     await transaction.execute(
       "INSERT INTO workout_receipts(id, workout_session_id, request_sha256, committed_at_ms) VALUES (?, ?, ?, ?)",
       [completionKey(input), session.session_id, await sha256(completionKey(input)), startedAtMs + 1_000],
+    );
+  });
+}
+
+async function seedMergeIdempotencyReceipt(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<void> {
+  const exerciseId = `v12-merge-proof-${input.nonce}`;
+  const migratedAtMs = baseTime(input.caseId) + 1_500;
+  await createCustomExercise({
+    repository: createCustomExerciseRepository(kernel),
+    invalidate: async () => undefined,
+    input: {
+      requestId: `v12-merge-create-${input.nonce}`,
+      exerciseId,
+      name: `Merge proof ${input.nonce}`,
+      aliases: [],
+      exerciseType: "strength",
+      movementClass: "compound",
+      primaryMuscles: ["quadriceps"],
+      secondaryMuscles: ["glutes"],
+      equipment: ["sled"],
+      metricIdentity: {
+        profile: "timed_hold",
+        contractVersion: 1,
+        exerciseMetricGeneration: 1,
+      },
+      defaultRestSeconds: 60,
+      createdAtMs: baseTime(input.caseId) + 1_000,
+    },
+  });
+  const request = JSON.stringify({
+    kind: "v12-merge-idempotency-proof",
+    exerciseId,
+    fromGeneration: 1,
+    toGeneration: 2,
+  });
+  const result = JSON.stringify({
+    outcome: "committed",
+    exerciseId,
+    exerciseRevision: 2,
+    metricIdentity: {
+      profile: "timed_hold",
+      contractVersion: 2,
+      exerciseMetricGeneration: 2,
+    },
+    migratedTargetIds: [],
+    invalidatedRecommendationIds: [],
+    invalidatedPolicyIds: [],
+    baselineStatus: "awaiting_comparable_observation",
+  });
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `UPDATE exercises
+       SET metric_contract_version = 2,
+           exercise_metric_generation = 2,
+           revision = revision + 1
+       WHERE id = ? AND metric_profile = 'timed_hold'
+         AND metric_contract_version = 1 AND exercise_metric_generation = 1`,
+      [exerciseId],
+    );
+    await transaction.execute(
+      `UPDATE exercise_library_entries
+       SET metric_contract_version = 2,
+           exercise_metric_generation = 2,
+           revision = revision + 1
+       WHERE exercise_id = ? AND metric_profile = 'timed_hold'
+         AND metric_contract_version = 1 AND exercise_metric_generation = 1`,
+      [exerciseId],
+    );
+    await transaction.execute(
+      `INSERT INTO exercise_metric_baselines
+        (exercise_id, metric_profile, metric_contract_version,
+         exercise_metric_generation, status, established_at_ms)
+       VALUES (?, 'timed_hold', 2, 2, 'awaiting_comparable_observation', ?)`,
+      [exerciseId, migratedAtMs],
+    );
+    await transaction.execute(
+      `INSERT INTO metric_profile_migration_events
+        (idempotency_key, exercise_id, from_metric_profile,
+         from_metric_contract_version, from_exercise_metric_generation,
+         to_metric_profile, to_metric_contract_version,
+         to_exercise_metric_generation, migrated_target_count,
+         invalidated_recommendation_count, invalidated_policy_count,
+         invalidated_effect_count, exercise_revision, request_json, result_json,
+         acknowledged_history_immutable, migrated_at_ms)
+       VALUES (?, ?, 'timed_hold', 1, 1, 'timed_hold', 2, 2,
+               0, 0, 0, 0, 2, ?, ?, 1, ?)`,
+      [`v12-merge-receipt-${input.nonce}`, exerciseId, request, result, migratedAtMs],
     );
   });
 }
@@ -693,16 +837,52 @@ async function setup(
   operation: OperationId,
   input: V12RecoveryExecutionIdentity,
 ): Promise<void> {
-  if (!operation.startsWith("secure-")) {
+  if (["legacy-workout-start", "zero-cue-workout-start"].includes(operation)) {
+    await seedWorkoutPlan(target, input);
+    return;
+  }
+  if (["legacy-workout-edit", "zero-cue-workout-edit"].includes(operation)) {
+    await seedWorkoutPlan(target, input);
+    await executeWorkoutStart(target, input);
+    await seedRetiredTimingHistory(target, input);
+    return;
+  }
+  if (operation === "foreground-rest-reconcile") {
+    await seedScenarioWorkoutFacts(target, input);
+    await seedRestReconciliation(target, input);
+    return;
+  }
+  if (["queued-set-commit", "between-set-commit"].includes(operation)) {
     await seedScenarioWorkoutFacts(target, input);
     return;
   }
-  if (operation === "secure-restore" || operation === "secure-merge") {
+  if (["relaunch-workout-finish", "zero-cue-workout-finish"].includes(operation)) {
+    await seedScenarioWorkoutFacts(target, input);
+    await completeWorkoutSet(target, input);
+    return;
+  }
+  if (operation === "between-set-rest-transition") {
+    await seedScenarioWorkoutFacts(target, input);
+    await completeWorkoutSet(target, input);
+    return;
+  }
+  if (operation === "restore-garmin-import") {
+    await seedScenarioWorkoutFacts(target, input);
+    return;
+  }
+  if (operation === "merge-activity-match") {
+    await seedScenarioWorkoutFacts(target, input);
+    await seedGarminMatch(target, input);
+    return;
+  }
+  if (["secure-restore-commit", "secure-merge-commit"].includes(operation)) {
     if (source === undefined) throw new Error("v12_recovery_source_missing");
     await seedPortableArchiveSource(source, input);
-    if (operation === "secure-restore") {
+    if (operation === "secure-restore-commit") {
       await executeGarminImport(source, input);
     } else {
+      await seedMergeIdempotencyReceipt(source, input);
+      await seedScenarioWorkoutFacts(target, input);
       await seedGarminMatch(target, input);
       await executeGarminMatch(target, input);
     }
@@ -718,18 +898,11 @@ async function finishWorkoutScenario(
   );
   if (existing === undefined) throw new Error("v12_recovery_session_missing");
   if (existing.status !== "in_progress") return "replayed";
-  const completion = await completeWorkoutSet(kernel, input);
-  if (!["relaunch", "zero-cue"].includes(input.caseId)) return completion;
-  const [afterSet] = await kernel.queryAll<{ revision: number }>(
-    "SELECT revision FROM workout_sessions WHERE id = ?",
-    [existing.id],
-  );
-  if (afterSet === undefined) throw new Error("v12_recovery_session_missing");
   await finishPartial({
     repository: createWorkoutOutcomeRepository(kernel),
     input: {
       sessionId: existing.id,
-      expectedSessionRevision: afterSet.revision,
+      expectedSessionRevision: existing.revision,
       endedAtMs: baseTime(input.caseId) + 2_000,
       confirmation: PARTIAL_CONFIRMATION,
     },
@@ -764,6 +937,34 @@ async function reconcileForegroundRest(
     },
   });
   return "foreground-reconciled";
+}
+
+async function pauseBetweenSetRest(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<string> {
+  const [row] = await kernel.queryAll<{
+    session_id: string;
+    session_revision: number;
+    rest_revision: number;
+    status: string;
+  }>(`SELECT ws.id AS session_id, ws.revision AS session_revision,
+      rest.revision AS rest_revision, rest.status
+    FROM workout_sessions ws
+    JOIN session_rest_states rest ON rest.session_id = ws.id
+    ORDER BY ws.started_at_ms LIMIT 1`);
+  if (row === undefined) throw new Error("v12_recovery_rest_missing");
+  if (row.status === "paused") return "already-paused";
+  await pauseRest({
+    repository: createRestRepository(kernel),
+    input: {
+      sessionId: row.session_id,
+      expectedSessionRevision: row.session_revision,
+      expectedRestRevision: row.rest_revision,
+      nowMs: baseTime(input.caseId) + 1_500,
+    },
+  });
+  return "rest-paused";
 }
 
 async function drainScenarioEffects(
@@ -802,33 +1003,70 @@ async function executeOperation(
   input: V12RecoveryExecutionIdentity,
 ): Promise<string> {
   active(input);
-  if (operation === "tim01-foreground-reconciliation") {
+  if (["legacy-workout-start", "zero-cue-workout-start"].includes(operation)) {
+    return executeWorkoutStart(kernel, input);
+  }
+  if (["legacy-workout-edit", "zero-cue-workout-edit"].includes(operation)) {
+    return executeWorkoutEdit(kernel, input);
+  }
+  if (operation === "foreground-rest-reconcile") {
     return reconcileForegroundRest(kernel, input);
   }
-  if (operation === "tim01-queued-callback") {
-    return drainScenarioEffects(kernel, input);
+  if (["queued-set-commit", "between-set-commit"].includes(operation)) {
+    return completeWorkoutSet(kernel, input);
   }
-  if (!operation.startsWith("secure-")) return finishWorkoutScenario(kernel, input);
-  if (operation === "secure-restore") return executeRestore(kernel, sourceName, input);
-  return executeMerge(kernel, sourceName, input);
+  if (["relaunch-workout-finish", "zero-cue-workout-finish"].includes(operation)) {
+    return finishWorkoutScenario(kernel, input);
+  }
+  if (operation === "between-set-rest-transition") {
+    return pauseBetweenSetRest(kernel, input);
+  }
+  if (operation === "restore-garmin-import") return executeGarminImport(kernel, input);
+  if (operation === "merge-activity-match") return executeGarminMatch(kernel, input);
+  if (operation === "secure-restore-commit") return executeRestore(kernel, sourceName, input);
+  if (operation === "secure-merge-commit") return executeMerge(kernel, sourceName, input);
+  throw new Error("v12_recovery_operation_missing");
 }
 
 async function executeDomainRecovery(
   kernel: SqliteKernel,
   input: V12RecoveryExecutionIdentity,
 ): Promise<string> {
+  if (input.caseId === "foreground-reconciliation") return reconcileForegroundRest(kernel, input);
   const code = await drainScenarioEffects(kernel, input);
-  if (input.caseId === "foreground-reconciliation") return "foreground-reconciled";
   if (input.caseId === "queued-callback") return "queued-callback-reconciled";
   return code === "effects-reconciled" ? "domain-reconciled" : "domain-recovery-observed";
+}
+
+async function ensureRecoveryEffect(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<void> {
+  if (["foreground-reconciliation", "queued-callback"].includes(input.caseId)) return;
+  const [session] = await kernel.queryAll<{ id: string; revision: number }>(
+    "SELECT id, revision FROM workout_sessions ORDER BY started_at_ms LIMIT 1",
+  );
+  if (session === undefined) throw new Error("v12_recovery_session_missing");
+  const nowMs = baseTime(input.caseId) + 4_000;
+  await kernel.write((transaction) => enqueuePendingEffect(transaction, {
+    id: `v12-recovery-effect-${input.nonce}-${input.stepId}`,
+    type: "regenerate_load_reps_recommendation",
+    payloadVersion: 1,
+    payload: { reason: "v12-recovery" },
+    idempotencyKey: `v12-recovery-effect:${input.nonce}:${input.stepId}`,
+    subjectId: session.id,
+    expectedRevision: session.revision,
+    nowMs,
+  }));
 }
 
 async function observationRows(
   kernel: SqliteKernel,
   operation: OperationId,
+  input: V12RecoveryExecutionIdentity,
 ): Promise<Readonly<{
   source: readonly Record<string, unknown>[];
-  receipt: readonly Record<string, unknown>[];
+  commandReceipts: readonly Record<string, unknown>[];
   effect: readonly Record<string, unknown>[];
   pointer: readonly Record<string, unknown>[];
   rest: readonly Record<string, unknown>[];
@@ -854,16 +1092,20 @@ async function observationRows(
     kernel.queryAll<Record<string, unknown>>(
       `SELECT COALESCE(ws.portable_id, ws.id) AS session_identity, ws.status, ws.revision,
               active_exercise.ordinal AS active_exercise_ordinal,
+              active_set_exercise.ordinal AS active_set_exercise_ordinal,
               active_set.set_kind AS active_set_kind, active_set.ordinal AS active_set_ordinal,
+              committed_exercise.ordinal AS committed_set_exercise_ordinal,
               committed_set.set_kind AS committed_set_kind, committed_set.ordinal AS committed_set_ordinal
        FROM workout_sessions ws
        LEFT JOIN session_exercises active_exercise ON active_exercise.id = ws.active_session_exercise_id
        LEFT JOIN session_sets active_set ON active_set.id = ws.active_set_id
+       LEFT JOIN session_exercises active_set_exercise ON active_set_exercise.id = active_set.session_exercise_id
        LEFT JOIN session_sets committed_set ON committed_set.id =
               (SELECT sets.id FROM session_sets sets
                JOIN session_exercises exercise ON exercise.id = sets.session_exercise_id
                WHERE exercise.session_id = ws.id AND sets.status = 'completed'
                ORDER BY sets.completed_at_ms DESC, sets.id LIMIT 1)
+       LEFT JOIN session_exercises committed_exercise ON committed_exercise.id = committed_set.session_exercise_id
        ORDER BY session_identity`,
     ),
     kernel.queryAll<Record<string, unknown>>(
@@ -917,35 +1159,65 @@ async function observationRows(
        FROM metric_profile_migration_events ORDER BY idempotency_key`,
     ),
   ]);
-  let source: readonly Record<string, unknown>[];
-  let receipt: readonly Record<string, unknown>[];
-  if (!operation.startsWith("secure-")) {
-    [source, receipt] = await Promise.all([
-      kernel.queryAll("SELECT status, revision, completed_at_ms FROM session_sets WHERE completion_idempotency_key IS NOT NULL ORDER BY id"),
-      kernel.queryAll("SELECT completion_idempotency_key, completed_at_ms FROM session_sets WHERE completion_idempotency_key IS NOT NULL ORDER BY id"),
-    ]);
-  } else if (operation === "secure-restore") {
-    [source, receipt] = await Promise.all([
-      kernel.queryAll("SELECT status, revision, portable_id, merge_modified_at_ms FROM workout_sessions ORDER BY id"),
-      kernel.queryAll(`SELECT request_sha256, committed_at_ms FROM workout_receipts
-        UNION ALL SELECT request_sha256, committed_at_ms FROM imported_activity_receipts
-        ORDER BY committed_at_ms`),
-    ]);
-  } else {
-    source = await kernel.queryAll(
-      "SELECT status, revision, portable_id, merge_modified_at_ms FROM workout_sessions ORDER BY id",
-    );
-    receipt = [...workoutReceipts, ...importedReceipts, ...matchReceipts, ...metricReceipts];
+  let source: readonly Record<string, unknown>[] = [];
+  let commandReceipts: readonly Record<string, unknown>[] = [];
+  if (["legacy-workout-start", "zero-cue-workout-start"].includes(operation)) {
+    source = await kernel.queryAll("SELECT status, revision, started_at_ms FROM workout_sessions WHERE status = 'in_progress' ORDER BY id");
+    commandReceipts = source.map((row) => ({ id: `start:${String(row.started_at_ms)}`, request_sha256: "", committed_at_ms: row.started_at_ms, result_kind: "started" }));
+  } else if (["legacy-workout-edit", "zero-cue-workout-edit"].includes(operation)) {
+    source = await kernel.queryAll("SELECT status, revision, draft_updated_at_ms, observed_json FROM session_sets WHERE observed_json IS NOT NULL ORDER BY id");
+    commandReceipts = source.map((row) => ({ id: `edit:${String(row.draft_updated_at_ms)}`, request_sha256: "", committed_at_ms: row.draft_updated_at_ms, result_kind: "edited" }));
+  } else if (operation === "foreground-rest-reconcile") {
+    source = await kernel.queryAll("SELECT status, revision, expired_at_ms FROM session_rest_states WHERE status = 'expired' ORDER BY session_id");
+    commandReceipts = source.map((row) => ({ id: `foreground:${String(row.expired_at_ms)}`, request_sha256: "", committed_at_ms: row.expired_at_ms, result_kind: "foreground-reconciled" }));
+  } else if (["queued-set-commit", "between-set-commit"].includes(operation)) {
+    source = await kernel.queryAll("SELECT status, revision, completion_idempotency_key, completed_at_ms FROM session_sets WHERE completion_idempotency_key IS NOT NULL ORDER BY id");
+    commandReceipts = source.map((row) => ({ id: row.completion_idempotency_key, request_sha256: "", committed_at_ms: row.completed_at_ms, result_kind: "set-completed" }));
+  } else if (["relaunch-workout-finish", "zero-cue-workout-finish"].includes(operation)) {
+    source = await kernel.queryAll("SELECT status, revision, completed_at_ms FROM workout_sessions WHERE status != 'in_progress' ORDER BY id");
+    commandReceipts = workoutReceipts.map((row) => ({ ...row, result_kind: "workout-finished" }));
+  } else if (operation === "between-set-rest-transition") {
+    source = await kernel.queryAll("SELECT status, revision, remaining_ms FROM session_rest_states WHERE status = 'paused' ORDER BY session_id");
+    commandReceipts = source.map((row) => ({ id: `rest:${input.nonce}`, request_sha256: "", committed_at_ms: baseTime(input.caseId) + 1_500, result_kind: "rest-paused", ...row }));
+  } else if (operation === "restore-garmin-import") {
+    source = await kernel.queryAll("SELECT revision, lifecycle_state FROM imported_activities ORDER BY id");
+    commandReceipts = importedReceipts.map((row) => ({ ...row, result_kind: "imported" }));
+  } else if (operation === "merge-activity-match") {
+    source = await kernel.queryAll("SELECT relation_revision FROM running_activity_current_matches ORDER BY opportunity_id");
+    commandReceipts = matchReceipts.map((row) => ({ ...row, result_kind: row.result_kind ?? "matched" }));
+  } else if (operation === "secure-restore-commit") {
+    source = await kernel.queryAll("SELECT status, revision, portable_id, merge_modified_at_ms FROM workout_sessions ORDER BY id");
+    commandReceipts = restore.filter((row) => row.state === "rebuild_pending").map((row) => ({ id: `restore:${input.nonce}`, request_sha256: "", committed_at_ms: row.updated_at_ms, result_kind: "restored" }));
+  } else if (operation === "secure-merge-commit") {
+    source = await kernel.queryAll("SELECT status, revision, portable_id, merge_modified_at_ms FROM workout_sessions ORDER BY id");
+    commandReceipts = source.length > 1 ? [{
+      id: `merge:${input.nonce}`,
+      request_sha256: await sha256(`merge:${input.nonce}`),
+      committed_at_ms: baseTime(input.caseId) + 3_000,
+      result_kind: "merge-idempotent",
+    }] : [];
   }
-  return Object.freeze({ source, receipt, effect, pointer, rest, history, timing,
+  return Object.freeze({ source, commandReceipts, effect, pointer, rest, history, timing,
     restore, workoutReceipts, importedReceipts, matchReceipts, metricReceipts });
 }
 
 async function snapshot(
   kernel: SqliteKernel,
   operation: OperationId,
+  input: V12RecoveryExecutionIdentity,
 ): Promise<V12RecoveryDurableSnapshot> {
-  const rows = await observationRows(kernel, operation);
+  const rows = await observationRows(kernel, operation, input);
+  const step = stepFor(input.caseId, input.stepId);
+  const commandReceiptFacts = await Promise.all(rows.commandReceipts.map(async (row) => Object.freeze({
+    step_id: step.id,
+    boundary_id: step.boundaryId,
+    kind: step.receiptKind,
+    receipt_sha256: await sha256(stableJson(row)),
+    request_sha256: typeof row.request_sha256 === "string" && row.request_sha256.length === 64
+      ? row.request_sha256 : await sha256(`${step.id}:${String(row.id)}`),
+    committed_at_ms: Number(row.committed_at_ms),
+    result: String(row.result_kind),
+  })));
   const effectFacts = await Promise.all(rows.effect.map(async (row) => Object.freeze({
     effect_sha256: await sha256(String(row.idempotency_key)),
     type: row.effect_type as "reconcile_rest_notification" | "regenerate_load_reps_recommendation",
@@ -956,25 +1228,49 @@ async function snapshot(
     next_attempt_at_ms: Number(row.next_attempt_at_ms),
     last_error_code: row.last_error_code === null ? null : String(row.last_error_code),
   })));
-  const pointerFacts = await Promise.all(rows.pointer.map(async (row) => Object.freeze({
-    session_sha256: await sha256(String(row.session_identity)),
-    status: String(row.status),
-    revision: Number(row.revision),
-    active_exercise_sha256: row.active_exercise_ordinal === null ? null : await sha256(`${String(row.session_identity)}:exercise:${String(row.active_exercise_ordinal)}`),
-    active_set_sha256: row.active_set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.active_set_kind)}:${String(row.active_set_ordinal)}`),
-    committed_set_sha256: row.committed_set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.committed_set_kind)}:${String(row.committed_set_ordinal)}`),
-  })));
-  const restFacts = await Promise.all(rows.rest.map(async (row) => Object.freeze({
-    session_sha256: await sha256(String(row.session_identity)),
-    status: row.status as "idle" | "running" | "paused" | "expired",
-    revision: Number(row.revision),
-    started_at_ms: row.started_at_ms as number | null,
-    ends_at_ms: row.ends_at_ms as number | null,
-    deadline_at_ms: row.ends_at_ms as number | null,
-    paused_remaining_ms: row.remaining_ms as number | null,
-    expired_at_ms: row.expired_at_ms as number | null,
-    next_set_sha256: row.next_set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.next_set_kind)}:${String(row.next_exercise_ordinal)}:${String(row.next_set_ordinal)}`),
-  })));
+  const pointerRows = new Map(rows.pointer.map((row) => [String(row.session_identity), row]));
+  const pointerFacts = await Promise.all(rows.pointer.map(async (row) => {
+    const session = String(row.session_identity);
+    const activeExercise = row.active_exercise_ordinal === null ? null : await sha256(`${session}:exercise:${String(row.active_exercise_ordinal)}`);
+    const activeSetExercise = row.active_set_exercise_ordinal === null ? null : await sha256(`${session}:exercise:${String(row.active_set_exercise_ordinal)}`);
+    const committedSetExercise = row.committed_set_exercise_ordinal === null ? null : await sha256(`${session}:exercise:${String(row.committed_set_exercise_ordinal)}`);
+    const transition = row.committed_set_ordinal === null || row.active_set_ordinal === null || row.active_set_exercise_ordinal === null
+      ? null : await sha256(`${session}:exercise:${String(row.active_set_exercise_ordinal)}:set:${String(row.committed_set_kind)}:${String(row.committed_set_ordinal)}->${String(row.active_set_kind)}:${String(row.active_set_ordinal)}`);
+    return Object.freeze({
+      session_sha256: await sha256(session),
+      status: String(row.status),
+      revision: Number(row.revision),
+      active_exercise_sha256: activeExercise,
+      active_set_exercise_sha256: activeSetExercise,
+      active_set_sha256: row.active_set_ordinal === null || row.active_set_exercise_ordinal === null ? null : await sha256(`${session}:exercise:${String(row.active_set_exercise_ordinal)}:set:${String(row.active_set_kind)}:${String(row.active_set_ordinal)}`),
+      active_set_ordinal: row.active_set_ordinal === null ? null : Number(row.active_set_ordinal),
+      committed_set_exercise_sha256: committedSetExercise,
+      committed_set_sha256: row.committed_set_ordinal === null || row.committed_set_exercise_ordinal === null ? null : await sha256(`${session}:exercise:${String(row.committed_set_exercise_ordinal)}:set:${String(row.committed_set_kind)}:${String(row.committed_set_ordinal)}`),
+      committed_set_ordinal: row.committed_set_ordinal === null ? null : Number(row.committed_set_ordinal),
+      transition_sha256: transition,
+    });
+  }));
+  const restFacts = await Promise.all(rows.rest.map(async (row) => {
+    const session = String(row.session_identity);
+    const pointer = pointerRows.get(session);
+    const transition = pointer?.committed_set_ordinal === null || pointer?.active_set_ordinal === null
+      || pointer?.active_set_exercise_ordinal === null || pointer === undefined
+      ? null : await sha256(`${session}:exercise:${String(pointer.active_set_exercise_ordinal)}:set:${String(pointer.committed_set_kind)}:${String(pointer.committed_set_ordinal)}->${String(pointer.active_set_kind)}:${String(pointer.active_set_ordinal)}`);
+    return Object.freeze({
+      session_sha256: await sha256(session),
+      status: row.status as "idle" | "running" | "paused" | "expired",
+      revision: Number(row.revision),
+      started_at_ms: row.started_at_ms as number | null,
+      ends_at_ms: row.ends_at_ms as number | null,
+      deadline_at_ms: row.ends_at_ms as number | null,
+      paused_remaining_ms: row.remaining_ms as number | null,
+      expired_at_ms: row.expired_at_ms as number | null,
+      next_set_exercise_sha256: row.next_exercise_ordinal === null ? null : await sha256(`${session}:exercise:${String(row.next_exercise_ordinal)}`),
+      next_set_sha256: row.next_set_ordinal === null || row.next_exercise_ordinal === null ? null : await sha256(`${session}:exercise:${String(row.next_exercise_ordinal)}:set:${String(row.next_set_kind)}:${String(row.next_set_ordinal)}`),
+      next_set_ordinal: row.next_set_ordinal === null ? null : Number(row.next_set_ordinal),
+      transition_sha256: transition,
+    });
+  }));
   const timingFacts = await Promise.all(rows.timing.map(async (row) => Object.freeze({
     session_sha256: await sha256(String(row.session_identity)),
     set_sha256: row.set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.set_kind)}:${String(row.exercise_ordinal)}:${String(row.set_ordinal)}`),
@@ -1022,14 +1318,14 @@ async function snapshot(
   const [sourceSha, receiptSha, effectSha, pointerSha, restSha, historySha, timingSha,
     restoreSha, mergeReceiptSha, cueSha] =
     await Promise.all([
-      digestRows(rows.source), digestRows(rows.receipt), digestRows(rows.effect),
+      digestRows(rows.source), digestRows(rows.commandReceipts), digestRows(rows.effect),
       digestRows(rows.pointer), digestRows(rows.rest), digestRows(rows.history),
       digestRows(rows.timing), digestRows(rows.restore),
       digestRows(mergeRows), digestRows(cueFacts),
     ]);
   return Object.freeze({
     source_count: rows.source.length,
-    receipt_count: rows.receipt.length,
+    receipt_count: commandReceiptFacts.length,
     effect_count: rows.effect.length,
     pointer_count: rows.pointer.length,
     rest_count: rows.rest.length,
@@ -1048,6 +1344,7 @@ async function snapshot(
     restore_sha256: restoreSha,
     merge_receipt_sha256: mergeReceiptSha,
     cue_sha256: cueSha,
+    command_receipt_facts: Object.freeze(commandReceiptFacts),
     effect_facts: Object.freeze(effectFacts),
     pointer_facts: Object.freeze(pointerFacts),
     rest_facts: Object.freeze(restFacts),
@@ -1081,6 +1378,7 @@ async function emitArmed(
     acknowledgement: cut.acknowledgement,
     connectivity: cut.connectivity,
     first_attempt: cut.firstAttempt,
+    provenance: cut.provenance,
     first_attempt_code: firstAttemptCode,
     before,
     after_cut: afterCut,
@@ -1096,9 +1394,9 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
         deleteDatabaseAsync(names.target),
         deleteDatabaseAsync(names.source),
       ]);
-      const operation = operationFor(input.caseId);
+      const operation = operationForStep(input.caseId, input.stepId);
       const target = await migrate(names.target);
-      const source = operation === "secure-restore" || operation === "secure-merge"
+      const source = operation === "secure-restore-commit" || operation === "secure-merge-commit"
         ? await migrate(names.source)
         : undefined;
       try {
@@ -1109,23 +1407,20 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
       }
       active(input);
       const baseline = await openSqliteKernel(names.target);
-      const before = await snapshot(baseline, operation);
+      const before = await snapshot(baseline, operation, input);
       await baseline.close();
-      if (input.cutId === "pre-transaction") {
-        return emitArmed(input, before, before, "not-started");
-      }
       let runtime: Awaited<ReturnType<typeof openSqliteKernelTestRuntime>>;
       let armed = false;
       const armOnce = async (code: string) => {
         if (armed) throw new Error("v12_recovery_barrier_duplicate");
+        const afterCut = await snapshot(runtime.kernel, operation, input);
         armed = true;
-        const afterCut = await snapshot(runtime.kernel, operation);
         await emitArmed(input, before, afterCut, code);
       };
-      const observer: SqliteKernelTestObserver = input.cutId === "in-transaction"
+      const observer: SqliteKernelTestObserver = ["in-transaction", "offline"].includes(input.cutId)
         ? { beforeCommit: () => armOnce("transaction-open") }
         : input.cutId === "post-commit-before-ack"
-          ? { afterCommit: () => armOnce("acknowledgement-lost") }
+          ? { afterCommit: () => armOnce("commit-durable-command-pending") }
           : input.cutId === "retry"
             ? { beforeCommit: async () => { throw new Error("v12_recovery_first_attempt_failed"); } }
             : {};
@@ -1134,6 +1429,9 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
         observer,
       );
       try {
+        if (input.cutId === "pre-transaction") {
+          return armOnce("writer-not-entered");
+        }
         try {
           await executeOperation(runtime.kernel, operation, names.source, input);
         } catch (error) {
@@ -1141,16 +1439,27 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
             || !String(error.cause ?? error.message).includes("v12_recovery_first_attempt_failed")) {
             throw error;
           }
-          const afterCut = await snapshot(runtime.kernel, operation);
+          const afterCut = await snapshot(runtime.kernel, operation, input);
           return emitArmed(input, before, afterCut, "first-attempt-failed");
         }
-        const code = input.cutId === "post-acknowledgement" ? "acknowledged"
-          : input.cutId === "relaunch" ? "replay-process-open"
-            : input.cutId === "offline" ? "offline-switch-pending"
-              : input.cutId === "recovery" ? "domain-reconciliation-pending"
-                : "operation-complete";
-        const afterCut = await snapshot(runtime.kernel, operation);
-        return emitArmed(input, before, afterCut, code);
+        if (input.cutId === "relaunch") {
+          await runtime.close();
+          runtime = await openSqliteKernelTestRuntime(names.target);
+          return armOnce("relaunch-runtime-open");
+        }
+        if (input.cutId === "recovery") {
+          await ensureRecoveryEffect(runtime.kernel, input);
+          await runtime.close();
+          runtime = await openSqliteKernelTestRuntime(names.target, {
+            beforeCommit: () => armOnce("recovery-reconciliation-open"),
+          });
+          await executeDomainRecovery(runtime.kernel, input);
+          throw new Error("v12_recovery_barrier_not_reached");
+        }
+        if (input.cutId === "post-acknowledgement") {
+          return armOnce("acknowledgement-returned");
+        }
+        throw new Error("v12_recovery_barrier_not_reached");
       } catch (error) {
         throw error;
       } finally {
@@ -1162,19 +1471,22 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
 
     async recover(input) {
       const names = databaseNames(input);
-      const operation = operationFor(input.caseId);
+      const operation = operationForStep(input.caseId, input.stepId);
       const kernel = await openSqliteKernel(names.target);
       try {
-        const afterReopen = await snapshot(kernel, operation);
+        const afterReopen = await snapshot(kernel, operation, input);
         const recoveryCode = input.cutId === "recovery"
           ? await executeDomainRecovery(kernel, input)
           : "not-required";
-        const afterRecovery = await snapshot(kernel, operation);
+        const afterRecovery = await snapshot(kernel, operation, input);
         const retryCode = await executeOperation(kernel, operation, names.source, input);
-        const afterRetry = await snapshot(kernel, operation);
+        const afterRetry = await snapshot(kernel, operation, input);
+        const step = stepFor(input.caseId, input.stepId);
         return Object.freeze({
+          step_id: step.id,
+          boundary_id: step.boundaryId,
+          receipt_kind: step.receiptKind,
           operation_id: operation,
-          boundary_ids: scenarioFor(input.caseId).boundaryIds,
           after_reopen: afterReopen,
           recovery_code: recoveryCode,
           after_recovery: afterRecovery,
