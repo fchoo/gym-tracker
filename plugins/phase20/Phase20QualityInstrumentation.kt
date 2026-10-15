@@ -10,6 +10,7 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.os.Debug
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Base64
 import android.view.Choreographer
@@ -20,11 +21,9 @@ import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
-import java.io.InputStreamReader
 import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -71,7 +70,9 @@ class Phase20QualityInstrumentation : Instrumentation() {
     .joinToString("") { "%02x".format(it) }
   private fun sha(value: String) = sha(value.toByteArray(Charsets.UTF_8))
   private fun elapsedMs() = SystemClock.elapsedRealtimeNanos() / 1_000_000.0
-  private fun command(value: String) = BufferedReader(InputStreamReader(uiAutomation.executeShellCommand(value))).use { it.readText() }
+  private fun command(value: String) = ParcelFileDescriptor.AutoCloseInputStream(
+    uiAutomation.executeShellCommand(value),
+  ).bufferedReader().use { it.readText() }
   private fun emit(value: JSONObject) = sendStatus(0, Bundle().apply { putString("stream", resultMarker + value.toString()) })
   private fun fail(nonce: String, action: String) = emit(JSONObject().put("schema_version", 1)
     .put("nonce", nonce).put("action", action).put("kind", "error"))
