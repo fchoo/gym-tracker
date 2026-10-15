@@ -29,9 +29,10 @@ function testInjectionEnabled() {
 }
 
 function commandFor(root, command) {
+  const testMode = testInjectionEnabled();
   const injected = command ?? process.env.V12_NATIVE_ADAPTER_COMMAND;
   if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER });
-  if (!testInjectionEnabled()) fail("command_override_forbidden");
+  if (!testMode) fail("command_override_forbidden");
   const resolved = realpathSync(path.resolve(root, injected));
   const fixtureFake = realpathSync(path.resolve(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"));
   if (resolved !== fixtureFake && resolved !== realpathSync(CHECKED_IN_TEST_FAKE)) fail("test_command_invalid");
@@ -92,10 +93,14 @@ export function invokeV12NativeAdapter(action, payload, {
     cwd: root,
     input: `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`,
     encoding: "utf8",
-    timeout: 30_000,
+    // The SQLite aggregate has bounded native progress, plus restoration time.
+    timeout: action === "sqlite" ? 26 * 60_000 : 5 * 60_000,
     maxBuffer: 32 * 1024 * 1024,
   });
-  if (result.error || result.signal || result.status !== 0) fail("command_failed");
+  if (result.error || result.signal || result.status !== 0) {
+    const bounded = /^v12_production_native_launcher_([a-z_]+)\s*$/u.exec(result.stderr ?? "");
+    fail(bounded ? `command_failed:${bounded[1]}` : "command_failed");
+  }
   let response;
   try { response = JSON.parse(result.stdout); } catch { fail("response_invalid"); }
   if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)) fail("response_invalid");
