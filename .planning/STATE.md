@@ -5,11 +5,11 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — IMPLEMENT
 current_phase: 20
 current_phase_name: Native Acceptance
 status: executing
-stopped_at: Corrective 20-08 rebuild verified; next 20-09 uses immutable build-only run phase20-20261014T065837Z-335e0563d57f
-last_updated: "2026-10-14T06:58:37Z"
-last_activity: 2026-10-14
-last_activity_desc: Corrective 20-08 rebuild verified; immutable build-only run phase20-20261014T065837Z-335e0563d57f is ready for Plan 20-09
-state_head: 335e0563d57f872d69a3ef6377a70c80f0d2e011
+stopped_at: Plan 20-09 production native producer remediation resumed; prior build-only run invalidated by source fixes
+last_updated: "2026-10-15T22:53:11+08:00"
+last_activity: 2026-10-15
+last_activity_desc: Resumed Plan 20-09 at the production launcher blocker and dispatched Calendar, Recovery, quality, and all-state visual producer remediation
+state_head: 36ddd9433f844300360f5cb971f2e8202be5a29f
 progress:
   total_phases: 8
   completed_phases: 4
@@ -288,7 +288,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-14T06:58:37Z
-Stopped at: Corrective 20-08 rebuild verified; next 20-09 uses immutable build-only run phase20-20261014T065837Z-335e0563d57f
+Last session: 2026-10-15T22:53:11+08:00
+Stopped at: Session resumed; proceeding with Plan 20-09 production native producer remediation before a fresh source freeze and rebuild
 Resume file: None
-Next action: Execute Plan 20-09 against immutable build-only run phase20-20261014T065837Z-335e0563d57f; no evidence-time rebuild is authorized.
+Next action: Complete and review the real production native producers, then create a fresh source freeze/build/run before any Plan 20-09 evidence execution.
