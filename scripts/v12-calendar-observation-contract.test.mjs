@@ -109,10 +109,10 @@ function derive(stage = pointerStage()) {
   });
 }
 
-test("the production Calendar contract owns the exact 35-stage order and six real schema groups", () => {
+test("the production Calendar contract owns the exact 35-stage order and stage-specific schema groups", () => {
   assert.equal(V12_CALENDAR_STAGE_IDS.length, 35);
   assert.deepEqual(Object.values(V12_CALENDAR_STAGE_GROUPS).flat(), V12_CALENDAR_STAGE_IDS);
-  assert.deepEqual(Object.keys(V12_CALENDAR_STAGE_GROUPS), ["pointer", "row_geometry", "month_geometry", "lifecycle", "reduced_motion", "baseline"]);
+  assert.deepEqual(Object.keys(V12_CALENDAR_STAGE_GROUPS), ["pointer", "row_geometry", "month_geometry", "pointer_retarget", "lifecycle", "reduced_motion", "baseline"]);
 });
 
 test("a real pointer observation is validated and its status is derived only by host assertions", () => {
@@ -175,7 +175,7 @@ test("cancel ends with the actual cancelled callback and rejects a fabricated po
   assert.equal(derive(stage).status, "PASS");
 
   const malformed = structuredClone(stage);
-  malformed.pointer_events.push(event(7, "pointer", { callback: "onEnd", phase: "release", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, translation_x_dp: -10, intent_owner: "vertical" }));
+  malformed.pointer_events.push(event(13, "pointer", { callback: "onEnd", phase: "release", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, translation_x_dp: -10, intent_owner: "vertical" }));
   malformed.completed_at_monotonic_ms = malformed.pointer_events.at(-1).observed_at_monotonic_ms;
   delete malformed.observation_digest_sha256;
   malformed.observation_digest_sha256 = hashV12CalendarObservationBody(malformed);
@@ -201,7 +201,7 @@ test("row geometry rejects duplicated fixed bounds", () => {
       transition(8, "expand", state("idle"), state("settling", { mode: "focused" }), ["settle-week"]),
       transition(10, "settle-complete", state("settling", { mode: "focused" }), state("idle", { mode: "focused", epoch: 1 })),
     ],
-    semantic_samples: [semantic(11, { focused_week_start: "2026-10-12" })],
+    semantic_samples: [semantic(11, { focused_week_start: "2026-10-15" })],
     callback_events: [event(9, "callback", { callback: "week-settle", epoch: 1 })],
     focus_events: [event(12, "focus", { identity: "calendar-collapse-day" })],
     motion: motion(7),
