@@ -23,6 +23,9 @@ const garminCaseIds = [
   "dedupe-restart", "dedupe-restore", "dedupe-merge", "match-zero", "match-one", "match-many",
   "match-stale", "match-alternate", "match-cancel", "match-confirm", "match-reassign", "privacy",
 ];
+const recoveryCaseIds = ["legacy-playback", "foreground-reconciliation", "queued-callback", "relaunch", "restore", "merge", "zero-cue", "between-set-rest-pointer"];
+const recoveryCuts = ["pre-transaction", "in-transaction", "post-commit-before-ack", "post-acknowledgement", "relaunch", "retry", "offline", "recovery"];
+const recoveryJunit = () => `<testsuites>${recoveryCaseIds.flatMap((caseId) => recoveryCuts.map((cut) => `<testsuite name="v12-recovery"><testcase name="${caseId}:${cut}"><properties><property name="case_id" value="${caseId}"/><property name="cut_id" value="${cut}"/><property name="receipt_sha256" value="${sha(`${caseId}:${cut}`)}"/></properties></testcase></testsuite>`)).join("")}</testsuites>`;
 const response = (() => {
   if (action === "acquire-lease") return { id: "lease" }; if (action === "release-lease") return true;
   if (action === "snapshot-settings") return { id: "settings" }; if (action === "restore-settings") return true;
@@ -85,7 +88,7 @@ const response = (() => {
       cases: sqliteCaseIds.map((id) => ({ id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 1 } })),
     },
   };
-  if (action === "recovery") return '<testsuites name="v12-recovery"><testsuite name="synthetic" tests="64"><testcase name="recovery"/></testsuite></testsuites>';
+  if (action === "recovery") return recoveryJunit();
   if (action === "garmin") return {
     cases: garminCaseIds.map((id, order) => ({ id, order, status: "PASS", code: "native-passed", count: id === "match-one" ? 1 : 0 })),
   };

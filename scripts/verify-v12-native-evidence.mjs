@@ -33,6 +33,7 @@ import {
   V12_VERDICTS as CONTRACT_VERDICTS,
 } from "./v12-evidence-contract.mjs";
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
+import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -547,25 +548,22 @@ function finalReadinessPolicy(policy) {
   return Object.freeze({ ...policy });
 }
 
-function validateV12AttendedBinding(attended, manifest) {
-  if (!finalPlainObject(attended) || attended.schema_version !== 1 || attended.suite !== "v12-samsung-attended"
-    || attended.mode !== "observation-only" || attended.release_authorized !== false || !Array.isArray(attended.rows)
-    || attended.rows.length !== 7 || !finalPlainObject(attended.identity)) finalFail("attended_invalid");
+function validateV12AttendedBinding(attended, manifest, root) {
+  if (!finalPlainObject(attended) || attended.schema_version !== 2 || attended.suite !== "v12-samsung-attended"
+    || attended.mode !== "observation-only" || attended.release_authorized !== false || !["passed", "failed"].includes(attended.status)
+    || !Array.isArray(attended.rows) || attended.rows.length !== 7 || !finalPlainObject(attended.identity)) finalFail("attended_invalid");
   const identity = attended.identity;
   if (identity.run_id !== manifest.run_id || identity.source_tree_sha256 !== manifest.source.tree_sha256
     || identity.apk_sha256 !== manifest.build.apk.sha256 || identity.apk_signature_sha256 !== manifest.build.apk.signature_sha256
     || identity.installed_apk_sha256 !== manifest.device.installed_apk_sha256 || identity.config_sha256 !== sha256(manifest.configuration.id)
     || identity.device?.device_sha256 !== manifest.device.identity_sha256) finalFail("attended_identity_invalid");
-  const hashes = new Set();
-  for (const row of attended.rows) {
-    if (!finalExact(row, ["id", "scope", "instructions", "status", "png_sha256"])
-      || !/^S20-0[1-7]$/u.test(row.id) || !["passed", "failed"].includes(row.status) || !HASH.test(row.png_sha256) || hashes.has(row.png_sha256)) finalFail("attended_row_invalid");
-    hashes.add(row.png_sha256);
-  }
+  try { validateV12AttendedObservations({ schema_version: 2, suite: "v12-samsung-attended-observations", identity, settings_restored: true, rows: attended.rows.map(({ id, status, png }) => ({ id, status, png })) }, { identity, root }); }
+  catch { finalFail("attended_row_invalid"); }
+  if (attended.status !== (attended.rows.every(({ status }) => status === "passed") ? "passed" : "failed")) finalFail("attended_status_invalid");
   return attended;
 }
 
-export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact, attended = undefined } = {}) {
+export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact, attended = undefined, root = ROOT } = {}) {
   const validatedManifest = validateV12RunManifest(manifest);
   if (finalHasPrivateValue(evidence) || finalHasPrivateValue(exceptions)) finalFail("privacy_invalid");
   if (typeof readArtifact !== "function") finalFail("artifact_reader_required");
@@ -588,11 +586,12 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
   const baseLedger = deriveContractLedger(inputs, { observations: evidence.map((item) => ({ row_id: item.row_id, source: "final-validator", status: item.result })), verdicts });
   const policy = finalReadinessPolicy(readiness_policy);
   const counts = baseLedger.verdict_counts;
-  const hardBlock = counts.NOT_RUN > 0 || counts.FAIL > 0 || counts.REVIEW_REQUIRED > 0;
+  const attendedRecord = attended === undefined ? null : validateV12AttendedBinding(attended, validatedManifest, root);
+  const attendedBlocked = attendedRecord !== null && attendedRecord.status !== "passed";
+  const hardBlock = counts.NOT_RUN > 0 || counts.FAIL > 0 || counts.REVIEW_REQUIRED > 0 || attendedBlocked;
   const readiness = hardBlock ? "NOT_READY"
     : counts.ACCEPTED_EXCEPTION > 0 ? (policy === undefined ? "NOT_READY" : "CONDITIONALLY_READY")
       : "READY";
-  const attendedRecord = attended === undefined ? null : validateV12AttendedBinding(attended, validatedManifest);
   return Object.freeze({
     ...baseLedger,
     run_id: validatedManifest.run_id,
@@ -610,7 +609,7 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
     gates: Object.freeze([
       Object.freeze({ id: "identity", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(validatedManifest)) }),
       Object.freeze({ id: "automated", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(evidence)) }),
-      ...(attendedRecord === null ? [] : [Object.freeze({ id: "attended", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(attendedRecord)) })]),
+      ...(attendedRecord === null ? [] : [Object.freeze({ id: "attended", verdict: attendedRecord.status === "passed" ? "PASS" : "FAIL", evidence_sha256: sha256(JSON.stringify(attendedRecord)) })]),
     ]),
     readiness,
     accepted_exception_count: counts.ACCEPTED_EXCEPTION,
@@ -849,7 +848,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   // A final seal repeats the full shard validation after the owner checkpoint.
   preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
   let attended; try { attended = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/attended-observations.json`), "utf8")); } catch { preflightFail("attended_invalid"); }
-  const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence, attended, readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)) });
+  const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence, attended, root, readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)) });
   const finalWrites = [];
   const write = (relative, value) => finalWrites.push([relative, value]);
   const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: options.run_id, ledger, writeImmutableJson: write });
