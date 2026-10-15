@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../../v12-evidence-contract.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "../../benchmark-v12-interactions.mjs";
-const sha = (value) => createHash("sha256").update(String(value)).digest("hex");
+const sha = (value) => createHash("sha256").update(Buffer.isBuffer(value) ? value : String(value)).digest("hex");
 const read = await new Promise((resolve) => { let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }); process.stdin.on("end", () => resolve(JSON.parse(body))); });
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
 if (fail && action.includes(fail)) process.exit(1);
@@ -15,6 +15,43 @@ const png = (key, reference = false) => { const image = new PNG({ width: 200, he
 const sample = (index, dx = 25) => ({ timestampMs: index + 1, widthDp: 100, dxDp: dx, dyDp: 0, intentOwner: "horizontal", translationDp: dx, title: "2026-10", selectedCivilDate: "2026-10-14", generation: index + 1, focusedWeek: "week", rowBounds: [0, 48], callbackCount: index + 1, focusIdentity: "calendar", motion: "normal" });
 const repeated = (count, value) => Array.from({ length: count }, () => value);
 const build = JSON.parse(readFileSync(`artifacts/native/v1.2/${read.attestation.run_id}/build.json`, 'utf8'));
+let visualStates;
+const visualState = (id) => {
+  visualStates ??= JSON.parse(readFileSync("src/testing/phase20VisualStateRegistry.json", "utf8"));
+  return visualStates.find((entry) => entry.id === id);
+};
+const visualConfig = (id) => {
+  const [, appearance, size, orientation, font] = id.split("-");
+  const portrait = { C360: [360, 800], C390: [390, 844], M600: [600, 960], X840: [840, 1080] }[size];
+  return { appearance: appearance.startsWith("S") ? "System" : appearance === "L" ? "Light" : "Dark", scheme: appearance.endsWith("D") ? "dark" : "light", size, orientation, fontScale: Number(font.slice(1)) / 100, width: orientation === "P" ? portrait[0] : portrait[1], height: orientation === "P" ? portrait[1] : portrait[0] };
+};
+const visualObservation = (id, configurationId, nonce, captureNonce) => {
+  const state = visualState(id); const source = state.reference.kind === "retained_png" ? state.reference.source : state.reference;
+  const sourceReceipt = { schema_version: 1, nonce, state_id: id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
+  sourceReceipt.digest = sha(JSON.stringify({ state_id: id, fixture_variant: state.fixture_variant, assertions: sourceReceipt.assertions }));
+  return { native_execution: "EXECUTED", state_id: id, configuration_id: configurationId,
+    readiness: { status: state.readiness.status, semantics: state.readiness.semantics.map(value => ({ value, matched: true })), test_ids: state.readiness.test_ids.map(value => ({ value, matched: true })), actions: state.readiness.actions.map(entry => ({ ...entry, matched: true, enabled: true, observed_order: entry.order })), order: state.readiness.order.map((value, observed_order) => ({ value, observed_order })), non_color: state.readiness.non_color.map(value => ({ value, matched: true })), focus: { target: state.readiness.focus.target, matched: true, focusable: true, focused: false }, source_receipt: sourceReceipt },
+    targets: [{ width_dp: 48, height_dp: 48, overlap: false }],
+    measurement: { kind: "source_semantic", renderer_digest: source.renderer_digest, semantic_digest: source.semantic_digest, layout_digest: source.layout_digest },
+    ...(captureNonce === undefined ? {} : { capture_png_sha256: sha(Buffer.from(visualPng(id, configurationId), "base64")), capture_nonce: captureNonce, observation_nonce: nonce }) };
+};
+const visualCapture = (id, configurationId, phase) => {
+  const key = `${id}:${configurationId}`; const bytes = Buffer.from(visualPng(id, configurationId), "base64"); const nonce = sha(`${phase}:${key}`).slice(0, 32); const observation = visualObservation(id, configurationId, nonce);
+  const sourceReceipt = observation.readiness.source_receipt; const configuration = visualConfig(configurationId);
+  const receipt = { schema_version: 2, nonce, run_id: read.attestation.run_id, state_id: id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: observation.readiness.status, source_tree_sha256: read.attestation.source_tree_sha256, apk_sha256: read.attestation.apk_sha256, device_identity_sha256: read.attestation.device_identity_sha256, png_sha256: sha(bytes), observation_sha256: sha(JSON.stringify(observation)), source_receipt: sourceReceipt,
+    ...(configuration.appearance === "System" && configuration.scheme === "dark" ? { system_transition: { from: "light", to: "dark", mounted_nonce: nonce, before: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest }, after: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest } } } : {}) };
+  return { native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png_base64: bytes.toString("base64"), settings: { restored: true, privacy: "synthetic-only", observation, state_receipt: receipt } };
+};
+const stateFocus = (id) => visualState(id).readiness.focus.target;
+const referenceBinding = (id, configurationId) => {
+  const state = visualState(id); const config = visualConfig(configurationId);
+  if (state.reference.kind === "retained_png" && config.size === "C390" && config.orientation === "P" && config.fontScale === 1) return { kind: "retained_png", ...(config.scheme === "dark" ? state.reference.dark : state.reference.light), source: state.reference.source };
+  return { kind: "approved_source", ...(state.reference.kind === "retained_png" ? state.reference.source : state.reference) };
+};
+const visualPng = (id, configurationId) => {
+  const binding = referenceBinding(id, configurationId);
+  return binding.kind === "retained_png" ? readFileSync(binding.path).toString("base64") : png(`${id}:${configurationId}`);
+};
 const performanceIdentity = Object.freeze({ base_head: build.source.head, source_tree_sha256: build.source.tree_sha256, apk_sha256: build.build.apk.sha256, installed_apk_sha256: build.device.installed_apk_sha256, package: build.build.package, device_identity_sha256: build.device.identity_sha256, fixture_sha256: build.fixtures.registry_sha256 });
 const sqliteCaseIds = [
   "fresh-migration", "schema27-upgrade", "supported-legacy-upgrade", "failure-reopen",
@@ -31,18 +68,24 @@ const recoveryJunit = () => `<testsuites>${recoveryCaseIds.flatMap((caseId) => r
 const response = (() => {
   if (action === "acquire-lease") return { id: "lease" }; if (action === "release-lease") return true;
   if (action === "snapshot-settings") return { id: "settings" }; if (action === "restore-settings") return true;
-  if (action === "visual-capture") return { native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png_base64: png(`${read.payload.state_id}:${read.payload.configuration_id}`), settings: { restored: true, privacy: "synthetic-only" } };
-  if (action === "visual-capture-batch") return read.payload.captures.map(({ state_id, configuration_id }) => ({ native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png_base64: png(`${state_id}:${configuration_id}`), settings: { restored: true, privacy: "synthetic-only" } }));
-  if (action === "visual-compare") return V12_BROWSER_WALK_STATE_IDS.flatMap((id) => V12_CONFIG_IDS.map((configuration_id) => {
-    const key = `${id}:${configuration_id}`;
+  if (action === "visual-capture") return visualCapture(read.payload.state_id, read.payload.configuration_id, "capture");
+  if (action === "visual-capture-batch") return read.payload.captures.map(({ state_id, configuration_id }) => visualCapture(state_id, configuration_id, "capture"));
+  if (action === "visual-compare") return read.payload.captures.map(({ state_id: id, configuration_id }) => {
+    const key = `${id}:${configuration_id}`; const pngHash = sha(Buffer.from(visualPng(id, configuration_id), "base64"));
+    const captureNonce = sha(`capture:${key}`).slice(0, 32); const observationNonce = sha(`compare:${key}`).slice(0, 32);
+    const observation = visualObservation(id, configuration_id, observationNonce, captureNonce); const state = visualState(id); const sourceReceipt = observation.readiness.source_receipt; const config = visualConfig(configuration_id);
+    const stateReceipt = { schema_version: 2, nonce: observationNonce, run_id: read.attestation.run_id, state_id: id, configuration_id, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: observation.readiness.status, source_tree_sha256: read.attestation.source_tree_sha256, apk_sha256: read.attestation.apk_sha256, device_identity_sha256: read.attestation.device_identity_sha256, png_sha256: pngHash, observation_sha256: sha(JSON.stringify(observation)), source_receipt: sourceReceipt,
+      ...(config.appearance === "System" && config.scheme === "dark" ? { system_transition: { from: "light", to: "dark", mounted_nonce: observationNonce, before: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest }, after: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest } } } : {}) };
+    const captureSourceReceipt = { ...sourceReceipt, nonce: captureNonce };
+    const captureStateReceipt = { ...stateReceipt, nonce: captureNonce, observation_sha256: sha(JSON.stringify(visualObservation(id, configuration_id, captureNonce))), source_receipt: captureSourceReceipt };
+    if (captureStateReceipt.system_transition) captureStateReceipt.system_transition = { ...captureStateReceipt.system_transition, mounted_nonce: captureNonce };
     return {
       id,
       configuration_id,
       identity: { fixture: "v12-synthetic-fixtures-r18", clock: "2026-10-14T00:00:00Z", locale: "en-SG", timezone: "Asia/Singapore", content_bounds: { width: 390, height: 844 } },
-      approved_reference_png_base64: png(key, true),
-      observation: { native_execution: "EXECUTED", state_id: id, configuration_id, content: true, actions: true, copy: true, state: true, route: true, focus: true, order: true, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], non_color_state: true, commit_read_only: true, geometry_dp: 0, baseline_icon_dp: 0, token_exact: true, ciede2000: 0 },
+      reference_binding: referenceBinding(id, configuration_id), capture_state_receipt: captureStateReceipt, state_receipt: stateReceipt, observation,
     };
-  }));
+  });
   if (action === "accessibility") return [{
     configuration: { font_scale: 2, density: 3, content_bounds: { width: 390, height: 844 }, insets: { top: 24, bottom: 24 }, ime_bounds: { top: 500, bottom: 844 } },
     targets: [{ id: "primary", bounds_dp: { left: 0, top: 0, width: 48, height: 48 }, name: "Continue", role: "button", state: "enabled", non_color_cue: true, overlap: false }],

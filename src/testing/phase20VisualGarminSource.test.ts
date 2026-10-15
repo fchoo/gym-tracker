@@ -35,7 +35,7 @@ describe("Phase 20 visual Garmin source", () => {
       external_activity_id: "phase20-outdoor-001",
       sample_fidelity: "source_laps",
     });
-    await expect(createPhase20VisualGarminSource(request("BW-099")).listRunningSummaries({ limit: 20 }))
+    await expect(createPhase20VisualGarminSource(request("BW-098")).listRunningSummaries({ limit: 20 }))
       .rejects.toThrow("garmin_rate_limited");
   });
 

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
+import { V12_NATIVE_ACTION_TIMEOUT_MS, V12_NATIVE_MAX_REQUEST_BYTES, V12_NATIVE_MAX_RESPONSE_BYTES } from "./v12-native-adapter.mjs";
 
 function fixture(t) {
   const runner = createControlledRunner();
@@ -74,4 +75,15 @@ test("direct launcher rejects extra attestation fields without reflecting privat
   assert.notEqual(result.status, 0);
   assert.equal(result.stdout, "");
   assert.equal(result.stderr, "v12_production_native_launcher_attestation_invalid\n");
+});
+
+test("every adapter action has an explicit bounded timeout and transport budget", () => {
+  assert.deepEqual(Object.keys(V12_NATIVE_ACTION_TIMEOUT_MS).sort(), [
+    "accessibility", "acquire-lease", "calendar", "garmin", "performance", "recovery",
+    "release-lease", "restore-settings", "snapshot-settings", "sqlite",
+    "visual-capture", "visual-capture-batch", "visual-compare",
+  ]);
+  assert.ok(Object.values(V12_NATIVE_ACTION_TIMEOUT_MS).every((value) => Number.isSafeInteger(value) && value >= 1_000 && value <= 30 * 60_000));
+  assert.equal(V12_NATIVE_MAX_REQUEST_BYTES, 1024 * 1024);
+  assert.equal(V12_NATIVE_MAX_RESPONSE_BYTES, 32 * 1024 * 1024);
 });

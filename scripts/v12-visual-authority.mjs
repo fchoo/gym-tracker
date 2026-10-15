@@ -5,6 +5,7 @@ import path from "node:path";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MANIFEST_PATH = ".planning/design/v1.2-browser-evidence/source-manifest.json";
 const REQUIRED_SOURCES = Object.freeze(["approved-json", "approved-hybrid-html"]);
+const authorityCache = new Map();
 
 const fail = (code) => { throw new Error(`v12_visual_authority_${code}`); };
 export const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -63,6 +64,8 @@ export function deriveV12VisualAuthorityDigests({ walk, rendererSha256, sourceHa
 }
 
 export function loadV12VisualAuthority({ root = process.cwd(), externalRoot = process.env.V12_APPROVED_SOURCE_ROOT } = {}) {
+  const cacheKey = `${path.resolve(root)}\u0000${externalRoot ?? ""}`;
+  if (authorityCache.has(cacheKey)) return authorityCache.get(cacheKey);
   let manifest;
   try { manifest = JSON.parse(readFileSync(safeFile(root, MANIFEST_PATH, "manifest_invalid"), "utf8")); } catch (error) {
     if (error instanceof Error && error.message.startsWith("v12_visual_authority_")) throw error;
@@ -92,13 +95,16 @@ export function loadV12VisualAuthority({ root = process.cwd(), externalRoot = pr
     const resolved = path.resolve(externalRoot);
     for (const source of manifest.sources) {
       const sourcePath = path.join(resolved, source.filename);
-      if (!existsSync(sourcePath) || !lstatSync(sourcePath).isFile() || lstatSync(sourcePath).isSymbolicLink()
+      if (!existsSync(sourcePath)) fail("unavailable_external_authority");
+      if (!lstatSync(sourcePath).isFile() || lstatSync(sourcePath).isSymbolicLink()
         || sha256(readFileSync(sourcePath)) !== source.sha256) fail("external_authority_hash_invalid");
     }
     authorityMode = "external_exact_sources";
   }
 
-  return Object.freeze({ manifest, manifest_path: MANIFEST_PATH, manifest_sha256: sha256(readFileSync(path.join(root, MANIFEST_PATH))), source_hashes: Object.freeze(sourceHashes), walk: Object.freeze(walk), authority_mode: authorityMode, ...digests });
+  const result = Object.freeze({ manifest, manifest_path: MANIFEST_PATH, manifest_sha256: sha256(readFileSync(path.join(root, MANIFEST_PATH))), source_hashes: Object.freeze(sourceHashes), walk: Object.freeze(walk), authority_mode: authorityMode, ...digests });
+  authorityCache.set(cacheKey, result);
+  return result;
 }
 
 export function v12VisualStateAuthority(authority, light, dark) {
@@ -114,7 +120,7 @@ export function v12VisualStateAuthority(authority, light, dark) {
   });
 }
 
-export function validateV12VisualSourceBinding(binding, { root = process.cwd(), stateName } = {}) {
+export function validateV12VisualSourceBinding(binding, { root = process.cwd(), stateId, stateName } = {}) {
   const authority = loadV12VisualAuthority({ root });
   if (!binding || binding.kind !== "approved_source" || binding.state_name !== stateName
     || binding.approved_json_sha256 !== authority.source_hashes["approved-json"]
@@ -122,7 +128,8 @@ export function validateV12VisualSourceBinding(binding, { root = process.cwd(), 
     || binding.source_manifest_sha256 !== authority.manifest_sha256
     || binding.renderer_digest !== authority.renderer_digest
     || !SHA256.test(binding.semantic_digest ?? "") || !SHA256.test(binding.layout_digest ?? "")) fail("source_binding_invalid");
-  const index = authority.walk.slice(0, 107).findIndex((entry) => entry.name === stateName);
+  const ordinal = /^BW-(\d{3})$/u.exec(stateId ?? "")?.[1];
+  const index = ordinal === undefined ? authority.walk.slice(0, 107).findIndex((entry) => entry.name === stateName) : Number(ordinal) - 1;
   if (index < 0) fail("source_binding_invalid");
   const expected = v12VisualStateAuthority(authority, authority.walk[index], authority.walk[index + 107]);
   if (JSON.stringify(binding) !== JSON.stringify({ kind: "approved_source", ...expected })) fail("source_binding_invalid");
@@ -132,7 +139,7 @@ export function validateV12VisualSourceBinding(binding, { root = process.cwd(), 
 export function selectV12VisualReference(state, configuration) {
   const exactOracle = configuration.size === "C390" && configuration.orientation === "P" && configuration.fontScale === 1;
   if (exactOracle && state.reference.kind === "retained_png") {
-    return Object.freeze({ kind: "retained_png", ...(configuration.scheme === "dark" ? state.reference.dark : state.reference.light), source: state.reference });
+    return Object.freeze({ kind: "retained_png", ...(configuration.scheme === "dark" ? state.reference.dark : state.reference.light), source: state.reference.source });
   }
   return Object.freeze({ kind: "approved_source", ...(state.reference.kind === "approved_source" ? state.reference : state.reference.source) });
 }

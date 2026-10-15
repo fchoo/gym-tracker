@@ -80,6 +80,8 @@ jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
     mockCreatePhase20VisualDependencies(request);
     return { fixture: true };
   },
+  phase20VisualCleanupStatus: () => "complete",
+  clearPhase20VisualCleanupStatus: jest.fn(),
 }));
 
 jest.mock("expo-status-bar", () => {

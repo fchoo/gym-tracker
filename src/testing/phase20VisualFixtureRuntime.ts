@@ -29,6 +29,17 @@ export const PHASE20_VISUAL_OWNED_PLAN_ID = "phase20-strength-foundation";
 export const PHASE20_VISUAL_RUNNING_PLAN_ID = "phase20-running-2k";
 export const PHASE20_VISUAL_CUSTOM_EXERCISE_ID = "phase20-tempo-goblet-squat";
 
+type CleanupStatus = "pending" | "complete" | "failed";
+const cleanupStates = new Map<string, CleanupStatus>();
+
+export function phase20VisualCleanupStatus(nonce: string): CleanupStatus | "missing" {
+  return cleanupStates.get(nonce) ?? "missing";
+}
+
+export function clearPhase20VisualCleanupStatus(nonce: string): void {
+  cleanupStates.delete(nonce);
+}
+
 async function fixtureSha256(value: string): Promise<string> {
   const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
   return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
@@ -530,6 +541,7 @@ export function createPhase20VisualRuntimeDependencies(
   request: Phase20VisualRequest,
 ): WorkoutAppRuntimeDependencies {
   const databaseName = phase20VisualDatabaseName(request.nonce);
+  cleanupStates.set(request.nonce, "pending");
   const production = createProductionWorkoutAppRuntimeDependencies(databaseName);
   const {
     createAutomaticBackupRuntime: _automaticBackupRuntime,
@@ -553,10 +565,17 @@ export function createPhase20VisualRuntimeDependencies(
     now: () => new Date(PHASE20_VISUAL_NOW),
     nowMs: () => PHASE20_VISUAL_NOW_MS,
     strictDisposal: true,
+    reportDisposalFailure: () => { cleanupStates.set(request.nonce, "failed"); },
     prepareRuntime: ({ kernel }) => bootstrapPhase20VisualFixture(kernel, request),
     async disposeRuntime() {
       const { deleteDatabaseAsync } = require("expo-sqlite") as typeof import("expo-sqlite");
-      await deleteDatabaseAsync(databaseName);
+      try {
+        await deleteDatabaseAsync(databaseName);
+        cleanupStates.set(request.nonce, "complete");
+      } catch (error) {
+        cleanupStates.set(request.nonce, "failed");
+        throw error;
+      }
     },
   });
 }

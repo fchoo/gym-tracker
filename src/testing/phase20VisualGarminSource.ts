@@ -4,6 +4,7 @@ import type {
 } from "../domains/activities/garminActivitySourcePort";
 import { canonicalJson } from "../domains/activities/importContracts";
 import type { Phase20VisualRequest } from "./phase20VisualRequest";
+import { phase20VisualState } from "./phase20VisualStateRegistry";
 
 const ACCOUNT = "phase20-visual-account";
 
@@ -53,23 +54,20 @@ export function createPhase20VisualGarminSource(
   if (!Number.isSafeInteger(ordinal) || ordinal < 92 || ordinal > 107) {
     throw new Error("phase20_visual_garmin_state_invalid");
   }
-  const scenario = request.state;
-  const initialConnection = scenario === "BW-094"
-    ? { kind: "mfa_required" as const, challenge_handle: "phase20-visual-mfa", generation: 1 }
-    : ["BW-092", "BW-093", "BW-106", "BW-107"].includes(scenario)
+  const scenario = phase20VisualState(request.state)?.name;
+  if (scenario === undefined) throw new Error("phase20_visual_garmin_state_invalid");
+  const initialConnection = ["garmin-disconnected", "garmin-consent", "garmin-file-import", "garmin-revoked"].includes(scenario)
       ? { kind: "disconnected" as const }
       : { kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 };
   return Object.freeze({
     connectionState: async () => initialConnection,
     restoreSession: async () => initialConnection,
-    login: async () => scenario === "BW-094"
-      ? { kind: "mfa_required" as const, challenge_handle: "phase20-visual-mfa", generation: 1 }
-      : { kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 },
+    login: async () => ({ kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 }),
     resumeMfa: async () => ({ kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 }),
     logout: async () => undefined,
     listRunningSummaries: async () => {
-      if (scenario === "BW-096") return new Promise<never>(() => undefined);
-      if (scenario === "BW-099") throw new Error("garmin_rate_limited");
+      if (scenario === "garmin-syncing") return new Promise<never>(() => undefined);
+      if (scenario === "garmin-error") throw new Error("garmin_rate_limited");
       return Object.freeze({ items: Object.freeze([
         { account_namespace: ACCOUNT, external_activity_id: "phase20-outdoor-001" },
         { account_namespace: ACCOUNT, external_activity_id: "phase20-treadmill-001" },

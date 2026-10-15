@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -34,6 +34,17 @@ test("generates all 107 ordered browser-walk occurrences with an approved refere
   }
   assert.match(flow, /VISUAL_SCREEN_ID/u);
   assert.match(flow, /VISUAL_READY_ID/u);
+});
+
+test("an explicitly configured but unavailable external authority fails with a stable code", () => {
+  const result = spawnSync(process.execPath, ["scripts/generate-phase20-visual-state-registry.mjs"], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, V12_APPROVED_SOURCE_ROOT: path.join(root, "missing-approved-authority") },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /v12_visual_authority_unavailable_external_authority/u);
+  assert.doesNotMatch(result.stderr, /\/Users\//u);
 });
 
 test("keeps browser-walk names exact and resolves authority without a private path", () => {

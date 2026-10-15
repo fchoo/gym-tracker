@@ -9,6 +9,23 @@ const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url));
 const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackbox/fake-device-adapter.mjs", import.meta.url));
 const TEST_MODE = "phase20-native-adapter-subprocess";
+export const V12_NATIVE_MAX_REQUEST_BYTES = 1024 * 1024;
+export const V12_NATIVE_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
+  "acquire-lease": 30_000,
+  "release-lease": 30_000,
+  "snapshot-settings": 30_000,
+  "restore-settings": 60_000,
+  "visual-capture": 90_000,
+  "visual-capture-batch": 6 * 60_000,
+  "visual-compare": 6 * 60_000,
+  accessibility: 10 * 60_000,
+  performance: 20 * 60_000,
+  sqlite: 26 * 60_000,
+  recovery: 20 * 60_000,
+  garmin: 20 * 60_000,
+  calendar: 20 * 60_000,
+});
 
 function fail(code) { throw new Error(`v12_native_adapter_${code}`); }
 function sha256(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
@@ -89,13 +106,14 @@ export function invokeV12NativeAdapter(action, payload, {
   if (typeof action !== "string" || action.length === 0 || !payload || typeof payload !== "object") fail("request_invalid");
   const target = commandFor(root, command);
   const attestation = createAttestation(action, payload, root);
+  const request = `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`;
+  if (!Object.hasOwn(V12_NATIVE_ACTION_TIMEOUT_MS, action) || Buffer.byteLength(request) > V12_NATIVE_MAX_REQUEST_BYTES) fail("request_too_large");
   const result = spawnSync(target.executable, [...target.args, "--action", action], {
     cwd: root,
-    input: `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`,
+    input: request,
     encoding: "utf8",
-    // The SQLite aggregate has bounded native progress, plus restoration time.
-    timeout: action === "sqlite" ? 26 * 60_000 : 5 * 60_000,
-    maxBuffer: 32 * 1024 * 1024,
+    timeout: V12_NATIVE_ACTION_TIMEOUT_MS[action],
+    maxBuffer: V12_NATIVE_MAX_RESPONSE_BYTES,
   });
   if (result.error || result.signal || result.status !== 0) {
     const bounded = /^v12_production_native_launcher_([a-z_]+)\s*$/u.exec(result.stderr ?? "");

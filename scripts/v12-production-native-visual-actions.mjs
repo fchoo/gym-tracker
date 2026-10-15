@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { PNG } from "pngjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { selectV12VisualReference } from "./v12-visual-authority.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FIXTURE = "v12-synthetic-fixtures-r18";
@@ -17,8 +18,9 @@ const HASH = /^[a-f0-9]{64}$/u;
 const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const CONFIG = /^AP-(L|D|SL|SD)-(C360|C390|M600|X840)-(P|L)-F(100|200)$/u;
 const ACTIONS = new Set(["visual-capture", "visual-capture-batch", "visual-compare"]);
+export const V12_VISUAL_ACTION_WINDOW = 4;
 const SETTINGS = ["font_scale", "accelerometer_rotation", "user_rotation"];
-const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_route", "source_component", "source_state", "fixture_seed", "scenario", "screen_test_id", "readiness_semantics", "focus_target", "evidence_scope", "source_revision", "source_read_only"];
+const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_route", "source_component", "source_state", "fixture_seed", "fixture_variant", "scenario", "screen_test_id", "readiness_test_ids", "readiness_semantics", "readiness_actions", "readiness_order", "readiness_non_color", "focus_target", "evidence_scope", "source_revision", "source_read_only"];
 // These are the retained Revision 18 images, not caller-selected paths or hashes.
 // They exist only for the 390x844, portrait, 100% configuration. Never resize an
 // approved PNG or label it as a reference for a different configuration.
@@ -57,30 +59,37 @@ function png(bytes) {
     return image;
   } catch { fail("png_invalid"); }
 }
-function configuration(id) {
+export function resolveV12ProductionVisualConfiguration(id) {
   const match = CONFIG.exec(id ?? "");
   if (!match) fail("payload_invalid");
   const [, appearance, size, orientation, scale] = match;
-  const short = Number(size.slice(1));
-  const long = Math.round(short * 844 / 390);
+  const portrait = { C360: [360, 800], C390: [390, 844], M600: [600, 960], X840: [840, 1080] }[size];
+  if (!portrait) fail("payload_invalid");
   return { id, appearance: appearance.startsWith("S") ? "System" : appearance === "L" ? "Light" : "Dark",
-    scheme: appearance.endsWith("D") ? "dark" : "light", width: orientation === "P" ? short : long,
-    height: orientation === "P" ? long : short, fontScale: Number(scale) / 100 };
+    scheme: appearance.endsWith("D") ? "dark" : "light", size, orientation,
+    width: orientation === "P" ? portrait[0] : portrait[1],
+    height: orientation === "P" ? portrait[1] : portrait[0], fontScale: Number(scale) / 100 };
 }
 function visualRegistry(root) {
   const entries = json(root, "src/testing/phase20VisualStateRegistry.json", "state_route_missing");
   if (!Array.isArray(entries) || entries.length !== 107 || new Set(entries.map((entry) => entry?.id)).size !== 107) fail("state_route_missing");
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    if (!keys(entry, ["id", "name", "route", "component", "route_params", "fixture_id", "fixture_seed", "scenario", "scenario_steps", "fixture_facts", "interactions", "expected_visible_semantics", "focus_target", "readiness", "evidence_scope", "reference"])
+    if (!keys(entry, ["id", "name", "route", "component", "route_params", "fixture_id", "fixture_seed", "fixture_variant", "scenario", "scenario_steps", "fixture_facts", "interactions", "expected_visible_semantics", "focus_target", "readiness", "evidence_scope", "reference"])
       || entry.id !== `BW-${String(index + 1).padStart(3, "0")}` || entry.fixture_id !== FIXTURE
       || typeof entry.name !== "string" || !entry.name || typeof entry.route !== "string" || entry.route.startsWith("/__")
       || !object(entry.route_params) || typeof entry.fixture_seed !== "string" || !entry.fixture_seed || entry.scenario !== entry.name
       || !Array.isArray(entry.expected_visible_semantics) || !entry.expected_visible_semantics.length
       || !Array.isArray(entry.scenario_steps)
-      || !object(entry.readiness) || !keys(entry.readiness, ["screen_test_id", "test_id", "semantics"])
+      || typeof entry.fixture_variant !== "string" || !entry.fixture_variant
+      || !object(entry.readiness) || !keys(entry.readiness, ["status", "screen_test_id", "test_id", "test_ids", "semantics", "actions", "order", "non_color", "focus", "source_receipt"])
       || typeof entry.readiness.screen_test_id !== "string" || !entry.readiness.screen_test_id
-      || typeof entry.readiness.test_id !== "string" || !entry.readiness.test_id || !Array.isArray(entry.readiness.semantics) || !entry.readiness.semantics.length
+      || typeof entry.readiness.test_id !== "string" || !entry.readiness.test_id || !["ready", "loading"].includes(entry.readiness.status)
+      || !Array.isArray(entry.readiness.test_ids) || entry.readiness.test_ids.length < 2
+      || !Array.isArray(entry.readiness.semantics) || entry.readiness.semantics.length < 2
+      || !Array.isArray(entry.readiness.actions) || !entry.readiness.actions.length || !Array.isArray(entry.readiness.order) || entry.readiness.order.length < 2
+      || !Array.isArray(entry.readiness.non_color) || !entry.readiness.non_color.length || !object(entry.readiness.focus)
+      || !Array.isArray(entry.readiness.source_receipt?.assertions) || !entry.readiness.source_receipt.assertions.length
       || entry.evidence_scope !== (index >= 91 ? "visual_only" : "production_screen")
       || !object(entry.reference) || !["retained_png", "approved_source"].includes(entry.reference.kind)) fail("state_route_missing");
   }
@@ -92,7 +101,7 @@ function item(root, value, runId) {
     || value.fixture_id !== undefined && value.fixture_id !== FIXTURE) fail("payload_invalid");
   const state = visualRegistry(root).find((entry) => entry.id === value.state_id);
   if (!state) fail("state_route_missing");
-  const config = configuration(value.configuration_id);
+  const config = resolveV12ProductionVisualConfiguration(value.configuration_id);
   if (value.screenshot_id !== undefined && value.screenshot_id !== `v12/${value.state_id}/${config.id}.png`) fail("payload_invalid");
   return { state_id: value.state_id, config, state };
 }
@@ -158,18 +167,18 @@ function readSettings(shell) {
   if (!night) fail("settings_invalid");
   return { settings, size: wm("size"), density: wm("density"), night };
 }
-function configure(shell, config) {
+function configure(shell, config, scheme = config.scheme) {
   shell("settings", "put", "system", "font_scale", String(config.fontScale));
   shell("settings", "put", "system", "accelerometer_rotation", "0");
   // Set the logical display dimensions directly; avoid device natural-orientation assumptions.
   shell("settings", "put", "system", "user_rotation", "0");
   shell("wm", "size", `${config.width}x${config.height}`);
   shell("wm", "density", "160");
-  shell("cmd", "uimode", "night", config.scheme === "dark" ? "yes" : "no");
+  shell("cmd", "uimode", "night", scheme === "dark" ? "yes" : "no");
   const actual = readSettings(shell);
   if (actual.settings.font_scale !== String(config.fontScale) || actual.settings.accelerometer_rotation !== "0"
     || actual.settings.user_rotation !== "0" || actual.size.override !== `${config.width}x${config.height}`
-    || actual.density.override !== "160" || actual.night !== (config.scheme === "dark" ? "yes" : "no")) fail("configuration_mismatch");
+    || actual.density.override !== "160" || actual.night !== (scheme === "dark" ? "yes" : "no")) fail("configuration_mismatch");
 }
 function restore(shell, snapshot) {
   let failed = false;
@@ -182,7 +191,7 @@ function restore(shell, snapshot) {
   if (failed) fail("restoration_failed");
 }
 
-async function marker(native, nonce, selected, mode) {
+async function marker(native, nonce, selected, mode, expectedScheme = selected.config.scheme) {
   const deadline = Date.now() + 5_000;
   do {
     const output = native.adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S").toString("utf8");
@@ -192,7 +201,7 @@ async function marker(native, nonce, selected, mode) {
       if (start < 0) continue;
       let value;
       try { value = JSON.parse(line.slice(start + "PHASE20_VISUAL_RESULT ".length)); } catch { continue; }
-      if (value.nonce === nonce) found = value;
+      if (value.nonce === nonce && (mode === "reset" || value.color_scheme === expectedScheme)) found = value;
     }
     if (found) {
       if (!keys(found, MARKER_KEYS) || found.schema_version !== 1 || found.fixture_id !== FIXTURE
@@ -201,15 +210,19 @@ async function marker(native, nonce, selected, mode) {
       if (found.state_id !== selected.state_id || found.source_state !== selected.state.name
         || found.configuration_id !== selected.config.id || found.mode !== mode
         || found.source_route !== selected.state.route || found.source_component !== selected.state.component
-        || found.fixture_seed !== selected.state.fixture_seed || found.scenario !== selected.state.scenario
+        || found.fixture_seed !== selected.state.fixture_seed || found.fixture_variant !== selected.state.fixture_variant || found.scenario !== selected.state.scenario
         || found.screen_test_id !== selected.state.readiness.screen_test_id
+        || !same(found.readiness_test_ids, selected.state.readiness.test_ids)
         || !same(found.readiness_semantics, selected.state.readiness.semantics)
+        || !same(found.readiness_actions, selected.state.readiness.actions)
+        || !same(found.readiness_order, selected.state.readiness.order)
+        || !same(found.readiness_non_color, selected.state.readiness.non_color)
         || found.focus_target !== selected.state.focus_target || found.evidence_scope !== selected.state.evidence_scope) fail("state_mismatch");
       if (mode === "reset") {
         if (found.status !== "reset" || found.appearance !== "System") fail("restoration_failed");
       } else {
-        if (found.status !== "ready") fail("state_mismatch");
-        if (found.appearance !== selected.config.appearance || found.color_scheme !== selected.config.scheme
+        if (found.status !== selected.state.readiness.status) fail("state_mismatch");
+        if (found.appearance !== selected.config.appearance || found.color_scheme !== expectedScheme
           || found.font_scale !== selected.config.fontScale || found.density !== 1
           || found.screen_width_dp !== selected.config.width || found.screen_height_dp !== selected.config.height
           || found.width_dp !== selected.config.width || found.height_dp > found.screen_height_dp) fail("configuration_mismatch");
@@ -220,8 +233,7 @@ async function marker(native, nonce, selected, mode) {
   } while (Date.now() < deadline);
   fail("marker_timeout");
 }
-async function navigate(native, root, serial, selected, mode) {
-  const nonce = randomBytes(16).toString("hex");
+async function navigate(native, root, serial, selected, mode, nonce = randomBytes(16).toString("hex"), expectedScheme = selected.config.scheme) {
   const params = new URLSearchParams({ nonce, state: selected.state_id, configuration: selected.config.id, fixture: FIXTURE, mode });
   for (const [key, value] of Object.entries(selected.state.route_params)) {
     if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/u.test(key) || typeof value !== "string" || value.length < 1 || value.length > 256) fail("state_route_missing");
@@ -233,7 +245,7 @@ async function navigate(native, root, serial, selected, mode) {
     params.set("ready", nonce);
     native.shell("am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", `gymtracker-devtest://${ROUTE}?${params}`, PACKAGE);
   }
-  return marker(native, nonce, selected, mode);
+  return marker(native, nonce, selected, mode, expectedScheme);
 }
 
 // Parse only UIAutomator's flat attributes. No XML entities/DOCTYPE expansion,
@@ -245,9 +257,11 @@ function observe(native, measured, selected) {
   const nodes = [...xml.matchAll(/<node\s+([^>]+)>/gu)].map((match) => Object.fromEntries(
     [...match[1].matchAll(/([\w-]+)="([^"]*)"/gu)].map((a) => [a[1], a[2]]),
   ));
-  if (!nodes.some((n) => n["resource-id"]?.endsWith(selected.state.readiness.test_id) && n.package === PACKAGE)) fail("state_mismatch");
+  const testIds = selected.state.readiness.test_ids.map((value) => ({ value, matched: nodes.some((node) => node["resource-id"]?.endsWith(value) && node.package === PACKAGE) }));
+  if (!testIds.some(({ value, matched }) => value === selected.state.readiness.test_id && matched)) fail("state_mismatch");
   const semanticValues = nodes.flatMap((node) => [node.text, node["content-desc"]]).filter(Boolean);
-  if (!selected.state.readiness.semantics.every((semantic) => semanticValues.some((value) => value === semantic || value.includes(semantic)))) fail("state_mismatch");
+  const semantics = selected.state.readiness.semantics.map((value) => ({ value, matched: semanticValues.some((actual) => actual === value || actual.includes(value)) }));
+  if (!semantics.every(({ matched }) => matched)) fail("state_mismatch");
   const targetNodes = nodes.filter((node) => node.clickable === "true" && node.enabled === "true" && /^\[\d+,\d+\]\[\d+,\d+\]$/u.test(node.bounds ?? ""));
   if (targetNodes.length === 0) fail("state_mismatch");
   const targets = targetNodes.map((node, index) => {
@@ -262,16 +276,34 @@ function observe(native, measured, selected) {
   const overlaps = targets.map((target, index) => targets.some((other, otherIndex) => otherIndex !== index
     && target.x_dp < other.x_dp + other.width_dp && other.x_dp < target.x_dp + target.width_dp
     && target.y_dp < other.y_dp + other.height_dp && other.y_dp < target.y_dp + target.height_dp));
+  const actions = selected.state.readiness.actions.map((expected) => {
+    const index = nodes.findIndex((node) => expected.id && node["resource-id"]?.endsWith(expected.id)
+      || expected.label && [node.text, node["content-desc"]].some((value) => value === expected.label || value?.includes(expected.label)));
+    const node = index < 0 ? undefined : nodes[index];
+    return { ...expected, matched: index >= 0, enabled: node?.enabled !== "false", observed_order: index };
+  });
+  const order = selected.state.readiness.order.map((value) => ({ value, observed_order: semanticValues.findIndex((actual) => actual === value || actual.includes(value)) }));
+  const nonColor = selected.state.readiness.non_color.map((value) => ({ value, matched: semanticValues.some((actual) => actual === value || actual.includes(value)) }));
+  const focusNode = nodes.find((node) => node["resource-id"]?.endsWith(selected.state.readiness.focus.target)
+    || node["content-desc"] === selected.state.readiness.focus.target || node.text === selected.state.readiness.focus.target);
+  const readiness = { status: measured.status, semantics, test_ids: testIds, actions, order, non_color: nonColor,
+    focus: { target: selected.state.readiness.focus.target, matched: focusNode !== undefined, focusable: focusNode?.focusable === "true", focused: focusNode?.focused === "true" },
+    source_receipt: { schema_version: 1, nonce: measured.nonce, state_id: selected.state_id, fixture_variant: selected.state.fixture_variant,
+      assertions: selected.state.readiness.source_receipt.assertions,
+      digest: hash(JSON.stringify({ state_id: selected.state_id, fixture_variant: selected.state.fixture_variant, assertions: selected.state.readiness.source_receipt.assertions })) } };
   return { native_execution: "EXECUTED", state_id: measured.state_id, configuration_id: measured.configuration_id,
-    content: true, actions: true, copy: true, state: true, route: true,
-    focus: targets.every((v) => v.focusable), order: true, non_color_state: true,
-    commit_read_only: measured.source_read_only, targets: targets.map((v, index) => ({ ...v, overlap: overlaps[index] })),
+    readiness, targets: targets.map((v, index) => ({ ...v, overlap: overlaps[index] })),
     viewport: { width_dp: measured.width_dp, height_dp: measured.height_dp, density: measured.density },
-    // These retained PNGs contain no approved instrumented bounds, baselines,
-    // token map or CIEDE2000 observations. Returning zero/true would manufacture
-    // a PASS. The aggregate comparison verifier deliberately rejects nulls.
-    geometry_dp: null, baseline_icon_dp: null, token_exact: null, ciede2000: null,
-    measurement_status: "approved_reference_instrumentation_missing" };
+    measurement: { kind: "source_semantic", renderer_digest: selected.state.reference.kind === "retained_png" ? selected.state.reference.source.renderer_digest : selected.state.reference.renderer_digest,
+      semantic_digest: selected.state.reference.kind === "retained_png" ? selected.state.reference.source.semantic_digest : selected.state.reference.semantic_digest,
+      layout_digest: selected.state.reference.kind === "retained_png" ? selected.state.reference.source.layout_digest : selected.state.reference.layout_digest } };
+}
+
+function preservationSnapshot(measured, observation) {
+  const values = observation.readiness.semantics.filter(({ matched }) => matched).map(({ value }) => value);
+  const timers = values.filter((value) => /^\d{2}:\d{2}$/u.test(value));
+  return { route: measured.source_route, state: measured.source_state, focus: observation.readiness.focus.target,
+    scroll: hash(JSON.stringify(values)), timer: hash(JSON.stringify(timers)), source: observation.readiness.source_receipt.digest };
 }
 
 async function capture(native, root, serial, selected, attestation) {
@@ -279,6 +311,7 @@ async function capture(native, root, serial, selected, attestation) {
   // Separate device-side exclusion prevents two actions borrowing the same
   // runtime lease from interleaving size/night-mode changes.
   shell("mkdir", LOCK);
+  const captureNonce = randomBytes(16).toString("hex");
   let snapshot; let configured = false; let routeAttempted = false; let result;
   try {
     snapshot = readSettings(shell);
@@ -289,19 +322,32 @@ async function capture(native, root, serial, selected, attestation) {
     let saved;
     try { saved = JSON.parse(shell("cat", `${LOCK}/restore.json`)); } catch { fail("snapshot_failed"); }
     if (!same(saved, savedState)) fail("snapshot_failed");
-    configured = true; configure(shell, selected.config);
+    configured = true;
+    const transitionFromLight = selected.config.appearance === "System" && selected.config.scheme === "dark";
+    configure(shell, selected.config, transitionFromLight ? "light" : selected.config.scheme);
     routeAttempted = true;
-    const measured = await navigate(native, root, serial, selected, "capture");
-    const observation = observe(native, measured, selected);
+    let measured = await navigate(native, root, serial, selected, "capture", captureNonce, transitionFromLight ? "light" : selected.config.scheme);
+    let observation = observe(native, measured, selected);
+    let system_transition;
+    if (transitionFromLight) {
+      const before = preservationSnapshot(measured, observation);
+      shell("cmd", "uimode", "night", "yes");
+      measured = await marker(native, measured.nonce, selected, "capture", "dark");
+      observation = observe(native, measured, selected);
+      const after = preservationSnapshot(measured, observation);
+      if (!same(before, after)) fail("system_transition_state_changed");
+      system_transition = { from: "light", to: "dark", mounted_nonce: measured.nonce, before, after };
+    }
     const bytes = native.adb("exec-out", "screencap", "-p");
     const image = png(bytes);
     if (image.width !== selected.config.width || image.height !== selected.config.height) fail("configuration_mismatch");
     const after = await marker(native, measured.nonce, selected, "capture");
     if (!same(measured, after) || !same(observation, observe(native, after, selected))) fail("state_mismatch");
-    const receipt = { schema_version: 1, nonce: measured.nonce, run_id: attestation.run_id, state_id: selected.state_id,
+    const receipt = { schema_version: 2, nonce: measured.nonce, run_id: attestation.run_id, state_id: selected.state_id,
       configuration_id: selected.config.id, fixture_id: FIXTURE, source_tree_sha256: attestation.source_tree_sha256,
       apk_sha256: attestation.apk_sha256, device_identity_sha256: attestation.device_identity_sha256,
-      png_sha256: hash(bytes), observation_sha256: hash(JSON.stringify(observation)) };
+      readiness_status: selected.state.readiness.status, png_sha256: hash(bytes), observation_sha256: hash(JSON.stringify(observation)),
+      source_receipt: observation.readiness.source_receipt, ...(system_transition === undefined ? {} : { system_transition }) };
     result = { native_execution: "EXECUTED", fixture_id: FIXTURE, png_base64: bytes.toString("base64"),
       settings: { restored: false, privacy: "synthetic-only", state_receipt: receipt, observation } };
   } finally {
@@ -309,7 +355,7 @@ async function capture(native, root, serial, selected, attestation) {
     // Reset in the configured viewport first. This unmounts the production
     // screen and reads back the isolated appearance store through useAppTheme.
     if (routeAttempted) {
-      try { await navigate(native, root, serial, selected, "reset"); } catch { restorationFailed = true; }
+      try { await navigate(native, root, serial, selected, "reset", captureNonce); } catch { restorationFailed = true; }
     }
     if (configured) { try { restore(shell, snapshot); } catch { restorationFailed = true; } }
     if (restorationFailed) fail("restoration_failed");
@@ -323,42 +369,46 @@ async function capture(native, root, serial, selected, attestation) {
 }
 
 function reference(root, selected) {
-  const entry = selected.state.reference;
-  if (entry.kind !== "retained_png") return null;
-  const theme = selected.config.appearance === "Dark" || selected.config.scheme === "dark" ? entry.dark : entry.light;
-  const bytes = file(root, theme.path, "reference_missing");
-  if (hash(bytes) !== theme.sha256) fail("reference_invalid");
-  png(bytes);
-  return bytes;
+  const binding = selectV12VisualReference(selected.state, selected.config);
+  if (binding.kind === "retained_png") {
+    const bytes = file(root, binding.path, "reference_missing");
+    if (hash(bytes) !== binding.sha256) fail("reference_invalid");
+    png(bytes);
+  }
+  return binding;
 }
-function retained(root, attestation) {
+function retained(root, attestation, requested) {
   const base = `artifacts/native/v1.2/${attestation.run_id}/screenshots`;
   const index = json(root, `${base}/index.json`, "capture_invalid");
-  if (!keys(index, ["schema_version", "producer", "run_id", "records"], ["source_hashes"])
-    || index.schema_version !== 1 || index.producer !== "v12-visual-capture-index/v1" || index.run_id !== attestation.run_id
+  if (!keys(index, ["schema_version", "producer", "run_id", "capture_count", "windows", "records"], ["source_hashes"])
+    || index.schema_version !== 2 || index.producer !== "v12-visual-capture-index/v2" || index.run_id !== attestation.run_id
     || !Array.isArray(index.records) || !index.records.length || index.records.length > 107 * 64) fail("capture_invalid");
+  const requestedKeys = new Set(requested.map((entry) => `${entry.state_id}/${entry.config.id}`));
   const seen = new Set();
-  return index.records.map((entry) => {
+  const retainedRecords = index.records.filter((entry) => requestedKeys.has(`${entry.state_id}/${entry.configuration_id}`)).map((entry) => {
     const selected = item(root, { state_id: entry.state_id, configuration_id: entry.configuration_id }, attestation.run_id);
     const key = `${selected.state_id}/${selected.config.id}`;
     if (seen.has(key)) fail("capture_invalid"); seen.add(key);
     const record = json(root, `${base}/${key}/capture.json`, "capture_invalid");
-    if (!same(entry, record) || record.schema_version !== 2 || record.producer !== "v12-visual-capture/v2"
+    if (!same(entry, record) || record.schema_version !== 3 || record.producer !== "v12-visual-capture/v3"
       || record.run_id !== attestation.run_id || record.native_execution !== "EXECUTED" || record.fixture_id !== FIXTURE
       || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only") fail("capture_invalid");
     const receipt = record.settings.state_receipt;
-    if (!receipt || receipt.schema_version !== 1 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "")
+    if (!receipt || receipt.schema_version !== 2 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "")
       || receipt.run_id !== attestation.run_id || receipt.state_id !== selected.state_id || receipt.configuration_id !== selected.config.id
       || receipt.fixture_id !== FIXTURE || receipt.source_tree_sha256 !== attestation.source_tree_sha256
       || receipt.apk_sha256 !== attestation.apk_sha256 || receipt.device_identity_sha256 !== attestation.device_identity_sha256
-      || receipt.observation_sha256 !== hash(JSON.stringify(record.settings.observation))) fail("capture_invalid");
+      || receipt.readiness_status !== selected.state.readiness.status || receipt.observation_sha256 !== hash(JSON.stringify(record.settings.observation))
+      || receipt.source_receipt?.nonce !== receipt.nonce || receipt.source_receipt?.state_id !== selected.state_id) fail("capture_invalid");
     const expected = `${base}/${key}/native.png`;
     if (record.native_png?.path !== expected) fail("capture_invalid");
     const bytes = file(root, expected, "capture_invalid"); const image = png(bytes);
     if (hash(bytes) !== receipt.png_sha256 || record.native_png.sha256 !== receipt.png_sha256 || record.native_png.size_bytes !== bytes.length
       || record.native_png.width !== image.width || record.native_png.height !== image.height) fail("capture_invalid");
-    return { selected, receipt, bytes, approved: reference(root, selected) };
+    return { selected, receipt, bytes, reference: reference(root, selected) };
   });
+  if (retainedRecords.length !== requested.length || !same(retainedRecords.map(({ selected }) => `${selected.state_id}/${selected.config.id}`), requested.map((entry) => `${entry.state_id}/${entry.config.id}`))) fail("capture_invalid");
+  return retainedRecords;
 }
 
 /**
@@ -367,9 +417,8 @@ function retained(root, attestation) {
  * No caller observations, reference paths, serials or arbitrary route names are
  * accepted. Unknown actions return undefined without inspecting other inputs.
  * Capture returns the native adapter's png_base64 shape; batch preserves order.
- * Compare reads retained captures and returns approved_reference_png_base64 plus
- * newly executed UI geometry tied to the *same PNG bytes*. Missing reference
- * measurements remain null (not aggregate PASS evidence).
+ * Compare reads retained captures and returns a manifest-bound reference plus
+ * a newly executed state receipt tied to the same PNG bytes.
  */
 export async function executeProductionVisualAction({ action, payload, attestation, root = process.cwd(), serial = process.env.V12_DEVICE_SERIAL, runCommand = spawnSync } = {}) {
   if (!ACTIONS.has(action)) return undefined;
@@ -379,14 +428,18 @@ export async function executeProductionVisualAction({ action, payload, attestati
     if (action === "visual-capture") selected = [item(root, payload, payload.run_id)];
     else if (action === "visual-capture-batch") {
       if (!keys(payload, ["run_id", "captures"], ["lease"]) || !Array.isArray(payload.captures)
-        || !payload.captures.length || payload.captures.length > 107 * 64) fail("payload_invalid");
+        || !payload.captures.length || payload.captures.length > V12_VISUAL_ACTION_WINDOW) fail("payload_invalid");
       selected = payload.captures.map((v) => item(root, v, payload.run_id));
       if (new Set(selected.map((v) => `${v.state_id}/${v.config.id}`)).size !== selected.length) fail("payload_invalid");
-    } else if (!keys(payload, ["run_id"], ["lease"])) fail("payload_invalid");
+    } else if (action === "visual-compare") {
+      if (!keys(payload, ["run_id", "captures"], ["lease"]) || !Array.isArray(payload.captures)
+        || !payload.captures.length || payload.captures.length > V12_VISUAL_ACTION_WINDOW) fail("payload_invalid");
+      selected = payload.captures.map((v) => item(root, v, payload.run_id));
+    }
     attest(root, action, payload, attestation);
     file(root, FLOW, "state_route_missing");
     file(root, `app${ROUTE}.tsx`, "state_route_missing");
-    const comparisons = action === "visual-compare" ? retained(root, attestation) : undefined;
+    const comparisons = action === "visual-compare" ? retained(root, attestation, selected) : undefined;
     const native = nativeTransport(runCommand, root, serial);
     verifyDevice(native, attestation, payload, serial);
     if (comparisons) {
@@ -394,10 +447,13 @@ export async function executeProductionVisualAction({ action, payload, attestati
       for (const previous of comparisons) {
         const fresh = await capture(native, root, serial, previous.selected, attestation);
         if (!Buffer.from(fresh.png_base64, "base64").equals(previous.bytes)) fail("capture_mismatch");
+        const observation = { ...fresh.settings.observation, capture_png_sha256: previous.receipt.png_sha256,
+          capture_nonce: previous.receipt.nonce, observation_nonce: fresh.settings.state_receipt.nonce };
         results.push({ id: previous.selected.state_id, configuration_id: previous.selected.config.id,
-          ...(previous.approved === null ? { approved_source_binding: previous.selected.state.reference } : { approved_reference_png_base64: previous.approved.toString("base64") }),
-          observation: { ...fresh.settings.observation, capture_png_sha256: previous.receipt.png_sha256,
-            capture_nonce: previous.receipt.nonce, observation_nonce: fresh.settings.state_receipt.nonce } });
+          reference_binding: previous.reference,
+          capture_state_receipt: previous.receipt,
+          state_receipt: { ...fresh.settings.state_receipt, observation_sha256: hash(JSON.stringify(observation)) },
+          observation });
       }
       return results;
     }

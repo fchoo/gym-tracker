@@ -1247,6 +1247,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   }>): Promise<void>;
   disposeRuntime?(): Promise<void>;
   strictDisposal?: boolean;
+  reportDisposalFailure?(error: unknown): void;
 }>;
 
 export type WorkoutAppRuntimeAdapters = Readonly<{
@@ -2340,15 +2341,20 @@ export function WorkoutAppRuntimeProvider({
     servicesRef.current = null;
     pendingActivityMatchRef.current = null;
     progressBodyweightCommandsRef.current.clear();
-    if (dependencies.strictDisposal) await services?.lifecycle.dispose?.();
-    else await services?.lifecycle.dispose?.().catch(() => undefined);
-    services?.automaticBackupRuntime?.dispose();
-    if (dependencies.strictDisposal) {
-      await services?.kernel.close();
-      await dependencies.disposeRuntime?.();
-    } else {
-      await services?.kernel.close().catch(() => undefined);
-      await dependencies.disposeRuntime?.().catch(() => undefined);
+    try {
+      if (dependencies.strictDisposal) await services?.lifecycle.dispose?.();
+      else await services?.lifecycle.dispose?.().catch(() => undefined);
+      services?.automaticBackupRuntime?.dispose();
+      if (dependencies.strictDisposal) {
+        await services?.kernel.close();
+        await dependencies.disposeRuntime?.();
+      } else {
+        await services?.kernel.close().catch(() => undefined);
+        await dependencies.disposeRuntime?.().catch(() => undefined);
+      }
+    } catch (error) {
+      dependencies.reportDisposalFailure?.(error);
+      throw error;
     }
   }, [dependencies]);
 
@@ -2690,7 +2696,10 @@ export function WorkoutAppRuntimeProvider({
     void initialize();
     return () => {
       generationRef.current += 1;
-      void closeServices();
+      void closeServices().catch((error: unknown) => {
+        if (!dependencies.strictDisposal) return;
+        console.error("workout_runtime_strict_disposal_failed", error instanceof Error ? error.message : "unknown");
+      });
     };
   }, [closeServices, initialize]);
 

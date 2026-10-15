@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadV12VisualAuthority, v12VisualStateAuthority } from "./v12-visual-authority.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+if (process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  process.on("uncaughtException", (error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : "phase20_visual_generation_failed"}\n`);
+    process.exit(1);
+  });
+}
 const evidence = ".planning/design/v1.2-browser-evidence";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFile = (relative) => readFileSync(path.join(root, relative));

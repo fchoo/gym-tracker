@@ -25,6 +25,10 @@ jest.mock("expo-router", () => ({
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({ launchState: "trusted", runningPlanRuntime: {} }),
 }));
+jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
+  phase20VisualCleanupStatus: () => "complete",
+  clearPhase20VisualCleanupStatus: jest.fn(),
+}));
 
 describe("Phase 20 visual probe", () => {
   beforeEach(() => {
@@ -103,7 +107,15 @@ describe("Phase 20 visual probe", () => {
       expect(marker.source_component).toBe("PlanTypeChooserScreen");
       expect(marker.fixture_seed).toBe("phase20-library-running");
       expect(marker.scenario).toBe("plan-type-chooser");
-      expect(marker.readiness_semantics).toEqual(["What are you training for?"]);
+      expect(marker.readiness_semantics).toEqual([
+        "What are you training for?",
+        "Running",
+        "Distance and time goal, benchmark, and structured weekly sessions.",
+        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically.",
+      ]);
+      expect(marker.readiness_test_ids).toContain("phase20-visual-state-BW-054");
+      expect(Array.isArray(marker.readiness_actions) ? marker.readiness_actions.length : 0).toBeGreaterThan(1);
+      expect(marker.readiness_non_color).toContain("Active Plans");
       expect(marker.evidence_scope).toBe("production_screen");
     } finally { log.mockRestore(); }
   });

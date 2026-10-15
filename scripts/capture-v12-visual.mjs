@@ -14,6 +14,8 @@ import {
 const SHA256 = /^[a-f0-9]{64}$/u;
 const require = createRequire(import.meta.url);
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+export const V12_VISUAL_BATCH_WINDOW = 4;
+const registryCache = new Map();
 const FLOW_SOURCES = Object.freeze([
   Object.freeze({ id: "multi-plan", sourcePath: "maestro/v1.2/multi-plan.yaml", contractPath: "src/testing/contracts/multiPlanRunning.contract.ts", prefix: "phase13-" }),
   Object.freeze({ id: "workout", sourcePath: "maestro/v1.2/workout.yaml", contractPath: "src/testing/contracts/phase15Workout.contract.ts", prefix: "workout." }),
@@ -33,6 +35,38 @@ function decodeNativePng(bytes) {
   try { image = require("pngjs").PNG.sync.read(bytes); } catch { fail("png_invalid"); }
   if (!Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height) || image.width < 1 || image.height < 1) fail("png_invalid");
   return Object.freeze({ width: image.width, height: image.height });
+}
+
+function visualState(root, stateId) {
+  let states = registryCache.get(path.resolve(root));
+  try {
+    if (states === undefined) {
+      states = JSON.parse(readFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.json"), "utf8"));
+      registryCache.set(path.resolve(root), states);
+    }
+  } catch { fail("state_receipt_invalid"); }
+  const state = Array.isArray(states) ? states.find(({ id }) => id === stateId) : undefined;
+  if (!state) fail("state_receipt_invalid");
+  return state;
+}
+
+function validateStateReceipt(root, runId, item, measured, pngSha256) {
+  const state = visualState(root, item.state_id); const receipt = measured.settings.state_receipt; const observation = measured.settings.observation;
+  const sourceMaterial = { state_id: item.state_id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
+  if (!receipt || receipt.schema_version !== 2 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "")
+    || receipt.run_id !== runId || receipt.state_id !== item.state_id || receipt.configuration_id !== item.configuration_id
+    || receipt.fixture_id !== item.fixture_id || receipt.png_sha256 !== pngSha256
+    || ![receipt.source_tree_sha256, receipt.apk_sha256, receipt.device_identity_sha256].every((value) => SHA256.test(value ?? ""))
+    || receipt.observation_sha256 !== hash(JSON.stringify(observation)) || receipt.readiness_status !== state.readiness.status
+    || observation?.state_id !== item.state_id || observation?.configuration_id !== item.configuration_id || observation?.readiness?.status !== state.readiness.status
+    || receipt.source_receipt?.schema_version !== 1 || receipt.source_receipt.nonce !== receipt.nonce
+    || receipt.source_receipt.state_id !== item.state_id || receipt.source_receipt.fixture_variant !== state.fixture_variant
+    || JSON.stringify(receipt.source_receipt.assertions) !== JSON.stringify(sourceMaterial.assertions)
+    || receipt.source_receipt.digest !== hash(JSON.stringify(sourceMaterial))) fail("state_receipt_invalid");
+  if (item.configuration_id.startsWith("AP-SD-") && (!receipt.system_transition || receipt.system_transition.mounted_nonce !== receipt.nonce
+    || receipt.system_transition.from !== "light" || receipt.system_transition.to !== "dark"
+    || JSON.stringify(receipt.system_transition.before) !== JSON.stringify(receipt.system_transition.after))) fail("system_transition_invalid");
+  return receipt;
 }
 
 function sourceCaseIds(root, { contractPath, prefix }) {
@@ -124,16 +158,32 @@ function parseVisualCli(args) {
  * The adapter must return retained PNG bytes and measured settings; fixture-only
  * rows are refused so this path can never manufacture native evidence on host.
  */
-export function executeLiveV12VisualCapture({ runId, root = process.cwd(), capture, captureAll, write } = {}) {
+export function executeLiveV12VisualCapture({ runId, root = process.cwd(), capture, captureAll, batchWindow = V12_VISUAL_BATCH_WINDOW, write } = {}) {
   if (!V12_RUN_ID.test(runId ?? "") || typeof capture !== "function") fail("adapter_invalid");
   const plan = executeV12VisualCapture({ root, mode: "plan" });
-  const batch = typeof captureAll === "function"
-    ? captureAll(Object.freeze({ run_id: runId, captures: plan.captures }))
-    : undefined;
-  if (batch !== undefined && (!Array.isArray(batch) || batch.length !== plan.captures.length)) fail("capture_invalid");
+  if (!Number.isSafeInteger(batchWindow) || batchWindow < 1 || batchWindow > 512) fail("adapter_invalid");
   const records = [];
+  const windows = [];
+  const measuredItems = [];
+  if (typeof captureAll === "function") {
+    for (let offset = 0; offset < plan.captures.length; offset += batchWindow) {
+      const requested = plan.captures.slice(offset, offset + batchWindow);
+      const batch = captureAll(Object.freeze({ run_id: runId, captures: requested }));
+      if (!Array.isArray(batch) || batch.length !== requested.length) fail("capture_invalid");
+      const requestBytes = Buffer.byteLength(JSON.stringify({ run_id: runId, captures: requested }));
+      const responseBytes = Buffer.byteLength(JSON.stringify(batch.map(({ png, ...entry }) => ({ ...entry, png_base64: entry.png_base64 ?? png?.toString("base64") }))));
+      if (requestBytes > 1024 * 1024 || responseBytes > 32 * 1024 * 1024) fail("batch_transport_limit_invalid");
+      measuredItems.push(...batch);
+      windows.push(Object.freeze({ ordinal: windows.length, offset, count: requested.length,
+        first: `${requested[0].state_id}/${requested[0].configuration_id}`,
+        last: `${requested.at(-1).state_id}/${requested.at(-1).configuration_id}`,
+        request_bytes: requestBytes, response_bytes: responseBytes,
+        request_sha256: hash(JSON.stringify(requested)),
+        result_sha256: hash(JSON.stringify(batch.map((entry) => entry?.settings?.state_receipt ?? null))) }));
+    }
+  }
   for (const [captureIndex, item] of plan.captures.entries()) {
-    const measured = batch?.[captureIndex] ?? capture(Object.freeze({ ...item, run_id: runId }));
+    const measured = measuredItems[captureIndex] ?? capture(Object.freeze({ ...item, run_id: runId }));
     if (!measured || measured.native_execution !== "EXECUTED" || measured.fixture_id !== item.fixture_id
       || !Buffer.isBuffer(measured.png) || measured.png.length === 0 || !measured.settings
       || measured.settings.restored !== true || measured.settings.privacy !== "synthetic-only") fail("capture_invalid");
@@ -148,11 +198,14 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
       mkdirSync(path.dirname(absolute), { recursive: true });
       writeFileSync(absolute, measured.png, { flag: "wx" });
     }
-    const record = Object.freeze({ schema_version: 2, producer: "v12-visual-capture/v2", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) });
+    const receipt = validateStateReceipt(root, runId, item, measured, pngSha256);
+    const record = Object.freeze({ schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) });
     immutableJson(root, recordPath, record, write);
     records.push(record);
   }
-  const index = Object.freeze({ schema_version: 1, producer: "v12-visual-capture-index/v1", run_id: runId, source_hashes: plan.source_hashes, records: Object.freeze(records) });
+  if (new Set(records.map(({ settings }) => settings.state_receipt.nonce)).size !== records.length) fail("state_receipt_duplicate");
+  const effectiveWindows = windows.length > 0 ? windows : plan.captures.map((item, offset) => Object.freeze({ ordinal: offset, offset, count: 1, first: `${item.state_id}/${item.configuration_id}`, last: `${item.state_id}/${item.configuration_id}` }));
+  const index = Object.freeze({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, source_hashes: plan.source_hashes, capture_count: records.length, windows: Object.freeze(effectiveWindows), records: Object.freeze(records) });
   immutableJson(root, `artifacts/native/v1.2/${runId}/screenshots/index.json`, index, write);
   return index;
 }
@@ -161,23 +214,38 @@ export function verifyV12VisualCapture({ runId, root = process.cwd(), readJson, 
   if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
   const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
   const index = read(`artifacts/native/v1.2/${runId}/screenshots/index.json`);
-  if (!index || index.producer !== "v12-visual-capture-index/v1" || index.run_id !== runId || !Array.isArray(index.records) || index.records.length !== 107 * 64) fail("index_invalid");
+  if (!index || index.schema_version !== 2 || index.producer !== "v12-visual-capture-index/v2" || index.run_id !== runId || index.capture_count !== 107 * 64 || !Array.isArray(index.records) || index.records.length !== 107 * 64 || !Array.isArray(index.windows) || index.windows.length < 1) fail("index_invalid");
   const seen = new Set();
-  const contents = new Set();
+  const receiptNonces = new Set();
   const readPng = readBytes ?? ((file) => readFileSync(path.join(root, file)));
   for (const record of index.records) {
     const key = `${record?.state_id}\u0000${record?.configuration_id}`;
+    const receipt = record?.settings?.state_receipt;
     if (!V12_BROWSER_WALK_STATE_IDS.includes(record?.state_id) || !V12_CONFIG_IDS.includes(record?.configuration_id)
-      || seen.has(key) || record.native_execution !== "EXECUTED" || record.fixture_id !== "v12-synthetic-fixtures-r18"
+      || seen.has(key) || record.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || record.native_execution !== "EXECUTED" || record.fixture_id !== "v12-synthetic-fixtures-r18"
       || !SHA256.test(record.native_png?.sha256 ?? "") || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only"
       || record.native_png.path !== `artifacts/native/v1.2/${runId}/screenshots/${record.state_id}/${record.configuration_id}/native.png`) fail("record_invalid");
     let png; try { png = readPng(record.native_png.path); } catch { fail("png_missing"); }
     const dimensions = decodeNativePng(png);
+    validateStateReceipt(root, runId, record, { settings: record.settings }, record.native_png.sha256);
+    if (receiptNonces.has(receipt.nonce)) fail("state_receipt_duplicate");
+    receiptNonces.add(receipt.nonce);
     if (hash(png) !== record.native_png.sha256 || png.length !== record.native_png.size_bytes
-      || dimensions.width !== record.native_png.width || dimensions.height !== record.native_png.height || contents.has(record.native_png.sha256)) fail("png_lineage_invalid");
-    contents.add(record.native_png.sha256);
+      || receipt.png_sha256 !== record.native_png.sha256 || dimensions.width !== record.native_png.width || dimensions.height !== record.native_png.height) fail("png_lineage_invalid");
     seen.add(key);
   }
+  const ordered = index.records.map((record) => `${record.state_id}/${record.configuration_id}`);
+  const expected = V12_BROWSER_WALK_STATE_IDS.flatMap((state) => V12_CONFIG_IDS.map((configuration) => `${state}/${configuration}`));
+  if (JSON.stringify(ordered) !== JSON.stringify(expected)) fail("capture_order_invalid");
+  let offset = 0;
+  for (const [ordinal, window] of index.windows.entries()) {
+    if (window.ordinal !== ordinal || window.offset !== offset || !Number.isSafeInteger(window.count) || window.count < 1 || window.count > 512
+      || window.first !== ordered[offset] || window.last !== ordered[offset + window.count - 1]) fail("window_manifest_invalid");
+    if (window.request_bytes !== undefined && (!Number.isSafeInteger(window.request_bytes) || window.request_bytes > 1024 * 1024
+      || !Number.isSafeInteger(window.response_bytes) || window.response_bytes > 32 * 1024 * 1024)) fail("window_manifest_invalid");
+    offset += window.count;
+  }
+  if (offset !== expected.length) fail("window_manifest_invalid");
   return true;
 }
 
@@ -187,7 +255,8 @@ export function runV12VisualCaptureCli(args = process.argv.slice(2), io = proces
     if (command === "--verify") verifyV12VisualCapture({ runId });
     else publishV12AtomicShard({ runId, shard: "visual", produce: ({ write }) => {
       const adapter = createV12NativeAdapter();
-      return executeLiveV12VisualCapture({ runId, capture: adapter.capture, ...(process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? { captureAll: adapter.captureBatch } : {}), write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
+      const testWindow = process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" ? 512 : V12_VISUAL_BATCH_WINDOW;
+      return executeLiveV12VisualCapture({ runId, capture: adapter.capture, ...(process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? { captureAll: adapter.captureBatch, batchWindow: testWindow } : {}), write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
     } });
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;

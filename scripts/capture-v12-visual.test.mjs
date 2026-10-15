@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { PNG } from "pngjs";
@@ -9,6 +10,7 @@ import {
   loadV12ContractInputs,
 } from "./v12-evidence-contract.mjs";
 import {
+  V12_VISUAL_BATCH_WINDOW,
   executeV12VisualCapture,
   executeLiveV12VisualCapture,
   verifyV12VisualCapture,
@@ -16,6 +18,32 @@ import {
 } from "./capture-v12-visual.mjs";
 
 const ROOT = process.cwd();
+const visualStates = JSON.parse(readFileSync("src/testing/phase20VisualStateRegistry.json", "utf8"));
+const receiptFor = (item, pngBytes, ordinal) => {
+  const state = visualStates.find(({ id }) => id === item.state_id);
+  const observation = { native_execution: "EXECUTED", state_id: item.state_id, configuration_id: item.configuration_id, readiness: { status: state.readiness.status } };
+  const sourceMaterial = { state_id: item.state_id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
+  const nonce = ordinal.toString(16).padStart(32, "0");
+  return {
+    observation,
+    state_receipt: {
+      schema_version: 2,
+      nonce,
+      run_id: "phase20-20261014T000000Z-aaaaaaaaaaaa",
+      state_id: item.state_id,
+      configuration_id: item.configuration_id,
+      fixture_id: "v12-synthetic-fixtures-r18",
+      readiness_status: observation.readiness.status,
+      source_tree_sha256: "a".repeat(64),
+      apk_sha256: "b".repeat(64),
+      device_identity_sha256: "c".repeat(64),
+      png_sha256: createHash("sha256").update(pngBytes).digest("hex"),
+      observation_sha256: createHash("sha256").update(JSON.stringify(observation)).digest("hex"),
+      source_receipt: { schema_version: 1, nonce, ...sourceMaterial, digest: createHash("sha256").update(JSON.stringify(sourceMaterial)).digest("hex") },
+      ...(item.configuration_id.startsWith("AP-SD-") ? { system_transition: { from: "light", to: "dark", mounted_nonce: nonce, before: { stable: true }, after: { stable: true } } } : {}),
+    },
+  };
+};
 
 test("derives every ordered browser occurrence and every required configuration without sampling", () => {
   const plan = executeV12VisualCapture({ root: ROOT, mode: "plan" });
@@ -64,9 +92,10 @@ test("writes every live native capture once and rejects fixture-only or un-resto
   const index = executeLiveV12VisualCapture({
     runId,
     root: ROOT,
-    capture: () => {
+    capture: (item) => {
       const seed = captureOrdinal++;
-      return { native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png: PNG.sync.write({ width: 1, height: 1, data: Buffer.from([seed & 255, (seed >>> 8) & 255, (seed >>> 16) & 255, 255]) }), settings: { restored: true, privacy: "synthetic-only" } };
+      const png = PNG.sync.write({ width: 1, height: 1, data: Buffer.from([seed & 255, (seed >>> 8) & 255, (seed >>> 16) & 255, 255]) });
+      return { native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png, settings: { restored: true, privacy: "synthetic-only", ...receiptFor(item, png, seed + 1) } };
     },
     write: (file, value) => written.set(file, value),
   });
@@ -74,4 +103,35 @@ test("writes every live native capture once and rejects fixture-only or un-resto
   assert.equal(written.size, 1 + 2 * 107 * 64);
   assert.equal(verifyV12VisualCapture({ runId, root: ROOT, readJson: (file) => written.get(file), readBytes: (file) => written.get(file) }), true);
   assert.throws(() => executeLiveV12VisualCapture({ runId, capture: () => ({ native_execution: "NOT_RUN" }) }), /capture_invalid/u);
+});
+
+test("chunks all 6,848 captures into bounded ordered windows and rejects stale or duplicate receipts", () => {
+  const written = new Map(); let ordinal = 0; const windows = [];
+  const index = executeLiveV12VisualCapture({
+    runId: "phase20-20261014T000000Z-aaaaaaaaaaaa",
+    root: ROOT,
+    capture: () => { throw new Error("single capture must not run"); },
+    captureAll: ({ captures }) => {
+      windows.push(captures.map(({ state_id, configuration_id }) => `${state_id}/${configuration_id}`));
+      return captures.map((item) => {
+        const sequence = ++ordinal;
+        const png = PNG.sync.write({ width: 1, height: 1, data: Buffer.from([sequence & 255, (sequence >>> 8) & 255, (sequence >>> 16) & 255, (sequence >>> 24) & 255]) });
+        return { native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png, settings: { restored: true, privacy: "synthetic-only", ...receiptFor(item, png, sequence) } };
+      });
+    },
+    batchWindow: V12_VISUAL_BATCH_WINDOW,
+    write: (file, value) => written.set(file, value),
+  });
+  assert.equal(index.records.length, 6_848);
+  assert.equal(windows.every((window) => window.length <= V12_VISUAL_BATCH_WINDOW), true);
+  assert.deepEqual(windows.flat(), executeV12VisualCapture({ root: ROOT }).captures.map(({ state_id, configuration_id }) => `${state_id}/${configuration_id}`));
+  assert.equal(new Set(index.records.map(({ settings }) => settings.state_receipt.nonce)).size, 6_848);
+  const duplicateReceipt = structuredClone(index);
+  duplicateReceipt.records[1].settings.state_receipt.nonce = duplicateReceipt.records[0].settings.state_receipt.nonce;
+  duplicateReceipt.records[1].settings.state_receipt.source_receipt.nonce = duplicateReceipt.records[0].settings.state_receipt.nonce;
+  assert.throws(() => verifyV12VisualCapture({ runId: index.run_id, root: ROOT, readJson: () => duplicateReceipt, readBytes: (file) => written.get(file) }), /state_receipt_duplicate/u);
+  const loadingAsReady = structuredClone(index);
+  const loading = loadingAsReady.records.find(({ state_id }) => state_id === "BW-089");
+  loading.settings.state_receipt.readiness_status = "ready";
+  assert.throws(() => verifyV12VisualCapture({ runId: index.run_id, root: ROOT, readJson: () => loadingAsReady, readBytes: (file) => written.get(file) }), /state_receipt_invalid/u);
 });

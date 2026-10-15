@@ -3,19 +3,29 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
+import { executeProductionVisualAction } from "./v12-production-native-visual-actions.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SELF = fileURLToPath(import.meta.url);
 const ACTIONS = new Set(["acquire-lease", "release-lease", "snapshot-settings", "restore-settings", "visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "performance", "sqlite", "recovery", "garmin", "calendar"]);
+const MAX_REQUEST_BYTES = 1024 * 1024;
+const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const fail = (code) => { throw new Error(`v12_production_native_launcher_${code}`); };
 
 function readRequest() {
   let body = "";
+  let bytes = 0;
+  let settled = false;
   process.stdin.setEncoding("utf8");
   return new Promise((resolve, reject) => {
-    process.stdin.on("data", (chunk) => { body += chunk; if (body.length > 1024 * 1024) reject(new Error("request_too_large")); });
-    process.stdin.on("end", () => { try { resolve(JSON.parse(body)); } catch { reject(new Error("request_invalid")); } });
+    process.stdin.on("data", (chunk) => {
+      if (settled) return;
+      bytes += Buffer.byteLength(chunk);
+      if (bytes > MAX_REQUEST_BYTES) { settled = true; reject(new Error("request_too_large")); return; }
+      body += chunk;
+    });
+    process.stdin.on("end", () => { if (settled) return; try { settled = true; resolve(JSON.parse(body)); } catch { settled = true; reject(new Error("request_invalid")); } });
   });
 }
 function validateAttestation(request, action) {
@@ -34,9 +44,7 @@ async function execute(action, payload, attestation) {
   if (action === "snapshot-settings") return runtime.snapshotSettings(payload.lease);
   if (action === "restore-settings") return runtime.restoreSettings(payload.settings, payload.lease);
   if (action === "sqlite") return runtime.withLease(payload, runtime.sqlite);
-  // These producers do not exist in the source tree yet. Never convert a
-  // screenshot of an arbitrary screen or a successful Maestro process into
-  // a state/observation receipt. Keep the unsupported actions explicitly closed.
+  if (action.startsWith("visual-")) return runtime.withLease(payload, () => executeProductionVisualAction({ action, payload, attestation }));
   fail("action_contract_unavailable");
 }
 
@@ -49,7 +57,9 @@ try {
   if (request.payload.run_id !== attestation.run_id) fail("attestation_invalid");
   if (process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.NODE_ENV === "test") fail("test_environment_forbidden");
   const result = await execute(action, request.payload, attestation);
-  process.stdout.write(`${JSON.stringify({ schema_version: 1, action, ok: true, result, attestation })}\n`);
+  const response = `${JSON.stringify({ schema_version: 1, action, ok: true, result, attestation })}\n`;
+  if (Buffer.byteLength(response) > MAX_RESPONSE_BYTES) fail("response_too_large");
+  process.stdout.write(response);
 } catch (error) {
   const code = error instanceof Error && /^v12_production_native_launcher_[a-z_]+$/u.test(error.message)
     ? error.message : "v12_production_native_launcher_failed";

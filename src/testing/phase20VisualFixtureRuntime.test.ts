@@ -21,6 +21,7 @@ jest.mock("expo-sqlite", () => ({
 import {
   bootstrapPhase20VisualFixture,
   createPhase20VisualRuntimeDependencies,
+  phase20VisualCleanupStatus,
   PHASE20_VISUAL_ACTIVE_SESSION_ID,
   PHASE20_VISUAL_NOW_MS,
   PHASE20_VISUAL_STRENGTH_DAY_ID,
@@ -102,5 +103,6 @@ describe("Phase 20 visual fixture runtime", () => {
     expect(dependencies.strictDisposal).toBe(true);
     await expect(dependencies.disposeRuntime?.()).rejects.toThrow("delete failed");
     expect(mockDeleteDatabaseAsync).toHaveBeenCalledWith(phase20VisualDatabaseName("a".repeat(32)));
+    expect(phase20VisualCleanupStatus("a".repeat(32))).toBe("failed");
   });
 });
