@@ -1240,6 +1240,11 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ScheduleRuntimeAdapter;
   now(): Date;
   nowMs(): number;
+  prepareRuntime?(input: Readonly<{
+    kernel: SqliteKernel;
+    starterPlans?: StarterPlanRuntimeCatalog;
+  }>): Promise<void>;
+  disposeRuntime?(): Promise<void>;
 }>;
 
 export type WorkoutAppRuntimeAdapters = Readonly<{
@@ -1353,11 +1358,13 @@ const CalendarActivityReadContext = createContext<CalendarActivityReadPort | nul
 
 export function createWorkoutAppRuntimeDependencies(
   adapters: WorkoutAppRuntimeAdapters,
+  options: Readonly<{ databaseName?: string }> = {},
 ): WorkoutAppRuntimeDependencies {
+  const databaseName = options.databaseName ?? DATABASE_NAME;
   return {
-    openKernel: () => adapters.openKernel(DATABASE_NAME),
+    openKernel: () => adapters.openKernel(databaseName),
     migrate: (kernel) => adapters.runMigrations({
-      databaseName: DATABASE_NAME,
+      databaseName,
       kernel,
     }),
     activateInitialStarter: adapters.activateInitialStarter,
@@ -1501,8 +1508,7 @@ function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
   return fixture === null ? null : phase12BackupFixtureViewModel(fixture);
 }
 
-export const productionWorkoutAppRuntimeDependencies =
-  createWorkoutAppRuntimeDependencies({
+const productionWorkoutAppRuntimeAdapters: WorkoutAppRuntimeAdapters = {
     openKernel: openSqliteKernel,
     runMigrations: async ({ databaseName, kernel }) => {
       const recoveryOpenOptions = {
@@ -1728,7 +1734,19 @@ export const productionWorkoutAppRuntimeDependencies =
       }),
     now: () => new Date(),
     nowMs: () => Date.now(),
-  });
+  };
+
+export function createProductionWorkoutAppRuntimeDependencies(
+  databaseName = DATABASE_NAME,
+): WorkoutAppRuntimeDependencies {
+  return createWorkoutAppRuntimeDependencies(
+    productionWorkoutAppRuntimeAdapters,
+    { databaseName },
+  );
+}
+
+export const productionWorkoutAppRuntimeDependencies =
+  createProductionWorkoutAppRuntimeDependencies();
 
 function localContext(now: Date): LocalContext {
   const localDate = [
@@ -2323,7 +2341,8 @@ export function WorkoutAppRuntimeProvider({
     await services?.lifecycle.dispose?.().catch(() => undefined);
     services?.automaticBackupRuntime?.dispose();
     await services?.kernel.close().catch(() => undefined);
-  }, []);
+    await dependencies.disposeRuntime?.().catch(() => undefined);
+  }, [dependencies]);
 
   const trustedRead = useCallback(async (
     services: RuntimeServices,
@@ -2600,6 +2619,12 @@ export function WorkoutAppRuntimeProvider({
     }
 
     try {
+      await dependencies.prepareRuntime?.({
+        kernel,
+        ...(starterPlansRef.current === undefined
+          ? {}
+          : { starterPlans: starterPlansRef.current }),
+      });
       await lifecycle.trigger("launch").catch(() => undefined);
       if (services.automaticBackupRuntime !== undefined) {
         automaticBackupUnsubscribeRef.current = services.automaticBackupRuntime.subscribe((automaticBackup) => {

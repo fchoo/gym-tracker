@@ -6,33 +6,23 @@ import {
   AppearanceProvider,
   createMemoryAppearanceStore,
   useAppTheme,
-  type AppearancePreference,
 } from "../ui/theme";
+import {
+  PHASE20_VISUAL_FIXTURE_ID,
+  phase20VisualState,
+} from "./phase20VisualStateRegistry";
+import {
+  resolvePhase20VisualRequest,
+  type Phase20VisualRequest,
+} from "./phase20VisualRequest";
 
-type VisualProbeRequest = Readonly<{
-  nonce: string;
-  state: "BW-054";
-  configuration: string;
-  appearance: AppearancePreference;
-  mode: "capture" | "reset";
-}>;
-
-export function resolvePhase20VisualProbe(params: Readonly<Record<string, unknown>>): VisualProbeRequest | null {
-  const { nonce, state, configuration, fixture, mode } = params;
-  if (typeof nonce !== "string" || !/^[a-f0-9]{32}$/u.test(nonce)
-    || state !== "BW-054" || fixture !== "v12-synthetic-fixtures-r18"
-    || typeof configuration !== "string" || (mode !== "capture" && mode !== "reset")) return null;
-  const match = /^AP-(L|D|SL|SD)-(C360|C390|M600|X840)-(P|L)-F(100|200)$/u.exec(configuration);
-  if (match === null) return null;
-  return { nonce, state, configuration, mode,
-    appearance: mode === "reset" || match[1]?.startsWith("S") ? "System" : match[1] === "L" ? "Light" : "Dark" };
-}
+export const resolvePhase20VisualProbe = resolvePhase20VisualRequest;
 
 /** Isolated synthetic, read-only route: the actual production screen owns its
  * copy, target geometry and unselected state. No database/runtime is opened.
  * A press invalidates observation rather than pretending an action succeeded.
  */
-export function Phase20VisualProbe({ request }: Readonly<{ request: VisualProbeRequest }>) {
+export function Phase20VisualProbe({ request }: Readonly<{ request: Phase20VisualRequest }>) {
   const store = useMemo(() => createMemoryAppearanceStore(
     request.appearance === "System" ? null : request.appearance,
   ), [request.appearance]);
@@ -43,11 +33,13 @@ export function Phase20VisualProbe({ request }: Readonly<{ request: VisualProbeR
   );
 }
 
-function ObservedScreen({ request }: Readonly<{ request: VisualProbeRequest }>) {
+function ObservedScreen({ request }: Readonly<{ request: Phase20VisualRequest }>) {
   const { appearance, colorScheme } = useAppTheme();
   const window = useWindowDimensions();
   const [laidOut, setLaidOut] = useState(false);
   const [invalidated, setInvalidated] = useState(false);
+  const state = phase20VisualState(request.state);
+  if (state === null) return null;
   useEffect(() => {
     if (!laidOut) return;
     let second: number | undefined;
@@ -59,7 +51,7 @@ function ObservedScreen({ request }: Readonly<{ request: VisualProbeRequest }>) 
           nonce: request.nonce,
           state_id: request.state,
           configuration_id: request.configuration,
-          fixture_id: "v12-synthetic-fixtures-r18",
+          fixture_id: PHASE20_VISUAL_FIXTURE_ID,
           mode: request.mode,
           status: invalidated ? "invalidated" : request.mode === "reset" ? "reset" : "ready",
           appearance,
@@ -71,7 +63,7 @@ function ObservedScreen({ request }: Readonly<{ request: VisualProbeRequest }>) 
           font_scale: window.fontScale,
           density: window.scale,
           route: "/__phase20-visual-probe",
-          source_state: "plan-type-chooser",
+          source_state: state.name,
           source_revision: 18,
           source_read_only: true,
         })}`);
@@ -85,7 +77,7 @@ function ObservedScreen({ request }: Readonly<{ request: VisualProbeRequest }>) 
   return (
     <View onLayout={() => setLaidOut(true)} style={styles.root}
       testID={request.mode === "reset" ? "phase20-visual-reset" : invalidated ? "phase20-visual-invalidated" : "phase20-visual-capture"}>
-      {request.mode === "capture" && !invalidated && (
+      {request.mode === "capture" && !invalidated && state.component === "PlanTypeChooserScreen" && (
         <PlanTypeChooserScreen
           onBack={() => setInvalidated(true)}
           onChooseRunning={() => setInvalidated(true)}
@@ -95,5 +87,6 @@ function ObservedScreen({ request }: Readonly<{ request: VisualProbeRequest }>) 
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({ root: { flex: 1 } });
