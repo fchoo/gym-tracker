@@ -14,7 +14,7 @@ import {
 import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
 import {
   V12_CALENDAR_FLOW_REVISION,
-  V12_CALENDAR_RESULT_MARKER,
+  V12_CALENDAR_CHUNK_MARKER,
   V12_CALENDAR_STAGE_GROUPS,
   V12_CALENDAR_STAGE_IDS,
 } from "./v12-calendar-observation-contract.mjs";
@@ -393,7 +393,7 @@ export function createV12CalendarRunnerPlan(manifest) {
     package: manifest.package,
     stages: V12_CALENDAR_DIAGNOSTIC_STAGES,
     observation_source: "/calendar",
-    terminal_marker: V12_CALENDAR_RESULT_MARKER,
+    terminal_marker: V12_CALENDAR_CHUNK_MARKER,
     flow_revision: V12_CALENDAR_FLOW_REVISION,
     flow_sha256: sha256(readFileSync(path.join(ROOT, FLOW))),
     identity: { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, source_manifest_sha256: manifest.source_manifest_sha256, reference_map_sha256: manifest.reference_map_sha256, apk_sha256: manifest.apk.sha256, device_identity_sha256: manifest.device.identity_sha256 },

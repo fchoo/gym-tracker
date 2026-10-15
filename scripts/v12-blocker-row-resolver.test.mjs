@@ -16,6 +16,22 @@ test('canonical matrix has exactly 172 typed selectors in source order', () => {
   assert.equal(dom.find(x => x.row_id === 'DOM-01').selector.id, 'phase13-map01-activation');
   assert.equal(table.find(x => x.row_id === 'WRK-36').selector.id, 'workout.completion-writeback');
   assert.equal(table.find(x => x.row_id === 'LIB-36').selector.id, 'library.running-conflict');
+  const calendarRows = table.filter(x => x.row_id.startsWith('CAL-'));
+  const matrixCalendarRows = inputs.matrix.rows.filter(x => x.requirement_id.startsWith('CAL-'));
+  assert.deepEqual(calendarRows.map(x => x.selector.id), matrixCalendarRows.map(x => x.inventory_id));
+  assert.equal(new Set(calendarRows.map(x => x.selector.id)).size, 23);
+  assert.ok(calendarRows.every(x => x.selector.type === 'calendar-requirement'));
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-07').selector.stage_ids, [
+    'drag-forward-10', 'drag-backward-10', 'drag-cancel', 'drag-vertical', 'drag-diagonal',
+  ]);
+  assert.ok(calendarRows.find(x => x.row_id === 'CAL-08').selector.stage_ids.includes('drag-retreat'));
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-13').selector.stage_ids, []);
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-16').selector.stage_ids, []);
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-17').selector.stage_ids, []);
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-18').selector.stage_ids, []);
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-19').selector.stage_ids, []);
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-22').selector.stage_ids, []);
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-23').selector.stage_ids, []);
   assert.throws(() => createV12RowSelectorTable({ inputs: { ...inputs, matrix: { ...inputs.matrix, rows: [...inputs.matrix.rows.slice(1), inputs.matrix.rows[1]] } } }), /row_resolver_.*matrix/);
 });
 

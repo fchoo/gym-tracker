@@ -3,11 +3,12 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
   lstatSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -111,20 +112,16 @@ function createDeviceSession(root, runId) {
   const adb = (...args) => command("adb", ["-s", serial, ...args]).stdout.trim();
   const shell = (...args) => adb("shell", args.map(quote).join(" "));
   const cleanupShell = (...args) => command("adb", ["-s", serial, "shell", args.map(quote).join(" ")], { cleanup: true }).stdout.trim();
-  let retainedDirectory;
-  const retained = () => {
-    if (retainedDirectory !== undefined) return retainedDirectory;
-    let parent = root;
-    for (const part of ["artifacts", "native", "v1.2", runId]) {
-      parent = path.join(parent, part);
-      mkdirSync(parent, { recursive: true, mode: 0o700 });
-      const details = lstatSync(parent);
-      if (details.isSymbolicLink() || !details.isDirectory()) fail("artifact_path_invalid");
-    }
-    retainedDirectory = mkdtempSync(path.join(parent, "calendar-"));
-    chmodSync(retainedDirectory, 0o700);
-    return retainedDirectory;
+  let temporaryDirectory;
+  const temporary = () => {
+    if (temporaryDirectory !== undefined) return temporaryDirectory;
+    temporaryDirectory = mkdtempSync(path.join(tmpdir(), `v12-calendar-${runId}-`));
+    const details = lstatSync(temporaryDirectory);
+    if (details.isSymbolicLink() || !details.isDirectory()) fail("temporary_path_invalid");
+    chmodSync(temporaryDirectory, 0o700);
+    return temporaryDirectory;
   };
+  const cleanup = () => { if (temporaryDirectory !== undefined) rmSync(temporaryDirectory, { recursive: true, force: true }); };
   const logs = () => adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S");
   const clearLogs = () => { adb("logcat", "-c"); };
   const screenshot = () => command("adb", ["-s", serial, "exec-out", "screencap", "-p"], { binary: true }).stdout;
@@ -194,8 +191,8 @@ function createDeviceSession(root, runId) {
       || Number(configured.values.animator_duration_scale) !== Number(animationScale)) fail("settings_invalid");
   };
   const maestro = (invocation) => {
-    const report = path.join(retained(), `${String(invocation.order).padStart(2, "0")}-${invocation.stageId}.xml`);
-    const debug = path.join(retained(), `${String(invocation.order).padStart(2, "0")}-${invocation.stageId}-maestro`);
+    const report = path.join(temporary(), `${String(invocation.order).padStart(2, "0")}-${invocation.stageId}.xml`);
+    const debug = path.join(temporary(), `${String(invocation.order).padStart(2, "0")}-${invocation.stageId}-maestro`);
     const args = ["test", "--device", serial,
       ...Object.entries(invocation.variables).flatMap(([key, value]) => ["-e", `${key}=${value}`]),
       "--format", "junit", "--output", report, "--test-output-dir", debug,
@@ -225,7 +222,7 @@ function createDeviceSession(root, runId) {
     }
     fail("marker_timeout");
   };
-  return Object.freeze({ clearLogs, configureStage, logs, maestro, awaitMarker, retained, restore, screenshot, settings,
+  return Object.freeze({ clearLogs, cleanup, configureStage, logs, maestro, awaitMarker, temporary, restore, screenshot, settings,
     version: () => { if (command("maestro", ["--version"]).stdout.trim() !== "2.8.0") fail("maestro_version_invalid"); },
     standalone: () => {
       const manifest = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", runId, "build.json"), "utf8"));
@@ -256,6 +253,7 @@ export async function collectV12ProductionCalendarStages({ root, payload, io }) 
   io.standalone();
   const stages = [];
   const junitCases = [];
+  const artifacts = [];
   for (const [order, stageId] of V12_CALENDAR_STAGE_IDS.entries()) {
     const nonce = randomBytes(16).toString("hex");
     const invocation = createV12CalendarStageInvocation({ stageId, order, nonce, flowSha256 });
@@ -267,17 +265,20 @@ export async function collectV12ProductionCalendarStages({ root, payload, io }) 
     const png = io.screenshot();
     if (!validPng(png)) fail("screenshot_invalid");
     const traceJson = JSON.stringify(marker.stage);
+    const trace = Buffer.from(traceJson);
     const result = deriveV12CalendarStageResult({
       marker,
       expected: { nonce, flowSha256, stageId, order },
       screenshotSha256: hashBytes(png),
-      traceSha256: hashBytes(traceJson),
+      traceSha256: hashBytes(trace),
     });
     const status = worse(junit.status, result.status);
     const stage = Object.freeze({ ...result, status });
     const stem = `${String(order).padStart(2, "0")}-${stageId}`;
-    writeFileSync(path.join(io.retained(), `${stem}.png`), png, { flag: "wx", mode: 0o600 });
-    writeFileSync(path.join(io.retained(), `${stem}.trace.json`), `${traceJson}\n`, { flag: "wx", mode: 0o600 });
+    writeFileSync(path.join(io.temporary(), `${stem}.png`), png, { flag: "wx", mode: 0o600 });
+    writeFileSync(path.join(io.temporary(), `${stem}.trace.json`), trace, { flag: "wx", mode: 0o600 });
+    artifacts.push(Object.freeze({ stage_id: stageId, kind: "png", relative_path: `calendar/stages/${stem}.png`, sha256: hashBytes(png), size_bytes: png.length, bytes_base64: png.toString("base64") }));
+    artifacts.push(Object.freeze({ stage_id: stageId, kind: "trace", relative_path: `calendar/stages/${stem}.trace.json`, sha256: hashBytes(trace), size_bytes: trace.length, bytes_base64: trace.toString("base64") }));
     stages.push(stage);
     junitCases.push(Object.freeze({ id: stageId, order, status }));
   }
@@ -287,6 +288,7 @@ export async function collectV12ProductionCalendarStages({ root, payload, io }) 
     flow_revision: V12_CALENDAR_FLOW_REVISION,
     stages: Object.freeze(stages),
     junit_cases: Object.freeze(junitCases),
+    artifacts: Object.freeze(artifacts),
   });
 }
 
@@ -312,7 +314,10 @@ export async function executeProductionCalendarAction(payload, attestation) {
         const io = createDeviceSession(root, attestation.run_id);
         const deviceSettings = io.settings();
         try { return await collectV12ProductionCalendarStages({ root, payload, io }); }
-        finally { io.restore(deviceSettings); }
+        finally {
+          try { io.restore(deviceSettings); }
+          finally { io.cleanup(); }
+        }
       });
     } finally {
       if (ownedLease) {

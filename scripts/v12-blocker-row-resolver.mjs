@@ -12,6 +12,7 @@ import { V12_SQLITE_SHARD_CASE_IDS } from './v12-sqlite-shard.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS } from './v12-recovery-shard.mjs';
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, nearestRankP95 } from './benchmark-v12-interactions.mjs';
 import { validateV12PerformanceShard } from './v12-performance-shard.mjs';
+import { deriveV12CalendarRequirementSelectors } from './v12-calendar-requirement-map.mjs';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
@@ -56,7 +57,6 @@ const DOM_SHARED = {
   3: 'Occurrence selection and offline commit acknowledgement share the completion/retry transaction fixture.',
 };
 const SHL_STATES = [2, 34, 1, 61, 9, 17, 8, 10, 84, 83, 86, 88, 90];
-const CAL_STAGES = [24, 34, 26, 33, 22, 25, 0, 2, 6, 13, 17, 20, 21, 23, 32, 18, 19, 27, 28, 29, 31, 30, 16];
 const GAR_CASES = [0, 1, 5, 4, 2, 3, 17, 6, 7, 8, 9, 11, 10, 15, 12, 14];
 const PERFORMANCE_GATES = [...Object.keys(V12_PERFORMANCE_BUDGETS), 'phase12_merge_peak_growth'];
 const VER_GATES = ['inventory', 'appearance', 'viewports', 'targets', 'input-focus', 'reduced-motion', 'sqlite', 'recovery', 'calendar', 'garmin', 'performance', 'attended', 'preseal'];
@@ -77,6 +77,7 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
   const expected = Object.entries(phases).flatMap(([prefix, [, count]]) => Array.from({ length: count }, (_, i) => `${prefix}-${String(i + 1).padStart(2, '0')}`));
   exactIds(inputs?.matrix?.rows?.map(row => row.requirement_id), expected, 'matrix_invalid');
   const functional = Object.fromEntries(['multi-plan', 'workout', 'library-running'].map(shard => [shard, readV12FunctionalRegistry(shard, root)]));
+  const calendar = new Map(deriveV12CalendarRequirementSelectors(inputs.matrix.rows).map(entry => [entry.row_id, entry]));
   const table = inputs.matrix.rows.map(row => {
     const [prefix, suffix] = row.requirement_id.split('-'); const ordinal = Number(suffix) - 1;
     ensure(row.owning_phase === phases[prefix][0], 'matrix_phase_invalid');
@@ -84,7 +85,13 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
     if (prefix === 'DOM') { type = 'functional-case'; shard = 'multi-plan'; id = functional[shard][DOM_CASES[ordinal]]; shared_contract = DOM_SHARED[DOM_CASES[ordinal]]; }
     if (prefix === 'WRK' || prefix === 'LIB') { type = 'functional-case'; shard = prefix === 'WRK' ? 'workout' : 'library-running'; id = functional[shard][ordinal]; }
     if (prefix === 'SHL') { type = 'comparison-state'; shard = 'visual'; id = `BW-${String(SHL_STATES[ordinal]).padStart(3, '0')}`; }
-    if (prefix === 'CAL') { type = 'calendar-stage'; shard = 'calendar'; id = V12_CALENDAR_SHARD_STAGE_IDS[CAL_STAGES[ordinal]]; }
+    if (prefix === 'CAL') {
+      const mapping = calendar.get(row.requirement_id);
+      ensure(mapping !== undefined && mapping.evidence_id === row.inventory_id, 'calendar_selector_invalid');
+      type = 'calendar-requirement'; shard = 'calendar'; id = mapping.evidence_id;
+      return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
+        selector: { type, shard, id, contract: row.acceptance_contract, stage_ids: mapping.stage_ids } };
+    }
     if (prefix === 'GAR') { type = 'garmin-case'; shard = 'garmin'; id = V12_GARMIN_SHARD_CASE_IDS[GAR_CASES[ordinal]]; }
     if (prefix === 'PRO') { type = 'performance-budget'; shard = 'performance'; id = PERFORMANCE_GATES[ordinal]; }
     if (prefix === 'VER') { type = 'phase20-gate'; shard = 'verification'; id = VER_GATES[ordinal]; }
@@ -230,20 +237,46 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     });
   }
   const calendar = json('calendar-transitions.json'); bindIdentity(calendar.identity);
+  const calendarArtifacts = json('calendar/artifact-registry.json');
   const calendarIds = V12_CALENDAR_SHARD_STAGE_IDS;
   ensure(calendar.run_id === manifest.run_id && calendar.schema_version === 4 && calendar.producer === 'v12-calendar-shard/v5' && calendar.flow_revision === V12_CALENDAR_FLOW_REVISION
     && calendar.identity.configuration_id === manifest.configuration.id
     && calendar.flow_sha256 === sha(readFileSync(path.join(root, 'maestro/v1.2/calendar.yaml'))), 'calendar_schema_invalid');
   validateV12CalendarExecutionOrigin(calendar.execution_origin, root);
+  ensure(calendarArtifacts?.schema_version === 1 && calendarArtifacts.producer === 'v12-calendar-artifact-registry/v1'
+    && calendarArtifacts.run_id === manifest.run_id && calendarArtifacts.execution_origin_sha256 === jsonHash(calendar.execution_origin)
+    && calendar.artifact_registry_sha256 === jsonHash(calendarArtifacts), 'calendar_artifact_registry_invalid');
   exactIds(calendar.stages?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
   exactIds(calendar.junit_cases?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
+  ensure(Array.isArray(calendarArtifacts.members) && calendarArtifacts.members.length === calendarIds.length * 2, 'calendar_artifact_registry_invalid');
   const calendarTests = parseV12SourceJUnit(bytes(full('maestro/calendar.xml')).toString('utf8'), calendarIds, Object.fromEntries(calendar.stages.map(x => [x.id, result(x.status)])));
   calendar.stages.forEach((stage, index) => {
     ensure(stage.order === index && calendar.junit_cases[index].order === index && calendar.junit_cases[index].status === stage.status, 'calendar_order_invalid');
     try { validateV12CalendarStageResult(stage, stage.id, index); } catch { fail('calendar_observation_invalid'); }
+    const members = calendarArtifacts.members.slice(index * 2, index * 2 + 2);
+    const stem = `${String(index).padStart(2, '0')}-${stage.id}`;
+    ensure(members.length === 2 && same(members.map(({ stage_id, kind, path: artifactPath }) => ({ stage_id, kind, path: artifactPath })), [
+      { stage_id: stage.id, kind: 'png', path: `calendar/stages/${stem}.png` },
+      { stage_id: stage.id, kind: 'trace', path: `calendar/stages/${stem}.trace.json` },
+    ]), 'calendar_artifact_registry_invalid');
+    for (const member of members) {
+      ensure(HASH.test(member.sha256 ?? '') && Number.isSafeInteger(member.size_bytes) && member.size_bytes > 0, 'calendar_artifact_registry_invalid');
+      const content = bytes(full(member.path));
+      ensure(content.length === member.size_bytes && sha(content) === member.sha256, 'calendar_artifact_hash_invalid');
+      if (member.kind === 'png') ensure(member.sha256 === stage.screenshot_sha256 && content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')), 'calendar_artifact_hash_invalid');
+      else ensure(member.sha256 === stage.trace_sha256 && content.toString('utf8') === JSON.stringify(stage.observation), 'calendar_artifact_hash_invalid');
+    }
     const state = combineV12SourceResults([result(stage.status), calendarTests[index].result]);
-    leaf(`calendar:${stage.id}`, 'calendar-stage', stage.id, state, ['calendar-transitions.json', 'maestro/calendar.xml'], { receipt_sha256: jsonHash(stage.observation), testcase: stage.id, stage_result: result(stage.status), junit_result: calendarTests[index].result });
+    leaf(`calendar-stage:${stage.id}`, 'calendar-stage', stage.id, state, ['calendar-transitions.json', 'maestro/calendar.xml', 'calendar/artifact-registry.json', ...members.map(({ path: artifactPath }) => artifactPath)], { receipt_sha256: jsonHash(stage.observation), testcase: stage.id, stage_result: result(stage.status), junit_result: calendarTests[index].result });
   });
+  for (const mapping of deriveV12CalendarRequirementSelectors(inputs.matrix.rows)) {
+    const members = mapping.stage_ids.map((stageId) => leaves.get(`calendar-stage:${stageId}`));
+    ensure(members.every(Boolean), 'calendar_selector_invalid');
+    const state = members.length === 0 ? 'NOT_RUN' : combineV12SourceResults(members.map(({ result: memberResult }) => memberResult));
+    leaf(`calendar:${mapping.evidence_id}`, 'calendar-requirement', mapping.evidence_id, state,
+      members.flatMap(({ bindings }) => bindings.map(({ artifact }) => artifact.replace(prefix, ''))),
+      { requirement_id: mapping.row_id, stage_ids: mapping.stage_ids, native_observation: members.length === 0 ? 'MISSING' : 'EXECUTED' });
+  }
   const garminGroups = { 'packaging-auth': ['packaging', 'bridge-allowlist', 'account-lifecycle', 'recovery'], 'sync-read': ['canonical-json', 'sync-read', 'privacy'], dedupe: V12_GARMIN_SHARD_CASE_IDS.slice(6, 9), matching: V12_GARMIN_SHARD_CASE_IDS.slice(9, 17) };
   const garminValues = Object.fromEntries(Object.keys(garminGroups).map(name => [name, json(`garmin/${name}.json`)]));
   const garminStates = {};

@@ -669,7 +669,7 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
   sqlite: Object.freeze(["sqlite/migration.json", "sqlite/portability.json", "sqlite/history.json"]),
   recovery: Object.freeze(["recovery/lifecycle.json", "maestro/recovery.xml"]),
   garmin: Object.freeze(["garmin/packaging-auth.json", "garmin/sync-read.json", "garmin/dedupe.json", "garmin/matching.json", "maestro/garmin-progress.xml"]),
-  calendar: Object.freeze(["calendar-transitions.json", "maestro/calendar.xml"]),
+  calendar: Object.freeze(["calendar-transitions.json", "maestro/calendar.xml", "calendar/artifact-registry.json"]),
   "multi-plan": Object.freeze(["maestro/multi-plan.xml", "mapping/multi-plan.json"]),
   workout: Object.freeze(["maestro/workout.xml", "mapping/workout.json"]),
   "library-running": Object.freeze(["maestro/library-running.xml", "mapping/library-running.json"]),

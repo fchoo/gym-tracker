@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -28,10 +29,24 @@ const productionOrigin = Object.freeze({
   launcher_source_sha256: "7".repeat(64),
   request_attestation_sha256: "8".repeat(64),
 });
-const productionResult = (flowSha256) => ({
-  ...createV12CalendarObservationResult(flowSha256),
+const productionResult = (flowSha256) => {
+  const fixture = createV12CalendarObservationResult(flowSha256);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=", "base64");
+  const pngSha256 = createHash("sha256").update(png).digest("hex");
+  const stages = fixture.stages.map((stage) => ({ ...stage, screenshot_sha256: pngSha256 }));
+  return {
+  ...fixture,
+  stages,
   execution_origin: productionOrigin,
-});
+  artifacts: stages.flatMap((stage) => {
+    const trace = Buffer.from(JSON.stringify(stage.observation));
+    return [
+      { stage_id: stage.id, kind: "png", relative_path: `calendar/stages/${String(stage.order).padStart(2, "0")}-${stage.id}.png`, sha256: createHash("sha256").update(png).digest("hex"), size_bytes: png.length, bytes_base64: png.toString("base64") },
+      { stage_id: stage.id, kind: "trace", relative_path: `calendar/stages/${String(stage.order).padStart(2, "0")}-${stage.id}.trace.json`, sha256: createHash("sha256").update(trace).digest("hex"), size_bytes: trace.length, bytes_base64: trace.toString("base64") },
+    ];
+  }),
+  };
+};
 
 test("Calendar shard rejects the retired generic observation envelope", () => {
   assert.throws(() => validateV12CalendarShard(observation), /calendar_native_stages_invalid/u);
@@ -60,7 +75,7 @@ test("Calendar shard rejects test-fixture origin even when the build manifest cl
     root: "/fixture-root", flowSha256, readBuild: () => manifest, sourceDigest: manifest.source.tree_sha256,
     currentHead: manifest.source.head, isAncestor: () => true, acquireLease: () => ({ opaque: true }),
     releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
-    executeNative: () => ({ ...fixture, execution_origin: { schema_version: 1, kind: "test-fixture", default_launcher: false, test_only: true } }),
+    executeNative: () => ({ ...productionResult(flowSha256), execution_origin: { schema_version: 1, kind: "test-fixture", default_launcher: false, test_only: true } }),
     writeImmutable: () => {}, outputExists: () => false,
   }), /calendar_native_origin_invalid/u);
 });
@@ -84,8 +99,12 @@ test("Calendar shard writes the exact stage-specific host-derived observation se
     writeImmutable: (file, value) => writes.set(file, value), outputExists: () => false,
   });
   assert.deepEqual(result, { ok: true, mode: "execute", run_id: runId });
-  assert.equal(writes.size, 2);
+  assert.equal(writes.size, 73);
   assert.match(JSON.stringify(writes.get(`artifacts/native/v1.2/${runId}/calendar-transitions.json`)), /v12-calendar-shard\/v5/u);
+  const registry = writes.get(`artifacts/native/v1.2/${runId}/calendar/artifact-registry.json`);
+  assert.equal(registry.members.length, 70);
+  assert.equal(registry.members.every(({ path, sha256 }) => writes.has(`artifacts/native/v1.2/${runId}/${path}`)
+    && createHash("sha256").update(writes.get(`artifacts/native/v1.2/${runId}/${path}`)).digest("hex") === sha256), true);
   assert.doesNotMatch(JSON.stringify([...writes.values()]), /expected_outcome|synthetic/u);
 });
 

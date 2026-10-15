@@ -110,7 +110,7 @@ test("the Calendar action collects every stage in order and retains raw traces a
       maestro: (invocation) => { invocations.push(invocation); return { status: "PASS", xml: "<testsuite><testcase/></testsuite>" }; },
       awaitMarker: (_before, invocation) => Promise.resolve(createV12CalendarMarkerFixture(invocation.stageId, invocation.order, flowSha256, invocation.nonce)),
       screenshot: () => Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=", "base64"),
-      retained: () => retained,
+      temporary: () => retained,
     },
   });
   assert.deepEqual(result.stages.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
@@ -118,5 +118,12 @@ test("the Calendar action collects every stage in order and retains raw traces a
   assert.equal(invocations.length, 35);
   assert.equal(new Set(invocations.map(({ nonce }) => nonce)).size, 35);
   assert.equal(result.stages.every(({ observation, assertion_results }) => !Object.hasOwn(observation, "status") && assertion_results.length > 0), true);
+  assert.equal(result.artifacts.length, 70);
+  assert.equal(result.artifacts.every(({ relative_path, sha256, size_bytes, bytes_base64 }) => {
+    const bytes = Buffer.from(bytes_base64, "base64");
+    return relative_path.startsWith("calendar/stages/")
+      && createHash("sha256").update(bytes).digest("hex") === sha256
+      && bytes.length === size_bytes;
+  }), true);
   assert.equal(readdirSync(retained).length, 70);
 });
