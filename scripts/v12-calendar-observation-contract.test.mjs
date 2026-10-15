@@ -15,6 +15,7 @@ import {
   selectV12CalendarTerminalMarker,
   validateV12CalendarStageCoverage,
 } from "./v12-calendar-observation-contract.mjs";
+import { createV12CalendarObservationFixture } from "./testing/v12-calendar-observation-fixture.mjs";
 
 const NONCE = "b".repeat(32);
 const FLOW_SHA = "a".repeat(64);
@@ -223,21 +224,13 @@ test("the validator rejects sequential fake clocks, missing callbacks, generic l
 });
 
 test("cancel ends with the actual cancelled callback and rejects a fabricated pointer-up", () => {
-  const stage = structuredClone(pointerStage("drag-cancel"));
-  stage.pointer_events = stage.pointer_events.slice(0, 2).concat([
-    event(6, "pointer", { callback: "onFinalize", phase: "finalize-cancel", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, intent_owner: "vertical" }),
-  ]);
-  stage.rendered_panel_samples = [event(8, "rendered-panel", { viewport_x_dp: 18, previous_x_dp: -336, current_x_dp: 18, next_x_dp: 372, width_dp: 354 })];
-  stage.transition_events = [transition(7, "cancel", state("idle"), state("idle", { epoch: 1 }))];
-  stage.semantic_samples = [semantic(3), semantic(9)];
-  stage.callback_events = [];
-  stage.completed_at_monotonic_ms = stage.semantic_samples[1].observed_at_monotonic_ms;
-  delete stage.observation_digest_sha256;
-  stage.observation_digest_sha256 = hashV12CalendarObservationBody(stage);
+  const stage = structuredClone(createV12CalendarObservationFixture("drag-cancel", V12_CALENDAR_STAGE_IDS.indexOf("drag-cancel"), FLOW_SHA, NONCE).observation);
   assert.equal(derive(stage).status, "PASS");
 
   const malformed = structuredClone(stage);
-  malformed.pointer_events.push(event(13, "pointer", { callback: "onEnd", phase: "release", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, intent_owner: "vertical" }));
+  const prior = [...malformed.pointer_events, ...malformed.rendered_panel_samples, ...malformed.transition_events, ...malformed.semantic_samples]
+    .sort((left, right) => left.sequence - right.sequence).at(-1);
+  malformed.pointer_events.push({ ...event(prior.sequence + 1, "pointer", { callback: "onEnd", phase: "release", x_dp: 236.28, y_dp: 220, dx_dp: -63.72, dy_dp: 0, viewport_width_dp: 354, intent_owner: "horizontal" }), observed_at_monotonic_ms: prior.observed_at_monotonic_ms + 0.731 });
   malformed.completed_at_monotonic_ms = malformed.pointer_events.at(-1).observed_at_monotonic_ms;
   delete malformed.observation_digest_sha256;
   malformed.observation_digest_sha256 = hashV12CalendarObservationBody(malformed);

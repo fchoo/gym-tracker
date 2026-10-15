@@ -75,6 +75,12 @@ function monthIdFromTitle(title) {
   return month < 1 ? null : `${year}-${String(month).padStart(2, "0")}`;
 }
 
+function monthOrdinal(value) {
+  const match = /^(\d{4})-(\d{2})$/u.exec(value ?? "");
+  if (match === null) return null;
+  return Number(match[1]) * 12 + Number(match[2]) - 1;
+}
+
 function noForbidden(value, location = "stage") {
   if (typeof value === "string") {
     if (/(?:@|\/Users\/|\/home\/|\b(?:lat|lon|gps)\b|bearer|password|secret|credential)/iu.test(value)) fail(`private_value:${location}`);
@@ -416,6 +422,8 @@ function validatePointer(stage, stageId, group, driver) {
   const cancelled = ["drag-cancel", "drag-vertical", "drag-diagonal"].includes(stageId);
   if (cancelled) {
     if (callbacks.at(-1) !== "onFinalize" || stage.pointer_events.at(-1).phase !== "finalize-cancel" || callbacks.includes("onEnd")) fail("cancel_invalid");
+    const activated = callbacks.includes("onBegin") || callbacks.includes("onChange");
+    if (stageId === "drag-cancel" ? (!activated || !stage.pointer_events.some(({ intent_owner }) => intent_owner === "horizontal")) : activated) fail("cancel_invalid");
   } else if (stageId === "rapid-reverse-input") {
     if (!["onBegin", "onChange", "onEnd", "onFinalize"].every((name) => callbacks.includes(name))) fail("callback_provenance_invalid");
   } else if (!["onBegin", "onChange", "onEnd"].every((name) => callbacks.includes(name))
@@ -469,8 +477,11 @@ function validatePointer(stage, stageId, group, driver) {
   const shouldChangeMonth = !cancelled && stageId !== "drag-retreat" && stageId !== "drag-fast-subthreshold"
     && commandedRatio !== null && commandedRatio >= 0.25;
   if (driver !== undefined && (pointerRatio(stageId) !== null || ["drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal"].includes(stageId))) {
-    assertions.push(assertion("month-outcome", shouldChangeMonth ? finalMonth !== initialMonth : finalMonth === initialMonth,
-      { initialMonth, finalMonth, shouldChangeMonth }));
+    const expectedDelta = stageId.startsWith("drag-forward") ? 1 : stageId.startsWith("drag-backward") ? -1 : 0;
+    const initialOrdinal = monthOrdinal(initialMonth); const finalOrdinal = monthOrdinal(finalMonth);
+    assertions.push(assertion("month-outcome", initialOrdinal !== null && finalOrdinal !== null
+      && (shouldChangeMonth ? finalOrdinal - initialOrdinal === expectedDelta : finalOrdinal === initialOrdinal),
+    { initialMonth, finalMonth, expectedDelta: shouldChangeMonth ? expectedDelta : 0 }));
   }
   if (stageId.startsWith("drag-forward")) assertions.push(assertion("forward-direction", (final?.dx_dp ?? 0) < 0, final?.dx_dp ?? 0));
   if (stageId.startsWith("drag-backward")) assertions.push(assertion("backward-direction", (final?.dx_dp ?? 0) > 0, final?.dx_dp ?? 0));

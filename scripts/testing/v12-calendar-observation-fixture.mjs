@@ -58,9 +58,13 @@ function pointerBody(id, order) {
   if (cancelled) {
     const owner = id === "drag-diagonal" ? "diagonal" : "vertical";
     movement.push(pointer(event, "onTouchesDown", "down", 0));
-    movement.push(pointer(event, "onTouchesMove", "intent", -10, owner));
-    renderedPanels.push(rendered(event, 0));
-    movement.push(pointer(event, "onFinalize", "finalize-cancel", -10, owner));
+    movement.push(pointer(event, "onTouchesMove", "intent", id === "drag-cancel" ? -63.72 : -10, id === "drag-cancel" ? "horizontal" : owner));
+    if (id === "drag-cancel") {
+      movement.push(pointer(event, "onBegin", "begin", -63.72));
+      movement.push(pointer(event, "onChange", "change", -63.72));
+      renderedPanels.push(rendered(event, -63.72));
+    } else renderedPanels.push(rendered(event, 0));
+    movement.push(pointer(event, "onFinalize", "finalize-cancel", id === "drag-cancel" ? -63.72 : -10, id === "drag-cancel" ? "horizontal" : owner));
     const transitions = [transition(event, "cancel", state("idle"), state("idle", { epoch: 1 }))];
     const semantics = [semanticBefore, semantic(event)];
     return digest({ schema_version: 1, id, group: "pointer", started_at_monotonic_ms: base, completed_at_monotonic_ms: last(), viewport: view, pointer_events: movement, rendered_panel_samples: renderedPanels, transition_events: transitions, semantic_samples: semantics, callback_events: [], focus_events: [], motion: motionSample });
