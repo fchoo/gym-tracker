@@ -1,50 +1,66 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
-import { compareV12Capture, validateV12ComparisonShard } from "./compare-v12-visual.mjs";
+import { PNG } from "pngjs";
 
-const hash = "a".repeat(64);
-const base = () => ({
-  id: "BW-001",
-  configuration_id: "AP-L-C360-P-F100",
-  identity: { fixture: "v12-synthetic-fixtures-r18", clock: "2026-10-06T00:00:00Z", locale: "en-SG", timezone: "Asia/Singapore", content_bounds: { width: 360, height: 800 } },
-  artifacts: { reference_sha256: hash, native_sha256: hash, overlay_sha256: hash, difference_sha256: hash, mask_sha256: hash },
-  semantic: { content: true, actions: true, copy: true, state: true, route: true, focus: true, order: true, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], non_color_state: true, commit_read_only: true, accepted_deviation: null },
-  visual: { geometry_dp: 1, baseline_icon_dp: 2, token_exact: true, ciede2000: 2, pixel_percent: 0.4 },
-});
+import {
+  produceV12ComparisonRecord,
+  verifyV12ComparisonRecord,
+} from "./compare-v12-visual.mjs";
 
-test("returns a comparison classification only after semantic and measured gates pass", () => {
-  const result = compareV12Capture(base());
+const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
+const configurationId = "AP-L-C360-P-F100";
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+function png(red, green = 0) {
+  const image = new PNG({ width: 2, height: 1 });
+  image.data.set([red, green, 0, 255, red, green, 0, 255]);
+  return PNG.sync.write(image);
+}
+
+function fixture(t) {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-visual-compare-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const native = png(10); const reference = png(10);
+  const nativePath = `artifacts/native/v1.2/${runId}/screenshots/BW-001/${configurationId}/native.png`;
+  const capturePath = `artifacts/native/v1.2/${runId}/screenshots/BW-001/${configurationId}/capture.json`;
+  const referencePath = ".planning/design/v1.2-browser-evidence/reference-bw001.png";
+  for (const [file, bytes] of [[nativePath, native], [referencePath, reference]]) {
+    const absolute = path.join(root, file); mkdirSync(path.dirname(absolute), { recursive: true }); writeFileSync(absolute, bytes);
+  }
+  const descriptor = { path: nativePath, sha256: sha256(native), size_bytes: native.length, width: 2, height: 1 };
+  const capture = { schema_version: 2, producer: "v12-visual-capture/v2", run_id: runId, state_id: "BW-001", configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED", native_png: descriptor, settings: { restored: true, privacy: "synthetic-only" } };
+  writeFileSync(path.join(root, capturePath), `${JSON.stringify(capture)}\n`);
+  return {
+    root, nativePath, capturePath, referencePath,
+    request: {
+      id: "BW-001", configuration_id: configurationId, reference_path: referencePath,
+      observation: { native_execution: "EXECUTED", state_id: "BW-001", configuration_id: configurationId, content: true, actions: true, copy: true, state: true, route: true, focus: true, order: true, non_color_state: true, commit_read_only: true, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], geometry_dp: 0, baseline_icon_dp: 0, token_exact: true, ciede2000: 0 },
+    },
+  };
+}
+
+test("comparison derives retained descriptors and pixel metrics from the verified capture and reference bytes", (t) => {
+  const input = fixture(t);
+  const result = produceV12ComparisonRecord({ runId, root: input.root, input: input.request });
   assert.equal(result.classification, "PASS");
-  assert.equal(Object.hasOwn(result, "verdict"), false);
-  assert.equal(validateV12ComparisonShard({ schema_version: 1, results: [result] }), true);
+  assert.equal(result.artifacts.native.path, input.nativePath);
+  assert.equal(result.metrics.pixel_percent, 0);
+  for (const artifact of Object.values(result.artifacts)) assert.ok(existsSync(path.join(input.root, artifact.path)));
+  assert.equal(verifyV12ComparisonRecord({ runId, root: input.root, result }), true);
 });
 
-test("semantic failure always wins over a clean pixel score", () => {
-  const input = base(); input.semantic.route = false;
-  assert.equal(compareV12Capture(input).classification, "FAIL");
-  input.semantic.route = true; input.semantic.targets[0].width_dp = 47;
-  assert.equal(compareV12Capture(input).classification, "FAIL");
-  input.semantic.targets[0].width_dp = 48; input.semantic.commit_read_only = false;
-  assert.equal(compareV12Capture(input).classification, "FAIL");
-});
-
-test("accepted deviations require exact owner metadata and remain non-PASS", () => {
-  const input = base();
-  input.visual.pixel_percent = 3;
-  input.semantic.accepted_deviation = { deviation_id: "DEV-01", owner_decision: "adaptive layout approved", decided_at: "2026-10-07", configurations: [input.configuration_id], rationale: "48dp targets require the recorded adaptive layout.", evidence_hashes: [hash] };
-  const result = compareV12Capture(input);
-  assert.equal(result.classification, "ACCEPTED_EXCEPTION");
-  assert.equal(result.counts_as_pass, false);
-  input.semantic.accepted_deviation.configurations = ["AP-D-C360-P-F100"];
-  assert.throws(() => compareV12Capture(input), /v12_visual_compare_exception_scope_invalid/u);
-});
-
-test("rejects identity drift, malformed masks, unaccepted mismatch, and forged PASS", () => {
-  const drift = base(); drift.artifacts.mask_sha256 = "bad";
-  assert.throws(() => compareV12Capture(drift), /v12_visual_compare_artifact_hash_invalid/u);
-  const review = base(); review.visual.pixel_percent = 1;
-  assert.equal(compareV12Capture(review).classification, "REVIEW_REQUIRED");
-  const forged = { ...compareV12Capture(base()), classification: "PASS", semantic_passed: false, verdict: "PASS" };
-  assert.throws(() => validateV12ComparisonShard({ schema_version: 1, results: [forged] }), /v12_visual_compare_result_invalid/u);
+test("comparison verification rejects missing or tampered output, duplicated bytes, forged metrics, and wrong native linkage", (t) => {
+  const input = fixture(t);
+  const result = produceV12ComparisonRecord({ runId, root: input.root, input: input.request });
+  const overlay = path.join(input.root, result.artifacts.overlay.path); writeFileSync(overlay, png(80));
+  assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /v12_visual_compare_(artifact|metrics)_invalid/u);
+  writeFileSync(overlay, readFileSync(path.join(input.root, result.artifacts.difference.path)));
+  assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /v12_visual_compare_(duplicate|artifact)_invalid/u);
+  const restored = produceV12ComparisonRecord({ runId, root: input.root, input: { ...input.request, id: "BW-002", observation: { ...input.request.observation, state_id: "BW-002" } } });
+  assert.equal(restored, undefined, "a comparison cannot use a capture belonging to another browser state");
 });
