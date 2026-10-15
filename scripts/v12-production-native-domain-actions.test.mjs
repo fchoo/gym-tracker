@@ -58,6 +58,11 @@ test('Recovery derives exact 8 by 8 outcomes from durable native readback facts'
   assert.doesNotMatch(xml, /name="app_status"|name="app_verdict"/u);
   assert.equal(r.readState().domainCalls.length, 64);
 });
+test('Recovery is reachable through the production adapter and checked-in default launcher subprocess', (t) => {
+  const r = fixture(t); const xml = success(r.invokeDefault('recovery'));
+  assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 64);
+  assert.equal(r.readState().domainCalls.length, 64);
+});
 test('Recovery rejects missing cut and restores settings in finally', (t) => { const r = fixture(t); r.updateState({ missingCut: true, changeSettings: true }); bounded(r.invoke('recovery'), 'recovery_receipt_invalid'); assert.equal(r.readState().settings.font_scale, '1.15'); assert.equal(r.readState().settings.airplane_mode_on, '0'); assert.equal(existsSync(path.join(r.scratch, 'lock')), false); });
 for (const key of ['junitFailure', 'junitSkip']) test(`Recovery preserves ${key} and restores settings`, (t) => { const r = fixture(t); r.updateState({ [key]: true, changeSettings: true }); const xml = success(r.invoke('recovery')); assert.equal((xml.match(key === 'junitFailure' ? /<failure\b/gu : /<skipped\b/gu) ?? []).length, 64); assert.doesNotMatch(xml, /private-native|bearer|\/Users\//u); assert.equal(r.readState().settings.font_scale, '1.15'); assert.equal(r.readState().settings.airplane_mode_on, '0'); });
 test('Recovery keeps the device lease when connectivity restore fails', (t) => { const r = fixture(t); r.updateState({ failAirplaneRestore: true, missingCut: true }); bounded(r.invoke('recovery'), 'settings_restore_failed'); assert.equal(existsSync(path.join(r.scratch, 'lock')), true); });

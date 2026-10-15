@@ -159,21 +159,19 @@ export async function collectV12ProductionRecoveryPhase(input: Readonly<{
   }
 
   const observation = await executor.recover(executionIdentity);
-  try {
-    active(input.signal);
-    if (!validObservation(observation)) {
-      throw new Error("v12_recovery_observation_invalid");
-    }
-    input.emit(`${RESULT_PREFIX}${JSON.stringify({
-      schema_version: 1,
-      nonce: executionIdentity.nonce,
-      kind: "recovery",
-      case_id: executionIdentity.caseId,
-      cut_id: executionIdentity.cutId,
-      ...observation,
-    })}`);
-    return "observed";
-  } finally {
-    await executor.cleanup(executionIdentity);
+  active(input.signal);
+  if (!validObservation(observation)) {
+    throw new Error("v12_recovery_observation_invalid");
   }
+  await executor.cleanup(executionIdentity);
+  active(input.signal);
+  input.emit(`${RESULT_PREFIX}${JSON.stringify({
+    schema_version: 1,
+    nonce: executionIdentity.nonce,
+    kind: "recovery",
+    case_id: executionIdentity.caseId,
+    cut_id: executionIdentity.cutId,
+    ...observation,
+  })}`);
+  return "observed";
 }

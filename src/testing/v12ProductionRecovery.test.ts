@@ -140,4 +140,29 @@ describe("v1.2 native Recovery producer boundary", () => {
     expect(executor.recover).not.toHaveBeenCalled();
     expect(executor.cleanup).not.toHaveBeenCalled();
   });
+
+  it("finishes cleanup before emitting the sole terminal result", async () => {
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: jest.fn(async () => undefined),
+      recover: jest.fn(async () => ({
+        operation_id: "workout-complete-set",
+        after_reopen: snapshot(1, "d"),
+        retry_code: "already-completed",
+        after_retry: snapshot(1, "d"),
+      })),
+      cleanup: jest.fn(async () => { throw new Error("cleanup_failed"); }),
+    };
+    const lines: string[] = [];
+
+    await expect(collectV12ProductionRecoveryPhase({
+      identity,
+      phase: "recover",
+      emit: (line) => lines.push(line),
+      signal: { aborted: false },
+      executor,
+    })).rejects.toThrow("cleanup_failed");
+
+    expect(executor.cleanup).toHaveBeenCalledTimes(1);
+    expect(lines).toEqual([]);
+  });
 });
