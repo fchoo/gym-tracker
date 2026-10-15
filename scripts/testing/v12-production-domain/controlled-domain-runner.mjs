@@ -41,5 +41,12 @@ export function createDomainRunner() {
     for (const name of ['V12_NATIVE_ADAPTER_COMMAND', 'V12_NATIVE_ADAPTER_TEST_MODE', 'V12_NATIVE_ADAPTER_TEST_PROCESS', 'NODE_TEST_CONTEXT']) delete env[name];
     return spawnSync(process.execPath, ['--input-type=module', '--eval', program], { cwd: runner.root, env, input: JSON.stringify(input), encoding: 'utf8', timeout: 100_000, maxBuffer: 4 * 1024 * 1024 });
   }
-  return { ...runner, invoke, flow };
+  function invokeDefault(action, payload = {}, environment = {}) {
+    const input = { action, payload: { run_id: runner.build.run_id, ...payload } };
+    const program = `import fs from 'node:fs'; import {invokeV12NativeAdapter} from './scripts/v12-native-adapter.mjs'; const r=JSON.parse(fs.readFileSync(0,'utf8')); try {const result=invokeV12NativeAdapter(r.action,r.payload);process.stdout.write(JSON.stringify({result,node_env:process.env.NODE_ENV,native_evidence:false}));} catch(e) {process.stderr.write(e.message);process.exitCode=1;}`;
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: 'controlled-device-20', V12_CONTROLLED_STATE: runner.scratch, NODE_ENV: 'production', ...environment };
+    for (const name of ['V12_NATIVE_ADAPTER_COMMAND', 'V12_NATIVE_ADAPTER_TEST_MODE', 'V12_NATIVE_ADAPTER_TEST_PROCESS', 'NODE_TEST_CONTEXT']) delete env[name];
+    return spawnSync(process.execPath, ['--input-type=module', '--eval', program], { cwd: runner.root, env, input: JSON.stringify(input), encoding: 'utf8', timeout: 100_000, maxBuffer: 4 * 1024 * 1024 });
+  }
+  return { ...runner, invoke, invokeDefault, flow };
 }

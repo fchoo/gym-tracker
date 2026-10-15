@@ -119,6 +119,24 @@ function rewriteFixturePublication(root, shard) {
   }
   writeFileSync(file, JSON.stringify(publication));
 }
+function recoveryIdentity(build, cases, report) {
+  const digest = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
+  const retryFacts = selector => cases.flatMap(({ cuts }) => cuts.map(({ snapshots }) => snapshots.after_retry[selector]));
+  return {
+    source_digest: build.source.tree_sha256,
+    receipt_digest: digest(report),
+    scenario_digest: digest(cases.map(({ id, order, steps }) => ({ id, order, steps }))),
+    cut_digest: digest(cases.flatMap(({ cuts }) => cuts.map(({ receipt_sha256 }) => receipt_sha256))),
+    pointer_digest: digest(retryFacts('pointer_facts')),
+    effect_digest: digest(retryFacts('effect_facts')),
+    rest_digest: digest(retryFacts('rest_facts')),
+    history_digest: digest(retryFacts('history_facts')),
+    timing_digest: digest(retryFacts('timing_facts')),
+    restore_digest: digest(retryFacts('restore_facts')),
+    merge_receipt_digest: digest(retryFacts('merge_receipt_facts')),
+    cue_digest: digest(retryFacts('cue_count')),
+  };
+}
 function completeMultiPlanFixture(root) {
   const base = path.join(root, "artifacts/native/v1.2", run);
   const file = path.join(base, "mapping/multi-plan.json");
@@ -134,6 +152,30 @@ function completeMultiPlanFixture(root) {
   writeFileSync(path.join(base, "maestro/multi-plan.xml"), `<testsuites>${reports.join("")}</testsuites>\n`);
   rewriteFixturePublication(root, "multi-plan");
 }
+
+test("Phase 20 fake-device Recovery path proves offline rollback and one retry", () => {
+  const root = fixtureRoot();
+  try {
+    pass(root, "scripts/v12-recovery-shard.mjs", ["--run", run, "--execute"]);
+    pass(root, "scripts/v12-recovery-shard.mjs", ["--run", run, "--verify"]);
+    const lifecycle = JSON.parse(readFileSync(path.join(
+      root,
+      "artifacts/native/v1.2",
+      run,
+      "recovery/lifecycle.json",
+    ), "utf8"));
+    const offline = lifecycle.cases.flatMap(({ cuts }) => cuts)
+      .filter(({ cut_id }) => cut_id === "offline");
+    assert.equal(offline.length, 14);
+    assert.ok(offline.every(({ snapshots }) => (
+      JSON.stringify(snapshots.after_reopen) === JSON.stringify(snapshots.before)
+        && snapshots.after_retry.receipt_count === snapshots.before.receipt_count + 1
+        && snapshots.after_retry.command_receipt_facts.length === 1
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY from incomplete retained contracts", async (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -276,9 +318,7 @@ async function assertSourceMutations(t, root) {
       edit("recovery/lifecycle.json", value => {
         value.cases[0].status = state; value.cases[0].cuts[0].status = state;
         const build = JSON.parse(readFileSync(path.join(base, "build.json"), "utf8"));
-        const digest = data => createHash('sha256').update(data).digest('hex');
-        value.identity.receipt_digest = digest(report); value.identity.pointer_digest = digest(`${build.fixtures.registry_sha256}:pointer:${report}`); value.identity.effect_digest = digest(`${build.device.identity_sha256}:effect:${report}`);
-        for (const entry of value.cases) for (const cut of entry.cuts) cut.digest = value.identity.receipt_digest;
+        value.identity = recoveryIdentity(build, value.cases, report);
         return value;
       });
     });

@@ -1,27 +1,25 @@
 appId: com.fchoo.gymtracker.devtest
-name: V1.2 recovery fixture flow (deferred native evidence)
-tags:
-  - phase-20
-  - recovery
-  - deferred-native-evidence
+name: V1.2 real SQLite recovery cut and retry
+tags: [phase-20, recovery, development-test, real-sqlite]
 ---
-# This source-bound flow is intentionally not run until Plan 20-08's frozen APK gate.
-- launchApp:
-    clearState: false
-    stopApp: true
-- assertVisible: "Today"
+- assertTrue: ${V12_RECOVERY_CASE != null}
+- assertTrue: ${V12_RECOVERY_STAGE != null}
+- assertTrue: ${V12_RECOVERY_STEP != null}
+- assertTrue: ${V12_DOMAIN_NONCE != null}
+- assertTrue: ${V12_RECOVERY_PHASE == 'arm' || V12_RECOVERY_PHASE == 'recover'}
 - runFlow:
-    when:
-      true: ${V12_RECOVERY_STAGE == 'post-commit-before-ack'}
+    when: { true: ${V12_RECOVERY_PHASE == 'arm'} }
     commands:
-      - stopApp
-      - launchApp:
-          clearState: false
-          stopApp: true
-      - assertVisible: "Resume workout"
+      - launchApp: { clearState: false, stopApp: true }
+      - openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&stepId=${V12_RECOVERY_STEP}&cutId=${V12_RECOVERY_STAGE}&phase=arm"
+      - extendedWaitUntil:
+          visible: "Recovery cut armed"
+          timeout: 120000
 - runFlow:
-    when:
-      true: ${V12_RECOVERY_STAGE == 'offline-retry'}
+    when: { true: ${V12_RECOVERY_PHASE == 'recover'} }
     commands:
-      - assertVisible: "Workout in progress"
-      - pressKey: "Back"
+      - launchApp: { clearState: false, stopApp: false }
+      - openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&stepId=${V12_RECOVERY_STEP}&cutId=${V12_RECOVERY_STAGE}&phase=recover"
+      - extendedWaitUntil:
+          visible: "Recovery observation complete"
+          timeout: 120000

@@ -8,7 +8,7 @@ import { V12_MAESTRO_FLOW_CONTRACTS } from './run-v12-maestro.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
 import { V12_SQLITE_SHARD_CASE_IDS } from './v12-sqlite-shard.mjs';
-import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS } from './v12-recovery-shard.mjs';
+import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_UNCOMMITTED_CUT_IDS, validateV12RecoveryShard } from './v12-recovery-shard.mjs';
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, nearestRankP95 } from './benchmark-v12-interactions.mjs';
 import { validateV12PerformanceShard } from './v12-performance-shard.mjs';
 
@@ -272,20 +272,62 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   }
   const recovery = json('recovery/lifecycle.json');
   const recoveryXml = bytes(full('maestro/recovery.xml')).toString('utf8');
-  ensure(recovery.run_id === manifest.run_id && recovery.producer === 'v12-recovery-shard' && recovery.identity?.source_digest === manifest.source.tree_sha256 && recovery.identity.receipt_digest === sha(recoveryXml)
-    && recovery.identity.pointer_digest === sha(`${manifest.fixtures.registry_sha256}:pointer:${recoveryXml}`) && recovery.identity.effect_digest === sha(`${manifest.device.identity_sha256}:effect:${recoveryXml}`), 'recovery_binding_invalid');
+  ensure(recovery.run_id === manifest.run_id && recovery.producer === 'v12-recovery-shard' && recovery.schema_version === 2, 'recovery_binding_invalid');
+  try { validateV12RecoveryShard({ schema_version: 2, producer: recovery.producer, identity: recovery.identity, cases: recovery.cases }); } catch { fail('recovery_binding_invalid'); }
+  const retryFacts = selector => recovery.cases.flatMap(({ cuts }) => cuts.map(({ snapshots }) => snapshots.after_retry[selector]));
+  const expectedRecoveryIdentity = {
+    source_digest: manifest.source.tree_sha256,
+    receipt_digest: sha(recoveryXml),
+    scenario_digest: jsonHash(recovery.cases.map(({ id, order, steps }) => ({ id, order, steps }))),
+    cut_digest: jsonHash(recovery.cases.flatMap(({ cuts }) => cuts.map(({ receipt_sha256 }) => receipt_sha256))),
+    pointer_digest: jsonHash(retryFacts('pointer_facts')),
+    effect_digest: jsonHash(retryFacts('effect_facts')),
+    rest_digest: jsonHash(retryFacts('rest_facts')),
+    history_digest: jsonHash(retryFacts('history_facts')),
+    timing_digest: jsonHash(retryFacts('timing_facts')),
+    restore_digest: jsonHash(retryFacts('restore_facts')),
+    merge_receipt_digest: jsonHash(retryFacts('merge_receipt_facts')),
+    cue_digest: jsonHash(retryFacts('cue_count')),
+  };
+  ensure(same(recovery.identity, expectedRecoveryIdentity), 'recovery_binding_invalid');
   exactIds(recovery.cases?.map(x => x.id), V12_RECOVERY_CASE_IDS, 'recovery_selectors_invalid');
-  const cutIds = V12_RECOVERY_CASE_IDS.flatMap(id => V12_RECOVERY_CUT_IDS.map(cut => `${id}:${cut}`));
+  const cutIds = recovery.cases.flatMap(({ id, steps }) => steps.flatMap(step => V12_RECOVERY_CUT_IDS.map(cut => `${id}:${step.id}:${cut}`)));
   const cutStates = {};
   recovery.cases.forEach((entry, order) => {
-    ensure(entry.order === order, 'recovery_order_invalid'); exactIds(entry.cuts?.map(x => x.cut), V12_RECOVERY_CUT_IDS, 'recovery_cut_invalid');
-    entry.cuts.forEach(cut => { ensure(cut.digest === recovery.identity.receipt_digest, 'recovery_cut_digest_invalid'); cutStates[`${entry.id}:${cut.cut}`] = result(cut.status); });
+    ensure(entry.order === order, 'recovery_order_invalid');
+    const expectedCuts = entry.steps.flatMap(step => V12_RECOVERY_CUT_IDS.map(cut => `${step.id}:${cut}`));
+    exactIds(entry.cuts?.map(x => `${x.step_id}:${x.cut_id}`), expectedCuts, 'recovery_cut_invalid');
+    entry.cuts.forEach(cut => {
+      ensure(HASH.test(cut.receipt_sha256), 'recovery_cut_digest_invalid');
+      if (V12_RECOVERY_UNCOMMITTED_CUT_IDS.includes(cut.cut_id)) {
+        ensure(same(cut.snapshots.after_reopen, cut.snapshots.before)
+          && cut.snapshots.after_retry.receipt_count === cut.snapshots.before.receipt_count + 1
+          && cut.snapshots.after_retry.command_receipt_facts.length === 1,
+        'recovery_uncommitted_cut_invalid');
+      }
+      if (entry.id === 'between-set-rest-pointer') {
+        const pointer = cut.snapshots.after_retry.pointer_facts.find(fact => HASH.test(fact.committed_set_sha256 ?? ''));
+        const rest = pointer && cut.snapshots.after_retry.rest_facts.find(fact => fact.session_sha256 === pointer.session_sha256);
+        ensure(pointer && rest && pointer.active_exercise_sha256 === pointer.active_set_exercise_sha256
+          && pointer.active_exercise_sha256 === pointer.committed_set_exercise_sha256
+          && pointer.active_exercise_sha256 === rest.next_set_exercise_sha256
+          && pointer.active_set_sha256 === rest.next_set_sha256 && pointer.transition_sha256 === rest.transition_sha256
+          && pointer.committed_set_ordinal + 1 === pointer.active_set_ordinal
+          && pointer.active_set_ordinal === rest.next_set_ordinal, 'recovery_pointer_transition_invalid');
+      }
+      cutStates[`${entry.id}:${cut.step_id}:${cut.cut_id}`] = result(cut.status);
+    });
   });
   const recoveryTests = parseV12SourceJUnit(recoveryXml, cutIds, cutStates);
   recoveryTests.forEach(test => {
-    const [caseId, cut] = test.id.split(':'); const entry = recovery.cases.find(x => x.id === caseId);
-    ensure(test.properties.case_id === caseId && test.properties.cut_id === cut && HASH.test(test.properties.receipt_sha256 ?? ''), 'recovery_junit_properties_invalid');
-    leaf(`recovery:${test.id}`, 'recovery-cut', test.id, combineV12SourceResults([test.result, cutStates[test.id], result(entry.status)]), ['recovery/lifecycle.json', 'maestro/recovery.xml'], { case_id: caseId, cut_id: cut, junit_result: test.result, cut_result: cutStates[test.id], case_result: result(entry.status) });
+    const [caseId, stepId, cutId] = test.id.split(':'); const entry = recovery.cases.find(x => x.id === caseId); const cut = entry?.cuts.find(value => value.step_id === stepId && value.cut_id === cutId);
+    ensure(cut && test.properties.case_id === caseId && test.properties.step_id === stepId && test.properties.cut_id === cutId && test.properties.operation_id === cut.operation_id
+      && test.properties.boundary_id === cut.boundary_id && test.properties.receipt_kind === cut.receipt_kind
+      && test.properties.receipt_sha256 === cut.receipt_sha256 && test.properties.barrier_provenance === cut.barrier.provenance
+      && ['barrier_id', 'process_state', 'acknowledgement', 'connectivity', 'first_attempt'].every(key => test.properties[key] === cut.barrier[key])
+      && ['first_attempt_code', 'recovery_code', 'retry_code'].every(key => test.properties[key] === cut[key])
+      && ['before', 'after_cut', 'after_reopen', 'after_recovery', 'after_retry'].every(phase => test.properties[`${phase}_sha256`] === jsonHash(cut.snapshots[phase])), 'recovery_junit_properties_invalid');
+    leaf(`recovery:${test.id}`, 'recovery-cut', test.id, combineV12SourceResults([test.result, cutStates[test.id], result(entry.status)]), ['recovery/lifecycle.json', 'maestro/recovery.xml'], { case_id: caseId, step_id: stepId, boundary_id: cut.boundary_id, cut_id: cutId, operation_id: cut.operation_id, barrier_id: cut.barrier.barrier_id, barrier_provenance: cut.barrier.provenance, junit_result: test.result, cut_result: cutStates[test.id], case_result: result(entry.status) });
   });
   resolveVisual();
   resolveAccessibility();
