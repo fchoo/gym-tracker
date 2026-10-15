@@ -294,6 +294,12 @@ function pointerReady(stage: Phase20CalendarStage, events: readonly ObservationE
   if (!["onBegin", "onChange", "onEnd"].every((callback) => callbacks.has(callback as PointerEvent["callback"]))) return false;
   const finalized = pointers.filter(({ phase }) => phase === "finalize-release").length;
   if (stage === "rapid-reverse-input" && finalized < 2) return false;
+  if (stage === "drag-retreat") {
+    const changes = pointers.filter(({ callback }) => callback === "onChange");
+    const release = pointers.filter(({ callback }) => callback === "onEnd").at(-1);
+    if (!changes.some(({ dx_dp, viewport_width_dp }) => Math.abs(dx_dp) >= viewport_width_dp * 0.25)
+      || release === undefined || Math.abs(release.dx_dp) >= release.viewport_width_dp * 0.25) return false;
+  }
   if (!hasTransition(events, "release")) return false;
   return hasTransition(events, "settle-complete", "idle")
     && events.filter((event) => event.kind === "semantic").length >= 2;
@@ -316,8 +322,10 @@ function monthReady(stage: Phase20CalendarStage, events: readonly ObservationEve
   const rows = uniqueRows(events);
   if (semantic === undefined || rows.length !== semantic.week_count) return false;
   if (stage === "month-year-boundary") {
-    return events.some((event) => event.kind === "transition"
+    const boundary = events.find((event): event is TransitionEvent => event.kind === "transition"
       && event.before.current_month_id.slice(0, 4) !== event.after.current_month_id.slice(0, 4));
+    return boundary !== undefined && hasTransition(events, "settle-complete", "idle")
+      && semantic.current_month_id === boundary.after.current_month_id;
   }
   if (stage === "leap-february") return semantic.selected_civil_date.endsWith("-02-29");
   const expectedRows = stage === "four-row-month" ? 4 : stage === "five-row-month" ? 5 : 6;
@@ -327,12 +335,22 @@ function monthReady(stage: Phase20CalendarStage, events: readonly ObservationEve
 function lifecycleReady(stage: Phase20CalendarStage, events: readonly ObservationEvent[]): boolean {
   const lifecycle = events.filter((event): event is LifecycleEvent => event.kind === "lifecycle");
   if (stage === "rotation-during-transition") {
-    return new Set(lifecycle.filter(({ event }) => event === "orientation").map(({ value }) => value)).size >= 2
-      && new Set(events.filter((event): event is ViewportEvent => event.kind === "viewport-layout").map(({ orientation }) => orientation)).size >= 2
-      && hasTransition(events, "invalidate");
+    const orientations = lifecycle.filter(({ event }) => event === "orientation");
+    const secondOrientation = orientations.at(-1);
+    const viewports = events.filter((event): event is ViewportEvent => event.kind === "viewport-layout");
+    const latestViewport = viewports.at(-1);
+    return new Set(orientations.map(({ value }) => value)).size >= 2
+      && new Set(viewports.map(({ orientation }) => orientation)).size >= 2
+      && secondOrientation !== undefined && latestViewport !== undefined
+      && events.some((event) => event.kind === "transition" && event.trigger === "invalidate"
+        && event.sequence > secondOrientation.sequence && event.sequence > latestViewport.sequence);
   }
-  const states = lifecycle.filter(({ event }) => event === "app-state").map(({ value }) => value);
-  return states.some((value) => value !== "active") && states.includes("active") && hasTransition(events, "invalidate");
+  const background = lifecycle.find((event) => event.event === "app-state" && event.value !== "active");
+  const resumed = lifecycle.find((event) => event.event === "app-state" && event.value === "active"
+    && (background === undefined || event.sequence > background.sequence));
+  return background !== undefined && resumed !== undefined
+    && events.some((event) => event.kind === "transition" && event.trigger === "invalidate"
+      && event.sequence > background.sequence && event.sequence < resumed.sequence);
 }
 
 function ready(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup, events: readonly ObservationEvent[]): boolean {

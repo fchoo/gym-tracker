@@ -547,27 +547,27 @@ test("the checked-in Calendar map binds every reference byte to the Revision 18 
   assert.equal(new Set(map.captures.map((capture) => capture.id)).size, map.captures.length);
 });
 
-test("the Phase 16 runner exposes every pre-destination diagnostic stage but cannot award a native verdict", () => {
+test("the Phase 20 Calendar runner exposes every real stage but cannot award a native verdict", () => {
   const manifest = { schema_version: 1, suite: "v1.2-calendar", profile: "development-test", package: "com.fchoo.gymtracker.devtest", js_bundle: { embedded: true }, base_head: "a".repeat(40), source_tree_sha256: "b".repeat(64), source_manifest_sha256: "e".repeat(64), reference_map_sha256: "f".repeat(64), apk: { path: "artifacts/native/v1.2-calendar/app.apk", sha256: "c".repeat(64), size_bytes: 1 }, installed_apk: { sha256: "c".repeat(64), matches_retained_apk: true }, device: { identity_sha256: "d".repeat(64) }, report_sha256: "f".repeat(64) };
   assert.equal(validateV12CalendarManifest(manifest), true);
   const flow = readFileSync("maestro/v1.2/calendar.yaml", "utf8");
   assert.equal(validateV12CalendarFlow(flow), true);
   assert.throws(
     () => validateV12CalendarFlow(flow.replace(
-      "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10'} }\n    commands:",
-      "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-forward-10'} }\n    commands:\n      - swipe: { start: \"70%, 45%\", end: \"60%, 45%\", duration: 160 }",
+      '- swipe: { start: "80%, 45%", end: "70.9231%, 45%", duration: 500 }',
+      '- assertVisible: "October 2026"',
     )),
     /v12_calendar_flow_stage_invalid:drag-forward-10/u,
   );
   assert.throws(
-    () => validateV12CalendarFlow(flow.replace('id: "calendar-month-title"', 'id: "calendar-title-missing"')),
-    /v12_calendar_flow_stage_invalid:drag-forward-10/u,
+    () => validateV12CalendarFlow(flow.replace("&phase20CalendarFlowSha256=${V12_CALENDAR_FLOW_SHA256}", "")),
+    /v12_calendar_flow_invalid/u,
   );
   const plan = createV12CalendarRunnerPlan(manifest);
   assert.equal(plan.native_execution, "NOT_RUN");
-  assert.equal(plan.phase20_deferred, true);
+  assert.equal(plan.observation_source, "/calendar");
   assert.deepEqual(plan.stages, V12_CALENDAR_DIAGNOSTIC_STAGES);
   assert.equal(new Set(plan.stages).size, plan.stages.length);
-  const controls = readFileSync("src/bootstrap/phase16CalendarTestControls.ts", "utf8");
+  const controls = readFileSync("src/bootstrap/phase20CalendarObservation.ts", "utf8");
   for (const stage of plan.stages) assert.match(controls, new RegExp(`"${stage}"`, "u"));
 });

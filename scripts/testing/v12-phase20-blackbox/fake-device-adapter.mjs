@@ -6,13 +6,13 @@ import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../../v12-evidence-contract.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "../../benchmark-v12-interactions.mjs";
+import { createV12CalendarObservationResult } from "../v12-calendar-observation-fixture.mjs";
 const sha = (value) => createHash("sha256").update(String(value)).digest("hex");
 const read = await new Promise((resolve) => { let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }); process.stdin.on("end", () => resolve(JSON.parse(body))); });
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
 if (fail && action.includes(fail)) process.exit(1);
 if (mutation && action === "garmin") process.exit(1);
 const png = (key, reference = false) => { const image = new PNG({ width: 200, height: 1 }); const hash = Buffer.from(sha(key), "hex"); image.data.set([hash[0], hash[1], hash[2], 255, hash[3], hash[4], hash[5], 255]); if (reference) image.data[0] ^= 1; return PNG.sync.write(image).toString("base64"); };
-const sample = (index, dx = 25) => ({ timestampMs: index + 1, widthDp: 100, dxDp: dx, dyDp: 0, intentOwner: "horizontal", translationDp: dx, title: "2026-10", selectedCivilDate: "2026-10-14", generation: index + 1, focusedWeek: "week", rowBounds: [0, 48], callbackCount: index + 1, focusIdentity: "calendar", motion: "normal" });
 const repeated = (count, value) => Array.from({ length: count }, () => value);
 const build = JSON.parse(readFileSync(`artifacts/native/v1.2/${read.attestation.run_id}/build.json`, 'utf8'));
 const performanceIdentity = Object.freeze({ base_head: build.source.head, source_tree_sha256: build.source.tree_sha256, apk_sha256: build.build.apk.sha256, installed_apk_sha256: build.device.installed_apk_sha256, package: build.build.package, device_identity_sha256: build.device.identity_sha256, fixture_sha256: build.fixtures.registry_sha256 });
@@ -95,10 +95,7 @@ const response = (() => {
     cases: garminCaseIds.map((id, order) => ({ id, order, status: "PASS", code: "native-passed", count: id === "match-one" ? 1 : 0 })),
   };
   if (action === "calendar") {
-    const ids = ["drag-forward-10", "drag-forward-24_9", "drag-forward-25", "drag-forward-25_1", "drag-forward-release-below", "drag-forward-release-exact", "drag-forward-release-above", "drag-backward-10", "drag-backward-24_9", "drag-backward-25", "drag-backward-25_1", "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above", "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal", "second-input-interrupt", "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "adjacent-week", "month-year-boundary", "leap-february", "four-row-month", "five-row-month", "six-row-month", "rapid-reverse-input", "rotation-during-transition", "background-during-transition", "reduced-motion", "dev-01-padding", "dev-02-light-title"];
-    const stage = (id, order) => ({ id, order, status: "PASS", samples: [sample(order * 2, 25), sample(order * 2 + 1, 25)], receipt: { content_width_dp: 100, start_dp: [75, 45], end_dp: [50, 45], dx_dp: -25, dy_dp: 0, event_sequence: ["pointer-down", "pointer-move", "pointer-up"], cancelled: false, settled: true, callback_count: 1, semantic_transition: { pre: "month", during: "dragging", post: "month" }, screenshot_sha256: sha(`calendar-shot:${id}`), trace_sha256: sha(`calendar-trace:${id}`), expected_outcome: id } });
-    const stages = ids.map(stage);
-    return { flow_sha256: read.payload.flow_sha256, flow_revision: read.payload.flow_revision, stages, junit_cases: stages.map(({ id, order, status }) => ({ id, order, status })) };
+    return createV12CalendarObservationResult(read.payload.flow_sha256);
   }
   // Other actions intentionally return only a shape; the black-box test is the
   // contract that forces producers to reject anything insufficient.

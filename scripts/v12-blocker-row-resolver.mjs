@@ -6,6 +6,7 @@ import { PNG } from 'pngjs';
 import { V12_CONFIG_IDS, V12_BROWSER_WALK_STATE_IDS } from './v12-evidence-contract.mjs';
 import { V12_MAESTRO_FLOW_CONTRACTS } from './run-v12-maestro.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
+import { V12_CALENDAR_FLOW_REVISION, validateV12CalendarStageResult } from './v12-calendar-observation-contract.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
 import { V12_SQLITE_SHARD_CASE_IDS } from './v12-sqlite-shard.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS } from './v12-recovery-shard.mjs';
@@ -219,32 +220,17 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   }
   const calendar = json('calendar-transitions.json'); bindIdentity(calendar.identity);
   const calendarIds = V12_CALENDAR_SHARD_STAGE_IDS;
-  ensure(calendar.run_id === manifest.run_id && calendar.producer === 'v12-calendar-shard/v3' && calendar.flow_revision === 'calendar-flow-r35'
+  ensure(calendar.run_id === manifest.run_id && calendar.producer === 'v12-calendar-shard/v4' && calendar.flow_revision === V12_CALENDAR_FLOW_REVISION
     && calendar.identity.configuration_id === manifest.configuration.id
-    && calendar.flow_sha256 === jsonHash(readFileSync(path.join(root, 'maestro/v1.2/calendar.yaml'))), 'calendar_schema_invalid');
+    && calendar.flow_sha256 === sha(readFileSync(path.join(root, 'maestro/v1.2/calendar.yaml'))), 'calendar_schema_invalid');
   exactIds(calendar.stages?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
   exactIds(calendar.junit_cases?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
   const calendarTests = parseV12SourceJUnit(bytes(full('maestro/calendar.xml')).toString('utf8'), calendarIds, Object.fromEntries(calendar.stages.map(x => [x.id, result(x.status)])));
   calendar.stages.forEach((stage, index) => {
     ensure(stage.order === index && calendar.junit_cases[index].order === index && calendar.junit_cases[index].status === stage.status, 'calendar_order_invalid');
-    const receipt = stage.receipt;
-    exactIds(Object.keys(receipt ?? {}).sort(), ['content_width_dp', 'start_dp', 'end_dp', 'dx_dp', 'dy_dp', 'event_sequence', 'cancelled', 'settled', 'callback_count', 'semantic_transition', 'screenshot_sha256', 'trace_sha256', 'expected_outcome'].sort(), 'calendar_receipt_invalid');
-    ensure(receipt?.expected_outcome === stage.id && HASH.test(receipt.trace_sha256 ?? '') && HASH.test(receipt.screenshot_sha256 ?? '') && Number.isFinite(receipt.content_width_dp) && receipt.content_width_dp > 0
-      && Array.isArray(receipt.start_dp) && Array.isArray(receipt.end_dp) && receipt.start_dp.length === 2 && receipt.end_dp.length === 2 && receipt.start_dp.concat(receipt.end_dp).every(Number.isFinite)
-      && Number.isFinite(receipt.dx_dp) && Number.isFinite(receipt.dy_dp) && Math.abs(receipt.end_dp[0] - receipt.start_dp[0] - receipt.dx_dp) <= 0.01 && Math.abs(receipt.end_dp[1] - receipt.start_dp[1] - receipt.dy_dp) <= 0.01
-      && Array.isArray(receipt.event_sequence) && receipt.event_sequence.length >= 3 && receipt.event_sequence[0] === 'pointer-down' && receipt.event_sequence.at(-1) === 'pointer-up' && receipt.event_sequence.every(x => ['pointer-down', 'pointer-move', 'pointer-up', 'cancel'].includes(x))
-      && typeof receipt.cancelled === 'boolean' && typeof receipt.settled === 'boolean' && !(receipt.cancelled && receipt.settled) && Number.isInteger(receipt.callback_count) && receipt.callback_count > 0
-      && same(Object.keys(receipt.semantic_transition ?? {}).sort(), ['during', 'post', 'pre']) && Object.values(receipt.semantic_transition).every(x => typeof x === 'string' && x.length > 0), 'calendar_receipt_invalid');
-    ensure(Array.isArray(stage.samples) && stage.samples.length >= 2 && stage.samples.every((sample, n) => Number.isFinite(sample.timestampMs) && (!n || sample.timestampMs > stage.samples[n - 1].timestampMs) && Number.isFinite(sample.dxDp) && Number.isFinite(sample.translationDp) && Math.abs(sample.dxDp - sample.translationDp) <= 2 && Number.isFinite(sample.widthDp) && sample.widthDp > 0 && Number.isInteger(sample.callbackCount) && sample.callbackCount > 0), 'calendar_samples_invalid');
-    stage.samples.forEach((sample, index) => {
-      exactIds(Object.keys(sample).sort(), ['timestampMs', 'widthDp', 'dxDp', 'dyDp', 'intentOwner', 'translationDp', 'title', 'selectedCivilDate', 'generation', 'focusedWeek', 'rowBounds', 'callbackCount', 'focusIdentity', 'motion'].sort(), 'calendar_sample_fields_invalid');
-      ensure(Number.isFinite(sample.dyDp) && ['horizontal', 'vertical', 'diagonal'].includes(sample.intentOwner) && typeof sample.title === 'string'
-        && /^\d{4}-\d{2}-\d{2}$/u.test(sample.selectedCivilDate) && Number.isInteger(sample.generation) && sample.generation >= 1 && (!index || sample.generation >= stage.samples[index - 1].generation)
-        && typeof sample.focusedWeek === 'string' && Array.isArray(sample.rowBounds) && sample.rowBounds.length === 2 && sample.rowBounds.every(Number.isFinite) && sample.rowBounds[1] > sample.rowBounds[0]
-        && typeof sample.focusIdentity === 'string' && ['normal', 'reduced'].includes(sample.motion) && (!index || sample.callbackCount >= stage.samples[index - 1].callbackCount), 'calendar_samples_invalid');
-    });
-    const state = combineV12SourceResults([result(stage.status), calendarTests[index].result, receipt.settled || stage.status !== 'PASS' ? 'PASS' : 'FAIL']);
-    leaf(`calendar:${stage.id}`, 'calendar-stage', stage.id, state, ['calendar-transitions.json', 'maestro/calendar.xml'], { receipt_sha256: jsonHash(receipt), testcase: stage.id, stage_result: result(stage.status), junit_result: calendarTests[index].result });
+    try { validateV12CalendarStageResult(stage, stage.id, index); } catch { fail('calendar_observation_invalid'); }
+    const state = combineV12SourceResults([result(stage.status), calendarTests[index].result]);
+    leaf(`calendar:${stage.id}`, 'calendar-stage', stage.id, state, ['calendar-transitions.json', 'maestro/calendar.xml'], { receipt_sha256: jsonHash(stage.observation), testcase: stage.id, stage_result: result(stage.status), junit_result: calendarTests[index].result });
   });
   const garminGroups = { 'packaging-auth': ['packaging', 'bridge-allowlist', 'account-lifecycle', 'recovery'], 'sync-read': ['canonical-json', 'sync-read', 'privacy'], dedupe: V12_GARMIN_SHARD_CASE_IDS.slice(6, 9), matching: V12_GARMIN_SHARD_CASE_IDS.slice(9, 17) };
   const garminValues = Object.fromEntries(Object.keys(garminGroups).map(name => [name, json(`garmin/${name}.json`)]));

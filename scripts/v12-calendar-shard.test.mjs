@@ -8,6 +8,7 @@ import {
   validateV12CalendarShard,
   V12_CALENDAR_SHARD_STAGE_IDS,
 } from "./v12-calendar-shard.mjs";
+import { createV12CalendarObservationResult } from "./testing/v12-calendar-observation-fixture.mjs";
 
 const observation = Object.freeze({
   sourceDigest: "a".repeat(64),
@@ -18,16 +19,38 @@ const observation = Object.freeze({
   ],
 });
 
-test("Calendar shard preserves source observations and defers verdicts", () => {
-  assert.deepEqual(validateV12CalendarShard(observation), { status: "NOT_RUN", caseCount: 9 });
-  assert.deepEqual(executeV12CalendarShard(observation), { producer: "v12-calendar-shard/v1", status: "NOT_RUN", observations: observation });
+test("Calendar shard rejects the retired generic observation envelope", () => {
+  assert.throws(() => validateV12CalendarShard(observation), /calendar_native_stages_invalid/u);
+  assert.throws(() => executeV12CalendarShard(observation), /calendar_native_stages_invalid/u);
 });
 
-test("Calendar shard rejects final-only, stale callback, translation drift, and final verdict inputs", () => {
-  assert.throws(() => validateV12CalendarShard({ ...observation, samples: [observation.samples[0]] }), /calendar_intermediate_samples_required/);
-  assert.throws(() => validateV12CalendarShard({ ...observation, samples: observation.samples.map((sample) => ({ ...sample, callbackCount: 0 })) }), /calendar_callback_invalid/);
-  assert.throws(() => validateV12CalendarShard({ ...observation, samples: observation.samples.map((sample) => ({ ...sample, translationDp: 97 })) }), /calendar_translation_invalid/);
-  assert.throws(() => executeV12CalendarShard({ ...observation, finalVerdict: "PASS" }), /calendar_final_verdict_forbidden/);
+test("Calendar shard rejects producer verdicts and sample-only evidence", () => {
+  assert.throws(() => validateV12CalendarShard({ ...observation, finalVerdict: "PASS" }), /calendar_native_stages_invalid/u);
+  assert.throws(() => validateV12CalendarShard({ samples: observation.samples }), /calendar_native_stages_invalid/u);
+});
+
+test("Calendar shard writes the exact stage-specific host-derived observation set", async () => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const flowSha256 = "9".repeat(64);
+  const manifest = {
+    run_id: runId,
+    source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) },
+    fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
+    configuration: { id: "AP-L-C390-P-F100" },
+  };
+  const writes = new Map();
+  const result = await executeV12CalendarShardCli(["--run", runId, "--execute"], {
+    root: "/fixture-root", flowSha256, readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+    isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
+    snapshotSettings: () => ({}), restoreSettings: () => true, executeNative: () => createV12CalendarObservationResult(flowSha256),
+    writeImmutable: (file, value) => writes.set(file, value), outputExists: () => false,
+  });
+  assert.deepEqual(result, { ok: true, mode: "execute", run_id: runId });
+  assert.equal(writes.size, 2);
+  assert.match(JSON.stringify(writes.get(`artifacts/native/v1.2/${runId}/calendar-transitions.json`)), /v12-calendar-shard\/v4/u);
+  assert.doesNotMatch(JSON.stringify([...writes.values()]), /expected_outcome|synthetic/u);
 });
 
 test("Calendar shard exposes exhaustive stage order and strict immutable CLI arguments", () => {

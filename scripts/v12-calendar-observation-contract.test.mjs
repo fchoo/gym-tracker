@@ -112,7 +112,7 @@ function derive(stage = pointerStage()) {
 test("the production Calendar contract owns the exact 35-stage order and stage-specific schema groups", () => {
   assert.equal(V12_CALENDAR_STAGE_IDS.length, 35);
   assert.deepEqual(Object.values(V12_CALENDAR_STAGE_GROUPS).flat(), V12_CALENDAR_STAGE_IDS);
-  assert.deepEqual(Object.keys(V12_CALENDAR_STAGE_GROUPS), ["pointer", "row_geometry", "month_geometry", "pointer_retarget", "lifecycle", "reduced_motion", "baseline"]);
+  assert.deepEqual(Object.keys(V12_CALENDAR_STAGE_GROUPS), ["pointer", "input_interrupt", "row_geometry", "month_geometry", "pointer_retarget", "lifecycle", "reduced_motion", "baseline"]);
 });
 
 test("a real pointer observation is validated and its status is derived only by host assertions", () => {
@@ -121,7 +121,7 @@ test("a real pointer observation is validated and its status is derived only by 
   assert.equal(result.observation.id, "drag-forward-release-exact");
   assert.ok(result.assertion_results.length >= 5);
   assert.ok(result.assertion_results.every(({ passed }) => passed));
-  assert.deepEqual(Object.keys(result), ["id", "order", "status", "observation", "assertion_results", "screenshot_sha256", "trace_sha256"]);
+  assert.deepEqual(Object.keys(result), ["id", "order", "status", "observation", "assertion_results", "terminal_marker_sha256", "screenshot_sha256", "trace_sha256"]);
   assert.doesNotMatch(JSON.stringify(result.observation), /expected|\bPASS\b|\bstatus\b|synthetic/u);
 });
 

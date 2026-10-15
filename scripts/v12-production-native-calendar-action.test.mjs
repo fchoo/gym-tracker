@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { createHash } from "node:crypto";
 
 import {
   V12_CALENDAR_FLOW_REVISION,
@@ -8,8 +11,10 @@ import {
 } from "./v12-calendar-observation-contract.mjs";
 import {
   createV12CalendarStageInvocation,
+  collectV12ProductionCalendarStages,
   validateProductionCalendarActionRequest,
 } from "./v12-production-native-calendar-action.mjs";
+import { createV12CalendarMarkerFixture } from "./testing/v12-calendar-observation-fixture.mjs";
 
 const HASH = "a".repeat(64);
 const RUN_ID = "phase20-20261015T010203Z-abcdef123456";
@@ -81,4 +86,37 @@ test("the Maestro flow drives all 35 real stages and passes the complete route i
   assert.match(flow, /background-during-transition[\s\S]*?pressKey: HOME/u);
   assert.match(flow, /reduced-motion[\s\S]*?calendar-day-2026-10-15/u);
   assert.match(flow, /takeScreenshot: "calendar-\$\{V12_CALENDAR_STAGE\}"/u);
+});
+
+test("the Calendar action collects every stage in order and retains raw traces and screenshots", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-action-"));
+  const retained = path.join(root, "retained");
+  mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });
+  mkdirSync(retained);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const flow = readFileSync(new URL("../maestro/v1.2/calendar.yaml", import.meta.url));
+  writeFileSync(path.join(root, "maestro/v1.2/calendar.yaml"), flow);
+  const flowSha256 = createHash("sha256").update(flow).digest("hex");
+  const invocations = [];
+  const result = await collectV12ProductionCalendarStages({
+    root,
+    payload: { run_id: RUN_ID, flow_sha256: flowSha256, flow_revision: V12_CALENDAR_FLOW_REVISION },
+    io: {
+      version: () => undefined,
+      standalone: () => undefined,
+      configureStage: () => undefined,
+      clearLogs: () => undefined,
+      logs: () => "",
+      maestro: (invocation) => { invocations.push(invocation); return { status: "PASS", xml: "<testsuite><testcase/></testsuite>" }; },
+      awaitMarker: (_before, invocation) => Promise.resolve(createV12CalendarMarkerFixture(invocation.stageId, invocation.order, flowSha256, invocation.nonce)),
+      screenshot: () => Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=", "base64"),
+      retained: () => retained,
+    },
+  });
+  assert.deepEqual(result.stages.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
+  assert.deepEqual(result.junit_cases.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
+  assert.equal(invocations.length, 35);
+  assert.equal(new Set(invocations.map(({ nonce }) => nonce)).size, 35);
+  assert.equal(result.stages.every(({ observation, assertion_results }) => !Object.hasOwn(observation, "status") && assertion_results.length > 0), true);
+  assert.equal(readdirSync(retained).length, 70);
 });

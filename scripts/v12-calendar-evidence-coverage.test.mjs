@@ -55,10 +55,8 @@ import {
 } from "./v12-calendar-artifacts.mjs";
 import {
   V12_CALENDAR_DIAGNOSTIC_STAGES,
-  V12_CALENDAR_TRACE_SAMPLE_MARKER,
   createV12CalendarRunnerPlan,
   executeV12Maestro,
-  extractV12CalendarStageTrace,
   initializeV12CalendarRunnerState,
   readV12CalendarRunnerState,
   recordV12CalendarRunnerStage,
@@ -587,56 +585,22 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   const flow = readFileSync("maestro/v1.2/calendar.yaml", "utf8");
   assert.equal(validateV12CalendarFlow(flow), true);
   assert.throws(() => validateV12CalendarFlow(null), /flow_invalid/u);
-  assert.throws(() => validateV12CalendarFlow("PHASE16_CALENDAR_STAGE"), /flow_invalid/u);
-  assert.throws(() => validateV12CalendarFlow("calendar-tracer"), /flow_invalid/u);
-  assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_FIXTURE_ID == 'synthetic-calendar-v1'", "PHASE16_CALENDAR_FIXTURE_ID != null")), /flow_invalid/u);
-  assert.throws(() => validateV12CalendarFlow(`${flow}\n# October 2026`), /flow_invalid/u);
-  assert.throws(() => validateV12CalendarFlow(`${flow}\n# phase16CalendarReducedMotion=true`), /flow_invalid/u);
-  assert.throws(() => validateV12CalendarFlow(flow.replace("PHASE16_CALENDAR_STAGE == 'drag-forward-10'", "PHASE16_CALENDAR_STAGE == 'missing'")), /stage_missing/u);
-  assert.equal(validateV12CalendarFlow(flow.replace(
-    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:",
-    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-retreat'} }\n    commands:\n      - swipe: { start: \"70%, 45%\", end: \"40%, 45%\", duration: 240 }",
-  )), true);
+  assert.throws(() => validateV12CalendarFlow("V12_CALENDAR_STAGE"), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow("Phase 20 real Calendar native observation"), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace("&phase20CalendarNonce=${V12_CALENDAR_NONCE}", "")), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(`${flow}\n# synthetic`), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(`${flow}\n# PHASE16_CALENDAR_STAGE`), /flow_invalid/u);
+  assert.throws(() => validateV12CalendarFlow(flow.replace("V12_CALENDAR_STAGE == 'drag-forward-10'", "V12_CALENDAR_STAGE == 'missing'")), /stage_missing/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace(
-    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:",
-    "when: { true: ${PHASE16_CALENDAR_STAGE == 'drag-cancel'} }\n    commands:\n      - pressKey: BACK",
+    '- swipe: { start: "70%, 45%", end: "65%, 70%", duration: 180 }',
+    '- pressKey: BACK',
   )), /flow_stage_invalid/u);
   assert.throws(() => validateV12CalendarFlow(flow.replace("takeScreenshot", "capture")), /capture_missing/u);
   const runnerPlan = createV12CalendarRunnerPlan(valid);
   assert.equal(runnerPlan.stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);
-  assert.equal(runnerPlan.fixture_id, "synthetic-calendar-v1");
-  assert.equal(runnerPlan.trace_sample_marker, V12_CALENDAR_TRACE_SAMPLE_MARKER);
-
-  const traceRow = {
-    schema_version: 1,
-    trace_nonce: "p16trace-native-1",
-    source_identity: { package_name: "com.fchoo.gymtracker.devtest", build_profile: "development-test", suite: "phase16-calendar" },
-    stage: "drag-cancel",
-    sequence: 1,
-    sample: { kind: "cancel", elapsedMs: 1, synthetic: true },
-  };
-  const traceLine = `${V12_CALENDAR_TRACE_SAMPLE_MARKER}${JSON.stringify(traceRow)}`;
-  assert.equal(extractV12CalendarStageTrace("noise", "drag-cancel"), undefined);
-  assert.deepEqual(extractV12CalendarStageTrace(traceLine, "drag-cancel"), {
-    schemaVersion: 1,
-    stage: "drag-cancel",
-    traceNonce: "p16trace-native-1",
-    sourceIdentity: { packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", suite: "phase16-calendar" },
-    synthetic: true,
-    samples: [{ kind: "cancel", elapsedMs: 1, synthetic: true }],
-  });
-  assert.throws(() => extractV12CalendarStageTrace(`${V12_CALENDAR_TRACE_SAMPLE_MARKER}{`, "drag-cancel"), /trace_json_invalid/u);
-  for (const mutate of [
-    (value) => { value.trace_nonce = "Alice"; },
-    (value) => { value.sequence = 2; },
-    (value) => { value.source_identity.package_name = "wrong"; },
-    (value) => { value.extra = true; },
-  ]) {
-    const invalid = structuredClone(traceRow);
-    mutate(invalid);
-    assert.throws(() => extractV12CalendarStageTrace(`${V12_CALENDAR_TRACE_SAMPLE_MARKER}${JSON.stringify(invalid)}`, "drag-cancel"), /trace_chunks_invalid/u);
-  }
-  assert.throws(() => extractV12CalendarStageTrace(traceLine, "unknown"), /trace_chunks_invalid/u);
+  assert.equal(runnerPlan.observation_source, "/calendar");
+  assert.equal(runnerPlan.terminal_marker, "GYM_TRACKER_V12_DOMAIN_RESULT:");
+  assert.equal(runnerPlan.flow_revision, "calendar-flow-r35-real-v1");
 
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-runner-state-"));
   try {
