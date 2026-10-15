@@ -14,6 +14,7 @@ if (args.includes("--version")) {
 const output = args[args.indexOf("--output") + 1];
 if (output) {
   const { mkdirSync, writeFileSync } = await import("node:fs"); const { dirname } = await import("node:path");
-  mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, '<testsuite name="fake"><testcase name="fake"/></testsuite>\n');
+  const caseId = args.find(arg => arg.startsWith('V12_CASE_ID='))?.slice('V12_CASE_ID='.length) ?? 'fake';
+  mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, `<testsuite name="fake"><testcase name="${caseId}"/></testsuite>\n`);
 }
 process.exit(0);

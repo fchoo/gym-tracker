@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // JSON-stdin fake device protocol. It intentionally contains no device serial,
 // credentials, host path, or production data.
+import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../../v12-evidence-contract.mjs";
@@ -10,10 +11,11 @@ const read = await new Promise((resolve) => { let body = ""; process.stdin.on("d
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
 if (fail && action.includes(fail)) process.exit(1);
 if (mutation && action === "garmin") process.exit(1);
-const png = (key) => { const image = new PNG({ width: 2, height: 1 }); const hash = Buffer.from(sha(key), "hex"); image.data.set([hash[0], hash[1], hash[2], 255, hash[3], hash[4], hash[5], 255]); return PNG.sync.write(image).toString("base64"); };
+const png = (key, reference = false) => { const image = new PNG({ width: 200, height: 1 }); const hash = Buffer.from(sha(key), "hex"); image.data.set([hash[0], hash[1], hash[2], 255, hash[3], hash[4], hash[5], 255]); if (reference) image.data[0] ^= 1; return PNG.sync.write(image).toString("base64"); };
 const sample = (index, dx = 25) => ({ timestampMs: index + 1, widthDp: 100, dxDp: dx, dyDp: 0, intentOwner: "horizontal", translationDp: dx, title: "2026-10", selectedCivilDate: "2026-10-14", generation: index + 1, focusedWeek: "week", rowBounds: [0, 48], callbackCount: index + 1, focusIdentity: "calendar", motion: "normal" });
 const repeated = (count, value) => Array.from({ length: count }, () => value);
-const performanceIdentity = Object.freeze({ base_head: "a".repeat(40), source_tree_sha256: sha("performance-source"), apk_sha256: sha("performance-apk"), installed_apk_sha256: sha("performance-apk"), package: "com.fchoo.gymtracker.devtest", device_identity_sha256: sha("performance-device"), fixture_sha256: sha("performance-fixture") });
+const build = JSON.parse(readFileSync(`artifacts/native/v1.2/${read.attestation.run_id}/build.json`, 'utf8'));
+const performanceIdentity = Object.freeze({ base_head: build.source.head, source_tree_sha256: build.source.tree_sha256, apk_sha256: build.build.apk.sha256, installed_apk_sha256: build.device.installed_apk_sha256, package: build.build.package, device_identity_sha256: build.device.identity_sha256, fixture_sha256: build.fixtures.registry_sha256 });
 const sqliteCaseIds = [
   "fresh-migration", "schema27-upgrade", "supported-legacy-upgrade", "failure-reopen",
   "backup", "restore", "merge", "noop-replay", "rebuild", "immutable-history",
@@ -37,7 +39,7 @@ const response = (() => {
       id,
       configuration_id,
       identity: { fixture: "v12-synthetic-fixtures-r18", clock: "2026-10-14T00:00:00Z", locale: "en-SG", timezone: "Asia/Singapore", content_bounds: { width: 390, height: 844 } },
-      approved_reference_png_base64: png(key),
+      approved_reference_png_base64: png(key, true),
       observation: { native_execution: "EXECUTED", state_id: id, configuration_id, content: true, actions: true, copy: true, state: true, route: true, focus: true, order: true, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], non_color_state: true, commit_read_only: true, geometry_dp: 0, baseline_icon_dp: 0, token_exact: true, ciede2000: 0 },
     };
   }));
@@ -63,7 +65,7 @@ const response = (() => {
     budgets: V12_PERFORMANCE_BUDGETS,
     samples: {
       warm_launch_to_interactive_ms: repeated(20, 100), cold_launch_to_interactive_ms: repeated(20, 200),
-      root_switch_to_useful_ms: { workout: repeated(100, 40), calendar: repeated(100, 40) },
+      root_switch_to_useful_ms: { workout: repeated(100, 40), calendar: repeated(100, 40), library: repeated(100, 40), progress: repeated(100, 40) },
       committed_set_to_visible_dock_ms: repeated(100, 80), ordinary_js_task_ms: repeated(100, 10),
       input_response_ms: { numeric_edit: repeated(100, 10), rest_control: repeated(100, 10) },
       search_after_debounce_ms: repeated(100, 20), calendar_month_and_selection_ms: repeated(100, 50),
