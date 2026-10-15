@@ -197,16 +197,19 @@ export function validateV12PerformanceProducer(performance, expectedIdentity, bu
     for (const path of paths) timing(raw[key][path], native.timings[key][path], 100, endpoint, expectedIdentity, fail);
   }
   if (!Array.isArray(native.cold_launch_cycles) || native.cold_launch_cycles.length !== raw.cold_launch_to_interactive_ms.length) fail("performance_cold_launch_invalid");
+  const coldProcesses = new Set(); const coldReadiness = new Set(); const coldSources = new Set();
   native.cold_launch_cycles.forEach((cycle, index) => {
     exact(cycle, ["sequence", "operation", "previous_process_id", "process_id", "previous_process_start_ticks", "process_start_ticks", "process_start_ms", "ready_ms", "database_name", "readiness_sha256", "source_receipt_sha256"], fail, "performance_cold_launch_invalid");
     if (cycle.sequence !== index + 1 || cycle.operation !== "launch-cold" || cycle.previous_process_id === cycle.process_id
       || cycle.previous_process_start_ticks === cycle.process_start_ticks || cycle.ready_ms <= cycle.process_start_ms
       || Math.abs(cycle.ready_ms - cycle.process_start_ms - raw.cold_launch_to_interactive_ms[index]) > 0.000001
-      || !DATABASE.test(cycle.database_name)) fail("performance_cold_launch_invalid");
+      || !cycle.database_name.endsWith("-workout.db") || !DATABASE.test(cycle.database_name)) fail("performance_cold_launch_invalid");
     [cycle.previous_process_id, cycle.process_id, cycle.previous_process_start_ticks, cycle.process_start_ticks].forEach((value) => positiveInteger(value, fail, "performance_cold_launch_invalid"));
     digest(cycle.readiness_sha256, fail, "performance_cold_launch_invalid"); digest(cycle.source_receipt_sha256, fail, "performance_cold_launch_invalid");
+    coldProcesses.add(`${cycle.process_id}:${cycle.process_start_ticks}`); coldReadiness.add(cycle.readiness_sha256); coldSources.add(cycle.source_receipt_sha256);
   });
-  if (!Array.isArray(raw.calendar_frame_sequences) || raw.calendar_frame_sequences.length < 100) fail("performance_frame_sequences_invalid");
+  if (coldProcesses.size !== native.cold_launch_cycles.length || coldReadiness.size !== native.cold_launch_cycles.length || coldSources.size !== native.cold_launch_cycles.length) fail("performance_cold_launch_invalid");
+  if (!Array.isArray(raw.calendar_frame_sequences) || raw.calendar_frame_sequences.length < 100 || raw.calendar_frame_sequences.length > 500) fail("performance_frame_sequences_invalid");
   raw.calendar_frame_sequences.forEach((frame, index) => {
     exact(frame, ["sequence", "capture_phase", "start_ms", "end_ms", "ready_ms", "frame_work_ms", "missed_frames", "refresh_rate_hz", "refresh_rate_source", "profiler_overhead_ms"], fail, "performance_frame_sequences_invalid");
     if (frame.sequence !== index + 1 || frame.capture_phase !== "calendar-gesture-before-ready" || frame.refresh_rate_source !== "android-display-mode"

@@ -470,6 +470,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
     val backStartedAt = elapsedMs(); val backFocusBefore = modalFocused.first.id
     key(KeyEvent.KEYCODE_BACK)
     val backCallback = awaitCallback(nonce, action, operation, sequence, "settings-close", closeBeforeBack)
+    val backCallbackCount = backCallback.value.getJSONObject("payload").getInt("callback_count") - closeBeforeBack
     if (allNodes().any { (it.text ?: it.contentDescription)?.toString()?.contains("App Settings") == true }) throw IllegalStateException("modal_back_failed")
     val backFocusAfter = awaitFocus(trigger.first.id); val backEndedAt = elapsedMs()
     val closeBeforeEscape = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), "settings-close")
@@ -477,17 +478,18 @@ class Phase20QualityInstrumentation : Instrumentation() {
     tap(trigger.first.bounds); awaitCallback(nonce, action, operation, sequence, "settings-open", openBeforeEscape)
     val escapeFocusBefore = focusedNodeId(targetNodes()); val escapeStartedAt = elapsedMs(); key(KeyEvent.KEYCODE_ESCAPE)
     val escapeCallback = awaitCallback(nonce, action, operation, sequence, "settings-close", closeBeforeEscape)
+    val escapeCallbackCount = escapeCallback.value.getJSONObject("payload").getInt("callback_count") - closeBeforeEscape
     val escapeFocusAfter = awaitFocus(trigger.first.id); val escapeEndedAt = elapsedMs()
     if (!backgroundIsolated || ring != 3) throw IllegalStateException("modal_focus_restore_failed:$root")
-    fun event(name: String, focusBefore: String, focusAfter: String, startedAt: Double, endedAt: Double, callback: Marker) = JSONObject()
-      .put("event", name).put("focus_before", focusBefore).put("focus_after", focusAfter).put("callback_count", 1)
+    fun event(name: String, focusBefore: String, focusAfter: String, startedAt: Double, endedAt: Double, callback: Marker, callbackCount: Int) = JSONObject()
+      .put("event", name).put("focus_before", focusBefore).put("focus_after", focusAfter).put("callback_count", callbackCount)
       .put("callback_receipt_sha256", callback.value.getString("receipt_sha256"))
       .put("event_receipt_sha256", sha(canonical(JSONObject().put("event", name).put("focus_before", focusBefore)
         .put("focus_after", focusAfter).put("start_ms", startedAt).put("end_ms", endedAt)
         .put("callback_receipt_sha256", callback.value.getString("receipt_sha256")))))
     return JSONObject().put("focus_ring_dp", ring).put("focus_offset_dp", ring).put("background_isolated", backgroundIsolated)
-      .put("back", event("key-back", backFocusBefore, backFocusAfter, backStartedAt, backEndedAt, backCallback))
-      .put("escape", event("key-escape", escapeFocusBefore, escapeFocusAfter, escapeStartedAt, escapeEndedAt, escapeCallback))
+      .put("back", event("key-back", backFocusBefore, backFocusAfter, backStartedAt, backEndedAt, backCallback, backCallbackCount))
+      .put("escape", event("key-escape", escapeFocusBefore, escapeFocusAfter, escapeStartedAt, escapeEndedAt, escapeCallback, escapeCallbackCount))
       .put("restores_invoker", true)
   }
 
