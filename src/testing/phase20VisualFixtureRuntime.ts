@@ -297,28 +297,30 @@ async function seedLibraryAndRunning(kernel: SqliteKernel): Promise<void> {
       [PHASE20_VISUAL_RUNNING_PLAN_ID],
     );
     await transaction.execute(
-      `INSERT INTO owned_plan_schedules
-        (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind)
-       VALUES ('phase20-running-schedule', ?, 'active', 1, ?, NULL, 'running')`,
-      [PHASE20_VISUAL_RUNNING_PLAN_ID, PHASE20_VISUAL_NOW_MS],
+      `UPDATE owned_plan_schedules
+       SET lifecycle = 'active', revision = revision + 1,
+           activated_at_ms = ?, deactivated_at_ms = NULL
+       WHERE id = ? AND plan_id = ? AND plan_kind = 'running'`,
+      [PHASE20_VISUAL_NOW_MS, `${PHASE20_VISUAL_RUNNING_PLAN_ID}:schedule`, PHASE20_VISUAL_RUNNING_PLAN_ID],
     );
     await transaction.execute(
       `INSERT INTO owned_plan_schedule_versions
         (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms)
-       VALUES ('phase20-running-schedule-v1', 'phase20-running-schedule', 1, '2026-09-28', 'weekday', 'Asia/Singapore', NULL, ?)`,
-      [PHASE20_VISUAL_NOW_MS],
+       VALUES ('phase20-running-schedule-v1', ?, 1, '2026-09-28', 'weekday', 'Asia/Singapore', NULL, ?)`,
+      [`${PHASE20_VISUAL_RUNNING_PLAN_ID}:schedule`, PHASE20_VISUAL_NOW_MS],
     );
     for (const [ordinal, entry] of kinds.slice(0, 2).map(runningSession).entries()) {
       await transaction.execute(
         `INSERT INTO running_opportunities
           (id, plan_id, schedule_id, schedule_version_id, slot_id, local_date,
            timezone, session_revision_id, state, created_at_ms)
-         VALUES (?, ?, 'phase20-running-schedule', 'phase20-running-schedule-v1', ?, ?,
+         VALUES (?, ?, ?, 'phase20-running-schedule-v1', ?, ?,
                  'Asia/Singapore', ?, 'planned', ?)`,
         [
           `phase20-running-opportunity-${ordinal + 1}`,
           PHASE20_VISUAL_RUNNING_PLAN_ID,
-          entry.slot.id,
+          `${PHASE20_VISUAL_RUNNING_PLAN_ID}:schedule`,
+          entry.slot.rootId,
           ordinal === 0 ? "2026-10-04" : "2026-10-10",
           entry.session.id,
           PHASE20_VISUAL_NOW_MS,
@@ -431,7 +433,18 @@ async function seedCalendar(kernel: SqliteKernel): Promise<void> {
 }
 
 async function seedCompletedStrengthHistory(kernel: SqliteKernel): Promise<void> {
-  await seedLegacyStrengthWorkout(kernel, true);
+  const repository = createPlansWorkoutRepository(kernel);
+  const started = await startWorkout({
+    repository,
+    request: {
+      mode: "alternate",
+      planId: PHASE20_VISUAL_OWNED_PLAN_ID,
+      planDayId: "phase20-strength-foundation-day-a",
+      localDate: "2026-09-24",
+      timezone: "Asia/Singapore",
+      startedAtMs: PHASE20_VISUAL_NOW_MS - 7 * 24 * 60 * 60 * 1_000,
+    },
+  });
   await kernel.write(async (transaction) => {
     await transaction.execute(
       `UPDATE session_sets
@@ -447,13 +460,13 @@ async function seedCompletedStrengthHistory(kernel: SqliteKernel): Promise<void>
        WHERE session_exercise_id IN (
          SELECT id FROM session_exercises WHERE session_id = ?
        )`,
-      [PHASE20_VISUAL_NOW_MS + 1_000, PHASE20_VISUAL_ACTIVE_SESSION_ID],
+      [PHASE20_VISUAL_NOW_MS - 7 * 24 * 60 * 60 * 1_000 + 1_000, started.id],
     );
     await transaction.execute(
       `UPDATE session_exercises
        SET status = 'completed', revision = revision + 1
        WHERE session_id = ?`,
-      [PHASE20_VISUAL_ACTIVE_SESSION_ID],
+      [started.id],
     );
     await transaction.execute(
       `UPDATE workout_sessions
@@ -461,7 +474,7 @@ async function seedCompletedStrengthHistory(kernel: SqliteKernel): Promise<void>
            active_session_exercise_id = NULL, active_set_id = NULL,
            revision = revision + 1
        WHERE id = ?`,
-      [PHASE20_VISUAL_NOW_MS + 2_000, PHASE20_VISUAL_ACTIVE_SESSION_ID],
+      [PHASE20_VISUAL_NOW_MS - 7 * 24 * 60 * 60 * 1_000 + 2_000, started.id],
     );
   });
 }
