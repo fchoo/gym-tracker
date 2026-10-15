@@ -1,9 +1,6 @@
 /**
  * Phase 20 subprocess contract test.
  *
- * This is deliberately opt-in while the atomic publisher is being integrated:
- *   V12_PHASE20_BLACKBOX=1 node --test scripts/v12-phase20-cli-blackbox.test.mjs
- *
  * It invokes production entrypoints only.  The fake adapter, adb and Maestro
  * programs are separate processes; no production helper is imported by this
  * test.  The expected publisher interface is documented by completion()
@@ -20,14 +17,13 @@ import test from "node:test";
 
 const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
-const enabled = process.env.V12_PHASE20_BLACKBOX === "1";
 const sha = (letter) => letter.repeat(64);
 
 function fixtureRoot() {
   const root = mkdtempSync(path.join(tmpdir(), "v12-phase20-blackbox-"));
   // Production CLIs use cwd as their source/run root. These are source inputs,
   // not production modules, and the entrypoints themselves remain absolute.
-  for (const member of ["scripts", "src/testing/contracts", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance"]) {
+  for (const member of ["scripts", "src/testing/contracts", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
     const source = path.join(project, member);
     if (existsSync(source)) cpSync(source, path.join(root, member), { recursive: true });
   }
@@ -63,7 +59,7 @@ function invoke(root, script, args, extra = {}) {
   for (const command of ["adb", "maestro"]) writeFileSync(path.join(bins, command), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(project, "scripts/testing/v12-phase20-blackbox/fake-device-tool.mjs"))} --tool ${command} \"$@\"\n`, { mode: 0o755 });
   return spawnSync(process.execPath, [path.join(project, script), ...args], {
     cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, ...extra, PATH: `${bins}:${process.env.PATH}`, V12_NATIVE_ADAPTER_COMMAND: path.join(project, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"), V12_DEVICE_SERIAL: "fake-device-20" },
+    env: { ...process.env, ...extra, PATH: `${bins}:${process.env.PATH}`, V12_NATIVE_ADAPTER_COMMAND: path.join(project, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"), V12_NATIVE_ADAPTER_BATCH: "1", V12_DEVICE_SERIAL: "fake-device-20" },
   });
 }
 
@@ -95,7 +91,7 @@ function attendedIdentity(root) {
   };
 }
 
-test("Phase 20 fake-device pipeline publishes a sealed, re-readable 172-row contract", { skip: !enabled && "set V12_PHASE20_BLACKBOX=1 after atomic publisher integration" }, (t) => {
+test("Phase 20 fake-device pipeline publishes a sealed, re-readable 172-row contract", (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   // Every call below is the documented CLI order. The test intentionally does
   // not call exported production functions or manufacture final evidence.
@@ -123,7 +119,7 @@ test("Phase 20 fake-device pipeline publishes a sealed, re-readable 172-row cont
   assert.equal(JSON.parse(readFileSync(path.join(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md"), "utf8")).release_authorized, false);
 });
 
-test("Phase 20 subprocesses fail closed without leaking device identity or publishing partial staging", { skip: !enabled && "set V12_PHASE20_BLACKBOX=1 after atomic publisher integration" }, (t) => {
+test("Phase 20 subprocesses fail closed without leaking device identity or publishing partial staging", (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   const failed = invoke(root, "scripts/v12-calendar-shard.mjs", ["--run", run, "--execute"], { V12_FAKE_DEVICE_FAIL: "calendar" });
   assert.notEqual(failed.status, 0); assert.doesNotMatch(String(failed.stdout) + String(failed.stderr), new RegExp("fake-device-20|serial|/Users/", "iu"));
@@ -136,12 +132,12 @@ test("Phase 20 subprocesses fail closed without leaking device identity or publi
   const escape = path.join(root, "escape"); writeFileSync(escape, "outside");
   symlinkSync(escape, path.join(root, "artifacts/native/v1.2", run, "screenshots"));
   const traversal = invoke(root, "scripts/capture-v12-visual.mjs", ["--run", run, "--all"]);
-  assert.notEqual(traversal.status, 0); assert.match(String(traversal.stdout) + String(traversal.stderr), /symlink|path|invalid|failed/iu);
+  assert.notEqual(traversal.status, 0); assert.match(String(traversal.stdout) + String(traversal.stderr), /symlink|path|unsafe|invalid|failed/iu);
   const preseal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
   assert.notEqual(preseal.status, 0, "partial staging/failure runs cannot preseal");
 });
 
-test("final CLI never lets exceptions promote FAIL, NOT_RUN, or REVIEW_REQUIRED to readiness", { skip: !enabled && "set V12_PHASE20_BLACKBOX=1 after atomic publisher integration" }, (t) => {
+test("final CLI never lets exceptions promote FAIL, NOT_RUN, or REVIEW_REQUIRED to readiness", (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   // The full fixture producer selects no blocking results. These modes force
   // one source result and must leave the run NOT_READY despite an exception.

@@ -7,6 +7,10 @@ if (tool === "adb") {
   else if (args.join(" ").includes("get-state")) process.stdout.write("device\n");
   process.exit(0);
 }
+if (args.includes("--version")) {
+  process.stdout.write("2.8.0\n");
+  process.exit(0);
+}
 const output = args[args.indexOf("--output") + 1];
 if (output) {
   const { mkdirSync, writeFileSync } = await import("node:fs"); const { dirname } = await import("node:path");
