@@ -16,23 +16,24 @@ const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const configurationId = "AP-L-C360-P-F100";
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-function png(red, green = 0) {
-  const image = new PNG({ width: 2, height: 1 });
-  image.data.set([red, green, 0, 255, red, green, 0, 255]);
+function png(red, green = 0, changed = false) {
+  const image = new PNG({ width: 100, height: 100 });
+  for (let offset = 0; offset < image.data.length; offset += 4) image.data.set([red, green, 0, 255], offset);
+  if (changed) image.data.set([red + 1, green, 0, 255], 0);
   return PNG.sync.write(image);
 }
 
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), "v12-visual-compare-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const native = png(10); const reference = png(10);
+  const native = png(10, 0, true); const reference = png(10);
   const nativePath = `artifacts/native/v1.2/${runId}/screenshots/BW-001/${configurationId}/native.png`;
   const capturePath = `artifacts/native/v1.2/${runId}/screenshots/BW-001/${configurationId}/capture.json`;
   const referencePath = ".planning/design/v1.2-browser-evidence/reference-bw001.png";
   for (const [file, bytes] of [[nativePath, native], [referencePath, reference]]) {
     const absolute = path.join(root, file); mkdirSync(path.dirname(absolute), { recursive: true }); writeFileSync(absolute, bytes);
   }
-  const descriptor = { path: nativePath, sha256: sha256(native), size_bytes: native.length, width: 2, height: 1 };
+  const descriptor = { path: nativePath, sha256: sha256(native), size_bytes: native.length, width: 100, height: 100 };
   const capture = { schema_version: 2, producer: "v12-visual-capture/v2", run_id: runId, state_id: "BW-001", configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED", native_png: descriptor, settings: { restored: true, privacy: "synthetic-only" } };
   writeFileSync(path.join(root, capturePath), `${JSON.stringify(capture)}\n`);
   return {
@@ -49,7 +50,7 @@ test("comparison derives retained descriptors and pixel metrics from the verifie
   const result = produceV12ComparisonRecord({ runId, root: input.root, input: input.request });
   assert.equal(result.classification, "PASS");
   assert.equal(result.artifacts.native.path, input.nativePath);
-  assert.equal(result.metrics.pixel_percent, 0);
+  assert.equal(result.metrics.pixel_percent, 0.01);
   for (const artifact of Object.values(result.artifacts)) assert.ok(existsSync(path.join(input.root, artifact.path)));
   assert.equal(verifyV12ComparisonRecord({ runId, root: input.root, result }), true);
 });
@@ -61,6 +62,5 @@ test("comparison verification rejects missing or tampered output, duplicated byt
   assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /v12_visual_compare_(artifact|metrics)_invalid/u);
   writeFileSync(overlay, readFileSync(path.join(input.root, result.artifacts.difference.path)));
   assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /v12_visual_compare_(duplicate|artifact)_invalid/u);
-  const restored = produceV12ComparisonRecord({ runId, root: input.root, input: { ...input.request, id: "BW-002", observation: { ...input.request.observation, state_id: "BW-002" } } });
-  assert.equal(restored, undefined, "a comparison cannot use a capture belonging to another browser state");
+  assert.throws(() => produceV12ComparisonRecord({ runId, root: input.root, input: { ...input.request, id: "BW-002", observation: { ...input.request.observation, state_id: "BW-002" } } }), /capture/u);
 });
