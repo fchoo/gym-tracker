@@ -61,6 +61,17 @@ const GAR_CASES = [0, 1, 5, 4, 2, 3, 17, 6, 7, 8, 9, 11, 10, 15, 12, 14];
 const PERFORMANCE_GATES = [...Object.keys(V12_PERFORMANCE_BUDGETS), 'phase12_merge_peak_growth'];
 const VER_GATES = ['inventory', 'appearance', 'viewports', 'targets', 'input-focus', 'reduced-motion', 'sqlite', 'recovery', 'calendar', 'garmin', 'performance', 'attended', 'preseal'];
 
+export function validateV12CalendarExecutionOrigin(value, root = process.cwd()) {
+  const keys = ['schema_version', 'kind', 'default_launcher', 'test_only', 'adapter_source_sha256', 'launcher_source_sha256', 'request_attestation_sha256'];
+  ensure(value && same(Object.keys(value), keys), 'calendar_origin_invalid');
+  ensure(value.schema_version === 1 && value.kind === 'production-default-launcher'
+    && value.default_launcher === true && value.test_only === false
+    && value.adapter_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-native-adapter.mjs')))
+    && value.launcher_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-production-native-adapter-launcher.mjs')))
+    && HASH.test(value.request_attestation_sha256 ?? ''), 'calendar_origin_invalid');
+  return true;
+}
+
 export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
   const phases = { DOM: [13, 17], SHL: [14, 13], WRK: [15, 36], CAL: [16, 23], LIB: [17, 36], GAR: [18, 16], PRO: [19, 18], VER: [20, 13] };
   const expected = Object.entries(phases).flatMap(([prefix, [, count]]) => Array.from({ length: count }, (_, i) => `${prefix}-${String(i + 1).padStart(2, '0')}`));
@@ -220,9 +231,10 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   }
   const calendar = json('calendar-transitions.json'); bindIdentity(calendar.identity);
   const calendarIds = V12_CALENDAR_SHARD_STAGE_IDS;
-  ensure(calendar.run_id === manifest.run_id && calendar.producer === 'v12-calendar-shard/v4' && calendar.flow_revision === V12_CALENDAR_FLOW_REVISION
+  ensure(calendar.run_id === manifest.run_id && calendar.schema_version === 4 && calendar.producer === 'v12-calendar-shard/v5' && calendar.flow_revision === V12_CALENDAR_FLOW_REVISION
     && calendar.identity.configuration_id === manifest.configuration.id
     && calendar.flow_sha256 === sha(readFileSync(path.join(root, 'maestro/v1.2/calendar.yaml'))), 'calendar_schema_invalid');
+  validateV12CalendarExecutionOrigin(calendar.execution_origin, root);
   exactIds(calendar.stages?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
   exactIds(calendar.junit_cases?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
   const calendarTests = parseV12SourceJUnit(bytes(full('maestro/calendar.xml')).toString('utf8'), calendarIds, Object.fromEntries(calendar.stages.map(x => [x.id, result(x.status)])));

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
+import { V12_CALENDAR_ADAPTER_TIMEOUT_MS } from "./v12-native-adapter.mjs";
 
 function fixture(t) {
   const runner = createControlledRunner();
@@ -28,6 +29,18 @@ test("checked-in fake accepted only by the explicit test triplet", (t) => {
   const result = runner.invoke("acquire-lease", {}, markers(runner.root));
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), { id: "lease" });
+});
+test("Calendar adapter labels the checked-in subprocess fixture as test-only", (t) => {
+  const runner = fixture(t);
+  const result = runner.invokeCalendar(markers(runner.root));
+  assert.equal(result.status, 0, result.stderr);
+  const value = JSON.parse(result.stdout);
+  assert.equal(value.execution_origin.kind, "test-fixture");
+  assert.equal(value.execution_origin.default_launcher, false);
+  assert.equal(value.execution_origin.test_only, true);
+});
+test("Calendar has an explicit timeout covering all 35 bounded native stages", () => {
+  assert.ok(V12_CALENDAR_ADAPTER_TIMEOUT_MS >= 35 * (180_000 + 60_000));
 });
 test("fake command rejected outside explicit test mode", (t) => {
   const runner = fixture(t);

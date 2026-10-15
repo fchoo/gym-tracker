@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { loadV12ContractInputs } from './v12-evidence-contract.mjs';
-import { parseV12SourceJUnit, resolveV12PerformanceGates, createV12RowSelectorTable, resolveV12SqliteReceipt } from './v12-blocker-row-resolver.mjs';
+import { createHash } from 'node:crypto';
+import { parseV12SourceJUnit, resolveV12PerformanceGates, createV12RowSelectorTable, resolveV12SqliteReceipt, validateV12CalendarExecutionOrigin } from './v12-blocker-row-resolver.mjs';
 
 const inputs = loadV12ContractInputs();
 test('canonical matrix has exactly 172 typed selectors in source order', () => {
@@ -56,4 +57,26 @@ test('multi-plan registry reads the complete source array, not just its first st
   assert.match(source, /MULTI_PLAN_RUNNING_CONTRACT_CASES/);
   const table = createV12RowSelectorTable({ inputs });
   assert.ok(table.filter(x => x.row_id.startsWith('DOM')).some(x => x.selector.id === 'phase13-merge-rebuild'));
+});
+
+test('Calendar resolver accepts only source-bound default-launcher origin', () => {
+  const digest = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+  const origin = {
+    schema_version: 1,
+    kind: 'production-default-launcher',
+    default_launcher: true,
+    test_only: false,
+    adapter_source_sha256: digest('scripts/v12-native-adapter.mjs'),
+    launcher_source_sha256: digest('scripts/v12-production-native-adapter-launcher.mjs'),
+    request_attestation_sha256: 'a'.repeat(64),
+  };
+  assert.equal(validateV12CalendarExecutionOrigin(origin), true);
+  for (const mutate of [
+    (value) => { value.kind = 'test-fixture'; value.default_launcher = false; value.test_only = true; },
+    (value) => { value.adapter_source_sha256 = '0'.repeat(64); },
+    (value) => { value.launcher_source_sha256 = '0'.repeat(64); },
+  ]) {
+    const changed = structuredClone(origin); mutate(changed);
+    assert.throws(() => validateV12CalendarExecutionOrigin(changed), /row_resolver_calendar_origin_invalid/u);
+  }
 });

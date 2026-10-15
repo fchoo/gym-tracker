@@ -54,6 +54,11 @@ export function createControlledRunner() {
     const program = `import fs from 'node:fs'; import {invokeV12NativeAdapter} from './scripts/v12-native-adapter.mjs'; const {action,payload}=JSON.parse(fs.readFileSync(0,'utf8')); try { process.stdout.write(JSON.stringify(invokeV12NativeAdapter(action,payload))); } catch(e) { process.stderr.write(e.message); process.exitCode=1; }`;
     return spawnSync(process.execPath, ["--input-type=module", "--eval", program], { cwd: root, env: { ...environment, ...extra }, input: JSON.stringify(input), encoding: "utf8", timeout: 70_000, maxBuffer: 2 * 1024 * 1024 });
   }
+  function invokeCalendar(extra = {}) {
+    const payload = { run_id: fixtureRun, flow_sha256: "f".repeat(64), flow_revision: "calendar-flow-r35-real-v1" };
+    const program = `import {createV12NativeAdapter} from './scripts/v12-native-adapter.mjs'; try { process.stdout.write(JSON.stringify(createV12NativeAdapter().executeCalendar(undefined, undefined, ${JSON.stringify(payload)}))); } catch(e) { process.stderr.write(e.message); process.exitCode=1; }`;
+    return spawnSync(process.execPath, ["--input-type=module", "--eval", program], { cwd: root, env: { ...environment, ...extra }, encoding: "utf8", timeout: 70_000, maxBuffer: 16 * 1024 * 1024 });
+  }
   function success(action, payload) {
     const result = invoke(action, payload);
     assert.equal(result.status, 0, result.stderr);
@@ -61,7 +66,7 @@ export function createControlledRunner() {
   }
   const readState = () => JSON.parse(readFileSync(stateFile, "utf8"));
   const updateState = (update) => writeFileSync(stateFile, JSON.stringify({ ...readState(), ...update }));
-  return { root, scratch, build, manifestPath, contract, invoke, success, readState, updateState, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, scratch, build, manifestPath, contract, invoke, invokeCalendar, success, readState, updateState, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 export function runControlledIntegration() {

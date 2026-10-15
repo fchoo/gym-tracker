@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+const ADAPTER = fileURLToPath(import.meta.url);
 const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url));
 const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackbox/fake-device-adapter.mjs", import.meta.url));
 const TEST_MODE = "phase20-native-adapter-subprocess";
+export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = 35 * (180_000 + 60_000) + 120_000;
 
 function fail(code) { throw new Error(`v12_native_adapter_${code}`); }
 function sha256(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
@@ -31,12 +33,12 @@ function testInjectionEnabled() {
 function commandFor(root, command) {
   const testMode = testInjectionEnabled();
   const injected = command ?? process.env.V12_NATIVE_ADAPTER_COMMAND;
-  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER });
+  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER, testOnly: false });
   if (!testMode) fail("command_override_forbidden");
   const resolved = realpathSync(path.resolve(root, injected));
   const fixtureFake = realpathSync(path.resolve(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"));
   if (resolved !== fixtureFake && resolved !== realpathSync(CHECKED_IN_TEST_FAKE)) fail("test_command_invalid");
-  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved });
+  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved, testOnly: true });
 }
 
 function readBuildIdentity(root, runId) {
@@ -82,7 +84,7 @@ function sameAttestation(expected, actual) {
  * is fixed and checked in; a subprocess fake is accepted only for a Node test
  * process that deliberately opts into the exact test-mode triplet above.
  */
-export function invokeV12NativeAdapter(action, payload, {
+function invokeV12NativeAdapterEnvelope(action, payload, {
   command,
   root = process.cwd(),
 } = {}) {
@@ -94,7 +96,8 @@ export function invokeV12NativeAdapter(action, payload, {
     input: `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`,
     encoding: "utf8",
     // The SQLite aggregate has bounded native progress, plus restoration time.
-    timeout: action === "sqlite" ? 26 * 60_000 : 5 * 60_000,
+    timeout: action === "sqlite" ? 26 * 60_000
+      : action === "calendar" ? V12_CALENDAR_ADAPTER_TIMEOUT_MS : 5 * 60_000,
     maxBuffer: 32 * 1024 * 1024,
   });
   if (result.error || result.signal || result.status !== 0) {
@@ -105,11 +108,27 @@ export function invokeV12NativeAdapter(action, payload, {
   try { response = JSON.parse(result.stdout); } catch { fail("response_invalid"); }
   if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)) fail("response_invalid");
   if (!sameAttestation(attestation, response.attestation)) fail("attestation_invalid");
-  return response.result;
+  return Object.freeze({
+    result: response.result,
+    execution_origin: Object.freeze({
+      schema_version: 1,
+      kind: target.testOnly ? "test-fixture" : "production-default-launcher",
+      default_launcher: target.testOnly === false,
+      test_only: target.testOnly,
+      adapter_source_sha256: sourceHash(ADAPTER),
+      launcher_source_sha256: sourceHash(target.source),
+      request_attestation_sha256: sha256(JSON.stringify(attestation)),
+    }),
+  });
+}
+
+export function invokeV12NativeAdapter(action, payload, options = {}) {
+  return invokeV12NativeAdapterEnvelope(action, payload, options).result;
 }
 
 export function createV12NativeAdapter(options = {}) {
-  const call = (action, payload) => invokeV12NativeAdapter(action, { ...payload, run_id: payload.run_id ?? options.runId ?? cliRunId() }, options);
+  const request = (payload) => ({ ...payload, run_id: payload.run_id ?? options.runId ?? cliRunId() });
+  const call = (action, payload) => invokeV12NativeAdapter(action, request(payload), options);
   return Object.freeze({
     acquireLease: () => call("acquire-lease", {}),
     releaseLease: (lease) => call("release-lease", { lease }),
@@ -123,6 +142,10 @@ export function createV12NativeAdapter(options = {}) {
     executeSqlite: (payload) => call("sqlite", payload),
     executeRecovery: (payload) => call("recovery", payload),
     executeGarmin: (lease, settings, payload) => call("garmin", { lease, settings, ...payload }),
-    executeCalendar: (lease, settings, payload) => call("calendar", { lease, settings, ...payload }),
+    executeCalendar: (lease, settings, payload) => {
+      const response = invokeV12NativeAdapterEnvelope("calendar", request({ lease, settings, ...payload }), options);
+      if (response.result === null || typeof response.result !== "object" || Array.isArray(response.result)) fail("response_invalid");
+      return Object.freeze({ ...response.result, execution_origin: response.execution_origin });
+    },
   });
 }

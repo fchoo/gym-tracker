@@ -98,9 +98,17 @@ for (const marker of ["missingMarker", "staleMarker", "routeError"]) test(`SQLit
   assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
   assert.equal(runner.readState().settings.font_scale, "1.15");
 });
-for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "performance", "recovery", "garmin", "calendar"]) {
+for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "performance"]) {
   test(`${action} cannot return invented native observations`, (t) => {
     const runner = fixture(t);
     bounded(runner.invoke(action), "action_contract_unavailable");
+  });
+}
+for (const action of ["recovery", "garmin", "calendar"]) {
+  test(`${action} is dispatched to its production domain action`, (t) => {
+    const runner = fixture(t);
+    const result = runner.invoke(action);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /action_contract_unavailable/u);
   });
 }

@@ -19,6 +19,20 @@ const observation = Object.freeze({
   ],
 });
 
+const productionOrigin = Object.freeze({
+  schema_version: 1,
+  kind: "production-default-launcher",
+  default_launcher: true,
+  test_only: false,
+  adapter_source_sha256: "6".repeat(64),
+  launcher_source_sha256: "7".repeat(64),
+  request_attestation_sha256: "8".repeat(64),
+});
+const productionResult = (flowSha256) => ({
+  ...createV12CalendarObservationResult(flowSha256),
+  execution_origin: productionOrigin,
+});
+
 test("Calendar shard rejects the retired generic observation envelope", () => {
   assert.throws(() => validateV12CalendarShard(observation), /calendar_native_stages_invalid/u);
   assert.throws(() => executeV12CalendarShard(observation), /calendar_native_stages_invalid/u);
@@ -27,6 +41,28 @@ test("Calendar shard rejects the retired generic observation envelope", () => {
 test("Calendar shard rejects producer verdicts and sample-only evidence", () => {
   assert.throws(() => validateV12CalendarShard({ ...observation, finalVerdict: "PASS" }), /calendar_native_stages_invalid/u);
   assert.throws(() => validateV12CalendarShard({ samples: observation.samples }), /calendar_native_stages_invalid/u);
+});
+
+test("Calendar shard rejects test-fixture origin even when the build manifest claims live mode", async () => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const flowSha256 = "9".repeat(64);
+  const manifest = {
+    run_id: runId,
+    mode: "live",
+    source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) },
+    fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64), signature_sha256: "1".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
+    configuration: { id: "AP-L-C390-P-F100" },
+  };
+  const fixture = createV12CalendarObservationResult(flowSha256);
+  await assert.rejects(executeV12CalendarShardCli(["--run", runId, "--execute"], {
+    root: "/fixture-root", flowSha256, readBuild: () => manifest, sourceDigest: manifest.source.tree_sha256,
+    currentHead: manifest.source.head, isAncestor: () => true, acquireLease: () => ({ opaque: true }),
+    releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
+    executeNative: () => ({ ...fixture, execution_origin: { schema_version: 1, kind: "test-fixture", default_launcher: false, test_only: true } }),
+    writeImmutable: () => {}, outputExists: () => false,
+  }), /calendar_native_origin_invalid/u);
 });
 
 test("Calendar shard writes the exact stage-specific host-derived observation set", async () => {
@@ -44,12 +80,12 @@ test("Calendar shard writes the exact stage-specific host-derived observation se
   const result = await executeV12CalendarShardCli(["--run", runId, "--execute"], {
     root: "/fixture-root", flowSha256, readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
     isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
-    snapshotSettings: () => ({}), restoreSettings: () => true, executeNative: () => createV12CalendarObservationResult(flowSha256),
+    snapshotSettings: () => ({}), restoreSettings: () => true, executeNative: () => productionResult(flowSha256),
     writeImmutable: (file, value) => writes.set(file, value), outputExists: () => false,
   });
   assert.deepEqual(result, { ok: true, mode: "execute", run_id: runId });
   assert.equal(writes.size, 2);
-  assert.match(JSON.stringify(writes.get(`artifacts/native/v1.2/${runId}/calendar-transitions.json`)), /v12-calendar-shard\/v4/u);
+  assert.match(JSON.stringify(writes.get(`artifacts/native/v1.2/${runId}/calendar-transitions.json`)), /v12-calendar-shard\/v5/u);
   assert.doesNotMatch(JSON.stringify([...writes.values()]), /expected_outcome|synthetic/u);
 });
 
