@@ -599,7 +599,7 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   const runnerPlan = createV12CalendarRunnerPlan(valid);
   assert.equal(runnerPlan.stages.length, V12_CALENDAR_DIAGNOSTIC_STAGES.length);
   assert.equal(runnerPlan.observation_source, "/calendar");
-  assert.equal(runnerPlan.terminal_marker, "GYM_TRACKER_V12_DOMAIN_RESULT:");
+  assert.equal(runnerPlan.terminal_marker, "GYM_TRACKER_V12_CALENDAR_CHUNK:");
   assert.equal(runnerPlan.flow_revision, "calendar-flow-r35-real-v1");
 
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-runner-state-"));

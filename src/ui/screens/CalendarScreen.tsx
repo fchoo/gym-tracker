@@ -453,17 +453,9 @@ export function CalendarScreen({
       value: safeWidth > safeHeight ? "landscape" : "portrait",
       callbackGeneration: calendarTransitionRef.current.epoch,
     });
-    const horizontalInsetDp = calendarHorizontalInsetForSafeWidth(safeWidth);
     recordPhase20CalendarBaseline({
-      kind: "adaptive-padding",
-      safeWidthDp: safeWidth,
-      horizontalInsetDp,
-      viewportWidthDp: safeWidth - horizontalInsetDp * 2,
-    });
-    recordPhase20CalendarBaseline({
-      kind: "light-strength-title",
+      kind: "screenshot-request",
       colorScheme,
-      strengthTitleColor: colors.calendarStrengthTextLight,
     });
     invalidateLayout();
   }, [colorScheme, colors.calendarStrengthTextLight, fontScale, invalidateLayout, safeHeight, safeWidth]);
@@ -947,6 +939,7 @@ export function CalendarScreen({
                     today={parsedToday}
                   />
                 )}
+                screenWidth={safeWidth}
                 transition={calendarTransition}
                 weekCount={visibleWeekRows.length}
               />

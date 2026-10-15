@@ -339,7 +339,7 @@ export const V12_CALENDAR_DIAGNOSTIC_STAGES = V12_CALENDAR_STAGE_IDS;
 
 const IN_APP_GESTURE_STAGES = new Set([
   ...V12_CALENDAR_STAGE_GROUPS.pointer,
-  ...V12_CALENDAR_STAGE_GROUPS.pointer_retarget,
+  ...V12_CALENDAR_STAGE_GROUPS.input_interrupt,
 ]);
 
 export function validateV12CalendarManifest(manifest, current = {}) {

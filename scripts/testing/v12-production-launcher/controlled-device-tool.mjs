@@ -42,6 +42,31 @@ if (args[0] === "shell") {
     }
     process.exit(0);
   }
+  if (command === "wm") {
+    const [key, value] = rest;
+    const current = state.display[key];
+    if (value === undefined) output(`Physical ${key}: ${current.physical}${current.override === null ? "" : `\nOverride ${key}: ${current.override}`}`);
+    else {
+      state.restorationAttempts = [...(state.restorationAttempts ?? []), `wm-${key}`];
+      if (state.failedCalendarSetting !== `wm-${key}` && state.ignoredCalendarSetting !== `wm-${key}`) current.override = value === "reset" ? null : value;
+      save(); if (state.failedCalendarSetting === `wm-${key}`) fail();
+    }
+    process.exit(0);
+  }
+  if (command === "cmd" && rest[0] === "connectivity" && rest[1] === "airplane-mode") {
+    if (rest[2] === undefined) output(`Airplane mode is ${state.display.airplane}`);
+    else { state.display.airplane = rest[2] === "enable" ? "enabled" : "disabled"; state.settings.airplane_mode_on = rest[2] === "enable" ? "1" : "0"; save(); }
+    process.exit(0);
+  }
+  if (command === "cmd" && rest[0] === "uimode" && rest[1] === "night") {
+    if (rest[2] === undefined) output(`Night mode: ${state.display.night}`);
+    else {
+      state.restorationAttempts = [...(state.restorationAttempts ?? []), "night"];
+      if (state.failedCalendarSetting !== "night" && state.ignoredCalendarSetting !== "night") state.display.night = rest[2];
+      save(); if (state.failedCalendarSetting === "night") fail();
+    }
+    process.exit(0);
+  }
   if (command === "am") {
     if (rest[0] === "start") {
       const uri = new URL(rest[rest.indexOf("-d") + 1]);

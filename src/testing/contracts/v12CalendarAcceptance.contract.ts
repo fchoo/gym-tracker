@@ -32,13 +32,12 @@ export type V12CalendarObservationSchema = Readonly<{
 }>;
 
 const REQUIRED = Object.freeze({
-  pointer: Object.freeze(["viewport", "pointer_events", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"]),
-  "input-interrupt": Object.freeze(["viewport", "pointer_events", "input_attempts", "transition_events", "semantic_samples", "callback_events", "motion"]),
-  "row-geometry": Object.freeze(["viewport", "row_measurements", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"]),
+  pointer: Object.freeze(["viewport", "pointer_events", "rendered_panel_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"]),
+  "input-interrupt": Object.freeze(["viewport", "pointer_events", "rendered_panel_samples", "input_attempts", "transition_events", "semantic_samples", "callback_events", "motion"]),
+  "row-geometry": Object.freeze(["viewport", "row_measurements", "rendered_overlay_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"]),
   "month-geometry": Object.freeze(["viewport", "row_measurements", "transition_events", "semantic_samples", "motion"]),
-  "pointer-retarget": Object.freeze(["viewport", "pointer_events", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"]),
   lifecycle: Object.freeze(["viewport_events", "lifecycle_events", "transition_events", "semantic_samples", "callback_events", "motion_events"]),
-  "reduced-motion": Object.freeze(["viewport", "row_measurements", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion_events"]),
+  "reduced-motion": Object.freeze(["viewport", "row_measurements", "rendered_overlay_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion_events"]),
   baseline: Object.freeze(["viewport", "row_measurements", "baseline_measurements", "semantic_samples", "motion"]),
 } satisfies Record<Phase20CalendarStageGroup, readonly string[]>);
 
@@ -59,7 +58,6 @@ export const V12_CALENDAR_OBSERVATION_SCHEMAS = Object.freeze([
   ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.inputInterrupt, "input-interrupt"),
   ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.rowGeometry, "row-geometry"),
   ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.monthGeometry, "month-geometry"),
-  ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.pointerRetarget, "pointer-retarget"),
   ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.lifecycle, "lifecycle"),
   ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.reducedMotion, "reduced-motion"),
   ...schemas(PHASE20_CALENDAR_STAGE_GROUPS.baseline, "baseline"),

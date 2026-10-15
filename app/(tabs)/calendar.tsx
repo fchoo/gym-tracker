@@ -36,6 +36,7 @@ import {
   phase20CalendarRequestFromNativeContract,
 } from "../../src/bootstrap/phase20CalendarObservation";
 import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
+import { phase20CalendarFixtureReadPort, phase20CalendarFixtureRequestFromNativeContract } from "../../src/testing/phase20CalendarFixture";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -69,6 +70,9 @@ export default function CalendarRoute() {
     phase20CalendarNonce?: string | string[];
     phase20CalendarFlowSha256?: string | string[];
     phase20CalendarFlowRevision?: string | string[];
+    phase20CalendarFixture?: string | string[];
+    phase20CalendarEvidenceNonce?: string | string[];
+    phase20CalendarRequirementsSha256?: string | string[];
   }>();
   const extra = Constants.expoConfig?.extra;
   const nativeIdentity = {
@@ -88,6 +92,20 @@ export default function CalendarRoute() {
     flowSha256: scalarRouteParam(routeParams.phase20CalendarFlowSha256),
     flowRevision: scalarRouteParam(routeParams.phase20CalendarFlowRevision),
   });
+  const phase20FixtureRequested = phase20Request !== null || phase20CalendarFixtureRequestFromNativeContract({
+    ...nativeIdentity,
+    fixtureId: scalarRouteParam(routeParams.phase20CalendarFixture),
+    nonce: scalarRouteParam(routeParams.phase20CalendarEvidenceNonce),
+    requirementsSha256: scalarRouteParam(routeParams.phase20CalendarRequirementsSha256),
+  });
+  const calendarRangeRead = phase20FixtureRequested ? phase20CalendarFixtureReadPort : calendarRead;
+  const phase20EvidenceEntries: readonly [string, string][] = phase20FixtureRequested
+    ? [
+        ["phase20CalendarFixture", scalarRouteParam(routeParams.phase20CalendarFixture) ?? "v12-calendar-isolated-facts-v1"],
+        ["phase20CalendarEvidenceNonce", scalarRouteParam(routeParams.phase20CalendarEvidenceNonce) ?? phase20Request?.nonce ?? ""],
+        ["phase20CalendarRequirementsSha256", scalarRouteParam(routeParams.phase20CalendarRequirementsSha256) ?? phase20Request?.flowSha256 ?? ""],
+      ]
+    : [];
   const diagnosticsEnabled = scalarRouteParam(routeParams.phase16CalendarDiagnostics);
   const diagnosticsQuerySamples = scalarRouteParam(routeParams.querySamples);
   const diagnosticsInteractionSamples = scalarRouteParam(routeParams.interactionSamples);
@@ -111,20 +129,20 @@ export default function CalendarRoute() {
   const hasFocused = React.useRef(false);
   const initialDate = useCurrentLocalDate();
   const routedInitialDate = phase20Request === null
-    ? initialDate
+    ? phase20FixtureRequested ? "2026-10-15" : initialDate
     : phase20CalendarInitialDate(phase20Request.stage);
   const openEvent = (destination: CalendarEventDestination, returnEventId?: string) => {
     switch (destination.kind) {
       case "session": {
         const sessionId = routeId(destination.sessionId);
         if (sessionId === null) return;
-        router.push((`/session/${sessionId}?${calendarQuery(returnEventId)}`) as Href);
+        router.push((`/session/${sessionId}?${calendarQuery(returnEventId, phase20EvidenceEntries)}`) as Href);
         return;
       }
       case "occurrence": {
         const occurrenceId = routeId(destination.occurrenceId);
         if (occurrenceId === null) return;
-        router.push((`/calendar/plan/${occurrenceId}?${calendarQuery(returnEventId)}`) as Href);
+        router.push((`/calendar/plan/${occurrenceId}?${calendarQuery(returnEventId, phase20EvidenceEntries)}`) as Href);
         return;
       }
       case "plan": {
@@ -132,14 +150,18 @@ export default function CalendarRoute() {
         const sessionId = routeId(destination.sessionId);
         if (planId === null || sessionId === null) return;
         // This preserves the typed handoff only; Plan 16-07 owns real Running integration.
-        router.push((`/library/running/${planId}?${calendarQuery(returnEventId, [["sessionId", destination.sessionId]])}`) as Href);
+        router.push((`/library/running/${planId}?${calendarQuery(returnEventId, [["sessionId", destination.sessionId], ...phase20EvidenceEntries])}`) as Href);
         return;
       }
       case "activity": {
-        router.push(createImportedActivityDetailHref({
+        const href = createImportedActivityDetailHref({
           activityId: destination.activityId,
           origin: "calendar",
-        }));
+        });
+        if (phase20EvidenceEntries.length === 0) router.push(href);
+        else router.push({ pathname: "/garmin/activity/[activityId]", params: {
+          activityId: destination.activityId, origin: "calendar", ...Object.fromEntries(phase20EvidenceEntries),
+        } } as Href);
         return;
       }
     }
@@ -171,7 +193,7 @@ export default function CalendarRoute() {
       {...(phase16Stage === undefined ? {} : { diagnosticStage: phase16Stage })}
       initialDate={routedInitialDate}
       {...(diagnosticsRuntime === undefined ? {} : { diagnostics: diagnosticsRuntime })}
-      loadCalendarRange={calendarRead.loadCalendarRange}
+      loadCalendarRange={calendarRangeRead.loadCalendarRange}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "calendar",
         triggerNativeID: settingsActionNativeID,

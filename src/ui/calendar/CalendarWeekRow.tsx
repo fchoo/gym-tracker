@@ -189,6 +189,7 @@ export function CalendarWeekRow({
                       styles.eventChipText,
                       { color: event.sport === "strength" ? colors.calendarStrengthTextLight : colors.blue },
                     ]}
+                    testID={`calendar-event-title-${event.id}`}
                   >
                     {event.title}{index === 1 && presentation.overflowCount > 0 ? ` +${presentation.overflowCount}` : ""}
                   </Text>

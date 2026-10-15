@@ -1,4 +1,5 @@
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
+import Constants from "expo-constants";
 import { useEffect, useRef } from "react";
 import { View, type TextStyle } from "react-native";
 
@@ -10,6 +11,7 @@ import { EmptyState, ScreenHeader, SecondaryAction } from "../../../src/ui/compo
 import { AdaptiveScreen } from "../../../src/ui/layout/AdaptiveScreen";
 import { RunningPlanDetailScreen } from "../../../src/ui/screens/RunningPlanDetailScreen";
 import { calendarTypeScale } from "../../../src/ui/theme";
+import { phase20CalendarFixtureRequestFromNativeContract, phase20CalendarRunningPlan } from "../../../src/testing/phase20CalendarFixture";
 
 function routeId(value: string | string[] | undefined): string | null {
   const parsed = parseScalarRouteParam(value);
@@ -61,10 +63,16 @@ export default function RunningPlanDetailRoute() {
     origin: rawOrigin,
     planId: rawPlanId,
     sessionId: rawSessionId,
+    phase20CalendarFixture,
+    phase20CalendarEvidenceNonce,
+    phase20CalendarRequirementsSha256,
   } = useLocalSearchParams<{
     origin?: string | string[];
     planId?: string | string[];
     sessionId?: string | string[];
+    phase20CalendarFixture?: string | string[];
+    phase20CalendarEvidenceNonce?: string | string[];
+    phase20CalendarRequirementsSha256?: string | string[];
   }>();
   const planId = routeId(rawPlanId);
   const sessionId = routeId(rawSessionId);
@@ -76,6 +84,11 @@ export default function RunningPlanDetailRoute() {
   if (planId === null) return <RunningPlanRouteUnavailable calendar={origin.kind === "calendar"} />;
   if (origin.kind === "calendar") {
     if (sessionId === null) return <RunningPlanRouteUnavailable calendar />;
+    const extra = Constants.expoConfig?.extra;
+    const fixtureEnabled = phase20CalendarFixtureRequestFromNativeContract({ packageName: Constants.expoConfig?.android?.package,
+      buildProfile: extra?.buildProfile, nativeContractsEnabled: extra?.nativeContractsEnabled, suite: extra?.nativeContractSuite,
+      fixtureId: routeId(phase20CalendarFixture), nonce: routeId(phase20CalendarEvidenceNonce), requirementsSha256: routeId(phase20CalendarRequirementsSha256) });
+    if (fixtureEnabled) return <RunningPlanDetailScreen loadPlan={async (id) => phase20CalendarRunningPlan(id)} mode="calendar" onBack={() => router.back()} planId={planId} sessionId={sessionId} />;
     return <>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <CalendarRunningPlanRouteAdapter planId={planId} sessionId={sessionId} onBack={() => router.back()} />

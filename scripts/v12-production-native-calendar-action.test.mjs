@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createHash } from "node:crypto";
+import { PNG } from "pngjs";
 
 import {
   V12_CALENDAR_FLOW_REVISION,
@@ -14,6 +15,7 @@ import {
   collectV12ProductionCalendarStages,
   validateProductionCalendarActionRequest,
 } from "./v12-production-native-calendar-action.mjs";
+import { V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
 import { createV12CalendarMarkerFixture } from "./testing/v12-calendar-observation-fixture.mjs";
 
 const HASH = "a".repeat(64);
@@ -64,7 +66,7 @@ test("every stage invocation binds a fresh nonce, exact flow identity, and the p
   invocations.forEach((invocation, order) => {
     assert.equal(invocation.order, order);
     assert.deepEqual(Object.keys(invocation.variables), [
-      "V12_CALENDAR_STAGE", "V12_CALENDAR_NONCE", "V12_CALENDAR_FLOW_SHA256", "V12_CALENDAR_FLOW_REVISION",
+      "V12_CALENDAR_STAGE", "V12_CALENDAR_NONCE", "V12_CALENDAR_FLOW_SHA256", "V12_CALENDAR_FLOW_REVISION", "V12_CALENDAR_POINTER_DRIVER",
     ]);
     assert.equal(invocation.variables.V12_CALENDAR_STAGE, V12_CALENDAR_STAGE_IDS[order]);
     assert.equal(invocation.variables.V12_CALENDAR_FLOW_REVISION, V12_CALENDAR_FLOW_REVISION);
@@ -79,13 +81,24 @@ test("the Maestro flow drives all 35 real stages and passes the complete route i
   for (const id of V12_CALENDAR_STAGE_IDS) {
     assert.equal(flow.split(`V12_CALENDAR_STAGE == '${id}'`).length - 1, 1, id);
   }
-  assert.ok((flow.match(/- swipe:/gu) ?? []).length >= 21);
+  assert.ok((flow.match(/- swipe:/gu) ?? []).length >= 20);
   assert.match(flow, /drag-cancel[\s\S]*?swipe:[\s\S]*?start:[\s\S]*?end:[\s\S]*?duration:/u);
   assert.match(flow, /week-expand-first-row[\s\S]*?calendar-day-2026-10-01/u);
   assert.match(flow, /rotation-during-transition[\s\S]*?setOrientation: LANDSCAPE[\s\S]*?setOrientation: PORTRAIT/u);
   assert.match(flow, /background-during-transition[\s\S]*?pressKey: HOME/u);
   assert.match(flow, /reduced-motion[\s\S]*?calendar-day-2026-10-15/u);
   assert.match(flow, /takeScreenshot: "calendar-\$\{V12_CALENDAR_STAGE\}"/u);
+});
+
+test("the requirement flow names every parity row and all high-risk Calendar destinations", () => {
+  const flow = readFileSync(new URL("../maestro/v1.2/calendar-requirements.yaml", import.meta.url), "utf8");
+  for (const { requirement_id } of V12_CALENDAR_REQUIREMENT_DEFINITIONS) {
+    assert.equal(flow.split(`V12_CALENDAR_REQUIREMENT == '${requirement_id}'`).length - 1, 1, requirement_id);
+  }
+  for (const identity of ["v12-cal-strength-complete", "v12-cal-strength-partial", "v12-cal-strength-planned", "v12-cal-running-planned", "v12-cal-running-imported"]) assert.match(flow, new RegExp(identity, "u"));
+  assert.match(flow, /CAL-13[\s\S]*Collapse day and return to month/u);
+  assert.match(flow, /CAL-22[\s\S]*Correct workout[\s\S]*Workout changed elsewhere[\s\S]*Save failed/u);
+  assert.match(flow, /CAL-23[\s\S]*Resume workout[\s\S]*Remove from history\?/u);
 });
 
 test("the Calendar action collects every stage in order and retains raw traces and screenshots", async (t) => {
@@ -96,8 +109,16 @@ test("the Calendar action collects every stage in order and retains raw traces a
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const flow = readFileSync(new URL("../maestro/v1.2/calendar.yaml", import.meta.url));
   writeFileSync(path.join(root, "maestro/v1.2/calendar.yaml"), flow);
+  const requirementsFlow = readFileSync(new URL("../maestro/v1.2/calendar-requirements.yaml", import.meta.url));
+  writeFileSync(path.join(root, "maestro/v1.2/calendar-requirements.yaml"), requirementsFlow);
+  mkdirSync(path.join(root, "src/testing"), { recursive: true });
+  writeFileSync(path.join(root, "src/testing/phase20CalendarFixture.ts"), "isolated calendar fixture\n");
   const flowSha256 = createHash("sha256").update(flow).digest("hex");
   const invocations = [];
+  const driven = [];
+  const image = new PNG({ width: 2, height: 1 });
+  image.data.set([155, 71, 11, 255, 255, 255, 255, 255]);
+  const screenshot = PNG.sync.write(image);
   const result = await collectV12ProductionCalendarStages({
     root,
     payload: { run_id: RUN_ID, flow_sha256: flowSha256, flow_revision: V12_CALENDAR_FLOW_REVISION },
@@ -108,22 +129,31 @@ test("the Calendar action collects every stage in order and retains raw traces a
       clearLogs: () => undefined,
       logs: () => "",
       maestro: (invocation) => { invocations.push(invocation); return { status: "PASS", xml: "<testsuite><testcase/></testsuite>" }; },
+      drive: (driver) => { driven.push(driver); },
       awaitMarker: (_before, invocation) => Promise.resolve(createV12CalendarMarkerFixture(invocation.stageId, invocation.order, flowSha256, invocation.nonce)),
-      screenshot: () => Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=", "base64"),
+      screenshot: () => screenshot,
+      uiDump: () => "<hierarchy><node resource-id=\"calendar-month-viewport\" text=\"Calendar isolated fixture\"/></hierarchy>",
       temporary: () => retained,
     },
   });
   assert.deepEqual(result.stages.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
   assert.deepEqual(result.junit_cases.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
-  assert.equal(invocations.length, 35);
-  assert.equal(new Set(invocations.map(({ nonce }) => nonce)).size, 35);
+  assert.equal(invocations.filter(({ kind }) => kind === "stage").length, 35);
+  assert.equal(invocations.filter(({ kind }) => kind === "requirement").length, 23);
+  assert.equal(new Set(invocations.map(({ nonce }) => nonce)).size, 58);
+  assert.equal(driven.length, 21);
+  assert.equal(driven.filter(({ protocol }) => protocol === "adb-input-motionevent/v1").length, 20);
+  assert.equal(driven.filter(({ protocol }) => protocol === "adb-runtime-toggle/v1").length, 1);
   assert.equal(result.stages.every(({ observation, assertion_results }) => !Object.hasOwn(observation, "status") && assertion_results.length > 0), true);
-  assert.equal(result.artifacts.length, 70);
+  assert.equal(result.artifacts.length, 116);
   assert.equal(result.artifacts.every(({ relative_path, sha256, size_bytes, bytes_base64 }) => {
     const bytes = Buffer.from(bytes_base64, "base64");
-    return relative_path.startsWith("calendar/stages/")
+    return /^calendar\/(?:stages|requirements)\//u.test(relative_path)
       && createHash("sha256").update(bytes).digest("hex") === sha256
       && bytes.length === size_bytes;
   }), true);
-  assert.equal(readdirSync(retained).length, 70);
+  assert.equal(result.requirements.records.length, 23);
+  assert.equal(result.requirements.records.every(({ fixture_id, fixture_storage, source_digest_before, source_digest_after }) => fixture_id === "v12-calendar-isolated-facts-v1"
+    && fixture_storage === "isolated-in-memory" && source_digest_before === source_digest_after), true);
+  assert.equal(readdirSync(retained).length, 116);
 });

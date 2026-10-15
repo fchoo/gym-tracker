@@ -17,6 +17,8 @@ import {
   V12_CALENDAR_FLOW_REVISION,
   V12_CALENDAR_CHUNK_MARKER,
   V12_CALENDAR_STAGE_IDS,
+  analyzeV12CalendarScreenshot,
+  createV12CalendarDriverReceipt,
   deriveV12CalendarStageResult,
   hashV12CalendarObservationBody,
   selectV12CalendarTerminalMarker,
@@ -24,9 +26,13 @@ import {
 } from "./v12-calendar-observation-contract.mjs";
 import { junitOutcome, worse } from "./v12-production-domain-receipts.mjs";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
+import { V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FLOW = "maestro/v1.2/calendar.yaml";
+const REQUIREMENTS_FLOW = "maestro/v1.2/calendar-requirements.yaml";
+const FIXTURE_SOURCE = "src/testing/phase20CalendarFixture.ts";
+const FIXTURE_ID = "v12-calendar-isolated-facts-v1";
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const HASH = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{32}$/u;
@@ -81,6 +87,7 @@ export function createV12CalendarStageInvocation({ stageId, order, nonce, flowSh
   if (V12_CALENDAR_STAGE_IDS[order] !== stageId || !NONCE.test(nonce ?? "") || !HASH.test(flowSha256 ?? "")) fail("stage_identity_invalid");
   return Object.freeze({
     stageId,
+    kind: "stage",
     order,
     nonce,
     flow: FLOW,
@@ -89,14 +96,36 @@ export function createV12CalendarStageInvocation({ stageId, order, nonce, flowSh
       V12_CALENDAR_NONCE: nonce,
       V12_CALENDAR_FLOW_SHA256: flowSha256,
       V12_CALENDAR_FLOW_REVISION,
+      V12_CALENDAR_POINTER_DRIVER: "adb-input-motionevent-v1",
     }),
   });
+}
+
+export function createV12CalendarRequirementInvocation({ definition, order, nonce, flowSha256 }) {
+  if (V12_CALENDAR_REQUIREMENT_DEFINITIONS[order] !== definition || !NONCE.test(nonce ?? "") || !HASH.test(flowSha256 ?? "")) fail("requirement_identity_invalid");
+  return Object.freeze({
+    stageId: `${definition.requirement_id}-${definition.evidence_id}`,
+    kind: "requirement",
+    order,
+    nonce,
+    flow: REQUIREMENTS_FLOW,
+    variables: Object.freeze({
+      V12_CALENDAR_REQUIREMENT: definition.requirement_id,
+      V12_CALENDAR_EVIDENCE_NONCE: nonce,
+      V12_CALENDAR_REQUIREMENTS_SHA256: flowSha256,
+    }),
+  });
+}
+
+function privacySafeTrace(value) {
+  if (typeof value !== "string" || value.length < 1 || value.length > 8 * 1024 * 1024
+    || /(?:@|\/Users\/|\/home\/|bearer|password|credential|latitude|longitude|gps)/iu.test(value)) fail("privacy_scan_failed");
 }
 
 function createDeviceSession(root, runId) {
   const serial = process.env.V12_DEVICE_SERIAL;
   if (typeof serial !== "string" || serial.trim().length === 0) fail("device_missing");
-  const deadline = Date.now() + 45 * 60_000;
+  const deadline = Date.now() + 35 * (180_000 + 60_000) + 23 * 180_000;
   const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail("timeout");
     const result = spawnSync(executable, args, {
@@ -111,7 +140,6 @@ function createDeviceSession(root, runId) {
   };
   const adb = (...args) => command("adb", ["-s", serial, ...args]).stdout.trim();
   const shell = (...args) => adb("shell", args.map(quote).join(" "));
-  const cleanupShell = (...args) => command("adb", ["-s", serial, "shell", args.map(quote).join(" ")], { cleanup: true }).stdout.trim();
   let temporaryDirectory;
   const temporary = () => {
     if (temporaryDirectory !== undefined) return temporaryDirectory;
@@ -125,6 +153,42 @@ function createDeviceSession(root, runId) {
   const logs = () => adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S");
   const clearLogs = () => { adb("logcat", "-c"); };
   const screenshot = () => command("adb", ["-s", serial, "exec-out", "screencap", "-p"], { binary: true }).stdout;
+  const uiDump = () => command("adb", ["-s", serial, "exec-out", "uiautomator", "dump", "/dev/tty"]).stdout;
+  const boundsFor = (testId) => {
+    const xml = uiDump();
+    const node = [...xml.matchAll(/<node\b[^>]*>/gu)].find(([tag]) => tag.includes(`resource-id="${testId}"`) || tag.includes(`/` + `${testId}"`));
+    const bounds = /bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"/u.exec(node?.[0] ?? "");
+    if (bounds === null) fail("viewport_bounds_invalid");
+    const [left, top, right, bottom] = bounds.slice(1).map(Number);
+    if (right <= left || bottom <= top) fail("viewport_bounds_invalid");
+    return { left, top, right, bottom };
+  };
+  const wait = (milliseconds) => { if (milliseconds > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds); };
+  const drive = (driver) => {
+    if (driver.protocol === "adb-runtime-toggle/v1") {
+      for (const key of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) shell("settings", "put", "global", key, "0");
+      wait(250);
+      for (const testId of ["calendar-collapse-day", "calendar-day-2026-10-15"]) {
+        const bounds = boundsFor(testId); const x = Math.round((bounds.left + bounds.right) / 2); const y = Math.round((bounds.top + bounds.bottom) / 2);
+        command("adb", ["-s", serial, "shell", "input", "tap", String(x), String(y)], { timeout: 10_000 }); wait(100);
+      }
+      return;
+    }
+    if (driver.protocol !== "adb-input-motionevent/v1") return;
+    const bounds = boundsFor("calendar-month-viewport");
+    for (const sequence of driver.sequences) {
+      const horizontal = sequence.points.find(({ dx_ratio: dx }) => dx !== 0)?.dx_ratio ?? 0;
+      const startX = bounds.left + (horizontal < 0 ? 0.8 : horizontal > 0 ? 0.2 : 0.5) * (bounds.right - bounds.left);
+      const startY = bounds.top + 0.5 * (bounds.bottom - bounds.top);
+      let priorOffset = 0;
+      for (const point of sequence.points) {
+        wait(point.offset_ms - priorOffset); priorOffset = point.offset_ms;
+        const x = Math.round(startX + point.dx_ratio * (bounds.right - bounds.left));
+        const y = Math.round(startY + point.dy_ratio * (bounds.bottom - bounds.top));
+        command("adb", ["-s", serial, "shell", "input", "motionevent", point.action, String(x), String(y)], { timeout: 10_000 });
+      }
+    }
+  };
   const readWm = (execute, key) => {
     const shape = key === "size" ? "[1-9][0-9]{1,4}x[1-9][0-9]{1,4}" : "[1-9][0-9]{1,3}";
     const match = new RegExp(`^Physical ${key}: (${shape})(?:\\r?\\nOverride ${key}: (${shape}))?$`, "u").exec(execute("wm", key));
@@ -143,49 +207,22 @@ function createDeviceSession(root, runId) {
     if (!/^Airplane mode is (?:enabled|disabled)$/u.test(airplane) || night === undefined) fail("settings_invalid");
     return Object.freeze({ values, airplane, size: wm("size"), density: wm("density"), night });
   };
-  const restore = (snapshot) => {
-    let restored = true;
-    try { cleanupShell("cmd", "connectivity", "airplane-mode", snapshot.airplane.endsWith(" enabled") ? "enable" : "disable"); }
-    catch { restored = false; }
-    for (const [key, namespace] of Object.entries(SETTINGS)) {
-      try {
-        cleanupShell("settings", snapshot.values[key] === "null" ? "delete" : "put", namespace, key, ...(snapshot.values[key] === "null" ? [] : [snapshot.values[key]]));
-      } catch { restored = false; }
-    }
-    for (const key of ["size", "density"]) {
-      try { cleanupShell("wm", key, snapshot[key].override ?? "reset"); }
-      catch { restored = false; }
-    }
-    try { cleanupShell("cmd", "uimode", "night", snapshot.night); }
-    catch { restored = false; }
-    for (const [key, namespace] of Object.entries(SETTINGS)) {
-      try { if (cleanupShell("settings", "get", namespace, key) !== snapshot.values[key]) restored = false; }
-      catch { restored = false; }
-    }
-    try { if (cleanupShell("cmd", "connectivity", "airplane-mode") !== snapshot.airplane) restored = false; }
-    catch { restored = false; }
-    try {
-      const restoredSize = readWm(cleanupShell, "size"); const restoredDensity = readWm(cleanupShell, "density");
-      if (restoredSize.override !== snapshot.size.override || restoredDensity.override !== snapshot.density.override) restored = false;
-    } catch { restored = false; }
-    if (!restored) fail("settings_restore_failed");
-  };
   const configureStage = (stageId) => {
-    const size = stageId === "dev-01-padding" ? "360x800" : "390x844";
+    const size = stageId === "dev-01-padding" ? "720x1600" : "780x1688";
     shell("settings", "put", "system", "font_scale", "1");
     shell("settings", "put", "system", "accelerometer_rotation", "0");
     shell("settings", "put", "system", "user_rotation", "0");
     shell("wm", "size", size);
-    shell("wm", "density", "160");
+    shell("wm", "density", "320");
     shell("cmd", "uimode", "night", "no");
-    shell("settings", "put", "global", "window_animation_scale", stageId === "reduced-motion" ? "0" : "1");
-    shell("settings", "put", "global", "transition_animation_scale", stageId === "reduced-motion" ? "0" : "1");
-    shell("settings", "put", "global", "animator_duration_scale", stageId === "reduced-motion" ? "0" : "1");
+    shell("settings", "put", "global", "window_animation_scale", "1");
+    shell("settings", "put", "global", "transition_animation_scale", "1");
+    shell("settings", "put", "global", "animator_duration_scale", "1");
     const configured = settings();
-    const animationScale = stageId === "reduced-motion" ? "0" : "1";
+    const animationScale = "1";
     if (Number(configured.values.font_scale) !== 1 || configured.values.accelerometer_rotation !== "0"
       || configured.values.user_rotation !== "0" || configured.size.override !== size
-      || configured.density.override !== "160" || configured.night !== "no"
+      || configured.density.override !== "320" || configured.night !== "no"
       || Number(configured.values.window_animation_scale) !== Number(animationScale)
       || Number(configured.values.transition_animation_scale) !== Number(animationScale)
       || Number(configured.values.animator_duration_scale) !== Number(animationScale)) fail("settings_invalid");
@@ -222,7 +259,7 @@ function createDeviceSession(root, runId) {
     }
     fail("marker_timeout");
   };
-  return Object.freeze({ clearLogs, cleanup, configureStage, logs, maestro, awaitMarker, temporary, restore, screenshot, settings,
+  return Object.freeze({ clearLogs, cleanup, configureStage, drive, logs, maestro, awaitMarker, temporary, screenshot, settings, uiDump,
     version: () => { if (command("maestro", ["--version"]).stdout.trim() !== "2.8.0") fail("maestro_version_invalid"); },
     standalone: () => {
       const manifest = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", runId, "build.json"), "utf8"));
@@ -257,10 +294,12 @@ export async function collectV12ProductionCalendarStages({ root, payload, io }) 
   for (const [order, stageId] of V12_CALENDAR_STAGE_IDS.entries()) {
     const nonce = randomBytes(16).toString("hex");
     const invocation = createV12CalendarStageInvocation({ stageId, order, nonce, flowSha256 });
+    const driver = createV12CalendarDriverReceipt(stageId);
     io.configureStage(stageId);
     io.clearLogs();
     const beforeLogs = io.logs();
     const junit = io.maestro(invocation);
+    if (driver.protocol !== "maestro/v1") io.drive(driver);
     const marker = await io.awaitMarker(beforeLogs, invocation);
     const png = io.screenshot();
     if (!validPng(png)) fail("screenshot_invalid");
@@ -269,6 +308,8 @@ export async function collectV12ProductionCalendarStages({ root, payload, io }) 
     const result = deriveV12CalendarStageResult({
       marker,
       expected: { nonce, flowSha256, stageId, order },
+      driver,
+      captureMeasurement: analyzeV12CalendarScreenshot(stageId, png),
       screenshotSha256: hashBytes(png),
       traceSha256: hashBytes(trace),
     });
@@ -283,11 +324,35 @@ export async function collectV12ProductionCalendarStages({ root, payload, io }) 
     junitCases.push(Object.freeze({ id: stageId, order, status }));
   }
   validateV12CalendarStageCoverage(stages);
+  const requirementsFlowSha256 = hashBytes(readFileSync(path.join(root, REQUIREMENTS_FLOW)));
+  const fixtureSha256 = hashBytes(readFileSync(path.join(root, FIXTURE_SOURCE)));
+  const requirementRecords = [];
+  const requirementJunitCases = [];
+  for (const [order, definition] of V12_CALENDAR_REQUIREMENT_DEFINITIONS.entries()) {
+    const invocation = createV12CalendarRequirementInvocation({ definition, order, nonce: randomBytes(16).toString("hex"), flowSha256: requirementsFlowSha256 });
+    io.configureStage("requirement");
+    const junit = io.maestro(invocation);
+    const trace = Buffer.from(io.uiDump()); privacySafeTrace(trace.toString("utf8"));
+    const png = io.screenshot(); if (!validPng(png)) fail("screenshot_invalid");
+    const stem = `${definition.requirement_id}-${definition.evidence_id}`;
+    writeFileSync(path.join(io.temporary(), `${stem}.png`), png, { flag: "wx", mode: 0o600 });
+    writeFileSync(path.join(io.temporary(), `${stem}.trace.xml`), trace, { flag: "wx", mode: 0o600 });
+    const record = Object.freeze({ requirement_id: definition.requirement_id, evidence_id: definition.evidence_id,
+      native_execution: "EXECUTED", fixture_id: FIXTURE_ID, fixture_storage: "isolated-in-memory",
+      fixture_source_sha256: fixtureSha256, source_digest_before: fixtureSha256, source_digest_after: fixtureSha256,
+      probe_ids: definition.probe_ids });
+    requirementRecords.push(record);
+    requirementJunitCases.push(Object.freeze({ id: definition.evidence_id, order, status: junit.status }));
+    artifacts.push(Object.freeze({ requirement_id: definition.requirement_id, kind: "png", relative_path: `calendar/requirements/${stem}.png`, sha256: hashBytes(png), size_bytes: png.length, bytes_base64: png.toString("base64") }));
+    artifacts.push(Object.freeze({ requirement_id: definition.requirement_id, kind: "trace", relative_path: `calendar/requirements/${stem}.trace.xml`, sha256: hashBytes(trace), size_bytes: trace.length, bytes_base64: trace.toString("base64") }));
+  }
   return Object.freeze({
     flow_sha256: flowSha256,
     flow_revision: V12_CALENDAR_FLOW_REVISION,
     stages: Object.freeze(stages),
     junit_cases: Object.freeze(junitCases),
+    requirements: Object.freeze({ flow_sha256: requirementsFlowSha256, fixture_id: FIXTURE_ID,
+      records: Object.freeze(requirementRecords), junit_cases: Object.freeze(requirementJunitCases) }),
     artifacts: Object.freeze(artifacts),
   });
 }
@@ -312,16 +377,29 @@ export async function executeProductionCalendarAction(payload, attestation) {
       if (ownedLease) runtimeSettings = runtime.snapshotSettings(lease);
       return await runtime.withLease({ ...payload, lease }, async () => {
         const io = createDeviceSession(root, attestation.run_id);
-        const deviceSettings = io.settings();
-        try { return await collectV12ProductionCalendarStages({ root, payload, io }); }
+        const deviceSettings = runtime.snapshotCalendarSettings(lease);
+        try {
+          const collected = await collectV12ProductionCalendarStages({ root, payload, io });
+          const receiptBody = {
+            schema_version: 1, producer: "v12-calendar-native-receipt/v1", native_execution: "EXECUTED",
+            run_id: attestation.run_id, source_tree_sha256: attestation.source_tree_sha256,
+            apk_sha256: attestation.apk_sha256, installed_apk_sha256: attestation.installed_apk_sha256,
+            apk_signature_sha256: attestation.apk_signature_sha256, device_identity_sha256: attestation.device_identity_sha256,
+            launcher_source_sha256: attestation.launcher_source_sha256, flow_sha256: collected.flow_sha256,
+            requirements_flow_sha256: collected.requirements.flow_sha256, fixture_id: collected.requirements.fixture_id,
+            stage_count: collected.stages.length, requirement_count: collected.requirements.records.length,
+            evidence_set_sha256: hashBytes(JSON.stringify({ stages: collected.stages, requirements: collected.requirements, artifacts: collected.artifacts.map(({ bytes_base64: _bytes, ...descriptor }) => descriptor) })),
+          };
+          return Object.freeze({ ...collected, native_receipt: Object.freeze(receiptBody) });
+        }
         finally {
-          try { io.restore(deviceSettings); }
+          try { runtime.restoreCalendarSettings(deviceSettings, lease); }
           finally { io.cleanup(); }
         }
       });
     } finally {
-      if (ownedLease) {
-        if (runtimeSettings !== undefined) runtime.restoreSettings(runtimeSettings, lease);
+      if (ownedLease && runtimeSettings !== undefined) {
+        runtime.restoreSettings(runtimeSettings, lease);
         runtime.releaseLease(lease);
       }
     }

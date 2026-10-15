@@ -33,7 +33,7 @@ import {
   V12_VERDICTS as CONTRACT_VERDICTS,
 } from "./v12-evidence-contract.mjs";
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
-import { resolveV12SourceRows, combineV12SourceResults } from "./v12-blocker-row-resolver.mjs";
+import { resolveV12SourceRows, combineV12SourceResults, validateV12CalendarExecutionOrigin } from "./v12-blocker-row-resolver.mjs";
 import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
 
 const ROOT = process.cwd();
@@ -565,7 +565,7 @@ function validateV12AttendedBinding(attended, manifest, root) {
   return attended;
 }
 
-export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact, attended = undefined, root = ROOT } = {}) {
+export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact, attended = undefined, root = ROOT, allowTestCalendarFixture = false } = {}) {
   const validatedManifest = validateV12RunManifest(manifest);
   if (finalHasPrivateValue(evidence) || finalHasPrivateValue(exceptions)) finalFail("privacy_invalid");
   if (typeof readArtifact !== "function") finalFail("artifact_reader_required");
@@ -577,11 +577,11 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
     return artifactSnapshot.get(relative);
   };
   finalEvidenceIndex(inputs, validatedManifest, evidence, readSource);
-  const sourceEvidence = resolveV12SourceRows({ inputs, manifest: validatedManifest, root, readArtifact: readSource });
+  const sourceEvidence = resolveV12SourceRows({ inputs, manifest: validatedManifest, root, readArtifact: readSource, allowTestCalendarFixture });
   if (!isDeepStrictEqual(evidence, sourceEvidence)) finalFail("source_resolution_mismatch");
   const attendedRecord = attended === undefined ? null : validateV12AttendedBinding(attended, validatedManifest, root);
   const resolvedEvidence = attendedRecord === null ? sourceEvidence
-    : resolveV12SourceRows({ inputs, manifest: validatedManifest, root, readArtifact: readSource, attended: attendedRecord });
+    : resolveV12SourceRows({ inputs, manifest: validatedManifest, root, readArtifact: readSource, attended: attendedRecord, allowTestCalendarFixture });
   const evidenceByRow = new Map(resolvedEvidence.map(item => [item.row_id, item]));
   const exceptionsByRow = finalExceptionIndex(exceptions, inputs);
   const verdicts = inputs.matrix.rows.map(({ requirement_id }) => {
@@ -669,7 +669,7 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
   sqlite: Object.freeze(["sqlite/migration.json", "sqlite/portability.json", "sqlite/history.json"]),
   recovery: Object.freeze(["recovery/lifecycle.json", "maestro/recovery.xml"]),
   garmin: Object.freeze(["garmin/packaging-auth.json", "garmin/sync-read.json", "garmin/dedupe.json", "garmin/matching.json", "maestro/garmin-progress.xml"]),
-  calendar: Object.freeze(["calendar-transitions.json", "maestro/calendar.xml", "calendar/artifact-registry.json"]),
+  calendar: Object.freeze(["calendar-transitions.json", "calendar-requirements.json", "maestro/calendar.xml", "maestro/calendar-requirements.xml", "calendar/artifact-registry.json"]),
   "multi-plan": Object.freeze(["maestro/multi-plan.xml", "mapping/multi-plan.json"]),
   workout: Object.freeze(["maestro/workout.xml", "mapping/workout.json"]),
   "library-running": Object.freeze(["maestro/library-running.xml", "mapping/library-running.json"]),
@@ -761,6 +761,7 @@ export function parseV12EvidenceCliArgs(args) {
   }
   if (mode === "preseal" && args.length === 5 && args[4] === "--no-final-write") return Object.freeze({ run_id, mode, ids: null, no_final_write: true });
   if (mode === "final" && args.length === 4) return Object.freeze({ run_id, mode, ids: null, no_final_write: false });
+  if (mode === "test-resolve" && args.length === 4) return Object.freeze({ run_id, mode, ids: null, no_final_write: true });
   preflightFail("cli_invalid");
 }
 
@@ -785,7 +786,7 @@ function preflightIdentityText(text, manifest) {
   if (required.some((value) => !text.includes(value))) preflightFail("artifact_identity_invalid");
 }
 
-function preflightVerifyArtifact(root, runId, relative, manifest) {
+function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalendarFixture = false) {
   const full = `artifacts/native/v1.2/${runId}/${relative}`;
   const file = preflightSafeFile(root, full); const bytes = readFileSync(file);
   if (relative.endsWith(".xml")) {
@@ -794,6 +795,9 @@ function preflightVerifyArtifact(root, runId, relative, manifest) {
   } else {
     let value; try { value = JSON.parse(bytes.toString("utf8")); } catch { preflightFail("json_schema_invalid"); }
     if (!finalPlainObject(value) || (value.run_id !== undefined && value.run_id !== runId) || typeof value.producer !== "string") preflightFail("json_schema_invalid");
+    if (relative === "calendar-transitions.json") {
+      try { validateV12CalendarExecutionOrigin(value.execution_origin, root, allowTestCalendarFixture); } catch { preflightFail("calendar_origin_invalid"); }
+    }
     if (relative === "screenshots/index.json") {
       if (!Array.isArray(value.records) || value.records.length !== 107 * 64) preflightFail("visual_index_invalid");
       for (const record of value.records) {
@@ -810,14 +814,14 @@ function preflightVerifyArtifact(root, runId, relative, manifest) {
   return { path: full, sha256: sha256(bytes) };
 }
 
-function preflightValidateArtifacts(root, runId, shardIds) {
+function preflightValidateArtifacts(root, runId, shardIds, allowTestCalendarFixture = false) {
   const required = shardIds.flatMap((id) => V12_PREFLIGHT_SHARDS[id]);
   const manifest = preflightManifest(root, runId).manifest;
   const publicationShards = shardIds.flatMap((id) => id === "visual" ? ["visual", "comparison"] : [id]);
   for (const shard of publicationShards) {
     try { verifyV12AtomicShard({ root, runId, shard }); } catch { preflightFail("publication_invalid"); }
   }
-  const hashes = required.map((relative) => preflightVerifyArtifact(root, runId, relative, manifest));
+  const hashes = required.map((relative) => preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalendarFixture));
   return { required, hashes };
 }
 
@@ -830,6 +834,16 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   const options = parseV12EvidenceCliArgs(args);
   const { manifest, build_sha256 } = preflightManifest(root, options.run_id);
   if (options.mode === "shards-only") return Object.freeze({ ok: true, ...options, build_sha256, artifacts: preflightValidateArtifacts(root, options.run_id, options.ids).hashes });
+  if (options.mode === "test-resolve") {
+    if (process.env.NODE_ENV !== "test" || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== "phase20-native-adapter-subprocess" || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== "1") preflightFail("test_mode_forbidden");
+    preflightValidateArtifacts(root, options.run_id, Object.keys(V12_PREFLIGHT_SHARDS), true);
+    const attendedPath = `${liveRoot(options.run_id)}/attended-observations.json`;
+    const attendedFile = preflightSafeFile(root, attendedPath, { required: false });
+    const attended = attendedFile === null ? undefined : JSON.parse(readFileSync(attendedFile, "utf8"));
+    const row_evidence = resolveV12SourceRows({ inputs: loadV12ContractInputs({ root }), manifest, root,
+      readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)), allowTestCalendarFixture: true, attended });
+    return Object.freeze({ schema_version: 1, producer: "v12-test-resolution/v1", run_id: options.run_id, sealable: false, row_evidence });
+  }
 
   const runPrefix = `artifacts/native/v1.2/${options.run_id}`;
   if (options.mode === "preseal") {

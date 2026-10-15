@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { PNG } from "pngjs";
 
 export const V12_CALENDAR_FLOW_REVISION = "calendar-flow-r35-real-v1";
 export const V12_CALENDAR_CHUNK_MARKER = "GYM_TRACKER_V12_CALENDAR_CHUNK:";
@@ -14,14 +15,13 @@ export const V12_CALENDAR_STAGE_GROUPS = Object.freeze({
     "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above",
     "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal",
   ]),
-  input_interrupt: Object.freeze(["second-input-interrupt"]),
+  input_interrupt: Object.freeze(["rapid-reverse-input"]),
   row_geometry: Object.freeze([
-    "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "adjacent-week",
+    "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "week-collapse-middle-row", "adjacent-week",
   ]),
   month_geometry: Object.freeze([
     "month-year-boundary", "leap-february", "four-row-month", "five-row-month", "six-row-month",
   ]),
-  pointer_retarget: Object.freeze(["rapid-reverse-input"]),
   lifecycle: Object.freeze(["rotation-during-transition", "background-during-transition"]),
   reduced_motion: Object.freeze(["reduced-motion"]),
   baseline: Object.freeze(["dev-01-padding", "dev-02-light-title"]),
@@ -38,7 +38,7 @@ const FOCUS_IDENTITY = /^calendar-(?:day-\d{4}-\d{2}-\d{2}|agenda-[A-Za-z0-9._:-
 const FORBIDDEN_KEY = /(?:^|_)(?:expected(?:_outcome)?|final_verdict|verdict|status|pass|synthetic)(?:$|_)/iu;
 const PRIVATE_KEY = /(?:account|credential|password|token|secret|payload|route|coordinate|subject|serial|bodyweight|heart.?rate|sql|path)/iu;
 const GENERIC_LABEL = /^(?:visible|month|week|calendar|drag|dragging|focus|synthetic(?:-.*)?)$/iu;
-const POINTER_GROUPS = new Set(["pointer", "input-interrupt", "pointer-retarget"]);
+const POINTER_GROUPS = new Set(["pointer", "input-interrupt"]);
 const STATES = new Set(["PASS", "FAIL", "NOT_RUN", "REVIEW_REQUIRED"]);
 
 function fail(code) {
@@ -102,11 +102,78 @@ function expectedGroup(stageId) {
   if (V12_CALENDAR_STAGE_GROUPS.input_interrupt.includes(stageId)) return "input-interrupt";
   if (V12_CALENDAR_STAGE_GROUPS.row_geometry.includes(stageId)) return "row-geometry";
   if (V12_CALENDAR_STAGE_GROUPS.month_geometry.includes(stageId)) return "month-geometry";
-  if (V12_CALENDAR_STAGE_GROUPS.pointer_retarget.includes(stageId)) return "pointer-retarget";
   if (V12_CALENDAR_STAGE_GROUPS.lifecycle.includes(stageId)) return "lifecycle";
   if (V12_CALENDAR_STAGE_GROUPS.reduced_motion.includes(stageId)) return "reduced-motion";
   if (V12_CALENDAR_STAGE_GROUPS.baseline.includes(stageId)) return "baseline";
   fail("stage_unknown");
+}
+
+function pointerRatio(stageId) {
+  const token = /-(10|24_9|25|25_1)$/u.exec(stageId)?.[1]
+    ?? /release-(below|exact|above)$/u.exec(stageId)?.[1];
+  if (token === "10" || stageId === "drag-fast-subthreshold") return 0.1;
+  if (token === "24_9" || token === "below") return 0.249;
+  if (token === "25" || token === "exact") return 0.25;
+  if (token === "25_1" || token === "above") return 0.251;
+  return null;
+}
+
+function gestureSequence(id, direction, ratio, durationMs, terminal = "UP") {
+  const dx = direction * ratio;
+  return {
+    id,
+    duration_ms: durationMs,
+    points: [
+      { action: "DOWN", dx_ratio: 0, dy_ratio: 0, offset_ms: 0 },
+      { action: "MOVE", dx_ratio: dx, dy_ratio: 0, offset_ms: Math.max(1, durationMs - 1) },
+      { action: terminal, dx_ratio: dx, dy_ratio: 0, offset_ms: durationMs },
+    ],
+  };
+}
+
+export function createV12CalendarDriverReceipt(stageId) {
+  const group = expectedGroup(stageId);
+  if (stageId === "reduced-motion") return Object.freeze({ schema_version: 1, protocol: "adb-runtime-toggle/v1", stage_id: stageId, sequences: Object.freeze([]) });
+  if (!POINTER_GROUPS.has(group)) return Object.freeze({ schema_version: 1, protocol: "maestro/v1", stage_id: stageId, sequences: Object.freeze([]) });
+  let sequences;
+  if (stageId === "drag-retreat") sequences = [{ id: "primary", duration_ms: 180, points: [
+    { action: "DOWN", dx_ratio: 0, dy_ratio: 0, offset_ms: 0 },
+    { action: "MOVE", dx_ratio: -0.251, dy_ratio: 0, offset_ms: 80 },
+    { action: "MOVE", dx_ratio: -0.1, dy_ratio: 0, offset_ms: 160 },
+    { action: "UP", dx_ratio: -0.1, dy_ratio: 0, offset_ms: 180 },
+  ] }];
+  else if (stageId === "drag-cancel") sequences = [{ id: "primary", duration_ms: 100, points: [
+    { action: "DOWN", dx_ratio: 0, dy_ratio: 0, offset_ms: 0 },
+    { action: "MOVE", dx_ratio: -0.18, dy_ratio: 0, offset_ms: 80 },
+    { action: "CANCEL", dx_ratio: -0.18, dy_ratio: 0, offset_ms: 100 },
+  ] }];
+  else if (stageId === "drag-vertical") sequences = [{ id: "primary", duration_ms: 180, points: [
+    { action: "DOWN", dx_ratio: 0, dy_ratio: 0, offset_ms: 0 },
+    { action: "MOVE", dx_ratio: 0, dy_ratio: 0.3, offset_ms: 160 },
+    { action: "UP", dx_ratio: 0, dy_ratio: 0.3, offset_ms: 180 },
+  ] }];
+  else if (stageId === "drag-diagonal") sequences = [{ id: "primary", duration_ms: 180, points: [
+    { action: "DOWN", dx_ratio: 0, dy_ratio: 0, offset_ms: 0 },
+    { action: "MOVE", dx_ratio: -0.1, dy_ratio: 0.087, offset_ms: 160 },
+    { action: "UP", dx_ratio: -0.1, dy_ratio: 0.087, offset_ms: 180 },
+  ] }];
+  else if (stageId === "rapid-reverse-input") sequences = [
+    gestureSequence("forward", -1, 0.251, 80), gestureSequence("reverse", 1, 0.251, 80),
+  ];
+  else {
+    const ratio = pointerRatio(stageId);
+    const direction = stageId.startsWith("drag-backward") ? 1 : -1;
+    if (ratio === null) fail("driver_invalid");
+    sequences = [gestureSequence("primary", direction, ratio, stageId === "drag-fast-subthreshold" ? 60 : 180)];
+  }
+  return Object.freeze({ schema_version: 1, protocol: "adb-input-motionevent/v1", stage_id: stageId,
+    sequences: Object.freeze(sequences.map((sequence) => Object.freeze({ ...sequence, points: Object.freeze(sequence.points.map((point) => Object.freeze(point))) }))) });
+}
+
+function validateDriverReceipt(value, stageId) {
+  const expected = createV12CalendarDriverReceipt(stageId);
+  if (!isDeepStrictEqual(value, expected)) fail("driver_invalid");
+  return expected;
 }
 
 function commonEvent(value, kind) {
@@ -174,15 +241,23 @@ const POINTER_CALLBACK_PHASE = Object.freeze({
 });
 
 function pointerEvent(value, viewportWidth) {
-  exact(value, ["sequence", "observed_at_monotonic_ms", "callback_generation", "kind", "callback", "phase", "x_dp", "y_dp", "dx_dp", "dy_dp", "viewport_width_dp", "translation_x_dp", "intent_owner"], "pointer_invalid");
+  exact(value, ["sequence", "observed_at_monotonic_ms", "callback_generation", "kind", "callback", "phase", "x_dp", "y_dp", "dx_dp", "dy_dp", "viewport_width_dp", "intent_owner"], "pointer_invalid");
   commonEvent(value, "pointer");
   if (!Object.hasOwn(POINTER_CALLBACK_PHASE, value.callback)
     || (POINTER_CALLBACK_PHASE[value.callback] !== null && POINTER_CALLBACK_PHASE[value.callback] !== value.phase)
     || (value.callback === "onFinalize" && !["finalize-release", "finalize-cancel"].includes(value.phase))
     || !["undetermined", "horizontal", "vertical", "diagonal"].includes(value.intent_owner)) fail("pointer_invalid");
-  for (const key of ["x_dp", "y_dp", "dx_dp", "dy_dp", "viewport_width_dp", "translation_x_dp"]) finite(value[key], "pointer_invalid");
+  for (const key of ["x_dp", "y_dp", "dx_dp", "dy_dp", "viewport_width_dp"]) finite(value[key], "pointer_invalid");
   if (value.viewport_width_dp <= 0 || Math.abs(value.viewport_width_dp - viewportWidth) > 2) fail("pointer_invalid");
-  if (["onChange", "onEnd"].includes(value.callback) && Math.abs(value.translation_x_dp - value.dx_dp) > 2) fail("translation_invalid");
+}
+
+function renderedPanelEvent(value, viewportWidth) {
+  exact(value, ["sequence", "observed_at_monotonic_ms", "callback_generation", "kind", "viewport_x_dp", "previous_x_dp", "current_x_dp", "next_x_dp", "width_dp"], "rendered_panel_invalid");
+  commonEvent(value, "rendered-panel");
+  for (const key of ["viewport_x_dp", "previous_x_dp", "current_x_dp", "next_x_dp", "width_dp"]) finite(value[key], "rendered_panel_invalid");
+  if (value.width_dp <= 0 || Math.abs(value.width_dp - viewportWidth) > 2
+    || Math.abs((value.current_x_dp - value.previous_x_dp) - value.width_dp) > 2
+    || Math.abs((value.next_x_dp - value.current_x_dp) - value.width_dp) > 2) fail("rendered_panel_invalid");
 }
 
 function inputAttemptEvent(value) {
@@ -199,6 +274,14 @@ function rowEvent(value) {
   if (finite(value.height_dp) <= 0) fail("row_geometry_invalid");
   finite(value.y_dp, "row_geometry_invalid");
   integer(value.layout_generation, "row_geometry_invalid");
+}
+
+function renderedOverlayEvent(value, viewportHeight) {
+  exact(value, ["sequence", "observed_at_monotonic_ms", "callback_generation", "kind", "phase", "progress", "reduced_motion", "selected_y_dp", "following_y_dp", "selected_month_y_dp", "following_month_y_dp", "viewport_height_dp"], "rendered_overlay_invalid");
+  commonEvent(value, "rendered-overlay");
+  if (!["expand", "collapse"].includes(value.phase) || ![0, 1].includes(value.progress) || typeof value.reduced_motion !== "boolean") fail("rendered_overlay_invalid");
+  for (const key of ["selected_y_dp", "following_y_dp", "selected_month_y_dp", "following_month_y_dp", "viewport_height_dp"]) finite(value[key], "rendered_overlay_invalid");
+  if (value.viewport_height_dp <= 0 || Math.abs(value.viewport_height_dp - viewportHeight) > 2) fail("rendered_overlay_invalid");
 }
 
 function callbackEvent(value) {
@@ -227,12 +310,12 @@ function lifecycleEvent(value) {
 function baselineEvent(value) {
   exact(value, ["sequence", "observed_at_monotonic_ms", "callback_generation", "kind", "measurement"], "baseline_invalid");
   commonEvent(value, "baseline");
-  if (value.measurement?.kind === "adaptive-padding") {
-    exact(value.measurement, ["kind", "safe_width_dp", "horizontal_inset_dp", "viewport_width_dp"], "baseline_invalid");
-    for (const key of ["safe_width_dp", "horizontal_inset_dp", "viewport_width_dp"]) finite(value.measurement[key], "baseline_invalid");
-  } else if (value.measurement?.kind === "light-strength-title") {
-    exact(value.measurement, ["kind", "color_scheme", "strength_title_color"], "baseline_invalid");
-    if (!["light", "dark"].includes(value.measurement.color_scheme) || !/^#[A-F0-9]{6}$/u.test(value.measurement.strength_title_color ?? "")) fail("baseline_invalid");
+  if (value.measurement?.kind === "content-bounds") {
+    exact(value.measurement, ["kind", "screen_width_dp", "content_left_dp", "content_width_dp", "content_right_dp"], "baseline_invalid");
+    for (const key of ["screen_width_dp", "content_left_dp", "content_width_dp", "content_right_dp"]) finite(value.measurement[key], "baseline_invalid");
+  } else if (value.measurement?.kind === "screenshot-request") {
+    exact(value.measurement, ["kind", "color_scheme"], "baseline_invalid");
+    if (!['light', 'dark'].includes(value.measurement.color_scheme)) fail("baseline_invalid");
   } else fail("baseline_invalid");
 }
 
@@ -245,6 +328,9 @@ function validateEvents(stage, eventSets) {
   const deltas = events.slice(1).map((event, index) => event.observed_at_monotonic_ms - events[index].observed_at_monotonic_ms);
   if (events.every(({ observed_at_monotonic_ms }) => Number.isSafeInteger(observed_at_monotonic_ms))
     && deltas.length > 0 && deltas.every((delta) => delta === 1)) fail("sequential_clock_invalid");
+  const secondDeltas = deltas.slice(1).map((delta, index) => delta - deltas[index]);
+  if (deltas.length >= 3 && (new Set(deltas.map((delta) => delta.toFixed(6))).size === 1
+    || new Set(secondDeltas.map((delta) => delta.toFixed(6))).size === 1)) fail("modeled_clock_invalid");
   if (stage.started_at_monotonic_ms >= events[0].observed_at_monotonic_ms
     || stage.completed_at_monotonic_ms !== events.at(-1).observed_at_monotonic_ms) fail("clock_bounds_invalid");
   return events;
@@ -265,29 +351,81 @@ function assertion(id, passed, observed) {
   return Object.freeze({ id, passed, observation_digest_sha256: hashV12CalendarObservationBody(observed) });
 }
 
-function validatePointer(stage, stageId, group) {
+function relativeLuminance([red, green, blue]) {
+  const channel = (value) => {
+    const normalized = value / 255;
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
+}
+
+export function analyzeV12CalendarScreenshot(stageId, bytes) {
+  if (stageId !== "dev-02-light-title") return null;
+  let image;
+  try { image = PNG.sync.read(bytes); } catch { fail("screenshot_invalid"); }
+  const target = [0x9B, 0x47, 0x0B];
+  let closest = null; let distance = Number.POSITIVE_INFINITY; let matchingPixels = 0;
+  let background = [0, 0, 0]; let backgroundLuminance = -1;
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    if (image.data[offset + 3] === 0) continue;
+    const rgb = [image.data[offset], image.data[offset + 1], image.data[offset + 2]];
+    const delta = Math.sqrt(rgb.reduce((sum, channel, index) => sum + (channel - target[index]) ** 2, 0));
+    if (delta < distance) { distance = delta; closest = rgb; }
+    if (delta <= 18) matchingPixels += 1;
+    const luminance = relativeLuminance(rgb);
+    if (luminance > backgroundLuminance) { background = rgb; backgroundLuminance = luminance; }
+  }
+  if (closest === null) fail("screenshot_invalid");
+  const foreground = relativeLuminance(closest);
+  const contrastRatio = (Math.max(foreground, backgroundLuminance) + 0.05) / (Math.min(foreground, backgroundLuminance) + 0.05);
+  return Object.freeze({ schema_version: 1, source: "screenshot-pixels", target_rgb: Object.freeze(target), observed_rgb: Object.freeze(closest), background_rgb: Object.freeze(background), color_distance: distance, matching_pixel_count: matchingPixels, contrast_ratio: contrastRatio });
+}
+
+function captureAssertions(stageId, measurement) {
+  if (stageId !== "dev-02-light-title") {
+    if (measurement !== null) fail("capture_measurement_invalid");
+    return [];
+  }
+  exact(measurement, ["schema_version", "source", "target_rgb", "observed_rgb", "background_rgb", "color_distance", "matching_pixel_count", "contrast_ratio"], "capture_measurement_invalid");
+  if (measurement.schema_version !== 1 || measurement.source !== "screenshot-pixels"
+    || !isDeepStrictEqual(measurement.target_rgb, [155, 71, 11])
+    || ![measurement.observed_rgb, measurement.background_rgb].every((rgb) => Array.isArray(rgb) && rgb.length === 3 && rgb.every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 255))
+    || !Number.isFinite(measurement.color_distance) || !Number.isSafeInteger(measurement.matching_pixel_count)
+    || !Number.isFinite(measurement.contrast_ratio)) fail("capture_measurement_invalid");
+  return [assertion("light-strength-title-pixels", measurement.matching_pixel_count > 0
+    && measurement.color_distance <= 18 && measurement.contrast_ratio >= 4.5, measurement)];
+}
+
+function validatePointer(stage, stageId, group, driver) {
   const keys = group === "input-interrupt"
-    ? ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "pointer_events", "input_attempts", "transition_events", "semantic_samples", "callback_events", "motion"]
-    : ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "pointer_events", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"];
+    ? ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "pointer_events", "rendered_panel_samples", "input_attempts", "transition_events", "semantic_samples", "callback_events", "motion"]
+    : ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "pointer_events", "rendered_panel_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"];
   baseStage(stage, stageId, group, keys);
   viewportEvent(stage.viewport); motionEvent(stage.motion);
-  if (!Array.isArray(stage.pointer_events) || !Array.isArray(stage.transition_events) || !Array.isArray(stage.semantic_samples)
+  if (!Array.isArray(stage.pointer_events) || !Array.isArray(stage.rendered_panel_samples) || !Array.isArray(stage.transition_events) || !Array.isArray(stage.semantic_samples)
     || !Array.isArray(stage.callback_events) || (group === "input-interrupt" ? !Array.isArray(stage.input_attempts) : !Array.isArray(stage.focus_events))) fail("pointer_invalid");
   stage.pointer_events.forEach((value) => pointerEvent(value, stage.viewport.width_dp));
+  stage.rendered_panel_samples.forEach((value) => renderedPanelEvent(value, stage.viewport.width_dp));
   stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent);
   stage.callback_events.forEach(callbackEvent);
   if (group === "input-interrupt") stage.input_attempts.forEach(inputAttemptEvent);
   else stage.focus_events.forEach(focusEvent);
-  validateEvents(stage, [[stage.viewport], stage.pointer_events, ...(group === "input-interrupt" ? [stage.input_attempts] : [stage.focus_events]), stage.transition_events, stage.semantic_samples, stage.callback_events, [stage.motion]]);
+  validateEvents(stage, [[stage.viewport], stage.pointer_events, stage.rendered_panel_samples, ...(group === "input-interrupt" ? [stage.input_attempts] : [stage.focus_events]), stage.transition_events, stage.semantic_samples, stage.callback_events, [stage.motion]]);
   const callbacks = stage.pointer_events.map(({ callback }) => callback);
   if (callbacks[0] !== "onTouchesDown") fail("callback_provenance_invalid");
   const cancelled = ["drag-cancel", "drag-vertical", "drag-diagonal"].includes(stageId);
   if (cancelled) {
     if (callbacks.at(-1) !== "onFinalize" || stage.pointer_events.at(-1).phase !== "finalize-cancel" || callbacks.includes("onEnd")) fail("cancel_invalid");
-  } else if (stageId === "second-input-interrupt") {
+  } else if (stageId === "rapid-reverse-input") {
     if (!["onBegin", "onChange", "onEnd", "onFinalize"].every((name) => callbacks.includes(name))) fail("callback_provenance_invalid");
   } else if (!["onBegin", "onChange", "onEnd"].every((name) => callbacks.includes(name))
     || callbacks.at(-1) !== "onFinalize" || stage.pointer_events.at(-1).phase !== "finalize-release") fail("callback_provenance_invalid");
+  const uniqueCallbacks = cancelled ? ["onTouchesDown", "onFinalize"] : ["onTouchesDown", "onBegin", "onEnd", "onFinalize"];
+  if (stageId !== "rapid-reverse-input" && uniqueCallbacks.some((name) => callbacks.filter((entry) => entry === name).length !== 1)) fail("callback_order_invalid");
+  const callbackRanks = { onTouchesDown: 0, onTouchesMove: 1, onBegin: 2, onChange: 3, onEnd: 4, onFinalize: 5 };
+  if (stageId !== "rapid-reverse-input" && callbacks.some((name, index) => index > 0 && callbackRanks[name] < callbackRanks[callbacks[index - 1]])) fail("callback_order_invalid");
+  const generations = stage.pointer_events.map(({ callback_generation }) => callback_generation);
+  if (generations.some((generation, index) => index > 0 && generation < generations[index - 1])) fail("callback_generation_invalid");
   const changes = stage.pointer_events.filter(({ callback }) => callback === "onChange");
   const released = stage.pointer_events.filter(({ callback }) => callback === "onEnd");
   const final = released.at(-1) ?? changes.at(-1);
@@ -295,10 +433,17 @@ function validatePointer(stage, stageId, group) {
   const titlePanels = stage.transition_events.filter(({ trigger }) => trigger === "drag").map(({ after }) => after.title_panel);
   const assertions = [
     assertion("real-callbacks", true, callbacks),
-    assertion("one-to-one-translation", changes.every(({ dx_dp, translation_x_dp }) => Math.abs(dx_dp - translation_x_dp) <= 2), changes.map(({ dx_dp, translation_x_dp }) => [dx_dp, translation_x_dp])),
+    assertion("one-to-one-translation", changes.length === 0
+      ? stage.rendered_panel_samples.some((sample) => Math.abs(sample.current_x_dp - sample.viewport_x_dp) <= 2)
+      : changes.every(({ dx_dp }) => stage.rendered_panel_samples.some((sample) => Math.abs((sample.current_x_dp - sample.viewport_x_dp) - dx_dp) <= 2)), { rendered: stage.rendered_panel_samples, changes: changes.map(({ dx_dp }) => dx_dp) }),
     assertion("terminal-kind", cancelled ? stage.pointer_events.at(-1).phase === "finalize-cancel"
-      : stageId === "second-input-interrupt" ? callbacks.includes("onFinalize") : stage.pointer_events.at(-1).phase === "finalize-release", stage.pointer_events.at(-1).phase),
+      : stageId === "rapid-reverse-input" ? callbacks.includes("onFinalize") : stage.pointer_events.at(-1).phase === "finalize-release", stage.pointer_events.at(-1).phase),
   ];
+  const command = driver === undefined ? null : validateDriverReceipt(driver, stageId);
+  const terminalPoint = command?.sequences[0]?.points.at(-1);
+  const commandedRatio = terminalPoint === undefined ? null : Math.abs(terminalPoint.dx_ratio);
+  if (driver !== undefined && pointerRatio(stageId) !== null) assertions.push(assertion("commanded-measured-distance", commandedRatio !== null
+    && Math.abs(ratio - commandedRatio) <= 0.00075, { commandedRatio, measuredRatio: ratio }));
   const finalSemantic = stage.semantic_samples.at(-1);
   assertions.push(assertion("semantic-month-date-title", monthIdFromTitle(finalSemantic.title) === finalSemantic.current_month_id
     && finalSemantic.selected_civil_date.startsWith(`${finalSemantic.current_month_id}-`), finalSemantic));
@@ -313,44 +458,73 @@ function validatePointer(stage, stageId, group) {
           : ratio > 0.25;
     assertions.push(assertion(ratioMatch === "25" || ratioMatch === "exact" ? "exact-threshold" : "stage-distance", passed, { ratio, width_dp: stage.viewport.width_dp }));
   }
+  const initialMonth = stage.semantic_samples[0]?.current_month_id;
+  const finalMonth = finalSemantic?.current_month_id;
+  const shouldChangeMonth = !cancelled && stageId !== "drag-retreat" && stageId !== "drag-fast-subthreshold"
+    && commandedRatio !== null && commandedRatio >= 0.25;
+  if (driver !== undefined && (pointerRatio(stageId) !== null || ["drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal"].includes(stageId))) {
+    assertions.push(assertion("month-outcome", shouldChangeMonth ? finalMonth !== initialMonth : finalMonth === initialMonth,
+      { initialMonth, finalMonth, shouldChangeMonth }));
+  }
   if (stageId.startsWith("drag-forward")) assertions.push(assertion("forward-direction", (final?.dx_dp ?? 0) < 0, final?.dx_dp ?? 0));
   if (stageId.startsWith("drag-backward")) assertions.push(assertion("backward-direction", (final?.dx_dp ?? 0) > 0, final?.dx_dp ?? 0));
   if (stageId === "drag-fast-subthreshold") assertions.push(assertion("short-snap-back", ratio < 0.25 && stage.semantic_samples.at(-1).current_month_id === stage.semantic_samples[0].current_month_id, { ratio, months: stage.semantic_samples.map(({ current_month_id }) => current_month_id) }));
+  if (stageId === "drag-fast-subthreshold") {
+    const elapsed = (released.at(-1)?.observed_at_monotonic_ms ?? Number.POSITIVE_INFINITY) - (stage.pointer_events[0]?.observed_at_monotonic_ms ?? 0);
+    assertions.push(assertion("short-fast-duration", elapsed <= 120 && ratio / elapsed >= 0.00075, { elapsed, ratio }));
+  }
   if (stageId === "drag-retreat") assertions.push(assertion("threshold-recede", changes.some(({ dx_dp, viewport_width_dp }) => Math.abs(dx_dp) >= viewport_width_dp * 0.25) && ratio < 0.25 && titlePanels.includes("current"), { ratio, titlePanels }));
   if (stageId === "drag-vertical") assertions.push(assertion("vertical-intent", stage.pointer_events.some(({ intent_owner }) => intent_owner === "vertical"), stage.pointer_events.map(({ intent_owner }) => intent_owner)));
   if (stageId === "drag-diagonal") assertions.push(assertion("diagonal-intent", stage.pointer_events.some(({ intent_owner }) => intent_owner === "diagonal"), stage.pointer_events.map(({ intent_owner }) => intent_owner)));
-  if (stageId === "second-input-interrupt") {
+  if (stageId === "rapid-reverse-input") {
     const secondAttempt = stage.input_attempts[1];
     assertions.push(assertion("second-input-suppressed", stage.input_attempts.length >= 2
       && secondAttempt?.transition_phase === "settling"
       && callbacks.filter((entry) => entry === "onEnd").length === 1, { input_attempts: stage.input_attempts, callbacks }));
   }
-  if (stageId === "rapid-reverse-input") assertions.push(assertion("rapid-reverse", released.length >= 2 && Math.sign(released[0].dx_dp) !== Math.sign(released.at(-1).dx_dp), released.map(({ dx_dp }) => dx_dp)));
+  if (stageId === "rapid-reverse-input" && driver !== undefined) assertions.push(assertion("rapid-reverse", released.length >= 1
+    && stage.input_attempts.length >= 2 && driver.sequences.length === 2
+    && driver.sequences[1].points.some(({ dx_ratio }) => dx_ratio > 0)
+    && stage.callback_events.length === 1
+    && stage.callback_events[0].epoch === stage.transition_events.filter(({ trigger }) => trigger === "release").at(-1)?.after.epoch,
+  { releases: released.map(({ dx_dp }) => dx_dp), input_attempts: stage.input_attempts, callback_events: stage.callback_events }));
   return assertions;
 }
 
 function validateRows(stage, stageId) {
-  const keys = ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "row_measurements", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"];
+  const keys = ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "row_measurements", "rendered_overlay_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion"];
   baseStage(stage, stageId, "row-geometry", keys);
   viewportEvent(stage.viewport); motionEvent(stage.motion);
-  if (![stage.row_measurements, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events].every(Array.isArray)) fail("row_geometry_invalid");
-  stage.row_measurements.forEach(rowEvent); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent); stage.callback_events.forEach(callbackEvent); stage.focus_events.forEach(focusEvent);
-  validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, [stage.motion]]);
+  if (![stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events].every(Array.isArray)) fail("row_geometry_invalid");
+  stage.row_measurements.forEach(rowEvent); stage.rendered_overlay_samples.forEach((event) => renderedOverlayEvent(event, stage.viewport.height_dp)); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent); stage.callback_events.forEach(callbackEvent); stage.focus_events.forEach(focusEvent);
+  validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, [stage.motion]]);
   const rows = [...stage.row_measurements].sort((left, right) => left.y_dp - right.y_dp);
   if (rows.length < 2 || new Set(rows.map(({ week_start }) => week_start)).size !== rows.length
     || new Set(rows.map(({ y_dp }) => y_dp)).size !== rows.length) fail("row_geometry_invalid");
   const focused = stage.semantic_samples.at(-1)?.focused_week_start;
   const selectedIndex = rows.findIndex(({ week_start }) => week_start === focused);
+  if (selectedIndex < 0) fail("row_geometry_invalid");
   const positionPass = stageId === "week-expand-first-row" ? selectedIndex === 0
     : stageId === "week-expand-last-row" ? selectedIndex === rows.length - 1
       : stageId === "week-expand-middle-row" ? selectedIndex > 0 && selectedIndex < rows.length - 1 : selectedIndex >= 0;
   const triggers = stage.transition_events.map(({ trigger }) => trigger);
   const adjacentPass = stageId !== "adjacent-week" || ["expand", "settle-complete", "select-adjacent", "settle-complete", "layout-ready", "settle-complete"]
     .every((trigger, index, required) => triggers.indexOf(trigger, index === 0 ? 0 : triggers.indexOf(required[index - 1]) + 1) >= 0);
+  const collapsePass = stageId !== "week-collapse-middle-row" || ["expand", "settle-complete", "collapse", "settle-complete"]
+    .every((trigger, index, required) => triggers.indexOf(trigger, index === 0 ? 0 : triggers.indexOf(required[index - 1]) + 1) >= 0);
+  const focusedRow = rows[selectedIndex];
+  const followingRow = rows[selectedIndex + 1] ?? rows.at(-1);
+  const expanded = stage.rendered_overlay_samples.some((sample) => sample.phase === "expand" && sample.progress === 1
+    && Math.abs(sample.selected_y_dp) <= 2
+    && Math.abs(sample.following_y_dp - (sample.viewport_height_dp - followingRow.height_dp)) <= 2);
+  const collapsed = stageId !== "week-collapse-middle-row" || stage.rendered_overlay_samples.some((sample) => sample.phase === "collapse" && sample.progress === 0
+    && Math.abs(sample.selected_y_dp - focusedRow.y_dp) <= 2
+    && Math.abs(sample.following_y_dp - followingRow.y_dp) <= 2);
   return [
     assertion("measured-row-geometry", true, rows.map(({ week_start, y_dp, height_dp }) => ({ week_start, y_dp, height_dp }))),
     assertion("focused-row-position", positionPass, { focused, selectedIndex, rowCount: rows.length }),
-    assertion("ordered-transition", adjacentPass && triggers.includes("settle-complete"), triggers),
+    assertion("ordered-transition", adjacentPass && collapsePass && triggers.includes("settle-complete"), triggers),
+    assertion("rendered-overlay-positions", expanded && collapsed, stage.rendered_overlay_samples),
     assertion("focus-callback", stage.focus_events.length > 0, stage.focus_events.map(({ identity }) => identity)),
     assertion("week-settle-callback", stage.callback_events.some(({ callback }) => callback === "week-settle"), stage.callback_events),
   ];
@@ -395,14 +569,28 @@ function validateLifecycle(stage, stageId) {
 }
 
 function validateReducedMotion(stage, stageId) {
-  const keys = ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "row_measurements", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion_events"];
+  const keys = ["schema_version", "id", "group", "started_at_monotonic_ms", "completed_at_monotonic_ms", "viewport", "row_measurements", "rendered_overlay_samples", "transition_events", "semantic_samples", "callback_events", "focus_events", "motion_events"];
   baseStage(stage, stageId, "reduced-motion", keys);
   viewportEvent(stage.viewport);
-  if (![stage.row_measurements, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, stage.motion_events].every(Array.isArray)) fail("reduced_motion_invalid");
-  stage.row_measurements.forEach(rowEvent); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent); stage.callback_events.forEach(callbackEvent); stage.focus_events.forEach(focusEvent); stage.motion_events.forEach(motionEvent);
-  validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, stage.motion_events]);
+  if (![stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, stage.motion_events].every(Array.isArray)) fail("reduced_motion_invalid");
+  stage.row_measurements.forEach(rowEvent); stage.rendered_overlay_samples.forEach((event) => renderedOverlayEvent(event, stage.viewport.height_dp)); stage.transition_events.forEach(transitionEvent); stage.semantic_samples.forEach(semanticEvent); stage.callback_events.forEach(callbackEvent); stage.focus_events.forEach(focusEvent); stage.motion_events.forEach(motionEvent);
+  validateEvents(stage, [[stage.viewport], stage.row_measurements, stage.rendered_overlay_samples, stage.transition_events, stage.semantic_samples, stage.callback_events, stage.focus_events, stage.motion_events]);
   const final = stage.transition_events.at(-1)?.after;
-  return [assertion("actual-reduced-motion", stage.motion_events.some(({ reduced_motion }) => reduced_motion), stage.motion_events), assertion("semantic-destination", final?.phase === "idle" && final?.mode === "focused", final ?? null), assertion("focus-callback", stage.focus_events.length > 0, stage.focus_events)];
+  const motionModes = stage.motion_events.map(({ reduced_motion }) => reduced_motion);
+  const normal = stage.rendered_overlay_samples.find(({ reduced_motion, phase, progress }) => !reduced_motion && phase === "expand" && progress === 1);
+  const reduced = stage.rendered_overlay_samples.find(({ reduced_motion, phase, progress }) => reduced_motion && phase === "expand" && progress === 1);
+  const triggers = stage.transition_events.map(({ trigger }) => trigger);
+  const firstSemantic = stage.semantic_samples[0]; const lastSemantic = stage.semantic_samples.at(-1);
+  return [
+    assertion("runtime-motion-toggle", motionModes.includes(false) && motionModes.includes(true) && motionModes.indexOf(false) < motionModes.lastIndexOf(true), motionModes),
+    assertion("normal-vs-reduced-destination", final?.phase === "idle" && final?.mode === "focused"
+      && firstSemantic?.selected_civil_date === lastSemantic?.selected_civil_date
+      && triggers.filter((trigger) => trigger === "expand").length >= 2 && triggers.includes("collapse"), { final, firstSemantic, lastSemantic, triggers }),
+    assertion("normal-callback-only", stage.callback_events.filter(({ callback }) => callback === "week-settle").length === 1, stage.callback_events),
+    assertion("identical-rendered-destination", normal !== undefined && reduced !== undefined
+      && Math.abs(normal.selected_y_dp - reduced.selected_y_dp) <= 2 && Math.abs(normal.following_y_dp - reduced.following_y_dp) <= 2, { normal, reduced }),
+    assertion("focus-callback", stage.focus_events.length > 0, stage.focus_events),
+  ];
 }
 
 function validateBaseline(stage, stageId) {
@@ -418,12 +606,14 @@ function validateBaseline(stage, stageId) {
     || stage.row_measurements.length !== semantic.week_count
     || new Set(stage.row_measurements.map(({ y_dp }) => y_dp)).size !== stage.row_measurements.length) fail("baseline_invalid");
   if (stageId === "dev-01-padding") {
-    const expectedInset = Math.min(18, Math.max(0, (measurement.safe_width_dp - 348) / 2));
-    return [assertion("adaptive-padding", measurement.kind === "adaptive-padding" && measurement.safe_width_dp === 360
-      && measurement.horizontal_inset_dp === expectedInset && Math.abs(measurement.viewport_width_dp - (measurement.safe_width_dp - expectedInset * 2)) <= 2
-      && Math.abs(stage.viewport.width_dp - measurement.viewport_width_dp) <= 2, { measurement, viewport_width_dp: stage.viewport.width_dp })];
+    const leftInset = measurement.content_left_dp;
+    const rightInset = measurement.screen_width_dp - measurement.content_right_dp;
+    return [assertion("measured-content-padding", measurement.kind === "content-bounds" && measurement.screen_width_dp === 360
+      && leftInset >= 6 && leftInset <= 18 && rightInset >= 6 && rightInset <= 18
+      && Math.abs(measurement.content_width_dp - (measurement.content_right_dp - measurement.content_left_dp)) <= 0.5
+      && Math.abs(stage.viewport.width_dp - measurement.content_width_dp) <= 2, { measurement, viewport_width_dp: stage.viewport.width_dp })];
   }
-  return [assertion("light-strength-title", measurement.kind === "light-strength-title" && measurement.color_scheme === "light" && measurement.strength_title_color === "#9B470B", measurement)];
+  return [assertion("light-screenshot-requested", measurement.kind === "screenshot-request" && measurement.color_scheme === "light", measurement)];
 }
 
 export function validateV12CalendarTerminalMarker(marker, expected) {
@@ -494,18 +684,24 @@ export function selectV12CalendarTerminalMarker({ beforeLogs, afterLogs, nonce, 
   return marker;
 }
 
-export function deriveV12CalendarStageResult({ marker, expected, screenshotSha256, traceSha256 }) {
+export function deriveV12CalendarStageResult({ marker, expected, driver, captureMeasurement = null, screenshotSha256, traceSha256 }) {
   if (!Number.isSafeInteger(expected.order) || expected.order < 0 || V12_CALENDAR_STAGE_IDS[expected.order] !== expected.stageId
     || !HASH.test(screenshotSha256 ?? "") || !HASH.test(traceSha256 ?? "")) fail("result_identity_invalid");
+  validateDriverReceipt(driver, expected.stageId);
   const validated = validateV12CalendarTerminalMarker(marker, expected);
-  const status = validated.assertionResults.every(({ passed }) => passed) ? "PASS" : "FAIL";
+  const assertionResults = Object.freeze([...(POINTER_GROUPS.has(expectedGroup(expected.stageId))
+    ? validatePointer(marker.stage, expected.stageId, expectedGroup(expected.stageId), driver)
+    : validated.assertionResults), ...captureAssertions(expected.stageId, captureMeasurement)]);
+  const status = assertionResults.every(({ passed }) => passed) ? "PASS" : "FAIL";
   if (!STATES.has(status)) fail("result_status_invalid");
   return Object.freeze({
     id: expected.stageId,
     order: expected.order,
     status,
     observation: validated.observation,
-    assertion_results: validated.assertionResults,
+    driver,
+    capture_measurement: captureMeasurement,
+    assertion_results: assertionResults,
     terminal_marker_sha256: hashV12CalendarObservationBody(marker),
     screenshot_sha256: screenshotSha256,
     trace_sha256: traceSha256,
@@ -513,20 +709,21 @@ export function deriveV12CalendarStageResult({ marker, expected, screenshotSha25
 }
 
 export function validateV12CalendarStageResult(value, stageId, order) {
-  exact(value, ["id", "order", "status", "observation", "assertion_results", "terminal_marker_sha256", "screenshot_sha256", "trace_sha256"], "stage_result_invalid");
+  exact(value, ["id", "order", "status", "observation", "driver", "capture_measurement", "assertion_results", "terminal_marker_sha256", "screenshot_sha256", "trace_sha256"], "stage_result_invalid");
   if (value.id !== stageId || value.order !== order || !STATES.has(value.status)
     || ![value.terminal_marker_sha256, value.screenshot_sha256, value.trace_sha256].every((entry) => HASH.test(entry ?? ""))
     || hashV12CalendarObservationBody(value.observation) !== value.trace_sha256) fail("stage_result_invalid");
   const group = expectedGroup(stageId);
-  const assertions = POINTER_GROUPS.has(group) ? validatePointer(value.observation, stageId, group)
+  validateDriverReceipt(value.driver, stageId);
+  const assertions = [...(POINTER_GROUPS.has(group) ? validatePointer(value.observation, stageId, group, value.driver)
     : group === "row-geometry" ? validateRows(value.observation, stageId)
       : group === "month-geometry" ? validateMonthGeometry(value.observation, stageId)
         : group === "lifecycle" ? validateLifecycle(value.observation, stageId)
           : group === "reduced-motion" ? validateReducedMotion(value.observation, stageId)
-            : validateBaseline(value.observation, stageId);
+            : validateBaseline(value.observation, stageId)), ...captureAssertions(stageId, value.capture_measurement)];
   const assertionStatus = assertions.every(({ passed }) => passed) ? "PASS" : "FAIL";
-  if (!isDeepStrictEqual(value.assertion_results, assertions)
-    || (assertionStatus === "FAIL" && value.status !== "FAIL")) fail("stage_result_invalid");
+  if (JSON.stringify(value.assertion_results) !== JSON.stringify(assertions)) fail("stage_assertions_invalid");
+  if (assertionStatus === "FAIL" && value.status !== "FAIL") fail("stage_status_invalid");
   return true;
 }
 

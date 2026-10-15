@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { PNG } from "pngjs";
 
 import {
   V12_CALENDAR_FLOW_REVISION,
   V12_CALENDAR_CHUNK_MARKER,
   V12_CALENDAR_STAGE_GROUPS,
   V12_CALENDAR_STAGE_IDS,
+  analyzeV12CalendarScreenshot,
+  createV12CalendarDriverReceipt,
   deriveV12CalendarStageResult,
   encodeV12CalendarTerminalMarkerChunks,
   hashV12CalendarObservationBody,
@@ -20,7 +23,7 @@ const HASH = "c".repeat(64);
 function event(sequence, kind, fields = {}) {
   return {
     sequence,
-    observed_at_monotonic_ms: 8_421.125 + sequence * 0.437,
+    observed_at_monotonic_ms: 8_421.125 + sequence * 0.437 + ((sequence * sequence * sequence) % 11) * 0.0037,
     callback_generation: Math.max(1, Math.ceil(sequence / 3)),
     kind,
     ...fields,
@@ -63,28 +66,29 @@ function withDigest(body) {
 
 function pointerStage(id = "drag-forward-release-exact") {
   const pointer_events = [
-    event(4, "pointer", { callback: "onTouchesDown", phase: "down", x_dp: 300, y_dp: 220, dx_dp: 0, dy_dp: 0, viewport_width_dp: 354, translation_x_dp: 0, intent_owner: "undetermined" }),
-    event(5, "pointer", { callback: "onTouchesMove", phase: "intent", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, translation_x_dp: 0, intent_owner: "horizontal" }),
-    event(6, "pointer", { callback: "onBegin", phase: "begin", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, translation_x_dp: 0, intent_owner: "horizontal" }),
-    event(7, "pointer", { callback: "onChange", phase: "change", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, translation_x_dp: -88.5, intent_owner: "horizontal" }),
-    event(9, "pointer", { callback: "onEnd", phase: "release", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, translation_x_dp: -88.5, intent_owner: "horizontal" }),
-    event(11, "pointer", { callback: "onFinalize", phase: "finalize-release", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, translation_x_dp: -88.5, intent_owner: "horizontal" }),
+    event(4, "pointer", { callback: "onTouchesDown", phase: "down", x_dp: 300, y_dp: 220, dx_dp: 0, dy_dp: 0, viewport_width_dp: 354, intent_owner: "undetermined" }),
+    event(5, "pointer", { callback: "onTouchesMove", phase: "intent", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, intent_owner: "horizontal" }),
+    event(6, "pointer", { callback: "onBegin", phase: "begin", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, intent_owner: "horizontal" }),
+    event(7, "pointer", { callback: "onChange", phase: "change", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, intent_owner: "horizontal" }),
+    event(10, "pointer", { callback: "onEnd", phase: "release", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, intent_owner: "horizontal" }),
+    event(12, "pointer", { callback: "onFinalize", phase: "finalize-release", x_dp: 211.5, y_dp: 220, dx_dp: -88.5, dy_dp: 0, viewport_width_dp: 354, intent_owner: "horizontal" }),
   ];
   const body = {
     schema_version: 1,
     id,
     group: "pointer",
     started_at_monotonic_ms: 8_420.125,
-    completed_at_monotonic_ms: event(15, "unused").observed_at_monotonic_ms,
+    completed_at_monotonic_ms: event(16, "unused").observed_at_monotonic_ms,
     viewport: viewport(1),
     pointer_events,
+    rendered_panel_samples: [event(8, "rendered-panel", { viewport_x_dp: 18, previous_x_dp: -424.5, current_x_dp: -70.5, next_x_dp: 283.5, width_dp: 354 })],
     transition_events: [
-      transition(8, "drag", state("idle"), state("dragging")),
-      transition(10, "release", state("dragging"), state("settling", { current_month_id: "2026-11", selected_civil_date: "2026-11-15" }), ["settle-month"]),
-      transition(14, "settle-complete", state("settling", { current_month_id: "2026-11", selected_civil_date: "2026-11-15" }), state("idle", { current_month_id: "2026-11", selected_civil_date: "2026-11-15", epoch: 1 })),
+      transition(9, "drag", state("idle"), state("dragging")),
+      transition(11, "release", state("dragging"), state("settling", { current_month_id: "2026-11", selected_civil_date: "2026-11-15" }), ["settle-month"]),
+      transition(15, "settle-complete", state("settling", { current_month_id: "2026-11", selected_civil_date: "2026-11-15" }), state("idle", { current_month_id: "2026-11", selected_civil_date: "2026-11-15", epoch: 1 })),
     ],
-    semantic_samples: [semantic(3), semantic(15, { title: "November 2026", current_month_id: "2026-11", selected_civil_date: "2026-11-15", week_count: 6 })],
-    callback_events: [event(13, "callback", { callback: "month-settle", epoch: 1 })],
+    semantic_samples: [semantic(3), semantic(16, { title: "November 2026", current_month_id: "2026-11", selected_civil_date: "2026-11-15", week_count: 6 })],
+    callback_events: [event(14, "callback", { callback: "month-settle", epoch: 1 })],
     focus_events: [],
     motion: motion(2),
   };
@@ -106,6 +110,7 @@ function derive(stage = pointerStage()) {
   return deriveV12CalendarStageResult({
     marker: marker(stage),
     expected: { nonce: NONCE, flowSha256: FLOW_SHA, stageId: stage.id, order: V12_CALENDAR_STAGE_IDS.indexOf(stage.id) },
+    driver: createV12CalendarDriverReceipt(stage.id),
     screenshotSha256: HASH,
     traceSha256: hashV12CalendarObservationBody(stage),
   });
@@ -114,7 +119,7 @@ function derive(stage = pointerStage()) {
 test("the production Calendar contract owns the exact 35-stage order and stage-specific schema groups", () => {
   assert.equal(V12_CALENDAR_STAGE_IDS.length, 35);
   assert.deepEqual(Object.values(V12_CALENDAR_STAGE_GROUPS).flat(), V12_CALENDAR_STAGE_IDS);
-  assert.deepEqual(Object.keys(V12_CALENDAR_STAGE_GROUPS), ["pointer", "input_interrupt", "row_geometry", "month_geometry", "pointer_retarget", "lifecycle", "reduced_motion", "baseline"]);
+  assert.deepEqual(Object.keys(V12_CALENDAR_STAGE_GROUPS), ["pointer", "input_interrupt", "row_geometry", "month_geometry", "lifecycle", "reduced_motion", "baseline"]);
 });
 
 test("a real pointer observation is validated and its status is derived only by host assertions", () => {
@@ -123,8 +128,63 @@ test("a real pointer observation is validated and its status is derived only by 
   assert.equal(result.observation.id, "drag-forward-release-exact");
   assert.ok(result.assertion_results.length >= 5);
   assert.ok(result.assertion_results.every(({ passed }) => passed));
-  assert.deepEqual(Object.keys(result), ["id", "order", "status", "observation", "assertion_results", "terminal_marker_sha256", "screenshot_sha256", "trace_sha256"]);
+  assert.deepEqual(Object.keys(result), ["id", "order", "status", "observation", "driver", "capture_measurement", "assertion_results", "terminal_marker_sha256", "screenshot_sha256", "trace_sha256"]);
   assert.doesNotMatch(JSON.stringify(result.observation), /expected|\bPASS\b|\bstatus\b|synthetic/u);
+});
+
+test("host validation distinguishes every commanded threshold and exact release outcome", () => {
+  for (const [id, ratio, changed] of [
+    ["drag-forward-10", 0.1, false],
+    ["drag-forward-24_9", 0.249, false],
+    ["drag-forward-25", 0.25, true],
+    ["drag-forward-25_1", 0.251, true],
+  ]) {
+    const stage = structuredClone(pointerStage(id));
+    const dx = -354 * ratio;
+    for (const sample of stage.pointer_events) if (["onTouchesMove", "onBegin", "onChange", "onEnd", "onFinalize"].includes(sample.callback)) {
+      sample.x_dp = 300 + dx; sample.dx_dp = dx;
+    }
+    stage.rendered_panel_samples[0].previous_x_dp = 18 - 354 + dx;
+    stage.rendered_panel_samples[0].current_x_dp = 18 + dx;
+    stage.rendered_panel_samples[0].next_x_dp = 18 + 354 + dx;
+    stage.transition_events[0].after.drag_dx_dp = dx;
+    stage.transition_events[0].after.title_panel = changed ? "next" : "current";
+    stage.transition_events[1].before.drag_dx_dp = dx;
+    stage.transition_events[1].before.title_panel = changed ? "next" : "current";
+    if (!changed) {
+      stage.transition_events[1].after.current_month_id = "2026-10";
+      stage.transition_events[1].after.selected_civil_date = "2026-10-15";
+      stage.transition_events[2].before.current_month_id = "2026-10";
+      stage.transition_events[2].before.selected_civil_date = "2026-10-15";
+      stage.transition_events[2].after.current_month_id = "2026-10";
+      stage.transition_events[2].after.selected_civil_date = "2026-10-15";
+      stage.semantic_samples[1] = semantic(16);
+    }
+    delete stage.observation_digest_sha256;
+    stage.observation_digest_sha256 = hashV12CalendarObservationBody(stage);
+    assert.equal(derive(stage).status, "PASS", id);
+    const wrongCommand = structuredClone(createV12CalendarDriverReceipt(id));
+    wrongCommand.sequences[0].points[1].dx_ratio += 0.01;
+    assert.throws(() => deriveV12CalendarStageResult({ marker: marker(stage), expected: { nonce: NONCE, flowSha256: FLOW_SHA, stageId: id, order: V12_CALENDAR_STAGE_IDS.indexOf(id) }, driver: wrongCommand, screenshotSha256: HASH, traceSha256: hashV12CalendarObservationBody(stage) }), /calendar_observation_driver_invalid/u);
+  }
+});
+
+test("host validation rejects duplicate callbacks, modeled clocks, and wrong month semantics", () => {
+  const mutations = [
+    (stage) => { stage.pointer_events.splice(4, 0, structuredClone(stage.pointer_events[3])); stage.pointer_events[4].sequence = 8; },
+    (stage) => {
+      const events = [stage.viewport, stage.motion, ...stage.pointer_events, ...stage.transition_events, ...stage.semantic_samples, ...stage.callback_events].sort((a, b) => a.sequence - b.sequence);
+      events.forEach((entry, index) => { entry.observed_at_monotonic_ms = 1000 + index * index; });
+      stage.started_at_monotonic_ms = 999; stage.completed_at_monotonic_ms = events.at(-1).observed_at_monotonic_ms;
+    },
+    (stage) => { stage.semantic_samples[1] = semantic(16); },
+  ];
+  for (const [index, mutate] of mutations.entries()) {
+    const stage = structuredClone(pointerStage()); mutate(stage);
+    delete stage.observation_digest_sha256; stage.observation_digest_sha256 = hashV12CalendarObservationBody(stage);
+    if (index === 2) assert.equal(derive(stage).status, "FAIL");
+    else assert.throws(() => derive(stage), /calendar_observation_/u);
+  }
 });
 
 test("a structurally real threshold miss becomes FAIL instead of trusting a requested expected outcome", () => {
@@ -133,7 +193,6 @@ test("a structurally real threshold miss becomes FAIL instead of trusting a requ
     if (sample.callback === "onChange" || sample.callback === "onEnd" || sample.callback === "onFinalize") {
       sample.x_dp = 212.5;
       sample.dx_dp = -87.5;
-      sample.translation_x_dp = -87.5;
     }
   }
   delete stage.observation_digest_sha256;
@@ -166,10 +225,11 @@ test("the validator rejects sequential fake clocks, missing callbacks, generic l
 test("cancel ends with the actual cancelled callback and rejects a fabricated pointer-up", () => {
   const stage = structuredClone(pointerStage("drag-cancel"));
   stage.pointer_events = stage.pointer_events.slice(0, 2).concat([
-    event(6, "pointer", { callback: "onFinalize", phase: "finalize-cancel", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, translation_x_dp: 0, intent_owner: "vertical" }),
+    event(6, "pointer", { callback: "onFinalize", phase: "finalize-cancel", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, intent_owner: "vertical" }),
   ]);
+  stage.rendered_panel_samples = [event(8, "rendered-panel", { viewport_x_dp: 18, previous_x_dp: -336, current_x_dp: 18, next_x_dp: 372, width_dp: 354 })];
   stage.transition_events = [transition(7, "cancel", state("idle"), state("idle", { epoch: 1 }))];
-  stage.semantic_samples = [semantic(3), semantic(8)];
+  stage.semantic_samples = [semantic(3), semantic(9)];
   stage.callback_events = [];
   stage.completed_at_monotonic_ms = stage.semantic_samples[1].observed_at_monotonic_ms;
   delete stage.observation_digest_sha256;
@@ -177,7 +237,7 @@ test("cancel ends with the actual cancelled callback and rejects a fabricated po
   assert.equal(derive(stage).status, "PASS");
 
   const malformed = structuredClone(stage);
-  malformed.pointer_events.push(event(13, "pointer", { callback: "onEnd", phase: "release", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, translation_x_dp: -10, intent_owner: "vertical" }));
+  malformed.pointer_events.push(event(13, "pointer", { callback: "onEnd", phase: "release", x_dp: 290, y_dp: 280, dx_dp: -10, dy_dp: 60, viewport_width_dp: 354, intent_owner: "vertical" }));
   malformed.completed_at_monotonic_ms = malformed.pointer_events.at(-1).observed_at_monotonic_ms;
   delete malformed.observation_digest_sha256;
   malformed.observation_digest_sha256 = hashV12CalendarObservationBody(malformed);
@@ -196,9 +256,13 @@ test("row geometry rejects duplicated fixed bounds", () => {
     id: "week-expand-middle-row",
     group: "row-geometry",
     started_at_monotonic_ms: 8_420.125,
-    completed_at_monotonic_ms: event(12, "unused").observed_at_monotonic_ms,
+    completed_at_monotonic_ms: event(14, "unused").observed_at_monotonic_ms,
     viewport: viewport(1),
     row_measurements: rows,
+    rendered_overlay_samples: [
+      event(13, "rendered-overlay", { phase: "expand", progress: 0, reduced_motion: false, selected_y_dp: 140, following_y_dp: 210, selected_month_y_dp: 140, following_month_y_dp: 210, viewport_height_dp: 560 }),
+      event(14, "rendered-overlay", { phase: "expand", progress: 1, reduced_motion: false, selected_y_dp: 0, following_y_dp: 490, selected_month_y_dp: 140, following_month_y_dp: 210, viewport_height_dp: 560 }),
+    ],
     transition_events: [
       transition(8, "expand", state("idle"), state("settling", { mode: "focused" }), ["settle-week"]),
       transition(10, "settle-complete", state("settling", { mode: "focused" }), state("idle", { mode: "focused", epoch: 1 })),
@@ -213,6 +277,20 @@ test("row geometry rejects duplicated fixed bounds", () => {
   const fixed = structuredClone(body);
   fixed.row_measurements.forEach((row) => { row.y_dp = 0; });
   assert.throws(() => derive(withDigest(fixed)), /calendar_observation_row_geometry_invalid/u);
+});
+
+test("DEV-02 is derived from screenshot pixels and contrast, never a theme token echo", () => {
+  const image = new PNG({ width: 2, height: 1 });
+  image.data.set([155, 71, 11, 255, 255, 255, 255, 255]);
+  const measured = analyzeV12CalendarScreenshot("dev-02-light-title", PNG.sync.write(image));
+  assert.equal(measured.source, "screenshot-pixels");
+  assert.deepEqual(measured.observed_rgb, [155, 71, 11]);
+  assert.ok(measured.contrast_ratio >= 4.5);
+  assert.throws(() => deriveV12CalendarStageResult({
+    marker: marker(pointerStage()), expected: { nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact", order: V12_CALENDAR_STAGE_IDS.indexOf("drag-forward-release-exact") },
+    driver: createV12CalendarDriverReceipt("drag-forward-release-exact"), captureMeasurement: { source: "theme-token", value: "#9B470B" }, screenshotSha256: HASH,
+    traceSha256: hashV12CalendarObservationBody(pointerStage()),
+  }), /calendar_observation_/u);
 });
 
 test("terminal selection rejects pre-stage and duplicate nonce markers", () => {

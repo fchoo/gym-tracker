@@ -6,112 +6,114 @@ tags: [calendar, native-only, development-test, phase-20, observe-only]
 - assertTrue: ${V12_CALENDAR_NONCE != null}
 - assertTrue: ${V12_CALENDAR_FLOW_SHA256 != null}
 - assertTrue: ${V12_CALENDAR_FLOW_REVISION == 'calendar-flow-r35-real-v1'}
+- assertTrue: ${V12_CALENDAR_POINTER_DRIVER == 'adb-input-motionevent-v1'}
 - launchApp: { clearState: false, stopApp: true }
 - openLink: "gymtracker-devtest://calendar?phase20CalendarStage=${V12_CALENDAR_STAGE}&phase20CalendarNonce=${V12_CALENDAR_NONCE}&phase20CalendarFlowSha256=${V12_CALENDAR_FLOW_SHA256}&phase20CalendarFlowRevision=${V12_CALENDAR_FLOW_REVISION}"
 - extendedWaitUntil: { visible: "Calendar", timeout: 30000 }
 - assertVisible: { id: "calendar-month-viewport" }
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-10'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-10' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "70.9231%, 45%", duration: 500 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-24_9'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-24_9' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.3985%, 45%", duration: 500 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-25'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-25' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.3077%, 45%", duration: 500 }
       - assertVisible: "November 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-25_1'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-25_1' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.2169%, 45%", duration: 500 }
       - assertVisible: "November 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-release-below'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-release-below' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.3985%, 45%", duration: 180 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-release-exact'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-release-exact' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.3077%, 45%", duration: 180 }
       - assertVisible: "November 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-release-above'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-forward-release-above' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.2169%, 45%", duration: 180 }
       - assertVisible: "November 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-10'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-10' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "20%, 45%", end: "29.0769%, 45%", duration: 500 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-24_9'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-24_9' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "20%, 45%", end: "42.6015%, 45%", duration: 500 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-25'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-25' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "20%, 45%", end: "42.6923%, 45%", duration: 500 }
       - assertVisible: "September 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-25_1'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-25_1' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "20%, 45%", end: "42.7831%, 45%", duration: 500 }
       - assertVisible: "September 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-release-below'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-release-below' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "20%, 45%", end: "42.6015%, 45%", duration: 180 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-release-exact'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-release-exact' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "20%, 45%", end: "42.6923%, 45%", duration: 180 }
       - assertVisible: "September 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-release-above'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-backward-release-above' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "20%, 45%", end: "42.7831%, 45%", duration: 180 }
       - assertVisible: "September 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-fast-subthreshold'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-fast-subthreshold' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "70.9231%, 45%", duration: 60 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-retreat'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-retreat' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.2169%, 45%", duration: 180, waitToSettleTimeoutMs: 0 }
       - swipe: { start: "57.2169%, 45%", end: "70.9231%, 45%", duration: 180 }
       - assertVisible: { id: "calendar-month-title" }
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-cancel'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-cancel' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "70%, 45%", end: "65%, 70%", duration: 180 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-vertical'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-vertical' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "50%, 70%", end: "50%, 30%", duration: 300 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'drag-diagonal'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'drag-diagonal' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "50%, 50%", end: "40%, 54.6%", duration: 300 }
       - assertVisible: "October 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'second-input-interrupt'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'week-collapse-middle-row'} }
     commands:
-      - swipe: { start: "80%, 45%", end: "57.2169%, 45%", duration: 80, waitToSettleTimeoutMs: 0 }
-      - swipe: { start: "80%, 45%", end: "70.9231%, 45%", duration: 80 }
-      - assertVisible: { id: "calendar-month-title" }
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - assertVisible: "Collapse day and return to month"
+      - tapOn: "Collapse day and return to month"
+      - assertVisible: { id: "calendar-month-viewport" }
 - runFlow:
     when: { true: ${V12_CALENDAR_STAGE == 'week-expand-first-row'} }
     commands:
@@ -156,7 +158,7 @@ tags: [calendar, native-only, development-test, phase-20, observe-only]
     commands:
       - assertVisible: "August 2026"
 - runFlow:
-    when: { true: ${V12_CALENDAR_STAGE == 'rapid-reverse-input'} }
+    when: { true: ${V12_CALENDAR_STAGE == 'rapid-reverse-input' && V12_CALENDAR_POINTER_DRIVER != 'adb-input-motionevent-v1'} }
     commands:
       - swipe: { start: "80%, 45%", end: "57.2169%, 45%", duration: 80, waitToSettleTimeoutMs: 0 }
       - swipe: { start: "20%, 45%", end: "42.7831%, 45%", duration: 80 }

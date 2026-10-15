@@ -25,7 +25,7 @@ test('canonical matrix has exactly 172 typed selectors in source order', () => {
     'drag-forward-10', 'drag-backward-10', 'drag-cancel', 'drag-vertical', 'drag-diagonal',
   ]);
   assert.ok(calendarRows.find(x => x.row_id === 'CAL-08').selector.stage_ids.includes('drag-retreat'));
-  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-13').selector.stage_ids, []);
+  assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-13').selector.stage_ids, ['week-collapse-middle-row']);
   assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-16').selector.stage_ids, []);
   assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-17').selector.stage_ids, []);
   assert.deepEqual(calendarRows.find(x => x.row_id === 'CAL-18').selector.stage_ids, []);

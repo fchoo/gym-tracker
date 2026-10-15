@@ -22,7 +22,7 @@ describe("v1.2 Calendar native-acceptance contract", () => {
     expect(V12_CALENDAR_ACCEPTANCE_CASES.every(({ disposition }) => disposition === "observe-only")).toBe(true);
     expect(V12_CALENDAR_OBSERVATION_SCHEMAS.map(({ stageId }) => stageId)).toEqual(PHASE20_CALENDAR_STAGE_IDS);
     expect(new Set(V12_CALENDAR_OBSERVATION_SCHEMAS.map(({ group }) => group))).toEqual(new Set([
-      "pointer", "input-interrupt", "row-geometry", "month-geometry", "pointer-retarget", "lifecycle", "reduced-motion", "baseline",
+      "pointer", "input-interrupt", "row-geometry", "month-geometry", "lifecycle", "reduced-motion", "baseline",
     ]));
   });
 

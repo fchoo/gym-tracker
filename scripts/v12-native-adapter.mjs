@@ -10,7 +10,7 @@ const ADAPTER = fileURLToPath(import.meta.url);
 const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url));
 const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackbox/fake-device-adapter.mjs", import.meta.url));
 const TEST_MODE = "phase20-native-adapter-subprocess";
-export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = 35 * (180_000 + 60_000) + 120_000;
+export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = 35 * (180_000 + 60_000) + 23 * 180_000 + 120_000;
 
 function fail(code) { throw new Error(`v12_native_adapter_${code}`); }
 function sha256(bytes) { return createHash("sha256").update(bytes).digest("hex"); }

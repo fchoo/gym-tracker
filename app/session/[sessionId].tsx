@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import Constants from "expo-constants";
 
 import {
   useWorkoutAppRuntime,
@@ -28,12 +29,14 @@ import {
 import {
   CalendarSessionDetailRouteAdapter,
 } from "../../src/ui/calendar/CalendarRouteAdapters";
+import { CalendarReadOnlyWorkout } from "../../src/ui/calendar/CalendarReadOnlyWorkout";
 import {
   AdaptiveScreen,
 } from "../../src/ui/layout/AdaptiveScreen";
 import {
   SessionDetailScreen,
 } from "../../src/ui/screens/SessionDetailScreen";
+import { phase20CalendarFixtureRequestFromNativeContract, phase20CalendarSessionDetail } from "../../src/testing/phase20CalendarFixture";
 
 function exactRouteParam(value: RouteParam): string | null {
   const parsed = parseScalarRouteParam(value);
@@ -180,10 +183,13 @@ function ManagementSessionDetailRoute({ expectedSourceRevision, sessionId }: Rea
 }
 
 export default function SessionDetailRoute() {
-  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision } = useLocalSearchParams() as Readonly<{
+  const { sessionId, origin: rawOrigin, sourceRevision: rawSourceRevision, phase20CalendarFixture, phase20CalendarEvidenceNonce, phase20CalendarRequirementsSha256 } = useLocalSearchParams() as Readonly<{
     sessionId?: RouteParam;
     origin?: RouteParam;
     sourceRevision?: RouteParam;
+    phase20CalendarFixture?: RouteParam;
+    phase20CalendarEvidenceNonce?: RouteParam;
+    phase20CalendarRequirementsSha256?: RouteParam;
   }>;
   const resolvedSessionId = exactRouteParam(sessionId);
   const origin = parseCalendarRouteOrigin(rawOrigin, {
@@ -198,15 +204,35 @@ export default function SessionDetailRoute() {
     || (parsedSourceRevision.kind === "value"
       && Number.isSafeInteger(sourceRevision)
       && sourceRevision! > 0);
+  const extra = Constants.expoConfig?.extra;
+  const fixtureEnabled = phase20CalendarFixtureRequestFromNativeContract({
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: extra?.buildProfile,
+    nativeContractsEnabled: extra?.nativeContractsEnabled,
+    suite: extra?.nativeContractSuite,
+    fixtureId: exactRouteParam(phase20CalendarFixture),
+    nonce: exactRouteParam(phase20CalendarEvidenceNonce),
+    requirementsSha256: exactRouteParam(phase20CalendarRequirementsSha256),
+  });
+  const fixtureDetail = fixtureEnabled && resolvedSessionId !== null ? phase20CalendarSessionDetail(resolvedSessionId) : null;
 
   if (origin.kind === "invalid" || !progressSourceValid) return <SessionRouteUnavailable />;
   if (origin.kind === "calendar") {
+    if (fixtureDetail !== null) return <CalendarReadOnlyWorkout detail={fixtureDetail} onGoBack={() => router.back()} />;
     return (
       <CalendarSessionDetailRouteAdapter
         onBack={() => router.back()}
         sessionId={resolvedSessionId}
       />
     );
+  }
+  if (fixtureDetail !== null) {
+    const fixtureQuery = new URLSearchParams({
+      phase20CalendarFixture: exactRouteParam(phase20CalendarFixture)!,
+      phase20CalendarEvidenceNonce: exactRouteParam(phase20CalendarEvidenceNonce)!,
+      phase20CalendarRequirementsSha256: exactRouteParam(phase20CalendarRequirementsSha256)!,
+    }).toString();
+    return <SessionDetailScreen detail={fixtureDetail} onGoBack={() => router.back()} onCorrectWorkout={() => router.push(`/session/${fixtureDetail.id}/correct?${fixtureQuery}` as Href)} onRemoveFromHistory={() => Promise.resolve()} onOpenExerciseHistory={() => undefined} onResume={() => undefined} />;
   }
   return resolvedSessionId === null
     ? <SessionRouteUnavailable />

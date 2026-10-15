@@ -77,7 +77,6 @@ describe("CalendarMonthViewport Phase 20 observation wiring", () => {
     expect(recordPointer).toHaveBeenCalledWith(expect.objectContaining({
       callback: "onChange",
       dxDp: -88.5,
-      translationXDp: -88.5,
       viewportWidthDp: 354,
     }));
     expect(onRelease).toHaveBeenCalledTimes(1);

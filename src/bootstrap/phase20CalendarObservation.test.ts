@@ -33,8 +33,10 @@ function request(stage: (typeof PHASE20_CALENDAR_STAGE_IDS)[number]) {
 
 function clock() {
   let value = 12_345.125;
+  let sequence = 0;
   return () => {
-    value += 0.375;
+    sequence += 1;
+    value += [0.281, 0.419, 0.337, 0.503, 0.359][sequence % 5]!;
     return value;
   };
 }
@@ -85,9 +87,9 @@ describe("Phase 20 real Calendar observation collector", () => {
       "drag-backward-10", "drag-backward-24_9", "drag-backward-25", "drag-backward-25_1",
       "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above",
       "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal",
-      "second-input-interrupt", "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row",
+      "rapid-reverse-input", "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "week-collapse-middle-row",
       "adjacent-week", "month-year-boundary", "leap-february", "four-row-month", "five-row-month", "six-row-month",
-      "rapid-reverse-input", "rotation-during-transition", "background-during-transition", "reduced-motion",
+      "rotation-during-transition", "background-during-transition", "reduced-motion",
       "dev-01-padding", "dev-02-light-title",
     ]);
     expect(Object.values(PHASE20_CALENDAR_STAGE_GROUPS).flat()).toEqual(PHASE20_CALENDAR_STAGE_IDS);
@@ -124,12 +126,13 @@ describe("Phase 20 real Calendar observation collector", () => {
     collector.recordViewport({ widthDp: 354, heightDp: 560, orientation: "portrait", layoutGeneration: 2 });
     collector.recordMotion({ reducedMotion: false });
     collector.recordSemantic({ title: "October 2026", currentMonthId: "2026-10", selectedCivilDate: "2026-10-15", focusedWeekStart: null, weekCount: 5, callbackGeneration: 2 });
-    collector.recordPointer({ callback: "onTouchesDown", phase: "down", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, translationXDp: 0, intentOwner: "undetermined", callbackGeneration: 2 });
-    collector.recordPointer({ callback: "onBegin", phase: "begin", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, translationXDp: 0, intentOwner: "horizontal", callbackGeneration: 3 });
-    collector.recordPointer({ callback: "onChange", phase: "change", xDp: 211.5, yDp: 220, dxDp: -88.5, dyDp: 0, viewportWidthDp: 354, translationXDp: -88.5, intentOwner: "horizontal", callbackGeneration: 3 });
+    collector.recordPointer({ callback: "onTouchesDown", phase: "down", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, intentOwner: "undetermined", callbackGeneration: 2 });
+    collector.recordPointer({ callback: "onBegin", phase: "begin", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 3 });
+    collector.recordPointer({ callback: "onChange", phase: "change", xDp: 211.5, yDp: 220, dxDp: -88.5, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 3 });
+    collector.recordRenderedPanel({ viewportXDp: 18, previousXDp: -424.5, currentXDp: -70.5, nextXDp: 283.5, widthDp: 354, callbackGeneration: 3 });
     collector.recordTransition({ trigger: "drag", before: transition("idle"), after: transition("dragging", "next"), commandKinds: [] });
-    collector.recordPointer({ callback: "onEnd", phase: "release", xDp: 211.5, yDp: 220, dxDp: -88.5, dyDp: 0, viewportWidthDp: 354, translationXDp: -88.5, intentOwner: "horizontal", callbackGeneration: 3 });
-    collector.recordPointer({ callback: "onFinalize", phase: "finalize-release", xDp: 211.5, yDp: 220, dxDp: -88.5, dyDp: 0, viewportWidthDp: 354, translationXDp: -88.5, intentOwner: "horizontal", callbackGeneration: 3 });
+    collector.recordPointer({ callback: "onEnd", phase: "release", xDp: 211.5, yDp: 220, dxDp: -88.5, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 3 });
+    collector.recordPointer({ callback: "onFinalize", phase: "finalize-release", xDp: 211.5, yDp: 220, dxDp: -88.5, dyDp: 0, viewportWidthDp: 354, intentOwner: "horizontal", callbackGeneration: 3 });
     collector.recordTransition({ trigger: "release", before: transition("dragging", "next"), after: transition("settling"), commandKinds: ["settle-month"] });
     collector.recordCallback({ callback: "month-settle", epoch: 1, callbackGeneration: 3 });
     collector.recordTransition({ trigger: "settle-complete", before: transition("settling"), after: { ...transition("idle"), currentMonthId: "2026-11", selectedCivilDate: "2026-11-15", epoch: 1 }, commandKinds: [] });
@@ -171,9 +174,10 @@ describe("Phase 20 real Calendar observation collector", () => {
     collector.recordViewport({ widthDp: 354, heightDp: 560, orientation: "portrait", layoutGeneration: 4 });
     collector.recordMotion({ reducedMotion: false });
     collector.recordSemantic({ title: "October 2026", currentMonthId: "2026-10", selectedCivilDate: "2026-10-15", focusedWeekStart: null, weekCount: 5, callbackGeneration: 4 });
-    collector.recordPointer({ callback: "onTouchesDown", phase: "down", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, translationXDp: 0, intentOwner: "undetermined", callbackGeneration: 4 });
-    collector.recordPointer({ callback: "onTouchesMove", phase: "intent", xDp: 290, yDp: 280, dxDp: -10, dyDp: 60, viewportWidthDp: 354, translationXDp: 0, intentOwner: "vertical", callbackGeneration: 4 });
-    collector.recordPointer({ callback: "onFinalize", phase: "finalize-cancel", xDp: 290, yDp: 280, dxDp: -10, dyDp: 60, viewportWidthDp: 354, translationXDp: 0, intentOwner: "vertical", callbackGeneration: 5 });
+    collector.recordPointer({ callback: "onTouchesDown", phase: "down", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, intentOwner: "undetermined", callbackGeneration: 4 });
+    collector.recordPointer({ callback: "onTouchesMove", phase: "intent", xDp: 290, yDp: 280, dxDp: -10, dyDp: 60, viewportWidthDp: 354, intentOwner: "vertical", callbackGeneration: 4 });
+    collector.recordRenderedPanel({ viewportXDp: 18, previousXDp: -336, currentXDp: 18, nextXDp: 372, widthDp: 354, callbackGeneration: 4 });
+    collector.recordPointer({ callback: "onFinalize", phase: "finalize-cancel", xDp: 290, yDp: 280, dxDp: -10, dyDp: 60, viewportWidthDp: 354, intentOwner: "vertical", callbackGeneration: 5 });
     collector.recordTransition({ trigger: "cancel", before: transition("idle"), after: { ...transition("idle"), epoch: 1 }, commandKinds: [] });
     await collector.flush();
 
@@ -200,7 +204,7 @@ describe("Phase 20 real Calendar observation collector", () => {
     const emitted: string[] = [];
     const collector = pointerCollector("drag-forward-25", emitted)!;
     collector.recordViewport({ widthDp: 354, heightDp: 560, orientation: "portrait", layoutGeneration: 1 });
-    collector.recordPointer({ callback: "onTouchesDown", phase: "down", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, translationXDp: 0, intentOwner: "undetermined", callbackGeneration: 1 });
+    collector.recordPointer({ callback: "onTouchesDown", phase: "down", xDp: 300, yDp: 220, dxDp: 0, dyDp: 0, viewportWidthDp: 354, intentOwner: "undetermined", callbackGeneration: 1 });
     await collector.flush();
     expect(emitted).toEqual([]);
   });
@@ -219,7 +223,7 @@ describe("Phase 20 real Calendar observation collector", () => {
     for (const [index, weekStart] of ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"].entries()) {
       collector.recordWeekLayout({ weekStart, yDp: index * 70, heightDp: 70, layoutGeneration: 1 });
     }
-    collector.recordBaseline({ kind: "adaptive-padding", safeWidthDp: 360, horizontalInsetDp: 18, viewportWidthDp: 324 });
+    collector.recordBaseline({ kind: "content-bounds", screenWidthDp: 360, contentLeftDp: 18, contentWidthDp: 324, contentRightDp: 342 });
     await expect(collector.flush()).rejects.toThrow("native digest unavailable");
     expect(emitted).toEqual([]);
   });

@@ -1,0 +1,172 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 20 Calendar requirement evidence
+tags: [calendar, native-only, isolated-fixture, phase-20, observe-only]
+---
+- assertTrue: ${V12_CALENDAR_REQUIREMENT != null}
+- assertTrue: ${V12_CALENDAR_EVIDENCE_NONCE != null}
+- assertTrue: ${V12_CALENDAR_REQUIREMENTS_SHA256 != null}
+- launchApp: { clearState: false, stopApp: true }
+- openLink: "gymtracker-devtest://calendar?phase20CalendarFixture=v12-calendar-isolated-facts-v1&phase20CalendarEvidenceNonce=${V12_CALENDAR_EVIDENCE_NONCE}&phase20CalendarRequirementsSha256=${V12_CALENDAR_REQUIREMENTS_SHA256}"
+- extendedWaitUntil: { visible: "Calendar", timeout: 30000 }
+- assertVisible: { id: "calendar-month-viewport" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-01'} }
+    commands:
+      - assertVisible: { id: "calendar-month-navigation" }
+      - assertVisible: "Mon"
+      - assertVisible: "Sun"
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-02'} }
+    commands:
+      - tapOn: { id: "calendar-info-action" }
+      - assertVisible: "Activity"
+      - assertVisible: "Status"
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-03'} }
+    commands:
+      - assertVisible: { id: "calendar-event-chip-v12-cal-strength-complete" }
+      - tapOn: { id: "calendar-info-action" }
+      - assertVisible: { id: "calendar-key-complete" }
+      - assertVisible: { id: "calendar-key-partial" }
+      - assertVisible: { id: "calendar-key-planned" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-04'} }
+    commands:
+      - assertVisible: { id: "calendar-date-track-2026-10-15" }
+      - assertVisible: { id: "calendar-event-track-2026-10-15" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-05'} }
+    commands:
+      - assertVisible: { id: "calendar-event-chip-v12-cal-strength-complete" }
+      - assertVisible: { id: "calendar-event-chip-v12-cal-strength-partial" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-06'} }
+    commands:
+      - assertVisible: { id: "calendar-day-2026-10-15" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-07'} }
+    commands: [{ assertVisible: { id: "calendar-month-viewport" } }]
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-08'} }
+    commands: [{ assertVisible: { id: "calendar-month-title" } }]
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-09'} }
+    commands: [{ assertVisible: { id: "calendar-month-viewport" } }]
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-10'} }
+    commands: [{ assertVisible: { id: "calendar-month-navigation" } }]
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-11'} }
+    commands: [{ assertVisible: { id: "calendar-day-2026-10-15" } }]
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-12'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - assertVisible: { id: "calendar-focused-selected-week" }
+      - assertVisible: { id: "calendar-focused-following-week" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-13'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - tapOn: "Collapse day and return to month"
+      - assertVisible: { id: "calendar-day-2026-10-15" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-14'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - tapOn: { id: "calendar-day-2026-10-22" }
+      - assertVisible: "22 October 2026"
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-15'} }
+    commands: [{ assertVisible: { id: "calendar-month-viewport" } }]
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-16'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - assertVisible: { id: "calendar-agenda-event-v12-cal-strength-complete" }
+      - assertVisible: { id: "calendar-agenda-metadata-v12-cal-strength-complete" }
+      - assertVisible: { id: "calendar-agenda-disclosure-v12-cal-strength-complete" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-17'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-complete" }
+      - assertVisible: "Complete · read only"
+      - pressKey: BACK
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-partial" }
+      - assertVisible: "Partial · read only"
+      - pressKey: BACK
+      - tapOn: "Collapse day and return to month"
+      - tapOn: { id: "calendar-day-2026-10-22" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-planned" }
+      - assertVisible: "Planned preview · read only"
+      - pressKey: BACK
+      - tapOn: { id: "calendar-agenda-event-v12-cal-running-planned" }
+      - assertVisible: "Running plan"
+      - pressKey: BACK
+      - tapOn: "Collapse day and return to month"
+      - tapOn: { id: "calendar-day-2026-10-29" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-running-imported" }
+      - assertVisible: "Activity"
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-18'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-complete" }
+      - assertVisible: "Complete · read only"
+      - assertVisible: "Bench press"
+      - assertVisible: "Not completed"
+      - assertNotVisible: "Complete set"
+      - assertNotVisible: "Reorder"
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-19'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-22" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-planned" }
+      - assertVisible: "Planned workout"
+      - assertNotVisible: "Complete set"
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-20'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-complete" }
+      - pressKey: BACK
+      - assertVisible: { id: "calendar-agenda-event-v12-cal-strength-complete" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-21'} }
+    commands:
+      - assertNotVisible: "Personal"
+      - assertVisible: { id: "calendar-month-viewport" }
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-22'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-complete" }
+      - assertNotVisible: "Correct workout"
+      - openLink: "gymtracker-devtest://session/v12-strength-complete?phase20CalendarFixture=v12-calendar-isolated-facts-v1&phase20CalendarEvidenceNonce=${V12_CALENDAR_EVIDENCE_NONCE}&phase20CalendarRequirementsSha256=${V12_CALENDAR_REQUIREMENTS_SHA256}"
+      - assertVisible: "Correct workout"
+      - tapOn: "Correct workout"
+      - assertVisible: "Revision history"
+      - tapOn: "Owner note"
+      - inputText: "Isolated correction proof"
+      - tapOn: "Save correction"
+      - assertVisible: "Workout changed elsewhere"
+      - tapOn: "Reload workout"
+      - tapOn: "Owner note"
+      - inputText: "Isolated retry proof"
+      - tapOn: "Save correction"
+      - assertVisible: "Save failed"
+      - tapOn: "Save correction"
+- runFlow:
+    when: { true: ${V12_CALENDAR_REQUIREMENT == 'CAL-23'} }
+    commands:
+      - tapOn: { id: "calendar-day-2026-10-15" }
+      - tapOn: { id: "calendar-agenda-event-v12-cal-strength-partial" }
+      - assertNotVisible: "Resume workout"
+      - assertNotVisible: "Remove from history"
+      - openLink: "gymtracker-devtest://session/v12-strength-partial?phase20CalendarFixture=v12-calendar-isolated-facts-v1&phase20CalendarEvidenceNonce=${V12_CALENDAR_EVIDENCE_NONCE}&phase20CalendarRequirementsSha256=${V12_CALENDAR_REQUIREMENTS_SHA256}"
+      - assertVisible: "Resume workout"
+      - assertVisible: "Remove from history"
+      - tapOn: "Remove from history"
+      - assertVisible: "Remove from history?"
+      - tapOn: "Cancel"

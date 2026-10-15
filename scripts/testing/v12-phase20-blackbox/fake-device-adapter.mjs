@@ -3,10 +3,11 @@
 // credentials, host path, or production data.
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../../v12-evidence-contract.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "../../benchmark-v12-interactions.mjs";
-import { createV12CalendarObservationResult } from "../v12-calendar-observation-fixture.mjs";
+import { createV12CalendarNativeFixtureResult } from "../v12-calendar-observation-fixture.mjs";
 const sha = (value) => createHash("sha256").update(String(value)).digest("hex");
 const read = await new Promise((resolve) => { let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }); process.stdin.on("end", () => resolve(JSON.parse(body))); });
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
@@ -95,7 +96,10 @@ const response = (() => {
     cases: garminCaseIds.map((id, order) => ({ id, order, status: "PASS", code: "native-passed", count: id === "match-one" ? 1 : 0 })),
   };
   if (action === "calendar") {
-    return createV12CalendarObservationResult(read.payload.flow_sha256);
+    return createV12CalendarNativeFixtureResult({ flowSha256: read.payload.flow_sha256,
+      requirementsFlowSha256: sha(readFileSync("maestro/v1.2/calendar-requirements.yaml")),
+      fixtureSourceSha256: sha(readFileSync("src/testing/phase20CalendarFixture.ts")), attestation: read.attestation,
+      launcherSourceSha256: sha(readFileSync(fileURLToPath(import.meta.url))) });
   }
   // Other actions intentionally return only a shape; the black-box test is the
   // contract that forces producers to reject anything insufficient.

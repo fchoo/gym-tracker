@@ -19,14 +19,13 @@ export const PHASE20_CALENDAR_STAGE_GROUPS = Object.freeze({
     "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above",
     "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal",
   ] as const),
-  inputInterrupt: Object.freeze(["second-input-interrupt"] as const),
+  inputInterrupt: Object.freeze(["rapid-reverse-input"] as const),
   rowGeometry: Object.freeze([
-    "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "adjacent-week",
+    "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "week-collapse-middle-row", "adjacent-week",
   ] as const),
   monthGeometry: Object.freeze([
     "month-year-boundary", "leap-february", "four-row-month", "five-row-month", "six-row-month",
   ] as const),
-  pointerRetarget: Object.freeze(["rapid-reverse-input"] as const),
   lifecycle: Object.freeze(["rotation-during-transition", "background-during-transition"] as const),
   reducedMotion: Object.freeze(["reduced-motion"] as const),
   baseline: Object.freeze(["dev-01-padding", "dev-02-light-title"] as const),
@@ -37,7 +36,7 @@ export const PHASE20_CALENDAR_STAGE_IDS = Object.freeze(
 );
 
 export type Phase20CalendarStage = (typeof PHASE20_CALENDAR_STAGE_IDS)[number];
-export type Phase20CalendarStageGroup = "pointer" | "input-interrupt" | "row-geometry" | "month-geometry" | "pointer-retarget" | "lifecycle" | "reduced-motion" | "baseline";
+export type Phase20CalendarStageGroup = "pointer" | "input-interrupt" | "row-geometry" | "month-geometry" | "lifecycle" | "reduced-motion" | "baseline";
 
 export type Phase20CalendarRequest = Readonly<{
   stage: Phase20CalendarStage;
@@ -106,8 +105,16 @@ type PointerEvent = EventIdentity & Readonly<{
   dx_dp: number;
   dy_dp: number;
   viewport_width_dp: number;
-  translation_x_dp: number;
   intent_owner: "undetermined" | "horizontal" | "vertical" | "diagonal";
+}>;
+
+type RenderedPanelEvent = EventIdentity & Readonly<{
+  kind: "rendered-panel";
+  viewport_x_dp: number;
+  previous_x_dp: number;
+  current_x_dp: number;
+  next_x_dp: number;
+  width_dp: number;
 }>;
 
 type InputAttemptEvent = EventIdentity & Readonly<{
@@ -133,6 +140,18 @@ type RowLayoutEvent = EventIdentity & Readonly<{
   y_dp: number;
   height_dp: number;
   layout_generation: number;
+}>;
+
+type RenderedOverlayEvent = EventIdentity & Readonly<{
+  kind: "rendered-overlay";
+  phase: "expand" | "collapse";
+  progress: 0 | 1;
+  reduced_motion: boolean;
+  selected_y_dp: number;
+  following_y_dp: number;
+  selected_month_y_dp: number;
+  following_month_y_dp: number;
+  viewport_height_dp: number;
 }>;
 
 type CallbackEvent = EventIdentity & Readonly<{
@@ -162,25 +181,27 @@ type BaselineEvent = EventIdentity & Readonly<{
   measurement: Readonly<Record<string, string | number>>;
 }>;
 
-type ObservationEvent = ViewportEvent | TransitionEvent | PointerEvent | InputAttemptEvent | SemanticEvent | RowLayoutEvent | CallbackEvent | FocusEvent | LifecycleEvent | MotionEvent | BaselineEvent;
+type ObservationEvent = ViewportEvent | TransitionEvent | PointerEvent | RenderedPanelEvent | InputAttemptEvent | SemanticEvent | RowLayoutEvent | RenderedOverlayEvent | CallbackEvent | FocusEvent | LifecycleEvent | MotionEvent | BaselineEvent;
 type ObservationPayload = ObservationEvent extends infer Event
   ? Event extends EventIdentity ? Omit<Event, keyof EventIdentity> : never
   : never;
 
 export type Phase20CalendarObservationCollector = Readonly<{
   recordViewport(input: Readonly<{ widthDp: number; heightDp: number; orientation: "portrait" | "landscape"; layoutGeneration: number }>): void;
-  recordPointer(input: Readonly<{ callback: PointerEvent["callback"]; phase: PointerEvent["phase"]; xDp: number; yDp: number; dxDp: number; dyDp: number; viewportWidthDp: number; translationXDp: number; intentOwner: PointerEvent["intent_owner"]; callbackGeneration: number }>): void;
+  recordPointer(input: Readonly<{ callback: PointerEvent["callback"]; phase: PointerEvent["phase"]; xDp: number; yDp: number; dxDp: number; dyDp: number; viewportWidthDp: number; intentOwner: PointerEvent["intent_owner"]; callbackGeneration: number }>): void;
+  recordRenderedPanel(input: Readonly<{ viewportXDp: number; previousXDp: number; currentXDp: number; nextXDp: number; widthDp: number; callbackGeneration: number }>): void;
   recordInputAttempt(input: Readonly<{ xDp: number; yDp: number; transitionPhase: Phase20CalendarTransitionSnapshot["phase"]; callbackGeneration: number }>): void;
   recordTransition(input: Readonly<{ trigger: string; before: Phase20CalendarTransitionSnapshot; after: Phase20CalendarTransitionSnapshot; commandKinds: readonly string[] }>): void;
   recordSemantic(input: Readonly<{ title: string; currentMonthId: string; selectedCivilDate: string; focusedWeekStart: string | null; weekCount: number; callbackGeneration: number }>): void;
   recordWeekLayout(input: Readonly<{ weekStart: string; yDp: number; heightDp: number; layoutGeneration: number }>): void;
+  recordRenderedOverlay(input: Readonly<{ phase: "expand" | "collapse"; progress: 0 | 1; reducedMotion: boolean; selectedYDp: number; followingYDp: number; selectedMonthYDp: number; followingMonthYDp: number; viewportHeightDp: number; callbackGeneration: number }>): void;
   recordCallback(input: Readonly<{ callback: CallbackEvent["callback"]; epoch: number; callbackGeneration: number }>): void;
   recordFocus(input: Readonly<{ identity: string; callbackGeneration: number }>): void;
   recordLifecycle(input: Readonly<{ event: LifecycleEvent["event"]; value: LifecycleEvent["value"]; callbackGeneration: number }>): void;
   recordMotion(input: Readonly<{ reducedMotion: boolean }>): void;
   recordBaseline(input:
-    | Readonly<{ kind: "adaptive-padding"; safeWidthDp: number; horizontalInsetDp: number; viewportWidthDp: number }>
-    | Readonly<{ kind: "light-strength-title"; colorScheme: "light" | "dark"; strengthTitleColor: string }>): void;
+    | Readonly<{ kind: "content-bounds"; screenWidthDp: number; contentLeftDp: number; contentWidthDp: number; contentRightDp: number }>
+    | Readonly<{ kind: "screenshot-request"; colorScheme: "light" | "dark" }>): void;
   flush(): Promise<void>;
 }>;
 
@@ -188,7 +209,6 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{32}$/u;
 const MONTH = /^\d{4}-(?:0[1-9]|1[0-2])$/u;
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/u;
-const COLOR = /^#[A-F0-9]{6}$/u;
 const stages = new Set<string>(PHASE20_CALENDAR_STAGE_IDS);
 
 function safeNumber(value: number): number {
@@ -216,7 +236,6 @@ function stageGroup(stage: Phase20CalendarStage): Phase20CalendarStageGroup {
   if ((PHASE20_CALENDAR_STAGE_GROUPS.inputInterrupt as readonly string[]).includes(stage)) return "input-interrupt";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.rowGeometry as readonly string[]).includes(stage)) return "row-geometry";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.monthGeometry as readonly string[]).includes(stage)) return "month-geometry";
-  if ((PHASE20_CALENDAR_STAGE_GROUPS.pointerRetarget as readonly string[]).includes(stage)) return "pointer-retarget";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.lifecycle as readonly string[]).includes(stage)) return "lifecycle";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.reducedMotion as readonly string[]).includes(stage)) return "reduced-motion";
   return "baseline";
@@ -287,7 +306,8 @@ function hasTransition(events: readonly ObservationEvent[], trigger: string, aft
 function pointerReady(stage: Phase20CalendarStage, events: readonly ObservationEvent[]): boolean {
   const pointers = events.filter((event): event is PointerEvent => event.kind === "pointer");
   const callbacks = new Set(pointers.map(({ callback }) => callback));
-  if (!callbacks.has("onTouchesDown") || !callbacks.has("onFinalize")) return false;
+  if (!callbacks.has("onTouchesDown") || !callbacks.has("onFinalize")
+    || !events.some((event) => event.kind === "rendered-panel")) return false;
   if (["drag-cancel", "drag-vertical", "drag-diagonal"].includes(stage)) {
     return pointers.at(-1)?.phase === "finalize-cancel"
       && !pointers.some(({ callback }) => callback === "onEnd")
@@ -295,7 +315,7 @@ function pointerReady(stage: Phase20CalendarStage, events: readonly ObservationE
   }
   if (!["onBegin", "onChange", "onEnd"].every((callback) => callbacks.has(callback as PointerEvent["callback"]))) return false;
   const finalized = pointers.filter(({ phase }) => phase === "finalize-release").length;
-  if (stage === "rapid-reverse-input" && finalized < 2) return false;
+  if (stage === "rapid-reverse-input" && finalized < 1) return false;
   if (stage === "drag-retreat") {
     const changes = pointers.filter(({ callback }) => callback === "onChange");
     const release = pointers.filter(({ callback }) => callback === "onEnd").at(-1);
@@ -312,8 +332,17 @@ function rowReady(stage: Phase20CalendarStage, events: readonly ObservationEvent
   const focus = events.some((event) => event.kind === "focus");
   const settled = events.some((event) => event.kind === "callback" && event.callback === "week-settle")
     && hasTransition(events, "settle-complete", "idle");
-  if (uniqueRows(events).length < 2 || !focus || !settled || !semantics.some(({ focused_week_start }) => focused_week_start !== null)) return false;
-  if (stage !== "adjacent-week") return hasTransition(events, "expand");
+  const overlays = events.filter((event): event is RenderedOverlayEvent => event.kind === "rendered-overlay");
+  if (uniqueRows(events).length < 2 || !focus || !settled || overlays.length < 2 || !semantics.some(({ focused_week_start }) => focused_week_start !== null)) return false;
+  if (stage === "week-collapse-middle-row") {
+    const triggers = events.filter((event): event is TransitionEvent => event.kind === "transition").map(({ trigger }) => trigger);
+    return ["expand", "settle-complete", "collapse", "settle-complete"]
+      .every((trigger, index, required) => triggers.indexOf(trigger, index === 0 ? 0 : triggers.indexOf(required[index - 1]!) + 1) >= 0)
+      && overlays.some(({ phase, progress }) => phase === "expand" && progress === 1)
+      && overlays.some(({ phase, progress }) => phase === "collapse" && progress === 0);
+  }
+  if (stage !== "adjacent-week") return hasTransition(events, "expand")
+    && overlays.some(({ phase, progress }) => phase === "expand" && progress === 1);
   const triggers = events.filter((event): event is TransitionEvent => event.kind === "transition").map(({ trigger }) => trigger);
   return ["expand", "settle-complete", "select-adjacent", "settle-complete", "layout-ready", "settle-complete"]
     .every((trigger, index, required) => triggers.indexOf(trigger, index === 0 ? 0 : triggers.indexOf(required[index - 1]!) + 1) >= 0);
@@ -360,18 +389,22 @@ function ready(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup, ev
   const hasSemantic = events.some((event) => event.kind === "semantic");
   const hasMotion = events.some((event) => event.kind === "motion");
   if (!hasViewport || !hasSemantic || !hasMotion) return false;
-  if (group === "pointer" || group === "pointer-retarget") return pointerReady(stage, events);
+  if (group === "pointer") return pointerReady(stage, events);
   if (group === "input-interrupt") return pointerReady(stage, events)
     && events.filter((event) => event.kind === "input-attempt").length >= 2;
   if (group === "row-geometry") return rowReady(stage, events);
   if (group === "month-geometry") return monthReady(stage, events);
   if (group === "lifecycle") return lifecycleReady(stage, events);
   if (group === "reduced-motion") return events.some((event) => event.kind === "motion" && event.reduced_motion)
-    && uniqueRows(events).length >= 2 && hasTransition(events, "expand") && events.some((event) => event.kind === "focus");
+    && events.some((event) => event.kind === "motion" && !event.reduced_motion)
+    && uniqueRows(events).length >= 2
+    && events.filter((event) => event.kind === "transition" && event.trigger === "expand").length >= 2
+    && hasTransition(events, "collapse") && events.some((event) => event.kind === "focus")
+    && new Set(events.filter((event): event is RenderedOverlayEvent => event.kind === "rendered-overlay").map(({ reduced_motion }) => reduced_motion)).size === 2;
   const semantic = events.filter((event): event is SemanticEvent => event.kind === "semantic").at(-1);
   return semantic !== undefined && uniqueRows(events).length === semantic.week_count
     && events.some((event) => event.kind === "baseline" && (
-    stage === "dev-01-padding" ? event.measurement.kind === "adaptive-padding" : event.measurement.kind === "light-strength-title"
+    stage === "dev-01-padding" ? event.measurement.kind === "content-bounds" : event.measurement.kind === "screenshot-request"
     ));
 }
 
@@ -383,13 +416,13 @@ function stageBody(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup
   const callbacks = events.filter((event): event is CallbackEvent => event.kind === "callback");
   const focus = events.filter((event): event is FocusEvent => event.kind === "focus");
   const motion = events.filter((event): event is MotionEvent => event.kind === "motion");
-  if (group === "pointer" || group === "pointer-retarget") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
-  if (group === "input-interrupt") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), input_attempts: events.filter((event): event is InputAttemptEvent => event.kind === "input-attempt"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion: motion.at(-1) });
-  if (group === "row-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
+  if (group === "pointer") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), rendered_panel_samples: events.filter((event): event is RenderedPanelEvent => event.kind === "rendered-panel"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
+  if (group === "input-interrupt") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), rendered_panel_samples: events.filter((event): event is RenderedPanelEvent => event.kind === "rendered-panel"), input_attempts: events.filter((event): event is InputAttemptEvent => event.kind === "input-attempt"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion: motion.at(-1) });
+  if (group === "row-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), rendered_overlay_samples: events.filter((event): event is RenderedOverlayEvent => event.kind === "rendered-overlay"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
   if (group === "month-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), transition_events: transitions, semantic_samples: semantics, motion: motion.at(-1) });
   if (group === "lifecycle") return Object.freeze({ ...base, viewport_events: viewportEvents, lifecycle_events: events.filter((event): event is LifecycleEvent => event.kind === "lifecycle"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion_events: motion });
-  if (group === "reduced-motion") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion_events: motion });
-  const requiredMeasurement = stage === "dev-01-padding" ? "adaptive-padding" : "light-strength-title";
+  if (group === "reduced-motion") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), rendered_overlay_samples: events.filter((event): event is RenderedOverlayEvent => event.kind === "rendered-overlay"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion_events: motion });
+  const requiredMeasurement = stage === "dev-01-padding" ? "content-bounds" : "screenshot-request";
   return Object.freeze({
     ...base,
     viewport: viewportEvents.at(-1),
@@ -484,8 +517,15 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
       dx_dp: safeNumber(value.dxDp),
       dy_dp: safeNumber(value.dyDp),
       viewport_width_dp: safeNumber(value.viewportWidthDp),
-      translation_x_dp: safeNumber(value.translationXDp),
       intent_owner: value.intentOwner,
+    }),
+    recordRenderedPanel: (value) => append(value.callbackGeneration, {
+      kind: "rendered-panel",
+      viewport_x_dp: safeNumber(value.viewportXDp),
+      previous_x_dp: safeNumber(value.previousXDp),
+      current_x_dp: safeNumber(value.currentXDp),
+      next_x_dp: safeNumber(value.nextXDp),
+      width_dp: safeNumber(value.widthDp),
     }),
     recordInputAttempt: (value) => append(value.callbackGeneration, {
       kind: "input-attempt",
@@ -516,6 +556,17 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
       height_dp: safeNumber(value.heightDp),
       layout_generation: safeGeneration(value.layoutGeneration),
     }),
+    recordRenderedOverlay: (value) => append(value.callbackGeneration, {
+      kind: "rendered-overlay",
+      phase: value.phase,
+      progress: value.progress,
+      reduced_motion: value.reducedMotion,
+      selected_y_dp: safeNumber(value.selectedYDp),
+      following_y_dp: safeNumber(value.followingYDp),
+      selected_month_y_dp: safeNumber(value.selectedMonthYDp),
+      following_month_y_dp: safeNumber(value.followingMonthYDp),
+      viewport_height_dp: safeNumber(value.viewportHeightDp),
+    }),
     recordCallback: (value) => append(value.callbackGeneration, {
       kind: "callback",
       callback: value.callback,
@@ -535,14 +586,11 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
       reduced_motion: value.reducedMotion,
     }),
     recordBaseline: (value) => {
-      if (value.kind === "light-strength-title" && !COLOR.test(value.strengthTitleColor)) {
-        throw new Error("phase20_calendar_color_invalid");
-      }
       append(0, {
         kind: "baseline",
-        measurement: value.kind === "adaptive-padding"
-          ? Object.freeze({ kind: value.kind, safe_width_dp: safeNumber(value.safeWidthDp), horizontal_inset_dp: safeNumber(value.horizontalInsetDp), viewport_width_dp: safeNumber(value.viewportWidthDp) })
-          : Object.freeze({ kind: value.kind, color_scheme: value.colorScheme, strength_title_color: value.strengthTitleColor }),
+        measurement: value.kind === "content-bounds"
+          ? Object.freeze({ kind: "content-bounds", screen_width_dp: safeNumber(value.screenWidthDp), content_left_dp: safeNumber(value.contentLeftDp), content_width_dp: safeNumber(value.contentWidthDp), content_right_dp: safeNumber(value.contentRightDp) })
+          : Object.freeze({ kind: value.kind, color_scheme: value.colorScheme }),
       });
     },
     flush: async () => { if (terminal !== null) await terminal; },
@@ -561,10 +609,12 @@ export function clearPhase20CalendarObservationCollector(): void {
 
 export const recordPhase20CalendarViewport = (input: Parameters<Phase20CalendarObservationCollector["recordViewport"]>[0]) => activeCollector?.recordViewport(input);
 export const recordPhase20CalendarPointer = (input: Parameters<Phase20CalendarObservationCollector["recordPointer"]>[0]) => activeCollector?.recordPointer(input);
+export const recordPhase20CalendarRenderedPanel = (input: Parameters<Phase20CalendarObservationCollector["recordRenderedPanel"]>[0]) => activeCollector?.recordRenderedPanel(input);
 export const recordPhase20CalendarInputAttempt = (input: Parameters<Phase20CalendarObservationCollector["recordInputAttempt"]>[0]) => activeCollector?.recordInputAttempt(input);
 export const recordPhase20CalendarTransition = (input: Parameters<Phase20CalendarObservationCollector["recordTransition"]>[0]) => activeCollector?.recordTransition(input);
 export const recordPhase20CalendarSemantic = (input: Parameters<Phase20CalendarObservationCollector["recordSemantic"]>[0]) => activeCollector?.recordSemantic(input);
 export const recordPhase20CalendarWeekLayout = (input: Parameters<Phase20CalendarObservationCollector["recordWeekLayout"]>[0]) => activeCollector?.recordWeekLayout(input);
+export const recordPhase20CalendarRenderedOverlay = (input: Parameters<Phase20CalendarObservationCollector["recordRenderedOverlay"]>[0]) => activeCollector?.recordRenderedOverlay(input);
 export const recordPhase20CalendarCallback = (input: Parameters<Phase20CalendarObservationCollector["recordCallback"]>[0]) => activeCollector?.recordCallback(input);
 export const recordPhase20CalendarFocus = (input: Parameters<Phase20CalendarObservationCollector["recordFocus"]>[0]) => activeCollector?.recordFocus(input);
 export const recordPhase20CalendarLifecycle = (input: Parameters<Phase20CalendarObservationCollector["recordLifecycle"]>[0]) => activeCollector?.recordLifecycle(input);
