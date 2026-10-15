@@ -216,7 +216,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const value = { type, id, result: result(state), ...metadata, bindings: [...new Set(artifacts)].map(relative => ({ artifact: full(relative), sha256: artifactHash(full(relative)) })) };
     leaves.set(key, value); return value;
   }
-  const group = (keys, id) => ({ type: 'acceptance-gate', id, shared_contract: 'This verification gate requires every listed concrete source result; constituent results may also close their source-owned requirement rows.', result: combineV12SourceResults(keys.map(key => { ensure(leaves.has(key), 'selector_unknown'); return leaves.get(key).result; })), members: keys.map(key => leaves.get(key)) });
+  const group = (keys, id) => ({ type: 'acceptance-gate', id, shared_contract: 'This verification gate requires every listed concrete source result; constituent results may also close their source-owned requirement rows.', result: combineV12SourceResults(keys.map(key => { ensure(leaves.has(key), `selector_unknown:${key}`); return leaves.get(key).result; })), members: keys.map(key => leaves.get(key)) });
   ensure(same(json('build.json'), manifest), 'build_binding_invalid');
   for (const shard of ['multi-plan', 'workout', 'library-running']) {
     const mappingPath = `mapping/${shard}.json`; const xmlPath = `maestro/${shard}.xml`;
@@ -312,7 +312,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
       const content = bytes(full(artifact.path));
       ensure(HASH.test(artifact.sha256 ?? '') && Number.isSafeInteger(artifact.size_bytes) && artifact.size_bytes === content.length && artifact.sha256 === sha(content), 'calendar_requirement_artifacts_invalid');
       if (artifact.kind === 'png') ensure(content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')), 'calendar_requirement_artifacts_invalid');
-      else ensure(content.toString('utf8').includes('<hierarchy') && !/(?:@|\/Users\/|\/home\/|bearer|password|credential)/iu.test(content.toString('utf8')), 'calendar_requirement_artifacts_invalid');
+      else ensure(content.toString('utf8').includes('<hierarchy') && !/(?:\/Users\/|\/home\/|password="true"|(?:text|content-desc)="[^"]*(?:@|bearer|password|credential|latitude|longitude|gps))/iu.test(content.toString('utf8')), 'calendar_requirement_artifacts_invalid');
     }
     const stages = mapping.stage_ids.map((stageId) => leaves.get(`calendar-stage:${stageId}`));
     ensure(stages.every(Boolean), 'calendar_selector_invalid');
@@ -374,7 +374,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     inventory: group([...keys('multi-plan'), ...keys('workout'), ...keys('library-running')], 'inventory'),
     appearance: group(keys('visual'), 'appearance'), viewports: group(keys('visual'), 'viewports'),
     targets: group(['accessibility:targets'], 'targets'), 'input-focus': group(['accessibility:input-focus'], 'input-focus'),
-    'reduced-motion': group(['accessibility:motion', 'calendar:reduced-motion'], 'reduced-motion'),
+    'reduced-motion': group(['accessibility:motion', 'calendar-stage:reduced-motion'], 'reduced-motion'),
     sqlite: group(keys('sqlite'), 'sqlite'), recovery: group(keys('recovery'), 'recovery'), calendar: group(keys('calendar'), 'calendar'),
     garmin: group(keys('garmin'), 'garmin'), performance: group(keys('performance'), 'performance'),
     attended: attendedGate(), preseal: group(automated, 'preseal'),

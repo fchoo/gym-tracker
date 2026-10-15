@@ -166,7 +166,7 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "shards-only", "--ids", "multi-plan,workout,library-running"]);
   const incomplete = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
   assert.notEqual(incomplete.status, 0);
-  assert.match(incomplete.stderr, /functional_selectors_invalid/);
+  assert.match(incomplete.stderr, /calendar_origin_invalid/);
   // Fixture-only mutation: the current producer reads only the first Phase 13
   // source string. Retain the complete case set to exercise the resolver beyond
   // that known, out-of-scope producer defect.

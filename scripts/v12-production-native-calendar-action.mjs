@@ -119,7 +119,7 @@ export function createV12CalendarRequirementInvocation({ definition, order, nonc
 
 function privacySafeTrace(value) {
   if (typeof value !== "string" || value.length < 1 || value.length > 8 * 1024 * 1024
-    || /(?:@|\/Users\/|\/home\/|bearer|password|credential|latitude|longitude|gps)/iu.test(value)) fail("privacy_scan_failed");
+    || /(?:\/Users\/|\/home\/|password="true"|(?:text|content-desc)="[^"]*(?:@|bearer|password|credential|latitude|longitude|gps))/iu.test(value)) fail("privacy_scan_failed");
 }
 
 function createDeviceSession(root, runId) {

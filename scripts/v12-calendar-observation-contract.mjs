@@ -431,11 +431,17 @@ function validatePointer(stage, stageId, group, driver) {
   const final = released.at(-1) ?? changes.at(-1);
   const ratio = final === undefined ? 0 : Math.abs(final.dx_dp) / final.viewport_width_dp;
   const titlePanels = stage.transition_events.filter(({ trigger }) => trigger === "drag").map(({ after }) => after.title_panel);
+  const relevantDriverSequences = group === "input-interrupt" ? driver?.sequences.slice(0, 1) ?? [] : driver?.sequences ?? [];
+  const commandedMoves = relevantDriverSequences.flatMap(({ points }) => points.filter(({ action }) => action === "MOVE"));
+  const renderedMatchesCommands = cancelled && !changes.length
+    ? stage.rendered_panel_samples.some((sample) => Math.abs(sample.current_x_dp - sample.viewport_x_dp) <= 2)
+    : commandedMoves.every(({ dx_ratio }) => changes.some(({ dx_dp, viewport_width_dp }) => (
+      Math.abs(dx_dp / viewport_width_dp - dx_ratio) <= 0.00075
+      && stage.rendered_panel_samples.some((sample) => Math.abs((sample.current_x_dp - sample.viewport_x_dp) - dx_dp) <= 2)
+    )));
   const assertions = [
     assertion("real-callbacks", true, callbacks),
-    assertion("one-to-one-translation", changes.length === 0
-      ? stage.rendered_panel_samples.some((sample) => Math.abs(sample.current_x_dp - sample.viewport_x_dp) <= 2)
-      : changes.every(({ dx_dp }) => stage.rendered_panel_samples.some((sample) => Math.abs((sample.current_x_dp - sample.viewport_x_dp) - dx_dp) <= 2)), { rendered: stage.rendered_panel_samples, changes: changes.map(({ dx_dp }) => dx_dp) }),
+    assertion("one-to-one-translation", renderedMatchesCommands, { commandedMoves, rendered: stage.rendered_panel_samples, changes: changes.map(({ dx_dp }) => dx_dp) }),
     assertion("terminal-kind", cancelled ? stage.pointer_events.at(-1).phase === "finalize-cancel"
       : stageId === "rapid-reverse-input" ? callbacks.includes("onFinalize") : stage.pointer_events.at(-1).phase === "finalize-release", stage.pointer_events.at(-1).phase),
   ];
