@@ -23,7 +23,7 @@ export function createDomainRunner() {
   writeFileSync(runner.manifestPath, JSON.stringify(runner.build));
   const bin = path.join(runner.scratch, 'bin');
   const tool = path.join(runner.root, 'scripts/testing/v12-production-domain/controlled-domain-tool.mjs');
-  for (const name of ['adb', 'maestro']) writeFileSync(path.join(bin, name), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(tool)} ${name} "$@"\n`, { mode: 0o755 });
+  for (const name of ['adb', 'maestro', 'unzip']) writeFileSync(path.join(bin, name), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(tool)} ${name} "$@"\n`, { mode: 0o755 });
   const flow = hash(JSON.stringify(readFileSync(path.join(runner.root, 'maestro/v1.2/calendar.yaml'))));
   const sample = (timestampMs) => ({ timestampMs, widthDp: 400, dxDp: 100, dyDp: 0, intentOwner: 'horizontal', translationDp: 100, title: 'October 2026', selectedCivilDate: '2026-10-15', generation: 1, focusedWeek: '2026-10-12', rowBounds: [100, 150], callbackCount: 1, focusIdentity: 'calendar', motion: 'normal' });
   runner.updateState({
