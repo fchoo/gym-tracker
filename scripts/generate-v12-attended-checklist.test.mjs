@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -39,7 +39,8 @@ test("attended validation rejects missing, tampered, duplicate, stale, and unsaf
   const { root, rows } = fixture(t);
   assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 1 ? { ...row, png: { ...row.png, path: `${row.png.path}.missing` } } : row)), { identity, root }), /PNG|missing|path/u);
   assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 1 ? { ...row, png: { ...row.png, sha256: digest("f") } } : row)), { identity, root }), /PNG|digest|hash/u);
-  assert.throws(() => validateV12AttendedObservations(observations(rows.map((row) => ({ ...row, png: rows[0].png }))), { identity, root }), /unique|duplicate/u);
+  writeFileSync(path.join(root, rows[1].png.path), readFileSync(path.join(root, rows[0].png.path)));
+  assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 1 ? { ...row, png: { ...row.png, sha256: rows[0].png.sha256 } } : row)), { identity, root }), /unique|duplicate/u);
   assert.throws(() => validateV12AttendedObservations(observations(rows), { identity: { ...identity, config_sha256: digest("f") }, root }), /identity/u);
   assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 0 ? { ...row, png: { ...row.png, path: "../private.png" } } : row)), { identity, root }), /path|unsafe/u);
 });
