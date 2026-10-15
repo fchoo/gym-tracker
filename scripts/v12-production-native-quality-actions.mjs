@@ -167,13 +167,14 @@ function instrument(serial, action, identity, nonce) {
 }
 
 function receipts(value, identity) {
-  exact(value, ["source_tree_sha256", "fixture_sha256", "source_before_sha256", "source_after_sha256", "state_sha256", "configuration_sha256"]);
+  exact(value, ["source_tree_sha256", "fixture_sha256", "source_before_sha256", "source_after_sha256", "state_sha256", "configuration_sha256", "command_receipt_sha256"]);
   Object.values(value).forEach(digest);
   if (value.source_tree_sha256 !== identity.source_tree_sha256 || value.fixture_sha256 !== identity.fixture_sha256) fail("receipt_identity_mismatch");
 }
 function validateAccessibility(observations, identity) {
   if (!Array.isArray(observations) || observations.length !== ROOTS.length * 2) fail("accessibility_coverage_invalid");
   const covered = new Set();
+  const rootReadiness = new Map();
   for (const item of observations) {
     exact(item, ["root", "motion_mode", "fixture_id", "native_execution", "configuration", "targets", "interactions", "modal", "motion", "receipts"]);
     if (!ROOTS.includes(item.root) || !["normal", "reduced"].includes(item.motion_mode)
@@ -181,6 +182,7 @@ function validateAccessibility(observations, identity) {
     const key = `${item.root}:${item.motion_mode}`;
     if (covered.has(key)) fail("accessibility_coverage_invalid"); covered.add(key);
     receipts(item.receipts, identity);
+    if (item.motion_mode === "normal") rootReadiness.set(item.root, item.receipts.state_sha256);
     const c = item.configuration;
     exact(c, ["font_scale", "density", "content_bounds", "insets", "ime_bounds"]);
     number(c.density, 0.1); exact(c.content_bounds, ["width", "height"]);
@@ -194,6 +196,7 @@ function validateAccessibility(observations, identity) {
       exact(target.bounds_dp, ["left", "top", "width", "height"]);
       Object.values(target.bounds_dp).forEach((v) => number(v));
       const b = target.bounds_dp;
+      if (target.non_color_cue !== true || target.overlap !== false) fail("geometry_invalid");
       if (b.left + b.width > c.content_bounds.width || b.top + b.height > c.content_bounds.height) fail("geometry_invalid");
       for (const other of item.targets) {
         if (other === target) continue;
@@ -207,12 +210,14 @@ function validateAccessibility(observations, identity) {
       digest(entry.image_hash);
       if (![entry.focus_before, entry.focus_after].every((id) => item.targets.some((t) => t.id === id))) fail("focus_invalid");
     }
+    if (!item.interactions.some((entry) => entry.focus_before !== entry.focus_after)) fail("focus_invalid");
     exact(item.modal, ["focus_ring_dp", "focus_offset_dp", "back", "escape", "restores_invoker"]);
     exact(item.motion, ["normal", "reduced"]);
     for (const motion of Object.values(item.motion)) {
-      exact(motion, ["destination", "callbacks", "source_facts"]); label(motion.destination); integer(motion.callbacks); digest(motion.source_facts);
+      exact(motion, ["destination", "callbacks", "source_facts"]); label(motion.destination); integer(motion.callbacks, 1); digest(motion.source_facts);
     }
   }
+  if (rootReadiness.size !== ROOTS.length || new Set(rootReadiness.values()).size !== ROOTS.length) fail("shared_root_readiness");
   validateV12AccessibilityShard({ schema_version: 1, observations });
   for (const root of ROOTS) {
     const normal = observations.find((entry) => entry.root === root && entry.motion_mode === "normal");

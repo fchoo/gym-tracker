@@ -19,7 +19,7 @@ const roots = ["workout", "calendar", "library", "progress"];
 const values = (length) => Array.from({ length }, (_, i) => 1 + i / 1000);
 function receipts(identity) {
   return { source_tree_sha256: identity.source_tree_sha256, fixture_sha256: identity.fixture_sha256,
-    source_before_sha256: hash("before"), source_after_sha256: hash("after"), state_sha256: hash("state"), configuration_sha256: hash("configuration") };
+    source_before_sha256: hash("before"), source_after_sha256: hash("after"), state_sha256: hash("state"), configuration_sha256: hash("configuration"), command_receipt_sha256: hash("command") };
 }
 function accessibility(identity) {
   return roots.flatMap((root) => ["normal", "reduced"].map((motion_mode) => ({
@@ -32,7 +32,7 @@ function accessibility(identity) {
     interactions: ["touch", "software-keyboard", "hardware-keyboard", "dpad"].map((input) => ({ input, focus_before: "primary", action: "activate", focus_after: "close", command_count: 1, image_hash: hash(input) })),
     modal: { focus_ring_dp: 3, focus_offset_dp: 3, back: "closes-modal", escape: "closes-modal", restores_invoker: true },
     motion: { normal: { destination: "done", callbacks: 1, source_facts: hash("source") }, reduced: { destination: "done", callbacks: 1, source_facts: hash("source") } },
-    receipts: receipts(identity),
+    receipts: { ...receipts(identity), state_sha256: hash(`state:${root}`) },
   })));
 }
 function performance(identity) {
@@ -230,13 +230,23 @@ for (const [name, mutate] of [
   ["claimed TalkBack", (o) => { o.talkback = true; }],
   ["source mismatch", (o) => { o.receipts.source_tree_sha256 = "f".repeat(64); }],
   ["reduced motion changes source", (o) => { o.motion.reduced.source_facts = "f".repeat(64); }],
+  ["static overlap claim", (o) => { o.targets[0].overlap = true; }],
+  ["static modal state", (o) => { o.modal.focus_ring_dp = 0; }],
+  ["static focus transition", (o) => { o.interactions.forEach((entry) => { entry.focus_after = entry.focus_before; }); }],
+  ["static motion callback", (o) => { o.motion.normal.callbacks = 0; }],
+  ["missing command receipt", (o) => { delete o.receipts.command_receipt_sha256; }],
 ]) test(`accessibility rejects ${name}`, (t) => {
   const runner = fixture(t, "accessibility"); mutate(runner.measured.observations[0]);
-  rejected(runner.invoke(), "(?:schema_invalid|geometry_overlap|geometry_invalid|focus_invalid|ime_invalid|receipt_identity_mismatch|observation_invalid)"); released(runner);
+  rejected(runner.invoke(), "(?:schema_invalid|geometry_overlap|geometry_invalid|focus_invalid|ime_invalid|measurement_invalid|receipt_identity_mismatch|observation_invalid)"); released(runner);
 });
 test("accessibility requires all four roots in both motion modes", (t) => {
   const runner = fixture(t, "accessibility"); runner.measured.observations.pop();
   rejected(runner.invoke(), "accessibility_coverage_invalid"); released(runner);
+});
+test("accessibility rejects shared root readiness hashes", (t) => {
+  const runner = fixture(t, "accessibility");
+  runner.measured.observations.forEach((observation) => { observation.receipts.state_sha256 = hash("shared"); });
+  rejected(runner.invoke(), "shared_root_readiness"); released(runner);
 });
 test("accessibility compares source outcomes across the actual normal and reduced observations", (t) => {
   const runner = fixture(t, "accessibility");
@@ -249,6 +259,11 @@ test("warm launch maximum is enforced even when raw spans are valid", (t) => {
   runner.measured.performance.samples.warm_launch_to_interactive_ms[0] = 1001;
   runner.measured.performance.samples.native_receipts.timings.warm_launch_to_interactive_ms.spans[0].end_ms = 1001;
   rejected(runner.invoke(), "launch_budget_exceeded"); released(runner);
+});
+test("timing endpoints cannot be relabelled after collection", (t) => {
+  const runner = fixture(t);
+  runner.measured.performance.samples.native_receipts.timings.search_after_debounce_ms.endpoint = "idle-loop";
+  rejected(runner.invoke(), "timing_receipt_invalid"); released(runner);
 });
 test("borrowed lease stays owned by the caller after verified restoration", (t) => {
   const runner = fixture(t, "accessibility");
