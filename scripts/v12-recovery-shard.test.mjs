@@ -10,7 +10,32 @@ import {
 const digest = 'a'.repeat(64);
 const ids = ['legacy-playback', 'foreground-reconciliation', 'queued-callback', 'relaunch', 'restore', 'merge', 'zero-cue', 'between-set-rest-pointer'];
 const cuts = ['pre-transaction', 'in-transaction', 'post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'retry', 'offline', 'recovery'];
-const valid = () => ({ schema_version: 1, producer: 'v12-recovery-shard', identity: { source_digest: digest, receipt_digest: digest, pointer_digest: digest, effect_digest: digest }, cases: ids.map((id, order) => ({ id, order, status: 'PASS', cuts: cuts.map((cut) => ({ cut, status: 'PASS', digest })) })) });
+const operationFor = (id) => id === 'restore' ? 'secure-restore' : id === 'merge' ? 'secure-merge' : id === 'zero-cue' ? 'garmin-import' : id === 'relaunch' ? 'garmin-match' : 'workout-complete-set';
+const cutObservation = (id, cut, index) => ({
+  cut,
+  operation: operationFor(id),
+  status: 'PASS',
+  commit_state: ['pre-transaction', 'in-transaction'].includes(cut) ? 'uncommitted-before-retry' : 'committed-before-retry',
+  retry_code: ['pre-transaction', 'in-transaction'].includes(cut) ? 'committed' : 'already-completed',
+  after_reopen_receipt_count: ['pre-transaction', 'in-transaction'].includes(cut) ? 0 : 1,
+  after_retry_receipt_count: 1,
+  receipt_digest: index.toString(16).padStart(64, '0'),
+  source_digest: 'b'.repeat(64), effect_digest: 'c'.repeat(64), pointer_digest: 'd'.repeat(64),
+  rest_digest: 'e'.repeat(64), history_digest: 'f'.repeat(64), timing_digest: '9'.repeat(64),
+});
+const valid = () => ({
+  schema_version: 1,
+  producer: 'v12-recovery-shard',
+  identity: {
+    source_digest: digest, receipt_digest: digest, pointer_digest: digest,
+    effect_digest: digest, rest_digest: digest, history_digest: digest,
+    timing_digest: digest,
+  },
+  cases: ids.map((id, order) => ({
+    id, order, status: 'PASS',
+    cuts: cuts.map((cut, cutOrder) => cutObservation(id, cut, order * cuts.length + cutOrder + 1)),
+  })),
+});
 
 test('accepts only complete ordered lifecycle observations without a verdict', () => {
   const value = validateV12RecoveryShard(valid());
@@ -22,7 +47,7 @@ test('rejects stale callbacks, duplicate effects, missing cuts, cross-session ow
   for (const mutate of [
     (input) => { input.cases[0].cuts.pop(); },
     (input) => { input.cases[1].id = input.cases[0].id; },
-    (input) => { input.cases[2].cuts[0].digest = 'b'.repeat(64); },
+    (input) => { input.cases[2].cuts[0].receipt_digest = input.cases[0].cuts[0].receipt_digest; },
     (input) => { input.cases[3].owner_id = 'private'; },
   ]) { const input = valid(); mutate(input); assert.throws(() => validateV12RecoveryShard(input), /v12_recovery_/u); }
 });

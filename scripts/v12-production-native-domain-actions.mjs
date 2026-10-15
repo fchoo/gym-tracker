@@ -14,6 +14,18 @@ const PROGRESS = 'GYM_TRACKER_V12_DOMAIN_PROGRESS:';
 const quote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
 const SETTINGS = { font_scale: 'system', accelerometer_rotation: 'system', user_rotation: 'system', window_animation_scale: 'global', transition_animation_scale: 'global', animator_duration_scale: 'global', airplane_mode_on: 'global' };
 const ATTESTATION = ['schema_version', 'action', 'launcher_source_sha256', 'run_id', 'build_profile', 'suite', 'source_tree_sha256', 'apk_sha256', 'installed_apk_sha256', 'apk_signature_sha256', 'device_identity_sha256', 'package'];
+const RECOVERY_SNAPSHOT_KEYS = ['source_count', 'receipt_count', 'effect_count', 'pointer_count', 'rest_count', 'history_count', 'timing_count', 'source_sha256', 'receipt_sha256', 'effect_sha256', 'pointer_sha256', 'rest_sha256', 'history_sha256', 'timing_sha256'];
+const RECOVERY_UNCOMMITTED_CUTS = new Set(['pre-transaction', 'in-transaction']);
+const RECOVERY_OPERATIONS = Object.freeze({
+  'legacy-playback': 'workout-complete-set',
+  'foreground-reconciliation': 'workout-complete-set',
+  'queued-callback': 'workout-complete-set',
+  relaunch: 'garmin-match',
+  restore: 'secure-restore',
+  merge: 'secure-merge',
+  'zero-cue': 'garmin-import',
+  'between-set-rest-pointer': 'workout-complete-set',
+});
 
 function validate(action, payload, a, root) {
   if (!exact(a, ATTESTATION) || a.schema_version !== 1 || a.action !== action || a.build_profile !== 'development-test'
@@ -166,6 +178,59 @@ async function calendar(io, root, payload) {
   return { flow_sha256: flowSha, flow_revision: payload.flow_revision, stages, junit_cases: junit };
 }
 
+function recoverySnapshot(value) {
+  if (!exact(value, RECOVERY_SNAPSHOT_KEYS)) fail('recovery_receipt_invalid');
+  for (const key of RECOVERY_SNAPSHOT_KEYS.filter((key) => key.endsWith('_count'))) {
+    if (!Number.isSafeInteger(value[key]) || value[key] < 0) fail('recovery_receipt_invalid');
+  }
+  for (const key of RECOVERY_SNAPSHOT_KEYS.filter((key) => key.endsWith('_sha256'))) {
+    if (!HASH.test(value[key] ?? '')) fail('recovery_receipt_invalid');
+  }
+  return value;
+}
+
+function recoveryRetryCode(operation, committed) {
+  if (operation === 'workout-complete-set') return committed ? 'already-completed' : 'committed';
+  if (operation === 'garmin-import') return committed ? 'unchanged' : 'imported';
+  if (operation === 'garmin-match') return committed ? 'replayed' : 'matched';
+  if (operation === 'secure-restore') return 'rebuild-pending';
+  if (operation === 'secure-merge') return committed ? 'ready' : 'rebuild-pending';
+  fail('recovery_receipt_invalid');
+}
+
+function deriveRecoveryObservation(value, nonce, caseId, cutId) {
+  if (!exact(value, ['schema_version', 'nonce', 'kind', 'case_id', 'cut_id', 'operation_id', 'after_reopen', 'retry_code', 'after_retry'])
+    || value.schema_version !== 1 || value.nonce !== nonce || value.kind !== 'recovery'
+    || value.case_id !== caseId || value.cut_id !== cutId
+    || value.operation_id !== RECOVERY_OPERATIONS[caseId]) fail('recovery_receipt_invalid');
+  const afterReopen = recoverySnapshot(value.after_reopen);
+  const afterRetry = recoverySnapshot(value.after_retry);
+  const committed = !RECOVERY_UNCOMMITTED_CUTS.has(cutId);
+  const firstCount = committed ? 1 : 0;
+  if (afterReopen.source_count !== firstCount || afterReopen.receipt_count !== firstCount
+    || afterRetry.source_count !== 1 || afterRetry.receipt_count !== 1
+    || value.retry_code !== recoveryRetryCode(value.operation_id, committed)) fail('recovery_receipt_invalid');
+  if (value.operation_id === 'workout-complete-set'
+    && (afterRetry.effect_count !== 1 || afterRetry.pointer_count !== 1 || afterRetry.rest_count !== 1)) fail('recovery_receipt_invalid');
+  if (['garmin-import', 'garmin-match'].includes(value.operation_id)
+    && (afterRetry.effect_count !== 0 || afterRetry.pointer_count !== 0 || afterRetry.rest_count !== 0)) fail('recovery_receipt_invalid');
+  if (['secure-restore', 'secure-merge'].includes(value.operation_id)
+    && (afterRetry.pointer_count !== 1 || afterRetry.rest_count !== 0)) fail('recovery_receipt_invalid');
+  if (['legacy-playback', 'zero-cue'].includes(caseId) && afterRetry.timing_count !== 0) fail('recovery_receipt_invalid');
+  if (committed) {
+    if (JSON.stringify(afterReopen) !== JSON.stringify(afterRetry)) fail('recovery_receipt_invalid');
+  } else if (afterReopen.source_sha256 === afterRetry.source_sha256
+    || afterReopen.receipt_sha256 === afterRetry.receipt_sha256) fail('recovery_receipt_invalid');
+  return Object.freeze({
+    operation: value.operation_id,
+    commitState: committed ? 'committed-before-retry' : 'uncommitted-before-retry',
+    retryCode: value.retry_code,
+    receiptSha256: hash(JSON.stringify(value)),
+    afterReopen,
+    afterRetry,
+  });
+}
+
 async function recovery(io) {
   io.version(); const entries = [];
   for (const id of V12_RECOVERY_CASE_IDS) {
@@ -173,10 +238,18 @@ async function recovery(io) {
       io.shell('cmd', 'connectivity', 'airplane-mode', cut === 'offline' ? 'enable' : 'disable');
       const status = io.maestro('maestro/v1.2/recovery.yaml', { V12_RECOVERY_CASE: id, V12_RECOVERY_STAGE: cut }, entries.length);
       const value = await io.marker('recovery');
-      if (!exact(value, ['schema_version', 'nonce', 'kind', 'case_id', 'cut_id', 'receipt_sha256', 'status'])
-        || value.case_id !== id || value.cut_id !== cut || !HASH.test(value.receipt_sha256 ?? '') || !['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED'].includes(value.status)) fail('recovery_receipt_invalid');
-      const state = worse(status, value.status);
-      entries.push(`<testcase classname="v12.recovery" name="${id}:${cut}"><properties><property name="case_id" value="${id}"/><property name="cut_id" value="${cut}"/><property name="receipt_sha256" value="${value.receipt_sha256}"/><property name="state" value="${state}"/></properties>${state === 'FAIL' ? '<failure message="observed failure"/>' : state === 'PASS' ? '' : '<skipped message="observation incomplete"/>'}</testcase>`);
+      const observed = deriveRecoveryObservation(value, io.nonce, id, cut);
+      const state = worse(status, 'PASS');
+      entries.push(`<testcase classname="v12.recovery" name="${id}:${cut}"><properties>`
+        + `<property name="case_id" value="${id}"/><property name="cut_id" value="${cut}"/>`
+        + `<property name="operation_id" value="${observed.operation}"/><property name="commit_state" value="${observed.commitState}"/>`
+        + `<property name="retry_code" value="${observed.retryCode}"/><property name="receipt_sha256" value="${observed.receiptSha256}"/>`
+        + `<property name="source_sha256" value="${observed.afterRetry.source_sha256}"/><property name="effect_sha256" value="${observed.afterRetry.effect_sha256}"/>`
+        + `<property name="pointer_sha256" value="${observed.afterRetry.pointer_sha256}"/><property name="rest_sha256" value="${observed.afterRetry.rest_sha256}"/>`
+        + `<property name="history_sha256" value="${observed.afterRetry.history_sha256}"/><property name="after_reopen_receipt_count" value="${observed.afterReopen.receipt_count}"/>`
+        + `<property name="timing_sha256" value="${observed.afterRetry.timing_sha256}"/>`
+        + `<property name="after_retry_receipt_count" value="${observed.afterRetry.receipt_count}"/><property name="state" value="${state}"/></properties>`
+        + `${state === 'FAIL' ? '<failure message="observed failure"/>' : state === 'PASS' ? '' : '<skipped message="observation incomplete"/>'}</testcase>`);
     }
   }
   // Native receipts annotate retained Maestro outcomes. Private diagnostic text

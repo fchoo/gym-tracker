@@ -49,7 +49,40 @@ if (tool === 'adb' && args[2] === 'logcat') {
   const nonce = state.staleMarker ? 'stale' : state.nonce;
   let value;
   if (state.stage) value = { kind: 'calendar', flow_sha256: state.wrongFlow ? '0'.repeat(64) : state.flow, flow_revision: 'calendar-flow-r35', stage: state.calendar.find((entry) => entry.id === state.stage) };
-  else if (state.cut) value = { kind: 'recovery', case_id: state.caseId, cut_id: state.missingCut ? 'unknown' : state.cut, receipt_sha256: hash(`${state.caseId}:${state.cut}`), status: 'PASS' };
+  else if (state.cut) {
+    const uncommitted = ['pre-transaction', 'in-transaction'].includes(state.cut);
+    const operation = state.caseId === 'restore' ? 'secure-restore'
+      : state.caseId === 'merge' ? 'secure-merge'
+        : state.caseId === 'zero-cue' ? 'garmin-import'
+          : state.caseId === 'relaunch' ? 'garmin-match' : 'workout-complete-set';
+    const retryCode = operation === 'workout-complete-set' ? (uncommitted ? 'committed' : 'already-completed')
+      : operation === 'garmin-import' ? (uncommitted ? 'imported' : 'unchanged')
+        : operation === 'garmin-match' ? (uncommitted ? 'matched' : 'replayed')
+          : operation === 'secure-merge' ? (uncommitted ? 'rebuild-pending' : 'ready') : 'rebuild-pending';
+    const snapshot = (committed, phase) => ({
+      source_count: committed ? 1 : 0, receipt_count: committed ? 1 : 0,
+      effect_count: committed && operation === 'workout-complete-set' ? 1 : 0,
+      pointer_count: committed && ['workout-complete-set', 'secure-restore', 'secure-merge'].includes(operation) ? 1 : 0,
+      rest_count: committed && operation === 'workout-complete-set' ? 1 : 0,
+      history_count: 0, timing_count: 0,
+      source_sha256: hash(`${state.caseId}:${state.cut}:${phase}:source:${committed}`),
+      receipt_sha256: hash(`${state.caseId}:${state.cut}:${phase}:receipt:${committed}`),
+      effect_sha256: hash(`${state.caseId}:${state.cut}:${phase}:effect:${committed}`),
+      pointer_sha256: hash(`${state.caseId}:${state.cut}:${phase}:pointer:${committed}`),
+      rest_sha256: hash(`${state.caseId}:${state.cut}:${phase}:rest:${committed}`),
+      history_sha256: hash('[]'),
+      timing_sha256: hash('[]'),
+    });
+    const afterRetry = snapshot(true, uncommitted ? 'retry' : 'committed');
+    value = {
+      kind: 'recovery', case_id: state.caseId,
+      cut_id: state.missingCut ? 'unknown' : state.cut,
+      operation_id: operation,
+      after_reopen: uncommitted ? snapshot(false, 'reopen') : afterRetry,
+      retry_code: retryCode,
+      after_retry: afterRetry,
+    };
+  }
   else value = state.authRequired ? { kind: 'error', code: 'auth_required' } : { kind: 'garmin', ...state.garmin };
   if (state.noReceipt && value.stage) delete value.stage.receipt;
   if (value.stage?.receipt) { delete value.stage.receipt.screenshot_sha256; delete value.stage.receipt.trace_sha256; }
