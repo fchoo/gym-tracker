@@ -336,31 +336,23 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const expected = V12_BROWSER_WALK_STATE_IDS.flatMap(id => V12_CONFIG_IDS.map(config => `${id}:${config}`));
     exactIds(index.results?.map(x => `${x.id}:${x.configuration_id}`), expected, 'visual_selectors_invalid');
     exactIds(captures.records?.map(x => `${x.state_id}:${x.configuration_id}`), expected, 'visual_capture_selectors_invalid');
-    const blackBoxVisualDigest = sha(Buffer.concat([bytes(full('publication/visual.json')), Buffer.from('\n'), bytes(full('publication/comparison.json'))]));
-    const trustBlackBoxVisual = process.env.NODE_ENV === 'test' && process.env.V12_PHASE20_BLACKBOX === '1'
-      && process.env.V12_NATIVE_ADAPTER_TEST_MODE === 'phase20-native-adapter-subprocess'
-      && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === '1'
-      && process.env.V12_BLACKBOX_TRUSTED_VISUAL_PUBLICATION_SHA256 === blackBoxVisualDigest;
     index.results.forEach((comparison, index) => {
       const capture = captures.records[index];
       ensure(capture.schema_version === 3 && capture.producer === 'v12-visual-capture/v3' && capture.run_id === manifest.run_id && capture.native_execution === 'EXECUTED' && capture.settings?.restored === true && capture.settings.privacy === 'synthetic-only' && capture.fixture_id === 'v12-synthetic-fixtures-r18'
         && capture.native_png.path === full(`screenshots/${comparison.id}/${comparison.configuration_id}/native.png`)
         && same(comparison.artifacts?.native, capture.native_png) && comparison.capture_record_path === full('screenshots/index.json'), 'visual_capture_invalid');
       const captureReceipt = capture.settings.state_receipt; const observedReceipt = comparison.state_receipt;
-      for (const receipt of [captureReceipt, comparison.capture_state_receipt, observedReceipt]) ensure(receipt?.schema_version === 2
+      for (const receipt of [captureReceipt, comparison.capture_state_receipt, observedReceipt]) ensure(receipt?.schema_version === 3
         && receipt.run_id === manifest.run_id && receipt.state_id === comparison.id && receipt.configuration_id === comparison.configuration_id
         && receipt.source_tree_sha256 === manifest.source.tree_sha256 && receipt.apk_sha256 === manifest.build.apk.sha256
         && receipt.device_identity_sha256 === manifest.device.identity_sha256 && /^[a-f0-9]{32}$/u.test(receipt.nonce ?? ''), 'visual_state_receipt_invalid');
       ensure(same(captureReceipt, comparison.capture_state_receipt) && observedReceipt.nonce !== captureReceipt.nonce, 'visual_state_receipt_invalid');
       const observation = comparison.comparison_mode === 'approved_source'
         ? comparison.observation?.inline
-        : trustBlackBoxVisual ? { state_id: comparison.id, configuration_id: comparison.configuration_id, capture_nonce: captureReceipt.nonce, observation_nonce: observedReceipt.nonce }
-          : JSON.parse(descriptor(comparison.observation));
+        : JSON.parse(descriptor(comparison.observation));
       ensure(observation?.state_id === comparison.id && observation.configuration_id === comparison.configuration_id
         && observation.capture_nonce === captureReceipt.nonce && observation.observation_nonce === observedReceipt.nonce, 'visual_configuration_invalid');
-      if (!trustBlackBoxVisual) {
-        try { verifyV12ComparisonRecord({ runId: manifest.run_id, root, result: comparison, trustPublishedNative: true }); } catch { fail('visual_comparison_invalid'); }
-      }
+      try { verifyV12ComparisonRecord({ runId: manifest.run_id, root, result: comparison, trustPublishedNative: true }); } catch { fail('visual_comparison_invalid'); }
       const state = comparison.classification;
       ensure(RESULTS.includes(state) && comparison.counts_as_pass === (state === 'PASS'), 'visual_classification_invalid');
       // Both indexes bind the recursively validated PNG/observation descriptors.

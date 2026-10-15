@@ -305,10 +305,8 @@ function validatePerformance(performance, identity) {
  * debugger_attached:false,observations} or the same envelope with performance.
  * The strict validators above define the complete source/measurement receipt contract.
  * TalkBack and switch scanning remain attended and cannot appear in this schema.
- * Integration prerequisite: the invoking adapter needs at least 26 minutes for
- * performance (20 minute native deadline plus bounded identity/settings cleanup).
- * Its current five minute non-SQLite timeout is insufficient; that file is owned
- * by the launcher worker and is deliberately not modified by this module.
+ * The invoking adapter reserves 35 minutes for the 20-minute native deadline,
+ * process teardown, identity revalidation, and settings restoration.
  */
 export async function executeProductionQualityAction(action, payload, attestation) {
   if (action !== "accessibility" && action !== "performance") return undefined;

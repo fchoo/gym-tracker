@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -150,24 +149,10 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
     }
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
-  const executeNative = dependencies.executeNative ?? (async (ephemeralDevice) => {
-    if (process.env.V12_NATIVE_ADAPTER_COMMAND) {
-      return createV12NativeAdapter({ root }).executeSqlite({ run_id: runId });
-    }
-    const command = ['scripts/run-native-sqlite-contracts.mjs', '--suite', 'v1.2-acceptance', '--manifest', 'artifacts/native/v1.2-acceptance/build.json'];
-    if (ephemeralDevice !== undefined) command.push('--device', ephemeralDevice);
-    try { (dependencies.execFileSync ?? execFileSync)(process.execPath, command, { cwd: root, stdio: 'pipe', encoding: 'utf8' }); }
-    catch (error) {
-      const boundedOutput = [error?.stdout, error?.stderr]
-        .filter((value) => typeof value === 'string' || Buffer.isBuffer(value))
-        .map((value) => Buffer.isBuffer(value) ? value.toString('utf8') : value)
-        .join('');
-      const code = /"failure_code":"(marker_timeout|route_error|malformed_result|native_runner_failed)"/u.exec(boundedOutput)?.[1]
-        ?? 'native_runner_failed';
-      throw new Error(`v12_sqlite_native_${code}`);
-    }
-    return readJson(path.join(root, 'artifacts/native/v1.2-acceptance/v1.2-acceptance.json'));
-  });
+  const executeNative = dependencies.executeNative ?? (async (requestedDevice) => (
+    createV12NativeAdapter({ root, environment: requestedDevice === undefined
+      ? process.env : { ...process.env, V12_DEVICE_SERIAL: requestedDevice } }).executeSqlite({ run_id: runId })
+  ));
   const ephemeralDevice = device ?? dependencies.device ?? process.env.ANDROID_SERIAL;
   const writeObservation = dependencies.writeObservation ?? (async (name, value) => {
     const file = path.join(root, outputDirectory, name);
@@ -218,12 +203,15 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  const args = process.argv.slice(2); const runId = args[1]; const requestedDevice = args[3] === '--device' ? args[4] : undefined;
+  const writes = []; const adapter = createV12NativeAdapter({ environment: requestedDevice === undefined
+    ? process.env : { ...process.env, V12_DEVICE_SERIAL: requestedDevice } });
   executeV12SqliteShardCli(args, {
+    executeNative: async () => adapter.executeSqlite({ run_id: runId }),
     writeObservation: async (name, value) => writes.push([`sqlite/${name}`, value]),
     writeFailureReceipt: async () => {},
   }).then((result) => {
-    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'sqlite', produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'sqlite', executionOrigin: adapter.executionOrigin, produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? '')) { try { recordV12AtomicFailure({ runId, shard: 'sqlite', error }); } catch { /* first receipt wins */ } }

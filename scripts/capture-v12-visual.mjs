@@ -52,20 +52,46 @@ function visualState(root, stateId) {
 
 function validateStateReceipt(root, runId, item, measured, pngSha256) {
   const state = visualState(root, item.state_id); const receipt = measured.settings.state_receipt; const observation = measured.settings.observation;
-  const sourceMaterial = { state_id: item.state_id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
-  if (!receipt || receipt.schema_version !== 2 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "")
+  const sourceReceipt = receipt?.source_receipt;
+  const sourceMaterial = { state_id: item.state_id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions,
+    production_instance_id: sourceReceipt?.production_instance_id, mount_id: sourceReceipt?.mount_id,
+    scroll_offsets: sourceReceipt?.scroll_offsets, timer: sourceReceipt?.timer };
+  if (!receipt || receipt.schema_version !== 3 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "")
     || receipt.run_id !== runId || receipt.state_id !== item.state_id || receipt.configuration_id !== item.configuration_id
     || receipt.fixture_id !== item.fixture_id || receipt.png_sha256 !== pngSha256
     || ![receipt.source_tree_sha256, receipt.apk_sha256, receipt.device_identity_sha256].every((value) => SHA256.test(value ?? ""))
     || receipt.observation_sha256 !== hash(JSON.stringify(observation)) || receipt.readiness_status !== state.readiness.status
     || observation?.state_id !== item.state_id || observation?.configuration_id !== item.configuration_id || observation?.readiness?.status !== state.readiness.status
-    || receipt.source_receipt?.schema_version !== 1 || receipt.source_receipt.nonce !== receipt.nonce
-    || receipt.source_receipt.state_id !== item.state_id || receipt.source_receipt.fixture_variant !== state.fixture_variant
-    || JSON.stringify(receipt.source_receipt.assertions) !== JSON.stringify(sourceMaterial.assertions)
-    || receipt.source_receipt.digest !== hash(JSON.stringify(sourceMaterial))) fail("state_receipt_invalid");
+    || !sourceReceipt || typeof sourceReceipt !== "object" || Array.isArray(sourceReceipt) || sourceReceipt.schema_version !== 2
+    || Object.keys(sourceReceipt).length !== 10
+    || ["schema_version", "nonce", "state_id", "fixture_variant", "assertions", "production_instance_id", "mount_id", "scroll_offsets", "timer", "digest"].some((key) => !Object.hasOwn(sourceReceipt, key))
+    || sourceReceipt.nonce !== receipt.nonce
+    || sourceReceipt.state_id !== item.state_id || sourceReceipt.fixture_variant !== state.fixture_variant
+    || JSON.stringify(sourceReceipt.assertions) !== JSON.stringify(sourceMaterial.assertions)
+    || !/^phase20-production-instance-\d+$/u.test(sourceReceipt.production_instance_id ?? "")
+    || !/^phase20-production-mount-\d+$/u.test(sourceReceipt.mount_id ?? "")
+    || !Array.isArray(sourceReceipt.scroll_offsets) || sourceReceipt.scroll_offsets.length === 0
+    || sourceReceipt.scroll_offsets.some((entry) => !entry || Object.keys(entry).length !== 3 || !["native_id", "x", "y"].every((key) => Object.hasOwn(entry, key))
+      || typeof entry.native_id !== "string" || !entry.native_id || !Number.isFinite(entry.x) || entry.x < 0 || !Number.isFinite(entry.y) || entry.y < 0)
+    || new Set(sourceReceipt.scroll_offsets.map(({ native_id: nativeId }) => nativeId)).size !== sourceReceipt.scroll_offsets.length
+    || sourceReceipt.timer !== null && (typeof sourceReceipt.timer !== "object" || Array.isArray(sourceReceipt.timer)
+      || Object.keys(sourceReceipt.timer).length !== 4 || !["state", "revision", "remaining_ms", "ends_at_ms"].every((key) => Object.hasOwn(sourceReceipt.timer, key))
+      || !["idle", "running", "paused", "expired"].includes(sourceReceipt.timer.state) || !Number.isSafeInteger(sourceReceipt.timer.revision) || sourceReceipt.timer.revision < 0
+      || sourceReceipt.timer.remaining_ms !== null && (!Number.isFinite(sourceReceipt.timer.remaining_ms) || sourceReceipt.timer.remaining_ms < 0)
+      || sourceReceipt.timer.ends_at_ms !== null && (!Number.isFinite(sourceReceipt.timer.ends_at_ms) || sourceReceipt.timer.ends_at_ms < 0)
+      || sourceReceipt.timer.state === "running" && (sourceReceipt.timer.remaining_ms !== null || sourceReceipt.timer.ends_at_ms === null)
+      || sourceReceipt.timer.state === "paused" && (sourceReceipt.timer.remaining_ms === null || sourceReceipt.timer.ends_at_ms !== null)
+      || ["idle", "expired"].includes(sourceReceipt.timer.state) && (sourceReceipt.timer.remaining_ms !== null || sourceReceipt.timer.ends_at_ms !== null))
+    || sourceReceipt.digest !== hash(JSON.stringify(sourceMaterial))) fail("state_receipt_invalid");
   if (item.configuration_id.startsWith("AP-SD-") && (!receipt.system_transition || receipt.system_transition.mounted_nonce !== receipt.nonce
     || receipt.system_transition.from !== "light" || receipt.system_transition.to !== "dark"
-    || JSON.stringify(receipt.system_transition.before) !== JSON.stringify(receipt.system_transition.after))) fail("system_transition_invalid");
+    || !receipt.system_transition.color_scheme || receipt.system_transition.color_scheme.before !== "light" || receipt.system_transition.color_scheme.after !== "dark"
+    || JSON.stringify(receipt.system_transition.before) !== JSON.stringify(receipt.system_transition.after)
+    || receipt.system_transition.after.production_instance_id !== sourceReceipt.production_instance_id
+    || receipt.system_transition.after.mount_id !== sourceReceipt.mount_id
+    || JSON.stringify(receipt.system_transition.after.scroll_offsets) !== JSON.stringify(sourceReceipt.scroll_offsets)
+    || JSON.stringify(receipt.system_transition.after.timer) !== JSON.stringify(sourceReceipt.timer)
+    || JSON.stringify(receipt.system_transition.after.native_focus) !== JSON.stringify(observation.native_focus))) fail("system_transition_invalid");
   return receipt;
 }
 
@@ -257,11 +283,13 @@ export function runV12VisualCaptureCli(args = process.argv.slice(2), io = proces
   try {
     const { runId, command } = parseVisualCli(args);
     if (command === "--verify") verifyV12VisualCapture({ runId });
-    else publishV12AtomicShard({ runId, shard: "visual", produce: ({ write }) => {
+    else {
       const adapter = createV12NativeAdapter();
+      publishV12AtomicShard({ runId, shard: "visual", executionOrigin: adapter.executionOrigin, produce: ({ write }) => {
       const testWindow = process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" ? 512 : V12_VISUAL_BATCH_WINDOW;
       return executeLiveV12VisualCapture({ runId, capture: adapter.capture, ...(process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? { captureAll: adapter.captureBatch, batchWindow: testWindow } : {}), write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
-    } });
+      } });
+    }
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

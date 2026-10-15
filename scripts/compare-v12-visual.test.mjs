@@ -43,8 +43,10 @@ function fixture(t) {
   state.reference.light = { path: referencePath, sha256: sha256(reference) };
   writeFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.json"), JSON.stringify(registry));
   const descriptor = { path: nativePath, sha256: sha256(native), size_bytes: native.length, width: 100, height: 100 };
-  const sourceReceipt = { schema_version: 1, nonce: "a".repeat(32), state_id: state.id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
-  sourceReceipt.digest = sha256(JSON.stringify({ state_id: state.id, fixture_variant: state.fixture_variant, assertions: sourceReceipt.assertions }));
+  const sourceMaterial = { state_id: state.id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions,
+    production_instance_id: "phase20-production-instance-1", mount_id: "phase20-production-mount-1",
+    scroll_offsets: [{ native_id: "adaptive-screen-scroll", x: 0, y: 0 }], timer: null };
+  const sourceReceipt = { schema_version: 2, nonce: "a".repeat(32), ...sourceMaterial, digest: sha256(JSON.stringify(sourceMaterial)) };
   const readiness = {
     status: state.readiness.status,
     semantics: state.readiness.semantics.map((value) => ({ value, matched: true })),
@@ -55,8 +57,8 @@ function fixture(t) {
     focus: { target: state.readiness.focus.target, matched: true, focusable: true, focused: false },
     source_receipt: sourceReceipt,
   };
-  const baseObservation = { native_execution: "EXECUTED", state_id: state.id, configuration_id: configurationId, readiness, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], measurement: { kind: "source_semantic", renderer_digest: state.reference.source.renderer_digest, semantic_digest: state.reference.source.semantic_digest, layout_digest: state.reference.source.layout_digest } };
-  const captureReceipt = { schema_version: 2, nonce: "a".repeat(32), run_id: runId, state_id: state.id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: state.readiness.status, source_tree_sha256: "a".repeat(64), apk_sha256: "b".repeat(64), device_identity_sha256: "c".repeat(64), png_sha256: descriptor.sha256, observation_sha256: sha256(JSON.stringify(baseObservation)), source_receipt: sourceReceipt };
+  const baseObservation = { native_execution: "EXECUTED", state_id: state.id, configuration_id: configurationId, readiness, native_focus: { resource_id: "focus-node", class_name: "android.view.View", bounds: "[0,0][48,48]" }, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], measurement: { kind: "source_semantic", renderer_digest: state.reference.source.renderer_digest, semantic_digest: state.reference.source.semantic_digest, layout_digest: state.reference.source.layout_digest } };
+  const captureReceipt = { schema_version: 3, nonce: "a".repeat(32), run_id: runId, state_id: state.id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: state.readiness.status, source_tree_sha256: "a".repeat(64), apk_sha256: "b".repeat(64), device_identity_sha256: "c".repeat(64), png_sha256: descriptor.sha256, observation_sha256: sha256(JSON.stringify(baseObservation)), source_receipt: sourceReceipt };
   const capture = { schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: state.id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED", native_png: descriptor, settings: { restored: true, privacy: "synthetic-only", observation: baseObservation, state_receipt: captureReceipt } };
   writeFileSync(path.join(root, capturePath), `${JSON.stringify(capture)}\n`);
   writeFileSync(path.join(root, `artifacts/native/v1.2/${runId}/screenshots/index.json`), JSON.stringify({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, capture_count: 1, windows: [], records: [capture] }));

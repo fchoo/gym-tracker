@@ -153,7 +153,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     writeImmutable: (file, value) => writes.push([file, value]),
     writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/garmin/failure.json`, value]),
   }).then((value) => {
-    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "garmin", produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
+    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "garmin", executionOrigin: adapter.executionOrigin, produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
     process.stdout.write(`${JSON.stringify(value)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? "")) { try { recordV12AtomicFailure({ runId, shard: "garmin", error }); } catch { /* the first immutable receipt wins */ } }

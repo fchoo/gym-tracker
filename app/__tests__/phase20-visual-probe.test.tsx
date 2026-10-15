@@ -4,6 +4,7 @@ import React from "react";
 import { Dimensions } from "react-native";
 
 import Phase20VisualProbeRoute from "../__phase20-visual-probe";
+import { phase20VisualTimerReceipt } from "../../src/testing/phase20VisualProbe";
 
 let mockExtra: Record<string, unknown>;
 let mockParams: Record<string, unknown>;
@@ -23,7 +24,7 @@ jest.mock("expo-router", () => ({
   },
 }));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ launchState: "trusted", runningPlanRuntime: {} }),
+  useWorkoutAppRuntime: () => ({ launchState: "trusted", runningPlanRuntime: {}, getActiveWorkout: jest.fn() }),
 }));
 jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
   phase20VisualCleanupStatus: () => "complete",
@@ -71,6 +72,9 @@ describe("Phase 20 visual probe", () => {
       await fireEvent(screen.getByTestId("phase20-visual-capture"), "layout", {
         nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } },
       });
+      await fireEvent.scroll(screen.getByTestId("plan-type-chooser-scroll"), {
+        nativeEvent: { contentOffset: { x: 0, y: 144 } },
+      });
       await new Promise((resolve) => setTimeout(resolve, 80));
       expect(log).not.toHaveBeenCalled();
 
@@ -90,6 +94,9 @@ describe("Phase 20 visual probe", () => {
       await render(<Phase20VisualProbeRoute />);
       await fireEvent(screen.getByTestId("phase20-visual-capture"), "layout", {
         nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } },
+      });
+      await fireEvent.scroll(screen.getByTestId("plan-type-chooser-scroll"), {
+        nativeEvent: { contentOffset: { x: 0, y: 144 } },
       });
       await waitFor(() => expect(log).toHaveBeenCalled());
       const line = String(log.mock.calls.at(-1)?.[0]);
@@ -117,6 +124,24 @@ describe("Phase 20 visual probe", () => {
       expect(Array.isArray(marker.readiness_actions) ? marker.readiness_actions.length : 0).toBeGreaterThan(1);
       expect(marker.readiness_non_color).toContain("Active Plans");
       expect(marker.evidence_scope).toBe("production_screen");
+      expect(marker.source_receipt).toMatchObject({
+        schema_version: 2,
+        nonce: mockParams.nonce,
+        state_id: mockParams.state,
+        timer: null,
+        scroll_offsets: [{ native_id: "plan-type-chooser-scroll", x: 0, y: 144 }],
+      });
+      expect((marker.source_receipt as { production_instance_id: string }).production_instance_id).toMatch(/^phase20-production-instance-/u);
+      expect((marker.source_receipt as { mount_id: string }).mount_id).toMatch(/^phase20-production-mount-/u);
     } finally { log.mockRestore(); }
+  });
+
+  it("copies authoritative rest revision, remaining and endsAt values into the source receipt", () => {
+    expect(phase20VisualTimerReceipt({ version: 1, state: "running", revision: 7, startedAtMs: 1, endsAtMs: 120_000, nextSetId: "set-2" })).toEqual({
+      state: "running", revision: 7, remaining_ms: null, ends_at_ms: 120_000,
+    });
+    expect(phase20VisualTimerReceipt({ version: 1, state: "paused", revision: 8, remainingMs: 45_000, nextSetId: "set-2" })).toEqual({
+      state: "paused", revision: 8, remaining_ms: 45_000, ends_at_ms: null,
+    });
   });
 });

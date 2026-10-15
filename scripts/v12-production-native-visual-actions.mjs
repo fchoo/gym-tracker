@@ -19,8 +19,10 @@ const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const CONFIG = /^AP-(L|D|SL|SD)-(C360|C390|M600|X840)-(P|L)-F(100|200)$/u;
 const ACTIONS = new Set(["visual-capture", "visual-capture-batch", "visual-compare"]);
 export const V12_VISUAL_ACTION_WINDOW = 4;
+export const V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS = 90_000;
+export const V12_VISUAL_CAPTURE_CLEANUP_TIMEOUT_MS = 90_000;
 const SETTINGS = ["font_scale", "accelerometer_rotation", "user_rotation"];
-const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_route", "source_component", "source_state", "fixture_seed", "fixture_variant", "scenario", "screen_test_id", "readiness_test_ids", "readiness_semantics", "readiness_actions", "readiness_order", "readiness_non_color", "focus_target", "evidence_scope", "source_revision", "source_read_only"];
+const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_route", "source_component", "source_state", "fixture_seed", "fixture_variant", "scenario", "screen_test_id", "readiness_test_ids", "readiness_semantics", "readiness_actions", "readiness_order", "readiness_non_color", "focus_target", "evidence_scope", "source_revision", "source_read_only", "source_receipt"];
 // These are the retained Revision 18 images, not caller-selected paths or hashes.
 // They exist only for the 390x844, portrait, 100% configuration. Never resize an
 // approved PNG or label it as a reference for a different configuration.
@@ -124,16 +126,23 @@ function attest(root, action, payload, value) {
 
 function nativeTransport(runCommand, root, serial) {
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) fail("device_invalid");
+  let deadline = null;
   const command = (executable, args, options = {}) => {
     try {
-      const result = runCommand(executable, args, { cwd: root, encoding: null, timeout: 15_000, maxBuffer: 16 * 1024 * 1024, ...options });
+      const remaining = deadline === null ? Number.POSITIVE_INFINITY : deadline - Date.now();
+      if (remaining <= 0) fail("deadline_exceeded");
+      const result = runCommand(executable, args, { cwd: root, encoding: null, maxBuffer: 16 * 1024 * 1024, ...options,
+        timeout: Math.min(options.timeout ?? 15_000, remaining) });
       if (!result || result.status !== 0 || result.error || result.signal) fail("command_failed");
       return Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout ?? "");
-    } catch { fail("command_failed"); }
+    } catch (error) {
+      if (error instanceof Error && error.message === "v12_production_visual_deadline_exceeded") throw error;
+      fail("command_failed");
+    }
   };
   const adb = (...args) => command("adb", ["-s", serial, ...args]);
   const shell = (...args) => adb("shell", args.map(quote).join(" ")).toString("utf8").trim();
-  return { command, adb, shell };
+  return { command, adb, shell, setDeadline: (durationMs) => { deadline = Date.now() + durationMs; } };
 }
 function verifyDevice(native, attestation, payload, serial) {
   const { adb, shell } = native;
@@ -204,7 +213,7 @@ async function marker(native, nonce, selected, mode, expectedScheme = selected.c
       if (value.nonce === nonce && (mode === "reset" || value.color_scheme === expectedScheme)) found = value;
     }
     if (found) {
-      if (!keys(found, MARKER_KEYS) || found.schema_version !== 1 || found.fixture_id !== FIXTURE
+      if (!keys(found, MARKER_KEYS) || found.schema_version !== 2 || found.fixture_id !== FIXTURE
         || found.route !== ROUTE || found.source_revision !== 18 || found.source_read_only !== true
         || !["width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density"].every((k) => Number.isFinite(found[k]) && found[k] > 0)) fail("marker_invalid");
       if (found.state_id !== selected.state_id || found.source_state !== selected.state.name
@@ -218,6 +227,23 @@ async function marker(native, nonce, selected, mode, expectedScheme = selected.c
         || !same(found.readiness_order, selected.state.readiness.order)
         || !same(found.readiness_non_color, selected.state.readiness.non_color)
         || found.focus_target !== selected.state.focus_target || found.evidence_scope !== selected.state.evidence_scope) fail("state_mismatch");
+      const source = found.source_receipt;
+      const timer = source?.timer;
+      if (!keys(source, ["schema_version", "nonce", "state_id", "fixture_variant", "assertions", "production_instance_id", "mount_id", "scroll_offsets", "timer"])
+        || source.schema_version !== 2 || source.nonce !== found.nonce || source.state_id !== selected.state_id
+        || source.fixture_variant !== selected.state.fixture_variant || !same(source.assertions, selected.state.readiness.source_receipt.assertions)
+        || !/^phase20-production-instance-\d+$/u.test(source.production_instance_id ?? "")
+        || !/^phase20-production-mount-\d+$/u.test(source.mount_id ?? "") || !Array.isArray(source.scroll_offsets)
+        || source.scroll_offsets.some((entry) => !keys(entry, ["native_id", "x", "y"]) || typeof entry.native_id !== "string" || !entry.native_id
+          || !Number.isFinite(entry.x) || entry.x < 0 || !Number.isFinite(entry.y) || entry.y < 0)
+        || new Set(source.scroll_offsets.map(({ native_id: nativeId }) => nativeId)).size !== source.scroll_offsets.length
+        || timer !== null && (!keys(timer, ["state", "revision", "remaining_ms", "ends_at_ms"])
+          || !["idle", "running", "paused", "expired"].includes(timer.state) || !Number.isSafeInteger(timer.revision) || timer.revision < 0
+          || timer.remaining_ms !== null && (!Number.isFinite(timer.remaining_ms) || timer.remaining_ms < 0)
+          || timer.ends_at_ms !== null && (!Number.isFinite(timer.ends_at_ms) || timer.ends_at_ms < 0)
+          || timer.state === "running" && (timer.remaining_ms !== null || timer.ends_at_ms === null)
+          || timer.state === "paused" && (timer.remaining_ms === null || timer.ends_at_ms !== null)
+          || ["idle", "expired"].includes(timer.state) && (timer.remaining_ms !== null || timer.ends_at_ms !== null))) fail("source_receipt_invalid");
       if (mode === "reset") {
         if (found.status !== "reset" || found.appearance !== "System") fail("restoration_failed");
       } else {
@@ -225,7 +251,8 @@ async function marker(native, nonce, selected, mode, expectedScheme = selected.c
         if (found.appearance !== selected.config.appearance || found.color_scheme !== expectedScheme
           || found.font_scale !== selected.config.fontScale || found.density !== 1
           || found.screen_width_dp !== selected.config.width || found.screen_height_dp !== selected.config.height
-          || found.width_dp !== selected.config.width || found.height_dp > found.screen_height_dp) fail("configuration_mismatch");
+          || found.width_dp !== selected.config.width || found.height_dp > found.screen_height_dp
+          || source.scroll_offsets.length === 0) fail("configuration_mismatch");
       }
       return found;
     }
@@ -288,11 +315,23 @@ function observe(native, measured, selected) {
     || node["content-desc"] === selected.state.readiness.focus.target || node.text === selected.state.readiness.focus.target);
   const readiness = { status: measured.status, semantics, test_ids: testIds, actions, order, non_color: nonColor,
     focus: { target: selected.state.readiness.focus.target, matched: focusNode !== undefined, focusable: focusNode?.focusable === "true", focused: focusNode?.focused === "true" },
-    source_receipt: { schema_version: 1, nonce: measured.nonce, state_id: selected.state_id, fixture_variant: selected.state.fixture_variant,
-      assertions: selected.state.readiness.source_receipt.assertions,
-      digest: hash(JSON.stringify({ state_id: selected.state_id, fixture_variant: selected.state.fixture_variant, assertions: selected.state.readiness.source_receipt.assertions })) } };
+    source_receipt: (() => {
+      const source = measured.source_receipt;
+      const material = { state_id: selected.state_id, fixture_variant: selected.state.fixture_variant, assertions: source.assertions,
+        production_instance_id: source.production_instance_id, mount_id: source.mount_id, scroll_offsets: source.scroll_offsets, timer: source.timer };
+      return { ...source, digest: hash(JSON.stringify(material)) };
+    })() };
+  const focusedNodes = nodes.filter((node) => node.package === PACKAGE && (node.focused === "true" || node["accessibility-focused"] === "true"));
+  if (focusedNodes.length > 1) fail("focus_invalid");
+  const nativeFocus = focusedNodes[0] === undefined ? null : {
+    resource_id: focusedNodes[0]["resource-id"] || null,
+    class_name: focusedNodes[0].class || null,
+    bounds: focusedNodes[0].bounds || null,
+  };
+  const productionNode = nodes.find((node) => node.package === PACKAGE && node["resource-id"]?.endsWith(measured.source_receipt.production_instance_id));
+  if (productionNode === undefined || measured.source_receipt.scroll_offsets.some(({ native_id: nativeId }) => !nodes.some((node) => node.package === PACKAGE && node.scrollable === "true" && node["resource-id"]?.endsWith(nativeId)))) fail("source_receipt_invalid");
   return { native_execution: "EXECUTED", state_id: measured.state_id, configuration_id: measured.configuration_id,
-    readiness, targets: targets.map((v, index) => ({ ...v, overlap: overlaps[index] })),
+    readiness, native_focus: nativeFocus, targets: targets.map((v, index) => ({ ...v, overlap: overlaps[index] })),
     viewport: { width_dp: measured.width_dp, height_dp: measured.height_dp, density: measured.density },
     measurement: { kind: "source_semantic", renderer_digest: selected.state.reference.kind === "retained_png" ? selected.state.reference.source.renderer_digest : selected.state.reference.renderer_digest,
       semantic_digest: selected.state.reference.kind === "retained_png" ? selected.state.reference.source.semantic_digest : selected.state.reference.semantic_digest,
@@ -300,10 +339,13 @@ function observe(native, measured, selected) {
 }
 
 function preservationSnapshot(measured, observation) {
-  const values = observation.readiness.semantics.filter(({ matched }) => matched).map(({ value }) => value);
-  const timers = values.filter((value) => /^\d{2}:\d{2}$/u.test(value));
-  return { route: measured.source_route, state: measured.source_state, focus: observation.readiness.focus.target,
-    scroll: hash(JSON.stringify(values)), timer: hash(JSON.stringify(timers)), source: observation.readiness.source_receipt.digest };
+  return {
+    native_focus: observation.native_focus,
+    scroll_offsets: measured.source_receipt.scroll_offsets,
+    timer: measured.source_receipt.timer,
+    production_instance_id: measured.source_receipt.production_instance_id,
+    mount_id: measured.source_receipt.mount_id,
+  };
 }
 
 async function capture(native, root, serial, selected, attestation) {
@@ -313,6 +355,7 @@ async function capture(native, root, serial, selected, attestation) {
   shell("mkdir", LOCK);
   const captureNonce = randomBytes(16).toString("hex");
   let snapshot; let configured = false; let routeAttempted = false; let result;
+  native.setDeadline(V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS);
   try {
     snapshot = readSettings(shell);
     const savedState = { run_id: attestation.run_id, device_identity_sha256: attestation.device_identity_sha256, snapshot };
@@ -330,20 +373,22 @@ async function capture(native, root, serial, selected, attestation) {
     let observation = observe(native, measured, selected);
     let system_transition;
     if (transitionFromLight) {
+      const beforeMeasured = measured;
       const before = preservationSnapshot(measured, observation);
       shell("cmd", "uimode", "night", "yes");
       measured = await marker(native, measured.nonce, selected, "capture", "dark");
       observation = observe(native, measured, selected);
       const after = preservationSnapshot(measured, observation);
-      if (!same(before, after)) fail("system_transition_state_changed");
-      system_transition = { from: "light", to: "dark", mounted_nonce: measured.nonce, before, after };
+      if (beforeMeasured.color_scheme !== "light" || measured.color_scheme !== "dark" || !same(before, after)) fail("system_transition_state_changed");
+      system_transition = { from: "light", to: "dark", mounted_nonce: measured.nonce,
+        color_scheme: { before: beforeMeasured.color_scheme, after: measured.color_scheme }, before, after };
     }
     const bytes = native.adb("exec-out", "screencap", "-p");
     const image = png(bytes);
     if (image.width !== selected.config.width || image.height !== selected.config.height) fail("configuration_mismatch");
     const after = await marker(native, measured.nonce, selected, "capture");
     if (!same(measured, after) || !same(observation, observe(native, after, selected))) fail("state_mismatch");
-    const receipt = { schema_version: 2, nonce: measured.nonce, run_id: attestation.run_id, state_id: selected.state_id,
+    const receipt = { schema_version: 3, nonce: measured.nonce, run_id: attestation.run_id, state_id: selected.state_id,
       configuration_id: selected.config.id, fixture_id: FIXTURE, source_tree_sha256: attestation.source_tree_sha256,
       apk_sha256: attestation.apk_sha256, device_identity_sha256: attestation.device_identity_sha256,
       readiness_status: selected.state.readiness.status, png_sha256: hash(bytes), observation_sha256: hash(JSON.stringify(observation)),
@@ -351,6 +396,7 @@ async function capture(native, root, serial, selected, attestation) {
     result = { native_execution: "EXECUTED", fixture_id: FIXTURE, png_base64: bytes.toString("base64"),
       settings: { restored: false, privacy: "synthetic-only", state_receipt: receipt, observation } };
   } finally {
+    native.setDeadline(V12_VISUAL_CAPTURE_CLEANUP_TIMEOUT_MS);
     let restorationFailed = false;
     // Reset in the configured viewport first. This unmounts the production
     // screen and reads back the isolated appearance store through useAppTheme.
@@ -394,7 +440,7 @@ function retained(root, attestation, requested) {
       || record.run_id !== attestation.run_id || record.native_execution !== "EXECUTED" || record.fixture_id !== FIXTURE
       || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only") fail("capture_invalid");
     const receipt = record.settings.state_receipt;
-    if (!receipt || receipt.schema_version !== 2 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "")
+    if (!receipt || receipt.schema_version !== 3 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "")
       || receipt.run_id !== attestation.run_id || receipt.state_id !== selected.state_id || receipt.configuration_id !== selected.config.id
       || receipt.fixture_id !== FIXTURE || receipt.source_tree_sha256 !== attestation.source_tree_sha256
       || receipt.apk_sha256 !== attestation.apk_sha256 || receipt.device_identity_sha256 !== attestation.device_identity_sha256

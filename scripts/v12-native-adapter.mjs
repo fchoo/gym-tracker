@@ -6,25 +6,29 @@ import { fileURLToPath } from "node:url";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+const ADAPTER = fileURLToPath(import.meta.url);
 const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url));
 const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackbox/fake-device-adapter.mjs", import.meta.url));
 const TEST_MODE = "phase20-native-adapter-subprocess";
 export const V12_NATIVE_MAX_REQUEST_BYTES = 1024 * 1024;
 export const V12_NATIVE_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+export const V12_NATIVE_ADAPTER_GRACE_MS = 2 * 60_000;
+export const V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS = 3 * 60_000;
+export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = 35 * (180_000 + 60_000) + 23 * 180_000 + V12_NATIVE_ADAPTER_GRACE_MS;
 export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
   "acquire-lease": 30_000,
   "release-lease": 30_000,
   "snapshot-settings": 30_000,
   "restore-settings": 60_000,
-  "visual-capture": 90_000,
-  "visual-capture-batch": 6 * 60_000,
-  "visual-compare": 6 * 60_000,
-  accessibility: 10 * 60_000,
-  performance: 20 * 60_000,
+  "visual-capture": V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  "visual-capture-batch": 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  "visual-compare": 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  accessibility: 35 * 60_000,
+  performance: 35 * 60_000,
   sqlite: 26 * 60_000,
-  recovery: 20 * 60_000,
+  recovery: 45 * 60_000,
   garmin: 20 * 60_000,
-  calendar: 20 * 60_000,
+  calendar: V12_CALENDAR_ADAPTER_TIMEOUT_MS,
 });
 
 function fail(code) { throw new Error(`v12_native_adapter_${code}`); }
@@ -36,24 +40,24 @@ function cliRunId() {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-function testInjectionEnabled() {
-  const mode = process.env.V12_NATIVE_ADAPTER_TEST_MODE;
-  const processMarker = process.env.V12_NATIVE_ADAPTER_TEST_PROCESS;
-  const nodeTest = process.env.NODE_ENV === "test";
+function testInjectionEnabled(environment) {
+  const mode = environment.V12_NATIVE_ADAPTER_TEST_MODE;
+  const processMarker = environment.V12_NATIVE_ADAPTER_TEST_PROCESS;
+  const nodeTest = environment.NODE_ENV === "test";
   if (mode === undefined && processMarker === undefined && !nodeTest) return false;
   if (mode !== TEST_MODE || processMarker !== "1" || !nodeTest) fail("test_mode_inconsistent");
   return true;
 }
 
-function commandFor(root, command) {
-  const testMode = testInjectionEnabled();
-  const injected = command ?? process.env.V12_NATIVE_ADAPTER_COMMAND;
-  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER });
+function commandFor(root, command, environment) {
+  const testMode = testInjectionEnabled(environment);
+  const injected = command ?? environment.V12_NATIVE_ADAPTER_COMMAND;
+  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER, testOnly: false });
   if (!testMode) fail("command_override_forbidden");
   const resolved = realpathSync(path.resolve(root, injected));
   const fixtureFake = realpathSync(path.resolve(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"));
   if (resolved !== fixtureFake && resolved !== realpathSync(CHECKED_IN_TEST_FAKE)) fail("test_command_invalid");
-  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved });
+  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved, testOnly: true });
 }
 
 function readBuildIdentity(root, runId) {
@@ -99,19 +103,22 @@ function sameAttestation(expected, actual) {
  * is fixed and checked in; a subprocess fake is accepted only for a Node test
  * process that deliberately opts into the exact test-mode triplet above.
  */
-export function invokeV12NativeAdapter(action, payload, {
+export function invokeV12NativeAdapterEnvelope(action, payload, {
   command,
+  environment = process.env,
   root = process.cwd(),
 } = {}) {
-  if (typeof action !== "string" || action.length === 0 || !payload || typeof payload !== "object") fail("request_invalid");
-  const target = commandFor(root, command);
+  if (typeof action !== "string" || !Object.hasOwn(V12_NATIVE_ACTION_TIMEOUT_MS, action)) fail("action_invalid");
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) fail("request_invalid");
+  const target = commandFor(root, command, environment);
   const attestation = createAttestation(action, payload, root);
   const request = `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`;
-  if (!Object.hasOwn(V12_NATIVE_ACTION_TIMEOUT_MS, action) || Buffer.byteLength(request) > V12_NATIVE_MAX_REQUEST_BYTES) fail("request_too_large");
+  if (Buffer.byteLength(request) > V12_NATIVE_MAX_REQUEST_BYTES) fail("request_too_large");
   const result = spawnSync(target.executable, [...target.args, "--action", action], {
     cwd: root,
     input: request,
     encoding: "utf8",
+    env: environment,
     timeout: V12_NATIVE_ACTION_TIMEOUT_MS[action],
     maxBuffer: V12_NATIVE_MAX_RESPONSE_BYTES,
   });
@@ -123,12 +130,36 @@ export function invokeV12NativeAdapter(action, payload, {
   try { response = JSON.parse(result.stdout); } catch { fail("response_invalid"); }
   if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)) fail("response_invalid");
   if (!sameAttestation(attestation, response.attestation)) fail("attestation_invalid");
-  return response.result;
+  return Object.freeze({
+    result: response.result,
+    execution_origin: Object.freeze({
+      schema_version: 1,
+      kind: target.testOnly ? "test-fixture" : "production-default-launcher",
+      default_launcher: target.testOnly === false,
+      test_only: target.testOnly,
+      adapter_source_sha256: sourceHash(ADAPTER),
+      launcher_source_sha256: sourceHash(target.source),
+      request_attestation_sha256: sha256(JSON.stringify(attestation)),
+    }),
+  });
+}
+
+export function invokeV12NativeAdapter(action, payload, options = {}) {
+  return invokeV12NativeAdapterEnvelope(action, payload, options).result;
 }
 
 export function createV12NativeAdapter(options = {}) {
-  const call = (action, payload) => invokeV12NativeAdapter(action, { ...payload, run_id: payload.run_id ?? options.runId ?? cliRunId() }, options);
+  let latestExecutionOrigin;
+  const call = (action, payload) => {
+    const response = invokeV12NativeAdapterEnvelope(action, { ...payload, run_id: payload.run_id ?? options.runId ?? cliRunId() }, options);
+    latestExecutionOrigin = response.execution_origin;
+    return response.result;
+  };
   return Object.freeze({
+    executionOrigin: () => {
+      if (latestExecutionOrigin === undefined) fail("execution_origin_missing");
+      return latestExecutionOrigin;
+    },
     acquireLease: () => call("acquire-lease", {}),
     releaseLease: (lease) => call("release-lease", { lease }),
     snapshotSettings: (lease) => call("snapshot-settings", { lease }),

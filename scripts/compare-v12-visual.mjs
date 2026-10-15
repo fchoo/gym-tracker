@@ -59,20 +59,44 @@ function readPng(root, descriptor, { expectedPath } = {}) {
   if (!same(actual, descriptor)) fail("artifact_invalid"); return Object.freeze({ bytes, image: decodeV12ComparisonPng(bytes), descriptor: actual });
 }
 function validateSourceReceipt(receipt, state, runId, configurationId) {
-  const expected = { state_id: state.id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
-  if (!receipt || receipt.schema_version !== 1 || !NONCE.test(receipt.nonce ?? "") || receipt.state_id !== state.id
+  const expected = { state_id: state.id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions,
+    production_instance_id: receipt?.production_instance_id, mount_id: receipt?.mount_id,
+    scroll_offsets: receipt?.scroll_offsets, timer: receipt?.timer };
+  const receiptKeys = ["schema_version", "nonce", "state_id", "fixture_variant", "assertions", "production_instance_id", "mount_id", "scroll_offsets", "timer", "digest"];
+  const timer = receipt?.timer;
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt) || Object.keys(receipt).length !== receiptKeys.length || receiptKeys.some((key) => !Object.hasOwn(receipt, key))
+    || receipt.schema_version !== 2 || !NONCE.test(receipt.nonce ?? "") || receipt.state_id !== state.id
     || receipt.fixture_variant !== state.fixture_variant || !same(receipt.assertions, expected.assertions)
+    || !/^phase20-production-instance-\d+$/u.test(receipt.production_instance_id ?? "")
+    || !/^phase20-production-mount-\d+$/u.test(receipt.mount_id ?? "")
+    || !Array.isArray(receipt.scroll_offsets) || receipt.scroll_offsets.length === 0
+    || receipt.scroll_offsets.some((entry) => !entry || Object.keys(entry).length !== 3 || !["native_id", "x", "y"].every((key) => Object.hasOwn(entry, key))
+      || typeof entry.native_id !== "string" || !entry.native_id || !Number.isFinite(entry.x) || entry.x < 0 || !Number.isFinite(entry.y) || entry.y < 0)
+    || new Set(receipt.scroll_offsets.map(({ native_id: nativeId }) => nativeId)).size !== receipt.scroll_offsets.length
+    || timer !== null && (!timer || typeof timer !== "object" || Array.isArray(timer) || Object.keys(timer).length !== 4 || !["state", "revision", "remaining_ms", "ends_at_ms"].every((key) => Object.hasOwn(timer, key))
+      || !["idle", "running", "paused", "expired"].includes(timer.state) || !Number.isSafeInteger(timer.revision) || timer.revision < 0
+      || timer.remaining_ms !== null && (!Number.isFinite(timer.remaining_ms) || timer.remaining_ms < 0)
+      || timer.ends_at_ms !== null && (!Number.isFinite(timer.ends_at_ms) || timer.ends_at_ms < 0)
+      || timer.state === "running" && (timer.remaining_ms !== null || timer.ends_at_ms === null)
+      || timer.state === "paused" && (timer.remaining_ms === null || timer.ends_at_ms !== null)
+      || ["idle", "expired"].includes(timer.state) && (timer.remaining_ms !== null || timer.ends_at_ms !== null))
     || receipt.digest !== sha256(JSON.stringify(expected))) fail("state_receipt_invalid");
   return receipt;
 }
 function validateStateReceipt(receipt, observation, state, runId, configurationId, pngSha256) {
-  if (!receipt || receipt.schema_version !== 2 || !NONCE.test(receipt.nonce ?? "") || receipt.run_id !== runId
+  if (!receipt || receipt.schema_version !== 3 || !NONCE.test(receipt.nonce ?? "") || receipt.run_id !== runId
     || receipt.state_id !== state.id || receipt.configuration_id !== configurationId || receipt.fixture_id !== "v12-synthetic-fixtures-r18"
     || receipt.readiness_status !== state.readiness.status || receipt.png_sha256 !== pngSha256
     || receipt.observation_sha256 !== sha256(JSON.stringify(observation)) || receipt.source_receipt?.nonce !== receipt.nonce) fail("state_receipt_invalid");
   validateSourceReceipt(receipt.source_receipt, state, runId, configurationId);
   if (configurationId.startsWith("AP-SD-") && (!receipt.system_transition || receipt.system_transition.from !== "light" || receipt.system_transition.to !== "dark"
-    || receipt.system_transition.mounted_nonce !== receipt.nonce || !same(receipt.system_transition.before, receipt.system_transition.after))) fail("system_transition_invalid");
+    || receipt.system_transition.mounted_nonce !== receipt.nonce || !same(receipt.system_transition.color_scheme, { before: "light", after: "dark" })
+    || !same(receipt.system_transition.before, receipt.system_transition.after)
+    || receipt.system_transition.after.production_instance_id !== receipt.source_receipt.production_instance_id
+    || receipt.system_transition.after.mount_id !== receipt.source_receipt.mount_id
+    || !same(receipt.system_transition.after.scroll_offsets, receipt.source_receipt.scroll_offsets)
+    || !same(receipt.system_transition.after.timer, receipt.source_receipt.timer)
+    || !same(receipt.system_transition.after.native_focus, observation.native_focus))) fail("system_transition_invalid");
   return receipt;
 }
 function capture(root, runId, id, configurationId, { trustPublishedNative = false } = {}) {
@@ -273,10 +297,12 @@ export function runV12VisualComparisonCli(args = process.argv.slice(2), io = pro
   try {
     const { runId, command } = parseCli(args);
     if (command === "--verify") verifyV12VisualComparison({ runId });
-    else publishV12AtomicShard({ runId, shard: "comparison", produce: ({ write }) => {
+    else {
+      const adapter = createV12NativeAdapter();
+      publishV12AtomicShard({ runId, shard: "comparison", executionOrigin: adapter.executionOrigin, produce: ({ write }) => {
       const captures = JSON.parse(readFileSync(`artifacts/native/v1.2/${runId}/screenshots/index.json`, "utf8")).records;
       const windowSize = process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" ? 512 : V12_VISUAL_BATCH_WINDOW;
-      const comparisons = []; const windows = []; const adapter = createV12NativeAdapter();
+      const comparisons = []; const windows = [];
       for (let offset = 0; offset < captures.length; offset += windowSize) {
         const requested = captures.slice(offset, offset + windowSize).map(({ state_id, configuration_id }) => ({ state_id, configuration_id }));
         const result = adapter.compare({ run_id: runId, captures: requested });
@@ -287,7 +313,8 @@ export function runV12VisualComparisonCli(args = process.argv.slice(2), io = pro
           request_sha256: sha256(JSON.stringify(requested)), result_sha256: sha256(JSON.stringify(result.map(({ state_receipt }) => state_receipt))) });
       }
       return executeV12VisualComparison({ runId, comparisons, windows, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
-    } });
+      } });
+    }
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`); return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }
 }

@@ -7,9 +7,12 @@ import { useWorkoutAppRuntime } from "../src/bootstrap/workoutAppRuntime";
 import { RunningPlanRuntimeProvider } from "../src/bootstrap/runningPlanRuntime";
 import {
   Phase20VisualProbe,
+  phase20VisualTimerReceipt,
   resolvePhase20VisualProbe,
+  type Phase20VisualTimerReceipt,
 } from "../src/testing/phase20VisualProbe";
 import { phase20VisualState } from "../src/testing/phase20VisualStateRegistry";
+import { usePhase20VisualProductionMountReporter } from "../src/testing/phase20VisualContext";
 import { AppLoadingShell } from "../src/ui/screens/RootScreens";
 import { AppTabs, rootDestinations } from "../src/ui/components";
 import { AppRootShell } from "../src/ui/shell/AppRootShell";
@@ -17,6 +20,7 @@ import type { RootRouteKey } from "../src/ui/shell/rootFocus";
 import { RootSettingsContent } from "./(tabs)/_layout";
 
 type ProductionRouteComponent = React.ComponentType;
+let nextProductionMount = 0;
 
 function productionRouteComponent(route: string): ProductionRouteComponent {
   switch (route) {
@@ -54,51 +58,102 @@ function ProductionVisualState({
   route: string;
 }>) {
   const Route = productionRouteComponent(route);
+  const reportProductionMount = usePhase20VisualProductionMountReporter();
+  const [mount] = React.useState(() => {
+    nextProductionMount += 1;
+    return Object.freeze({
+      production_instance_id: `phase20-production-instance-${nextProductionMount}`,
+      mount_id: `phase20-production-mount-${nextProductionMount}`,
+    });
+  });
+  React.useEffect(() => { reportProductionMount?.(mount); }, [mount, reportProductionMount]);
   const root = ({ "/(tabs)": "index", "/(tabs)/calendar": "calendar", "/(tabs)/library": "library", "/(tabs)/progress": "progress" } as const)[route as "/(tabs)" | "/(tabs)/calendar" | "/(tabs)/library" | "/(tabs)/progress"] as RootRouteKey | undefined;
   const settingsTriggerRef = React.useRef<View>(null);
   const removedSessionsTriggerRef = React.useRef<View>(null);
   const dataAndRecoveryTriggerRef = React.useRef<View>(null);
   const screen = <Route />;
-  if (root === undefined) return screen;
-  const routes = rootDestinations.map(({ name }) => ({ key: `phase20-${name}`, name }));
-  const index = Math.max(0, routes.findIndex(({ name }) => name === root));
-  return (
-    <AppRootShell
-      activeRoot={root}
-      currentPath={route}
-      settingsContent={(closeSettings) => (
-        <RootSettingsContent
-          dataAndRecoveryTriggerRef={dataAndRecoveryTriggerRef}
-          onNavigate={closeSettings}
-          onRegisterOrigin={() => undefined}
-          removedSessionsTriggerRef={removedSessionsTriggerRef}
+  let content = screen;
+  if (root !== undefined) {
+    const routes = rootDestinations.map(({ name }) => ({ key: `phase20-${name}`, name }));
+    const index = Math.max(0, routes.findIndex(({ name }) => name === root));
+    content = (
+      <AppRootShell
+        activeRoot={root}
+        currentPath={route}
+        settingsContent={(closeSettings) => (
+          <RootSettingsContent
+            dataAndRecoveryTriggerRef={dataAndRecoveryTriggerRef}
+            onNavigate={closeSettings}
+            onRegisterOrigin={() => undefined}
+            removedSessionsTriggerRef={removedSessionsTriggerRef}
+          />
+        )}
+        settingsTriggerRef={settingsTriggerRef}
+      >
+        {screen}
+        <AppTabs
+          navigation={{
+            emit: () => ({ defaultPrevented: false }),
+            navigate: () => undefined,
+          }}
+          state={{ index, routes }}
         />
-      )}
-      settingsTriggerRef={settingsTriggerRef}
+      </AppRootShell>
+    );
+  }
+  return (
+    <View
+      collapsable={false}
+      nativeID={mount.production_instance_id}
+      style={{ flex: 1 }}
+      testID="phase20-production-mount"
     >
-      {screen}
-      <AppTabs
-        navigation={{
-          emit: () => ({ defaultPrevented: false }),
-          navigate: () => undefined,
-        }}
-        state={{ index, routes }}
-      />
-    </AppRootShell>
+      {content}
+    </View>
   );
 }
 
 function RuntimeBoundProductionVisualState({
+  ready,
+  request,
   route,
 }: Readonly<{
+  ready: boolean;
+  request: NonNullable<ReturnType<typeof resolvePhase20VisualProbe>>;
   route: string;
 }>) {
   const runtime = useWorkoutAppRuntime();
+  const routeParams = phase20VisualState(request.state)?.route_params;
+  const sessionId = routeParams !== undefined && Object.hasOwn(routeParams, "sessionId")
+    ? (routeParams as Readonly<{ sessionId: string }>).sessionId
+    : undefined;
+  const [timerReceipt, setTimerReceipt] = React.useState<Phase20VisualTimerReceipt | null | undefined>(
+    sessionId === undefined ? null : undefined,
+  );
+  const [receiptFailed, setReceiptFailed] = React.useState(false);
+  React.useEffect(() => {
+    let mounted = true;
+    if (runtime.launchState !== "trusted" || sessionId === undefined || request.mode === "reset") {
+      setReceiptFailed(false);
+      setTimerReceipt(null);
+      return () => { mounted = false; };
+    }
+    setReceiptFailed(false);
+    setTimerReceipt(undefined);
+    void runtime.getActiveWorkout(sessionId).then((workout) => {
+      if (mounted) setTimerReceipt(phase20VisualTimerReceipt(workout.rest));
+    }).catch(() => { if (mounted) setReceiptFailed(true); });
+    return () => { mounted = false; };
+  }, [request.mode, request.nonce, runtime, sessionId]);
   if (runtime.launchState !== "trusted") return <AppLoadingShell />;
   if (runtime.runningPlanRuntime === null) throw new Error("phase20_visual_running_runtime_missing");
+  if (receiptFailed) throw new Error("phase20_visual_source_receipt_failed");
+  if (timerReceipt === undefined) return <AppLoadingShell />;
   return (
     <RunningPlanRuntimeProvider runtime={runtime.runningPlanRuntime}>
-      <ProductionVisualState route={route} />
+      <Phase20VisualProbe ready={ready} request={request} timerReceipt={timerReceipt}>
+        <ProductionVisualState route={route} />
+      </Phase20VisualProbe>
     </RunningPlanRuntimeProvider>
   );
 }
@@ -120,12 +175,11 @@ export default function Phase20VisualProbeRoute() {
     || request === null
     || state === null) return <Redirect href="/" />;
   return (
-    <Phase20VisualProbe
+    <RuntimeBoundProductionVisualState
       key={request.nonce}
       ready={request.mode === "reset" || params.ready === request.nonce}
       request={request}
-    >
-      <RuntimeBoundProductionVisualState route={state.route} />
-    </Phase20VisualProbe>
+      route={state.route}
+    />
   );
 }

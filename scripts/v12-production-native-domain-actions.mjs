@@ -28,8 +28,8 @@ function validate(action, payload, a, root) {
 function session(root, a) {
   const serial = process.env.V12_DEVICE_SERIAL;
   let nonce = randomBytes(16).toString('hex');
-  // The current launcher grants domain actions five minutes. Leave two minutes
-  // for cleanup; do not silently outlive its hard process timeout.
+  // This producer owns the stricter operation deadline. The adapter reserves
+  // separate action-specific cleanup grace and must never expire first.
   const deadline = Date.now() + 3 * 60_000;
   const command = (exe, args, { timeout = 20_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail('domain_timeout');

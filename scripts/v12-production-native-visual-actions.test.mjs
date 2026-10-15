@@ -51,7 +51,7 @@ function controlledTool(state, executable, args, options = {}) {
     const viewport = { C360: [360, 800], C390: [390, 844], M600: [600, 960], X840: [840, 1080] }[parts[2]];
     const portrait = parts[3] === "P";
     const marker = {
-      schema_version: 1, nonce: state.staleMarker ? "0".repeat(32) : state.nonce,
+      schema_version: 2, nonce: state.staleMarker ? "0".repeat(32) : state.nonce,
       state_id: state.wrongState && state.mode === "capture" ? "BW-002" : state.stateId,
       configuration_id: state.configurationId, fixture_id: fixtureId,
       mode: state.mode, status: state.mode === "reset" ? "reset" : "ready",
@@ -68,6 +68,17 @@ function controlledTool(state, executable, args, options = {}) {
       focus_target: visual.readiness.focus.target,
       evidence_scope: "production_screen",
       source_revision: 18, source_read_only: true,
+      source_receipt: {
+        schema_version: 2,
+        nonce: state.staleMarker ? "0".repeat(32) : state.nonce,
+        state_id: state.stateId,
+        fixture_variant: visual.fixture_variant,
+        assertions: visual.readiness.source_receipt.assertions,
+        production_instance_id: "phase20-production-instance-7",
+        mount_id: state.remounted && state.night === "yes" ? "phase20-production-mount-8" : "phase20-production-mount-7",
+        scroll_offsets: [{ native_id: "plan-type-chooser-scroll", x: 0, y: state.scrollChanged && state.night === "yes" ? 145 : 144 }],
+        timer: { state: "paused", revision: state.timerChanged && state.night === "yes" ? 8 : 7, remaining_ms: 90_000, ends_at_ms: null },
+      },
     };
     if (state.mode === "reset" && state.badReset) marker.appearance = "Dark";
     if (state.extraMarkerField && state.mode === "capture") marker.private = "/private/device-private";
@@ -107,7 +118,10 @@ function controlledTool(state, executable, args, options = {}) {
   if (s[0] === "cat" && s[1].endsWith("window.xml")) {
     if (state.wrongTree) return ok('<hierarchy><node text="Private screen" /></hierarchy>');
     const escape = (value) => String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
-    const ids = state.visualState.readiness.test_ids.map((id, index) => `<node resource-id="${escape(id)}" package="com.fchoo.gymtracker.devtest" clickable="${index === 0 ? "true" : "false"}" enabled="true" focusable="true" focused="${id === state.visualState.readiness.focus.target ? "true" : "false"}" bounds="[16,${20 + index * 2}][374,${68 + index * 2}]" />`);
+    const focusId = state.focusChanged && state.night === "yes" ? state.visualState.readiness.test_ids[1] : state.visualState.readiness.focus.target;
+    const ids = state.visualState.readiness.test_ids.map((id, index) => `<node resource-id="${escape(id)}" package="com.fchoo.gymtracker.devtest" clickable="${index === 0 ? "true" : "false"}" enabled="true" focusable="true" focused="${id === focusId ? "true" : "false"}" bounds="[16,${20 + index * 2}][374,${68 + index * 2}]" />`);
+    ids.push(`<node resource-id="phase20-production-instance-7" package="com.fchoo.gymtracker.devtest" clickable="false" enabled="true" focusable="false" focused="false" bounds="[0,0][390,844]" />`);
+    ids.push(`<node resource-id="plan-type-chooser-scroll" package="com.fchoo.gymtracker.devtest" clickable="false" enabled="true" focusable="false" focused="false" scrollable="true" bounds="[0,0][390,844]" />`);
     const semantics = state.visualState.readiness.semantics.map((text, index) => `<node text="${escape(text)}" package="com.fchoo.gymtracker.devtest" bounds="[16,${100 + index * 50}][374,${148 + index * 50}]" />`);
     const actions = state.visualState.readiness.actions.map((entry, index) => { const left = index % 2 === 0 ? 10 : 200; const top = 220 + Math.floor(index / 2) * 52; return `<node ${entry.id ? `resource-id="${escape(entry.id)}"` : ""} content-desc="${escape(entry.label ?? entry.id)}" package="com.fchoo.gymtracker.devtest" clickable="true" enabled="true" selected="false" focusable="true" focused="false" bounds="[${left},${top}][${left + 170},${top + 48}]" />`; });
     return ok(`<hierarchy>${ids.join("")}${semantics.join("")}${actions.join("")}</hierarchy>`);
@@ -185,10 +199,22 @@ test("System light to dark switches in place and preserves the mounted state rec
   const f = fixture(t); const systemDark = { ...f.payload, configuration_id: "AP-SD-C390-P-F100" };
   const result = await f.call("visual-capture", systemDark);
   assert.deepEqual(result.settings.state_receipt.system_transition.before, result.settings.state_receipt.system_transition.after);
+  assert.deepEqual(result.settings.state_receipt.system_transition.color_scheme, { before: "light", after: "dark" });
+  assert.equal(result.settings.state_receipt.system_transition.before.native_focus.resource_id, f.state.visualState.readiness.focus.target);
+  assert.deepEqual(result.settings.state_receipt.system_transition.before.scroll_offsets, [{ native_id: "plan-type-chooser-scroll", x: 0, y: 144 }]);
+  assert.deepEqual(result.settings.state_receipt.system_transition.before.timer, { state: "paused", revision: 7, remaining_ms: 90_000, ends_at_ms: null });
+  assert.equal(result.settings.state_receipt.system_transition.before.production_instance_id, "phase20-production-instance-7");
+  assert.equal(result.settings.state_receipt.system_transition.before.mount_id, "phase20-production-mount-7");
   assert.equal(result.settings.state_receipt.system_transition.mounted_nonce, result.settings.state_receipt.nonce);
   const captureRoutes = f.state.commands.filter((command) => command[0] === "maestro" && command.includes("VISUAL_MODE=capture"));
   assert.equal(captureRoutes.length, 1);
 });
+for (const mutation of ["focusChanged", "scrollChanged", "timerChanged", "remounted"]) {
+  test(`System transition rejects changed native ${mutation}`, async (t) => {
+    const f = fixture(t); f.state[mutation] = true;
+    await assert.rejects(f.call("visual-capture", { ...f.payload, configuration_id: "AP-SD-C390-P-F100" }), /system_transition_state_changed/u);
+  });
+}
 for (const [mutation, code] of [["wrongState", "state_mismatch"], ["wrongConfig", "configuration_mismatch"], ["wrongTree", "state_mismatch"], ["invalidPng", "png_invalid"], ["noRoute", "command_failed"], ["failedRestore", "restoration_failed"], ["badReset", "restoration_failed"], ["extraMarkerField", "marker_invalid"]]) {
   test(`${mutation} cannot become successful evidence`, async (t) => {
     const f = fixture(t); f.state[mutation] = true;

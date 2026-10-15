@@ -5,7 +5,15 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
-import { V12_NATIVE_ACTION_TIMEOUT_MS, V12_NATIVE_MAX_REQUEST_BYTES, V12_NATIVE_MAX_RESPONSE_BYTES } from "./v12-native-adapter.mjs";
+import {
+  V12_CALENDAR_ADAPTER_TIMEOUT_MS,
+  V12_NATIVE_ACTION_TIMEOUT_MS,
+  V12_NATIVE_ADAPTER_GRACE_MS,
+  V12_NATIVE_MAX_REQUEST_BYTES,
+  V12_NATIVE_MAX_RESPONSE_BYTES,
+  V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
+  invokeV12NativeAdapterEnvelope,
+} from "./v12-native-adapter.mjs";
 
 function fixture(t) {
   const runner = createControlledRunner();
@@ -29,6 +37,28 @@ test("checked-in fake accepted only by the explicit test triplet", (t) => {
   const result = runner.invoke("acquire-lease", {}, markers(runner.root));
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), { id: "lease" });
+});
+test("adapter envelope labels the checked-in fake as test-only provenance", (t) => {
+  const runner = fixture(t);
+  const prior = Object.fromEntries(["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS"].map((key) => [key, process.env[key]]));
+  Object.assign(process.env, { NODE_ENV: "test", V12_NATIVE_ADAPTER_TEST_MODE: "phase20-native-adapter-subprocess", V12_NATIVE_ADAPTER_TEST_PROCESS: "1" });
+  try {
+    const result = invokeV12NativeAdapterEnvelope("acquire-lease", { run_id: runner.build.run_id }, {
+      root: runner.root,
+      command: path.join(runner.root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"),
+    });
+    assert.deepEqual(Object.keys(result.execution_origin).sort(), [
+      "adapter_source_sha256", "default_launcher", "kind", "launcher_source_sha256",
+      "request_attestation_sha256", "schema_version", "test_only",
+    ]);
+    assert.equal(result.execution_origin.kind, "test-fixture");
+    assert.equal(result.execution_origin.default_launcher, false);
+    assert.equal(result.execution_origin.test_only, true);
+  } finally {
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
 });
 test("fake command rejected outside explicit test mode", (t) => {
   const runner = fixture(t);
@@ -83,7 +113,14 @@ test("every adapter action has an explicit bounded timeout and transport budget"
     "release-lease", "restore-settings", "snapshot-settings", "sqlite",
     "visual-capture", "visual-capture-batch", "visual-compare",
   ]);
-  assert.ok(Object.values(V12_NATIVE_ACTION_TIMEOUT_MS).every((value) => Number.isSafeInteger(value) && value >= 1_000 && value <= 30 * 60_000));
+  assert.ok(Object.values(V12_NATIVE_ACTION_TIMEOUT_MS).every((value) => Number.isSafeInteger(value) && value >= 1_000 && value <= 4 * 60 * 60_000));
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.performance >= 35 * 60_000);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.accessibility >= 26 * 60_000);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture"] >= 5 * 60_000);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture-batch"] >= 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS["visual-compare"] >= 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.calendar, V12_CALENDAR_ADAPTER_TIMEOUT_MS);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.recovery >= 45 * 60_000);
   assert.equal(V12_NATIVE_MAX_REQUEST_BYTES, 1024 * 1024);
   assert.equal(V12_NATIVE_MAX_RESPONSE_BYTES, 32 * 1024 * 1024);
 });

@@ -27,19 +27,23 @@ const visualConfig = (id) => {
 };
 const visualObservation = (id, configurationId, nonce, captureNonce) => {
   const state = visualState(id); const source = state.reference.kind === "retained_png" ? state.reference.source : state.reference;
-  const sourceReceipt = { schema_version: 1, nonce, state_id: id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
-  sourceReceipt.digest = sha(JSON.stringify({ state_id: id, fixture_variant: state.fixture_variant, assertions: sourceReceipt.assertions }));
+  const sourceMaterial = { state_id: id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions,
+    production_instance_id: `phase20-production-instance-${Number(id.slice(-3))}`, mount_id: `phase20-production-mount-${Number(id.slice(-3))}`,
+    scroll_offsets: [{ native_id: `${state.readiness.screen_test_id}-scroll`, x: 0, y: 0 }], timer: null };
+  const sourceReceipt = { schema_version: 2, nonce, ...sourceMaterial, digest: sha(JSON.stringify(sourceMaterial)) };
   return { native_execution: "EXECUTED", state_id: id, configuration_id: configurationId,
     readiness: { status: state.readiness.status, semantics: state.readiness.semantics.map(value => ({ value, matched: true })), test_ids: state.readiness.test_ids.map(value => ({ value, matched: true })), actions: state.readiness.actions.map(entry => ({ ...entry, matched: true, enabled: true, observed_order: entry.order })), order: state.readiness.order.map((value, observed_order) => ({ value, observed_order })), non_color: state.readiness.non_color.map(value => ({ value, matched: true })), focus: { target: state.readiness.focus.target, matched: true, focusable: true, focused: false }, source_receipt: sourceReceipt },
     targets: [{ width_dp: 48, height_dp: 48, overlap: false }],
+    native_focus: { resource_id: state.readiness.focus.target, class_name: "android.view.View", bounds: "[0,0][48,48]" },
     measurement: { kind: "source_semantic", renderer_digest: source.renderer_digest, semantic_digest: source.semantic_digest, layout_digest: source.layout_digest },
     ...(captureNonce === undefined ? {} : { capture_png_sha256: sha(Buffer.from(visualPng(id, configurationId), "base64")), capture_nonce: captureNonce, observation_nonce: nonce }) };
 };
 const visualCapture = (id, configurationId, phase) => {
   const key = `${id}:${configurationId}`; const bytes = Buffer.from(visualPng(id, configurationId), "base64"); const nonce = sha(`${phase}:${key}`).slice(0, 32); const observation = visualObservation(id, configurationId, nonce);
   const sourceReceipt = observation.readiness.source_receipt; const configuration = visualConfig(configurationId);
-  const receipt = { schema_version: 2, nonce, run_id: read.attestation.run_id, state_id: id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: observation.readiness.status, source_tree_sha256: read.attestation.source_tree_sha256, apk_sha256: read.attestation.apk_sha256, device_identity_sha256: read.attestation.device_identity_sha256, png_sha256: sha(bytes), observation_sha256: sha(JSON.stringify(observation)), source_receipt: sourceReceipt,
-    ...(configuration.appearance === "System" && configuration.scheme === "dark" ? { system_transition: { from: "light", to: "dark", mounted_nonce: nonce, before: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest }, after: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest } } } : {}) };
+  const preserved = { native_focus: observation.native_focus, scroll_offsets: sourceReceipt.scroll_offsets, timer: sourceReceipt.timer, production_instance_id: sourceReceipt.production_instance_id, mount_id: sourceReceipt.mount_id };
+  const receipt = { schema_version: 3, nonce, run_id: read.attestation.run_id, state_id: id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: observation.readiness.status, source_tree_sha256: read.attestation.source_tree_sha256, apk_sha256: read.attestation.apk_sha256, device_identity_sha256: read.attestation.device_identity_sha256, png_sha256: sha(bytes), observation_sha256: sha(JSON.stringify(observation)), source_receipt: sourceReceipt,
+    ...(configuration.appearance === "System" && configuration.scheme === "dark" ? { system_transition: { from: "light", to: "dark", mounted_nonce: nonce, color_scheme: { before: "light", after: "dark" }, before: preserved, after: preserved } } : {}) };
   return { native_execution: "EXECUTED", fixture_id: "v12-synthetic-fixtures-r18", png_base64: bytes.toString("base64"), settings: { restored: true, privacy: "synthetic-only", observation, state_receipt: receipt } };
 };
 const stateFocus = (id) => visualState(id).readiness.focus.target;
@@ -74,8 +78,9 @@ const response = (() => {
     const key = `${id}:${configuration_id}`; const pngHash = sha(Buffer.from(visualPng(id, configuration_id), "base64"));
     const captureNonce = sha(`capture:${key}`).slice(0, 32); const observationNonce = sha(`compare:${key}`).slice(0, 32);
     const observation = visualObservation(id, configuration_id, observationNonce, captureNonce); const state = visualState(id); const sourceReceipt = observation.readiness.source_receipt; const config = visualConfig(configuration_id);
-    const stateReceipt = { schema_version: 2, nonce: observationNonce, run_id: read.attestation.run_id, state_id: id, configuration_id, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: observation.readiness.status, source_tree_sha256: read.attestation.source_tree_sha256, apk_sha256: read.attestation.apk_sha256, device_identity_sha256: read.attestation.device_identity_sha256, png_sha256: pngHash, observation_sha256: sha(JSON.stringify(observation)), source_receipt: sourceReceipt,
-      ...(config.appearance === "System" && config.scheme === "dark" ? { system_transition: { from: "light", to: "dark", mounted_nonce: observationNonce, before: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest }, after: { route: id, state: id, focus: stateFocus(id), scroll: sha(id), timer: sha(id), source: sourceReceipt.digest } } } : {}) };
+    const preserved = { native_focus: observation.native_focus, scroll_offsets: sourceReceipt.scroll_offsets, timer: sourceReceipt.timer, production_instance_id: sourceReceipt.production_instance_id, mount_id: sourceReceipt.mount_id };
+    const stateReceipt = { schema_version: 3, nonce: observationNonce, run_id: read.attestation.run_id, state_id: id, configuration_id, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: observation.readiness.status, source_tree_sha256: read.attestation.source_tree_sha256, apk_sha256: read.attestation.apk_sha256, device_identity_sha256: read.attestation.device_identity_sha256, png_sha256: pngHash, observation_sha256: sha(JSON.stringify(observation)), source_receipt: sourceReceipt,
+      ...(config.appearance === "System" && config.scheme === "dark" ? { system_transition: { from: "light", to: "dark", mounted_nonce: observationNonce, color_scheme: { before: "light", after: "dark" }, before: preserved, after: preserved } } : {}) };
     const captureSourceReceipt = { ...sourceReceipt, nonce: captureNonce };
     const captureStateReceipt = { ...stateReceipt, nonce: captureNonce, observation_sha256: sha(JSON.stringify(visualObservation(id, configuration_id, captureNonce))), source_receipt: captureSourceReceipt };
     if (captureStateReceipt.system_transition) captureStateReceipt.system_transition = { ...captureStateReceipt.system_transition, mounted_nonce: captureNonce };

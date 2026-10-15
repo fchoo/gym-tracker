@@ -21,13 +21,14 @@ const ROOT = process.cwd();
 const visualStates = JSON.parse(readFileSync("src/testing/phase20VisualStateRegistry.json", "utf8"));
 const receiptFor = (item, pngBytes, ordinal) => {
   const state = visualStates.find(({ id }) => id === item.state_id);
-  const observation = { native_execution: "EXECUTED", state_id: item.state_id, configuration_id: item.configuration_id, readiness: { status: state.readiness.status } };
+  const observation = { native_execution: "EXECUTED", state_id: item.state_id, configuration_id: item.configuration_id, readiness: { status: state.readiness.status }, native_focus: { resource_id: "focus-node", class_name: "android.view.View", bounds: "[0,0][48,48]" } };
   const sourceMaterial = { state_id: item.state_id, fixture_variant: state.fixture_variant, assertions: state.readiness.source_receipt.assertions };
   const nonce = ordinal.toString(16).padStart(32, "0");
+  const runtimeSource = { ...sourceMaterial, production_instance_id: `phase20-production-instance-${ordinal}`, mount_id: `phase20-production-mount-${ordinal}`, scroll_offsets: [{ native_id: "adaptive-screen-scroll", x: 0, y: 12 }], timer: { state: "running", revision: 2, remaining_ms: null, ends_at_ms: 120_000 } };
   return {
     observation,
     state_receipt: {
-      schema_version: 2,
+      schema_version: 3,
       nonce,
       run_id: "phase20-20261014T000000Z-aaaaaaaaaaaa",
       state_id: item.state_id,
@@ -39,8 +40,8 @@ const receiptFor = (item, pngBytes, ordinal) => {
       device_identity_sha256: "c".repeat(64),
       png_sha256: createHash("sha256").update(pngBytes).digest("hex"),
       observation_sha256: createHash("sha256").update(JSON.stringify(observation)).digest("hex"),
-      source_receipt: { schema_version: 1, nonce, ...sourceMaterial, digest: createHash("sha256").update(JSON.stringify(sourceMaterial)).digest("hex") },
-      ...(item.configuration_id.startsWith("AP-SD-") ? { system_transition: { from: "light", to: "dark", mounted_nonce: nonce, before: { stable: true }, after: { stable: true } } } : {}),
+      source_receipt: { schema_version: 2, nonce, ...runtimeSource, digest: createHash("sha256").update(JSON.stringify(runtimeSource)).digest("hex") },
+      ...(item.configuration_id.startsWith("AP-SD-") ? { system_transition: { from: "light", to: "dark", mounted_nonce: nonce, color_scheme: { before: "light", after: "dark" }, before: { native_focus: { resource_id: "focus-node", class_name: "android.view.View", bounds: "[0,0][48,48]" }, scroll_offsets: runtimeSource.scroll_offsets, timer: runtimeSource.timer, production_instance_id: runtimeSource.production_instance_id, mount_id: runtimeSource.mount_id }, after: { native_focus: { resource_id: "focus-node", class_name: "android.view.View", bounds: "[0,0][48,48]" }, scroll_offsets: runtimeSource.scroll_offsets, timer: runtimeSource.timer, production_instance_id: runtimeSource.production_instance_id, mount_id: runtimeSource.mount_id } } } : {}),
     },
   };
 };

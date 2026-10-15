@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Dimensions, StyleSheet, useWindowDimensions, View } from "react-native";
 
 import {
@@ -14,37 +14,69 @@ import {
   resolvePhase20VisualRequest,
   type Phase20VisualRequest,
 } from "./phase20VisualRequest";
-import { Phase20VisualContextProvider } from "./phase20VisualContext";
+import type { ActiveWorkoutRestState } from "../domains/workout";
+import { Phase20VisualContextProvider, type Phase20VisualProductionMount, type Phase20VisualScrollOffset } from "./phase20VisualContext";
 import { clearPhase20VisualCleanupStatus, phase20VisualCleanupStatus } from "./phase20VisualFixtureRuntime";
 
 export const resolvePhase20VisualProbe = resolvePhase20VisualRequest;
+
+export type Phase20VisualTimerReceipt = Readonly<{
+  state: ActiveWorkoutRestState["state"];
+  revision: number;
+  remaining_ms: number | null;
+  ends_at_ms: number | null;
+}>;
+
+export function phase20VisualTimerReceipt(
+  rest: ActiveWorkoutRestState,
+): Phase20VisualTimerReceipt {
+  return Object.freeze({
+    state: rest.state,
+    revision: rest.revision,
+    remaining_ms: rest.state === "paused" ? rest.remainingMs : null,
+    ends_at_ms: rest.state === "running" ? rest.endsAtMs : null,
+  });
+}
 
 /** Isolated fixture route: the selected production route owns all rendered UI. */
 export function Phase20VisualProbe({
   children,
   ready,
   request,
+  timerReceipt = null,
 }: Readonly<{
   children: React.ReactNode;
   ready: boolean;
   request: Phase20VisualRequest;
+  timerReceipt?: Phase20VisualTimerReceipt | null;
 }>) {
   const store = useMemo(() => createMemoryAppearanceStore(
     request.appearance === "System" ? null : request.appearance,
   ), [request.appearance]);
+  const [mount, setMount] = useState<Phase20VisualProductionMount | null>(null);
+  const [scrollOffsets, setScrollOffsets] = useState<readonly Phase20VisualScrollOffset[]>([]);
+  const reportScrollOffset = useCallback((offset: Phase20VisualScrollOffset) => {
+    setScrollOffsets((current) => Object.freeze([
+      ...current.filter(({ native_id: nativeId }) => nativeId !== offset.native_id),
+      Object.freeze({ ...offset }),
+    ].sort((left, right) => left.native_id.localeCompare(right.native_id))));
+  }, []);
   return (
     <AppearanceProvider store={store}>
-      <Phase20VisualContextProvider request={request}>
-        <ObservedScreen ready={ready} request={request}>{children}</ObservedScreen>
+      <Phase20VisualContextProvider onProductionMount={setMount} onScrollOffset={reportScrollOffset} request={request}>
+        <ObservedScreen mount={mount} ready={ready} request={request} scrollOffsets={scrollOffsets} timerReceipt={timerReceipt}>{children}</ObservedScreen>
       </Phase20VisualContextProvider>
     </AppearanceProvider>
   );
 }
 
-function ObservedScreen({ children, ready, request }: Readonly<{
+function ObservedScreen({ children, mount, ready, request, scrollOffsets, timerReceipt }: Readonly<{
   children: React.ReactNode;
+  mount: Phase20VisualProductionMount | null;
   ready: boolean;
   request: Phase20VisualRequest;
+  scrollOffsets: readonly Phase20VisualScrollOffset[];
+  timerReceipt: Phase20VisualTimerReceipt | null;
 }>) {
   const { appearance, colorScheme } = useAppTheme();
   const window = useWindowDimensions();
@@ -66,13 +98,13 @@ function ObservedScreen({ children, ready, request }: Readonly<{
     return () => { cancelled = true; };
   }, [request.mode, request.nonce]);
   useEffect(() => {
-    if (!laidOut || !ready || !cleanupReady) return;
+    if (!laidOut || !ready || !cleanupReady || (request.mode === "capture" && (mount === null || scrollOffsets.length === 0))) return;
     let second: number | undefined;
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(() => {
         const screen = Dimensions.get("screen");
         console.log(`PHASE20_VISUAL_RESULT ${JSON.stringify({
-          schema_version: 1,
+          schema_version: 2,
           nonce: request.nonce,
           state_id: request.state,
           configuration_id: request.configuration,
@@ -104,6 +136,16 @@ function ObservedScreen({ children, ready, request }: Readonly<{
           evidence_scope: state.evidence_scope,
           source_revision: 18,
           source_read_only: true,
+          source_receipt: {
+            schema_version: 2,
+            nonce: request.nonce,
+            state_id: request.state,
+            fixture_variant: state.fixture_variant,
+            assertions: state.readiness.source_receipt.assertions,
+            ...(mount ?? { production_instance_id: "", mount_id: "" }),
+            scroll_offsets: scrollOffsets,
+            timer: timerReceipt,
+          },
         })}`);
         if (request.mode === "reset") clearPhase20VisualCleanupStatus(request.nonce);
       });
@@ -112,7 +154,7 @@ function ObservedScreen({ children, ready, request }: Readonly<{
       cancelAnimationFrame(first);
       if (second !== undefined) cancelAnimationFrame(second);
     };
-  }, [appearance, cleanupReady, colorScheme, laidOut, ready, request, state, window.fontScale, window.height, window.scale, window.width]);
+  }, [appearance, cleanupReady, colorScheme, laidOut, mount, ready, request, scrollOffsets, state, timerReceipt, window.fontScale, window.height, window.scale, window.width]);
   return (
     <View onLayout={() => setLaidOut(true)} style={styles.root}
       nativeID={`phase20-visual-state-${request.state}`}

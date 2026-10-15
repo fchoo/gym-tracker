@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
+import { executeProductionDomainAction } from "./v12-production-native-domain-actions.mjs";
+import { executeProductionQualityAction } from "./v12-production-native-quality-actions.mjs";
 import { executeProductionVisualAction } from "./v12-production-native-visual-actions.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -44,7 +46,17 @@ async function execute(action, payload, attestation) {
   if (action === "snapshot-settings") return runtime.snapshotSettings(payload.lease);
   if (action === "restore-settings") return runtime.restoreSettings(payload.settings, payload.lease);
   if (action === "sqlite") return runtime.withLease(payload, runtime.sqlite);
-  if (action.startsWith("visual-")) return runtime.withLease(payload, () => executeProductionVisualAction({ action, payload, attestation }));
+  const handlers = [
+    () => action.startsWith("visual-")
+      ? runtime.withLease(payload, () => executeProductionVisualAction({ action, payload, attestation }))
+      : undefined,
+    () => executeProductionQualityAction(action, payload, attestation),
+    () => executeProductionDomainAction(action, payload, attestation),
+  ];
+  for (const handler of handlers) {
+    const result = await handler();
+    if (result !== undefined) return result;
+  }
   fail("action_contract_unavailable");
 }
 

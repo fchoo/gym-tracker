@@ -4,6 +4,11 @@ import path from "node:path";
 
 const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._-]*$/u;
+const HASH = /^[a-f0-9]{64}$/u;
+const EXECUTION_ORIGIN_KEYS = Object.freeze([
+  "schema_version", "kind", "default_launcher", "test_only",
+  "adapter_source_sha256", "launcher_source_sha256", "request_attestation_sha256",
+]);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 function fail(code) { throw new Error(`v12_atomic_publish_${code}`); }
 function relative(value) {
@@ -51,6 +56,19 @@ function publicationIdentity(runRoot) {
       : typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value))) fail("build_identity_invalid");
   return Object.freeze(identity);
 }
+export function validateV12ExecutionOrigin(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== EXECUTION_ORIGIN_KEYS.length
+    || EXECUTION_ORIGIN_KEYS.some((key) => !Object.hasOwn(value, key))
+    || value.schema_version !== 1
+    || !["production-default-launcher", "test-fixture"].includes(value.kind)
+    || typeof value.default_launcher !== "boolean" || typeof value.test_only !== "boolean"
+    || value.default_launcher === value.test_only
+    || (value.kind === "production-default-launcher") !== value.default_launcher
+    || ![value.adapter_source_sha256, value.launcher_source_sha256, value.request_attestation_sha256]
+      .every((digest) => HASH.test(digest ?? ""))) fail("execution_origin_invalid");
+  return Object.freeze({ ...value });
+}
 export function recordV12AtomicFailure({ root = process.cwd(), runId, shard, error } = {}) {
   if (!SAFE.test(shard ?? "")) fail("arguments_invalid");
   const runRoot = safeRoot(root, runId); const failure = path.join(runRoot, "failures", `${shard}.json`);
@@ -78,7 +96,7 @@ function assertCompleteStage(stage, members) {
 }
 
 /** Stage members privately, write a manifest last, then publish exactly once. */
-export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true } = {}) {
+export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true, executionOrigin } = {}) {
   if (!SAFE.test(shard ?? "") || typeof produce !== "function") fail("arguments_invalid");
   const runRoot = safeRoot(root, runId); const finalManifest = path.join(runRoot, "publication", `${shard}.json`);
   const failure = path.join(runRoot, "failures", `${shard}.json`);
@@ -95,7 +113,9 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
   try {
     produce(Object.freeze({ write, stage_root: stage }));
     if (members.length === 0 || validate(Object.freeze([...members]), stage) !== true) fail("validation_failed");
-    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, identity: publicationIdentity(runRoot), members: Object.freeze([...members]), completed: true });
+    const resolvedOrigin = executionOrigin === undefined ? undefined
+      : validateV12ExecutionOrigin(typeof executionOrigin === "function" ? executionOrigin() : executionOrigin);
+    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, identity: publicationIdentity(runRoot), ...(resolvedOrigin === undefined ? {} : { execution_origin: resolvedOrigin }), members: Object.freeze([...members]), completed: true });
     const stagedManifest = path.join(stage, "manifest.json");
     writeFileSync(stagedManifest, `${JSON.stringify(manifest)}\n`, { flag: "wx" }); fsyncFile(stagedManifest);
     assertCompleteStage(stage, members);
@@ -126,6 +146,7 @@ export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}
   if (manifest?.run_id !== runId || manifest.shard !== shard || manifest.completed !== true || !Array.isArray(manifest.members)) fail("manifest_invalid");
   const expectedIdentity = publicationIdentity(runRoot);
   if (expectedIdentity !== null && JSON.stringify(manifest.identity) !== JSON.stringify(expectedIdentity)) fail("manifest_identity_invalid");
+  if (manifest.execution_origin !== undefined) validateV12ExecutionOrigin(manifest.execution_origin);
   for (const member of manifest.members) {
     if (member.artifact === "manifest.json") continue;
     const file = path.join(runRoot, relative(member.artifact)); noLinks(runRoot, file);

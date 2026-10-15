@@ -15,6 +15,7 @@ import {
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_ROUTE_JOURNEY_IDS,
@@ -26,7 +27,7 @@ import {
   stableCanonicalJson,
 } from "./v12-calendar-artifacts.mjs";
 import { validateV12RunManifest as validateGenericRunManifest } from "./create-v12-run-manifest.mjs";
-import { publishV12AtomicShard, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
+import { publishV12AtomicShard, validateV12ExecutionOrigin, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 import {
   deriveV12Ledger as deriveContractLedger,
   loadV12ContractInputs,
@@ -679,6 +680,7 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
 });
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
 const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
+const V12_ADAPTER_SHARDS = Object.freeze(["sqlite", "recovery", "garmin", "calendar", "visual", "comparison", "accessibility", "performance"]);
 
 function preflightFail(code) { throw new Error(`v12_preflight_${code}`); }
 
@@ -712,7 +714,7 @@ function preflightSafeFile(root, relative, { required = true } = {}) {
 function preflightHashFile(root, relative, options) {
   const file = preflightSafeFile(root, relative, options);
   if (file === null) return null;
-  return preflightBlackBoxFastPath() ? sha256(`${relative}:${lstatSync(file).size}`) : sha256(readFileSync(file));
+  return sha256(readFileSync(file));
 }
 
 function preflightCollectFiles(root, runId) {
@@ -781,12 +783,6 @@ function preflightPng(bytes) {
   if (width < 1 || height < 1) preflightFail("png_invalid");
 }
 
-function preflightBlackBoxFastPath() {
-  return process.env.NODE_ENV === "test" && process.env.V12_PHASE20_BLACKBOX === "1"
-    && process.env.V12_NATIVE_ADAPTER_TEST_MODE === "phase20-native-adapter-subprocess"
-    && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1";
-}
-
 function preflightIdentityText(text, manifest) {
   const required = [manifest.source.tree_sha256, manifest.build.apk.sha256, manifest.device.installed_apk_sha256, manifest.device.identity_sha256];
   if (required.some((value) => !text.includes(value))) preflightFail("artifact_identity_invalid");
@@ -809,25 +805,103 @@ function preflightVerifyArtifact(root, runId, relative, manifest) {
         const descriptor = record?.native_png;
         const receipt = record?.settings?.state_receipt;
         if (record?.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || !descriptor || typeof descriptor.path !== "string" || !HASH.test(descriptor.sha256)
-          || receipt?.schema_version !== 2 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "") || nonces.has(receipt.nonce)
+          || receipt?.schema_version !== 3 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "") || nonces.has(receipt.nonce)
           || receipt.run_id !== runId || receipt.state_id !== record.state_id || receipt.configuration_id !== record.configuration_id
           || receipt.png_sha256 !== descriptor.sha256 || receipt.source_receipt?.nonce !== receipt.nonce || !HASH.test(receipt.source_receipt?.digest ?? "")) preflightFail("visual_record_invalid");
         nonces.add(receipt.nonce);
         const pngFile = preflightSafeFile(root, descriptor.path);
-        if (!preflightBlackBoxFastPath()) {
-          const png = readFileSync(pngFile); preflightPng(png);
-          if (sha256(png) !== descriptor.sha256) preflightFail("visual_png_hash_invalid");
-        } else if (lstatSync(pngFile).size !== descriptor.size_bytes) preflightFail("visual_png_hash_invalid");
+        const png = readFileSync(pngFile); preflightPng(png);
+        if (sha256(png) !== descriptor.sha256) preflightFail("visual_png_hash_invalid");
       }
     }
     if (relative === "comparison/index.json" && (value.schema_version !== 3 || value.producer !== "v12-visual-comparison-index/v3" || value.comparison_count !== 107 * 64
       || !Array.isArray(value.windows) || value.windows.length < 1 || !Array.isArray(value.results) || value.results.length !== 107 * 64
-      || value.results.some((entry) => entry.state_receipt?.schema_version !== 2 || entry.capture_state_receipt?.schema_version !== 2
+      || value.results.some((entry) => entry.state_receipt?.schema_version !== 3 || entry.capture_state_receipt?.schema_version !== 3
         || entry.state_receipt.nonce === entry.capture_state_receipt.nonce))) preflightFail("comparison_index_invalid");
     if (relative === "performance.json" && (!value.observation || !Array.isArray(value.observation.raw_samples?.warm_launch_to_interactive_ms))) preflightFail("performance_schema_invalid");
     if (relative === "semantics/accessibility.json" && (!Array.isArray(value.observations) || value.observations.length === 0)) preflightFail("accessibility_schema_invalid");
   }
   return { path: full, sha256: sha256(bytes) };
+}
+
+function assertNonTestEvidenceEnvironment() {
+  if (process.env.NODE_ENV === "test" || process.env.V12_PHASE20_BLACKBOX !== undefined
+    || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined
+    || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined
+    || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) preflightFail("test_provenance_forbidden");
+}
+
+function validateV12ProductionPublicationOrigins(root, runId) {
+  const adapterSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-native-adapter.mjs")));
+  const launcherSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-production-native-adapter-launcher.mjs")));
+  for (const shard of V12_ADAPTER_SHARDS) {
+    let publication;
+    try { publication = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8")); }
+    catch { preflightFail("adapter_provenance_missing"); }
+    let origin;
+    try { origin = validateV12ExecutionOrigin(publication.execution_origin); }
+    catch { preflightFail("adapter_provenance_invalid"); }
+    if (origin.kind === "test-fixture" || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
+    if (origin.adapter_source_sha256 !== adapterSha256 || origin.launcher_source_sha256 !== launcherSha256) preflightFail("adapter_provenance_stale");
+  }
+  return true;
+}
+
+function defaultApkSignature(apkPath) {
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+  if (typeof sdk !== "string" || sdk.length === 0) preflightFail("final_identity_invalid");
+  const apksigner = path.join(sdk, "build-tools", "36.0.0", "apksigner");
+  if (!existsSync(apksigner)) preflightFail("final_identity_invalid");
+  let report;
+  try { report = execFileSync(apksigner, ["verify", "--verbose", "--print-certs", apkPath], { maxBuffer: 16 * 1024 * 1024 }); }
+  catch { preflightFail("final_identity_invalid"); }
+  const text = report.toString("utf8");
+  const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(text)?.[1]?.replaceAll(":", "").toLowerCase();
+  if (!text.includes("Verified using v2 scheme (APK Signature Scheme v2): true") || !HASH.test(certificate ?? "")) preflightFail("final_identity_invalid");
+  return { signature_sha256: sha256(report), certificate_sha256: certificate };
+}
+
+function defaultDeviceIdentity(manifest) {
+  const serial = process.env.V12_DEVICE_SERIAL;
+  if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) preflightFail("final_identity_invalid");
+  const adb = (...args) => {
+    try { return execFileSync("adb", ["-s", serial, ...args], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }).trim(); }
+    catch { preflightFail("final_identity_invalid"); }
+  };
+  if (adb("get-state") !== "device") preflightFail("final_identity_invalid");
+  const abi = adb("shell", "getprop", "ro.product.cpu.abi");
+  const identity_sha256 = phase18DeviceIdentitySha256({ serial, abi, apiLevel: adb("shell", "getprop", "ro.build.version.sdk"), model: adb("shell", "getprop", "ro.product.model") });
+  const installed = adb("shell", "pm", "path", manifest.build.package);
+  if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)) preflightFail("final_identity_invalid");
+  const installed_apk_sha256 = adb("shell", "sha256sum", installed.slice(8)).split(/\s/u)[0];
+  return { identity_sha256, installed_apk_sha256, abi };
+}
+
+export function validateV12FinalProductionIdentity(manifest, {
+  root = ROOT,
+  currentHead = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+  currentSourceTreeSha256 = () => sourceTreeSha256(root),
+  verifyApkSignature = defaultApkSignature,
+  readDeviceIdentity = () => defaultDeviceIdentity(manifest),
+} = {}) {
+  const validated = validateV12RunManifest(manifest);
+  const apkPath = preflightSafeFile(root, validated.build.apk.path);
+  const apkBytes = readFileSync(apkPath);
+  if (apkBytes.length < 4 || !apkBytes.subarray(0, 4).equals(Buffer.from("504b0304", "hex"))) preflightFail("final_identity_invalid");
+  let signature; let device; let head; let source;
+  try {
+    signature = verifyApkSignature(apkPath);
+    device = readDeviceIdentity();
+    head = currentHead();
+    source = currentSourceTreeSha256();
+  }
+  catch (error) { if (error instanceof Error && error.message.startsWith("v12_preflight_")) throw error; preflightFail("final_identity_invalid"); }
+  if (apkBytes.length !== validated.build.apk.size_bytes || sha256(apkBytes) !== validated.build.apk.sha256
+    || head !== validated.source.head || source !== validated.source.tree_sha256
+    || signature?.signature_sha256 !== validated.build.apk.signature_sha256 || signature?.certificate_sha256 !== validated.build.apk.certificate_sha256
+    || device?.identity_sha256 !== validated.device.identity_sha256 || device?.installed_apk_sha256 !== validated.device.installed_apk_sha256
+    || device?.installed_apk_sha256 !== validated.build.apk.sha256 || device?.abi !== validated.device.abi) preflightFail("final_identity_invalid");
+  return true;
 }
 
 function preflightValidateArtifacts(root, runId, shardIds) {
@@ -853,6 +927,8 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
 
   const runPrefix = `artifacts/native/v1.2/${options.run_id}`;
   if (options.mode === "preseal") {
+    assertNonTestEvidenceEnvironment();
+    validateV12ProductionPublicationOrigins(root, options.run_id);
     for (const output of V12_PREFLIGHT_FINAL_OUTPUTS) if (preflightSafeFile(root, `${runPrefix}/${output}`, { required: false }) !== null) preflightFail("final_output_present");
     const artifacts = preflightValidateArtifacts(root, options.run_id, Object.keys(V12_PREFLIGHT_SHARDS));
     const allFiles = preflightCollectFiles(root, options.run_id);
@@ -863,6 +939,9 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report) });
     return report;
   }
+  assertNonTestEvidenceEnvironment();
+  validateV12ProductionPublicationOrigins(root, options.run_id);
+  validateV12FinalProductionIdentity(manifest, { root });
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
   if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
   try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }

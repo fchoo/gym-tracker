@@ -272,7 +272,7 @@ test('uses filesystem write-once producers for a valid V12 result, verifier read
     writeFileSync(path.join(runDirectory, 'build.json'), JSON.stringify(manifest));
     writeFileSync(path.join(activeDirectory, 'v1.2-acceptance.json'), JSON.stringify({ status: 'passed', contract: nativeV12Result() }));
     const executed = await executeV12SqliteShardCli(['--run', runId, '--execute'], {
-      root, sourceDigest: digest, execFileSync: () => '',
+      root, sourceDigest: digest, executeNative: async () => ({ status: 'passed', contract: nativeV12Result() }),
     });
     assert.equal(executed.ok, true);
     const verified = await executeV12SqliteShardCli(['--run', runId, '--verify'], { root, sourceDigest: digest });
@@ -290,7 +290,7 @@ test('uses filesystem write-once producers for a valid V12 result, verifier read
     await assert.rejects(
       executeV12SqliteShardCli(['--run', runId, '--execute'], {
         root: failureRoot, sourceDigest: digest,
-        execFileSync: () => { throw { stderr: '{"failure_code":"marker_timeout"}' }; },
+        executeNative: async () => { throw new Error('v12_native_adapter_command_failed:marker_timeout'); },
       }),
       /v12_sqlite_marker_timeout/u,
     );
