@@ -36,4 +36,13 @@ describe("Phase 20 quality probe route", () => {
     const malformed = await render(<Phase20QualityProbeRoute />);
     expect(malformed.getByTestId("quality-probe-disabled")).toBeOnTheScreen();
   });
+  it("requires operation and sequence before the packaged route can become ready", async () => {
+    delete mockParams.operation;
+    const missingOperation = await render(<Phase20QualityProbeRoute />);
+    expect(missingOperation.getByTestId("quality-probe-disabled")).toBeOnTheScreen();
+    mockParams.operation = "accessibility-workout-normal";
+    delete mockParams.sequence;
+    const missingSequence = await render(<Phase20QualityProbeRoute />);
+    expect(missingSequence.getByTestId("quality-probe-disabled")).toBeOnTheScreen();
+  });
 });

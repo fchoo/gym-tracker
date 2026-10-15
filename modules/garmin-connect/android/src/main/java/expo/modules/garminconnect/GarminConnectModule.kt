@@ -50,6 +50,10 @@ private data class GarminAdversarialSuiteInput(
   @Field val deviceIdentitySha256: String = ""
 ) : Record
 
+private data class GarminBenchmarkJsonInput(
+  @Field val payloadJson: String = ""
+) : Record
+
 internal fun phase18DeviceIdentitySha256(
   serial: String,
   abi: String,
@@ -188,6 +192,18 @@ class GarminConnectModule : Module() {
     AsyncFunction(RUNTIME_INFO_OPERATION)
       .SuspendBody<Map<String, Any>> { runtimeInfo() }
       .runOnQueue(appContext.backgroundCoroutineScope)
+
+    (AsyncFunction("benchmarkDeterministicJson") Coroutine { input: GarminBenchmarkJsonInput ->
+      val context = appContext.reactContext?.applicationContext
+        ?: throw IllegalStateException("garmin_runtime_unavailable")
+      require(context.packageName == "com.fchoo.gymtracker.devtest" && input.payloadJson.isNotEmpty() && input.payloadJson.length <= 1_000_000) {
+        "garmin_arguments_rejected"
+      }
+      ChaquopyGarminPythonDispatcher(context).dispatch(
+        "benchmarkDeterministicJson",
+        mutableMapOf("payloadJson" to input.payloadJson),
+      )
+    }).runOnQueue(appContext.backgroundCoroutineScope)
 
     AsyncFunction("connectionState")
       .SuspendBody<Map<String, Any?>> { worker().connectionState() }

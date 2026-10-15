@@ -7,6 +7,7 @@ import {
 
 import {
   boundedPhase2BenchmarkSamples,
+  executePhase2OrdinaryJsTask,
   phase2BenchmarkStartupAction,
   performPhase2BenchmarkWithDependencies,
   type Phase2BenchmarkDependencies,
@@ -61,6 +62,12 @@ function dependencies(): Phase2BenchmarkDependencies & Readonly<{
 }
 
 describe("Phase 2 native benchmark application", () => {
+  it("performs deterministic work over the real query result inside the ordinary JS span", () => {
+    const first = executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "one" }] }, 1);
+    expect(first).toBe(executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "one" }] }, 1));
+    expect(first).not.toBe(executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "two" }] }, 1));
+    expect(first).not.toBe(executePhase2OrdinaryJsTask({ state: "page", items: [{ exerciseId: "one" }] }, 2));
+  });
   it("gates startup on the root runtime reaching trusted state", () => {
     const cases = [
       [false, "booting", false, "disabled"],

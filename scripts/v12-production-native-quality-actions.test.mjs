@@ -9,60 +9,15 @@ import { executeProductionQualityAction } from "./v12-production-native-quality-
 import { executeLiveV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
 import { executeV12PerformanceShard } from "./v12-performance-shard.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "./benchmark-v12-interactions.mjs";
+import { accessibilityEvidence, performanceEvidence } from "./testing/v12-quality-evidence-fixture.mjs";
 
 // Deliberately synthetic transport data. It is never installed, published, or
 // presented as measurements. Only the ADB executable is controlled; the module,
 // shared runtime, identity/lease checks and schema validators are production code.
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const quoted = (value) => `'${value.replaceAll("'", "'\\''")}'`;
-const roots = ["workout", "calendar", "library", "progress"];
-const values = (length) => Array.from({ length }, (_, i) => 1 + i / 1000);
-function receipts(identity) {
-  return { source_tree_sha256: identity.source_tree_sha256, fixture_sha256: identity.fixture_sha256,
-    source_before_sha256: hash("before"), source_after_sha256: hash("after"), state_sha256: hash("state"), configuration_sha256: hash("configuration"), command_receipt_sha256: hash("command") };
-}
-function accessibility(identity) {
-  return roots.flatMap((root) => ["normal", "reduced"].map((motion_mode) => ({
-    root, motion_mode, fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED",
-    configuration: { font_scale: 2, density: 3, content_bounds: { width: 360, height: 800 }, insets: { top: 24, bottom: 24 }, ime_bounds: { top: 500, bottom: 800 } },
-    targets: [
-      { id: "primary", name: "Continue", role: "button", state: "enabled", non_color_cue: true, overlap: false, bounds_dp: { left: 0, top: 24, width: 48, height: 48 } },
-      { id: "close", name: "Close", role: "button", state: "enabled", non_color_cue: true, overlap: false, bounds_dp: { left: 48, top: 24, width: 48, height: 48 } },
-    ],
-    interactions: ["touch", "software-keyboard", "hardware-keyboard", "dpad"].map((input) => ({ input, focus_before: "primary", action: "activate", focus_after: "close", command_count: 1, image_hash: hash(input) })),
-    modal: { focus_ring_dp: 3, focus_offset_dp: 3, back: "closes-modal", escape: "closes-modal", restores_invoker: true },
-    motion: { normal: { destination: "done", callbacks: 1, source_facts: hash("source") }, reduced: { destination: "done", callbacks: 1, source_facts: hash("source") } },
-    receipts: { ...receipts(identity), state_sha256: hash(`state:${root}`) },
-  })));
-}
-function performance(identity) {
-  const specification = {
-    warm_launch_to_interactive_ms: [20, "process-resume-to-interactive"], cold_launch_to_interactive_ms: [20, "process-start-to-interactive"],
-    committed_set_to_visible_dock_ms: [100, "authoritative-commit-to-visible-dock"], ordinary_js_task_ms: [100, "js-task-start-to-end"],
-    search_after_debounce_ms: [100, "debounce-end-to-visible-results"], calendar_month_and_selection_ms: [100, "calendar-input-to-visible-selection"],
-    progress_useful_content_ms: [20, "progress-start-to-useful-content"], progress_review_open_ms: [100, "progress-review-start-to-visible"],
-    progress_targeted_rebuild_ms: [20, "progress-rebuild-start-to-useful-content"], phase12_dirty_trigger_ms: [100, "sqlite-dirty-trigger-start-to-end"],
-    phase12_writer_occupancy_ms: [20, "sqlite-writer-acquire-to-release"], phase12_merge_preflight_ms: [10, "merge-preflight-start-to-end"],
-    phase12_merge_materialization_ms: [5, "merge-materialization-start-to-end"],
-  };
-  const timing = (raw, endpoint) => ({ clock: "android-elapsed-realtime", endpoint, source_tree_sha256: identity.source_tree_sha256,
-    spans: raw.map((value, i) => ({ start_ms: i * 100, end_ms: i * 100 + value })) });
-  const samples = Object.fromEntries(Object.entries(specification).map(([key, [count]]) => [key, values(count)]));
-  const timings = Object.fromEntries(Object.entries(specification).map(([key, [, endpoint]]) => [key, timing(samples[key], endpoint)]));
-  for (const [key, names, endpoint] of [["root_switch_to_useful_ms", roots, "root-input-to-useful-content"], ["input_response_ms", ["numeric_edit", "rest_control"], "input-to-visible-response"]]) {
-    samples[key] = Object.fromEntries(names.map((name) => [name, values(100)]));
-    timings[key] = Object.fromEntries(names.map((name) => [name, timing(samples[key][name], endpoint)]));
-  }
-  samples.calendar_frame_sequences = Array.from({ length: 100 }, (_, i) => ({ frame_work_ms: [1, 2 + i / 1000], missed_frames: i % 2, refresh_rate_hz: 60, profiler_overhead_ms: 0.2 }));
-  samples.phase12_merge_peak_growth_bytes = values(10);
-  samples.phase12_merge_fixture = { snapshot_bytes: 24 * 1024 * 1024, rows: 100_000, writer_commits: 5, sqlite_max_variable_number: 4000 };
-  samples.garmin_sync_normalization = { state: "REVIEW_REQUIRED", limit_source: "phase18-exact-artifact-baseline", fixture_sha256: hash("garmin-fixture"), normalization_ms: values(5), peak_rss_bytes: values(5),
-    baseline: { source: "phase18-exact-artifact-baseline", identity, artifact_sha256: hash("baseline"), normalization_ms: values(5), peak_rss_bytes: values(5) } };
-  samples.native_receipts = { build_variant: "release", debugger_attached: false, receipts: receipts(identity), timings,
-    frame_sequences_sha256: hash(JSON.stringify(samples.calendar_frame_sequences)), merge_peak_growth_sha256: hash(JSON.stringify(samples.phase12_merge_peak_growth_bytes)) };
-  return { schema_version: 1, suite: "v1.2-performance", producer: "v12-release-performance-collector/v1", native_execution: "EXECUTED",
-    sample_origin: "release-native-source-backed", workload: V12_PERFORMANCE_WORKLOAD, identity, budgets: V12_PERFORMANCE_BUDGETS, samples };
-}
+const accessibility = (identity) => accessibilityEvidence(identity);
+const performance = (identity) => performanceEvidence(identity);
 
 // This tool is invoked in a production-mode child process, not as an in-process
 // fake adapter. Existing controlled ADB handles identity, leases and restoration.
@@ -78,8 +33,37 @@ const args = process.argv.slice(2);
 const command = args[2] === 'shell' ? [...args[3].matchAll(/'([^']*)'/g)].map(m => m[1]) : [];
 const component = 'com.fchoo.gymtracker.devtest/com.fchoo.gymtracker.Phase20QualityInstrumentation';
 const save = () => writeFileSync(file, JSON.stringify(state));
+const hashValue = value => createHash('sha256').update(value).digest('hex');
+const canonical = value => Array.isArray(value) ? '[' + value.map(canonical).join(',') + ']' : value && typeof value === 'object' ? '{' + Object.entries(value).sort(([a],[b])=>a.localeCompare(b,'en')).map(([key,entry])=>JSON.stringify(key)+':'+canonical(entry)).join(',') + '}' : JSON.stringify(value);
 if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   if (!state.noInstrumentation) process.stdout.write('instrumentation:' + component + ' (target=com.fchoo.gymtracker.devtest)\n');
+} else if (command[0] === 'pidof') {
+  if (state.processId) process.stdout.write(String(state.processId)); else process.exitCode = 1;
+} else if (command[0] === 'getconf' && command[1] === 'CLK_TCK') {
+  process.stdout.write('100');
+} else if (command[0] === 'cat' && command[1]?.startsWith('/proc/')) {
+  process.stdout.write(String(state.processId) + ' (gymtracker) S ' + Array(18).fill('0').join(' ') + ' ' + String(state.processStartTicks));
+} else if (command[0] === 'logcat' && command[1] === '-c') {
+  state.coldLog = ''; save();
+} else if (command[0] === 'logcat' && command.includes('monotonic')) {
+  process.stdout.write(state.coldLog ?? '');
+} else if (command[0] === 'am' && command[1] === 'force-stop') {
+  if (state.failStop) { process.stderr.write('private-device /Users/private bearer'); process.exit(1); }
+  state.lastProcessId = state.processId; state.lastProcessStartTicks = state.processStartTicks;
+  state.processId = null; state.processStartTicks = null; save();
+} else if (command[0] === 'am' && command[1] === 'start') {
+  const uri = new URL(command[command.indexOf('-d') + 1]);
+  state.coldSequence = (state.coldSequence ?? 0) + 1;
+  state.processId = state.reuseProcess ? state.lastProcessId : 3000 + state.coldSequence;
+  state.processStartTicks = state.reuseProcess ? state.lastProcessStartTicks : 100000 + state.coldSequence * 100;
+  const operation = uri.searchParams.get('operation'); const sequence = Number(uri.searchParams.get('sequence'));
+  const nonce = uri.searchParams.get('nonce'); const rootName = 'workout'; const fixtureId = 'phase20-workout-active-r1'; const stateId = 'workout-active-session';
+  const unsigned = {schema_version:1,nonce,action:'performance',operation,sequence,kind:'ready',source:'phase20-quality-workload/v1',monotonic_ms:1,
+    database_name:'gym-tracker-phase20-quality-'+nonce+'-workout.db',root:rootName,fixture_id:fixtureId,state_id:stateId,configuration_id:'quality-workout-performance-f200',
+    sqlite_receipt_sha256:hashValue('source:'+sequence),readiness_sha256:hashValue('ready:'+sequence),payload:{root:rootName}};
+  const marker = {...unsigned,receipt_sha256:hashValue(canonical(unsigned))}; const readySeconds = state.processStartTicks / 100 + 0.1;
+  state.coldLog = readySeconds.toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(marker) + '\n'; save();
+  process.stdout.write('Status: ok\n');
 } else if (command[0] === 'am' && command[1] === 'instrument') {
   if (process.env.NODE_ENV !== 'production' || process.env.NODE_TEST_CONTEXT || process.env.V12_NATIVE_ADAPTER_COMMAND || process.env.V12_NATIVE_ADAPTER_TEST_MODE) process.exit(79);
   state.instrumentCalls = (state.instrumentCalls ?? 0) + 1;
@@ -106,8 +90,6 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   emit('result',{sha256:state.badDigest ? '0'.repeat(64) : createHash('sha256').update(body).digest('hex')});
   if (state.duplicateResult) emit('result',{sha256:'0'.repeat(64)});
   if (!state.noCompletion) process.stdout.write(state.failedCompletion ? 'INSTRUMENTATION_CODE: 0\n' : 'INSTRUMENTATION_CODE: -1\n');
-} else if (command[0] === 'am' && command[1] === 'force-stop' && state.failStop) {
-  process.stderr.write('private-device /Users/private bearer'); process.exit(1);
 } else {
   await import(pathToFileURL(path.join(process.cwd(),'scripts/testing/v12-production-launcher/controlled-device-tool.mjs')));
 }
@@ -160,13 +142,20 @@ test("production subprocess returns the complete native performance raw schema u
   const runner = fixture(t);
   const before = runner.readState().settings;
   const result = successful(runner, { workload: V12_PERFORMANCE_WORKLOAD, budgets: V12_PERFORMANCE_BUDGETS, build_variant: "release", sample_origin: "release-native-source-backed" });
-  assert.deepEqual(result, runner.measured.performance);
+  assert.deepEqual(result.samples.ordinary_js_task_ms, runner.measured.performance.samples.ordinary_js_task_ms);
+  assert.notDeepEqual(result.samples.cold_launch_to_interactive_ms, runner.measured.performance.samples.cold_launch_to_interactive_ms);
+  assert.equal(result.samples.native_receipts.cold_launch_cycles.length, 20);
+  assert.ok(result.samples.native_receipts.cold_launch_cycles.every((cycle) => cycle.process_id !== cycle.previous_process_id && cycle.process_start_ticks !== cycle.previous_process_start_ticks));
   const shard = executeV12PerformanceShard({ identity: runner.identity, performance: result });
   assert.equal(shard.summary.calendar_frame_sequences.samples, 100);
   assert.deepEqual(shard.raw_samples.native_receipts, result.samples.native_receipts);
   assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(runner.readState().instrumentCalls, 1);
-  assert.equal(result.samples.garmin_sync_normalization.baseline.source, "phase18-exact-artifact-baseline");
+  assert.equal(result.samples.garmin_sync_normalization.baseline.source, "phase18-pinned-artifact/v1");
+});
+test("cold launch rejects a clear-task-style cycle which does not restart the app process", (t) => {
+  const runner = fixture(t); runner.updateState({ reuseProcess: true, processId: 2500, processStartTicks: 90_000 });
+  rejected(runner.invoke(), "cold_process_not_restarted"); released(runner);
 });
 test("production subprocess returns measured F200/accessibility with restored settings and attended exclusions", (t) => {
   const runner = fixture(t, "accessibility"); const before = runner.readState().settings;
@@ -207,7 +196,6 @@ for (const action of ["accessibility", "performance"]) {
 }
 for (const [name, mutate] of [
   ["missing series", (p) => { delete p.samples.ordinary_js_task_ms; }],
-  ["nineteen cold launches", (p) => { p.samples.cold_launch_to_interactive_ms.pop(); }],
   ["ninety-nine frames", (p) => { p.samples.calendar_frame_sequences.pop(); }],
   ["missing root", (p) => { delete p.samples.root_switch_to_useful_ms.library; }],
   ["missing input path", (p) => { delete p.samples.input_response_ms.rest_control; }],
@@ -219,11 +207,11 @@ for (const [name, mutate] of [
     p.samples.ordinary_js_task_ms.fill(1);
     p.samples.native_receipts.timings.ordinary_js_task_ms.spans = p.samples.ordinary_js_task_ms.map(() => ({ start_ms: 0, end_ms: 1 }));
   }],
-  ["missing real command receipt", (p) => { delete p.samples.native_receipts.receipts.command_receipt_sha256; }],
+  ["missing real command receipt", (p) => { delete p.samples.native_receipts.ordinary_js_receipt.receipt_sha256; }],
   ["private raw payload", (p) => { p.samples.private_payload = "private-native /Users/private"; }],
 ]) test(`performance rejects ${name}`, (t) => {
   const runner = fixture(t); mutate(runner.measured.performance);
-  rejected(runner.invoke(), "(?:schema_invalid|sample_count_invalid|timing_receipt_duplicate|timing_receipt_invalid|timing_receipt_mismatch)"); released(runner);
+  rejected(runner.invoke(), "performance_[a-z_]+(?:invalid|exceeded)"); released(runner);
 });
 for (const [name, mutate] of [
   ["absent geometry", (o) => { delete o.targets[0].bounds_dp.width; }],
@@ -233,16 +221,16 @@ for (const [name, mutate] of [
   ["absent IME", (o) => { o.configuration.ime_bounds.top = 800; }],
   ["missing hardware keyboard", (o) => { o.interactions.splice(2, 1); }],
   ["claimed TalkBack", (o) => { o.talkback = true; }],
-  ["source mismatch", (o) => { o.receipts.source_tree_sha256 = "f".repeat(64); }],
-  ["reduced motion changes source", (o) => { o.motion.reduced.source_facts = "f".repeat(64); }],
+  ["source mismatch", (o) => { o.source_receipts.source_tree_sha256 = "f".repeat(64); }],
+  ["reduced motion changes source", (o) => { o.motion.source_facts_sha256 = "f".repeat(64); }],
   ["static overlap claim", (o) => { o.targets[0].overlap = true; }],
   ["static modal state", (o) => { o.modal.focus_ring_dp = 0; }],
   ["static focus transition", (o) => { o.interactions.forEach((entry) => { entry.focus_after = entry.focus_before; }); }],
-  ["static motion callback", (o) => { o.motion.normal.callbacks = 0; }],
-  ["missing command receipt", (o) => { delete o.receipts.command_receipt_sha256; }],
+  ["static motion callback", (o) => { o.motion.callback_count = 0; }],
+  ["missing command receipt", (o) => { delete o.native_receipts.command_receipt_sha256; }],
 ]) test(`accessibility rejects ${name}`, (t) => {
   const runner = fixture(t, "accessibility"); mutate(runner.measured.observations[0]);
-  rejected(runner.invoke(), "(?:schema_invalid|geometry_overlap|geometry_invalid|focus_invalid|ime_invalid|measurement_invalid|receipt_identity_mismatch|observation_invalid)"); released(runner);
+  rejected(runner.invoke(), "accessibility_[a-z_]+invalid"); released(runner);
 });
 test("accessibility requires all four roots in both motion modes", (t) => {
   const runner = fixture(t, "accessibility"); runner.measured.observations.pop();
@@ -250,25 +238,25 @@ test("accessibility requires all four roots in both motion modes", (t) => {
 });
 test("accessibility rejects shared root readiness hashes", (t) => {
   const runner = fixture(t, "accessibility");
-  runner.measured.observations.forEach((observation) => { observation.receipts.state_sha256 = hash("shared"); });
-  rejected(runner.invoke(), "shared_root_readiness"); released(runner);
+  runner.measured.observations.forEach((observation) => { observation.source_receipts.state_sha256 = hash("shared"); observation.native_receipts.readiness_sha256 = hash("shared"); });
+  rejected(runner.invoke(), "accessibility_(?:native_receipts|motion|coverage)_invalid"); released(runner);
 });
 test("accessibility compares source outcomes across the actual normal and reduced observations", (t) => {
   const runner = fixture(t, "accessibility");
-  const changed = { destination: "different", callbacks: 1, source_facts: hash("source") };
-  runner.measured.observations[1].motion = { normal: changed, reduced: changed };
-  rejected(runner.invoke(), "motion_mismatch"); released(runner);
+  runner.measured.observations[1].motion.destination = "different";
+  rejected(runner.invoke(), "accessibility_motion_invalid"); released(runner);
 });
 test("warm launch maximum is enforced even when raw spans are valid", (t) => {
   const runner = fixture(t);
   runner.measured.performance.samples.warm_launch_to_interactive_ms[0] = 1001;
-  runner.measured.performance.samples.native_receipts.timings.warm_launch_to_interactive_ms.spans[0].end_ms = 1001;
-  rejected(runner.invoke(), "launch_budget_exceeded"); released(runner);
+  const span = runner.measured.performance.samples.native_receipts.timings.warm_launch_to_interactive_ms.spans[0];
+  span.end_ms = span.start_ms + 1001;
+  rejected(runner.invoke(), "performance_launch_budget_exceeded"); released(runner);
 });
 test("timing endpoints cannot be relabelled after collection", (t) => {
   const runner = fixture(t);
   runner.measured.performance.samples.native_receipts.timings.search_after_debounce_ms.endpoint = "idle-loop";
-  rejected(runner.invoke(), "timing_receipt_invalid"); released(runner);
+  rejected(runner.invoke(), "performance_timing_invalid"); released(runner);
 });
 test("borrowed lease stays owned by the caller after verified restoration", (t) => {
   const runner = fixture(t, "accessibility");

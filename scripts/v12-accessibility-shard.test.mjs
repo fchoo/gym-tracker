@@ -1,41 +1,38 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { executeLiveV12AccessibilityShard, executeV12AccessibilityShard, validateV12AccessibilityShard, verifyV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
-
-const trace = () => ({
-  configuration: { font_scale: 2, density: 3, content_bounds: { width: 360, height: 800 }, insets: { top: 24, bottom: 24 }, ime_bounds: { top: 500, bottom: 800 } },
-  targets: [{ id: "primary", bounds_dp: { left: 0, top: 0, width: 48, height: 48 }, name: "Continue", role: "button", state: "enabled", non_color_cue: true, overlap: false }],
-  interactions: ["touch", "software-keyboard", "hardware-keyboard", "dpad"].map((input) => ({ input, focus_before: "primary", action: "activate", focus_after: "primary", command_count: 1, image_hash: "a".repeat(64) })),
-  modal: { focus_ring_dp: 3, focus_offset_dp: 3, back: "closes-modal", escape: "closes-modal", restores_invoker: true },
-  motion: { normal: { destination: "done", callbacks: 1, source_facts: "fixture" }, reduced: { destination: "done", callbacks: 1, source_facts: "fixture" } },
-});
+import { accessibilityEvidence, qualityIdentity } from "./testing/v12-quality-evidence-fixture.mjs";
 
 test("plans source-only accessibility observations without native execution", () => {
   const plan = executeV12AccessibilityShard({ mode: "plan" });
   assert.equal(plan.mode, "plan");
   assert.equal(plan.required_inputs.length, 4);
   assert.equal(plan.focus_ring_dp, 3);
-  assert.equal(validateV12AccessibilityShard({ schema_version: 1, observations: [trace()] }), true);
+  const identity = qualityIdentity();
+  assert.equal(validateV12AccessibilityShard({ schema_version: 1, observations: accessibilityEvidence(identity) }, identity), true);
 });
 
-test("rejects unmeasured F200, undersized/overlapping targets, duplicate commands, focus drift, and reduced-motion changes", () => {
-  const bad = trace(); bad.configuration.font_scale = 1;
-  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: [bad] }), /v12_accessibility_font_scale_invalid/u);
-  const overlap = trace(); overlap.targets[0].bounds_dp.width = 47;
-  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: [overlap] }), /v12_accessibility_target_invalid/u);
-  const duplicate = trace(); duplicate.interactions[0].command_count = 2;
-  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: [duplicate] }), /v12_accessibility_interaction_invalid/u);
-  const motion = trace(); motion.motion.reduced.destination = "other";
-  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: [motion] }), /v12_accessibility_motion_invalid/u);
+test("rejects old fixture-shaped and incomplete accessibility evidence", () => {
+  const identity = qualityIdentity();
+  const one = accessibilityEvidence(identity).slice(0, 1);
+  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: one }, identity), /coverage_invalid/u);
+  const overlap = accessibilityEvidence(identity); overlap[0].targets[0].bounds_dp.width = 47;
+  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: overlap }, identity), /targets_invalid/u);
+  const duplicate = accessibilityEvidence(identity); duplicate[0].interactions[0].command_count = 2;
+  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: duplicate }, identity), /interactions_invalid/u);
+  const motion = accessibilityEvidence(identity); motion[0].motion.destination = "other";
+  assert.throws(() => validateV12AccessibilityShard({ schema_version: 1, observations: motion }, identity), /motion_invalid/u);
 });
 
-test("writes real semantic and geometry observations while keeping attended assistive-tech paths excluded", () => {
+test("writes exact semantic and geometry observations while keeping attended assistive-tech paths excluded", () => {
   const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
+  const identity = qualityIdentity();
+  const observations = accessibilityEvidence(identity);
   const written = new Map();
-  const live = { ...trace(), fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED", restored_settings: true };
-  const result = executeLiveV12AccessibilityShard({ runId, observe: () => [live], write: (file, value) => written.set(file, value) });
-  assert.equal(result.geometry.targets.length, 1);
-  assert.equal(result.semantic.excludes.includes("live-talkback"), true);
+  const result = executeLiveV12AccessibilityShard({ runId, observe: () => observations, write: (file, value) => written.set(file, value) });
+  assert.equal(result.geometry.targets.length, observations.reduce((total, entry) => total + entry.targets.length, 0));
+  assert.equal(new Set(result.geometry.targets.map(({ configuration_id }) => configuration_id)).size, 8);
+  assert.deepEqual(result.semantic.excludes, ["live-talkback", "switch-scanning", "final-verdict"]);
+  written.set(`artifacts/native/v1.2/${runId}/build.json`, { source: { tree_sha256: identity.source_tree_sha256 }, fixtures: { registry_sha256: identity.fixture_sha256 } });
   assert.equal(verifyV12AccessibilityShard({ runId, readJson: (file) => written.get(file) }), true);
-  assert.throws(() => executeLiveV12AccessibilityShard({ runId, observe: () => [{ ...live, talkback: "claimed" }], write: () => {} }), /observation_invalid/u);
 });

@@ -18,6 +18,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowInsets
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,8 +26,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -37,6 +36,12 @@ class Phase20QualityInstrumentation : Instrumentation() {
   private val workloadMarker = "GYM_TRACKER_PHASE20_WORKLOAD:"
   private val roots = listOf("workout" to "/", "calendar" to "/calendar", "library" to "/library", "progress" to "/progress")
   private val databasePrefix = "gym-tracker-phase20-quality-"
+  private val scenarios = mapOf(
+    "workout" to Pair("phase20-workout-active-r1", "workout-active-session"),
+    "calendar" to Pair("phase20-calendar-month-r1", "calendar-month-agenda"),
+    "library" to Pair("phase20-library-exercises-r1", "library-exercise-catalog"),
+    "progress" to Pair("phase20-progress-overview-r1", "progress-overall-current"),
+  )
   private lateinit var arguments: Bundle
   private var progressSequence = 0
   private var lastProgressAtMs = 0L
@@ -52,6 +57,8 @@ class Phase20QualityInstrumentation : Instrumentation() {
     val missedFrames: Int,
     val refreshRateHz: Double,
     val profilerOverheadMs: Double,
+    val frameStartMs: Double,
+    val frameEndMs: Double,
     val pssGrowthBytes: List<Long>,
   ) {
     val durationMs get() = endMs - startMs
@@ -71,6 +78,19 @@ class Phase20QualityInstrumentation : Instrumentation() {
     .joinToString("") { "%02x".format(it) }
   private fun sha(value: String) = sha(value.toByteArray(Charsets.UTF_8))
   private fun elapsedMs() = SystemClock.elapsedRealtimeNanos() / 1_000_000.0
+  private fun rootForOperation(operation: String) = Regex("^(?:accessibility-|root-switch-)(workout|calendar|library|progress)(?:-|$)")
+    .find(operation)?.groupValues?.get(1) ?: when {
+      operation == "search-after-debounce" -> "library"
+      operation == "calendar-month-selection" -> "calendar"
+      operation.startsWith("progress-") -> "progress"
+      else -> "workout"
+    }
+  private fun databaseName(nonce: String, operation: String) = "$databasePrefix$nonce-${rootForOperation(operation)}.db"
+  private fun configurationId(operation: String): String {
+    val root = rootForOperation(operation)
+    val mode = if (operation.startsWith("accessibility-")) if (operation.endsWith("-reduced")) "reduced" else "normal" else "performance"
+    return "quality-$root-$mode-f200"
+  }
   private fun command(value: String) = ParcelFileDescriptor.AutoCloseInputStream(
     uiAutomation.executeShellCommand(value),
   ).bufferedReader().use { it.readText() }
@@ -117,21 +137,28 @@ class Phase20QualityInstrumentation : Instrumentation() {
       if (value.optString("action") != action || value.optString("operation") != operation
         || value.optInt("sequence", -1) != sequence) throw IllegalStateException("workload_marker_identity_mismatch")
       exact(value, setOf("schema_version", "nonce", "action", "operation", "sequence", "kind", "source",
-        "monotonic_ms", "receipt_sha256", "database_name"),
+        "monotonic_ms", "receipt_sha256", "database_name", "root", "fixture_id", "state_id", "configuration_id"),
         setOf("sqlite_receipt_sha256", "readiness_sha256", "payload"))
+      val root = rootForOperation(operation); val scenario = scenarios.getValue(root)
       if (value.optInt("schema_version") != 1 || value.optString("source") != "phase20-quality-workload/v1"
+        || value.optString("root") != root || value.optString("fixture_id") != scenario.first
+        || value.optString("state_id") != scenario.second || value.optString("configuration_id") != configurationId(operation)
+        || value.optString("database_name") != databaseName(nonce, operation)
         || value.has("endpoint")) throw IllegalStateException("workload_marker_schema_invalid")
       val kind = value.getString("kind")
-      if (kind !in setOf("start", "commit", "ready", "result", "chunk", "error")) throw IllegalStateException("workload_marker_schema_invalid")
-      val markerKey = if (kind == "chunk") "chunk:${value.optJSONObject("payload")?.optInt("chunk_sequence", -1)}" else kind
+      if (kind !in setOf("start", "commit", "ready", "result", "chunk", "callback", "error")) throw IllegalStateException("workload_marker_schema_invalid")
+      val markerKey = when (kind) {
+        "chunk" -> "chunk:${value.optJSONObject("payload")?.optInt("chunk_sequence", -1)}"
+        "callback" -> "callback:${value.optJSONObject("payload")?.optString("callback_id")}:${value.optJSONObject("payload")?.optInt("callback_count", -1)}"
+        else -> kind
+      }
       if (!markerKeys.add(markerKey)) throw IllegalStateException("workload_marker_duplicate")
       val atMs = value.getDouble("monotonic_ms")
       if (!atMs.isFinite() || atMs <= previous) throw IllegalStateException("workload_marker_order_invalid")
       previous = atMs
       val unsigned = JSONObject(value.toString()).apply { remove("receipt_sha256") }
       if (value.getString("receipt_sha256") != sha(canonical(unsigned))) throw IllegalStateException("workload_marker_receipt_invalid")
-      if (!operation.startsWith("launch-")
-        && !value.optString("sqlite_receipt_sha256").matches(Regex("[a-f0-9]{64}"))) {
+      if (!value.optString("sqlite_receipt_sha256").matches(Regex("[a-f0-9]{64}"))) {
         throw IllegalStateException("sqlite_receipt_sha256_missing")
       }
       val payload = value.optJSONObject("payload")
@@ -177,9 +204,8 @@ class Phase20QualityInstrumentation : Instrumentation() {
     val uri = Uri.Builder().scheme("gymtracker-devtest").authority("__phase20-quality-probe")
       .appendQueryParameter("nonce", nonce).appendQueryParameter("action", action)
       .appendQueryParameter("operation", qualityOperation).appendQueryParameter("sequence", qualitySequence.toString()).build()
-    val lifecycleFlag = if (operation == "launch-cold") Intent.FLAG_ACTIVITY_CLEAR_TASK else Intent.FLAG_ACTIVITY_SINGLE_TOP
     return startActivitySync(Intent(Intent.ACTION_VIEW, uri).addFlags(
-      Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or lifecycleFlag,
+      Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
     )) ?: throw IllegalStateException("quality_activity_missing")
   }
 
@@ -243,6 +269,33 @@ class Phase20QualityInstrumentation : Instrumentation() {
     .firstOrNull { it.second.isFocused || it.second.isAccessibilityFocused }?.first?.id
     ?: throw IllegalStateException("focus_transition_missing")
 
+  private fun callbackCount(markers: List<Marker>, callbackId: String) = markers
+    .filter { it.kind == "callback" && it.value.optJSONObject("payload")?.optString("callback_id") == callbackId }
+    .maxOfOrNull { it.value.getJSONObject("payload").getInt("callback_count") } ?: 0
+
+  private fun awaitCallback(nonce: String, action: String, operation: String, sequence: Int,
+    callbackId: String, afterCount: Int): Marker {
+    val deadline = SystemClock.elapsedRealtime() + 30_000L
+    while (SystemClock.elapsedRealtime() < deadline) {
+      val markers = parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence)
+      markers.firstOrNull { it.kind == "callback" && it.value.optJSONObject("payload")?.let { payload ->
+        payload.optString("callback_id") == callbackId && payload.optInt("callback_count", 0) > afterCount
+      } == true }?.let { return it }
+      SystemClock.sleep(25)
+    }
+    throw IllegalStateException("product_callback_missing")
+  }
+
+  private fun awaitFocus(targetId: String): String {
+    val deadline = SystemClock.elapsedRealtime() + 10_000L
+    while (SystemClock.elapsedRealtime() < deadline) {
+      val focused = runCatching { focusedNodeId(targetNodes()) }.getOrNull()
+      if (focused == targetId) return focused
+      SystemClock.sleep(25)
+    }
+    throw IllegalStateException("focus_transition_missing")
+  }
+
   private fun awaitTarget(timeoutMs: Long = 60_000, predicate: (Target) -> Boolean): Pair<Target, AccessibilityNodeInfo> {
     val deadline = SystemClock.elapsedRealtime() + timeoutMs
     while (SystemClock.elapsedRealtime() < deadline) {
@@ -271,24 +324,43 @@ class Phase20QualityInstrumentation : Instrumentation() {
     val managed = manager.getProcessMemoryInfo(intArrayOf(android.os.Process.myPid())).single().totalPss.toLong() * 1024L
     return max(managed, Debug.getPss().toLong() * 1024L)
   }
-  private fun frameProbe(): Triple<List<Double>, Int, Double> {
-    val latch = CountDownLatch(1); val frames = mutableListOf<Double>(); var previous = 0L
-    runOnMainSync { Choreographer.getInstance().postFrameCallback(object : Choreographer.FrameCallback {
+  private data class FrameCaptureResult(val frames: List<Double>, val missedFrames: Int, val refreshRateHz: Double,
+    val profilerOverheadMs: Double, val startMs: Double, val endMs: Double)
+  private inner class GestureFrameCapture {
+    private val frames = mutableListOf<Double>(); private val overhead = mutableListOf<Double>()
+    private var previous = 0L; private var running = false; private var startedAt = 0.0
+    private val refresh = (targetContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.refreshRate.toDouble()
+    private val callback = object : Choreographer.FrameCallback {
       override fun doFrame(frameTimeNanos: Long) {
-        if (previous != 0L) frames += (frameTimeNanos - previous) / 1_000_000.0; previous = frameTimeNanos
-        if (frames.size == 3) latch.countDown() else Choreographer.getInstance().postFrameCallback(this)
+        if (!running) return
+        val callbackStartedAt = elapsedMs()
+        synchronized(frames) { if (previous != 0L) frames += (frameTimeNanos - previous) / 1_000_000.0; previous = frameTimeNanos }
+        synchronized(overhead) { overhead += elapsedMs() - callbackStartedAt }
+        Choreographer.getInstance().postFrameCallback(this)
       }
-    }) }
-    latch.await(2, TimeUnit.SECONDS)
-    val refresh = 60.0
-    return Triple(frames.ifEmpty { listOf(0.0) }, frames.sumOf { max(0, (it / (1000.0 / refresh)).roundToInt() - 1) }, refresh)
+    }
+    fun start() { startedAt = elapsedMs(); running = true; runOnMainSync { Choreographer.getInstance().postFrameCallback(callback) } }
+    fun reset() { synchronized(frames) { frames.clear(); previous = 0L }; synchronized(overhead) { overhead.clear() }; startedAt = elapsedMs() }
+    fun stop(readyAt: Double): FrameCaptureResult {
+      running = false; runOnMainSync { Choreographer.getInstance().removeFrameCallback(callback) }
+      val measured = synchronized(frames) { frames.toList() }; val costs = synchronized(overhead) { overhead.toList() }
+      if (measured.isEmpty() || !refresh.isFinite() || refresh <= 0) throw IllegalStateException("frame_capture_missing")
+      return FrameCaptureResult(measured, measured.sumOf { max(0, (it / (1000.0 / refresh)).roundToInt() - 1) },
+        refresh, costs.maxOrNull() ?: 0.0, startedAt, minOf(elapsedMs(), readyAt))
+    }
   }
 
   private fun runOperation(nonce: String, action: String, operation: String, sequence: Int): Run {
     progress(nonce, action, true)
     command("logcat -c")
-    val start = elapsedMs(); val pssBefore = pssBytes(); val activity = launch(nonce, action, operation, sequence)
+    val start = elapsedMs(); val pssBefore = pssBytes()
+    val frameCapture = if (operation.startsWith("accessibility-") || operation == "calendar-month-selection") GestureFrameCapture().also { it.start() } else null
+    val activity = launch(nonce, action, operation, sequence)
     waitForIdleSync()
+    if (operation == "calendar-month-selection") {
+      awaitCallback(nonce, action, operation, sequence, "route-ready", 0)
+      frameCapture?.reset()
+    }
     if (operation in setOf("committed-set-visible-dock", "numeric-edit", "rest-control")) {
       awaitMarkers(nonce, action, operation, sequence, "result", 5 * 60_000L)
     }
@@ -303,9 +375,11 @@ class Phase20QualityInstrumentation : Instrumentation() {
     }
     validateMarkers(markers, operation)
     val end = elapsedMs(); if (end <= start) throw IllegalStateException("workload_marker_order_invalid")
-    val probeAt = elapsedMs(); val (frames, missed, refresh) = frameProbe()
+    val frameResult = frameCapture?.stop(end) ?: FrameCaptureResult(emptyList(), 0,
+      (targetContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.refreshRate.toDouble(), 0.0, start, end)
     if (operation == "phase12-backup" && pssGrowth.size != 10) throw IllegalStateException("phase12_memory_samples_missing")
-    return Run(activity, markers, start, end, frames, missed, refresh, elapsedMs() - probeAt,
+    return Run(activity, markers, start, end, frameResult.frames, frameResult.missedFrames, frameResult.refreshRateHz, frameResult.profilerOverheadMs,
+      frameResult.startMs, frameResult.endMs,
       if (pssGrowth.isEmpty()) listOf(max(0L, pssBytes() - pssBefore)) else pssGrowth)
   }
 
@@ -321,8 +395,8 @@ class Phase20QualityInstrumentation : Instrumentation() {
     if (setting("system", "font_scale") != "2" || listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale")
         .any { setting("global", it) != value }) throw IllegalStateException("settings_readback_invalid")
   }
-  private fun databaseDigest(nonce: String): String {
-    val database = File(File(targetContext.filesDir, "SQLite"), "$databasePrefix$nonce.db")
+  private fun databaseDigest(nonce: String, operation: String): String {
+    val database = File(File(targetContext.filesDir, "SQLite"), databaseName(nonce, operation))
     val digest = MessageDigest.getInstance("SHA-256"); var found = false
     listOf(database, File(database.path + "-wal"), File(database.path + "-shm")).filter(File::isFile).sortedBy(File::getName).forEach { file ->
       found = true; digest.update(file.name.toByteArray()); FileInputStream(file).use { input ->
@@ -333,32 +407,46 @@ class Phase20QualityInstrumentation : Instrumentation() {
     if (!found) throw IllegalStateException("sqlite_receipt_missing")
     return digest.digest().joinToString("") { "%02x".format(it) }
   }
+  private fun databaseSetDigest(nonce: String) = sha(roots.joinToString("|") { (root, _) ->
+    "$root:${databaseDigest(nonce, "root-switch-$root")}"
+  })
 
   private fun targetJson(target: Target, density: Float, targets: List<Target>) = JSONObject()
     .put("id", target.id).put("name", target.name).put("role", target.role).put("state", target.state)
     .put("non_color_cue", target.nonColorCue).put("bounds_dp", JSONObject().put("left", target.bounds.left / density)
       .put("top", target.bounds.top / density).put("width", target.bounds.width() / density).put("height", target.bounds.height() / density))
     .put("overlap", targets.any { it !== target && overlaps(target.bounds, it.bounds) })
-  private fun interaction(input: String, target: Pair<Target, AccessibilityNodeInfo>, activity: Activity): JSONObject {
-    focus(target.second); val before = focusedNodeId(targetNodes())
-    when (input) { "touch" -> tap(target.first.bounds); "software-keyboard" -> {
-        val settings = targetNodes().firstOrNull { it.first.id.contains("root-settings-trigger") || it.first.name.contains("Settings") }
-          ?: throw IllegalStateException("software_keyboard_target_missing")
-        tap(settings.first.bounds)
+  private fun interaction(input: String, targetId: String, activity: Activity, nonce: String, action: String,
+    operation: String, sequence: Int): JSONObject {
+    val target = awaitTarget { it.id == targetId }
+    focus(target.second); val before = focusedNodeId(targetNodes()); val startedAt = elapsedMs()
+    val callbackId = if (input == "software-keyboard") "settings-search-change" else "settings-open"
+    val callbacksBefore = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), callbackId)
+    val event = when (input) { "touch" -> { tap(target.first.bounds); "touch-tap" }; "software-keyboard" -> {
+        tap(target.first.bounds)
         val edit = targetNodes().firstOrNull { it.second.isEditable } ?: throw IllegalStateException("software_keyboard_target_missing")
         tap(edit.first.bounds); command("input text quality")
         val ime = activity.window.decorView.rootWindowInsets?.getInsets(WindowInsets.Type.ime())
         if (ime == null || ime.bottom <= ime.top) throw IllegalStateException("software_keyboard_readback_missing")
         lastImeHeightPx = ime.bottom
+        "ime-text"
       }
-      "hardware-keyboard" -> key(KeyEvent.KEYCODE_ENTER); "dpad" -> key(KeyEvent.KEYCODE_DPAD_CENTER) }
-    val after = focusedNodeId(targetNodes()); val image = screenshotHash()
+      "hardware-keyboard" -> { key(KeyEvent.KEYCODE_ENTER); "key-enter" }
+      "dpad" -> { key(KeyEvent.KEYCODE_DPAD_CENTER); "key-dpad-center" }
+      else -> throw IllegalStateException("input_invalid") }
+    val callback = awaitCallback(nonce, action, operation, sequence, callbackId, callbacksBefore)
+    val callbackCount = callback.value.getJSONObject("payload").getInt("callback_count") - callbacksBefore
+    val after = focusedNodeId(targetNodes()); val image = screenshotHash(); val endedAt = elapsedMs()
     if (allNodes().any { (it.text ?: it.contentDescription)?.toString()?.contains("App Settings") == true }) {
       if (input == "software-keyboard") key(KeyEvent.KEYCODE_BACK)
       key(KeyEvent.KEYCODE_BACK); focus(target.second)
     }
-    return JSONObject().put("input", input).put("focus_before", before).put("action", "activate")
-      .put("focus_after", after).put("command_count", 1).put("image_hash", image)
+    val eventReceipt = sha(canonical(JSONObject().put("input", input).put("event", event).put("focus_before", before)
+      .put("focus_after", after).put("start_ms", startedAt).put("end_ms", endedAt)
+      .put("callback_receipt_sha256", callback.value.getString("receipt_sha256"))))
+    return JSONObject().put("input", input).put("event", event).put("focus_before", before).put("action", "activate")
+      .put("focus_after", after).put("command_count", callbackCount).put("callback_count", callbackCount)
+      .put("callback_receipt_sha256", callback.value.getString("receipt_sha256")).put("event_receipt_sha256", eventReceipt).put("image_hash", image)
   }
   private fun measureFocusRing(bitmap: Bitmap, bounds: Rect, density: Float): Int {
     val y = bounds.centerY().coerceIn(0, bitmap.height - 1); val edge = bounds.left.coerceIn(0, bitmap.width - 1)
@@ -368,7 +456,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
     }
     return (pixels / density).roundToInt()
   }
-  private fun modal(root: String): JSONObject {
+  private fun modal(root: String, nonce: String, action: String, operation: String, sequence: Int): JSONObject {
     val trigger = targetNodes().firstOrNull { it.first.id.contains("root-settings-trigger") || it.first.name.contains("Settings") }
       ?: throw IllegalStateException("modal_state_missing")
     focus(trigger.second); tap(trigger.first.bounds)
@@ -377,22 +465,41 @@ class Phase20QualityInstrumentation : Instrumentation() {
       ?: throw IllegalStateException("modal_focus_missing")
     val bitmap = uiAutomation.takeScreenshot() ?: throw IllegalStateException("screenshot_missing")
     val ring = measureFocusRing(bitmap, modalFocused.first.bounds, targetContext.resources.displayMetrics.density)
+    val backgroundIsolated = targetNodes().none { it.first.id == trigger.first.id }
+    val closeBeforeBack = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), "settings-close")
+    val backStartedAt = elapsedMs(); val backFocusBefore = modalFocused.first.id
     key(KeyEvent.KEYCODE_BACK)
+    val backCallback = awaitCallback(nonce, action, operation, sequence, "settings-close", closeBeforeBack)
     if (allNodes().any { (it.text ?: it.contentDescription)?.toString()?.contains("App Settings") == true }) throw IllegalStateException("modal_back_failed")
-    if (focusedNodeId(targetNodes()) != trigger.first.id) throw IllegalStateException("modal_back_focus_restore_failed")
-    tap(trigger.first.bounds); key(KeyEvent.KEYCODE_ESCAPE)
-    val restored = focusedNodeId(targetNodes()) == trigger.first.id
-    if (!restored || ring != 3) throw IllegalStateException("modal_focus_restore_failed:$root")
-    return JSONObject().put("focus_ring_dp", ring).put("focus_offset_dp", ring).put("back", "closes-modal")
-      .put("escape", "closes-modal").put("restores_invoker", true)
+    val backFocusAfter = awaitFocus(trigger.first.id); val backEndedAt = elapsedMs()
+    val closeBeforeEscape = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), "settings-close")
+    val openBeforeEscape = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), "settings-open")
+    tap(trigger.first.bounds); awaitCallback(nonce, action, operation, sequence, "settings-open", openBeforeEscape)
+    val escapeFocusBefore = focusedNodeId(targetNodes()); val escapeStartedAt = elapsedMs(); key(KeyEvent.KEYCODE_ESCAPE)
+    val escapeCallback = awaitCallback(nonce, action, operation, sequence, "settings-close", closeBeforeEscape)
+    val escapeFocusAfter = awaitFocus(trigger.first.id); val escapeEndedAt = elapsedMs()
+    if (!backgroundIsolated || ring != 3) throw IllegalStateException("modal_focus_restore_failed:$root")
+    fun event(name: String, focusBefore: String, focusAfter: String, startedAt: Double, endedAt: Double, callback: Marker) = JSONObject()
+      .put("event", name).put("focus_before", focusBefore).put("focus_after", focusAfter).put("callback_count", 1)
+      .put("callback_receipt_sha256", callback.value.getString("receipt_sha256"))
+      .put("event_receipt_sha256", sha(canonical(JSONObject().put("event", name).put("focus_before", focusBefore)
+        .put("focus_after", focusAfter).put("start_ms", startedAt).put("end_ms", endedAt)
+        .put("callback_receipt_sha256", callback.value.getString("receipt_sha256")))))
+    return JSONObject().put("focus_ring_dp", ring).put("focus_offset_dp", ring).put("background_isolated", backgroundIsolated)
+      .put("back", event("key-back", backFocusBefore, backFocusAfter, backStartedAt, backEndedAt, backCallback))
+      .put("escape", event("key-escape", escapeFocusBefore, escapeFocusAfter, escapeStartedAt, escapeEndedAt, escapeCallback))
+      .put("restores_invoker", true)
   }
 
   private fun accessibility(identity: JSONObject, nonce: String, action: String): JSONArray {
     command("settings put system font_scale 2"); command("settings put secure show_ime_with_hard_keyboard 1")
     val observations = linkedMapOf<String, JSONObject>(); val rootHashes = mutableSetOf<String>()
+    var observationSequence = 0
     for ((root, _) in roots) for (mode in listOf("normal", "reduced")) {
+      observationSequence += 1
       lastImeHeightPx = 0
-      setMotion(mode); val run = runOperation(nonce, action, "accessibility-$root-$mode", 1); val before = databaseDigest(nonce)
+      val operation = "accessibility-$root-$mode"; val scenario = scenarios.getValue(root)
+      setMotion(mode); val run = runOperation(nonce, action, operation, observationSequence); val before = databaseDigest(nonce, operation)
       val pairs = targetNodes(); val targets = pairs.map(Pair<Target, AccessibilityNodeInfo>::first)
       if (targets.isEmpty()) throw IllegalStateException("semantic_tree_missing")
       val density = targetContext.resources.displayMetrics.density
@@ -400,29 +507,39 @@ class Phase20QualityInstrumentation : Instrumentation() {
       if (mode == "normal" && !rootHashes.add(sha(canonical(targetArray)))) throw IllegalStateException("duplicate_product_root_semantics")
       val primary = pairs.firstOrNull { it.first.id.contains("root-settings-trigger") || it.first.name.contains("Settings") }
         ?: throw IllegalStateException("modal_invoker_missing")
-      val interactions = JSONArray(listOf("touch", "software-keyboard", "hardware-keyboard", "dpad").map { interaction(it, primary, run.activity) })
+      val interactions = JSONArray(listOf("touch", "software-keyboard", "hardware-keyboard", "dpad").map {
+        interaction(it, primary.first.id, run.activity, nonce, action, operation, observationSequence)
+      })
       val screenshot = uiAutomation.takeScreenshot() ?: throw IllegalStateException("screenshot_missing")
       val insets = run.activity.window.decorView.rootWindowInsets; val bars = insets?.getInsets(WindowInsets.Type.systemBars())
       if (targetContext.resources.configuration.fontScale != 2f || lastImeHeightPx <= 0) throw IllegalStateException("settings_readback_invalid")
-      val ready = run.marker("ready"); val motion = JSONObject().put("destination", root.replaceFirstChar { it.uppercase() })
-        .put("callbacks", if (run.frames.isEmpty()) 0 else 1).put("source_facts", ready.getString("sqlite_receipt_sha256"))
-      observations["$root:$mode"] = JSONObject().put("root", root).put("motion_mode", mode)
-        .put("fixture_id", "v12-synthetic-fixtures-r18").put("native_execution", "EXECUTED")
-        .put("configuration", JSONObject().put("font_scale", 2).put("density", density)
+      val ready = run.marker("ready"); val routeCallbacks = callbackCount(run.markers, "route-ready")
+      val motion = JSONObject().put("mode", mode).put("destination", scenario.second)
+        .put("callback_count", routeCallbacks).put("frame_callback_count", run.frames.size)
+        .put("source_facts_sha256", ready.getString("sqlite_receipt_sha256"))
+      motion.put("behavior_receipt_sha256", sha(canonical(motion)))
+      val configuration = JSONObject().put("id", configurationId(operation)).put("root", root).put("motion_mode", mode)
+        .put("operation", operation).put("fixture_id", scenario.first).put("state_id", scenario.second)
+        .put("font_scale", 2).put("density", density)
           .put("content_bounds", JSONObject().put("width", screenshot.width / density).put("height", screenshot.height / density))
           .put("insets", JSONObject().put("top", (bars?.top ?: 0) / density).put("bottom", (bars?.bottom ?: 0) / density))
-          .put("ime_bounds", JSONObject().put("top", (screenshot.height - lastImeHeightPx) / density).put("bottom", screenshot.height / density)))
-        .put("targets", targetArray).put("interactions", interactions).put("modal", modal(root))
-        .put("motion", JSONObject().put(mode, motion)).put("receipts", JSONObject()
+          .put("ime_bounds", JSONObject().put("top", (screenshot.height - lastImeHeightPx) / density).put("bottom", screenshot.height / density))
+      val modal = modal(root, nonce, action, operation, observationSequence)
+      val sourceReceipts = JSONObject()
           .put("source_tree_sha256", identity.getString("source_tree_sha256")).put("fixture_sha256", identity.getString("fixture_sha256"))
-          .put("source_before_sha256", before).put("source_after_sha256", databaseDigest(nonce))
-          .put("state_sha256", ready.getString("readiness_sha256")).put("configuration_sha256", sha(canonical(settings())))
-          .put("command_receipt_sha256", ready.getString("receipt_sha256")))
-    }
-    for ((root, _) in roots) {
-      val normal = observations.getValue("$root:normal"); val reduced = observations.getValue("$root:reduced")
-      normal.getJSONObject("motion").put("reduced", reduced.getJSONObject("motion").getJSONObject("reduced"))
-      reduced.getJSONObject("motion").put("normal", normal.getJSONObject("motion").getJSONObject("normal"))
+          .put("source_before_sha256", before).put("source_after_sha256", databaseDigest(nonce, operation))
+          .put("state_sha256", ready.getString("readiness_sha256"))
+      val eventReceipts = JSONArray((0 until interactions.length()).map { interactions.getJSONObject(it).getString("event_receipt_sha256") })
+      val callbackReceipts = JSONArray((0 until interactions.length()).map { interactions.getJSONObject(it).getString("callback_receipt_sha256") })
+      val nativeReceipts = JSONObject().put("operation", operation).put("sequence", observationSequence)
+        .put("database_name", databaseName(nonce, operation)).put("configuration_sha256", sha(canonical(configuration)))
+        .put("command_receipt_sha256", ready.getString("receipt_sha256")).put("readiness_sha256", ready.getString("readiness_sha256"))
+        .put("event_receipts_sha256", sha(canonical(eventReceipts))).put("callback_receipts_sha256", sha(canonical(callbackReceipts)))
+        .put("modal_receipt_sha256", sha(canonical(modal))).put("motion_receipt_sha256", sha(canonical(motion)))
+      observations["$root:$mode"] = JSONObject().put("root", root).put("motion_mode", mode).put("operation", operation)
+        .put("fixture_id", scenario.first).put("state_id", scenario.second).put("native_execution", "EXECUTED")
+        .put("configuration", configuration).put("targets", targetArray).put("interactions", interactions).put("modal", modal)
+        .put("motion", motion).put("source_receipts", sourceReceipts).put("native_receipts", nativeReceipts).put("restored_settings", true)
     }
     return JSONArray(roots.flatMap { listOf(observations.getValue("${it.first}:normal"), observations.getValue("${it.first}:reduced")) })
   }
@@ -469,10 +586,14 @@ class Phase20QualityInstrumentation : Instrumentation() {
     return values
   }
 
-  private fun performance(identity: JSONObject, nonce: String, workload: JSONObject, budgets: JSONObject): JSONObject {
-    val warm = repeated(nonce, "launch-warm", 20); val cold = repeated(nonce, "launch-cold", 20)
+  private fun performance(identity: JSONObject, nonce: String, workload: JSONObject, budgets: JSONObject,
+    coldLaunch: JSONObject): JSONObject {
+    val warm = repeated(nonce, "launch-warm", 20)
+    val coldValues = array(coldLaunch.get("durations_ms")); val coldTiming = coldLaunch.getJSONObject("timing")
+    val coldCycles = coldLaunch.getJSONArray("cycles")
+    if (coldValues.length() != 20 || coldCycles.length() != 20) throw IllegalStateException("cold_launch_evidence_invalid")
     val rootRuns = roots.associate { it.first to repeated(nonce, "root-switch-${it.first}", 100) }
-    val sourceBefore = databaseDigest(nonce)
+    val sourceBefore = databaseSetDigest(nonce)
     val dock = repeated(nonce, "committed-set-visible-dock", 100); val numeric = repeated(nonce, "numeric-edit", 100)
     val rest = repeated(nonce, "rest-control", 100); val search = repeated(nonce, "search-after-debounce", 100)
     val calendar = repeated(nonce, "calendar-month-selection", 100); val useful = repeated(nonce, "progress-useful-content", 20)
@@ -484,48 +605,59 @@ class Phase20QualityInstrumentation : Instrumentation() {
     for (result in listOf(phase2Result, phase12Result, garminResult)) if (!result.optString("command_receipt_sha256").matches(Regex("[a-f0-9]{64}"))) throw IllegalStateException("command_receipt_sha256_missing")
     val phase2Samples = phase2Result.getJSONObject("samples"); val phase12Samples = phase12Result.getJSONObject("samples"); val garminSamples = garminResult.getJSONObject("samples")
     fun values(runs: List<Run>) = JSONArray(runs.map(Run::durationMs))
-    val samples = JSONObject().put("warm_launch_to_interactive_ms", values(warm)).put("cold_launch_to_interactive_ms", values(cold))
-      .put("root_switch_to_useful_ms", JSONObject(rootRuns.mapValues { values(it.value) }))
-      .put("committed_set_to_visible_dock_ms", JSONArray(dock.map { it.marker("ready").getDouble("monotonic_ms") - it.marker("commit").getDouble("monotonic_ms") }))
+    fun markerValues(runs: List<Run>, startKind: String = "start", endKind: String = "ready") = JSONArray(runs.map {
+      it.marker(endKind).getDouble("monotonic_ms") - it.marker(startKind).getDouble("monotonic_ms")
+    })
+    val samples = JSONObject().put("warm_launch_to_interactive_ms", values(warm)).put("cold_launch_to_interactive_ms", coldValues)
+      .put("root_switch_to_useful_ms", JSONObject(rootRuns.mapValues { markerValues(it.value) }))
+      .put("committed_set_to_visible_dock_ms", markerValues(dock, "commit"))
       .put("ordinary_js_task_ms", array(phase2Samples.get("js_task_ms")))
-      .put("input_response_ms", JSONObject().put("numeric_edit", values(numeric)).put("rest_control", values(rest)))
-      .put("search_after_debounce_ms", values(search)).put("calendar_month_and_selection_ms", values(calendar))
-      .put("progress_useful_content_ms", values(useful)).put("progress_review_open_ms", values(review)).put("progress_targeted_rebuild_ms", values(rebuild))
-      .put("calendar_frame_sequences", JSONArray(calendar.map { JSONObject().put("frame_work_ms", JSONArray(it.frames)).put("missed_frames", it.missedFrames)
-        .put("refresh_rate_hz", it.refreshRateHz).put("profiler_overhead_ms", it.profilerOverheadMs) }))
+      .put("input_response_ms", JSONObject().put("numeric_edit", markerValues(numeric)).put("rest_control", markerValues(rest)))
+      .put("search_after_debounce_ms", markerValues(search)).put("calendar_month_and_selection_ms", markerValues(calendar))
+      .put("progress_useful_content_ms", markerValues(useful)).put("progress_review_open_ms", markerValues(review)).put("progress_targeted_rebuild_ms", markerValues(rebuild))
+      .put("calendar_frame_sequences", JSONArray(calendar.mapIndexed { index, run -> JSONObject().put("sequence", index + 1)
+        .put("capture_phase", "calendar-gesture-before-ready").put("start_ms", run.frameStartMs).put("end_ms", run.frameEndMs).put("ready_ms", run.endMs)
+        .put("frame_work_ms", JSONArray(run.frames)).put("missed_frames", run.missedFrames)
+        .put("refresh_rate_hz", run.refreshRateHz).put("refresh_rate_source", "android-display-mode").put("profiler_overhead_ms", run.profilerOverheadMs) }))
       .put("phase12_dirty_trigger_ms", array(phase12Samples.get("dirty_trigger_ms"))).put("phase12_writer_occupancy_ms", array(phase12Samples.get("writer_occupancy_ms")))
       .put("phase12_merge_preflight_ms", array(phase12Samples.get("merge_preflight_ms"))).put("phase12_merge_materialization_ms", array(phase12Samples.get("merge_materialization_ms")))
       .put("phase12_merge_peak_growth_bytes", JSONArray(phase12.pssGrowthBytes))
       .put("phase12_merge_fixture", JSONObject().put("snapshot_bytes", phase12Samples.getLong("snapshot_bytes")).put("rows", phase12Samples.getLong("total_rows"))
         .put("writer_commits", 5).put("sqlite_max_variable_number", phase12Samples.getLong("sqlite_max_variable_number")))
-      .put("garmin_sync_normalization", JSONObject().put("state", "REVIEW_REQUIRED").put("limit_source", "phase18-exact-artifact-baseline")
-        .put("fixture_sha256", garminResult.getString("command_receipt_sha256")).put("normalization_ms", array(garminSamples.get("normalization_ms")))
-        .put("peak_rss_bytes", array(garminSamples.get("peak_rss_bytes"))).put("baseline", JSONObject().put("source", "phase18-exact-artifact-baseline")
-          .put("identity", identity).put("artifact_sha256", garminResult.getString("command_receipt_sha256"))
-          .put("normalization_ms", array(garminSamples.get("normalization_ms"))).put("peak_rss_bytes", array(garminSamples.get("peak_rss_bytes")))))
+      .put("garmin_sync_normalization", JSONObject().put("state", "REVIEW_REQUIRED").put("limit_source", "phase18-pinned-artifact/v1")
+        .put("transport", garminSamples.getString("transport")).put("fixture_sha256", garminSamples.getString("fixture_sha256"))
+        .put("payload_sha256", garminSamples.getString("payload_sha256")).put("output_sha256", garminSamples.getString("output_sha256"))
+        .put("runtime_receipt_sha256", garminSamples.getString("runtime_receipt_sha256"))
+        .put("normalization_ms", array(garminSamples.get("normalization_ms"))).put("peak_rss_bytes", array(garminSamples.get("peak_rss_bytes")))
+        .put("baseline", garminSamples.getJSONObject("baseline")))
     val source = identity.getString("source_tree_sha256")
     val timings = JSONObject().put("warm_launch_to_interactive_ms", timing(warm, "process-resume-to-interactive", source))
-      .put("cold_launch_to_interactive_ms", timing(cold, "process-start-to-interactive", source))
+      .put("cold_launch_to_interactive_ms", coldTiming)
       .put("committed_set_to_visible_dock_ms", markerTiming(dock, "commit", "ready", "authoritative-commit-to-visible-dock", source))
       .put("ordinary_js_task_ms", timing(phase2Result, "ordinary_js_task_ms", "js-task-start-to-end", source))
-      .put("search_after_debounce_ms", timing(search, "debounce-end-to-visible-results", source))
-      .put("calendar_month_and_selection_ms", timing(calendar, "calendar-input-to-visible-selection", source))
-      .put("progress_useful_content_ms", timing(useful, "progress-start-to-useful-content", source))
-      .put("progress_review_open_ms", timing(review, "progress-review-start-to-visible", source))
-      .put("progress_targeted_rebuild_ms", timing(rebuild, "progress-rebuild-start-to-useful-content", source))
+      .put("search_after_debounce_ms", markerTiming(search, "start", "ready", "debounce-end-to-visible-results", source))
+      .put("calendar_month_and_selection_ms", markerTiming(calendar, "start", "ready", "calendar-input-to-visible-selection", source))
+      .put("progress_useful_content_ms", markerTiming(useful, "start", "ready", "progress-start-to-useful-content", source))
+      .put("progress_review_open_ms", markerTiming(review, "start", "ready", "progress-review-start-to-visible", source))
+      .put("progress_targeted_rebuild_ms", markerTiming(rebuild, "start", "ready", "progress-rebuild-start-to-useful-content", source))
       .put("phase12_dirty_trigger_ms", timing(phase12Result, "dirty_trigger_ms", "sqlite-dirty-trigger-start-to-end", source))
       .put("phase12_writer_occupancy_ms", timing(phase12Result, "writer_occupancy_ms", "sqlite-writer-acquire-to-release", source))
       .put("phase12_merge_preflight_ms", timing(phase12Result, "merge_preflight_ms", "merge-preflight-start-to-end", source))
       .put("phase12_merge_materialization_ms", timing(phase12Result, "merge_materialization_ms", "merge-materialization-start-to-end", source))
-      .put("root_switch_to_useful_ms", JSONObject(rootRuns.mapValues { timing(it.value, "root-input-to-useful-content", source) }))
-      .put("input_response_ms", JSONObject().put("numeric_edit", timing(numeric, "input-to-visible-response", source)).put("rest_control", timing(rest, "input-to-visible-response", source)))
+      .put("root_switch_to_useful_ms", JSONObject(rootRuns.mapValues { markerTiming(it.value, "start", "ready", "root-input-to-useful-content", source) }))
+      .put("input_response_ms", JSONObject().put("numeric_edit", markerTiming(numeric, "start", "ready", "input-to-visible-response", source)).put("rest_control", markerTiming(rest, "start", "ready", "input-to-visible-response", source)))
     samples.put("native_receipts", JSONObject().put("build_variant", "release").put("debugger_attached", false)
-      .put("receipts", JSONObject().put("source_tree_sha256", source).put("fixture_sha256", identity.getString("fixture_sha256"))
-        .put("source_before_sha256", sourceBefore).put("source_after_sha256", databaseDigest(nonce))
-          .put("state_sha256", sha(canonical(samples))).put("configuration_sha256", sha(canonical(settings())))
-          .put("command_receipt_sha256", sha(listOf(phase2Result, phase12Result, garminResult).joinToString("|") { it.getString("command_receipt_sha256") })))
-      .put("timings", timings).put("frame_sequences_sha256", sha(samples.getJSONArray("calendar_frame_sequences").toString()))
-      .put("merge_peak_growth_sha256", sha(samples.getJSONArray("phase12_merge_peak_growth_bytes").toString())))
+      .put("source_receipts", JSONObject().put("source_tree_sha256", source).put("fixture_sha256", identity.getString("fixture_sha256"))
+        .put("source_before_sha256", sourceBefore).put("source_after_sha256", databaseSetDigest(nonce))
+          .put("state_sha256", sha(canonical(samples))))
+      .put("timings", timings).put("cold_launch_cycles", coldCycles)
+      .put("frame_sequences_sha256", sha(canonical(samples.getJSONArray("calendar_frame_sequences"))))
+      .put("merge_peak_growth_sha256", sha(canonical(samples.getJSONArray("phase12_merge_peak_growth_bytes"))))
+      .put("ordinary_js_receipt", JSONObject().put("producer", phase2Result.getString("producer"))
+        .put("database_name", phase2Result.getString("result_database_name")).put("work_units", phase2Samples.getJSONArray("js_task_ms").length())
+        .put("receipt_sha256", phase2Result.getString("command_receipt_sha256")))
+      .put("garmin_receipt", JSONObject().put("producer", garminResult.getString("producer"))
+        .put("transport", garminSamples.getString("transport")).put("receipt_sha256", garminSamples.getString("runtime_receipt_sha256"))))
     return JSONObject().put("schema_version", 1).put("suite", "v1.2-performance").put("producer", "v12-release-performance-collector/v1")
       .put("native_execution", "EXECUTED").put("sample_origin", "release-native-source-backed").put("workload", workload)
       .put("identity", identity).put("budgets", budgets).put("samples", samples)
@@ -546,11 +678,12 @@ class Phase20QualityInstrumentation : Instrumentation() {
       val identity = JSONObject(String(Base64.decode(arguments.getString("qualityIdentity"), Base64.DEFAULT)))
       val workload = JSONObject(String(Base64.decode(arguments.getString("qualityWorkload"), Base64.DEFAULT)))
       val budgets = JSONObject(String(Base64.decode(arguments.getString("qualityBudgets"), Base64.DEFAULT)))
+      val coldLaunch = if (action == "performance") JSONObject(String(Base64.decode(arguments.getString("qualityColdLaunchEvidence"), Base64.DEFAULT))) else JSONObject()
       progress(nonce, action, true)
       val result = JSONObject().put("schema_version", 1).put("action", action).put("identity", identity)
         .put("build_variant", "release").put("debugger_attached", false)
       if (action == "accessibility") result.put("observations", accessibility(identity, nonce, action))
-      else result.put("performance", performance(identity, nonce, workload, budgets))
+      else result.put("performance", performance(identity, nonce, workload, budgets, coldLaunch))
       output(result, nonce, action); finish(-1, Bundle())
     } catch (_: Throwable) { fail(nonce, action); finish(1, Bundle()) }
   }

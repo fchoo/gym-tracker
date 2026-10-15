@@ -709,6 +709,14 @@ class GarminBridgeTests(unittest.TestCase):
 
     def test_module_entrypoints_and_retry_headers_fail_closed(self):
         self.assertEqual(garmin_bridge.dispatch("runtimeInfo", {})["schemaVersion"], 1)
+        payload = '{"z":2,"a":{"distance":5000,"laps":[1,2]}}'
+        benchmark = garmin_bridge.dispatch("benchmarkDeterministicJson", {"payloadJson": payload})
+        self.assertEqual(benchmark["transport"], "chaquopy-python-garminconnect-0.3.17")
+        self.assertEqual(benchmark["normalizedJson"], '{"a":{"distance":5000,"laps":[1,2]},"z":2}')
+        self.assertEqual(benchmark["payloadSha256"], __import__("hashlib").sha256(payload.encode()).hexdigest())
+        self.assertEqual(benchmark["outputSha256"], __import__("hashlib").sha256(benchmark["normalizedJson"].encode()).hexdigest())
+        with self.assertRaisesRegex(ValueError, "garmin_bridge_arguments_rejected"):
+            garmin_bridge.dispatch("benchmarkDeterministicJson", {"payloadJson": "{}", "unexpected": True})
         for arguments in (None, {"unexpected": True}):
             with self.assertRaisesRegex(ValueError, "garmin_bridge_arguments_rejected"):
                 garmin_bridge.dispatch("runtimeInfo", arguments)

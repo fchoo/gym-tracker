@@ -14,7 +14,7 @@ import {
   type V12AcceptanceBenchmarkMarker,
 } from "../bootstrap/v12AcceptanceBenchmark";
 import { openSqliteKernel } from "../platform/sqlite";
-import { seedPhase20ProgressQualityFixture } from "./contracts/progressParity.contract";
+import { seedPhase20CalendarQualityFixture, seedPhase20ProgressQualityFixture } from "./contracts/progressParity.contract";
 import { AppRootShell, useRootSettingsController } from "../ui/shell/AppRootShell";
 import { rootSettingsTriggerNativeID } from "../ui/shell/rootFocus";
 import { ActiveWorkoutScreen } from "../ui/screens/ActiveWorkoutScreen";
@@ -30,6 +30,8 @@ import {
   PHASE20_QUALITY_WORKLOAD_SOURCE,
   phase20OperationNeedsSqlite,
   phase20QualityDatabaseName,
+  phase20QualityRootForOperation,
+  phase20QualityScenarioForOperation,
   resolvePhase20QualityRequest,
   type Phase20QualityMarkerKind,
   type Phase20QualityOperation,
@@ -47,41 +49,6 @@ export function phase20QualityEnabled(extra: Readonly<Record<string, unknown>> |
     && extra.nativeContractSuite === "v1.2-acceptance";
 }
 
-type Layout = Readonly<{ width: number; height: number; density: number; fontScale: number; imeTop: number; imeBottom: number }>;
-type Semantic = Readonly<{ id: string; name: string; role: string; state: string; nonColorCue: boolean; left: number; top: number; width: number; height: number }>;
-type Frame = Readonly<{ workMs: number; missedFrames: number; refreshRateHz: number; profilerOverheadMs: number }>;
-export type Phase20NativeMeasurementSeams = Readonly<{
-  now: () => number;
-  layout: () => Layout | null;
-  semantics: () => readonly Semantic[];
-  frame: () => Frame | null;
-}>;
-
-/** Validates native readings; it never substitutes configured geometry or idle spans. */
-export function collectPhase20QualityObservation(seams: Phase20NativeMeasurementSeams) {
-  const layout = seams.layout();
-  if (layout === null || ![layout.width, layout.height, layout.density, layout.fontScale, layout.imeTop, layout.imeBottom].every(Number.isFinite)
-    || layout.width <= 0 || layout.height <= 0 || layout.density <= 0 || layout.imeTop >= layout.imeBottom) throw new Error("phase20_quality_measurement_missing");
-  const targets = seams.semantics();
-  if (targets.length === 0 || targets.some((target) => target.width <= 0 || target.height <= 0 || !target.name || !target.role)) throw new Error("phase20_quality_semantics_missing");
-  const frames: Frame[] = [];
-  while (frames.length < 100) {
-    const frame = seams.frame();
-    if (frame === null || ![frame.workMs, frame.missedFrames, frame.refreshRateHz, frame.profilerOverheadMs].every(Number.isFinite)
-      || frame.workMs < 0 || frame.missedFrames < 0 || frame.refreshRateHz <= 0 || frame.profilerOverheadMs < 0) throw new Error("phase20_quality_measurement_missing");
-    frames.push(frame);
-  }
-  const started = seams.now();
-  const finished = seams.now();
-  if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) throw new Error("phase20_quality_measurement_missing");
-  return {
-    configuration: { font_scale: layout.fontScale, density: layout.density, content_bounds: { width: layout.width, height: layout.height }, ime_bounds: { top: layout.imeTop, bottom: layout.imeBottom } },
-    targets,
-    frames,
-    measurement_span: { start_ms: started, end_ms: finished },
-  };
-}
-
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value !== null && typeof value === "object") {
@@ -92,22 +59,14 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function rootForOperation(operation: Phase20QualityOperation): Phase20QualityRoot {
-  const match = /^(?:accessibility-|root-switch-)(workout|calendar|library|progress)(?:-|$)/u.exec(operation);
-  if (match?.[1] !== undefined) return match[1] as Phase20QualityRoot;
-  if (operation === "search-after-debounce") return "library";
-  if (operation === "calendar-month-selection") return "calendar";
-  if (operation.startsWith("progress-")) return "progress";
-  return "workout";
-}
-
-function isolatedDependencies(databaseName: string): WorkoutAppRuntimeDependencies {
+function isolatedDependencies(databaseName: string, root: Phase20QualityRoot): WorkoutAppRuntimeDependencies {
   return Object.freeze({
     ...productionWorkoutAppRuntimeDependencies,
     openKernel: () => openSqliteKernel(databaseName),
     migrate: async (kernel) => {
       await productionWorkoutAppRuntimeDependencies.migrate(kernel);
-      await seedPhase20ProgressQualityFixture(kernel);
+      if (root === "calendar") await seedPhase20CalendarQualityFixture(kernel);
+      if (root === "progress") await seedPhase20ProgressQualityFixture(kernel);
     },
   });
 }
@@ -120,6 +79,7 @@ function useQualityMarkerEmitter(
   const runtimeRef = useRef(runtime);
   runtimeRef.current = runtime;
   const queue = useRef(Promise.resolve());
+  const scenario = phase20QualityScenarioForOperation(request.operation);
   return useCallback((
     kind: Phase20QualityMarkerKind,
     monotonicMs: number,
@@ -133,7 +93,10 @@ function useQualityMarkerEmitter(
       const readiness = kind === "ready"
         ? await digestStringAsync(CryptoDigestAlgorithm.SHA256, canonical({
             databaseName,
-            operation: request.operation,
+            root: scenario.root,
+            fixture_id: scenario.fixture_id,
+            state_id: scenario.state_id,
+            configuration_id: scenario.configuration_id,
             payload,
             sequence: request.sequence,
             sqliteReceipt,
@@ -149,6 +112,10 @@ function useQualityMarkerEmitter(
         source: PHASE20_QUALITY_WORKLOAD_SOURCE,
         monotonic_ms: monotonicMs,
         database_name: databaseName,
+        root: scenario.root,
+        fixture_id: scenario.fixture_id,
+        state_id: scenario.state_id,
+        configuration_id: scenario.configuration_id,
         ...(sqliteReceipt === undefined ? {} : { sqlite_receipt_sha256: sqliteReceipt }),
         ...(readiness === undefined ? {} : { readiness_sha256: readiness }),
         ...(Object.keys(payload).length === 0 ? {} : { payload }),
@@ -166,16 +133,16 @@ function useQualityMarkerEmitter(
       // missing source receipt with a success-shaped marker.
     });
     return queue.current;
-  }, [databaseName, request.action, request.nonce, request.operation, request.sequence]);
+  }, [databaseName, request.action, request.nonce, request.operation, request.sequence, scenario.configuration_id, scenario.fixture_id, scenario.root, scenario.state_id]);
 }
 
-function QualitySettingsContent() {
+function QualitySettingsContent({ onProductCallback }: Readonly<{ onProductCallback: (id: string) => void }>) {
   const [query, setQuery] = useState("");
   return <View accessibilityLabel="App Settings" accessibilityRole="summary" style={styles.settings}>
     <Text>Appearance and workout settings</Text>
     <M3SearchField
       label="Search settings"
-      onChangeText={setQuery}
+      onChangeText={(value) => { setQuery(value); onProductCallback("settings-search-change"); }}
       resultCount={query.length}
       state={query.length === 0 ? "idle" : "results"}
       value={query}
@@ -187,12 +154,14 @@ function ProductRoot({
   acceptanceBenchmark,
   emit,
   onUsefulContent,
+  onProductCallback,
   operation,
   root,
 }: Readonly<{
   acceptanceBenchmark: ReturnType<typeof createV12AcceptanceBenchmark>;
   emit: ReturnType<typeof useQualityMarkerEmitter>;
   onUsefulContent: (state?: "current" | "updating") => void;
+  onProductCallback: (id: string) => void;
   operation: Phase20QualityOperation;
   root: Phase20QualityRoot;
 }>) {
@@ -207,6 +176,14 @@ function ProductRoot({
     triggerNativeID: settingsActionNativeID,
     triggerRef: settingsActionRef,
   });
+  const openMeasuredSettings = () => {
+    openSettings();
+    onProductCallback("settings-open");
+  };
+  const reportUsefulContent = (state: "current" | "updating" = "current") => {
+    onProductCallback("route-ready");
+    onUsefulContent(state);
+  };
   const nowLocalDate = "2026-08-24";
   const calendarDiagnostics = useMemo(() => {
     if (operation !== "calendar-month-selection") return undefined;
@@ -267,9 +244,9 @@ function ProductRoot({
       initialDate={nowLocalDate}
       loadCalendarRange={calendarRead.loadCalendarRange}
       onOpenEvent={() => undefined}
-      onOpenSettings={openSettings}
+      onOpenSettings={openMeasuredSettings}
       onRequestRootBack={() => undefined}
-      onUsefulContent={() => onUsefulContent()}
+      onUsefulContent={() => reportUsefulContent()}
       settingsActionNativeID={settingsActionNativeID}
       settingsActionRef={settingsActionRef}
       today={nowLocalDate}
@@ -284,8 +261,8 @@ function ProductRoot({
       onCreatePlan={() => undefined}
       onOpenExercise={() => undefined}
       onOpenPlan={() => undefined}
-      onOpenSettings={openSettings}
-      onUsefulContent={() => onUsefulContent()}
+      onOpenSettings={openMeasuredSettings}
+      onUsefulContent={() => reportUsefulContent()}
       searchExercises={runtime.searchLibraryExercises}
       setExerciseFavorite={runtime.setLibraryExerciseFavorite}
       setSection={runtime.setLibrarySection}
@@ -299,12 +276,12 @@ function ProductRoot({
       nowLocalDate={nowLocalDate}
       onOpenExercise={() => undefined}
       onOpenSession={() => undefined}
-      onOpenSettings={openSettings}
+      onOpenSettings={openMeasuredSettings}
       onUsefulContent={(state) => {
-        if (operation !== "progress-review-open") onUsefulContent(state);
+        if (operation !== "progress-review-open") reportUsefulContent(state);
       }}
       onReviewVisible={() => {
-        if (operation === "progress-review-open") onUsefulContent("current");
+        if (operation === "progress-review-open") reportUsefulContent("current");
       }}
       progressBodyweightRuntime={runtime.progressBodyweightRuntime}
       progressRecommendationRuntime={runtime.progressRecommendationRuntime}
@@ -315,8 +292,8 @@ function ProductRoot({
   }
   return <TodayScreen
     launchState={runtime.launchState}
-    onOpenSettings={openSettings}
-    onUsefulContent={() => onUsefulContent()}
+    onOpenSettings={openMeasuredSettings}
+    onUsefulContent={() => reportUsefulContent()}
     planDays={runtime.planDays}
     settingsActionNativeID={settingsActionNativeID}
     settingsActionRef={settingsActionRef}
@@ -471,7 +448,19 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
 }>) {
   const runtime = useWorkoutAppRuntime();
   const emit = useQualityMarkerEmitter(request, databaseName);
-  const targetRoot = rootForOperation(request.operation);
+  const targetRoot = phase20QualityRootForOperation(request.operation);
+  const scenario = phase20QualityScenarioForOperation(request.operation);
+  const callbackCounts = useRef<Record<string, number>>({});
+  const productCallback = useCallback((callbackId: string) => {
+    const callbackCount = (callbackCounts.current[callbackId] ?? 0) + 1;
+    callbackCounts.current[callbackId] = callbackCount;
+    void emit("callback", performance.now(), {
+      callback_count: callbackCount,
+      callback_id: callbackId,
+      root: scenario.root,
+      state_id: scenario.state_id,
+    });
+  }, [emit, scenario.root, scenario.state_id]);
   const activeOperation = [
     "committed-set-visible-dock",
     "numeric-edit",
@@ -557,11 +546,15 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
     finished.current = true;
     const startedAt = performance.now();
     void emit("start", startedAt, { producer: "existing-native-benchmark" });
-    void runPhase20HeavyWorkload(
+    const sourceFacts = request.operation === "ordinary-js-task"
+      ? runtime.collectPhase20QualitySourceProof()
+      : Promise.resolve(undefined);
+    void sourceFacts.then((facts) => runPhase20HeavyWorkload(
       request.operation as "ordinary-js-task" | "phase12-backup" | "garmin-json-normalization",
       undefined,
       request.nonce,
-    ).then((result) => {
+      facts,
+    )).then((result) => {
       if (result === null) throw new Error("phase20_quality_workload_missing");
       const retained = {
         command_receipt_sha256: result.command_receipt_sha256,
@@ -628,8 +621,9 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
 
   return <AppRootShell
     activeRoot={displayRoot === "workout" ? "index" : displayRoot}
-    currentPath={`/__phase20-quality-probe/${displayRoot}`}
-    settingsContent={<QualitySettingsContent />}
+    currentPath={displayRoot === "workout" ? "/" : `/${displayRoot}`}
+    onSettingsVisibilityChange={(visible) => { if (!visible) productCallback("settings-close"); }}
+    settingsContent={<QualitySettingsContent onProductCallback={productCallback} />}
   >
     <View style={styles.root} testID={`phase20-quality-root-${displayRoot}`}>
       {!searchPrepared || !progressPrepared
@@ -648,6 +642,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
             acceptanceBenchmark={benchmark}
             emit={emit}
             onUsefulContent={useful}
+            onProductCallback={productCallback}
             operation={request.operation}
             root={displayRoot}
           />}
@@ -658,8 +653,9 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
 /** Development-test-only shell around production screens and repositories. */
 export function Phase20QualityProbe({ request }: Readonly<{ request: Phase20QualityRequest }>) {
   const dimensions = useWindowDimensions();
-  const databaseName = phase20QualityDatabaseName(request.nonce);
-  const dependencies = useMemo(() => isolatedDependencies(databaseName), [databaseName]);
+  const root = phase20QualityRootForOperation(request.operation);
+  const databaseName = phase20QualityDatabaseName(request.nonce, root);
+  const dependencies = useMemo(() => isolatedDependencies(databaseName, root), [databaseName, root]);
   const appearance = useMemo(() => createMemoryAppearanceStore(null), []);
   return <AppearanceProvider store={appearance}>
     <WorkoutAppRuntimeProvider dependencies={dependencies}>

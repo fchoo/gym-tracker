@@ -101,12 +101,13 @@ export function phase2BenchmarkStartupAction({
 
 const prettyBytes = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
-const productionDependencies: Phase2BenchmarkDependencies = {
+function productionDependencies(databaseName: string): Phase2BenchmarkDependencies {
+  return {
   removeDatabase: () =>
-    deleteDatabaseAsync(DATABASE_NAME).catch(() => undefined),
-  openKernel: () => openSqliteKernel(DATABASE_NAME),
+    deleteDatabaseAsync(databaseName).catch(() => undefined),
+  openKernel: () => openSqliteKernel(databaseName),
   migrate: (kernel) =>
-    migrateBenchmarkDatabase("phase2", DATABASE_NAME, kernel),
+    migrateBenchmarkDatabase("phase2", databaseName, kernel),
   installCatalog: async (kernel) => {
     const {
       CryptoDigestAlgorithm,
@@ -132,7 +133,20 @@ const productionDependencies: Phase2BenchmarkDependencies = {
   performWorkingSet: performPhase1Benchmark,
   now: () => performance.now(),
   yield: () => new Promise<void>((resolve) => setTimeout(resolve, 0)),
-};
+  };
+}
+
+/** Deterministic CPU work over the real search result; its output is consumed so engines cannot discard it. */
+export function executePhase2OrdinaryJsTask(value: unknown, sequence: number): number {
+  const bytes = JSON.stringify({ sequence, value });
+  let checksum = 2_166_136_261;
+  for (let pass = 0; pass < 32; pass += 1) {
+    for (let index = 0; index < bytes.length; index += 1) {
+      checksum = Math.imul(checksum ^ bytes.charCodeAt(index), 16_777_619) >>> 0;
+    }
+  }
+  return checksum;
+}
 
 export function boundedPhase2BenchmarkSamples(
   value: string | string[] | undefined,
@@ -148,10 +162,11 @@ export function boundedPhase2BenchmarkSamples(
 export async function performPhase2Benchmark(
   samples: number,
   observeSample?: Phase2BenchmarkDependencies["observeSample"],
+  databaseName = DATABASE_NAME,
 ): Promise<Phase2BenchmarkResult> {
   return performPhase2BenchmarkWithDependencies(
     samples,
-    { ...productionDependencies, ...(observeSample === undefined ? {} : { observeSample }) },
+    { ...productionDependencies(databaseName), ...(observeSample === undefined ? {} : { observeSample }) },
   );
 }
 
@@ -167,6 +182,7 @@ export async function performPhase2BenchmarkWithDependencies(
   const repository = dependencies.createSearch(kernel);
   const searchDurationsMs: number[] = [];
   let searchMaxJsTaskMs = 0;
+  let ordinaryJsChecksum = 0;
 
   for (let index = 0; index < samples; index += 1) {
     const sampleStartedAt = dependencies.now();
@@ -183,6 +199,7 @@ export async function performPhase2BenchmarkWithDependencies(
       endMs: responseAt,
     });
     const jsTaskStartedAt = responseAt;
+    ordinaryJsChecksum ^= executePhase2OrdinaryJsTask(result, index + 1);
     const jsTaskFinishedAt = dependencies.now();
     searchMaxJsTaskMs = Math.max(
       searchMaxJsTaskMs,
@@ -195,6 +212,9 @@ export async function performPhase2BenchmarkWithDependencies(
       endMs: jsTaskFinishedAt,
     });
     await dependencies.yield();
+  }
+  if (!Number.isSafeInteger(ordinaryJsChecksum)) {
+    throw new Error("phase2_ordinary_js_task_invalid");
   }
 
   const workingSet = await dependencies.performWorkingSet(samples);

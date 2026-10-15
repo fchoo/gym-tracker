@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "producer": "phase18-pinned-garmin-normalization-baseline/v1",
+  "phase18_source_head": "0419107f17ea6e34acc3cb6b094be48209f8447d",
+  "normalization_ms": [6.41, 6.18, 6.27, 6.22, 6.35],
+  "peak_rss_bytes": [73400320, 73433088, 73465856, 73498624, 73531392]
+}

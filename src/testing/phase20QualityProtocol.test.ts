@@ -2,7 +2,10 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   PHASE20_QUALITY_DATABASE_PREFIX,
+  PHASE20_QUALITY_ROOTS,
   collectPhase20QualityMarkers,
+  phase20QualityDatabaseName,
+  phase20QualityScenarioForOperation,
   resolvePhase20QualityRequest,
   validateDistinctRootReadiness,
   type Phase20QualityMarker,
@@ -36,7 +39,11 @@ function marker(
     source: "phase20-quality-workload/v1",
     monotonic_ms: kind === "start" ? 10 : kind === "commit" ? 11 : 12,
     receipt_sha256: digest(kind),
-    database_name: `${PHASE20_QUALITY_DATABASE_PREFIX}${nonce}.db`,
+    database_name: `${PHASE20_QUALITY_DATABASE_PREFIX}${nonce}-workout.db`,
+    root: "workout",
+    fixture_id: "phase20-workout-active-r1",
+    state_id: "workout-active-session",
+    configuration_id: "quality-workout-performance-f200",
     sqlite_receipt_sha256: digest("sqlite"),
     ...(kind === "ready" ? { readiness_sha256: digest("ready") } : {}),
     ...overrides,
@@ -59,6 +66,18 @@ describe("Phase 20 quality workload protocol", () => {
     expect(resolvePhase20QualityRequest({ nonce, action: "performance", operation: "idle-loop", sequence: "1" })).toBeNull();
     expect(resolvePhase20QualityRequest({ nonce, action: "accessibility", operation: "committed-set-visible-dock", sequence: "1" })).toBeNull();
     expect(resolvePhase20QualityRequest({ nonce, action: "performance", operation: "committed-set-visible-dock", sequence: "0" })).toBeNull();
+  });
+
+  it("assigns every production root its own nonce-scoped database and scenario identity", () => {
+    const databases = PHASE20_QUALITY_ROOTS.map((root) => phase20QualityDatabaseName(nonce, root));
+    expect(new Set(databases).size).toBe(4);
+    expect(databases).toEqual(PHASE20_QUALITY_ROOTS.map((root) => `${PHASE20_QUALITY_DATABASE_PREFIX}${nonce}-${root}.db`));
+    expect(phase20QualityScenarioForOperation("accessibility-calendar-reduced")).toEqual({
+      root: "calendar",
+      fixture_id: "phase20-calendar-month-r1",
+      state_id: "calendar-month-agenda",
+      configuration_id: "quality-calendar-reduced-f200",
+    });
   });
 
   it("requires nonce-bound start, authoritative commit, and readiness markers", () => {

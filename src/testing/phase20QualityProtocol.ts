@@ -13,6 +13,12 @@ export const PHASE20_QUALITY_ROOTS = Object.freeze([
 ] as const);
 
 export type Phase20QualityRoot = typeof PHASE20_QUALITY_ROOTS[number];
+export const PHASE20_QUALITY_SCENARIOS = Object.freeze({
+  workout: Object.freeze({ fixture_id: "phase20-workout-active-r1", state_id: "workout-active-session" }),
+  calendar: Object.freeze({ fixture_id: "phase20-calendar-month-r1", state_id: "calendar-month-agenda" }),
+  library: Object.freeze({ fixture_id: "phase20-library-exercises-r1", state_id: "library-exercise-catalog" }),
+  progress: Object.freeze({ fixture_id: "phase20-progress-overview-r1", state_id: "progress-overall-current" }),
+} as const);
 export type Phase20QualityAction = "accessibility" | "performance";
 export type Phase20QualityMotionMode = "normal" | "reduced";
 
@@ -64,6 +70,7 @@ export type Phase20QualityMarkerKind =
   | "ready"
   | "result"
   | "chunk"
+  | "callback"
   | "error";
 
 export type Phase20QualityMarker = Readonly<{
@@ -77,6 +84,10 @@ export type Phase20QualityMarker = Readonly<{
   monotonic_ms: number;
   receipt_sha256: string;
   database_name: string;
+  root: Phase20QualityRoot;
+  fixture_id: string;
+  state_id: string;
+  configuration_id: string;
   sqlite_receipt_sha256?: string;
   readiness_sha256?: string;
   payload?: Readonly<Record<string, unknown>>;
@@ -84,7 +95,7 @@ export type Phase20QualityMarker = Readonly<{
 
 const NONCE = /^[a-f0-9]{48}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
-const DATABASE_NAME = /^gym-tracker-phase20-quality-[a-f0-9]{48}\.db$/u;
+const DATABASE_NAME = /^gym-tracker-phase20-quality-[a-f0-9]{48}-(workout|calendar|library|progress)\.db$/u;
 const MAX_SEQUENCE = 10_000;
 
 const accessibilityOperations = new Set<string>(
@@ -128,15 +139,33 @@ export function resolvePhase20QualityRequest(
   });
 }
 
-export function phase20QualityDatabaseName(nonce: string): string {
-  if (!NONCE.test(nonce)) throw new Error("phase20_quality_nonce_invalid");
-  return `${PHASE20_QUALITY_DATABASE_PREFIX}${nonce}.db`;
+export function phase20QualityRootForOperation(operation: Phase20QualityOperation): Phase20QualityRoot {
+  const match = /^(?:accessibility-|root-switch-)(workout|calendar|library|progress)(?:-|$)/u.exec(operation);
+  if (match?.[1] !== undefined) return match[1] as Phase20QualityRoot;
+  if (operation === "search-after-debounce") return "library";
+  if (operation === "calendar-month-selection") return "calendar";
+  if (operation.startsWith("progress-")) return "progress";
+  return "workout";
+}
+
+export function phase20QualityScenarioForOperation(operation: Phase20QualityOperation) {
+  const root = phase20QualityRootForOperation(operation);
+  const scenario = PHASE20_QUALITY_SCENARIOS[root];
+  const motion = operation.startsWith("accessibility-")
+    ? operation.endsWith("-reduced") ? "reduced" : "normal"
+    : "performance";
+  return Object.freeze({ root, ...scenario, configuration_id: `quality-${root}-${motion}-f200` });
+}
+
+export function phase20QualityDatabaseName(nonce: string, root: Phase20QualityRoot): string {
+  if (!NONCE.test(nonce) || !PHASE20_QUALITY_ROOTS.includes(root)) throw new Error("phase20_quality_nonce_invalid");
+  return `${PHASE20_QUALITY_DATABASE_PREFIX}${nonce}-${root}.db`;
 }
 
 export function phase20OperationNeedsSqlite(
-  operation: Phase20QualityOperation,
+  _operation: Phase20QualityOperation,
 ): boolean {
-  return !operation.startsWith("launch-");
+  return true;
 }
 
 function exactKeys(
@@ -168,8 +197,13 @@ function assertMarker(
     "monotonic_ms",
     "receipt_sha256",
     "database_name",
+    "root",
+    "fixture_id",
+    "state_id",
+    "configuration_id",
     ...optional,
   ])) throw new Error("phase20_quality_marker_schema_invalid");
+  const scenario = phase20QualityScenarioForOperation(request.operation);
   if (
     marker.schema_version !== 1
     || marker.nonce !== request.nonce
@@ -177,6 +211,11 @@ function assertMarker(
     || marker.operation !== request.operation
     || marker.sequence !== request.sequence
     || marker.source !== PHASE20_QUALITY_WORKLOAD_SOURCE
+    || marker.root !== scenario.root
+    || marker.fixture_id !== scenario.fixture_id
+    || marker.state_id !== scenario.state_id
+    || marker.configuration_id !== scenario.configuration_id
+    || marker.database_name !== phase20QualityDatabaseName(request.nonce, scenario.root)
   ) throw new Error("phase20_quality_marker_identity_mismatch");
   if (
     !Number.isFinite(marker.monotonic_ms)
@@ -214,6 +253,8 @@ export function collectPhase20QualityMarkers(
     assertMarker(marker, request);
     const markerKey = marker.kind === "chunk"
       ? `${marker.kind}:${String(marker.payload?.chunk_sequence ?? "missing")}`
+      : marker.kind === "callback"
+        ? `${marker.kind}:${String(marker.payload?.callback_id ?? "missing")}:${String(marker.payload?.callback_count ?? "missing")}`
       : marker.kind;
     if (seen.has(markerKey)) throw new Error("phase20_quality_marker_duplicate");
     seen.add(markerKey);

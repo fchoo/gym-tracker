@@ -1,0 +1,32 @@
+{
+  "activity": {
+    "activityId": 424242,
+    "activityTypeDTO": { "typeKey": "running" },
+    "summaryDTO": {
+      "averageHR": 152,
+      "distance": 5000,
+      "duration": 1500,
+      "elapsedDuration": 1560,
+      "movingDuration": 1475,
+      "startTimeGMT": "2026-10-05T23:30:00.000Z",
+      "startTimeLocal": "2026-10-06T07:30:00",
+      "timeZoneId": "Asia/Singapore"
+    }
+  },
+  "details": {
+    "activityDetailMetrics": [],
+    "geoPolylineDTO": {
+      "polyline": [
+        { "lat": 1.29027, "lon": 103.851959 },
+        { "lat": 1.29112, "lon": 103.85243 }
+      ]
+    },
+    "metricDescriptors": []
+  },
+  "splits": {
+    "lapDTOs": [
+      { "distance": 1000, "duration": 296, "lapIndex": 1 },
+      { "distance": 1000, "duration": 294, "lapIndex": 2 }
+    ]
+  }
+}

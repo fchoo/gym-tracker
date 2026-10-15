@@ -50,6 +50,34 @@ describe("Phase 20 quality instrumentation plugin", () => {
       '"hardware-keyboard"',
       '"dpad"',
     ]) expect(phase20InstrumentationSource).toContain(source);
+    for (const event of ["touch-tap", "ime-text", "key-enter", "key-dpad-center", "key-back", "key-escape"]) {
+      expect(phase20InstrumentationSource).toContain(event);
+    }
+    expect(phase20InstrumentationSource).toContain("callback_receipt_sha256");
+    expect(phase20InstrumentationSource).toContain("event_receipt_sha256");
+    expect(phase20InstrumentationSource).toContain("background_isolated");
+  });
+
+  it("captures the Calendar gesture before readiness at the measured display refresh rate", () => {
+    const runOperation = phase20InstrumentationSource.slice(
+      phase20InstrumentationSource.indexOf("private fun runOperation"),
+      phase20InstrumentationSource.indexOf("private fun setting"),
+    );
+    expect(runOperation.indexOf("frameCapture?.reset()")).toBeLessThan(runOperation.indexOf("drive(operation)"));
+    expect(runOperation.indexOf("drive(operation)")).toBeLessThan(runOperation.indexOf('awaitMarkers(nonce, action, operation, sequence, "ready"'));
+    expect(phase20InstrumentationSource).toContain("defaultDisplay.refreshRate.toDouble()");
+    expect(phase20InstrumentationSource).not.toContain("val refresh = 60.0");
+    expect(phase20InstrumentationSource).toContain('"calendar-gesture-before-ready"');
+  });
+
+  it("receives host-proven cold starts and never calls clear-task a process start", () => {
+    const performance = phase20InstrumentationSource.slice(
+      phase20InstrumentationSource.indexOf("private fun performance"),
+      phase20InstrumentationSource.indexOf("private fun output"),
+    );
+    expect(phase20InstrumentationSource).toContain("qualityColdLaunchEvidence");
+    expect(performance).not.toContain('repeated(nonce, "launch-cold"');
+    expect(phase20InstrumentationSource).not.toContain("Intent.FLAG_ACTIVITY_CLEAR_TASK");
   });
 
   it("rejects duplicate or mismatched app markers and derives evidence from native nodes", () => {

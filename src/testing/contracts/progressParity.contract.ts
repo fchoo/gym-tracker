@@ -168,6 +168,19 @@ export async function seedPhase20ProgressQualityFixture(
   await seedHistorySource(runtime);
   await seedRecommendationGraph(runtime);
 }
+
+export async function seedPhase20CalendarQualityFixture(
+  kernel: SqliteKernel,
+): Promise<void> {
+  const existing = await kernel.queryAll<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM workout_sessions WHERE id = 'history-session'",
+  );
+  if ((existing[0]?.count ?? 0) === 0) await seedHistorySource({
+    databaseName: "phase20-calendar-quality-fixture",
+    kernel,
+    close: async () => undefined,
+  });
+}
 async function runningTargetReplay(runtime: ProgressParityRuntime, recoveryBackup: RecoveryBackupPort): Promise<{ counts: Counts; projection: unknown; receipt: unknown }> {
   await migrate(runtime, recoveryBackup);
   const running = await seedRunningPlan(runtime);

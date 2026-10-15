@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
+import { validateV12PerformanceProducer } from "./v12-quality-evidence-contract.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -91,6 +92,7 @@ function validateExtendedSamples(raw) {
 
 /** Creates a bounded, privacy-safe observation payload; it neither writes files nor assigns evidence verdicts. */
 export function executeV12PerformanceShard({ identity, performance }) {
+  validateV12PerformanceProducer(performance, identity, V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, fail);
   const core = validateV12PerformanceEvidence(performance, identity);
   const extension = validateExtendedSamples(performance.samples ?? {});
   return Object.freeze({
@@ -119,6 +121,7 @@ export function validateV12PerformanceShard(observation, identity) {
     budgets: observation.budgets,
     samples: observation.raw_samples,
   };
+  validateV12PerformanceProducer(performance, identity, V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, fail);
   const core = validateV12PerformanceEvidence(performance, identity);
   const extension = validateExtendedSamples(observation.raw_samples);
   return Object.freeze({ ...core, ...extension });
