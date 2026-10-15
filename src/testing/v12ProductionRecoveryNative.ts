@@ -20,9 +20,12 @@ import { activateStarterPlan } from "../domains/plans";
 import { completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
 import { startWorkout } from "../domains/workout/startWorkout";
 import {
+  finishPartial,
+  PARTIAL_CONFIRMATION,
   saveZeroSetWorkout,
   ZERO_SET_CONFIRMATION,
 } from "../domains/workout/finishWorkout";
+import { expireRestWithForegroundFeedback, startManualRest } from "../domains/rest/restCommands";
 import {
   createBackupCommands,
 } from "../domains/portability/backupCommands";
@@ -54,6 +57,9 @@ import {
 import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
 import { createWorkoutOutcomeRepository } from "../platform/sqlite/repositories/workoutOutcomeRepository";
 import { createWorkoutRepository } from "../platform/sqlite/repositories/workoutRepository";
+import { createRestRepository } from "../platform/sqlite/repositories/restRepository";
+import { createEffectRunner } from "../platform/sqlite/effects/effectRunner";
+import { createEffectStore, enqueuePendingEffect } from "../platform/sqlite/effects/effectStore";
 import { createMigrationRunner } from "../platform/sqlite/migrationRunner";
 import { migrations } from "../platform/sqlite/migrations";
 import {
@@ -67,17 +73,36 @@ import type {
   V12RecoveryDurableSnapshot,
   V12RecoveryExecutionIdentity,
 } from "./v12ProductionRecovery";
+import {
+  V12_RECOVERY_CUT_DEFINITIONS,
+  V12_RECOVERY_SCENARIOS,
+} from "./contracts/v12Recovery.contract";
 
 type OperationId =
-  | "workout-complete-set"
-  | "garmin-import"
-  | "garmin-match"
+  | "tim01-legacy-playback"
+  | "tim01-foreground-reconciliation"
+  | "tim01-queued-callback"
+  | "workout-relaunch-replay"
   | "secure-restore"
-  | "secure-merge";
+  | "secure-merge"
+  | "tim01-zero-cue"
+  | "workout-rest-set-pointer";
 
 const UNCOMMITTED_CUTS = new Set(["pre-transaction", "in-transaction"]);
-const ACK_LOSS_CUTS = new Set(["post-commit-before-ack", "recovery"]);
 const PASSWORD = "synthetic-recovery-password";
+const TIMING_CONFIG = Object.freeze({
+  version: 1,
+  mode: "per_rep",
+  intervalMs: 1_500,
+  cueChannels: "haptic",
+});
+const TIMING_PROGRESS = Object.freeze({
+  version: 1,
+  completedRepetitions: 2,
+  completedGroups: 0,
+  currentGroupIndex: 0,
+  currentGroupProgress: 2,
+});
 
 const sha256 = (value: string): Promise<string> =>
   digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
@@ -94,12 +119,14 @@ function databaseNames(input: V12RecoveryExecutionIdentity) {
   });
 }
 
+function scenarioFor(caseId: string) {
+  const scenario = V12_RECOVERY_SCENARIOS.find(({ id }) => id === caseId);
+  if (scenario === undefined) throw new Error("v12_recovery_scenario_missing");
+  return scenario;
+}
+
 function operationFor(caseId: string): OperationId {
-  if (caseId === "restore") return "secure-restore";
-  if (caseId === "merge") return "secure-merge";
-  if (caseId === "zero-cue") return "garmin-import";
-  if (caseId === "relaunch") return "garmin-match";
-  return "workout-complete-set";
+  return scenarioFor(caseId).operationId;
 }
 
 function stableJson(value: unknown): string {
@@ -200,6 +227,90 @@ async function seedActiveWorkout(
       updatedAtMs: startedAtMs + 500,
     },
   });
+}
+
+async function activeWorkoutIdentity(kernel: SqliteKernel) {
+  const [value] = await kernel.queryAll<{
+    session_id: string;
+    session_revision: number;
+    exercise_id: string;
+    set_id: string;
+  }>(`SELECT ws.id AS session_id, ws.revision AS session_revision,
+      ws.active_session_exercise_id AS exercise_id, ws.active_set_id AS set_id
+    FROM workout_sessions ws
+    WHERE ws.status = 'in_progress'
+    ORDER BY ws.started_at_ms LIMIT 1`);
+  if (value === undefined || value.exercise_id === null || value.set_id === null) {
+    throw new Error("v12_recovery_active_identity_missing");
+  }
+  return value;
+}
+
+async function seedRetiredTimingHistory(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<void> {
+  const identity = await activeWorkoutIdentity(kernel);
+  const configuration = JSON.stringify(TIMING_CONFIG);
+  const progress = JSON.stringify(TIMING_PROGRESS);
+  const occurredAtMs = baseTime(input.caseId) + 700;
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `UPDATE session_sets
+       SET advanced_timing_resolved_json = ?
+       WHERE id = ?`,
+      [configuration, identity.set_id],
+    );
+    await transaction.execute(
+      `INSERT INTO session_advanced_timing_states
+        (session_id, session_set_id, state_version, revision, status, mode,
+         config_json, progress_json, started_at_ms, next_boundary_at_ms,
+         remaining_ms, stopped_at_ms)
+       VALUES (?, ?, 1, 1, 'stopped', 'per_rep', ?, ?, NULL, NULL, NULL, ?)`,
+      [identity.session_id, identity.set_id, configuration, progress, occurredAtMs],
+    );
+    await transaction.execute(
+      `INSERT INTO history_audit_events
+        (id, session_id, effective_revision, event_type, field_identity,
+         before_json, after_json, occurred_at_ms)
+       VALUES (?, ?, ?, 'correction', 'advanced_timing_resolved_json', ?, ?, ?)`,
+      [
+        `v12-timing-history-${input.nonce}`,
+        identity.session_id,
+        identity.session_revision,
+        JSON.stringify({ version: 1, mode: "off" }),
+        configuration,
+        occurredAtMs,
+      ],
+    );
+  });
+}
+
+async function seedRestReconciliation(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<void> {
+  const identity = await activeWorkoutIdentity(kernel);
+  await startManualRest({
+    repository: createRestRepository(kernel),
+    input: {
+      sessionId: identity.session_id,
+      expectedSessionRevision: identity.session_revision,
+      expectedRestRevision: 0,
+      nowMs: baseTime(input.caseId) + 800,
+    },
+  });
+}
+
+async function seedScenarioWorkoutFacts(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<void> {
+  await seedActiveWorkout(kernel, input);
+  await seedRetiredTimingHistory(kernel, input);
+  if (["foreground-reconciliation", "queued-callback"].includes(input.caseId)) {
+    await seedRestReconciliation(kernel, input);
+  }
 }
 
 async function completeWorkoutSet(
@@ -600,18 +711,106 @@ async function setup(
   operation: OperationId,
   input: V12RecoveryExecutionIdentity,
 ): Promise<void> {
-  if (operation === "workout-complete-set") {
-    await seedActiveWorkout(target, input);
-    return;
-  }
-  if (operation === "garmin-match") {
-    await seedGarminMatch(target, input);
+  if (!operation.startsWith("secure-")) {
+    await seedScenarioWorkoutFacts(target, input);
     return;
   }
   if (operation === "secure-restore" || operation === "secure-merge") {
     if (source === undefined) throw new Error("v12_recovery_source_missing");
     await seedPortableArchiveSource(source, input);
+    if (operation === "secure-restore") {
+      await executeGarminImport(source, input);
+    } else {
+      await seedGarminMatch(target, input);
+      await executeGarminMatch(target, input);
+    }
   }
+}
+
+async function finishWorkoutScenario(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<string> {
+  const [existing] = await kernel.queryAll<{ id: string; status: string; revision: number }>(
+    "SELECT id, status, revision FROM workout_sessions ORDER BY started_at_ms LIMIT 1",
+  );
+  if (existing === undefined) throw new Error("v12_recovery_session_missing");
+  if (existing.status !== "in_progress") return "replayed";
+  const completion = await completeWorkoutSet(kernel, input);
+  if (!["relaunch", "zero-cue"].includes(input.caseId)) return completion;
+  const [afterSet] = await kernel.queryAll<{ revision: number }>(
+    "SELECT revision FROM workout_sessions WHERE id = ?",
+    [existing.id],
+  );
+  if (afterSet === undefined) throw new Error("v12_recovery_session_missing");
+  await finishPartial({
+    repository: createWorkoutOutcomeRepository(kernel),
+    input: {
+      sessionId: existing.id,
+      expectedSessionRevision: afterSet.revision,
+      endedAtMs: baseTime(input.caseId) + 2_000,
+      confirmation: PARTIAL_CONFIRMATION,
+    },
+  });
+  return "finished";
+}
+
+async function reconcileForegroundRest(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<string> {
+  const [row] = await kernel.queryAll<{
+    session_id: string;
+    session_revision: number;
+    rest_revision: number;
+    status: string;
+  }>(`SELECT ws.id AS session_id, ws.revision AS session_revision,
+      rest.revision AS rest_revision, rest.status
+    FROM workout_sessions ws
+    JOIN session_rest_states rest ON rest.session_id = ws.id
+    ORDER BY ws.started_at_ms LIMIT 1`);
+  if (row === undefined) throw new Error("v12_recovery_rest_missing");
+  if (row.status === "expired") return "already-reconciled";
+  await expireRestWithForegroundFeedback({
+    repository: createRestRepository(kernel),
+    input: {
+      sessionId: row.session_id,
+      expectedSessionRevision: row.session_revision,
+      expectedRestRevision: row.rest_revision,
+      nowMs: baseTime(input.caseId) + 200_000,
+      preferences: { soundEnabled: false, vibrationEnabled: false },
+    },
+  });
+  return "foreground-reconciled";
+}
+
+async function drainScenarioEffects(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<string> {
+  const runner = createEffectRunner({
+    store: createEffectStore(kernel),
+    async currentRevision(subjectId, effectType) {
+      if (effectType === "reconcile_rest_notification") {
+        const [row] = await kernel.queryAll<{ revision: number }>(
+          "SELECT revision FROM session_rest_states WHERE session_id = ?",
+          [subjectId],
+        );
+        return row?.revision ?? null;
+      }
+      const [row] = await kernel.queryAll<{ revision: number }>(
+        "SELECT revision FROM workout_sessions WHERE id = ?",
+        [subjectId],
+      );
+      return row?.revision ?? null;
+    },
+    handlers: {
+      reconcile_rest_notification: async () => undefined,
+      regenerate_load_reps_recommendation: async () => undefined,
+    },
+  });
+  const result = await runner.drain({ nowMs: baseTime(input.caseId) + 300_000, limit: 32 });
+  return result.completed > 0 ? "effects-reconciled" : "effects-already-reconciled";
 }
 
 async function executeOperation(
@@ -621,11 +820,25 @@ async function executeOperation(
   input: V12RecoveryExecutionIdentity,
 ): Promise<string> {
   active(input);
-  if (operation === "workout-complete-set") return completeWorkoutSet(kernel, input);
-  if (operation === "garmin-import") return executeGarminImport(kernel, input);
-  if (operation === "garmin-match") return executeGarminMatch(kernel, input);
+  if (operation === "tim01-foreground-reconciliation") {
+    return reconcileForegroundRest(kernel, input);
+  }
+  if (operation === "tim01-queued-callback") {
+    return drainScenarioEffects(kernel, input);
+  }
+  if (!operation.startsWith("secure-")) return finishWorkoutScenario(kernel, input);
   if (operation === "secure-restore") return executeRestore(kernel, sourceName, input);
   return executeMerge(kernel, sourceName, input);
+}
+
+async function executeDomainRecovery(
+  kernel: SqliteKernel,
+  input: V12RecoveryExecutionIdentity,
+): Promise<string> {
+  const code = await drainScenarioEffects(kernel, input);
+  if (input.caseId === "foreground-reconciliation") return "foreground-reconciled";
+  if (input.caseId === "queued-callback") return "queued-callback-reconciled";
+  return code === "effects-reconciled" ? "domain-reconciled" : "domain-recovery-observed";
 }
 
 async function observationRows(
@@ -639,57 +852,85 @@ async function observationRows(
   rest: readonly Record<string, unknown>[];
   history: readonly Record<string, unknown>[];
   timing: readonly Record<string, unknown>[];
+  restore: readonly Record<string, unknown>[];
+  workoutReceipts: readonly Record<string, unknown>[];
+  importedReceipts: readonly Record<string, unknown>[];
+  matchReceipts: readonly Record<string, unknown>[];
+  metricReceipts: readonly Record<string, unknown>[];
 }>> {
-  const common = Promise.all([
+  const [effect, pointer, rest, history, timing, restore, workoutReceipts,
+    importedReceipts, matchReceipts, metricReceipts] = await Promise.all([
     kernel.queryAll<Record<string, unknown>>(
-      "SELECT effect_type, subject_id, expected_revision, status FROM pending_effects ORDER BY id",
+      `SELECT id, effect_type, subject_id, expected_revision, status,
+              attempt_count, next_attempt_at_ms, last_error_code
+       FROM pending_effects ORDER BY id`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      "SELECT status, revision, active_session_exercise_id, active_set_id FROM workout_sessions ORDER BY id",
+      `SELECT ws.id AS session_id, ws.status, ws.revision,
+              ws.active_session_exercise_id, ws.active_set_id,
+              (SELECT sets.id FROM session_sets sets
+               JOIN session_exercises exercise ON exercise.id = sets.session_exercise_id
+               WHERE exercise.session_id = ws.id AND sets.status = 'completed'
+               ORDER BY sets.completed_at_ms DESC, sets.id LIMIT 1) AS committed_set_id
+       FROM workout_sessions ws ORDER BY ws.id`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      "SELECT status, revision, next_set_id FROM session_rest_states ORDER BY session_id",
+      `SELECT session_id, status, revision, started_at_ms, ends_at_ms,
+              remaining_ms, expired_at_ms, next_set_id
+       FROM session_rest_states ORDER BY session_id`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      "SELECT event_type, effective_revision FROM history_audit_events ORDER BY id",
+      `SELECT id, session_id, effective_revision, event_type, field_identity,
+              before_json, after_json, occurred_at_ms
+       FROM history_audit_events ORDER BY id`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      "SELECT state_version, mode, revision FROM session_advanced_timing_states ORDER BY session_id",
+      `SELECT session_id, session_set_id, state_version, revision, status, mode,
+              config_json, progress_json, started_at_ms, next_boundary_at_ms,
+              remaining_ms, stopped_at_ms
+       FROM session_advanced_timing_states ORDER BY session_id`,
+    ),
+    kernel.queryAll<Record<string, unknown>>(
+      "SELECT state, updated_at_ms FROM portability_restore_state ORDER BY id",
+    ),
+    kernel.queryAll<Record<string, unknown>>(
+      "SELECT id, request_sha256, committed_at_ms FROM workout_receipts ORDER BY id",
+    ),
+    kernel.queryAll<Record<string, unknown>>(
+      "SELECT id, request_sha256, committed_at_ms FROM imported_activity_receipts ORDER BY id",
+    ),
+    kernel.queryAll<Record<string, unknown>>(
+      `SELECT request_id AS id, request_sha256, committed_at_ms, result_kind
+       FROM running_activity_match_receipts ORDER BY request_id`,
+    ),
+    kernel.queryAll<Record<string, unknown>>(
+      `SELECT idempotency_key AS id, migrated_at_ms AS committed_at_ms,
+              result_json AS result_kind
+       FROM metric_profile_migration_events ORDER BY idempotency_key`,
     ),
   ]);
   let source: readonly Record<string, unknown>[];
   let receipt: readonly Record<string, unknown>[];
-  if (operation === "workout-complete-set") {
+  if (!operation.startsWith("secure-")) {
     [source, receipt] = await Promise.all([
-      kernel.queryAll("SELECT status, revision FROM session_sets WHERE completion_idempotency_key IS NOT NULL ORDER BY id"),
+      kernel.queryAll("SELECT status, revision, completed_at_ms FROM session_sets WHERE completion_idempotency_key IS NOT NULL ORDER BY id"),
       kernel.queryAll("SELECT completion_idempotency_key, completed_at_ms FROM session_sets WHERE completion_idempotency_key IS NOT NULL ORDER BY id"),
-    ]);
-  } else if (operation === "garmin-import") {
-    [source, receipt] = await Promise.all([
-      kernel.queryAll("SELECT aggregate_revision, removal_state FROM imported_activity_identities ORDER BY activity_id"),
-      kernel.queryAll("SELECT request_sha256, committed_at_ms FROM imported_activity_receipts ORDER BY id"),
-    ]);
-  } else if (operation === "garmin-match") {
-    [source, receipt] = await Promise.all([
-      kernel.queryAll("SELECT relation_revision FROM running_activity_current_matches ORDER BY activity_id"),
-      kernel.queryAll("SELECT request_sha256, relation_revision, result_kind FROM running_activity_match_receipts ORDER BY request_id"),
     ]);
   } else if (operation === "secure-restore") {
     [source, receipt] = await Promise.all([
       kernel.queryAll("SELECT status, revision, portable_id, merge_modified_at_ms FROM workout_sessions ORDER BY id"),
-      kernel.queryAll("SELECT request_sha256, committed_at_ms FROM workout_receipts ORDER BY id"),
+      kernel.queryAll(`SELECT request_sha256, committed_at_ms FROM workout_receipts
+        UNION ALL SELECT request_sha256, committed_at_ms FROM imported_activity_receipts
+        ORDER BY committed_at_ms`),
     ]);
   } else {
     source = await kernel.queryAll(
       "SELECT status, revision, portable_id, merge_modified_at_ms FROM workout_sessions ORDER BY id",
     );
-    receipt = source.map((row) => ({
-      portable_id: row.portable_id,
-      merge_modified_at_ms: row.merge_modified_at_ms,
-    }));
+    receipt = [...workoutReceipts, ...importedReceipts, ...matchReceipts, ...metricReceipts];
   }
-  const [effect, pointer, rest, history, timing] = await common;
-  return Object.freeze({ source, receipt, effect, pointer, rest, history, timing });
+  return Object.freeze({ source, receipt, effect, pointer, rest, history, timing,
+    restore, workoutReceipts, importedReceipts, matchReceipts, metricReceipts });
 }
 
 async function snapshot(
@@ -697,11 +938,86 @@ async function snapshot(
   operation: OperationId,
 ): Promise<V12RecoveryDurableSnapshot> {
   const rows = await observationRows(kernel, operation);
-  const [sourceSha, receiptSha, effectSha, pointerSha, restSha, historySha, timingSha] =
+  const effectFacts = await Promise.all(rows.effect.map(async (row) => Object.freeze({
+    effect_sha256: await sha256(String(row.id)),
+    type: row.effect_type as "reconcile_rest_notification" | "regenerate_load_reps_recommendation",
+    subject_sha256: await sha256(String(row.subject_id)),
+    expected_revision: Number(row.expected_revision),
+    status: row.status as "pending" | "processing" | "completed" | "superseded" | "permanent_failure",
+    attempt_count: Number(row.attempt_count),
+    next_attempt_at_ms: Number(row.next_attempt_at_ms),
+    last_error_code: row.last_error_code === null ? null : String(row.last_error_code),
+  })));
+  const pointerFacts = await Promise.all(rows.pointer.map(async (row) => Object.freeze({
+    session_sha256: await sha256(String(row.session_id)),
+    status: String(row.status),
+    revision: Number(row.revision),
+    active_exercise_sha256: row.active_session_exercise_id === null ? null : await sha256(String(row.active_session_exercise_id)),
+    active_set_sha256: row.active_set_id === null ? null : await sha256(String(row.active_set_id)),
+    committed_set_sha256: row.committed_set_id === null ? null : await sha256(String(row.committed_set_id)),
+  })));
+  const restFacts = await Promise.all(rows.rest.map(async (row) => Object.freeze({
+    session_sha256: await sha256(String(row.session_id)),
+    status: row.status as "idle" | "running" | "paused" | "expired",
+    revision: Number(row.revision),
+    started_at_ms: row.started_at_ms as number | null,
+    ends_at_ms: row.ends_at_ms as number | null,
+    deadline_at_ms: row.ends_at_ms as number | null,
+    paused_remaining_ms: row.remaining_ms as number | null,
+    expired_at_ms: row.expired_at_ms as number | null,
+    next_set_sha256: row.next_set_id === null ? null : await sha256(String(row.next_set_id)),
+  })));
+  const timingFacts = await Promise.all(rows.timing.map(async (row) => Object.freeze({
+    session_sha256: await sha256(String(row.session_id)),
+    set_sha256: row.session_set_id === null ? null : await sha256(String(row.session_set_id)),
+    state_version: Number(row.state_version),
+    revision: Number(row.revision),
+    status: row.status as "idle" | "running" | "paused" | "stopped" | "expired",
+    mode: row.mode as "per_rep" | "cluster" | null,
+    configuration: JSON.parse(String(row.config_json)) as Record<string, unknown>,
+    progress: JSON.parse(String(row.progress_json)) as Record<string, unknown>,
+    started_at_ms: row.started_at_ms as number | null,
+    next_boundary_at_ms: row.next_boundary_at_ms as number | null,
+    remaining_ms: row.remaining_ms as number | null,
+    stopped_at_ms: row.stopped_at_ms as number | null,
+  })));
+  const historyFacts = await Promise.all(rows.history.map(async (row) => Object.freeze({
+    event_sha256: await sha256(String(row.id)),
+    session_sha256: await sha256(String(row.session_id)),
+    effective_revision: Number(row.effective_revision),
+    event_type: row.event_type as "correction" | "void" | "restore",
+    field_identity: String(row.field_identity),
+    before_sha256: await sha256(String(row.before_json)),
+    after_sha256: await sha256(String(row.after_json)),
+    occurred_at_ms: Number(row.occurred_at_ms),
+  })));
+  const restoreFacts = rows.restore.map((row) => Object.freeze({
+    state: row.state as "ready" | "rebuild_pending",
+    updated_at_ms: Number(row.updated_at_ms),
+  }));
+  const mergeRows: Array<Record<string, unknown> & Readonly<{ table: "workout_receipts" | "imported_activity_receipts" | "running_activity_match_receipts" | "metric_profile_migration_events" }>> = [
+    ...rows.workoutReceipts.map((row) => ({ ...row, table: "workout_receipts" as const, result_kind: "committed" })),
+    ...rows.importedReceipts.map((row) => ({ ...row, table: "imported_activity_receipts" as const, result_kind: "committed" })),
+    ...rows.matchReceipts.map((row) => ({ ...row, table: "running_activity_match_receipts" as const })),
+    ...rows.metricReceipts.map((row) => ({ ...row, table: "metric_profile_migration_events" as const, request_sha256: "" })),
+  ];
+  const mergeReceiptFacts = await Promise.all(mergeRows.map(async (row) => Object.freeze({
+    table: row.table,
+    receipt_sha256: await sha256(stableJson(row)),
+    request_sha256: typeof row.request_sha256 === "string" && row.request_sha256.length === 64
+      ? row.request_sha256 : await sha256(String(row.id)),
+    idempotency_sha256: await sha256(String(row.id)),
+    committed_at_ms: Number(row.committed_at_ms),
+    result: String(row.result_kind ?? "committed"),
+  })));
+  const cueFacts: readonly Record<string, unknown>[] = [];
+  const [sourceSha, receiptSha, effectSha, pointerSha, restSha, historySha, timingSha,
+    restoreSha, mergeReceiptSha, cueSha] =
     await Promise.all([
       digestRows(rows.source), digestRows(rows.receipt), digestRows(rows.effect),
       digestRows(rows.pointer), digestRows(rows.rest), digestRows(rows.history),
-      digestRows(rows.timing),
+      digestRows(rows.timing), digestRows(rows.restore),
+      digestRows(mergeRows), digestRows(cueFacts),
     ]);
   return Object.freeze({
     source_count: rows.source.length,
@@ -711,6 +1027,9 @@ async function snapshot(
     rest_count: rows.rest.length,
     history_count: rows.history.length,
     timing_count: rows.timing.length,
+    restore_count: rows.restore.length,
+    merge_receipt_count: mergeReceiptFacts.length,
+    cue_count: cueFacts.length,
     source_sha256: sourceSha,
     receipt_sha256: receiptSha,
     effect_sha256: effectSha,
@@ -718,20 +1037,47 @@ async function snapshot(
     rest_sha256: restSha,
     history_sha256: historySha,
     timing_sha256: timingSha,
+    restore_sha256: restoreSha,
+    merge_receipt_sha256: mergeReceiptSha,
+    cue_sha256: cueSha,
+    effect_facts: Object.freeze(effectFacts),
+    pointer_facts: Object.freeze(pointerFacts),
+    rest_facts: Object.freeze(restFacts),
+    timing_facts: Object.freeze(timingFacts),
+    history_facts: Object.freeze(historyFacts),
+    restore_facts: Object.freeze(restoreFacts),
+    merge_receipt_facts: Object.freeze(mergeReceiptFacts),
   });
 }
 
-function observerFor(cutId: string): SqliteKernelTestObserver {
-  let injected = false;
-  const once = async () => {
-    if (!injected) {
-      injected = true;
-      throw new Error("v12_recovery_injected_cut");
-    }
-  };
-  if (cutId === "in-transaction") return { beforeCommit: once };
-  if (ACK_LOSS_CUTS.has(cutId)) return { afterCommit: once };
-  return {};
+function holdOpen(): Promise<never> {
+  return new Promise(() => undefined);
+}
+
+function cutDefinition(cutId: string) {
+  const cut = V12_RECOVERY_CUT_DEFINITIONS.find(({ id }) => id === cutId);
+  if (cut === undefined) throw new Error("v12_recovery_cut_missing");
+  return cut;
+}
+
+async function emitArmed(
+  input: V12RecoveryExecutionIdentity,
+  before: V12RecoveryDurableSnapshot,
+  afterCut: V12RecoveryDurableSnapshot,
+  firstAttemptCode: string,
+): Promise<never> {
+  const cut = cutDefinition(input.cutId);
+  input.progress({
+    barrier_id: cut.barrierId,
+    process_state: cut.processState,
+    acknowledgement: cut.acknowledgement,
+    connectivity: cut.connectivity,
+    first_attempt: cut.firstAttempt,
+    first_attempt_code: firstAttemptCode,
+    before,
+    after_cut: afterCut,
+  });
+  return holdOpen();
 }
 
 export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecoveryExecutor {
@@ -754,20 +1100,55 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
         await target.close();
       }
       active(input);
-      if (input.cutId === "pre-transaction") return;
-      const runtime = await openSqliteKernelTestRuntime(
+      const baseline = await openSqliteKernel(names.target);
+      const before = await snapshot(baseline, operation);
+      await baseline.close();
+      if (input.cutId === "pre-transaction") {
+        return emitArmed(input, before, before, "not-started");
+      }
+      let runtime: Awaited<ReturnType<typeof openSqliteKernelTestRuntime>>;
+      let armed = false;
+      const armOnce = async (code: string) => {
+        if (armed) throw new Error("v12_recovery_barrier_duplicate");
+        armed = true;
+        const afterCut = await snapshot(runtime.kernel, operation);
+        await emitArmed(input, before, afterCut, code);
+      };
+      const observer: SqliteKernelTestObserver = input.cutId === "in-transaction"
+        ? { beforeCommit: () => armOnce("transaction-open") }
+        : input.cutId === "post-commit-before-ack"
+          ? { afterCommit: () => armOnce("acknowledgement-lost") }
+          : input.cutId === "retry"
+            ? { beforeCommit: async () => { throw new Error("v12_recovery_first_attempt_failed"); } }
+            : {};
+      runtime = await openSqliteKernelTestRuntime(
         names.target,
-        observerFor(input.cutId),
+        observer,
       );
       try {
-        await executeOperation(runtime.kernel, operation, names.source, input);
-      } catch (error) {
-        if (!UNCOMMITTED_CUTS.has(input.cutId)
-          && !ACK_LOSS_CUTS.has(input.cutId)) {
-          throw error;
+        try {
+          await executeOperation(runtime.kernel, operation, names.source, input);
+        } catch (error) {
+          if (input.cutId !== "retry" || !(error instanceof Error)
+            || !String(error.cause ?? error.message).includes("v12_recovery_first_attempt_failed")) {
+            throw error;
+          }
+          const afterCut = await snapshot(runtime.kernel, operation);
+          return emitArmed(input, before, afterCut, "first-attempt-failed");
         }
+        const code = input.cutId === "post-acknowledgement" ? "acknowledged"
+          : input.cutId === "relaunch" ? "replay-process-open"
+            : input.cutId === "offline" ? "offline-switch-pending"
+              : input.cutId === "recovery" ? "domain-reconciliation-pending"
+                : "operation-complete";
+        const afterCut = await snapshot(runtime.kernel, operation);
+        return emitArmed(input, before, afterCut, code);
+      } catch (error) {
+        throw error;
       } finally {
-        await runtime.close();
+        // A successful arm never reaches this close: the host kills the open
+        // process at the nonce-bound ARMED barrier. Error paths close normally.
+        if (!armed) await runtime.close();
       }
     },
 
@@ -777,11 +1158,18 @@ export function createV12ProductionRecoveryNativeExecutor(): V12ProductionRecove
       const kernel = await openSqliteKernel(names.target);
       try {
         const afterReopen = await snapshot(kernel, operation);
+        const recoveryCode = input.cutId === "recovery"
+          ? await executeDomainRecovery(kernel, input)
+          : "not-required";
+        const afterRecovery = await snapshot(kernel, operation);
         const retryCode = await executeOperation(kernel, operation, names.source, input);
         const afterRetry = await snapshot(kernel, operation);
         return Object.freeze({
           operation_id: operation,
+          boundary_ids: scenarioFor(input.caseId).boundaryIds,
           after_reopen: afterReopen,
+          recovery_code: recoveryCode,
+          after_recovery: afterRecovery,
           retry_code: retryCode,
           after_retry: afterRetry,
         });

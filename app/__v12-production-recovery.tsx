@@ -21,7 +21,13 @@ function RecoveryExecution(input: Readonly<{
     void collectV12ProductionRecoveryPhase({
       identity: input.identity,
       phase: input.phase,
-      emit: (line) => console.info(line),
+      emit: (line) => {
+        console.info(line);
+        if (line.startsWith("GYM_TRACKER_V12_DOMAIN_PROGRESS:")
+          && line.includes('"kind":"ARMED"')) {
+          setState("armed");
+        }
+      },
       signal: controller.signal,
     }).then((result) => {
       if (!controller.signal.aborted) {

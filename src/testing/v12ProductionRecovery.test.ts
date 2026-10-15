@@ -4,6 +4,7 @@ import {
   collectV12ProductionRecoveryPhase,
   v12ProductionRecoveryEnabled,
   type V12ProductionRecoveryExecutor,
+  type V12RecoveryExecutionIdentity,
 } from "./v12ProductionRecovery";
 
 const identity = Object.freeze({
@@ -25,6 +26,9 @@ function snapshot(receiptCount: number, digest: string) {
     rest_count: receiptCount,
     history_count: 0,
     timing_count: 0,
+    restore_count: 1,
+    merge_receipt_count: 0,
+    cue_count: 0,
     source_sha256: digest.repeat(64),
     receipt_sha256: digest.repeat(64),
     effect_sha256: digest.repeat(64),
@@ -32,6 +36,28 @@ function snapshot(receiptCount: number, digest: string) {
     rest_sha256: digest.repeat(64),
     history_sha256: digest.repeat(64),
     timing_sha256: digest.repeat(64),
+    restore_sha256: digest.repeat(64),
+    merge_receipt_sha256: digest.repeat(64),
+    cue_sha256: digest.repeat(64),
+    effect_facts: receiptCount === 0 ? [] : [{
+      effect_sha256: digest.repeat(64), type: "reconcile_rest_notification" as const,
+      subject_sha256: digest.repeat(64), expected_revision: 1, status: "pending" as const,
+      attempt_count: 0, next_attempt_at_ms: 1, last_error_code: null,
+    }],
+    pointer_facts: [{
+      session_sha256: digest.repeat(64), status: "in_progress", revision: 1,
+      active_exercise_sha256: digest.repeat(64), active_set_sha256: digest.repeat(64),
+      committed_set_sha256: receiptCount === 0 ? null : digest.repeat(64),
+    }],
+    rest_facts: receiptCount === 0 ? [] : [{
+      session_sha256: digest.repeat(64), status: "running" as const, revision: 1,
+      started_at_ms: 1, ends_at_ms: 2, deadline_at_ms: 2,
+      paused_remaining_ms: null, expired_at_ms: null, next_set_sha256: digest.repeat(64),
+    }],
+    timing_facts: [],
+    history_facts: [],
+    restore_facts: [{ state: "ready" as const, updated_at_ms: 0 }],
+    merge_receipt_facts: [],
   });
 }
 
@@ -75,12 +101,60 @@ describe("v1.2 native Recovery producer boundary", () => {
     expect(lines).toEqual([]);
   });
 
+  it("emits a nonce-bound rich ARMED progress marker from the exact causal barrier", async () => {
+    const before = snapshot(0, "a");
+    const afterCut = snapshot(1, "b");
+    const executor: V12ProductionRecoveryExecutor = {
+      arm: jest.fn(async (input: V12RecoveryExecutionIdentity) => {
+        input.progress({
+          barrier_id: "commit-durable-ack-pending",
+          process_state: "writer-open",
+          acknowledgement: "lost",
+          connectivity: "online",
+          first_attempt: "committed-ack-lost",
+          first_attempt_code: "acknowledgement-lost",
+          before,
+          after_cut: afterCut,
+        });
+      }),
+      recover: jest.fn(async () => { throw new Error("must_not_recover"); }),
+      cleanup: jest.fn(async () => undefined),
+    };
+    const lines: string[] = [];
+
+    await collectV12ProductionRecoveryPhase({
+      identity,
+      phase: "arm",
+      emit: (line) => lines.push(line),
+      signal: { aborted: false },
+      executor,
+    });
+
+    expect(JSON.parse(lines[0]!.slice("GYM_TRACKER_V12_DOMAIN_PROGRESS:".length)))
+      .toEqual(expect.objectContaining({
+        schema_version: 2,
+        nonce: identity.nonce,
+        sequence: 1,
+        kind: "ARMED",
+        case_id: identity.caseId,
+        cut_id: identity.cutId,
+        operation_id: "workout-rest-set-pointer",
+        boundary_ids: ["commit", "rest"],
+        barrier_id: "commit-durable-ack-pending",
+        before,
+        after_cut: afterCut,
+      }));
+  });
+
   it("emits only durable readback facts after reopen and retry", async () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async () => undefined),
       recover: jest.fn(async () => ({
-        operation_id: "workout-complete-set",
+        operation_id: "workout-rest-set-pointer",
+        boundary_ids: ["commit", "rest"],
         after_reopen: snapshot(1, "b"),
+        recovery_code: "not-required",
+        after_recovery: snapshot(1, "b"),
         retry_code: "already-completed",
         after_retry: snapshot(1, "b"),
       })),
@@ -101,13 +175,16 @@ describe("v1.2 native Recovery producer boundary", () => {
       "GYM_TRACKER_V12_DOMAIN_RESULT:".length,
     ));
     expect(value).toEqual({
-      schema_version: 1,
+      schema_version: 2,
       nonce: identity.nonce,
       kind: "recovery",
       case_id: identity.caseId,
       cut_id: identity.cutId,
-      operation_id: "workout-complete-set",
+      operation_id: "workout-rest-set-pointer",
+      boundary_ids: ["commit", "rest"],
       after_reopen: snapshot(1, "b"),
+      recovery_code: "not-required",
+      after_recovery: snapshot(1, "b"),
       retry_code: "already-completed",
       after_retry: snapshot(1, "b"),
     });
@@ -120,8 +197,11 @@ describe("v1.2 native Recovery producer boundary", () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async () => undefined),
       recover: jest.fn(async () => ({
-        operation_id: "workout-complete-set",
+        operation_id: "workout-rest-set-pointer",
+        boundary_ids: ["commit", "rest"],
         after_reopen: snapshot(1, "c"),
+        recovery_code: "not-required",
+        after_recovery: snapshot(1, "c"),
         retry_code: "already-completed",
         after_retry: snapshot(1, "c"),
       })),
@@ -145,8 +225,11 @@ describe("v1.2 native Recovery producer boundary", () => {
     const executor: V12ProductionRecoveryExecutor = {
       arm: jest.fn(async () => undefined),
       recover: jest.fn(async () => ({
-        operation_id: "workout-complete-set",
+        operation_id: "workout-rest-set-pointer",
+        boundary_ids: ["commit", "rest"],
         after_reopen: snapshot(1, "d"),
+        recovery_code: "not-required",
+        after_recovery: snapshot(1, "d"),
         retry_code: "already-completed",
         after_retry: snapshot(1, "d"),
       })),

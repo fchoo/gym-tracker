@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createProductionNativeRuntime } from './v12-production-native-runtime.mjs';
@@ -14,17 +15,34 @@ const PROGRESS = 'GYM_TRACKER_V12_DOMAIN_PROGRESS:';
 const quote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
 const SETTINGS = { font_scale: 'system', accelerometer_rotation: 'system', user_rotation: 'system', window_animation_scale: 'global', transition_animation_scale: 'global', animator_duration_scale: 'global', airplane_mode_on: 'global' };
 const ATTESTATION = ['schema_version', 'action', 'launcher_source_sha256', 'run_id', 'build_profile', 'suite', 'source_tree_sha256', 'apk_sha256', 'installed_apk_sha256', 'apk_signature_sha256', 'device_identity_sha256', 'package'];
-const RECOVERY_SNAPSHOT_KEYS = ['source_count', 'receipt_count', 'effect_count', 'pointer_count', 'rest_count', 'history_count', 'timing_count', 'source_sha256', 'receipt_sha256', 'effect_sha256', 'pointer_sha256', 'rest_sha256', 'history_sha256', 'timing_sha256'];
-const RECOVERY_UNCOMMITTED_CUTS = new Set(['pre-transaction', 'in-transaction']);
-const RECOVERY_OPERATIONS = Object.freeze({
-  'legacy-playback': 'workout-complete-set',
-  'foreground-reconciliation': 'workout-complete-set',
-  'queued-callback': 'workout-complete-set',
-  relaunch: 'garmin-match',
-  restore: 'secure-restore',
-  merge: 'secure-merge',
-  'zero-cue': 'garmin-import',
-  'between-set-rest-pointer': 'workout-complete-set',
+const RECOVERY_SNAPSHOT_KEYS = [
+  'source_count', 'receipt_count', 'effect_count', 'pointer_count', 'rest_count',
+  'history_count', 'timing_count', 'restore_count', 'merge_receipt_count', 'cue_count',
+  'source_sha256', 'receipt_sha256', 'effect_sha256', 'pointer_sha256', 'rest_sha256',
+  'history_sha256', 'timing_sha256', 'restore_sha256', 'merge_receipt_sha256',
+  'cue_sha256', 'effect_facts', 'pointer_facts', 'rest_facts', 'timing_facts',
+  'history_facts', 'restore_facts', 'merge_receipt_facts',
+];
+const RECOVERY_UNCOMMITTED_CUTS = new Set(['pre-transaction', 'in-transaction', 'retry']);
+const RECOVERY_SCENARIOS = Object.freeze({
+  'legacy-playback': Object.freeze({ operation_id: 'tim01-legacy-playback', boundary_ids: Object.freeze(['start', 'edit']) }),
+  'foreground-reconciliation': Object.freeze({ operation_id: 'tim01-foreground-reconciliation', boundary_ids: Object.freeze(['rest']) }),
+  'queued-callback': Object.freeze({ operation_id: 'tim01-queued-callback', boundary_ids: Object.freeze(['commit']) }),
+  relaunch: Object.freeze({ operation_id: 'workout-relaunch-replay', boundary_ids: Object.freeze(['finish']) }),
+  restore: Object.freeze({ operation_id: 'secure-restore', boundary_ids: Object.freeze(['restore', 'import']) }),
+  merge: Object.freeze({ operation_id: 'secure-merge', boundary_ids: Object.freeze(['merge', 'match']) }),
+  'zero-cue': Object.freeze({ operation_id: 'tim01-zero-cue', boundary_ids: Object.freeze(['start', 'edit', 'finish']) }),
+  'between-set-rest-pointer': Object.freeze({ operation_id: 'workout-rest-set-pointer', boundary_ids: Object.freeze(['commit', 'rest']) }),
+});
+const RECOVERY_CUTS = Object.freeze({
+  'pre-transaction': Object.freeze({ barrier_id: 'before-transaction', process_state: 'route-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'not-started' }),
+  'in-transaction': Object.freeze({ barrier_id: 'writer-transaction-open', process_state: 'writer-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'transaction-open' }),
+  'post-commit-before-ack': Object.freeze({ barrier_id: 'commit-durable-ack-pending', process_state: 'writer-open', acknowledgement: 'lost', connectivity: 'online', first_attempt: 'committed-ack-lost' }),
+  'post-acknowledgement': Object.freeze({ barrier_id: 'acknowledgement-observed', process_state: 'route-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged' }),
+  relaunch: Object.freeze({ barrier_id: 'replay-process-open', process_state: 'replay-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged' }),
+  retry: Object.freeze({ barrier_id: 'first-attempt-failed', process_state: 'route-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'failed' }),
+  offline: Object.freeze({ barrier_id: 'post-boundary-offline', process_state: 'route-open', acknowledgement: 'observed', connectivity: 'switch-offline', first_attempt: 'acknowledged' }),
+  recovery: Object.freeze({ barrier_id: 'domain-reconciliation-pending', process_state: 'recovery-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged' }),
 });
 
 function validate(action, payload, a, root) {
@@ -37,12 +55,12 @@ function validate(action, payload, a, root) {
   if (process.env.NODE_ENV === 'test' || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) fail('test_environment_forbidden');
 }
 
-function session(root, a) {
+function session(root, a, action) {
   const serial = process.env.V12_DEVICE_SERIAL;
   let nonce = randomBytes(16).toString('hex');
-  // The current launcher grants domain actions five minutes. Leave two minutes
-  // for cleanup; do not silently outlive its hard process timeout.
-  const deadline = Date.now() + 3 * 60_000;
+  // Recovery owns 128 bounded arm/recover flows. Leave five minutes for the
+  // launcher's identity/settings cleanup; shorter domain actions keep 3 minutes.
+  const deadline = Date.now() + (action === 'recovery' ? 40 : 3) * 60_000;
   const command = (exe, args, { timeout = 20_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail('domain_timeout');
     const result = spawnSync(exe, args, { cwd: root, encoding: binary ? undefined : 'utf8', timeout: cleanup ? timeout : Math.min(timeout, Math.max(1, deadline - Date.now())), maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -75,9 +93,12 @@ function session(root, a) {
           const index = line.indexOf(prefix); if (index < 0) continue;
           let value; try { value = JSON.parse(line.slice(index + prefix.length)); } catch { continue; }
           if (value?.nonce !== nonce) continue;
-          if (value.schema_version !== 1) fail('marker_invalid');
+          if (![1, 2].includes(value.schema_version)) fail('marker_invalid');
           if (prefix === PROGRESS) {
-            if (!exact(value, ['schema_version', 'nonce', 'sequence']) || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || value.sequence > 256) fail('marker_invalid');
+            if (value.kind === 'ARMED') {
+              if (value.schema_version !== 2 || !Number.isSafeInteger(value.sequence) || value.sequence !== 1) fail('marker_invalid');
+              if (kind === 'ARMED' && predicate(value)) found.push(value);
+            } else if (!exact(value, ['schema_version', 'nonce', 'sequence']) || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || value.sequence > 256) fail('marker_invalid');
             if (value.sequence > sequence) { sequence = value.sequence; progressed = Date.now(); }
           } else if (value.kind === 'error') {
             if (!exact(value, ['schema_version', 'nonce', 'kind', 'code'])) fail('marker_invalid');
@@ -99,6 +120,20 @@ function session(root, a) {
     const result = command('maestro', ['test', '--device', serial, ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]), '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
     let xml; try { xml = readFileSync(report, 'utf8'); chmodSync(report, 0o600); } catch { fail('junit_missing'); }
     return junitOutcome(xml, result.status);
+  }
+  function recoveryMaestro(flow, variables) {
+    const quarantine = mkdtempSync(path.join(tmpdir(), 'v12-recovery-junit-'));
+    chmodSync(quarantine, 0o700);
+    const report = path.join(quarantine, 'raw.xml');
+    try {
+      const result = command('maestro', ['test', '--device', serial,
+        ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]),
+        '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
+      let xml; try { xml = readFileSync(report, 'utf8'); } catch { fail('junit_missing'); }
+      return junitOutcome(xml, result.status);
+    } finally {
+      rmSync(quarantine, { recursive: true, force: true });
+    }
   }
   function version() { if (command('maestro', ['--version']).stdout.trim() !== '2.8.0') fail('maestro_version_invalid'); }
   function standalone() {
@@ -138,7 +173,8 @@ function session(root, a) {
       if (failed) fail('settings_restore_failed');
     }
   }
-  return { get nonce() { return nonce; }, shell, marker, maestro, version, standalone, restoreAround, retained,
+  return { get nonce() { return nonce; }, renewNonce: () => { nonce = randomBytes(16).toString('hex'); return nonce; },
+    shell, marker, maestro, recoveryMaestro, version, standalone, restoreAround, retained,
     stop: () => cleanupShell('am', 'force-stop', PACKAGE),
     screenshot: () => command('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { binary: true }).stdout };
 }
@@ -186,77 +222,122 @@ function recoverySnapshot(value) {
   for (const key of RECOVERY_SNAPSHOT_KEYS.filter((key) => key.endsWith('_sha256'))) {
     if (!HASH.test(value[key] ?? '')) fail('recovery_receipt_invalid');
   }
+  for (const [key, count] of [
+    ['effect_facts', 'effect_count'], ['pointer_facts', 'pointer_count'],
+    ['rest_facts', 'rest_count'], ['timing_facts', 'timing_count'],
+    ['history_facts', 'history_count'], ['restore_facts', 'restore_count'],
+    ['merge_receipt_facts', 'merge_receipt_count'],
+  ]) if (!Array.isArray(value[key]) || value[key].length !== value[count]) fail('recovery_receipt_invalid');
+  for (const fact of value.rest_facts) {
+    if (!exact(fact, ['session_sha256', 'status', 'revision', 'started_at_ms', 'ends_at_ms', 'deadline_at_ms', 'paused_remaining_ms', 'expired_at_ms', 'next_set_sha256'])
+      || !HASH.test(fact.session_sha256) || (fact.next_set_sha256 !== null && !HASH.test(fact.next_set_sha256))
+      || fact.deadline_at_ms !== fact.ends_at_ms) fail('recovery_receipt_invalid');
+  }
+  for (const fact of value.timing_facts) {
+    if (!exact(fact, ['session_sha256', 'set_sha256', 'state_version', 'revision', 'status', 'mode', 'configuration', 'progress', 'started_at_ms', 'next_boundary_at_ms', 'remaining_ms', 'stopped_at_ms'])
+      || !HASH.test(fact.session_sha256) || (fact.set_sha256 !== null && !HASH.test(fact.set_sha256))
+      || !exact(fact.configuration, Object.keys(fact.configuration)) || !exact(fact.progress, Object.keys(fact.progress))) fail('recovery_receipt_invalid');
+  }
+  for (const fact of value.history_facts) {
+    if (!exact(fact, ['event_sha256', 'session_sha256', 'effective_revision', 'event_type', 'field_identity', 'before_sha256', 'after_sha256', 'occurred_at_ms'])
+      || ![fact.event_sha256, fact.session_sha256, fact.before_sha256, fact.after_sha256].every((entry) => HASH.test(entry ?? ''))
+      || !/^[a-z0-9_]{3,80}$/u.test(fact.field_identity ?? '')) fail('recovery_receipt_invalid');
+  }
+  for (const fact of value.restore_facts) if (!exact(fact, ['state', 'updated_at_ms']) || !['ready', 'rebuild_pending'].includes(fact.state)) fail('recovery_receipt_invalid');
+  for (const fact of value.merge_receipt_facts) {
+    if (!exact(fact, ['table', 'receipt_sha256', 'request_sha256', 'idempotency_sha256', 'committed_at_ms', 'result'])
+      || ![fact.receipt_sha256, fact.request_sha256, fact.idempotency_sha256].every((entry) => HASH.test(entry ?? ''))) fail('recovery_receipt_invalid');
+  }
   return value;
 }
 
-function recoveryRetryCode(operation, committed) {
-  if (operation === 'workout-complete-set') return committed ? 'already-completed' : 'committed';
-  if (operation === 'garmin-import') return committed ? 'unchanged' : 'imported';
-  if (operation === 'garmin-match') return committed ? 'replayed' : 'matched';
-  if (operation === 'secure-restore') return 'rebuild-pending';
-  if (operation === 'secure-merge') return committed ? 'ready' : 'rebuild-pending';
-  fail('recovery_receipt_invalid');
+function deriveArmedObservation(value, nonce, caseId, cutId) {
+  const scenario = RECOVERY_SCENARIOS[caseId]; const cut = RECOVERY_CUTS[cutId];
+  if (!scenario || !cut || !exact(value, ['schema_version', 'nonce', 'sequence', 'kind', 'case_id', 'cut_id', 'operation_id', 'boundary_ids', 'barrier_id', 'process_state', 'acknowledgement', 'connectivity', 'first_attempt', 'first_attempt_code', 'before', 'after_cut'])
+    || value.schema_version !== 2 || value.nonce !== nonce || value.sequence !== 1 || value.kind !== 'ARMED'
+    || value.case_id !== caseId || value.cut_id !== cutId || value.operation_id !== scenario.operation_id
+    || JSON.stringify(value.boundary_ids) !== JSON.stringify(scenario.boundary_ids)
+    || ['barrier_id', 'process_state', 'acknowledgement', 'connectivity', 'first_attempt'].some((key) => value[key] !== cut[key])
+    || !/^[a-z0-9-]{3,60}$/u.test(value.first_attempt_code ?? '')) fail('recovery_receipt_invalid');
+  return Object.freeze({ ...value, before: recoverySnapshot(value.before), after_cut: recoverySnapshot(value.after_cut) });
 }
 
-function deriveRecoveryObservation(value, nonce, caseId, cutId) {
-  if (!exact(value, ['schema_version', 'nonce', 'kind', 'case_id', 'cut_id', 'operation_id', 'after_reopen', 'retry_code', 'after_retry'])
-    || value.schema_version !== 1 || value.nonce !== nonce || value.kind !== 'recovery'
-    || value.case_id !== caseId || value.cut_id !== cutId
-    || value.operation_id !== RECOVERY_OPERATIONS[caseId]) fail('recovery_receipt_invalid');
+function deriveRecoveryObservation(value, nonce, caseId, cutId, armed) {
+  const scenario = RECOVERY_SCENARIOS[caseId];
+  if (!scenario || !exact(value, ['schema_version', 'nonce', 'kind', 'case_id', 'cut_id', 'operation_id', 'boundary_ids', 'after_reopen', 'recovery_code', 'after_recovery', 'retry_code', 'after_retry'])
+    || value.schema_version !== 2 || value.nonce !== nonce || value.kind !== 'recovery'
+    || value.case_id !== caseId || value.cut_id !== cutId || value.operation_id !== scenario.operation_id
+    || JSON.stringify(value.boundary_ids) !== JSON.stringify(scenario.boundary_ids)
+    || ![value.recovery_code, value.retry_code].every((code) => /^[a-z0-9-]{3,60}$/u.test(code ?? ''))) fail('recovery_receipt_invalid');
   const afterReopen = recoverySnapshot(value.after_reopen);
+  const afterRecovery = recoverySnapshot(value.after_recovery);
   const afterRetry = recoverySnapshot(value.after_retry);
   const committed = !RECOVERY_UNCOMMITTED_CUTS.has(cutId);
-  const firstCount = committed ? 1 : 0;
-  if (afterReopen.source_count !== firstCount || afterReopen.receipt_count !== firstCount
-    || afterRetry.source_count !== 1 || afterRetry.receipt_count !== 1
-    || value.retry_code !== recoveryRetryCode(value.operation_id, committed)) fail('recovery_receipt_invalid');
-  if (value.operation_id === 'workout-complete-set'
-    && (afterRetry.effect_count !== 1 || afterRetry.pointer_count !== 1 || afterRetry.rest_count !== 1)) fail('recovery_receipt_invalid');
-  if (['garmin-import', 'garmin-match'].includes(value.operation_id)
-    && (afterRetry.effect_count !== 0 || afterRetry.pointer_count !== 0 || afterRetry.rest_count !== 0)) fail('recovery_receipt_invalid');
-  if (['secure-restore', 'secure-merge'].includes(value.operation_id)
-    && (afterRetry.pointer_count !== 1 || afterRetry.rest_count !== 0)) fail('recovery_receipt_invalid');
-  if (['legacy-playback', 'zero-cue'].includes(caseId) && afterRetry.timing_count !== 0) fail('recovery_receipt_invalid');
-  if (committed) {
-    if (JSON.stringify(afterReopen) !== JSON.stringify(afterRetry)) fail('recovery_receipt_invalid');
-  } else if (afterReopen.source_sha256 === afterRetry.source_sha256
-    || afterReopen.receipt_sha256 === afterRetry.receipt_sha256) fail('recovery_receipt_invalid');
+  if (JSON.stringify(afterReopen) !== JSON.stringify(committed ? armed.after_cut : armed.before)) fail('recovery_receipt_invalid');
+  if (cutId !== 'recovery' && JSON.stringify(afterRecovery) !== JSON.stringify(afterReopen)) fail('recovery_receipt_invalid');
+  if (cutId === 'recovery' && value.recovery_code === 'not-required') fail('recovery_receipt_invalid');
+  if (afterRetry.cue_count !== 0 || afterRetry.restore_facts.length !== 1) fail('recovery_receipt_invalid');
+  if (['legacy-playback', 'zero-cue'].includes(caseId)
+    && (afterRetry.timing_count < 1 || afterRetry.history_count < 1)) fail('recovery_receipt_invalid');
+  if (caseId === 'queued-callback' && afterReopen.effect_count < 1) fail('recovery_receipt_invalid');
+  if (caseId === 'foreground-reconciliation' && afterRetry.rest_count < 1) fail('recovery_receipt_invalid');
+  if (caseId === 'restore' && !afterRetry.restore_facts.some((fact) => fact.state === 'rebuild_pending')) fail('recovery_receipt_invalid');
+  if (caseId === 'merge' && afterRetry.merge_receipt_facts.length < 1) fail('recovery_receipt_invalid');
+  if (caseId === 'between-set-rest-pointer' && (afterRetry.pointer_facts.length < 1 || afterRetry.rest_facts.length < 1
+    || !afterRetry.pointer_facts.some((fact) => HASH.test(fact.committed_set_sha256 ?? '')))) fail('recovery_receipt_invalid');
+  const receiptSha256 = hash(JSON.stringify({ armed, value }));
   return Object.freeze({
-    operation: value.operation_id,
-    commitState: committed ? 'committed-before-retry' : 'uncommitted-before-retry',
-    retryCode: value.retry_code,
-    receiptSha256: hash(JSON.stringify(value)),
-    afterReopen,
-    afterRetry,
+    cut_id: cutId, status: 'PASS', operation_id: value.operation_id,
+    boundary_ids: value.boundary_ids, barrier: Object.freeze({ barrier_id: armed.barrier_id,
+      process_state: armed.process_state, acknowledgement: armed.acknowledgement,
+      connectivity: armed.connectivity, first_attempt: armed.first_attempt }),
+    first_attempt_code: armed.first_attempt_code, recovery_code: value.recovery_code,
+    retry_code: value.retry_code, receipt_sha256: receiptSha256,
+    snapshots: Object.freeze({ before: armed.before, after_cut: armed.after_cut,
+      after_reopen: afterReopen, after_recovery: afterRecovery, after_retry: afterRetry }),
   });
 }
 
 async function recovery(io) {
-  io.version(); const entries = [];
-  for (const id of V12_RECOVERY_CASE_IDS) {
+  io.version(); const cases = []; const entries = []; const receipts = new Set();
+  for (const [order, id] of V12_RECOVERY_CASE_IDS.entries()) {
+    const cuts = [];
     for (const cut of V12_RECOVERY_CUT_IDS) {
-      io.shell('cmd', 'connectivity', 'airplane-mode', cut === 'offline' ? 'enable' : 'disable');
-      const status = io.maestro('maestro/v1.2/recovery.yaml', { V12_RECOVERY_CASE: id, V12_RECOVERY_STAGE: cut }, entries.length);
-      const value = await io.marker('recovery');
-      const observed = deriveRecoveryObservation(value, io.nonce, id, cut);
-      const state = worse(status, 'PASS');
+      io.renewNonce();
+      io.shell('cmd', 'connectivity', 'airplane-mode', 'disable');
+      const armStatus = io.recoveryMaestro('maestro/v1.2/recovery.yaml', { V12_RECOVERY_CASE: id, V12_RECOVERY_STAGE: cut, V12_RECOVERY_PHASE: 'arm' });
+      const armed = deriveArmedObservation(await io.marker('ARMED'), io.nonce, id, cut);
+      if (cut === 'offline') io.shell('cmd', 'connectivity', 'airplane-mode', 'enable');
+      io.stop();
+      let recoverStatus; let value;
+      try {
+        recoverStatus = io.recoveryMaestro('maestro/v1.2/recovery.yaml', { V12_RECOVERY_CASE: id, V12_RECOVERY_STAGE: cut, V12_RECOVERY_PHASE: 'recover' });
+        value = await io.marker('recovery');
+      } finally { io.stop(); }
+      const observed = deriveRecoveryObservation(value, io.nonce, id, cut, armed);
+      const state = worse(worse(armStatus, recoverStatus), 'PASS');
+      const rich = Object.freeze({ ...observed, status: state }); cuts.push(rich);
+      if (receipts.has(rich.receipt_sha256)) fail('recovery_receipt_invalid'); receipts.add(rich.receipt_sha256);
+      const snapshots = Object.fromEntries(Object.entries(rich.snapshots).map(([key, snapshot]) => [key, hash(JSON.stringify(snapshot))]));
       entries.push(`<testcase classname="v12.recovery" name="${id}:${cut}"><properties>`
         + `<property name="case_id" value="${id}"/><property name="cut_id" value="${cut}"/>`
-        + `<property name="operation_id" value="${observed.operation}"/><property name="commit_state" value="${observed.commitState}"/>`
-        + `<property name="retry_code" value="${observed.retryCode}"/><property name="receipt_sha256" value="${observed.receiptSha256}"/>`
-        + `<property name="source_sha256" value="${observed.afterRetry.source_sha256}"/><property name="effect_sha256" value="${observed.afterRetry.effect_sha256}"/>`
-        + `<property name="pointer_sha256" value="${observed.afterRetry.pointer_sha256}"/><property name="rest_sha256" value="${observed.afterRetry.rest_sha256}"/>`
-        + `<property name="history_sha256" value="${observed.afterRetry.history_sha256}"/><property name="after_reopen_receipt_count" value="${observed.afterReopen.receipt_count}"/>`
-        + `<property name="timing_sha256" value="${observed.afterRetry.timing_sha256}"/>`
-        + `<property name="after_retry_receipt_count" value="${observed.afterRetry.receipt_count}"/><property name="state" value="${state}"/></properties>`
+        + `<property name="operation_id" value="${rich.operation_id}"/><property name="boundary_digest" value="${hash(JSON.stringify(rich.boundary_ids))}"/>`
+        + `<property name="barrier_id" value="${rich.barrier.barrier_id}"/><property name="process_state" value="${rich.barrier.process_state}"/>`
+        + `<property name="acknowledgement" value="${rich.barrier.acknowledgement}"/><property name="connectivity" value="${rich.barrier.connectivity}"/>`
+        + `<property name="first_attempt" value="${rich.barrier.first_attempt}"/><property name="first_attempt_code" value="${rich.first_attempt_code}"/>`
+        + `<property name="recovery_code" value="${rich.recovery_code}"/><property name="retry_code" value="${rich.retry_code}"/>`
+        + `<property name="receipt_sha256" value="${rich.receipt_sha256}"/>`
+        + Object.entries(snapshots).map(([key, digest]) => `<property name="${key}_sha256" value="${digest}"/>`).join('')
+        + `<property name="state" value="${state}"/></properties>`
         + `${state === 'FAIL' ? '<failure message="observed failure"/>' : state === 'PASS' ? '' : '<skipped message="observation incomplete"/>'}</testcase>`);
     }
+    const status = cuts.some((cut) => cut.status === 'FAIL') ? 'FAIL' : cuts.some((cut) => cut.status === 'NOT_RUN') ? 'NOT_RUN' : cuts.some((cut) => cut.status === 'REVIEW_REQUIRED') ? 'REVIEW_REQUIRED' : 'PASS';
+    cases.push(Object.freeze({ id, order, operation_id: RECOVERY_SCENARIOS[id].operation_id,
+      boundary_ids: RECOVERY_SCENARIOS[id].boundary_ids, status, cuts: Object.freeze(cuts) }));
   }
-  // Native receipts annotate retained Maestro outcomes. Private diagnostic text
-  // stays in mode-0600 local reports and is never copied to the launcher protocol.
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-recovery" tests="64">${entries.join('')}</testsuite>\n`;
-  writeFileSync(path.join(io.retained(), 'recovery.xml'), xml, { flag: 'wx', mode: 0o600 });
-  return xml;
+  if (receipts.size !== 64) fail('recovery_receipt_invalid');
+  const junit = `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-recovery" tests="64">${entries.join('')}</testsuite>\n`;
+  return Object.freeze({ schema_version: 2, producer: 'v12-production-recovery-host', cases: Object.freeze(cases), junit_xml: junit });
 }
 
 /** Launcher integration: await executeProductionDomainAction(action, payload, attestation).
@@ -274,7 +355,7 @@ export async function executeProductionDomainAction(action, payload, attestation
     try {
       if (owned) settings = runtime.snapshotSettings(lease);
       return await runtime.withLease({ ...payload, lease }, async () => {
-        const io = session(root, attestation);
+        const io = session(root, attestation, action);
         io.standalone();
         try {
           return await io.restoreAround(() => action === 'garmin' ? garmin(io) : action === 'calendar' ? calendar(io, root, payload) : recovery(io));

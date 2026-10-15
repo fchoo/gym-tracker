@@ -5,16 +5,20 @@ tags: [phase-20, recovery, development-test, real-sqlite]
 - assertTrue: ${V12_RECOVERY_CASE != null}
 - assertTrue: ${V12_RECOVERY_STAGE != null}
 - assertTrue: ${V12_DOMAIN_NONCE != null}
-- launchApp: { clearState: false, stopApp: true }
-- openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&cutId=${V12_RECOVERY_STAGE}&phase=arm"
-- extendedWaitUntil:
-    visible: "Recovery cut armed"
-    timeout: 120000
-# This stop is the real process boundary. The arm route has already closed its
-# writer, and no final marker exists until a fresh process reopens and retries.
-- stopApp
-- launchApp: { clearState: false, stopApp: true }
-- openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&cutId=${V12_RECOVERY_STAGE}&phase=recover"
-- extendedWaitUntil:
-    visible: "Recovery observation complete"
-    timeout: 120000
+- assertTrue: ${V12_RECOVERY_PHASE == 'arm' || V12_RECOVERY_PHASE == 'recover'}
+- runFlow:
+    when: { true: ${V12_RECOVERY_PHASE == 'arm'} }
+    commands:
+      - launchApp: { clearState: false, stopApp: true }
+      - openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&cutId=${V12_RECOVERY_STAGE}&phase=arm"
+      - extendedWaitUntil:
+          visible: "Recovery cut armed"
+          timeout: 120000
+- runFlow:
+    when: { true: ${V12_RECOVERY_PHASE == 'recover'} }
+    commands:
+      - launchApp: { clearState: false, stopApp: false }
+      - openLink: "gymtracker-devtest://__v12-production-recovery?nonce=${V12_DOMAIN_NONCE}&caseId=${V12_RECOVERY_CASE}&cutId=${V12_RECOVERY_STAGE}&phase=recover"
+      - extendedWaitUntil:
+          visible: "Recovery observation complete"
+          timeout: 120000

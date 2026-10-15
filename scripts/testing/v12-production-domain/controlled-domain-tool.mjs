@@ -10,6 +10,53 @@ const save = () => writeFileSync(file, JSON.stringify(state));
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const out = (value) => process.stdout.write(value);
 const shell = args[2] === 'shell' ? [...args[3].matchAll(/'([^']*)'/gu)].map((m) => m[1]) : [];
+const scenarios = {
+  'legacy-playback': { operation_id: 'tim01-legacy-playback', boundary_ids: ['start', 'edit'] },
+  'foreground-reconciliation': { operation_id: 'tim01-foreground-reconciliation', boundary_ids: ['rest'] },
+  'queued-callback': { operation_id: 'tim01-queued-callback', boundary_ids: ['commit'] },
+  relaunch: { operation_id: 'workout-relaunch-replay', boundary_ids: ['finish'] },
+  restore: { operation_id: 'secure-restore', boundary_ids: ['restore', 'import'] },
+  merge: { operation_id: 'secure-merge', boundary_ids: ['merge', 'match'] },
+  'zero-cue': { operation_id: 'tim01-zero-cue', boundary_ids: ['start', 'edit', 'finish'] },
+  'between-set-rest-pointer': { operation_id: 'workout-rest-set-pointer', boundary_ids: ['commit', 'rest'] },
+};
+const cuts = {
+  'pre-transaction': { barrier_id: 'before-transaction', process_state: 'route-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'not-started', first_attempt_code: 'not-started' },
+  'in-transaction': { barrier_id: 'writer-transaction-open', process_state: 'writer-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'transaction-open', first_attempt_code: 'transaction-open' },
+  'post-commit-before-ack': { barrier_id: 'commit-durable-ack-pending', process_state: 'writer-open', acknowledgement: 'lost', connectivity: 'online', first_attempt: 'committed-ack-lost', first_attempt_code: 'acknowledgement-lost' },
+  'post-acknowledgement': { barrier_id: 'acknowledgement-observed', process_state: 'route-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged', first_attempt_code: 'acknowledged' },
+  relaunch: { barrier_id: 'replay-process-open', process_state: 'replay-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged', first_attempt_code: 'replay-process-open' },
+  retry: { barrier_id: 'first-attempt-failed', process_state: 'route-open', acknowledgement: 'not-reached', connectivity: 'online', first_attempt: 'failed', first_attempt_code: 'first-attempt-failed' },
+  offline: { barrier_id: 'post-boundary-offline', process_state: 'route-open', acknowledgement: 'observed', connectivity: 'switch-offline', first_attempt: 'acknowledged', first_attempt_code: 'offline-switch-pending' },
+  recovery: { barrier_id: 'domain-reconciliation-pending', process_state: 'recovery-open', acknowledgement: 'observed', connectivity: 'online', first_attempt: 'acknowledged', first_attempt_code: 'domain-reconciliation-pending' },
+};
+function recoverySnapshot(committed, phase) {
+  const caseId = state.caseId; const timed = true;
+  const hasRest = ['foreground-reconciliation', 'queued-callback'].includes(caseId)
+    || (caseId === 'between-set-rest-pointer' && committed);
+  const hasEffect = ['foreground-reconciliation', 'queued-callback'].includes(caseId)
+    || (['between-set-rest-pointer', 'legacy-playback', 'relaunch', 'zero-cue'].includes(caseId) && committed);
+  const pointer = [{ session_sha256: hash(`${caseId}:session`), status: ['relaunch', 'zero-cue'].includes(caseId) && committed ? 'partial' : 'in_progress', revision: committed ? 3 : 2, active_exercise_sha256: hash(`${caseId}:exercise`), active_set_sha256: hash(`${caseId}:active-set`), committed_set_sha256: committed ? hash(`${caseId}:committed-set`) : null }];
+  const rest = hasRest ? [{ session_sha256: pointer[0].session_sha256, status: caseId === 'foreground-reconciliation' && phase === 'recovered' ? 'expired' : 'running', revision: phase === 'recovered' ? 2 : 1, started_at_ms: phase === 'recovered' ? null : 100, ends_at_ms: phase === 'recovered' ? null : 200, deadline_at_ms: phase === 'recovered' ? null : 200, paused_remaining_ms: null, expired_at_ms: phase === 'recovered' ? 300 : null, next_set_sha256: hash(`${caseId}:next-set`) }] : [];
+  const timing = timed ? [{ session_sha256: pointer[0].session_sha256, set_sha256: hash(`${caseId}:timed-set`), state_version: 1, revision: 1, status: 'stopped', mode: 'per_rep', configuration: { version: 1, mode: 'per_rep', intervalMs: 1500, cueChannels: 'haptic' }, progress: { version: 1, completedRepetitions: 2, completedGroups: 0, currentGroupIndex: 0, currentGroupProgress: 2 }, started_at_ms: null, next_boundary_at_ms: null, remaining_ms: null, stopped_at_ms: 150 }] : [];
+  const history = timed ? [{ event_sha256: hash(`${caseId}:history`), session_sha256: pointer[0].session_sha256, effective_revision: 2, event_type: 'correction', field_identity: 'advanced_timing_resolved_json', before_sha256: hash('off'), after_sha256: hash('per-rep'), occurred_at_ms: 140 }] : [];
+  const effects = hasEffect ? [{ effect_sha256: hash(`${caseId}:effect`), type: 'reconcile_rest_notification', subject_sha256: pointer[0].session_sha256, expected_revision: 1, status: phase === 'recovered' ? 'completed' : 'pending', attempt_count: phase === 'recovered' ? 1 : 0, next_attempt_at_ms: 200, last_error_code: null }] : [];
+  const restore = [{ state: caseId === 'restore' && committed ? 'rebuild_pending' : 'ready', updated_at_ms: committed ? 300 : 0 }];
+  const mergeReceipts = caseId === 'merge' && committed ? [{ table: 'workout_receipts', receipt_sha256: hash(`${caseId}:receipt`), request_sha256: hash(`${caseId}:request`), idempotency_sha256: hash(`${caseId}:idempotency`), committed_at_ms: 300, result: 'committed' }] : [];
+  const source = committed ? [{ state: 'committed' }] : [];
+  const receipt = committed ? [{ state: 'committed' }] : [];
+  const groups = { source, receipt, effect: effects, pointer, rest, history, timing, restore, merge_receipt: mergeReceipts, cue: [] };
+  return {
+    source_count: source.length, receipt_count: receipt.length, effect_count: effects.length,
+    pointer_count: pointer.length, rest_count: rest.length, history_count: history.length,
+    timing_count: timing.length, restore_count: restore.length, merge_receipt_count: mergeReceipts.length, cue_count: 0,
+    source_sha256: hash(JSON.stringify(source)), receipt_sha256: hash(JSON.stringify(receipt)), effect_sha256: hash(JSON.stringify(effects)),
+    pointer_sha256: hash(JSON.stringify(pointer)), rest_sha256: hash(JSON.stringify(rest)), history_sha256: hash(JSON.stringify(history)),
+    timing_sha256: hash(JSON.stringify(timing)), restore_sha256: hash(JSON.stringify(restore)), merge_receipt_sha256: hash(JSON.stringify(mergeReceipts)), cue_sha256: hash('[]'),
+    effect_facts: effects, pointer_facts: pointer, rest_facts: rest, timing_facts: timing,
+    history_facts: history, restore_facts: restore, merge_receipt_facts: mergeReceipts,
+  };
+}
 if (tool === 'unzip') {
   if (args[0] === '-Z1') out(state.missingBundle ? 'assets/app.config\n' : 'assets/app.config\nassets/index.android.bundle\n');
   else out(JSON.stringify({ android: { package: 'com.fchoo.gymtracker.devtest' }, scheme: 'gymtracker-devtest', extra: { buildProfile: 'development-test', nativeContractsEnabled: true, nativeContractSuite: state.wrongSuite ? 'phase16-calendar' : 'v1.2-acceptance' } }));
@@ -23,6 +70,7 @@ if (tool === 'maestro') {
   state.stage = values.PHASE16_CALENDAR_STAGE;
   state.caseId = values.V12_RECOVERY_CASE;
   state.cut = values.V12_RECOVERY_STAGE;
+  state.recoveryPhase = values.V12_RECOVERY_PHASE;
   if (state.changeSettings) state.settings.font_scale = '2';
   save();
   if (!state.missingJunit) {
@@ -50,43 +98,37 @@ if (tool === 'adb' && args[2] === 'logcat') {
   let value;
   if (state.stage) value = { kind: 'calendar', flow_sha256: state.wrongFlow ? '0'.repeat(64) : state.flow, flow_revision: 'calendar-flow-r35', stage: state.calendar.find((entry) => entry.id === state.stage) };
   else if (state.cut) {
-    const uncommitted = ['pre-transaction', 'in-transaction'].includes(state.cut);
-    const operation = state.caseId === 'restore' ? 'secure-restore'
-      : state.caseId === 'merge' ? 'secure-merge'
-        : state.caseId === 'zero-cue' ? 'garmin-import'
-          : state.caseId === 'relaunch' ? 'garmin-match' : 'workout-complete-set';
-    const retryCode = operation === 'workout-complete-set' ? (uncommitted ? 'committed' : 'already-completed')
-      : operation === 'garmin-import' ? (uncommitted ? 'imported' : 'unchanged')
-        : operation === 'garmin-match' ? (uncommitted ? 'matched' : 'replayed')
-          : operation === 'secure-merge' ? (uncommitted ? 'rebuild-pending' : 'ready') : 'rebuild-pending';
-    const snapshot = (committed, phase) => ({
-      source_count: committed ? 1 : 0, receipt_count: committed ? 1 : 0,
-      effect_count: committed && operation === 'workout-complete-set' ? 1 : 0,
-      pointer_count: committed && ['workout-complete-set', 'secure-restore', 'secure-merge'].includes(operation) ? 1 : 0,
-      rest_count: committed && operation === 'workout-complete-set' ? 1 : 0,
-      history_count: 0, timing_count: 0,
-      source_sha256: hash(`${state.caseId}:${state.cut}:${phase}:source:${committed}`),
-      receipt_sha256: hash(`${state.caseId}:${state.cut}:${phase}:receipt:${committed}`),
-      effect_sha256: hash(`${state.caseId}:${state.cut}:${phase}:effect:${committed}`),
-      pointer_sha256: hash(`${state.caseId}:${state.cut}:${phase}:pointer:${committed}`),
-      rest_sha256: hash(`${state.caseId}:${state.cut}:${phase}:rest:${committed}`),
-      history_sha256: hash('[]'),
-      timing_sha256: hash('[]'),
-    });
-    const afterRetry = snapshot(true, uncommitted ? 'retry' : 'committed');
-    value = {
-      kind: 'recovery', case_id: state.caseId,
-      cut_id: state.missingCut ? 'unknown' : state.cut,
-      operation_id: operation,
-      after_reopen: uncommitted ? snapshot(false, 'reopen') : afterRetry,
-      retry_code: retryCode,
-      after_retry: afterRetry,
+    const uncommitted = ['pre-transaction', 'in-transaction', 'retry'].includes(state.cut);
+    const scenario = scenarios[state.caseId]; const barrier = cuts[state.cut];
+    const before = recoverySnapshot(false, 'baseline');
+    const afterCut = uncommitted ? before : recoverySnapshot(true, 'committed');
+    if (state.recoveryPhase === 'arm') value = {
+      schema_version: 2, sequence: 1, kind: 'ARMED', case_id: state.caseId,
+      cut_id: state.missingCut ? 'unknown' : state.cut, ...scenario, ...barrier,
+      before, after_cut: afterCut,
     };
+    else {
+      const afterReopen = uncommitted ? before : afterCut;
+      const afterRecovery = state.cut === 'recovery' ? recoverySnapshot(true, 'recovered') : afterReopen;
+      const retryCode = uncommitted ? 'committed' : 'replayed';
+      value = {
+        schema_version: 2, kind: 'recovery', case_id: state.caseId,
+        cut_id: state.missingCut ? 'unknown' : state.cut, ...scenario,
+        after_reopen: afterReopen,
+        recovery_code: state.cut === 'recovery'
+          ? state.caseId === 'foreground-reconciliation' ? 'foreground-reconciled'
+            : state.caseId === 'queued-callback' ? 'queued-callback-reconciled' : 'domain-reconciled'
+          : 'not-required',
+        after_recovery: afterRecovery, retry_code: retryCode,
+        after_retry: state.cut === 'recovery' ? afterRecovery : recoverySnapshot(true, 'committed'),
+      };
+    }
   }
   else value = state.authRequired ? { kind: 'error', code: 'auth_required' } : { kind: 'garmin', ...state.garmin };
   if (state.noReceipt && value.stage) delete value.stage.receipt;
   if (value.stage?.receipt) { delete value.stage.receipt.screenshot_sha256; delete value.stage.receipt.trace_sha256; }
-  out(`GYM_TRACKER_V12_DOMAIN_RESULT:${JSON.stringify({ schema_version: 1, nonce, ...value })}\n`);
+  const prefix = value?.kind === 'ARMED' ? 'GYM_TRACKER_V12_DOMAIN_PROGRESS:' : 'GYM_TRACKER_V12_DOMAIN_RESULT:';
+  out(`${prefix}${JSON.stringify({ schema_version: value?.schema_version ?? 1, nonce, ...value })}\n`);
   process.exit();
 }
 const fallback = new URL('../v12-production-launcher/controlled-device-tool.mjs', import.meta.url);

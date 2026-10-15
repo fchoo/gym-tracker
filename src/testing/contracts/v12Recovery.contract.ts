@@ -1,15 +1,32 @@
-export const V12_RECOVERY_CUTS = [
-  "pre-transaction", "in-transaction", "post-commit-before-ack",
-  "post-acknowledgement", "relaunch", "retry", "offline", "recovery",
-] as const;
+export const V12_RECOVERY_CUT_DEFINITIONS = Object.freeze([
+  Object.freeze({ id: "pre-transaction", barrierId: "before-transaction", processState: "route-open", acknowledgement: "not-reached", connectivity: "online", firstAttempt: "not-started" }),
+  Object.freeze({ id: "in-transaction", barrierId: "writer-transaction-open", processState: "writer-open", acknowledgement: "not-reached", connectivity: "online", firstAttempt: "transaction-open" }),
+  Object.freeze({ id: "post-commit-before-ack", barrierId: "commit-durable-ack-pending", processState: "writer-open", acknowledgement: "lost", connectivity: "online", firstAttempt: "committed-ack-lost" }),
+  Object.freeze({ id: "post-acknowledgement", barrierId: "acknowledgement-observed", processState: "route-open", acknowledgement: "observed", connectivity: "online", firstAttempt: "acknowledged" }),
+  Object.freeze({ id: "relaunch", barrierId: "replay-process-open", processState: "replay-open", acknowledgement: "observed", connectivity: "online", firstAttempt: "acknowledged" }),
+  Object.freeze({ id: "retry", barrierId: "first-attempt-failed", processState: "route-open", acknowledgement: "not-reached", connectivity: "online", firstAttempt: "failed" }),
+  Object.freeze({ id: "offline", barrierId: "post-boundary-offline", processState: "route-open", acknowledgement: "observed", connectivity: "switch-offline", firstAttempt: "acknowledged" }),
+  Object.freeze({ id: "recovery", barrierId: "domain-reconciliation-pending", processState: "recovery-open", acknowledgement: "observed", connectivity: "online", firstAttempt: "acknowledged" }),
+] as const);
 
-export const V12_RECOVERY_CASES = [
-  "legacy-playback", "foreground-reconciliation", "queued-callback", "relaunch",
-  "restore", "merge", "zero-cue", "between-set-rest-pointer",
-].map((id) => Object.freeze({ id, cuts: V12_RECOVERY_CUTS })) as readonly Readonly<{
-  id: string;
-  cuts: typeof V12_RECOVERY_CUTS;
-}>[];
+export const V12_RECOVERY_CUTS = Object.freeze(
+  V12_RECOVERY_CUT_DEFINITIONS.map(({ id }) => id),
+) as readonly (typeof V12_RECOVERY_CUT_DEFINITIONS)[number]["id"][];
+
+export const V12_RECOVERY_SCENARIOS = Object.freeze([
+  Object.freeze({ id: "legacy-playback", operationId: "tim01-legacy-playback", boundaryIds: Object.freeze(["start", "edit"] as const) }),
+  Object.freeze({ id: "foreground-reconciliation", operationId: "tim01-foreground-reconciliation", boundaryIds: Object.freeze(["rest"] as const) }),
+  Object.freeze({ id: "queued-callback", operationId: "tim01-queued-callback", boundaryIds: Object.freeze(["commit"] as const) }),
+  Object.freeze({ id: "relaunch", operationId: "workout-relaunch-replay", boundaryIds: Object.freeze(["finish"] as const) }),
+  Object.freeze({ id: "restore", operationId: "secure-restore", boundaryIds: Object.freeze(["restore", "import"] as const) }),
+  Object.freeze({ id: "merge", operationId: "secure-merge", boundaryIds: Object.freeze(["merge", "match"] as const) }),
+  Object.freeze({ id: "zero-cue", operationId: "tim01-zero-cue", boundaryIds: Object.freeze(["start", "edit", "finish"] as const) }),
+  Object.freeze({ id: "between-set-rest-pointer", operationId: "workout-rest-set-pointer", boundaryIds: Object.freeze(["commit", "rest"] as const) }),
+] as const);
+
+export const V12_RECOVERY_CASES = V12_RECOVERY_SCENARIOS.map((scenario) => (
+  Object.freeze({ ...scenario, cuts: V12_RECOVERY_CUTS })
+));
 
 export type V12RecoveryContractSnapshot = Readonly<{
   sourceCount: number;
