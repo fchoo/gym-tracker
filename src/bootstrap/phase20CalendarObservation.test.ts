@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 import {
   PHASE20_CALENDAR_STAGE_GROUPS,
   PHASE20_CALENDAR_STAGE_IDS,
+  PHASE20_CALENDAR_RESULT_MARKER,
   createPhase20CalendarObservationCollector,
   phase20CalendarRequestFromNativeContract,
 } from "./phase20CalendarObservation";
@@ -116,7 +117,7 @@ describe("Phase 20 real Calendar observation collector", () => {
 
     expect(emitted).toHaveLength(1);
     expect(emitted[0]).toMatch(/^GYM_TRACKER_V12_DOMAIN_RESULT:/u);
-    const terminal = JSON.parse(emitted[0]!.split(":", 2)[1]!);
+    const terminal = JSON.parse(emitted[0]!.slice(PHASE20_CALENDAR_RESULT_MARKER.length));
     expect(terminal).toMatchObject({
       schema_version: 1,
       nonce: NONCE,
@@ -149,7 +150,7 @@ describe("Phase 20 real Calendar observation collector", () => {
     collector.recordTransition({ trigger: "cancel", before: transition("idle"), after: { ...transition("idle"), epoch: 1 }, commandKinds: [] });
     await collector.flush();
 
-    const terminal = JSON.parse(emitted[0]!.split(":", 2)[1]!);
+    const terminal = JSON.parse(emitted[0]!.slice(PHASE20_CALENDAR_RESULT_MARKER.length));
     expect(terminal.stage.pointer_events.at(-1)).toMatchObject({ callback: "onFinalize", phase: "finalize-cancel" });
     expect(terminal.stage.pointer_events).not.toEqual(expect.arrayContaining([expect.objectContaining({ callback: "onEnd" })]));
   });

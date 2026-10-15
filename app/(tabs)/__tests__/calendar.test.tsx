@@ -14,7 +14,12 @@ import React from "react";
 
 const mockPush = jest.fn();
 const mockConfigurePhase16CalendarTestControls = jest.fn();
+const mockConfigurePhase20CalendarObservationCollector = jest.fn();
 let mockLocalSearchParams: Readonly<Record<string, string | readonly string[] | undefined>> = {};
+let mockBuildProfile = "development-test";
+let mockNativeContractsEnabled = true;
+let mockNativeContractSuite = "phase16-calendar";
+let mockCalendarScreenProps: Readonly<Record<string, unknown>> | null = null;
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -22,13 +27,22 @@ jest.mock("expo-constants", () => ({
     expoConfig: {
       android: { package: "com.fchoo.gymtracker.devtest" },
       extra: {
-        buildProfile: "development-test",
-        nativeContractsEnabled: true,
-        nativeContractSuite: "phase16-calendar",
+        get buildProfile() { return mockBuildProfile; },
+        get nativeContractsEnabled() { return mockNativeContractsEnabled; },
+        get nativeContractSuite() { return mockNativeContractSuite; },
       },
     },
   },
 }));
+
+jest.mock("../../../src/bootstrap/phase20CalendarObservation", () => {
+  const actual = jest.requireActual("../../../src/bootstrap/phase20CalendarObservation") as object;
+  return {
+    ...actual,
+    clearPhase20CalendarObservationCollector: jest.fn(),
+    configurePhase20CalendarObservationCollector: (...args: readonly unknown[]) => mockConfigurePhase20CalendarObservationCollector(...args),
+  };
+});
 
 jest.mock("expo-router", () => ({
   router: { push: (...args: readonly unknown[]) => mockPush(...args) },
@@ -61,7 +75,7 @@ jest.mock("../../../src/ui/shell/rootFocus", () => ({
 jest.mock("../../../src/ui/screens/CalendarScreen", () => {
   const { Pressable } = require("react-native") as typeof import("react-native");
   return {
-    CalendarScreen: ({ diagnostics, onOpenEvent }: Readonly<{
+    CalendarScreen: (props: Readonly<{
       diagnostics?: Readonly<{
         producer: Readonly<{
           recordQuery(input: Readonly<{ durationMs: number; eventCount: number; planCount: number; importedCount: number }>): void;
@@ -71,7 +85,10 @@ jest.mock("../../../src/ui/screens/CalendarScreen", () => {
         request: Readonly<{ querySamples: number; interactionSamples: number }>;
       }>;
       onOpenEvent(destination: unknown, returnEventId?: string): void;
-    }>) => (
+    }>) => {
+      mockCalendarScreenProps = props as unknown as Readonly<Record<string, unknown>>;
+      const { diagnostics, onOpenEvent } = props;
+      return (
       <>
         {diagnostics === undefined ? null : <Pressable
           accessibilityLabel="Complete Calendar diagnostics"
@@ -107,7 +124,8 @@ jest.mock("../../../src/ui/screens/CalendarScreen", () => {
           onPress={() => onOpenEvent({ kind: "activity", activityId: "activity-17" }, "event-activity-17")}
         />
       </>
-    ),
+      );
+    },
   };
 });
 
@@ -117,7 +135,59 @@ describe("CalendarRoute", () => {
   beforeEach(() => {
     mockPush.mockReset();
     mockConfigurePhase16CalendarTestControls.mockReset();
+    mockConfigurePhase20CalendarObservationCollector.mockReset();
     mockLocalSearchParams = {};
+    mockBuildProfile = "development-test";
+    mockNativeContractsEnabled = true;
+    mockNativeContractSuite = "phase16-calendar";
+    mockCalendarScreenProps = null;
+  });
+
+  it("passes exact Phase 20 identity into the real Calendar route without enabling the Phase 16 auto-driver", async () => {
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockLocalSearchParams = {
+      phase16CalendarStage: "drag-forward-25",
+      phase20CalendarStage: "leap-february",
+      phase20CalendarNonce: "b".repeat(32),
+      phase20CalendarFlowSha256: "a".repeat(64),
+      phase20CalendarFlowRevision: "calendar-flow-r35-real-v1",
+    };
+
+    await render(<CalendarRoute />);
+
+    expect(mockConfigurePhase16CalendarTestControls).toHaveBeenCalledWith(expect.objectContaining({ stage: undefined }));
+    expect(mockConfigurePhase20CalendarObservationCollector).toHaveBeenCalledWith(expect.objectContaining({
+      request: {
+        stage: "leap-february",
+        nonce: "b".repeat(32),
+        flowSha256: "a".repeat(64),
+        flowRevision: "calendar-flow-r35-real-v1",
+      },
+    }));
+    expect(mockCalendarScreenProps).toMatchObject({ initialDate: "2028-02-29" });
+    expect(mockCalendarScreenProps).not.toHaveProperty("diagnosticStage");
+  });
+
+  it("rejects partial or non-v1.2 Phase 20 route identities", async () => {
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockLocalSearchParams = {
+      phase20CalendarStage: "drag-forward-25",
+      phase20CalendarNonce: "short",
+      phase20CalendarFlowSha256: "a".repeat(64),
+      phase20CalendarFlowRevision: "calendar-flow-r35-real-v1",
+    };
+    const rendered = await render(<CalendarRoute />);
+    expect(mockConfigurePhase20CalendarObservationCollector).toHaveBeenLastCalledWith(expect.objectContaining({ request: null }));
+
+    mockNativeContractSuite = "phase16-calendar";
+    mockLocalSearchParams = {
+      phase20CalendarStage: "drag-forward-25",
+      phase20CalendarNonce: "b".repeat(32),
+      phase20CalendarFlowSha256: "a".repeat(64),
+      phase20CalendarFlowRevision: "calendar-flow-r35-real-v1",
+    };
+    await rendered.rerender(<CalendarRoute />);
+    expect(mockConfigurePhase20CalendarObservationCollector).toHaveBeenLastCalledWith(expect.objectContaining({ request: null }));
   });
 
   it("reads only a scalar known diagnostic stage from Expo Router", async () => {
