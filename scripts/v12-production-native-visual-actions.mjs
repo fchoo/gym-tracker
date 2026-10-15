@@ -7,21 +7,28 @@ import { PNG } from "pngjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { selectV12VisualReference } from "./v12-visual-authority.mjs";
+import { V12_NATIVE_LEASE_PATH, V12_VISUAL_LEASE_PATH, V12_VISUAL_SYSTEM_SETTINGS } from "./v12-device-settings-contract.mjs";
+import {
+  V12_VISUAL_ACTION_WINDOW,
+  V12_VISUAL_ADB_CALL_TIMEOUT_MS,
+  V12_VISUAL_CAPTURE_CLEANUP_TIMEOUT_MS,
+  V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS,
+} from "./v12-native-time-budgets.mjs";
+
+export { V12_VISUAL_CAPTURE_CLEANUP_TIMEOUT_MS, V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS };
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const FIXTURE = "v12-synthetic-fixtures-r18";
 const ROUTE = "/__phase20-visual-probe";
 const FLOW = "maestro/v1.2/visual-production-states.yaml";
-const LOCK = "/data/local/tmp/gym-tracker-v12-visual";
-const LEASE = "/data/local/tmp/gym-tracker-v12-native-lease/owner.json";
+const LOCK = V12_VISUAL_LEASE_PATH;
+const LEASE = `${V12_NATIVE_LEASE_PATH}/owner.json`;
 const HASH = /^[a-f0-9]{64}$/u;
 const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const CONFIG = /^AP-(L|D|SL|SD)-(C360|C390|M600|X840)-(P|L)-F(100|200)$/u;
 const ACTIONS = new Set(["visual-capture", "visual-capture-batch", "visual-compare"]);
-export const V12_VISUAL_ACTION_WINDOW = 4;
-export const V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS = 90_000;
-export const V12_VISUAL_CAPTURE_CLEANUP_TIMEOUT_MS = 90_000;
-const SETTINGS = ["font_scale", "accelerometer_rotation", "user_rotation"];
+export { V12_VISUAL_ACTION_WINDOW };
+const SETTINGS = V12_VISUAL_SYSTEM_SETTINGS;
 const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_route", "source_component", "source_state", "fixture_seed", "fixture_variant", "scenario", "screen_test_id", "readiness_test_ids", "readiness_semantics", "readiness_actions", "readiness_order", "readiness_non_color", "focus_target", "evidence_scope", "source_revision", "source_read_only", "source_receipt"];
 // These are the retained Revision 18 images, not caller-selected paths or hashes.
 // They exist only for the 390x844, portrait, 100% configuration. Never resize an
@@ -132,7 +139,7 @@ function nativeTransport(runCommand, root, serial) {
       const remaining = deadline === null ? Number.POSITIVE_INFINITY : deadline - Date.now();
       if (remaining <= 0) fail("deadline_exceeded");
       const result = runCommand(executable, args, { cwd: root, encoding: null, maxBuffer: 16 * 1024 * 1024, ...options,
-        timeout: Math.min(options.timeout ?? 15_000, remaining) });
+        timeout: Math.min(options.timeout ?? V12_VISUAL_ADB_CALL_TIMEOUT_MS, remaining) });
       if (!result || result.status !== 0 || result.error || result.signal) fail("command_failed");
       return Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout ?? "");
     } catch (error) {

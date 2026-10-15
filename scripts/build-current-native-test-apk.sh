@@ -210,13 +210,7 @@ if [ "$suite" = 'v1.2-acceptance' ]; then
   certificate_sha256=$(awk -F': ' '/certificate SHA-256 digest:/ { print $2; exit }' "$signature_report" | tr -d ':' | tr 'A-F' 'a-f')
   [ "${#certificate_sha256}" -eq 64 ] || fail 'could not read the APK signer certificate SHA-256.'
   signature_sha256=$(sh scripts/hash-apk.sh "$signature_report")
-  settings_sha256=$(
-    {
-      adb -s "$device_serial" shell settings get system font_scale
-      adb -s "$device_serial" shell settings get secure ui_night_mode
-      adb -s "$device_serial" shell settings get global animator_duration_scale
-    } | tr -d '\r' | shasum -a 256 | awk '{ print $1 }'
-  )
+  settings_sha256=$(V12_DEVICE_SERIAL="$device_serial" node scripts/v12-device-settings-contract.mjs --read-digest)
   [ "${#settings_sha256}" -eq 64 ] || fail 'could not hash bounded device settings.'
   restoration_sha256=$settings_sha256
 fi

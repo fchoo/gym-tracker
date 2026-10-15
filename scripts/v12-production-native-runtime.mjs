@@ -7,6 +7,8 @@ import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { parseNativeContractLogOutput, parseNativeContractLogFailure, parseNativeContractLogProgress } from "./native-contract-log-transport.mjs";
 import { assertV12AcceptanceNativeContractResult } from "./v12-sqlite-producer-contract.mjs";
+import { V12_NATIVE_LEASE_PATH, V12_NATIVE_RUNTIME_SETTINGS } from "./v12-device-settings-contract.mjs";
+import { V12_NATIVE_ADB_CALL_TIMEOUT_MS } from "./v12-native-time-budgets.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
 const LEASE_ID = /^[a-f0-9]{48}$/u;
@@ -14,16 +16,8 @@ const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 // Device-side mkdir is atomic across launcher processes AND across ADB hosts.
 // Never steal an orphaned lease: it may own settings that still need restoring.
-const LOCK = "/data/local/tmp/gym-tracker-v12-native-lease";
-const SETTINGS = Object.freeze({
-  font_scale: "system",
-  accelerometer_rotation: "system",
-  user_rotation: "system",
-  window_animation_scale: "global",
-  transition_animation_scale: "global",
-  animator_duration_scale: "global",
-  airplane_mode_on: "global",
-});
+const LOCK = V12_NATIVE_LEASE_PATH;
+const SETTINGS = V12_NATIVE_RUNTIME_SETTINGS;
 export const nativeFailure = (code) => { throw new Error(`v12_production_native_launcher_${code}`); };
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const quote = (text) => `'${String(text).replaceAll("'", "'\\''")}'`;
@@ -43,7 +37,7 @@ function safeFile(root, relative) {
 }
 
 /** Fixed commands only. Neither stdout nor stderr from ADB may reach the protocol on failure. */
-function command(executable, args, { input, timeout = 20_000, maxBuffer = 8 * 1024 * 1024 } = {}) {
+function command(executable, args, { input, timeout = V12_NATIVE_ADB_CALL_TIMEOUT_MS, maxBuffer = 8 * 1024 * 1024 } = {}) {
   const result = spawnSync(executable, args, { input, encoding: "utf8", timeout, maxBuffer });
   if (result.error || result.signal || result.status !== 0) nativeFailure("native_prerequisite_failed");
   return result.stdout.trim();

@@ -9,8 +9,14 @@ import {
   V12_CALENDAR_ADAPTER_TIMEOUT_MS,
   V12_NATIVE_ACTION_TIMEOUT_MS,
   V12_NATIVE_ADAPTER_GRACE_MS,
+  V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_NATIVE_CLEANUP_BUDGET,
+  V12_NATIVE_LEASE_ACTION_BUDGETS,
   V12_NATIVE_MAX_REQUEST_BYTES,
   V12_NATIVE_MAX_RESPONSE_BYTES,
+  V12_SQLITE_PRODUCER_BOUND_MS,
+  V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
+  V12_VISUAL_CLEANUP_BUDGET,
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
   invokeV12NativeAdapterEnvelope,
 } from "./v12-native-adapter.mjs";
@@ -116,11 +122,43 @@ test("every adapter action has an explicit bounded timeout and transport budget"
   assert.ok(Object.values(V12_NATIVE_ACTION_TIMEOUT_MS).every((value) => Number.isSafeInteger(value) && value >= 1_000 && value <= 4 * 60 * 60_000));
   assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.performance >= 35 * 60_000);
   assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.accessibility >= 26 * 60_000);
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture"] >= 5 * 60_000);
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture-batch"] >= 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS["visual-compare"] >= 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
+  assert.equal(V12_NATIVE_ADAPTER_GRACE_MS, V12_NATIVE_CLEANUP_BUDGET.max_ms + V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture"], V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture-batch"], V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-compare"], V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.sqlite, V12_SQLITE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
+  for (const [action, budget] of Object.entries(V12_NATIVE_LEASE_ACTION_BUDGETS)) {
+    assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action], budget.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
+  }
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.calendar, V12_CALENDAR_ADAPTER_TIMEOUT_MS);
   assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.recovery >= 45 * 60_000);
   assert.equal(V12_NATIVE_MAX_REQUEST_BYTES, 1024 * 1024);
   assert.equal(V12_NATIVE_MAX_RESPONSE_BYTES, 32 * 1024 * 1024);
+});
+
+test("outer adapter survives maximum producers and every restoration/release call", () => {
+  const simulateFinally = (producerMs, cleanup) => {
+    let elapsed = producerMs;
+    for (let index = 0; index < cleanup.restore_adb_call_count; index += 1) elapsed += cleanup.adb_call_timeout_ms;
+    for (let index = 0; index < cleanup.release_adb_call_count; index += 1) elapsed += cleanup.adb_call_timeout_ms;
+    return elapsed;
+  };
+
+  const sqliteFinallyCompletedAt = simulateFinally(V12_SQLITE_PRODUCER_BOUND_MS, V12_NATIVE_CLEANUP_BUDGET);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.sqlite > sqliteFinallyCompletedAt);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.sqlite - sqliteFinallyCompletedAt, V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms);
+
+  for (const [action, producerMs] of [
+    ["visual-capture", V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS],
+    ["visual-capture-batch", V12_VISUAL_BATCH_PRODUCER_BOUND_MS],
+    ["visual-compare", V12_VISUAL_BATCH_PRODUCER_BOUND_MS],
+  ]) {
+    const finallyCompletedAt = simulateFinally(producerMs, V12_NATIVE_CLEANUP_BUDGET);
+    assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS[action] > finallyCompletedAt, `${action} can be killed before runtime finally completes`);
+  }
+
+  const visualRestoreCompletedAt = V12_VISUAL_CLEANUP_BUDGET.reset_bound_ms
+    + (V12_VISUAL_CLEANUP_BUDGET.restore_adb_call_count + V12_VISUAL_CLEANUP_BUDGET.release_adb_call_count)
+      * V12_VISUAL_CLEANUP_BUDGET.adb_call_timeout_ms;
+  assert.ok(V12_VISUAL_CLEANUP_BUDGET.max_ms > visualRestoreCompletedAt);
 });

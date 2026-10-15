@@ -3,6 +3,28 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  V12_NATIVE_ADAPTER_GRACE_MS,
+  V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_NATIVE_CLEANUP_BUDGET,
+  V12_NATIVE_LEASE_ACTION_BUDGETS,
+  V12_SQLITE_PRODUCER_BOUND_MS,
+  V12_VISUAL_ACTION_WINDOW,
+  V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
+  V12_VISUAL_CLEANUP_BUDGET,
+  V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
+} from "./v12-native-time-budgets.mjs";
+
+export {
+  V12_NATIVE_ADAPTER_GRACE_MS,
+  V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_NATIVE_CLEANUP_BUDGET,
+  V12_NATIVE_LEASE_ACTION_BUDGETS,
+  V12_SQLITE_PRODUCER_BOUND_MS,
+  V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
+  V12_VISUAL_CLEANUP_BUDGET,
+  V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
+};
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -12,20 +34,18 @@ const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackb
 const TEST_MODE = "phase20-native-adapter-subprocess";
 export const V12_NATIVE_MAX_REQUEST_BYTES = 1024 * 1024;
 export const V12_NATIVE_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-export const V12_NATIVE_ADAPTER_GRACE_MS = 2 * 60_000;
-export const V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS = 3 * 60_000;
 export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = 35 * (180_000 + 60_000) + 23 * 180_000 + V12_NATIVE_ADAPTER_GRACE_MS;
 export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
-  "acquire-lease": 30_000,
-  "release-lease": 30_000,
-  "snapshot-settings": 30_000,
-  "restore-settings": 60_000,
+  "acquire-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  "release-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["release-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  "snapshot-settings": V12_NATIVE_LEASE_ACTION_BUDGETS["snapshot-settings"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  "restore-settings": V12_NATIVE_LEASE_ACTION_BUDGETS["restore-settings"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   "visual-capture": V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
-  "visual-capture-batch": 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
-  "visual-compare": 4 * V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  "visual-capture-batch": V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  "visual-compare": V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
   accessibility: 35 * 60_000,
   performance: 35 * 60_000,
-  sqlite: 26 * 60_000,
+  sqlite: V12_SQLITE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
   recovery: 45 * 60_000,
   garmin: 20 * 60_000,
   calendar: V12_CALENDAR_ADAPTER_TIMEOUT_MS,

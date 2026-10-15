@@ -8,8 +8,10 @@ import {
   parseV12EvidenceCliArgs,
   executeV12EvidenceCli,
   deriveV12Ledger,
+  readV12FinalDeviceState,
   validateV12FinalProductionIdentity,
 } from "./verify-v12-native-evidence.mjs";
+import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
 
 import { loadV12ContractInputs } from "./v12-evidence-contract.mjs";
 import { createHash } from "node:crypto";
@@ -94,12 +96,25 @@ test("final identity re-reads retained APK bytes, signature, source and device",
     },
   };
   manifest.device.installed_apk_sha256 = manifest.build.apk.sha256;
+  const restorationSha256 = digestV12CanonicalRestorationSnapshot({
+    font_scale: "1.15",
+    ui_night_mode: "1",
+    animator_duration_scale: "0.5",
+  });
+  manifest.device.settings_sha256 = restorationSha256;
+  manifest.device.restoration_sha256 = restorationSha256;
   const dependencies = {
     root,
     currentHead: () => manifest.source.head,
     currentSourceTreeSha256: () => manifest.source.tree_sha256,
     verifyApkSignature: () => ({ signature_sha256: manifest.build.apk.signature_sha256, certificate_sha256: manifest.build.apk.certificate_sha256 }),
-    readDeviceIdentity: () => ({ identity_sha256: manifest.device.identity_sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, abi: "arm64-v8a" }),
+    readDeviceIdentity: () => ({
+      identity_sha256: manifest.device.identity_sha256,
+      installed_apk_sha256: manifest.device.installed_apk_sha256,
+      abi: "arm64-v8a",
+      restoration_sha256: restorationSha256,
+      lease_state: "clear",
+    }),
   };
   assert.equal(validateV12FinalProductionIdentity(manifest, dependencies), true);
   writeFileSync(path.join(root, apkPath), Buffer.from("PK\u0003\u0004different-apk"));
@@ -115,6 +130,58 @@ test("final identity re-reads retained APK bytes, signature, source and device",
   }), /v12_preflight_final_identity_invalid/u);
   assert.throws(() => validateV12FinalProductionIdentity(manifest, {
     ...dependencies,
-    readDeviceIdentity: () => ({ identity_sha256: h("0"), installed_apk_sha256: manifest.device.installed_apk_sha256, abi: "arm64-v8a" }),
+    readDeviceIdentity: () => ({
+      identity_sha256: h("0"),
+      installed_apk_sha256: manifest.device.installed_apk_sha256,
+      abi: "arm64-v8a",
+      restoration_sha256: restorationSha256,
+      lease_state: "clear",
+    }),
   }), /v12_preflight_final_identity_invalid/u);
+  assert.throws(() => validateV12FinalProductionIdentity(manifest, {
+    ...dependencies,
+    readDeviceIdentity: () => ({
+      ...dependencies.readDeviceIdentity(),
+      restoration_sha256: h("0"),
+    }),
+  }), /v12_preflight_final_restoration_invalid/u);
+  assert.throws(() => validateV12FinalProductionIdentity(manifest, {
+    ...dependencies,
+    readDeviceIdentity: () => ({
+      ...dependencies.readDeviceIdentity(),
+      lease_state: "active",
+    }),
+  }), /v12_preflight_final_lease_active/u);
+});
+
+test("final device state re-reads the canonical restoration settings and both lease paths", () => {
+  const calls = [];
+  const executeAdb = (...args) => {
+    calls.push(args);
+    const command = args.join(" ");
+    if (command === "get-state") return "device\n";
+    if (command === "shell getprop ro.product.cpu.abi") return "arm64-v8a\n";
+    if (command === "shell getprop ro.build.version.sdk") return "36\n";
+    if (command === "shell getprop ro.product.model") return "controlled\n";
+    if (command === "shell pm path com.fchoo.gymtracker.devtest") return "package:/data/app/controlled/base.apk\n";
+    if (command === "shell sha256sum /data/app/controlled/base.apk") return `${h("8")}  /data/app/controlled/base.apk\n`;
+    if (command === "shell settings get system font_scale") return "1.15\n";
+    if (command === "shell settings get secure ui_night_mode") return "1\n";
+    if (command === "shell settings get global animator_duration_scale") return "0.5\n";
+    if (command.startsWith("shell sh -c ")) return "clear\n";
+    throw new Error(`unexpected command: ${command}`);
+  };
+
+  const state = readV12FinalDeviceState(v12LiveManifest(), { serial: "controlled-device-20", executeAdb });
+  assert.equal(state.installed_apk_sha256, h("8"));
+  assert.equal(state.abi, "arm64-v8a");
+  assert.equal(state.restoration_sha256, digestV12CanonicalRestorationSnapshot({
+    font_scale: "1.15",
+    ui_night_mode: "1",
+    animator_duration_scale: "0.5",
+  }));
+  assert.equal(state.lease_state, "clear");
+  const leaseProbe = calls.find((args) => args[0] === "shell" && args[1] === "sh");
+  assert.match(leaseProbe.at(-1), /gym-tracker-v12-native-lease/u);
+  assert.match(leaseProbe.at(-1), /gym-tracker-v12-visual/u);
 });

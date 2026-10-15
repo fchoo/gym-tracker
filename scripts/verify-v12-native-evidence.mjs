@@ -36,6 +36,11 @@ import {
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
 import { resolveV12SourceRows, combineV12SourceResults } from "./v12-blocker-row-resolver.mjs";
 import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
+import {
+  V12_DEVICE_LEASE_PATHS,
+  digestV12CanonicalRestorationSnapshot,
+  readV12CanonicalRestorationSnapshot,
+} from "./v12-device-settings-contract.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -861,11 +866,13 @@ function defaultApkSignature(apkPath) {
   return { signature_sha256: sha256(report), certificate_sha256: certificate };
 }
 
-function defaultDeviceIdentity(manifest) {
-  const serial = process.env.V12_DEVICE_SERIAL;
+export function readV12FinalDeviceState(manifest, {
+  serial = process.env.V12_DEVICE_SERIAL,
+  executeAdb = (...args) => execFileSync("adb", ["-s", serial, ...args], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 20_000 }),
+} = {}) {
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) preflightFail("final_identity_invalid");
   const adb = (...args) => {
-    try { return execFileSync("adb", ["-s", serial, ...args], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }).trim(); }
+    try { return String(executeAdb(...args)).trim(); }
     catch { preflightFail("final_identity_invalid"); }
   };
   if (adb("get-state") !== "device") preflightFail("final_identity_invalid");
@@ -874,7 +881,16 @@ function defaultDeviceIdentity(manifest) {
   const installed = adb("shell", "pm", "path", manifest.build.package);
   if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)) preflightFail("final_identity_invalid");
   const installed_apk_sha256 = adb("shell", "sha256sum", installed.slice(8)).split(/\s/u)[0];
-  return { identity_sha256, installed_apk_sha256, abi };
+  const restoration = readV12CanonicalRestorationSnapshot((args) => adb(...args));
+  const leaseCommand = `${V12_DEVICE_LEASE_PATHS.map((leasePath) => `[ ! -e '${leasePath}' ]`).join(" && ")} && printf clear || printf active`;
+  const lease_state = adb("shell", "sh", "-c", leaseCommand);
+  return {
+    identity_sha256,
+    installed_apk_sha256,
+    abi,
+    restoration_sha256: digestV12CanonicalRestorationSnapshot(restoration),
+    lease_state,
+  };
 }
 
 export function validateV12FinalProductionIdentity(manifest, {
@@ -882,7 +898,7 @@ export function validateV12FinalProductionIdentity(manifest, {
   currentHead = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
   currentSourceTreeSha256 = () => sourceTreeSha256(root),
   verifyApkSignature = defaultApkSignature,
-  readDeviceIdentity = () => defaultDeviceIdentity(manifest),
+  readDeviceIdentity = () => readV12FinalDeviceState(manifest),
 } = {}) {
   const validated = validateV12RunManifest(manifest);
   const apkPath = preflightSafeFile(root, validated.build.apk.path);
@@ -896,6 +912,8 @@ export function validateV12FinalProductionIdentity(manifest, {
     source = currentSourceTreeSha256();
   }
   catch (error) { if (error instanceof Error && error.message.startsWith("v12_preflight_")) throw error; preflightFail("final_identity_invalid"); }
+  if (device?.lease_state !== "clear") preflightFail("final_lease_active");
+  if (device?.restoration_sha256 !== validated.device.restoration_sha256) preflightFail("final_restoration_invalid");
   if (apkBytes.length !== validated.build.apk.size_bytes || sha256(apkBytes) !== validated.build.apk.sha256
     || head !== validated.source.head || source !== validated.source.tree_sha256
     || signature?.signature_sha256 !== validated.build.apk.signature_sha256 || signature?.certificate_sha256 !== validated.build.apk.certificate_sha256
