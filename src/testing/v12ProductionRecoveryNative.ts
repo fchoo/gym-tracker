@@ -22,8 +22,6 @@ import { startWorkout } from "../domains/workout/startWorkout";
 import {
   finishPartial,
   PARTIAL_CONFIRMATION,
-  saveZeroSetWorkout,
-  ZERO_SET_CONFIRMATION,
 } from "../domains/workout/finishWorkout";
 import { expireRestWithForegroundFeedback, startManualRest } from "../domains/rest/restCommands";
 import {
@@ -308,7 +306,7 @@ async function seedScenarioWorkoutFacts(
 ): Promise<void> {
   await seedActiveWorkout(kernel, input);
   await seedRetiredTimingHistory(kernel, input);
-  if (["foreground-reconciliation", "queued-callback"].includes(input.caseId)) {
+  if (["foreground-reconciliation", "queued-callback", "restore", "merge"].includes(input.caseId)) {
     await seedRestReconciliation(kernel, input);
   }
 }
@@ -372,28 +370,12 @@ async function seedPortableArchiveSource(
   input: V12RecoveryExecutionIdentity,
 ): Promise<void> {
   const startedAtMs = baseTime(input.caseId);
-  const session = await startWorkout({
-    repository: createPlansWorkoutRepository(kernel),
-    request: {
-      mode: "empty",
-      localDate: "2027-01-15",
-      timezone: "UTC",
-      startedAtMs,
-    },
-  });
-  await saveZeroSetWorkout({
-    repository: createWorkoutOutcomeRepository(kernel),
-    input: {
-      sessionId: session.id,
-      expectedSessionRevision: 1,
-      endedAtMs: startedAtMs + 1_000,
-      confirmation: ZERO_SET_CONFIRMATION,
-    },
-  });
+  await seedScenarioWorkoutFacts(kernel, input);
+  const session = await activeWorkoutIdentity(kernel);
   await kernel.write(async (transaction) => {
     await transaction.execute(
       "INSERT INTO workout_receipts(id, workout_session_id, request_sha256, committed_at_ms) VALUES (?, ?, ?, ?)",
-      [completionKey(input), session.id, await sha256(completionKey(input)), startedAtMs + 1_000],
+      [completionKey(input), session.session_id, await sha256(completionKey(input)), startedAtMs + 1_000],
     );
   });
 }
@@ -861,34 +843,60 @@ async function observationRows(
   const [effect, pointer, rest, history, timing, restore, workoutReceipts,
     importedReceipts, matchReceipts, metricReceipts] = await Promise.all([
     kernel.queryAll<Record<string, unknown>>(
-      `SELECT id, effect_type, subject_id, expected_revision, status,
-              attempt_count, next_attempt_at_ms, last_error_code
-       FROM pending_effects ORDER BY id`,
+      `SELECT effects.idempotency_key, effects.effect_type,
+              COALESCE(ws.portable_id, effects.subject_id) AS subject_identity,
+              effects.expected_revision, effects.status, effects.attempt_count,
+              effects.next_attempt_at_ms, effects.last_error_code
+       FROM pending_effects effects
+       LEFT JOIN workout_sessions ws ON ws.id = effects.subject_id
+       ORDER BY effects.id`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      `SELECT ws.id AS session_id, ws.status, ws.revision,
-              ws.active_session_exercise_id, ws.active_set_id,
+      `SELECT COALESCE(ws.portable_id, ws.id) AS session_identity, ws.status, ws.revision,
+              active_exercise.ordinal AS active_exercise_ordinal,
+              active_set.set_kind AS active_set_kind, active_set.ordinal AS active_set_ordinal,
+              committed_set.set_kind AS committed_set_kind, committed_set.ordinal AS committed_set_ordinal
+       FROM workout_sessions ws
+       LEFT JOIN session_exercises active_exercise ON active_exercise.id = ws.active_session_exercise_id
+       LEFT JOIN session_sets active_set ON active_set.id = ws.active_set_id
+       LEFT JOIN session_sets committed_set ON committed_set.id =
               (SELECT sets.id FROM session_sets sets
                JOIN session_exercises exercise ON exercise.id = sets.session_exercise_id
                WHERE exercise.session_id = ws.id AND sets.status = 'completed'
-               ORDER BY sets.completed_at_ms DESC, sets.id LIMIT 1) AS committed_set_id
-       FROM workout_sessions ws ORDER BY ws.id`,
+               ORDER BY sets.completed_at_ms DESC, sets.id LIMIT 1)
+       ORDER BY session_identity`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      `SELECT session_id, status, revision, started_at_ms, ends_at_ms,
-              remaining_ms, expired_at_ms, next_set_id
-       FROM session_rest_states ORDER BY session_id`,
+      `SELECT COALESCE(ws.portable_id, ws.id) AS session_identity,
+              rest.status, rest.revision, rest.started_at_ms, rest.ends_at_ms,
+              rest.remaining_ms, rest.expired_at_ms,
+              next_exercise.ordinal AS next_exercise_ordinal,
+              next_set.set_kind AS next_set_kind, next_set.ordinal AS next_set_ordinal
+       FROM session_rest_states rest
+       JOIN workout_sessions ws ON ws.id = rest.session_id
+       LEFT JOIN session_sets next_set ON next_set.id = rest.next_set_id
+       LEFT JOIN session_exercises next_exercise ON next_exercise.id = next_set.session_exercise_id
+       ORDER BY session_identity`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      `SELECT id, session_id, effective_revision, event_type, field_identity,
-              before_json, after_json, occurred_at_ms
-       FROM history_audit_events ORDER BY id`,
+      `SELECT history.id, COALESCE(ws.portable_id, ws.id) AS session_identity,
+              history.effective_revision, history.event_type, history.field_identity,
+              history.before_json, history.after_json, history.occurred_at_ms
+       FROM history_audit_events history
+       JOIN workout_sessions ws ON ws.id = history.session_id
+       ORDER BY history.id`,
     ),
     kernel.queryAll<Record<string, unknown>>(
-      `SELECT session_id, session_set_id, state_version, revision, status, mode,
-              config_json, progress_json, started_at_ms, next_boundary_at_ms,
-              remaining_ms, stopped_at_ms
-       FROM session_advanced_timing_states ORDER BY session_id`,
+      `SELECT COALESCE(ws.portable_id, ws.id) AS session_identity,
+              exercise.ordinal AS exercise_ordinal, sets.set_kind, sets.ordinal AS set_ordinal,
+              timing.state_version, timing.revision, timing.status, timing.mode,
+              timing.config_json, timing.progress_json, timing.started_at_ms,
+              timing.next_boundary_at_ms, timing.remaining_ms, timing.stopped_at_ms
+       FROM session_advanced_timing_states timing
+       JOIN workout_sessions ws ON ws.id = timing.session_id
+       LEFT JOIN session_sets sets ON sets.id = timing.session_set_id
+       LEFT JOIN session_exercises exercise ON exercise.id = sets.session_exercise_id
+       ORDER BY session_identity`,
     ),
     kernel.queryAll<Record<string, unknown>>(
       "SELECT state, updated_at_ms FROM portability_restore_state ORDER BY id",
@@ -905,7 +913,7 @@ async function observationRows(
     ),
     kernel.queryAll<Record<string, unknown>>(
       `SELECT idempotency_key AS id, migrated_at_ms AS committed_at_ms,
-              result_json AS result_kind
+              'metric-migrated' AS result_kind
        FROM metric_profile_migration_events ORDER BY idempotency_key`,
     ),
   ]);
@@ -939,9 +947,9 @@ async function snapshot(
 ): Promise<V12RecoveryDurableSnapshot> {
   const rows = await observationRows(kernel, operation);
   const effectFacts = await Promise.all(rows.effect.map(async (row) => Object.freeze({
-    effect_sha256: await sha256(String(row.id)),
+    effect_sha256: await sha256(String(row.idempotency_key)),
     type: row.effect_type as "reconcile_rest_notification" | "regenerate_load_reps_recommendation",
-    subject_sha256: await sha256(String(row.subject_id)),
+    subject_sha256: await sha256(String(row.subject_identity)),
     expected_revision: Number(row.expected_revision),
     status: row.status as "pending" | "processing" | "completed" | "superseded" | "permanent_failure",
     attempt_count: Number(row.attempt_count),
@@ -949,15 +957,15 @@ async function snapshot(
     last_error_code: row.last_error_code === null ? null : String(row.last_error_code),
   })));
   const pointerFacts = await Promise.all(rows.pointer.map(async (row) => Object.freeze({
-    session_sha256: await sha256(String(row.session_id)),
+    session_sha256: await sha256(String(row.session_identity)),
     status: String(row.status),
     revision: Number(row.revision),
-    active_exercise_sha256: row.active_session_exercise_id === null ? null : await sha256(String(row.active_session_exercise_id)),
-    active_set_sha256: row.active_set_id === null ? null : await sha256(String(row.active_set_id)),
-    committed_set_sha256: row.committed_set_id === null ? null : await sha256(String(row.committed_set_id)),
+    active_exercise_sha256: row.active_exercise_ordinal === null ? null : await sha256(`${String(row.session_identity)}:exercise:${String(row.active_exercise_ordinal)}`),
+    active_set_sha256: row.active_set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.active_set_kind)}:${String(row.active_set_ordinal)}`),
+    committed_set_sha256: row.committed_set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.committed_set_kind)}:${String(row.committed_set_ordinal)}`),
   })));
   const restFacts = await Promise.all(rows.rest.map(async (row) => Object.freeze({
-    session_sha256: await sha256(String(row.session_id)),
+    session_sha256: await sha256(String(row.session_identity)),
     status: row.status as "idle" | "running" | "paused" | "expired",
     revision: Number(row.revision),
     started_at_ms: row.started_at_ms as number | null,
@@ -965,11 +973,11 @@ async function snapshot(
     deadline_at_ms: row.ends_at_ms as number | null,
     paused_remaining_ms: row.remaining_ms as number | null,
     expired_at_ms: row.expired_at_ms as number | null,
-    next_set_sha256: row.next_set_id === null ? null : await sha256(String(row.next_set_id)),
+    next_set_sha256: row.next_set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.next_set_kind)}:${String(row.next_exercise_ordinal)}:${String(row.next_set_ordinal)}`),
   })));
   const timingFacts = await Promise.all(rows.timing.map(async (row) => Object.freeze({
-    session_sha256: await sha256(String(row.session_id)),
-    set_sha256: row.session_set_id === null ? null : await sha256(String(row.session_set_id)),
+    session_sha256: await sha256(String(row.session_identity)),
+    set_sha256: row.set_ordinal === null ? null : await sha256(`${String(row.session_identity)}:set:${String(row.set_kind)}:${String(row.exercise_ordinal)}:${String(row.set_ordinal)}`),
     state_version: Number(row.state_version),
     revision: Number(row.revision),
     status: row.status as "idle" | "running" | "paused" | "stopped" | "expired",
@@ -982,8 +990,8 @@ async function snapshot(
     stopped_at_ms: row.stopped_at_ms as number | null,
   })));
   const historyFacts = await Promise.all(rows.history.map(async (row) => Object.freeze({
-    event_sha256: await sha256(String(row.id)),
-    session_sha256: await sha256(String(row.session_id)),
+    event_sha256: await sha256(`${String(row.session_identity)}:${String(row.field_identity)}:${String(row.occurred_at_ms)}`),
+    session_sha256: await sha256(String(row.session_identity)),
     effective_revision: Number(row.effective_revision),
     event_type: row.event_type as "correction" | "void" | "restore",
     field_identity: String(row.field_identity),

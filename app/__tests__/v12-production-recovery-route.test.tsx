@@ -85,4 +85,27 @@ describe("V12ProductionRecoveryRoute", () => {
     expect(rendered.getByTestId("recovery-route-disabled")).toBeOnTheScreen();
     expect(mockRun).not.toHaveBeenCalled();
   });
+
+  it("emits exactly one terminal error when collection or cleanup fails", async () => {
+    mockParams.phase = "recover";
+    mockRun.mockRejectedValue(new Error("cleanup_failed"));
+    const info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+
+    try {
+      await render(<V12ProductionRecoveryRoute />);
+      await waitFor(() => expect(screen.getByText("Recovery observation failed")).toBeOnTheScreen());
+      const terminal = info.mock.calls.map(([line]) => String(line))
+        .filter((line) => line.startsWith("GYM_TRACKER_V12_DOMAIN_RESULT:"));
+      expect(terminal).toHaveLength(1);
+      expect(JSON.parse(terminal[0]!.slice("GYM_TRACKER_V12_DOMAIN_RESULT:".length)))
+        .toEqual({
+          schema_version: 2,
+          nonce: mockParams.nonce,
+          kind: "error",
+          code: "domain_failed",
+        });
+    } finally {
+      info.mockRestore();
+    }
+  });
 });

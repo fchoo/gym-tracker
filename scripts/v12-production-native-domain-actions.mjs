@@ -283,6 +283,8 @@ function deriveRecoveryObservation(value, nonce, caseId, cutId, armed) {
   if (caseId === 'foreground-reconciliation' && afterRetry.rest_count < 1) fail('recovery_receipt_invalid');
   if (caseId === 'restore' && !afterRetry.restore_facts.some((fact) => fact.state === 'rebuild_pending')) fail('recovery_receipt_invalid');
   if (caseId === 'merge' && afterRetry.merge_receipt_facts.length < 1) fail('recovery_receipt_invalid');
+  if (['restore', 'merge'].includes(caseId) && (afterRetry.pointer_facts.length < 1 || afterRetry.rest_facts.length < 1
+    || afterRetry.timing_facts.length < 1 || afterRetry.history_facts.length < 1)) fail('recovery_receipt_invalid');
   if (caseId === 'between-set-rest-pointer' && (afterRetry.pointer_facts.length < 1 || afterRetry.rest_facts.length < 1
     || !afterRetry.pointer_facts.some((fact) => HASH.test(fact.committed_set_sha256 ?? '')))) fail('recovery_receipt_invalid');
   const receiptSha256 = hash(JSON.stringify({ armed, value }));

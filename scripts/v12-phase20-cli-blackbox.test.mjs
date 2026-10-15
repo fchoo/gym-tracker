@@ -119,6 +119,24 @@ function rewriteFixturePublication(root, shard) {
   }
   writeFileSync(file, JSON.stringify(publication));
 }
+function recoveryIdentity(build, cases, report) {
+  const digest = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
+  const retryFacts = selector => cases.flatMap(({ cuts }) => cuts.map(({ snapshots }) => snapshots.after_retry[selector]));
+  return {
+    source_digest: build.source.tree_sha256,
+    receipt_digest: digest(report),
+    scenario_digest: digest(cases.map(({ id, order, operation_id, boundary_ids }) => ({ id, order, operation_id, boundary_ids }))),
+    cut_digest: digest(cases.flatMap(({ cuts }) => cuts.map(({ receipt_sha256 }) => receipt_sha256))),
+    pointer_digest: digest(retryFacts('pointer_facts')),
+    effect_digest: digest(retryFacts('effect_facts')),
+    rest_digest: digest(retryFacts('rest_facts')),
+    history_digest: digest(retryFacts('history_facts')),
+    timing_digest: digest(retryFacts('timing_facts')),
+    restore_digest: digest(retryFacts('restore_facts')),
+    merge_receipt_digest: digest(retryFacts('merge_receipt_facts')),
+    cue_digest: digest(retryFacts('cue_count')),
+  };
+}
 function completeMultiPlanFixture(root) {
   const base = path.join(root, "artifacts/native/v1.2", run);
   const file = path.join(base, "mapping/multi-plan.json");
@@ -276,9 +294,7 @@ async function assertSourceMutations(t, root) {
       edit("recovery/lifecycle.json", value => {
         value.cases[0].status = state; value.cases[0].cuts[0].status = state;
         const build = JSON.parse(readFileSync(path.join(base, "build.json"), "utf8"));
-        const digest = data => createHash('sha256').update(data).digest('hex');
-        value.identity.receipt_digest = digest(report); value.identity.pointer_digest = digest(`${build.fixtures.registry_sha256}:pointer:${report}`); value.identity.effect_digest = digest(`${build.device.identity_sha256}:effect:${report}`);
-        for (const entry of value.cases) for (const cut of entry.cuts) cut.digest = value.identity.receipt_digest;
+        value.identity = recoveryIdentity(build, value.cases, report);
         return value;
       });
     });

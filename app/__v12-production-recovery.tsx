@@ -36,7 +36,7 @@ function RecoveryExecution(input: Readonly<{
     }).catch(() => {
       if (!controller.signal.aborted) {
         console.info(`GYM_TRACKER_V12_DOMAIN_RESULT:${JSON.stringify({
-          schema_version: 1,
+          schema_version: 2,
           nonce: input.identity.nonce,
           kind: "error",
           code: "domain_failed",

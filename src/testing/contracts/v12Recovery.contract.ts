@@ -31,15 +31,41 @@ export const V12_RECOVERY_CASES = V12_RECOVERY_SCENARIOS.map((scenario) => (
 export type V12RecoveryContractSnapshot = Readonly<{
   sourceCount: number;
   receiptCount: number;
+  effectCount: number;
+  pointerCount: number;
+  restCount: number;
+  historyCount: number;
+  timingCount: number;
+  restoreCount: number;
+  mergeReceiptCount: number;
+  cueCount: number;
   sourceDigest: string;
   receiptDigest: string;
+  effectDigest: string;
+  pointerDigest: string;
+  restDigest: string;
+  historyDigest: string;
+  timingDigest: string;
+  restoreDigest: string;
+  mergeReceiptDigest: string;
+  cueDigest: string;
 }>;
 
 export type V12RecoveryContractObservation = Readonly<{
   caseId: string;
   cutId: (typeof V12_RECOVERY_CUTS)[number] | string;
+  operationId: string;
+  boundaryIds: readonly string[];
+  barrierId: string;
+  firstAttempt: string;
+  before: V12RecoveryContractSnapshot;
+  afterCut: V12RecoveryContractSnapshot;
   afterReopen: V12RecoveryContractSnapshot;
+  recoveryCode: string;
+  afterRecovery: V12RecoveryContractSnapshot;
+  retryCode: string;
   afterRetry: V12RecoveryContractSnapshot;
+  receiptDigest: string;
 }>;
 
 export type V12RecoveryContractAdapter = Readonly<{
@@ -50,13 +76,21 @@ export type V12RecoveryContractAdapter = Readonly<{
 }>;
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const UNCOMMITTED = new Set<string>(["pre-transaction", "in-transaction"]);
+const UNCOMMITTED = new Set<string>(["pre-transaction", "in-transaction", "retry"]);
 
 function validSnapshot(value: V12RecoveryContractSnapshot): boolean {
-  return Number.isSafeInteger(value.sourceCount) && value.sourceCount >= 0
-    && Number.isSafeInteger(value.receiptCount) && value.receiptCount >= 0
-    && SHA256.test(value.sourceDigest)
-    && SHA256.test(value.receiptDigest);
+  return [value.sourceCount, value.receiptCount, value.effectCount, value.pointerCount,
+    value.restCount, value.historyCount, value.timingCount, value.restoreCount,
+    value.mergeReceiptCount, value.cueCount]
+    .every((count) => Number.isSafeInteger(count) && count >= 0)
+    && [value.sourceDigest, value.receiptDigest, value.effectDigest,
+      value.pointerDigest, value.restDigest, value.historyDigest,
+      value.timingDigest, value.restoreDigest, value.mergeReceiptDigest,
+      value.cueDigest].every((digest) => SHA256.test(digest));
+}
+
+function sameSnapshot(left: V12RecoveryContractSnapshot, right: V12RecoveryContractSnapshot): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function observationPassed(
@@ -64,23 +98,34 @@ function observationPassed(
   caseId: string,
   cutId: string,
 ): boolean {
-  if (observation.caseId !== caseId || observation.cutId !== cutId
+  const scenario = V12_RECOVERY_SCENARIOS.find(({ id }) => id === caseId);
+  const cut = V12_RECOVERY_CUT_DEFINITIONS.find(({ id }) => id === cutId);
+  if (scenario === undefined || cut === undefined
+    || observation.caseId !== caseId || observation.cutId !== cutId
+    || observation.operationId !== scenario.operationId
+    || JSON.stringify(observation.boundaryIds) !== JSON.stringify(scenario.boundaryIds)
+    || observation.barrierId !== cut.barrierId
+    || observation.firstAttempt !== cut.firstAttempt
+    || !validSnapshot(observation.before)
+    || !validSnapshot(observation.afterCut)
     || !validSnapshot(observation.afterReopen)
+    || !validSnapshot(observation.afterRecovery)
     || !validSnapshot(observation.afterRetry)) {
     return false;
   }
-  const firstCount = UNCOMMITTED.has(cutId) ? 0 : 1;
-  if (observation.afterReopen.sourceCount !== firstCount
-    || observation.afterReopen.receiptCount !== firstCount
-    || observation.afterRetry.sourceCount !== 1
-    || observation.afterRetry.receiptCount !== 1) {
-    return false;
-  }
-  return UNCOMMITTED.has(cutId)
-    ? observation.afterReopen.sourceDigest !== observation.afterRetry.sourceDigest
-      && observation.afterReopen.receiptDigest !== observation.afterRetry.receiptDigest
-    : observation.afterReopen.sourceDigest === observation.afterRetry.sourceDigest
-      && observation.afterReopen.receiptDigest === observation.afterRetry.receiptDigest;
+  const expectedReopen = UNCOMMITTED.has(cutId) ? observation.before : observation.afterCut;
+  return sameSnapshot(observation.afterReopen, expectedReopen)
+    && (cutId === "recovery"
+      ? observation.recoveryCode !== "not-required"
+      : observation.recoveryCode === "not-required"
+        && sameSnapshot(observation.afterRecovery, observation.afterReopen))
+    && /^[a-z0-9-]{3,60}$/u.test(observation.retryCode)
+    && SHA256.test(observation.receiptDigest)
+    && observation.afterRetry.cueCount === 0
+    && observation.afterRetry.restoreCount === 1
+    && (UNCOMMITTED.has(cutId)
+      ? !sameSnapshot(observation.afterRetry, observation.before)
+      : true);
 }
 
 export async function runV12RecoveryContract(
@@ -94,6 +139,7 @@ export async function runV12RecoveryContract(
       digest: string;
     }>[];
   }>>;
+  const receipts = new Set<string>();
   for (const definition of V12_RECOVERY_CASES) {
     const cuts = [] as Array<Readonly<{
       id: string;
@@ -103,12 +149,14 @@ export async function runV12RecoveryContract(
     for (const cut of definition.cuts) {
       try {
         const observation = await adapter.observe(definition, cut);
-        const passed = observationPassed(observation, definition.id, cut);
+        const passed = observationPassed(observation, definition.id, cut)
+          && !receipts.has(observation.receiptDigest);
+        receipts.add(observation.receiptDigest);
         cuts.push(Object.freeze({
           id: cut,
           status: passed ? "passed" : "failed",
-          digest: SHA256.test(observation.afterRetry?.receiptDigest)
-            ? observation.afterRetry.receiptDigest
+          digest: SHA256.test(observation.receiptDigest)
+            ? observation.receiptDigest
             : "0".repeat(64),
         }));
       } catch {

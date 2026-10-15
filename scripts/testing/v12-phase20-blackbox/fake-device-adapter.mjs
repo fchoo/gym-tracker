@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../../v12-evidence-contract.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "../../benchmark-v12-interactions.mjs";
+import { V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_SCENARIOS } from "../../v12-recovery-shard.mjs";
 const sha = (value) => createHash("sha256").update(String(value)).digest("hex");
 const read = await new Promise((resolve) => { let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }); process.stdin.on("end", () => resolve(JSON.parse(body))); });
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
@@ -25,9 +26,41 @@ const garminCaseIds = [
   "dedupe-restart", "dedupe-restore", "dedupe-merge", "match-zero", "match-one", "match-many",
   "match-stale", "match-alternate", "match-cancel", "match-confirm", "match-reassign", "privacy",
 ];
-const recoveryCaseIds = ["legacy-playback", "foreground-reconciliation", "queued-callback", "relaunch", "restore", "merge", "zero-cue", "between-set-rest-pointer"];
-const recoveryCuts = ["pre-transaction", "in-transaction", "post-commit-before-ack", "post-acknowledgement", "relaunch", "retry", "offline", "recovery"];
-const recoveryJunit = () => `<testsuites>${recoveryCaseIds.flatMap((caseId) => recoveryCuts.map((cut) => `<testsuite name="v12-recovery"><testcase name="${caseId}:${cut}"><properties><property name="case_id" value="${caseId}"/><property name="cut_id" value="${cut}"/><property name="receipt_sha256" value="${sha(`${caseId}:${cut}`)}"/></properties></testcase></testsuite>`)).join("")}</testsuites>`;
+function recoverySnapshot(scenario, committed, recovered = false) {
+  const pointer = [{ session_sha256: sha(`${scenario.id}:session`), status: committed && ['relaunch', 'zero-cue'].includes(scenario.id) ? 'partial' : 'in_progress', revision: committed ? 3 : 2, active_exercise_sha256: sha(`${scenario.id}:exercise`), active_set_sha256: sha(`${scenario.id}:set`), committed_set_sha256: committed ? sha(`${scenario.id}:committed`) : null }];
+  const seededRest = ['foreground-reconciliation', 'queued-callback', 'restore', 'merge'].includes(scenario.id);
+  const rest = seededRest || (scenario.id === 'between-set-rest-pointer' && committed) ? [{ session_sha256: pointer[0].session_sha256, status: recovered ? 'expired' : 'running', revision: recovered ? 2 : 1, started_at_ms: recovered ? null : 100, ends_at_ms: recovered ? null : 200, deadline_at_ms: recovered ? null : 200, paused_remaining_ms: null, expired_at_ms: recovered ? 300 : null, next_set_sha256: sha(`${scenario.id}:next`) }] : [];
+  const timing = [{ session_sha256: pointer[0].session_sha256, set_sha256: sha(`${scenario.id}:timing-set`), state_version: 1, revision: 1, status: 'stopped', mode: 'per_rep', configuration: { version: 1, mode: 'per_rep', intervalMs: 1500, cueChannels: 'haptic' }, progress: { version: 1, completedRepetitions: 2, completedGroups: 0, currentGroupIndex: 0, currentGroupProgress: 2 }, started_at_ms: null, next_boundary_at_ms: null, remaining_ms: null, stopped_at_ms: 150 }];
+  const history = [{ event_sha256: sha(`${scenario.id}:history`), session_sha256: pointer[0].session_sha256, effective_revision: 2, event_type: 'correction', field_identity: 'advanced_timing_resolved_json', before_sha256: sha('off'), after_sha256: sha('timing'), occurred_at_ms: 140 }];
+  const effect = (seededRest || (committed && !scenario.operation_id.startsWith('secure-'))) ? [{ effect_sha256: sha(`${scenario.id}:effect`), type: 'reconcile_rest_notification', subject_sha256: pointer[0].session_sha256, expected_revision: 1, status: recovered ? 'completed' : 'pending', attempt_count: recovered ? 1 : 0, next_attempt_at_ms: 200, last_error_code: null }] : [];
+  const restore = [{ state: scenario.id === 'restore' && committed ? 'rebuild_pending' : 'ready', updated_at_ms: committed ? 300 : 0 }];
+  const mergeReceipts = scenario.id === 'merge' && committed ? [{ table: 'workout_receipts', receipt_sha256: sha('merge-receipt'), request_sha256: sha('merge-request'), idempotency_sha256: sha('merge-idempotency'), committed_at_ms: 300, result: 'committed' }] : [];
+  const source = committed ? [{ state: 'committed' }] : []; const receipt = committed ? [{ state: 'committed' }] : [];
+  const digest = (value) => sha(JSON.stringify(value));
+  return { source_count: source.length, receipt_count: receipt.length, effect_count: effect.length, pointer_count: pointer.length, rest_count: rest.length, history_count: history.length, timing_count: timing.length, restore_count: restore.length, merge_receipt_count: mergeReceipts.length, cue_count: 0,
+    source_sha256: digest(source), receipt_sha256: digest(receipt), effect_sha256: digest(effect), pointer_sha256: digest(pointer), rest_sha256: digest(rest), history_sha256: digest(history), timing_sha256: digest(timing), restore_sha256: digest(restore), merge_receipt_sha256: digest(mergeReceipts), cue_sha256: digest([]),
+    effect_facts: effect, pointer_facts: pointer, rest_facts: rest, timing_facts: timing, history_facts: history, restore_facts: restore, merge_receipt_facts: mergeReceipts };
+}
+function recoveryReport() {
+  const cases = V12_RECOVERY_SCENARIOS.map((scenario, order) => ({ ...scenario, order, status: 'PASS', cuts: V12_RECOVERY_CUT_DEFINITIONS.map((definition, cutOrder) => {
+    const uncommitted = ['pre-transaction', 'in-transaction', 'retry'].includes(definition.id);
+    const before = recoverySnapshot(scenario, false); const afterCut = uncommitted ? before : recoverySnapshot(scenario, true);
+    const afterReopen = uncommitted ? before : afterCut; const afterRecovery = definition.id === 'recovery' ? recoverySnapshot(scenario, true, true) : afterReopen;
+    const snapshots = { before, after_cut: afterCut, after_reopen: afterReopen, after_recovery: afterRecovery, after_retry: definition.id === 'recovery' ? afterRecovery : recoverySnapshot(scenario, true) };
+    return { cut_id: definition.id, status: 'PASS', operation_id: scenario.operation_id, boundary_ids: scenario.boundary_ids,
+      barrier: { barrier_id: definition.barrier_id, process_state: definition.process_state, acknowledgement: definition.acknowledgement, connectivity: definition.connectivity, first_attempt: definition.first_attempt },
+      first_attempt_code: definition.barrier_id, recovery_code: definition.id === 'recovery' ? scenario.id === 'foreground-reconciliation' ? 'foreground-reconciled' : 'domain-reconciled' : 'not-required', retry_code: uncommitted ? 'committed' : 'replayed',
+      receipt_sha256: sha(`${scenario.id}:${definition.id}:${order}:${cutOrder}`), snapshots };
+  }) }));
+  const junitCases = cases.flatMap((entry) => entry.cuts.map((cut) => `<testcase classname="v12.recovery" name="${entry.id}:${cut.cut_id}"><properties>`
+    + `<property name="case_id" value="${entry.id}"/><property name="cut_id" value="${cut.cut_id}"/><property name="operation_id" value="${cut.operation_id}"/>`
+    + `<property name="boundary_digest" value="${sha(JSON.stringify(cut.boundary_ids))}"/><property name="barrier_id" value="${cut.barrier.barrier_id}"/><property name="process_state" value="${cut.barrier.process_state}"/>`
+    + `<property name="acknowledgement" value="${cut.barrier.acknowledgement}"/><property name="connectivity" value="${cut.barrier.connectivity}"/><property name="first_attempt" value="${cut.barrier.first_attempt}"/>`
+    + `<property name="first_attempt_code" value="${cut.first_attempt_code}"/><property name="recovery_code" value="${cut.recovery_code}"/><property name="retry_code" value="${cut.retry_code}"/><property name="receipt_sha256" value="${cut.receipt_sha256}"/>`
+    + Object.entries(cut.snapshots).map(([key, value]) => `<property name="${key}_sha256" value="${sha(JSON.stringify(value))}"/>`).join('')
+    + `<property name="state" value="PASS"/></properties></testcase>`));
+  return { schema_version: 2, producer: 'v12-production-recovery-host', cases, junit_xml: `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-recovery" tests="64">${junitCases.join('')}</testsuite>\n` };
+}
 const response = (() => {
   if (action === "acquire-lease") return { id: "lease" }; if (action === "release-lease") return true;
   if (action === "snapshot-settings") return { id: "settings" }; if (action === "restore-settings") return true;
@@ -90,7 +123,7 @@ const response = (() => {
       cases: sqliteCaseIds.map((id) => ({ id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 1 } })),
     },
   };
-  if (action === "recovery") return recoveryJunit();
+  if (action === "recovery") return recoveryReport();
   if (action === "garmin") return {
     cases: garminCaseIds.map((id, order) => ({ id, order, status: "PASS", code: "native-passed", count: id === "match-one" ? 1 : 0 })),
   };

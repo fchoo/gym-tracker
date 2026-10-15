@@ -13,8 +13,51 @@ function snapshot(receiptCount: number, digest: string): V12RecoveryContractSnap
   return {
     sourceCount: receiptCount,
     receiptCount,
+    effectCount: receiptCount,
+    pointerCount: 1,
+    restCount: receiptCount,
+    historyCount: 1,
+    timingCount: 1,
+    restoreCount: 1,
+    mergeReceiptCount: receiptCount,
+    cueCount: 0,
     sourceDigest: digest.repeat(64),
     receiptDigest: digest.repeat(64),
+    effectDigest: digest.repeat(64),
+    pointerDigest: digest.repeat(64),
+    restDigest: digest.repeat(64),
+    historyDigest: digest.repeat(64),
+    timingDigest: digest.repeat(64),
+    restoreDigest: digest.repeat(64),
+    mergeReceiptDigest: digest.repeat(64),
+    cueDigest: digest.repeat(64),
+  };
+}
+
+function observation(
+  definition: (typeof V12_RECOVERY_CASES)[number],
+  cut: (typeof V12_RECOVERY_CUTS)[number],
+  receiptSeed: string,
+) {
+  const cutDefinition = V12_RECOVERY_CUT_DEFINITIONS.find(({ id }) => id === cut)!;
+  const uncommitted = cut === "pre-transaction" || cut === "in-transaction" || cut === "retry";
+  const before = snapshot(0, "a"); const afterCut = uncommitted ? before : snapshot(1, "b");
+  const afterReopen = uncommitted ? before : afterCut;
+  return {
+    caseId: definition.id,
+    cutId: cut,
+    operationId: definition.operationId,
+    boundaryIds: definition.boundaryIds,
+    barrierId: cutDefinition.barrierId,
+    firstAttempt: cutDefinition.firstAttempt,
+    before,
+    afterCut,
+    afterReopen,
+    recoveryCode: cut === "recovery" ? "domain-reconciled" : "not-required",
+    afterRecovery: afterReopen,
+    retryCode: uncommitted ? "committed" : "replayed",
+    afterRetry: snapshot(1, "b"),
+    receiptDigest: receiptSeed.padStart(64, "0"),
   };
 }
 
@@ -46,13 +89,9 @@ describe("v1.2 recovery host contract", () => {
       definition: (typeof V12_RECOVERY_CASES)[number],
       cut: (typeof V12_RECOVERY_CUTS)[number],
     ) => {
-      const uncommitted = cut === "pre-transaction" || cut === "in-transaction";
-      return {
-        caseId: definition.id,
-        cutId: cut,
-        afterReopen: uncommitted ? snapshot(0, "a") : snapshot(1, "b"),
-        afterRetry: snapshot(1, "b"),
-      };
+      const index = V12_RECOVERY_CASES.indexOf(definition) * V12_RECOVERY_CUTS.length
+        + V12_RECOVERY_CUTS.indexOf(cut) + 1;
+      return observation(definition, cut, index.toString(16));
     });
 
     const result = await runV12RecoveryContract({ observe });
@@ -75,29 +114,16 @@ describe("v1.2 recovery host contract", () => {
         if (definition.id === "legacy-playback" && cut === "pre-transaction") {
           throw new Error("private details stay outside the result");
         }
+        const index = V12_RECOVERY_CASES.indexOf(definition) * V12_RECOVERY_CUTS.length
+          + V12_RECOVERY_CUTS.indexOf(cut) + 1;
+        const value = observation(definition, cut, index.toString(16));
         if (definition.id === "foreground-reconciliation" && cut === "in-transaction") {
-          return {
-            caseId: "wrong",
-            cutId: cut,
-            afterReopen: snapshot(0, "a"),
-            afterRetry: snapshot(1, "b"),
-          };
+          return { ...value, caseId: "wrong" };
         }
         if (definition.id === "queued-callback" && cut === "post-commit-before-ack") {
-          return {
-            caseId: definition.id,
-            cutId: cut,
-            afterReopen: snapshot(0, "a"),
-            afterRetry: snapshot(1, "b"),
-          };
+          return { ...value, afterReopen: snapshot(0, "a") };
         }
-        const uncommitted = cut === "pre-transaction" || cut === "in-transaction";
-        return {
-          caseId: definition.id,
-          cutId: cut,
-          afterReopen: uncommitted ? snapshot(0, "a") : snapshot(1, "b"),
-          afterRetry: snapshot(1, "b"),
-        };
+        return value;
       },
     });
 

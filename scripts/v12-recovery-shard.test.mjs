@@ -5,35 +5,68 @@ import {
   executeV12RecoveryShardCli,
   parseV12RecoveryShardCliArgs,
   validateV12RecoveryShard,
+  V12_RECOVERY_CUT_DEFINITIONS,
+  V12_RECOVERY_SCENARIOS,
 } from './v12-recovery-shard.mjs';
 
 const digest = 'a'.repeat(64);
-const ids = ['legacy-playback', 'foreground-reconciliation', 'queued-callback', 'relaunch', 'restore', 'merge', 'zero-cue', 'between-set-rest-pointer'];
-const cuts = ['pre-transaction', 'in-transaction', 'post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'retry', 'offline', 'recovery'];
-const operationFor = (id) => id === 'restore' ? 'secure-restore' : id === 'merge' ? 'secure-merge' : id === 'zero-cue' ? 'garmin-import' : id === 'relaunch' ? 'garmin-match' : 'workout-complete-set';
-const cutObservation = (id, cut, index) => ({
-  cut,
-  operation: operationFor(id),
+const snapshot = (committed) => {
+  const effect_facts = [{ effect_sha256: digest, type: 'reconcile_rest_notification', subject_sha256: digest, expected_revision: 1, status: 'pending', attempt_count: 0, next_attempt_at_ms: 1, last_error_code: null }];
+  const pointer_facts = [{ session_sha256: digest, status: 'in_progress', revision: 2, active_exercise_sha256: digest, active_set_sha256: digest, committed_set_sha256: committed ? digest : null }];
+  const rest_facts = [{ session_sha256: digest, status: 'running', revision: 1, started_at_ms: 1, ends_at_ms: 2, deadline_at_ms: 2, paused_remaining_ms: null, expired_at_ms: null, next_set_sha256: digest }];
+  const timing_facts = [{ session_sha256: digest, set_sha256: digest, state_version: 1, revision: 1, status: 'stopped', mode: 'per_rep', configuration: { version: 1, mode: 'per_rep', intervalMs: 1500, cueChannels: 'haptic' }, progress: { version: 1, completedRepetitions: 2 }, started_at_ms: null, next_boundary_at_ms: null, remaining_ms: null, stopped_at_ms: 2 }];
+  const history_facts = [{ event_sha256: digest, session_sha256: digest, effective_revision: 1, event_type: 'correction', field_identity: 'advanced_timing_resolved_json', before_sha256: digest, after_sha256: digest, occurred_at_ms: 2 }];
+  const restore_facts = [{ state: 'rebuild_pending', updated_at_ms: 2 }];
+  const merge_receipt_facts = [{ table: 'workout_receipts', receipt_sha256: digest, request_sha256: digest, idempotency_sha256: digest, committed_at_ms: 2, result: 'committed' }];
+  return ({
+  source_count: committed ? 1 : 0, receipt_count: committed ? 1 : 0,
+  effect_count: 1, pointer_count: 1, rest_count: 1, history_count: 1,
+  timing_count: 1, restore_count: 1, merge_receipt_count: 1, cue_count: 0,
+  source_sha256: committed ? 'b'.repeat(64) : 'a'.repeat(64),
+  receipt_sha256: committed ? 'c'.repeat(64) : 'a'.repeat(64),
+  effect_sha256: digest, pointer_sha256: digest, rest_sha256: digest,
+  history_sha256: digest, timing_sha256: digest, restore_sha256: digest,
+  merge_receipt_sha256: digest, cue_sha256: digest,
+  effect_facts, pointer_facts, rest_facts, timing_facts,
+  history_facts, restore_facts, merge_receipt_facts,
+  });
+};
+const cutObservation = (scenario, definition, index) => {
+  const uncommitted = ['pre-transaction', 'in-transaction', 'retry'].includes(definition.id);
+  const before = snapshot(false); const afterCut = uncommitted ? before : snapshot(true);
+  const afterReopen = uncommitted ? before : afterCut;
+  return ({
+  cut_id: definition.id,
   status: 'PASS',
-  commit_state: ['pre-transaction', 'in-transaction'].includes(cut) ? 'uncommitted-before-retry' : 'committed-before-retry',
-  retry_code: ['pre-transaction', 'in-transaction'].includes(cut) ? 'committed' : 'already-completed',
-  after_reopen_receipt_count: ['pre-transaction', 'in-transaction'].includes(cut) ? 0 : 1,
-  after_retry_receipt_count: 1,
-  receipt_digest: index.toString(16).padStart(64, '0'),
-  source_digest: 'b'.repeat(64), effect_digest: 'c'.repeat(64), pointer_digest: 'd'.repeat(64),
-  rest_digest: 'e'.repeat(64), history_digest: 'f'.repeat(64), timing_digest: '9'.repeat(64),
-});
+  operation_id: scenario.operation_id,
+  boundary_ids: scenario.boundary_ids,
+  barrier: {
+    barrier_id: definition.barrier_id, process_state: definition.process_state,
+    acknowledgement: definition.acknowledgement, connectivity: definition.connectivity,
+    first_attempt: definition.first_attempt,
+  },
+  first_attempt_code: definition.barrier_id,
+  recovery_code: definition.id === 'recovery'
+    ? scenario.id === 'foreground-reconciliation' ? 'foreground-reconciled' : 'domain-reconciled'
+    : 'not-required',
+  retry_code: uncommitted ? 'committed' : 'replayed',
+  receipt_sha256: index.toString(16).padStart(64, '0'),
+  snapshots: { before, after_cut: afterCut, after_reopen: afterReopen,
+    after_recovery: afterReopen, after_retry: snapshot(true) },
+  });
+};
 const valid = () => ({
-  schema_version: 1,
+  schema_version: 2,
   producer: 'v12-recovery-shard',
   identity: {
-    source_digest: digest, receipt_digest: digest, pointer_digest: digest,
-    effect_digest: digest, rest_digest: digest, history_digest: digest,
-    timing_digest: digest,
+    source_digest: digest, receipt_digest: digest, scenario_digest: digest,
+    cut_digest: digest, pointer_digest: digest, effect_digest: digest,
+    rest_digest: digest, history_digest: digest, timing_digest: digest,
+    restore_digest: digest, merge_receipt_digest: digest, cue_digest: digest,
   },
-  cases: ids.map((id, order) => ({
-    id, order, status: 'PASS',
-    cuts: cuts.map((cut, cutOrder) => cutObservation(id, cut, order * cuts.length + cutOrder + 1)),
+  cases: V12_RECOVERY_SCENARIOS.map((scenario, order) => ({
+    ...scenario, order, status: 'PASS',
+    cuts: V12_RECOVERY_CUT_DEFINITIONS.map((cut, cutOrder) => cutObservation(scenario, cut, order * V12_RECOVERY_CUT_DEFINITIONS.length + cutOrder + 1)),
   })),
 });
 
@@ -47,9 +80,23 @@ test('rejects stale callbacks, duplicate effects, missing cuts, cross-session ow
   for (const mutate of [
     (input) => { input.cases[0].cuts.pop(); },
     (input) => { input.cases[1].id = input.cases[0].id; },
-    (input) => { input.cases[2].cuts[0].receipt_digest = input.cases[0].cuts[0].receipt_digest; },
+    (input) => { input.cases[2].cuts[0].receipt_sha256 = input.cases[0].cuts[0].receipt_sha256; },
     (input) => { input.cases[3].owner_id = 'private'; },
   ]) { const input = valid(); mutate(input); assert.throws(() => validateV12RecoveryShard(input), /v12_recovery_/u); }
+});
+
+test('rejects incomplete rest, timing, history, restore, merge receipt, and barrier facts', () => {
+  for (const mutate of [
+    (input) => { delete input.cases[0].cuts[0].snapshots.after_retry.rest_facts[0].deadline_at_ms; },
+    (input) => { delete input.cases[0].cuts[0].snapshots.after_retry.timing_facts[0].progress; },
+    (input) => { input.cases[0].cuts[0].snapshots.after_retry.history_facts[0].field_identity = ''; },
+    (input) => { input.cases[4].cuts[0].snapshots.after_retry.restore_facts = []; },
+    (input) => { input.cases[5].cuts[0].snapshots.after_retry.merge_receipt_facts[0].portable_id = 'source-row-alias'; },
+    (input) => { input.cases[7].cuts[0].barrier.barrier_id = 'shared-after-commit'; },
+  ]) {
+    const input = valid(); mutate(input);
+    assert.throws(() => validateV12RecoveryShard(input), /v12_recovery_/u);
+  }
 });
 
 test('requires an explicit immutable run command instead of silently succeeding as a no-op', () => {

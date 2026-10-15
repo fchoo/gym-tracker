@@ -35,8 +35,10 @@ async function execute(action, payload, attestation) {
   if (action === "snapshot-settings") return runtime.snapshotSettings(payload.lease);
   if (action === "restore-settings") return runtime.restoreSettings(payload.settings, payload.lease);
   if (action === "sqlite") return runtime.withLease(payload, runtime.sqlite);
-  const domainResult = await executeProductionDomainAction(action, payload, attestation);
-  if (domainResult !== undefined) return domainResult;
+  if (action === "recovery") {
+    const domainResult = await executeProductionDomainAction(action, payload, attestation);
+    if (domainResult !== undefined) return domainResult;
+  }
   // These producers do not exist in the source tree yet. Never convert a
   // screenshot of an arbitrary screen or a successful Maestro process into
   // a state/observation receipt. Keep the unsupported actions explicitly closed.

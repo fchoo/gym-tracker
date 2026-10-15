@@ -32,7 +32,7 @@ const cuts = {
 };
 function recoverySnapshot(committed, phase) {
   const caseId = state.caseId; const timed = true;
-  const hasRest = ['foreground-reconciliation', 'queued-callback'].includes(caseId)
+  const hasRest = ['foreground-reconciliation', 'queued-callback', 'restore', 'merge'].includes(caseId)
     || (caseId === 'between-set-rest-pointer' && committed);
   const hasEffect = ['foreground-reconciliation', 'queued-callback'].includes(caseId)
     || (['between-set-rest-pointer', 'legacy-playback', 'relaunch', 'zero-cue'].includes(caseId) && committed);
