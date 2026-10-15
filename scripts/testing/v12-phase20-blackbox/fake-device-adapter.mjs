@@ -34,9 +34,8 @@ const response = (() => {
       id,
       configuration_id,
       identity: { fixture: "v12-synthetic-fixtures-r18", clock: "2026-10-14T00:00:00Z", locale: "en-SG", timezone: "Asia/Singapore", content_bounds: { width: 390, height: 844 } },
-      artifacts: { reference_sha256: sha(`${key}:reference`), native_sha256: sha(`${key}:native`), overlay_sha256: sha(`${key}:overlay`), difference_sha256: sha(`${key}:difference`), mask_sha256: sha(`${key}:mask`) },
-      semantic: { content: true, actions: true, copy: true, state: true, route: true, focus: true, order: true, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], non_color_state: true, commit_read_only: true, accepted_deviation: null },
-      visual: { geometry_dp: 0, baseline_icon_dp: 0, token_exact: true, ciede2000: 0, pixel_percent: 0 },
+      approved_reference_png_base64: png(key),
+      observation: { native_execution: "EXECUTED", state_id: id, configuration_id, content: true, actions: true, copy: true, state: true, route: true, focus: true, order: true, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], non_color_state: true, commit_read_only: true, geometry_dp: 0, baseline_icon_dp: 0, token_exact: true, ciede2000: 0 },
     };
   }));
   if (action === "accessibility") return [{

@@ -58,9 +58,18 @@ test("comparison derives retained descriptors and pixel metrics from the verifie
 test("comparison verification rejects missing or tampered output, duplicated bytes, forged metrics, and wrong native linkage", (t) => {
   const input = fixture(t);
   const result = produceV12ComparisonRecord({ runId, root: input.root, input: input.request });
-  const overlay = path.join(input.root, result.artifacts.overlay.path); writeFileSync(overlay, png(80));
+  const overlay = path.join(input.root, result.artifacts.overlay.path); rmSync(overlay);
+  assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /v12_visual_compare_(path|artifact)_invalid/u);
+  writeFileSync(overlay, png(80));
   assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /v12_visual_compare_(artifact|metrics)_invalid/u);
   writeFileSync(overlay, readFileSync(path.join(input.root, result.artifacts.difference.path)));
   assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /v12_visual_compare_(duplicate|artifact)_invalid/u);
   assert.throws(() => produceV12ComparisonRecord({ runId, root: input.root, input: { ...input.request, id: "BW-002", observation: { ...input.request.observation, state_id: "BW-002" } } }), /capture/u);
+});
+
+test("comparison verification recomputes metrics and re-checks the approved reference source", (t) => {
+  const input = fixture(t); const result = produceV12ComparisonRecord({ runId, root: input.root, input: input.request });
+  assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result: { ...result, metrics: { ...result.metrics, pixel_percent: 9 } } }), /metrics/u);
+  writeFileSync(path.join(input.root, input.referencePath), png(90));
+  assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /artifact/u);
 });
