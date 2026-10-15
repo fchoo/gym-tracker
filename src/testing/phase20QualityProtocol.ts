@@ -191,6 +191,10 @@ function assertMarker(
   if (marker.kind === "ready" && !SHA256.test(marker.readiness_sha256 ?? "")) {
     throw new Error("phase20_quality_readiness_missing");
   }
+  if (marker.payload?.executed_operation !== undefined
+    && marker.payload.executed_operation !== marker.operation) {
+    throw new Error("phase20_quality_marker_identity_mismatch");
+  }
 }
 
 export function collectPhase20QualityMarkers(

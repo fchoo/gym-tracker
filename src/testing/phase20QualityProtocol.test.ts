@@ -89,6 +89,9 @@ describe("Phase 20 quality workload protocol", () => {
       marker("start", { operation: "numeric-edit" }), marker("commit"), marker("ready"),
     ], request)).toThrow("phase20_quality_marker_identity_mismatch");
     expect(() => collectPhase20QualityMarkers([
+      marker("start", { payload: { executed_operation: "rest-control" } }), marker("commit"), marker("ready"),
+    ], request)).toThrow("phase20_quality_marker_identity_mismatch");
+    expect(() => collectPhase20QualityMarkers([
       marker("start"), marker("commit", { monotonic_ms: 10 }), marker("ready"),
     ], request)).toThrow("phase20_quality_marker_clock_invalid");
     const { sqlite_receipt_sha256: _receipt, ...withoutSqliteReceipt } = marker("commit");

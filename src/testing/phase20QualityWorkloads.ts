@@ -14,7 +14,7 @@ type GarminResult = Readonly<{
 
 type Dependencies = Readonly<{
   phase2(samples: number, observe?: Parameters<typeof import("../bootstrap/phase2Benchmark").performPhase2Benchmark>[1]): Promise<Phase2BenchmarkResult>;
-  phase12(observe?: Phase12BackupBenchmarkObserver): Promise<Phase12BackupBenchmarkResult>;
+  phase12(observe?: Phase12BackupBenchmarkObserver, observeDatabaseName?: (databaseName: string) => void): Promise<Phase12BackupBenchmarkResult>;
   garmin(nonce: string): Promise<GarminResult>;
 }>;
 
@@ -136,10 +136,11 @@ export async function runPhase20HeavyWorkload(
       merge_preflight_ms: [],
       merge_materialization_ms: [],
     };
+    let databaseName = "";
     const result = await dependencies.phase12((sample) => {
       const key = `${sample.operation.replaceAll("-", "_")}_ms`;
       spans[key]?.push({ start_ms: sample.startMs, end_ms: sample.endMs });
-    });
+    }, (value) => { databaseName = value; });
     const values = result.measurements;
     if (result.status !== "passed"
       || !finiteSamples(values.dirty_trigger_ms, 1)
@@ -150,6 +151,7 @@ export async function runPhase20HeavyWorkload(
       || !validSpans(spans.writer_occupancy_ms!, values.writer_occupancy_ms)
       || !validSpans(spans.merge_preflight_ms!, values.merge_preflight_ms)
       || !validSpans(spans.merge_materialization_ms!, values.merge_materialization_ms)
+      || !/^gym-tracker-phase12-benchmark-[a-f0-9-]+\.db$/u.test(databaseName)
       || values.merge_output_equivalent !== true
       || values.network_inside_writer !== false) {
       throw new Error("phase20_quality_phase12_result_invalid");
@@ -158,7 +160,7 @@ export async function runPhase20HeavyWorkload(
       operation,
       producer: "phase12-backup-benchmark/v1",
       native_execution: "EXECUTED",
-      database_name: "gym-tracker-phase12-benchmark-isolated.db",
+      database_name: databaseName,
       command_receipt_sha256: await receipt(result),
       samples: Object.freeze({
         dirty_trigger_ms: values.dirty_trigger_ms,

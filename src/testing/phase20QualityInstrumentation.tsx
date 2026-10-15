@@ -499,9 +499,13 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
     enabled: true,
     now: () => performance.now(),
     onMarker: (event: V12AcceptanceBenchmarkMarker) => {
+      if (event.operation !== request.operation) {
+        void emit("error", performance.now(), { code: "quality_operation_mismatch" });
+        return;
+      }
       void emit(event.kind, event.at_ms, { executed_operation: event.operation });
     },
-  }), [emit]);
+  }), [emit, request.operation]);
 
   useEffect(() => {
     if (runtime.launchState !== "trusted"

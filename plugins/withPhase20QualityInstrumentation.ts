@@ -13,7 +13,8 @@ const instrumentationClass = ".Phase20QualityInstrumentation";
 export function phase20QualityInstrumentationEnabled(
   extra: Readonly<Record<string, unknown>> | null | undefined,
 ): boolean {
-  return extra?.nativeContractsEnabled === true
+  return extra?.buildProfile === "development-test"
+    && extra.nativeContractsEnabled === true
     && extra.nativeContractSuite === "v1.2-acceptance";
 }
 

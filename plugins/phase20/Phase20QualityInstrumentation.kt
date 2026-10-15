@@ -40,6 +40,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
   private lateinit var arguments: Bundle
   private var progressSequence = 0
   private var lastProgressAtMs = 0L
+  private var lastImeHeightPx = 0
 
   private data class Marker(val value: JSONObject, val kind: String, val atMs: Double)
   private data class Run(
@@ -132,6 +133,11 @@ class Phase20QualityInstrumentation : Instrumentation() {
       if (!operation.startsWith("launch-")
         && !value.optString("sqlite_receipt_sha256").matches(Regex("[a-f0-9]{64}"))) {
         throw IllegalStateException("sqlite_receipt_sha256_missing")
+      }
+      val payload = value.optJSONObject("payload")
+      if (payload?.has("executed_operation") == true
+        && payload.getString("executed_operation") != operation) {
+        throw IllegalStateException("workload_marker_identity_mismatch")
       }
       markers += Marker(value, kind, atMs)
     }
@@ -279,6 +285,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
   }
 
   private fun runOperation(nonce: String, action: String, operation: String, sequence: Int): Run {
+    progress(nonce, action, true)
     command("logcat -c")
     val start = elapsedMs(); val pssBefore = pssBytes(); val activity = launch(nonce, action, operation, sequence)
     waitForIdleSync()
@@ -315,7 +322,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
         .any { setting("global", it) != value }) throw IllegalStateException("settings_readback_invalid")
   }
   private fun databaseDigest(nonce: String): String {
-    val database = targetContext.getDatabasePath("$databasePrefix$nonce.db")
+    val database = File(File(targetContext.filesDir, "SQLite"), "$databasePrefix$nonce.db")
     val digest = MessageDigest.getInstance("SHA-256"); var found = false
     listOf(database, File(database.path + "-wal"), File(database.path + "-shm")).filter(File::isFile).sortedBy(File::getName).forEach { file ->
       found = true; digest.update(file.name.toByteArray()); FileInputStream(file).use { input ->
@@ -342,6 +349,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
         tap(edit.first.bounds); command("input text quality")
         val ime = activity.window.decorView.rootWindowInsets?.getInsets(WindowInsets.Type.ime())
         if (ime == null || ime.bottom <= ime.top) throw IllegalStateException("software_keyboard_readback_missing")
+        lastImeHeightPx = ime.bottom
       }
       "hardware-keyboard" -> key(KeyEvent.KEYCODE_ENTER); "dpad" -> key(KeyEvent.KEYCODE_DPAD_CENTER) }
     val after = focusedNodeId(targetNodes()); val image = screenshotHash()
@@ -365,11 +373,14 @@ class Phase20QualityInstrumentation : Instrumentation() {
       ?: throw IllegalStateException("modal_state_missing")
     focus(trigger.second); tap(trigger.first.bounds)
     if (allNodes().none { (it.text ?: it.contentDescription)?.toString()?.contains("App Settings") == true }) throw IllegalStateException("modal_state_missing")
+    val modalFocused = targetNodes().firstOrNull { it.second.isFocused || it.second.isAccessibilityFocused }
+      ?: throw IllegalStateException("modal_focus_missing")
     val bitmap = uiAutomation.takeScreenshot() ?: throw IllegalStateException("screenshot_missing")
-    val ring = measureFocusRing(bitmap, trigger.first.bounds, targetContext.resources.displayMetrics.density)
+    val ring = measureFocusRing(bitmap, modalFocused.first.bounds, targetContext.resources.displayMetrics.density)
     key(KeyEvent.KEYCODE_BACK)
     if (allNodes().any { (it.text ?: it.contentDescription)?.toString()?.contains("App Settings") == true }) throw IllegalStateException("modal_back_failed")
-    focus(trigger.second); tap(trigger.first.bounds); key(KeyEvent.KEYCODE_ESCAPE)
+    if (focusedNodeId(targetNodes()) != trigger.first.id) throw IllegalStateException("modal_back_focus_restore_failed")
+    tap(trigger.first.bounds); key(KeyEvent.KEYCODE_ESCAPE)
     val restored = focusedNodeId(targetNodes()) == trigger.first.id
     if (!restored || ring != 3) throw IllegalStateException("modal_focus_restore_failed:$root")
     return JSONObject().put("focus_ring_dp", ring).put("focus_offset_dp", ring).put("back", "closes-modal")
@@ -380,6 +391,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
     command("settings put system font_scale 2"); command("settings put secure show_ime_with_hard_keyboard 1")
     val observations = linkedMapOf<String, JSONObject>(); val rootHashes = mutableSetOf<String>()
     for ((root, _) in roots) for (mode in listOf("normal", "reduced")) {
+      lastImeHeightPx = 0
       setMotion(mode); val run = runOperation(nonce, action, "accessibility-$root-$mode", 1); val before = databaseDigest(nonce)
       val pairs = targetNodes(); val targets = pairs.map(Pair<Target, AccessibilityNodeInfo>::first)
       if (targets.isEmpty()) throw IllegalStateException("semantic_tree_missing")
@@ -390,8 +402,8 @@ class Phase20QualityInstrumentation : Instrumentation() {
         ?: throw IllegalStateException("modal_invoker_missing")
       val interactions = JSONArray(listOf("touch", "software-keyboard", "hardware-keyboard", "dpad").map { interaction(it, primary, run.activity) })
       val screenshot = uiAutomation.takeScreenshot() ?: throw IllegalStateException("screenshot_missing")
-      val insets = run.activity.window.decorView.rootWindowInsets; val bars = insets?.getInsets(WindowInsets.Type.systemBars()); val ime = insets?.getInsets(WindowInsets.Type.ime())
-      if (targetContext.resources.configuration.fontScale != 2f || ime == null) throw IllegalStateException("settings_readback_invalid")
+      val insets = run.activity.window.decorView.rootWindowInsets; val bars = insets?.getInsets(WindowInsets.Type.systemBars())
+      if (targetContext.resources.configuration.fontScale != 2f || lastImeHeightPx <= 0) throw IllegalStateException("settings_readback_invalid")
       val ready = run.marker("ready"); val motion = JSONObject().put("destination", root.replaceFirstChar { it.uppercase() })
         .put("callbacks", if (run.frames.isEmpty()) 0 else 1).put("source_facts", ready.getString("sqlite_receipt_sha256"))
       observations["$root:$mode"] = JSONObject().put("root", root).put("motion_mode", mode)
@@ -399,7 +411,7 @@ class Phase20QualityInstrumentation : Instrumentation() {
         .put("configuration", JSONObject().put("font_scale", 2).put("density", density)
           .put("content_bounds", JSONObject().put("width", screenshot.width / density).put("height", screenshot.height / density))
           .put("insets", JSONObject().put("top", (bars?.top ?: 0) / density).put("bottom", (bars?.bottom ?: 0) / density))
-          .put("ime_bounds", JSONObject().put("top", 0).put("bottom", max(1, ime.bottom) / density)))
+          .put("ime_bounds", JSONObject().put("top", (screenshot.height - lastImeHeightPx) / density).put("bottom", screenshot.height / density)))
         .put("targets", targetArray).put("interactions", interactions).put("modal", modal(root))
         .put("motion", JSONObject().put(mode, motion)).put("receipts", JSONObject()
           .put("source_tree_sha256", identity.getString("source_tree_sha256")).put("fixture_sha256", identity.getString("fixture_sha256"))

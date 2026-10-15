@@ -438,10 +438,12 @@ export type Phase12BackupBenchmarkObserver = (sample: Readonly<{
 
 export async function performPhase12BackupBenchmark(
   observeSample?: Phase12BackupBenchmarkObserver,
+  observeDatabaseName?: (databaseName: string) => void,
 ): Promise<Phase12BackupBenchmarkResult> {
   const startedAt = new Date().toISOString();
   const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
   const databaseName = phase12BenchmarkDatabaseName(randomUUID());
+  observeDatabaseName?.(databaseName);
   const kernel = await openSqliteKernel(databaseName);
   try {
     await migrateBenchmarkDatabase("phase12", databaseName, kernel);

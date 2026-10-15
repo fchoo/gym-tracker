@@ -9,7 +9,8 @@ const unused = async (): Promise<never> => { throw new Error("unused"); };
 describe("Phase 20 real heavy workloads", () => {
   it("maps the existing Phase 12 producer without inventing timing samples", async () => {
     const result = await runPhase20HeavyWorkload("phase12-backup", {
-      phase12: async (observe) => {
+      phase12: async (observe, observeDatabaseName) => {
+        observeDatabaseName?.("gym-tracker-phase12-benchmark-aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa.db");
         for (const [operation, count, duration] of [
           ["dirty-trigger", 1, 1],
           ["writer-occupancy", 1, 2],

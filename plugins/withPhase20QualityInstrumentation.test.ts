@@ -4,9 +4,10 @@ import { phase20InstrumentationSource, phase20QualityInstrumentationEnabled } fr
 
 describe("Phase 20 quality instrumentation plugin", () => {
   it("is unavailable outside the exact development acceptance build", () => {
-    expect(phase20QualityInstrumentationEnabled({ nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" })).toBe(true);
-    expect(phase20QualityInstrumentationEnabled({ nativeContractsEnabled: false, nativeContractSuite: "v1.2-acceptance" })).toBe(false);
-    expect(phase20QualityInstrumentationEnabled({ nativeContractsEnabled: true, nativeContractSuite: "phase14" })).toBe(false);
+    expect(phase20QualityInstrumentationEnabled({ buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" })).toBe(true);
+    expect(phase20QualityInstrumentationEnabled({ buildProfile: "production", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" })).toBe(false);
+    expect(phase20QualityInstrumentationEnabled({ buildProfile: "development-test", nativeContractsEnabled: false, nativeContractSuite: "v1.2-acceptance" })).toBe(false);
+    expect(phase20QualityInstrumentationEnabled({ buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "phase14" })).toBe(false);
   });
   it("packages the exact installed component and nonce-bound chunk protocol", () => {
     expect(phase20InstrumentationSource).toContain("class Phase20QualityInstrumentation : Instrumentation()");
