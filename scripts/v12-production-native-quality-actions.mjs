@@ -181,18 +181,23 @@ async function waitForColdReady(serial, nonce, sequence) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const output = shell(serial, "logcat", "-d", "-v", "monotonic", "ReactNativeJS:I", "*:S");
+    let ready; let routeCallback;
     for (const line of output.split(/\r?\n/u)) {
       const markerAt = line.indexOf("GYM_TRACKER_PHASE20_WORKLOAD:");
       if (markerAt < 0) continue;
       let marker;
       try { marker = JSON.parse(line.slice(markerAt + "GYM_TRACKER_PHASE20_WORKLOAD:".length)); } catch { continue; }
-      if (marker.nonce !== nonce || marker.action !== "performance" || marker.operation !== "launch-cold" || marker.sequence !== sequence || marker.kind !== "ready") continue;
+      if (marker.nonce !== nonce || marker.action !== "performance" || marker.operation !== "launch-cold" || marker.sequence !== sequence) continue;
       const timestamp = /^\s*\[?\s*(\d+(?:\.\d+)?)/u.exec(line)?.[1];
       const unsigned = { ...marker }; delete unsigned.receipt_sha256;
       if (timestamp === undefined || marker.receipt_sha256 !== hash(canonicalV12QualityJson(unsigned))
-        || !HASH.test(marker.readiness_sha256 ?? "") || !HASH.test(marker.sqlite_receipt_sha256 ?? "")) fail("cold_marker_invalid");
-      return { marker, readyMs: Number(timestamp) * 1_000 };
+        || !HASH.test(marker.sqlite_receipt_sha256 ?? "")) fail("cold_marker_invalid");
+      if (marker.kind === "callback" && marker.payload?.callback_id === "route-ready"
+        && marker.payload?.rendered_root === "workout" && Number.isSafeInteger(marker.payload?.callback_count)
+        && marker.payload.callback_count > 0) routeCallback = marker;
+      if (marker.kind === "ready" && HASH.test(marker.readiness_sha256 ?? "")) ready = { marker, readyMs: Number(timestamp) * 1_000 };
     }
+    if (ready !== undefined && routeCallback !== undefined) return { ...ready, routeCallback };
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   fail("cold_marker_timeout");
@@ -225,7 +230,8 @@ export async function collectV12ColdLaunchEvidence(serial, nonce, sourceTreeSha2
     cycles.push({ sequence, operation: "launch-cold", previous_process_id: previous.processId, process_id: current.processId,
       previous_process_start_ticks: previous.processStartTicks, process_start_ticks: current.processStartTicks,
       process_start_ms: processStartMs, ready_ms: ready.readyMs, database_name: ready.marker.database_name,
-      readiness_sha256: ready.marker.readiness_sha256, source_receipt_sha256: ready.marker.sqlite_receipt_sha256 });
+      readiness_sha256: ready.marker.readiness_sha256, source_receipt_sha256: ready.marker.sqlite_receipt_sha256,
+      route_callback_receipt_sha256: ready.routeCallback.receipt_sha256 });
     previous = current;
   }
   const durations_ms = cycles.map(({ process_start_ms, ready_ms }) => ready_ms - process_start_ms);

@@ -58,11 +58,16 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   state.processStartTicks = state.reuseProcess ? state.lastProcessStartTicks : 100000 + state.coldSequence * 100;
   const operation = uri.searchParams.get('operation'); const sequence = Number(uri.searchParams.get('sequence'));
   const nonce = uri.searchParams.get('nonce'); const rootName = 'workout'; const fixtureId = 'phase20-workout-active-r1'; const stateId = 'workout-active-session';
+  const callbackUnsigned = {schema_version:1,nonce,action:'performance',operation,sequence,kind:'callback',source:'phase20-quality-workload/v1',monotonic_ms:0.5,
+    database_name:'gym-tracker-phase20-quality-'+nonce+'-workout.db',root:rootName,fixture_id:fixtureId,state_id:stateId,configuration_id:'quality-workout-performance-f200',
+    sqlite_receipt_sha256:hashValue(state.mutateColdSource && sequence === 2 ? 'source:mutated' : 'source:stable'),payload:{callback_id:'route-ready',callback_count:1,root:rootName,state_id:stateId,rendered_root:rootName}};
+  const callback = {...callbackUnsigned,receipt_sha256:hashValue(canonical(callbackUnsigned))};
   const unsigned = {schema_version:1,nonce,action:'performance',operation,sequence,kind:'ready',source:'phase20-quality-workload/v1',monotonic_ms:1,
     database_name:'gym-tracker-phase20-quality-'+nonce+'-workout.db',root:rootName,fixture_id:fixtureId,state_id:stateId,configuration_id:'quality-workout-performance-f200',
-    sqlite_receipt_sha256:hashValue('source:'+sequence),readiness_sha256:hashValue('ready:'+sequence),payload:{root:rootName}};
+    sqlite_receipt_sha256:hashValue(state.mutateColdSource && sequence === 2 ? 'source:mutated' : 'source:stable'),readiness_sha256:hashValue('ready:'+sequence),payload:{root:rootName}};
   const marker = {...unsigned,receipt_sha256:hashValue(canonical(unsigned))}; const readySeconds = state.processStartTicks / 100 + 0.1;
-  state.coldLog = readySeconds.toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(marker) + '\n'; save();
+  state.coldLog = (readySeconds - 0.01).toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(callback) + '\n'
+    + readySeconds.toFixed(3) + ' I/ReactNativeJS: GYM_TRACKER_PHASE20_WORKLOAD:' + JSON.stringify(marker) + '\n'; save();
   process.stdout.write('Status: ok\n');
 } else if (command[0] === 'am' && command[1] === 'instrument') {
   if (process.env.NODE_ENV !== 'production' || process.env.NODE_TEST_CONTEXT || process.env.V12_NATIVE_ADAPTER_COMMAND || process.env.V12_NATIVE_ADAPTER_TEST_MODE) process.exit(79);
@@ -145,17 +150,27 @@ test("production subprocess returns the complete native performance raw schema u
   assert.deepEqual(result.samples.ordinary_js_task_ms, runner.measured.performance.samples.ordinary_js_task_ms);
   assert.notDeepEqual(result.samples.cold_launch_to_interactive_ms, runner.measured.performance.samples.cold_launch_to_interactive_ms);
   assert.equal(result.samples.native_receipts.cold_launch_cycles.length, 20);
-  assert.ok(result.samples.native_receipts.cold_launch_cycles.every((cycle) => cycle.process_id !== cycle.previous_process_id && cycle.process_start_ticks !== cycle.previous_process_start_ticks));
+  assert.equal(new Set(result.samples.native_receipts.cold_launch_cycles.map((cycle) => cycle.source_receipt_sha256)).size, 1);
+  assert.equal(new Set(result.samples.native_receipts.cold_launch_cycles.map((cycle) => `${cycle.process_id}:${cycle.process_start_ticks}`)).size, 20);
+  assert.equal(new Set(result.samples.native_receipts.cold_launch_cycles.map((cycle) => cycle.route_callback_receipt_sha256)).size, 20);
+  assert.equal(result.samples.native_receipts.input_receipts.numeric_edit.length, 100);
+  assert.equal(result.samples.native_receipts.input_receipts.rest_control.length, 100);
+  assert.equal(result.samples.native_receipts.workload_receipt.set_count, 15_000);
+  assert.equal(result.samples.native_receipts.workload_receipt.correction_count, 200);
   const shard = executeV12PerformanceShard({ identity: runner.identity, performance: result });
   assert.equal(shard.summary.calendar_frame_sequences.samples, 100);
   assert.deepEqual(shard.raw_samples.native_receipts, result.samples.native_receipts);
   assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(runner.readState().instrumentCalls, 1);
-  assert.equal(result.samples.garmin_sync_normalization.baseline.source, "phase18-pinned-artifact/v1");
+  assert.equal(result.samples.garmin_sync_normalization.baseline.source, "phase20-current-source-baseline/v1");
 });
 test("cold launch rejects a clear-task-style cycle which does not restart the app process", (t) => {
   const runner = fixture(t); runner.updateState({ reuseProcess: true, processId: 2500, processStartTicks: 90_000 });
   rejected(runner.invoke(), "cold_process_not_restarted"); released(runner);
+});
+test("cold launch rejects source mutation between otherwise valid process restarts", (t) => {
+  const runner = fixture(t); runner.updateState({ mutateColdSource: true });
+  rejected(runner.invoke(), "performance_cold_launch_invalid"); released(runner);
 });
 test("production subprocess returns measured F200/accessibility with restored settings and attended exclusions", (t) => {
   const runner = fixture(t, "accessibility"); const before = runner.readState().settings;

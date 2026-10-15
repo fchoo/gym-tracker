@@ -56,6 +56,7 @@ test("locks D20-06 and Phase 12 budgets before any collection", () => {
   assert.equal(V12_PERFORMANCE_BUDGETS.committed_set_to_visible_dock.maximum_p95_ms, 150);
   assert.equal(V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.required_rows, 100000);
   assert.equal(V12_PERFORMANCE_BUDGETS.garmin_sync_normalization.status, "REVIEW_REQUIRED");
+  assert.equal(V12_PERFORMANCE_BUDGETS.garmin_sync_normalization.limit_source, "phase20-current-source-baseline/v1");
 });
 
 test("validates retained raw samples and deterministic p95 without fabricated verdicts", () => {

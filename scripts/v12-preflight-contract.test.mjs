@@ -5,12 +5,14 @@ import {
   parseV12EvidenceCliArgs,
   executeV12EvidenceCli,
   deriveV12Ledger,
+  validateV12FinalNativeIdentity,
 } from "./verify-v12-native-evidence.mjs";
 
 import { loadV12ContractInputs } from "./v12-evidence-contract.mjs";
 import { createHash } from "node:crypto";
 
 const RUN_ID = "phase20-20261014T031137Z-5917481c1fd1";
+const h = (letter) => letter.repeat(64);
 
 test("the Phase 20 verifier accepts only the explicit unified shard, preseal, and final grammars", () => {
   assert.deepEqual(
@@ -39,6 +41,24 @@ test("unified preflight execution is explicitly source-only and never falls thro
     () => executeV12EvidenceCli(["--run", RUN_ID, "--mode", "preseal", "--no-final-write"], { root: process.cwd() }),
     /v12_preflight_/u,
   );
+});
+
+test("final native identity requires current source, retained APK bytes, signature, installed bytes, settings, and device", () => {
+  const manifest = {
+    run_id: RUN_ID,
+    evidence_origin: "native",
+    source: { head: "a".repeat(40), tree_sha256: h("b") },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { path: "artifacts/native/v1.2-acceptance/app.apk", sha256: h("c"), size_bytes: 3, signature_sha256: h("d"), certificate_sha256: h("e") } },
+    device: { installed_apk_sha256: h("c"), identity_sha256: h("f"), settings_sha256: h("1"), restoration_sha256: h("1") },
+  };
+  const observed = { source_head: manifest.source.head, source_tree_sha256: manifest.source.tree_sha256,
+    apk_sha256: manifest.build.apk.sha256, apk_size_bytes: 3, signature_sha256: manifest.build.apk.signature_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256, installed_apk_sha256: manifest.device.installed_apk_sha256,
+    device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256 };
+  assert.equal(validateV12FinalNativeIdentity(manifest, observed), true);
+  for (const key of ["source_tree_sha256", "apk_sha256", "signature_sha256", "installed_apk_sha256", "device_identity_sha256", "settings_sha256"]) {
+    assert.throws(() => validateV12FinalNativeIdentity(manifest, { ...observed, [key]: h("9") }), /v12_final_native_identity_invalid/u, key);
+  }
 });
 
 // Deliberately uses the former PASS-by-hash shape. This must never regain a

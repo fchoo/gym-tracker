@@ -109,7 +109,8 @@ export function invokeV12NativeAdapter(action, payload, {
   }
   let response;
   try { response = JSON.parse(result.stdout); } catch { fail("response_invalid"); }
-  if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)) fail("response_invalid");
+  if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)
+    || (testInjectionEnabled() ? response.evidence_origin !== "test" : Object.hasOwn(response, "evidence_origin"))) fail("response_invalid");
   if (!sameAttestation(attestation, response.attestation)) fail("attestation_invalid");
   return response.result;
 }

@@ -1496,6 +1496,7 @@ test("the sole v1.2 validator rejects untyped row claims and seals only a valida
   const normal = Object.freeze({
     schema_version: 1,
     run_id: manifest.run_id,
+    evidence_origin: "native",
     rows: sealedRows,
     verdict_counts: Object.freeze({ PASS: 172, FAIL: 0, NOT_RUN: 0, REVIEW_REQUIRED: 0, N_A_REVIEWED: 0, ACCEPTED_EXCEPTION: 0 }),
     readiness: "READY",
@@ -1512,4 +1513,8 @@ test("the sole v1.2 validator rejects untyped row claims and seals only a valida
   assert.equal(writes.size, 2);
   assert.equal(final.release_authorized, false);
   assert.match(generateV12ParityReport({ ledger: normal }), /READY/u);
+  const testWrites = new Map();
+  assert.throws(() => sealV12FinalEvidence({ mode: "final", run_id: manifest.run_id,
+    ledger: { ...normal, evidence_origin: "test" }, writeImmutableJson: (file, value) => testWrites.set(file, value) }), /v12_final_test_origin_forbidden/u);
+  assert.equal(testWrites.size, 0);
 });

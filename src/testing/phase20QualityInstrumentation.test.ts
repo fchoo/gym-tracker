@@ -38,7 +38,14 @@ describe("Phase 20 quality instrumentation contract", () => {
     expect(source).toContain('onProductCallback("settings-open")');
     expect(source).toContain('productCallback("settings-close")');
     expect(source).toContain('onProductCallback("settings-search-change")');
+    expect(source).toContain("seedPhase20QualityWorkloadFixture(kernel)");
+    expect(source).toContain("collectPhase20QualitySourceProof");
+    expect(source).toContain("<AppTabs");
+    expect(source).toContain('onProductCallback("numeric-edit-commit"');
+    expect(source).toContain('onProductCallback("rest-adjust-commit"');
+    expect(source).toContain('current.rest.state !== "idle"');
     expect(source).toContain("runPhase20HeavyWorkload");
+    expect(source).not.toContain("setDisplayRoot(targetRoot)");
     expect(source).not.toContain("openSqliteKernel(phase20QualityDatabaseName(request.nonce))");
     expect(source).not.toContain("PlanTypeChooserScreen");
   });

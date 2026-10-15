@@ -1,9 +1,22 @@
 import { describe, expect, it } from "@jest/globals";
+import { createHash } from "node:crypto";
 
 import { runPhase20HeavyWorkload } from "./phase20QualityWorkloads";
 import type { Phase12BackupBenchmarkResult } from "../bootstrap/phase12BackupBenchmark";
+import { canonicalJson } from "../domains/activities/importContracts";
 
 const unused = async (): Promise<never> => { throw new Error("unused"); };
+const workloadFacts = {
+  producer: "phase20-quality-workload-proof/v1" as const,
+  set_count: 15_000 as const,
+  correction_count: 200 as const,
+  plan_count: 3 as const,
+  plan_kinds: ["running", "strength"] as const,
+  set_digest_sha256: "a".repeat(64),
+  correction_digest_sha256: "b".repeat(64),
+  plan_digest_sha256: "c".repeat(64),
+};
+const workloadProof = { ...workloadFacts, workload_digest_sha256: createHash("sha256").update(canonicalJson(workloadFacts)).digest("hex") };
 
 describe("Phase 20 real heavy workloads", () => {
   it("binds ordinary JS spans to real work in the nonce-scoped Workout database", async () => {
@@ -11,12 +24,13 @@ describe("Phase 20 real heavy workloads", () => {
     const result = await runPhase20HeavyWorkload("ordinary-js-task", {
       phase12: unused,
       garmin: unused,
-    }, nonce, { activeWorkout: { revision: 3, exerciseCount: 4 }, source: "sqlite" });
+    }, nonce, workloadProof);
     expect(result).toMatchObject({ producer: "phase20-ordinary-js-source-work/v1", database_name: `gym-tracker-phase20-quality-${nonce}-workout.db` });
     expect(result?.samples.js_task_ms).toHaveLength(100);
+    expect(result?.samples.workload).toEqual(workloadProof);
   });
 
-  it("retains installed Chaquopy transport hashes and an independent pinned Phase 18 baseline", async () => {
+  it("retains installed Chaquopy transport hashes and a fresh exact-source Phase 20 baseline", async () => {
     const actual = [1, 2, 3, 4, 5];
     const baseline = [6, 7, 8, 9, 10];
     const result = await runPhase20HeavyWorkload("garmin-json-normalization", {
@@ -26,10 +40,11 @@ describe("Phase 20 real heavy workloads", () => {
         normalization_ms: actual, normalization_spans: actual.map((value, index) => ({ start_ms: index * 10, end_ms: index * 10 + value })),
         peak_rss_bytes: actual.map((value) => value * 1024), transport: "chaquopy-python-garminconnect-0.3.17",
         fixture_sha256: "1".repeat(64), payload_sha256: "2".repeat(64), output_sha256: "3".repeat(64), runtime_receipt_sha256: "4".repeat(64),
-        baseline: { source: "phase18-pinned-artifact/v1", phase18_source_tree_sha256: "5".repeat(64), artifact_sha256: "6".repeat(64), fixture_sha256: "1".repeat(64), normalization_ms: baseline, peak_rss_bytes: baseline.map((value) => value * 2048) },
+        fixture_profile: { activity_count: 100, lap_count: 10, route_point_count: 64 },
+        baseline: { source: "phase20-current-source-baseline/v1", fixture_sha256: "1".repeat(64), payload_sha256: "2".repeat(64), output_sha256: "3".repeat(64), normalization_ms: baseline, peak_rss_bytes: baseline.map((value) => value * 2048) },
       }),
     });
-    expect(result?.samples).toMatchObject({ transport: "chaquopy-python-garminconnect-0.3.17", baseline: { source: "phase18-pinned-artifact/v1" } });
+    expect(result?.samples).toMatchObject({ transport: "chaquopy-python-garminconnect-0.3.17", fixture_profile: { activity_count: 100, lap_count: 10, route_point_count: 64 }, baseline: { source: "phase20-current-source-baseline/v1" } });
     const samples = result?.samples as Readonly<{ normalization_ms: readonly number[]; baseline: Readonly<{ normalization_ms: readonly number[] }> }>;
     expect(samples.normalization_ms).not.toEqual(samples.baseline.normalization_ms);
   });

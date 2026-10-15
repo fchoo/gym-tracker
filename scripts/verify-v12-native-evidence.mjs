@@ -15,6 +15,7 @@ import {
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_ROUTE_JOURNEY_IDS,
@@ -609,6 +610,7 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
   return Object.freeze({
     ...baseLedger,
     run_id: validatedManifest.run_id,
+    evidence_origin: validatedManifest.evidence_origin ?? "native",
     identity: Object.freeze({
       run_id: validatedManifest.run_id,
       source_tree_sha256: validatedManifest.source.tree_sha256,
@@ -633,16 +635,18 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
 
 export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson } = {}) {
   if (mode !== "final") finalFail("explicit_final_mode_required");
+  if (ledger?.evidence_origin !== "native") finalFail("test_origin_forbidden");
   if (!V12_FINAL_RUN.test(run_id ?? "") || ledger?.run_id !== run_id || ledger?.rows?.length !== 172
     || typeof writeImmutableJson !== "function") finalFail("seal_input_invalid");
   if (!Array.isArray(ledger.source_results) || ledger.source_results.length !== 172
     || ledger.source_results.some((item, index) => !item.selector || item.row_id !== ledger.rows[index].requirement_id
       || (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result) && (ledger.rows[index].verdict !== item.result || ledger.readiness !== "NOT_READY")))) finalFail("seal_source_results_invalid");
   const base = `artifacts/native/v1.2/${run_id}`;
-  const matrix = Object.freeze({ schema_version: 2, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
+  const matrix = Object.freeze({ schema_version: 2, run_id, evidence_origin: ledger.evidence_origin, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
   const finalEvidence = Object.freeze({
     schema_version: 2,
     run_id,
+    evidence_origin: ledger.evidence_origin,
     identity: ledger.identity ?? null,
     rows: ledger.rows,
     source_results: ledger.source_results ?? [],
@@ -712,6 +716,67 @@ function preflightSafeFile(root, relative, { required = true } = {}) {
 function preflightHashFile(root, relative, options) {
   const file = preflightSafeFile(root, relative, options);
   return file === null ? null : sha256(readFileSync(file));
+}
+
+export function validateV12FinalNativeIdentity(manifest, observed) {
+  if (!finalPlainObject(manifest) || manifest.evidence_origin === "test") finalFail("test_origin_forbidden");
+  if (manifest.evidence_origin !== undefined && manifest.evidence_origin !== "native") finalFail("native_identity_invalid");
+  if (!finalExact(observed, ["source_head", "source_tree_sha256", "apk_sha256", "apk_size_bytes", "signature_sha256", "certificate_sha256", "installed_apk_sha256", "device_identity_sha256", "settings_sha256"])) finalFail("native_identity_invalid");
+  const expected = {
+    source_head: manifest.source?.head,
+    source_tree_sha256: manifest.source?.tree_sha256,
+    apk_sha256: manifest.build?.apk?.sha256,
+    apk_size_bytes: manifest.build?.apk?.size_bytes,
+    signature_sha256: manifest.build?.apk?.signature_sha256,
+    certificate_sha256: manifest.build?.apk?.certificate_sha256,
+    installed_apk_sha256: manifest.device?.installed_apk_sha256,
+    device_identity_sha256: manifest.device?.identity_sha256,
+    settings_sha256: manifest.device?.settings_sha256,
+  };
+  if (!isDeepStrictEqual(observed, expected) || manifest.device?.restoration_sha256 !== observed.settings_sha256) finalFail("native_identity_invalid");
+  return true;
+}
+
+function finalNativeCommand(program, args, options = {}) {
+  try { return execFileSync(program, args, { maxBuffer: 1024 * 1024 * 1024, ...options }); }
+  catch { preflightFail("native_identity_invalid"); }
+}
+
+function finalAndroidTool(name) {
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+  if (typeof sdk !== "string" || sdk.length === 0) preflightFail("native_identity_invalid");
+  const file = name === "adb" ? path.join(sdk, "platform-tools", "adb") : path.join(sdk, "build-tools", "36.0.0", name);
+  if (!existsSync(file) || !lstatSync(file).isFile()) preflightFail("native_identity_invalid");
+  return file;
+}
+
+export function verifyV12FinalNativeIdentity(manifest, { root = ROOT } = {}) {
+  if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
+  const apkFile = preflightSafeFile(root, manifest.build?.apk?.path);
+  const apkBytes = readFileSync(apkFile);
+  const apksigner = finalAndroidTool("apksigner"); const adb = finalAndroidTool("adb");
+  const signatureReport = finalNativeCommand(apksigner, ["verify", "--verbose", "--print-certs", apkFile]);
+  const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(signatureReport.toString("utf8"))?.[1]?.replaceAll(":", "").toLowerCase();
+  if (!HASH.test(certificate ?? "")) preflightFail("native_identity_invalid");
+  const serial = process.env.V12_DEVICE_SERIAL;
+  if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) preflightFail("native_identity_invalid");
+  const adbText = (...args) => finalNativeCommand(adb, ["-s", serial, ...args], { encoding: "utf8" }).trim();
+  if (adbText("get-state") !== "device") preflightFail("native_identity_invalid");
+  const abi = adbText("shell", "getprop", "ro.product.cpu.abi");
+  const apiLevel = adbText("shell", "getprop", "ro.build.version.sdk");
+  const model = adbText("shell", "getprop", "ro.product.model");
+  const installedPaths = adbText("shell", "pm", "path", manifest.build.package).split(/\r?\n/u).filter(Boolean);
+  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installedPaths[0])) preflightFail("native_identity_invalid");
+  const installedBytes = finalNativeCommand(adb, ["-s", serial, "exec-out", "cat", installedPaths[0].slice("package:".length)]);
+  const settings = [adbText("shell", "settings", "get", "system", "font_scale"), adbText("shell", "settings", "get", "secure", "ui_night_mode"), adbText("shell", "settings", "get", "global", "animator_duration_scale")];
+  validateV12FinalNativeIdentity(manifest, {
+    source_head: finalNativeCommand("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+    source_tree_sha256: sourceTreeSha256(root), apk_sha256: sha256(apkBytes), apk_size_bytes: apkBytes.length,
+    signature_sha256: sha256(signatureReport), certificate_sha256: certificate,
+    installed_apk_sha256: sha256(installedBytes), device_identity_sha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
+    settings_sha256: sha256(`${settings.join("\n")}\n`),
+  });
+  return true;
 }
 
 function preflightCollectFiles(root, runId) {
@@ -830,6 +895,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   const options = parseV12EvidenceCliArgs(args);
   const { manifest, build_sha256 } = preflightManifest(root, options.run_id);
   if (options.mode === "shards-only") return Object.freeze({ ok: true, ...options, build_sha256, artifacts: preflightValidateArtifacts(root, options.run_id, options.ids).hashes });
+  if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
 
   const runPrefix = `artifacts/native/v1.2/${options.run_id}`;
   if (options.mode === "preseal") {
@@ -839,10 +905,11 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     const requiredPaths = new Set([`${runPrefix}/build.json`, ...artifacts.required.map((item) => `${runPrefix}/${item}`)]);
     const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial") || item.includes("/.staging/") || item.includes("/failures/"));
     if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
-    const report = Object.freeze({ schema_version: 2, producer: "v12-preseal-validation/v2", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
+    const report = Object.freeze({ schema_version: 2, producer: "v12-preseal-validation/v2", run_id: options.run_id, evidence_origin: "native", mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
     publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report) });
     return report;
   }
+  verifyV12FinalNativeIdentity(manifest, { root });
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
   if (preseal?.producer !== "v12-preseal-validation/v2" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
   try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }

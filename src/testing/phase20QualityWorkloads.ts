@@ -1,6 +1,4 @@
 import { CryptoDigestAlgorithm, digestStringAsync } from "expo-crypto";
-import garminBaselineAsset from "../../artifacts/review/phase18/garmin-normalization-baseline.json";
-import garminFixtureAsset from "../../artifacts/review/phase18/garmin-normalization-input.json";
 
 import type { Phase12BackupBenchmarkResult } from "../bootstrap/phase12BackupBenchmark";
 import type { Phase12BackupBenchmarkObserver } from "../bootstrap/phase12BackupBenchmark";
@@ -8,6 +6,14 @@ import type { Phase20PerformanceOperation } from "./phase20QualityProtocol";
 import { phase20QualityDatabaseName } from "./phase20QualityProtocol";
 import { canonicalJson } from "../domains/activities/importContracts";
 import { executePhase2OrdinaryJsTask } from "../bootstrap/phase2Benchmark";
+import { PHASE18_GARMIN_BENCHMARK_MAX_FIXTURE } from "./phase18GarminAcceptance";
+import type { Phase20QualityWorkloadProof } from "./phase20QualityWorkload";
+
+const GARMIN_FIXTURE_PROFILE = Object.freeze({
+  activity_count: 100,
+  lap_count: 10,
+  route_point_count: 64,
+});
 
 type GarminResult = Readonly<{
   database_name: string;
@@ -19,11 +25,12 @@ type GarminResult = Readonly<{
   payload_sha256: string;
   output_sha256: string;
   runtime_receipt_sha256: string;
+  fixture_profile: typeof GARMIN_FIXTURE_PROFILE;
   baseline: Readonly<{
-    source: "phase18-pinned-artifact/v1";
-    phase18_source_tree_sha256: string;
-    artifact_sha256: string;
+    source: "phase20-current-source-baseline/v1";
     fixture_sha256: string;
+    payload_sha256: string;
+    output_sha256: string;
     normalization_ms: readonly number[];
     peak_rss_bytes: readonly number[];
   }>;
@@ -36,7 +43,7 @@ type Dependencies = Readonly<{
 
 export type Phase20HeavyWorkloadResult = Readonly<{
   operation: "ordinary-js-task" | "phase12-backup" | "garmin-json-normalization";
-  producer: "phase20-ordinary-js-source-work/v1" | "phase12-backup-benchmark/v1" | "phase18-garmin-bounded-sync/v1";
+  producer: "phase20-ordinary-js-source-work/v1" | "phase12-backup-benchmark/v1" | "phase20-garmin-installed-normalization/v1";
   native_execution: "EXECUTED";
   database_name: string;
   command_receipt_sha256: string;
@@ -61,18 +68,48 @@ function validSpans(
 }
 
 async function receipt(value: unknown): Promise<string> {
-  return digestStringAsync(CryptoDigestAlgorithm.SHA256, JSON.stringify(value));
+  return digestStringAsync(
+    CryptoDigestAlgorithm.SHA256,
+    typeof value === "string" ? value : canonicalJson(value),
+  );
+}
+
+function maximumGarminFixture() {
+  const activities = Array.from({ length: PHASE18_GARMIN_BENCHMARK_MAX_FIXTURE.activity_count }, (_, index) => ({
+    activityId: 9_000_000 + index,
+    activityTypeDTO: { typeKey: "running" },
+    summaryDTO: { startTimeGMT: "2026-01-01T00:00:00.000Z", distance: 5_000, duration: 1_500,
+      elapsedDuration: 1_560, movingDuration: 1_475, averageHR: 150 + (index % 5) },
+  }));
+  return Object.freeze({
+    activities,
+    activity: activities[0],
+    splits: { lapDTOs: PHASE18_GARMIN_BENCHMARK_MAX_FIXTURE.laps },
+    details: { metricDescriptors: [], activityDetailMetrics: [], geoPolylineDTO: { polyline: PHASE18_GARMIN_BENCHMARK_MAX_FIXTURE.route } },
+  });
+}
+
+function validWorkloadProof(value: Readonly<Record<string, unknown>>): value is Phase20QualityWorkloadProof {
+  return value.producer === "phase20-quality-workload-proof/v1"
+    && value.set_count === 15_000
+    && value.correction_count === 200
+    && value.plan_count === 3
+    && JSON.stringify(value.plan_kinds) === JSON.stringify(["running", "strength"])
+    && [value.set_digest_sha256, value.correction_digest_sha256, value.plan_digest_sha256, value.workload_digest_sha256]
+      .every((digest) => typeof digest === "string" && SHA256.test(digest));
 }
 
 async function productionGarmin(nonce: string): Promise<GarminResult> {
   const garmin = await import("../../modules/garmin-connect/src/index");
-  const payloadJson = canonicalJson(garminFixtureAsset);
+  const payloadJson = canonicalJson(maximumGarminFixture());
   const fixtureSha256 = await receipt(payloadJson);
+  const baselineNormalizationMs: number[] = [];
+  const baselinePeakRssBytes: number[] = [];
   const normalizationMs: number[] = [];
   const normalizationSpans: { start_ms: number; end_ms: number }[] = [];
   const peakRssBytes: number[] = [];
   let payloadSha256 = ""; let outputSha256 = ""; let transport: GarminResult["transport"] | undefined;
-  for (let sequence = 1; sequence <= 5; sequence += 1) {
+  for (let sequence = 1; sequence <= 10; sequence += 1) {
     const startedAt = performance.now();
     const result = await garmin.benchmarkGarminDeterministicJson(payloadJson);
     const endedAt = performance.now();
@@ -82,21 +119,28 @@ async function productionGarmin(nonce: string): Promise<GarminResult> {
       || (payloadSha256 !== "" && payloadSha256 !== result.payloadSha256)
       || (outputSha256 !== "" && outputSha256 !== result.outputSha256)) throw new Error("phase20_quality_garmin_native_result_invalid");
     payloadSha256 = result.payloadSha256; outputSha256 = result.outputSha256; transport = result.transport;
-    normalizationMs.push(endedAt - startedAt); normalizationSpans.push({ start_ms: startedAt, end_ms: endedAt });
-    peakRssBytes.push(runtime.benchmark.memoryRssBytes);
+    if (sequence <= 5) {
+      baselineNormalizationMs.push(endedAt - startedAt);
+      baselinePeakRssBytes.push(runtime.benchmark.memoryRssBytes);
+    } else {
+      normalizationMs.push(endedAt - startedAt);
+      normalizationSpans.push({ start_ms: startedAt, end_ms: endedAt });
+      peakRssBytes.push(runtime.benchmark.memoryRssBytes);
+    }
   }
   const baseline = Object.freeze({
-    source: "phase18-pinned-artifact/v1" as const,
-    phase18_source_tree_sha256: await receipt(garminBaselineAsset.phase18_source_head),
-    artifact_sha256: await receipt(canonicalJson(garminBaselineAsset)),
+    source: "phase20-current-source-baseline/v1" as const,
     fixture_sha256: fixtureSha256,
-    normalization_ms: Object.freeze([...garminBaselineAsset.normalization_ms]),
-    peak_rss_bytes: Object.freeze([...garminBaselineAsset.peak_rss_bytes]),
+    payload_sha256: payloadSha256,
+    output_sha256: outputSha256,
+    normalization_ms: Object.freeze(baselineNormalizationMs),
+    peak_rss_bytes: Object.freeze(baselinePeakRssBytes),
   });
   return Object.freeze({
     database_name: phase20QualityDatabaseName(nonce, "workout"), normalization_ms: Object.freeze(normalizationMs),
     normalization_spans: Object.freeze(normalizationSpans), peak_rss_bytes: Object.freeze(peakRssBytes),
     transport: transport!, fixture_sha256: fixtureSha256, payload_sha256: payloadSha256,
+    fixture_profile: GARMIN_FIXTURE_PROFILE,
     output_sha256: outputSha256, runtime_receipt_sha256: await receipt({ payloadSha256, outputSha256, normalizationSpans, peakRssBytes }), baseline,
   });
 }
@@ -116,7 +160,7 @@ export async function runPhase20HeavyWorkload(
   sourceFacts?: Readonly<Record<string, unknown>>,
 ): Promise<Phase20HeavyWorkloadResult | null> {
   if (operation === "ordinary-js-task") {
-    if (sourceFacts === undefined) throw new Error("phase20_quality_source_facts_missing");
+    if (sourceFacts === undefined || !validWorkloadProof(sourceFacts)) throw new Error("phase20_quality_source_facts_missing");
     const jsSpans: { start_ms: number; end_ms: number }[] = [];
     const jsTaskMs: number[] = [];
     let checksum = 0;
@@ -132,6 +176,7 @@ export async function runPhase20HeavyWorkload(
       js_task_ms: Object.freeze(jsTaskMs),
       work_units: 100,
       source_facts_sha256: await receipt(sourceFacts),
+      workload: sourceFacts,
       checksum,
     });
     return Object.freeze({
@@ -199,17 +244,20 @@ export async function runPhase20HeavyWorkload(
       || result.normalization_spans.length !== result.normalization_ms.length
       || !finiteSamples(result.peak_rss_bytes, 5)
       || result.transport !== "chaquopy-python-garminconnect-0.3.17"
+      || JSON.stringify(result.fixture_profile) !== JSON.stringify(GARMIN_FIXTURE_PROFILE)
       || ![result.fixture_sha256, result.payload_sha256, result.output_sha256, result.runtime_receipt_sha256,
-        result.baseline.phase18_source_tree_sha256, result.baseline.artifact_sha256].every((value) => SHA256.test(value))
-      || result.baseline.source !== "phase18-pinned-artifact/v1"
+      ].every((value) => SHA256.test(value))
+      || result.baseline.source !== "phase20-current-source-baseline/v1"
       || result.baseline.fixture_sha256 !== result.fixture_sha256
-      || JSON.stringify(result.baseline.normalization_ms) === JSON.stringify(result.normalization_ms)
-      || JSON.stringify(result.baseline.peak_rss_bytes) === JSON.stringify(result.peak_rss_bytes)) {
+      || result.baseline.payload_sha256 !== result.payload_sha256
+      || result.baseline.output_sha256 !== result.output_sha256
+      || !finiteSamples(result.baseline.normalization_ms, 5)
+      || !finiteSamples(result.baseline.peak_rss_bytes, 5)) {
       throw new Error("phase20_quality_garmin_result_invalid");
     }
     return Object.freeze({
       operation,
-      producer: "phase18-garmin-bounded-sync/v1",
+      producer: "phase20-garmin-installed-normalization/v1",
       native_execution: "EXECUTED",
       database_name: result.database_name,
       command_receipt_sha256: await receipt(result),
@@ -221,6 +269,7 @@ export async function runPhase20HeavyWorkload(
         payload_sha256: result.payload_sha256,
         output_sha256: result.output_sha256,
         runtime_receipt_sha256: result.runtime_receipt_sha256,
+        fixture_profile: result.fixture_profile,
         baseline: result.baseline,
       }),
       timings: Object.freeze({

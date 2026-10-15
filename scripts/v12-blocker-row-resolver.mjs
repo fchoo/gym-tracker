@@ -148,7 +148,7 @@ export function resolveV12PerformanceGates(observation) {
   for (const [id, budget] of Object.entries(V12_PERFORMANCE_BUDGETS)) {
     if (id === 'garmin_sync_normalization') {
       const value = raw[id];
-      gates[id] = { result: value?.state === 'REVIEW_REQUIRED' && value.limit_source === budget.limit_source && HASH.test(value.fixture_sha256 ?? '') ? 'REVIEW_REQUIRED' : value === undefined ? 'NOT_RUN' : 'FAIL', reason: 'Source budget requires the reviewed Phase 18 baseline.' };
+      gates[id] = { result: value?.state === 'REVIEW_REQUIRED' && value.limit_source === budget.limit_source && HASH.test(value.fixture_sha256 ?? '') ? 'REVIEW_REQUIRED' : value === undefined ? 'NOT_RUN' : 'FAIL', reason: 'Source budget requires the fresh exact-source Phase 20 baseline.' };
     } else if (id === 'root_switch_to_useful' || id === 'input_response') {
       const grouped = raw[`${id}_ms`];
       const keys = id === 'root_switch_to_useful' ? ['workout', 'calendar', 'library', 'progress'] : Object.keys(grouped ?? {});

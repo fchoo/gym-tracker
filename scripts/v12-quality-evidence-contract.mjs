@@ -67,6 +67,32 @@ function sourceReceipts(receipts, expected, fail, code) {
   if (receipts.source_tree_sha256 !== expected.source_tree_sha256 || receipts.fixture_sha256 !== expected.fixture_sha256) fail(code);
 }
 
+function actionReceipts(receipts, operation, callbackId, targetId, fail, code, includeReadiness = false) {
+  if (!Array.isArray(receipts) || receipts.length !== 100) fail(code);
+  const callbackReceipts = new Set();
+  receipts.forEach((receipt, index) => {
+    exact(receipt, ["sequence", "operation", "target_id", "activation", "callback_id", "callback_count", "callback_receipt_sha256", "result_sha256", ...(includeReadiness ? ["readiness_sha256"] : [])], fail, code);
+    if (receipt.sequence !== index + 1 || receipt.operation !== operation || receipt.target_id !== targetId
+      || receipt.activation !== "accessibility-action" || receipt.callback_id !== callbackId) fail(code);
+    positiveInteger(receipt.callback_count, fail, code);
+    digest(receipt.callback_receipt_sha256, fail, code); digest(receipt.result_sha256, fail, code);
+    if (includeReadiness) digest(receipt.readiness_sha256, fail, code);
+    callbackReceipts.add(receipt.callback_receipt_sha256);
+  });
+  if (callbackReceipts.size !== 100) fail(code);
+}
+
+function workloadReceipt(receipt, workload, fail) {
+  const keys = ["producer", "set_count", "correction_count", "plan_count", "plan_kinds", "set_digest_sha256", "correction_digest_sha256", "plan_digest_sha256", "workload_digest_sha256"];
+  exact(receipt, keys, fail, "performance_workload_invalid");
+  if (receipt.producer !== "phase20-quality-workload-proof/v1" || receipt.set_count !== workload.set_count
+    || receipt.correction_count !== workload.correction_count || receipt.plan_count !== 3
+    || !isDeepStrictEqual(receipt.plan_kinds, ["running", "strength"])) fail("performance_workload_invalid");
+  for (const key of ["set_digest_sha256", "correction_digest_sha256", "plan_digest_sha256", "workload_digest_sha256"]) digest(receipt[key], fail, "performance_workload_invalid");
+  const { workload_digest_sha256: _digest, ...unsigned } = receipt;
+  if (receipt.workload_digest_sha256 !== sha256V12Quality(unsigned)) fail("performance_workload_invalid");
+}
+
 export function validateV12AccessibilityProducer(observations, expectedIdentity, fail) {
   if (!Array.isArray(observations) || observations.length !== V12_QUALITY_ROOTS.length * V12_QUALITY_MOTION_MODES.length) fail("accessibility_coverage_invalid");
   const coverage = new Set(); const configurationIds = new Set(); const configurationHashes = new Set(); const databases = new Map(); const rootStates = new Set();
@@ -187,7 +213,7 @@ export function validateV12PerformanceProducer(performance, expectedIdentity, bu
   identity(performance.identity, expectedIdentity, fail, "performance_identity_invalid");
   const raw = performance.samples; exact(raw, V12_PERFORMANCE_SAMPLE_KEYS, fail, "performance_schema_invalid");
   const native = raw.native_receipts;
-  exact(native, ["build_variant", "debugger_attached", "source_receipts", "timings", "cold_launch_cycles", "frame_sequences_sha256", "merge_peak_growth_sha256", "ordinary_js_receipt", "garmin_receipt"], fail, "performance_native_receipts_invalid");
+  exact(native, ["build_variant", "debugger_attached", "source_receipts", "timings", "cold_launch_cycles", "root_switch_receipts", "input_receipts", "workload_receipt", "frame_sequences_sha256", "merge_peak_growth_sha256", "ordinary_js_receipt", "garmin_receipt"], fail, "performance_native_receipts_invalid");
   if (native.build_variant !== "release" || native.debugger_attached !== false) fail("performance_native_receipts_invalid");
   sourceReceipts(native.source_receipts, expectedIdentity, fail, "performance_source_receipts_invalid");
   exact(native.timings, [...Object.keys(PERFORMANCE_SERIES), "root_switch_to_useful_ms", "input_response_ms"], fail, "performance_timing_invalid");
@@ -197,18 +223,31 @@ export function validateV12PerformanceProducer(performance, expectedIdentity, bu
     for (const path of paths) timing(raw[key][path], native.timings[key][path], 100, endpoint, expectedIdentity, fail);
   }
   if (!Array.isArray(native.cold_launch_cycles) || native.cold_launch_cycles.length !== raw.cold_launch_to_interactive_ms.length) fail("performance_cold_launch_invalid");
-  const coldProcesses = new Set(); const coldReadiness = new Set(); const coldSources = new Set();
+  const coldProcesses = new Set(); const coldReadiness = new Set(); const coldSources = new Set(); const coldRouteCallbacks = new Set();
   native.cold_launch_cycles.forEach((cycle, index) => {
-    exact(cycle, ["sequence", "operation", "previous_process_id", "process_id", "previous_process_start_ticks", "process_start_ticks", "process_start_ms", "ready_ms", "database_name", "readiness_sha256", "source_receipt_sha256"], fail, "performance_cold_launch_invalid");
-    if (cycle.sequence !== index + 1 || cycle.operation !== "launch-cold" || cycle.previous_process_id === cycle.process_id
-      || cycle.previous_process_start_ticks === cycle.process_start_ticks || cycle.ready_ms <= cycle.process_start_ms
+    exact(cycle, ["sequence", "operation", "previous_process_id", "process_id", "previous_process_start_ticks", "process_start_ticks", "process_start_ms", "ready_ms", "database_name", "readiness_sha256", "source_receipt_sha256", "route_callback_receipt_sha256"], fail, "performance_cold_launch_invalid");
+    if (cycle.sequence !== index + 1 || cycle.operation !== "launch-cold"
+      || `${cycle.previous_process_id}:${cycle.previous_process_start_ticks}` === `${cycle.process_id}:${cycle.process_start_ticks}`
+      || (index > 0 && `${cycle.previous_process_id}:${cycle.previous_process_start_ticks}` !== `${native.cold_launch_cycles[index - 1].process_id}:${native.cold_launch_cycles[index - 1].process_start_ticks}`)
+      || cycle.ready_ms <= cycle.process_start_ms
       || Math.abs(cycle.ready_ms - cycle.process_start_ms - raw.cold_launch_to_interactive_ms[index]) > 0.000001
       || !cycle.database_name.endsWith("-workout.db") || !DATABASE.test(cycle.database_name)) fail("performance_cold_launch_invalid");
     [cycle.previous_process_id, cycle.process_id, cycle.previous_process_start_ticks, cycle.process_start_ticks].forEach((value) => positiveInteger(value, fail, "performance_cold_launch_invalid"));
-    digest(cycle.readiness_sha256, fail, "performance_cold_launch_invalid"); digest(cycle.source_receipt_sha256, fail, "performance_cold_launch_invalid");
-    coldProcesses.add(`${cycle.process_id}:${cycle.process_start_ticks}`); coldReadiness.add(cycle.readiness_sha256); coldSources.add(cycle.source_receipt_sha256);
+    digest(cycle.readiness_sha256, fail, "performance_cold_launch_invalid"); digest(cycle.source_receipt_sha256, fail, "performance_cold_launch_invalid"); digest(cycle.route_callback_receipt_sha256, fail, "performance_cold_launch_invalid");
+    coldProcesses.add(`${cycle.process_id}:${cycle.process_start_ticks}`); coldReadiness.add(cycle.readiness_sha256); coldSources.add(cycle.source_receipt_sha256); coldRouteCallbacks.add(cycle.route_callback_receipt_sha256);
   });
-  if (coldProcesses.size !== native.cold_launch_cycles.length || coldReadiness.size !== native.cold_launch_cycles.length || coldSources.size !== native.cold_launch_cycles.length) fail("performance_cold_launch_invalid");
+  if (coldProcesses.size !== native.cold_launch_cycles.length || coldReadiness.size !== native.cold_launch_cycles.length
+    || coldRouteCallbacks.size !== native.cold_launch_cycles.length || coldSources.size !== 1) fail("performance_cold_launch_invalid");
+  exact(native.root_switch_receipts, V12_QUALITY_ROOTS, fail, "performance_root_switch_receipts_invalid");
+  for (const root of V12_QUALITY_ROOTS) {
+    if (raw.root_switch_to_useful_ms[root].length !== 100) fail("performance_root_switch_receipts_invalid");
+    actionReceipts(native.root_switch_receipts[root], `root-switch-${root}`, "route-ready", `root-tab-${root === "workout" ? "index" : root}`, fail, "performance_root_switch_receipts_invalid", true);
+  }
+  exact(native.input_receipts, ["numeric_edit", "rest_control"], fail, "performance_input_receipts_invalid");
+  if (raw.input_response_ms.numeric_edit.length !== 100 || raw.input_response_ms.rest_control.length !== 100) fail("performance_input_receipts_invalid");
+  actionReceipts(native.input_receipts.numeric_edit, "numeric-edit", "numeric-edit-commit", "set-editor-save", fail, "performance_input_receipts_invalid");
+  actionReceipts(native.input_receipts.rest_control, "rest-control", "rest-adjust-commit", "rest-control-Add 15 seconds to rest", fail, "performance_input_receipts_invalid");
+  workloadReceipt(native.workload_receipt, workload, fail);
   if (!Array.isArray(raw.calendar_frame_sequences) || raw.calendar_frame_sequences.length < 100 || raw.calendar_frame_sequences.length > 500) fail("performance_frame_sequences_invalid");
   raw.calendar_frame_sequences.forEach((frame, index) => {
     exact(frame, ["sequence", "capture_phase", "start_ms", "end_ms", "ready_ms", "frame_work_ms", "missed_frames", "refresh_rate_hz", "refresh_rate_source", "profiler_overhead_ms"], fail, "performance_frame_sequences_invalid");
@@ -222,16 +261,29 @@ export function validateV12PerformanceProducer(performance, expectedIdentity, bu
   if (native.ordinary_js_receipt.producer !== "phase20-ordinary-js-source-work/v1" || !DATABASE.test(native.ordinary_js_receipt.database_name)) fail("performance_ordinary_js_invalid");
   positiveInteger(native.ordinary_js_receipt.work_units, fail, "performance_ordinary_js_invalid"); if (native.ordinary_js_receipt.work_units < 100) fail("performance_ordinary_js_invalid"); digest(native.ordinary_js_receipt.receipt_sha256, fail, "performance_ordinary_js_invalid");
   const garmin = raw.garmin_sync_normalization;
-  exact(garmin, ["state", "limit_source", "transport", "fixture_sha256", "payload_sha256", "output_sha256", "runtime_receipt_sha256", "normalization_ms", "peak_rss_bytes", "baseline"], fail, "performance_garmin_invalid");
-  if (garmin.state !== "REVIEW_REQUIRED" || garmin.limit_source !== "phase18-pinned-artifact/v1" || garmin.transport !== "chaquopy-python-garminconnect-0.3.17") fail("performance_garmin_invalid");
+  exact(garmin, ["state", "limit_source", "transport", "fixture_sha256", "payload_sha256", "output_sha256", "fixture_profile", "runtime_receipt_sha256", "normalization_ms", "peak_rss_bytes", "baseline"], fail, "performance_garmin_invalid");
+  if (garmin.state !== "REVIEW_REQUIRED" || garmin.limit_source !== "phase20-current-source-baseline/v1" || garmin.transport !== "chaquopy-python-garminconnect-0.3.17") fail("performance_garmin_invalid");
+  exact(garmin.fixture_profile, ["activity_count", "lap_count", "route_point_count"], fail, "performance_garmin_invalid");
+  if (!isDeepStrictEqual(garmin.fixture_profile, { activity_count: 100, lap_count: 10, route_point_count: 64 })) fail("performance_garmin_invalid");
   [garmin.fixture_sha256, garmin.payload_sha256, garmin.output_sha256, garmin.runtime_receipt_sha256].forEach((value) => digest(value, fail, "performance_garmin_invalid"));
   samples(garmin.normalization_ms, 5, fail, "performance_garmin_invalid"); samples(garmin.peak_rss_bytes, 5, fail, "performance_garmin_invalid");
-  exact(garmin.baseline, ["source", "phase18_source_tree_sha256", "artifact_sha256", "fixture_sha256", "normalization_ms", "peak_rss_bytes"], fail, "performance_garmin_invalid");
-  if (garmin.baseline.source !== "phase18-pinned-artifact/v1" || garmin.baseline.fixture_sha256 !== garmin.fixture_sha256 || garmin.baseline.artifact_sha256 === garmin.runtime_receipt_sha256
-    || isDeepStrictEqual(garmin.baseline.normalization_ms, garmin.normalization_ms) || isDeepStrictEqual(garmin.baseline.peak_rss_bytes, garmin.peak_rss_bytes)) fail("performance_garmin_invalid");
-  [garmin.baseline.phase18_source_tree_sha256, garmin.baseline.artifact_sha256, garmin.baseline.fixture_sha256].forEach((value) => digest(value, fail, "performance_garmin_invalid"));
+  exact(garmin.baseline, ["source", "source_tree_sha256", "artifact_sha256", "artifact_json", "fixture_sha256", "normalization_ms", "peak_rss_bytes"], fail, "performance_garmin_invalid");
+  if (garmin.baseline.source !== "phase20-current-source-baseline/v1" || garmin.baseline.source_tree_sha256 !== expectedIdentity.source_tree_sha256
+    || garmin.baseline.fixture_sha256 !== garmin.fixture_sha256 || typeof garmin.baseline.artifact_json !== "string"
+    || garmin.baseline.artifact_sha256 !== sha256V12Quality(garmin.baseline.artifact_json)) fail("performance_garmin_invalid");
+  let baselineArtifact; try { baselineArtifact = JSON.parse(garmin.baseline.artifact_json); } catch { fail("performance_garmin_invalid"); }
+  exact(baselineArtifact, ["schema_version", "producer", "source_tree_sha256", "native_path", "transport", "fixture_sha256", "payload_sha256", "output_sha256", "fixture_profile", "normalization_ms", "peak_rss_bytes"], fail, "performance_garmin_invalid");
+  if (baselineArtifact.schema_version !== 1 || baselineArtifact.producer !== "phase20-current-source-garmin-baseline/v1"
+    || baselineArtifact.source_tree_sha256 !== expectedIdentity.source_tree_sha256
+    || baselineArtifact.native_path !== "modules/garmin-connect/android/src/main/python/garmin_bridge.py#benchmarkDeterministicJson"
+    || baselineArtifact.transport !== garmin.transport || baselineArtifact.fixture_sha256 !== garmin.fixture_sha256
+    || baselineArtifact.payload_sha256 !== garmin.payload_sha256 || baselineArtifact.output_sha256 !== garmin.output_sha256
+    || !isDeepStrictEqual(baselineArtifact.fixture_profile, garmin.fixture_profile)
+    || !isDeepStrictEqual(baselineArtifact.normalization_ms, garmin.baseline.normalization_ms)
+    || !isDeepStrictEqual(baselineArtifact.peak_rss_bytes, garmin.baseline.peak_rss_bytes)) fail("performance_garmin_invalid");
+  [garmin.baseline.source_tree_sha256, garmin.baseline.artifact_sha256, garmin.baseline.fixture_sha256].forEach((value) => digest(value, fail, "performance_garmin_invalid"));
   samples(garmin.baseline.normalization_ms, 5, fail, "performance_garmin_invalid"); samples(garmin.baseline.peak_rss_bytes, 5, fail, "performance_garmin_invalid");
   exact(native.garmin_receipt, ["producer", "transport", "receipt_sha256"], fail, "performance_garmin_invalid");
-  if (native.garmin_receipt.producer !== "phase18-garmin-bounded-sync/v1" || native.garmin_receipt.transport !== garmin.transport || native.garmin_receipt.receipt_sha256 !== garmin.runtime_receipt_sha256) fail("performance_garmin_invalid");
+  if (native.garmin_receipt.producer !== "phase20-garmin-installed-normalization/v1" || native.garmin_receipt.transport !== garmin.transport || native.garmin_receipt.receipt_sha256 !== garmin.runtime_receipt_sha256) fail("performance_garmin_invalid");
   return true;
 }

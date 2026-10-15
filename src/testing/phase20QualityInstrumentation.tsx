@@ -15,6 +15,7 @@ import {
 } from "../bootstrap/v12AcceptanceBenchmark";
 import { openSqliteKernel } from "../platform/sqlite";
 import { seedPhase20CalendarQualityFixture, seedPhase20ProgressQualityFixture } from "./contracts/progressParity.contract";
+import { seedPhase20QualityWorkloadFixture } from "./phase20QualityWorkload";
 import { AppRootShell, useRootSettingsController } from "../ui/shell/AppRootShell";
 import { rootSettingsTriggerNativeID } from "../ui/shell/rootFocus";
 import { ActiveWorkoutScreen } from "../ui/screens/ActiveWorkoutScreen";
@@ -24,7 +25,7 @@ import { LibraryScreen } from "../ui/screens/LibraryScreen";
 import { ProgressScreen } from "../ui/screens/ProgressScreen";
 import { TodayScreen } from "../ui/screens/TodayScreen";
 import { AppearanceProvider, createMemoryAppearanceStore } from "../ui/theme";
-import { M3SearchField } from "../ui/components";
+import { AppTabs, M3SearchField } from "../ui/components";
 import {
   PHASE20_QUALITY_WORKLOAD_MARKER,
   PHASE20_QUALITY_WORKLOAD_SOURCE,
@@ -65,6 +66,7 @@ function isolatedDependencies(databaseName: string, root: Phase20QualityRoot): W
     openKernel: () => openSqliteKernel(databaseName),
     migrate: async (kernel) => {
       await productionWorkoutAppRuntimeDependencies.migrate(kernel);
+      await seedPhase20QualityWorkloadFixture(kernel);
       if (root === "calendar") await seedPhase20CalendarQualityFixture(kernel);
       if (root === "progress") await seedPhase20ProgressQualityFixture(kernel);
     },
@@ -136,7 +138,9 @@ function useQualityMarkerEmitter(
   }, [databaseName, request.action, request.nonce, request.operation, request.sequence, scenario.configuration_id, scenario.fixture_id, scenario.root, scenario.state_id]);
 }
 
-function QualitySettingsContent({ onProductCallback }: Readonly<{ onProductCallback: (id: string) => void }>) {
+type ProductCallback = (id: string, payload?: Readonly<Record<string, unknown>>) => void;
+
+function QualitySettingsContent({ onProductCallback }: Readonly<{ onProductCallback: ProductCallback }>) {
   const [query, setQuery] = useState("");
   return <View accessibilityLabel="App Settings" accessibilityRole="summary" style={styles.settings}>
     <Text>Appearance and workout settings</Text>
@@ -161,7 +165,7 @@ function ProductRoot({
   acceptanceBenchmark: ReturnType<typeof createV12AcceptanceBenchmark>;
   emit: ReturnType<typeof useQualityMarkerEmitter>;
   onUsefulContent: (state?: "current" | "updating") => void;
-  onProductCallback: (id: string) => void;
+  onProductCallback: ProductCallback;
   operation: Phase20QualityOperation;
   root: Phase20QualityRoot;
 }>) {
@@ -181,7 +185,7 @@ function ProductRoot({
     onProductCallback("settings-open");
   };
   const reportUsefulContent = (state: "current" | "updating" = "current") => {
-    onProductCallback("route-ready");
+    onProductCallback("route-ready", { rendered_root: root });
     onUsefulContent(state);
   };
   const nowLocalDate = "2026-08-24";
@@ -303,10 +307,12 @@ function ProductRoot({
 
 function ActiveWorkoutQualityRoot({
   acceptanceBenchmark,
+  onProductCallback,
   onReady,
   request,
 }: Readonly<{
   acceptanceBenchmark: ReturnType<typeof createV12AcceptanceBenchmark>;
+  onProductCallback: ProductCallback;
   onReady: () => void;
   request: Phase20QualityRequest;
 }>) {
@@ -349,7 +355,18 @@ function ActiveWorkoutQualityRoot({
         });
       }
     }
-    if (request.operation === "rest-control" && current.rest.state === "idle") {
+    if (request.operation === "rest-control") {
+      if (current.rest.state !== "idle") {
+        await runtime.skipRest({
+          sessionId: current.id,
+          expectedSessionRevision: current.revision,
+          expectedRestRevision: current.rest.revision,
+          nowMs: Date.now(),
+        });
+        const reset = await runtime.getActiveWorkout(current.id);
+        if ("state" in reset) throw new Error("phase20_quality_active_workout_missing");
+        current = reset;
+      }
       await runtime.startManualRest({
         sessionId: current.id,
         expectedSessionRevision: current.revision,
@@ -358,6 +375,9 @@ function ActiveWorkoutQualityRoot({
       });
       const refreshed = await runtime.getActiveWorkout(current.id);
       if ("state" in refreshed) throw new Error("phase20_quality_active_workout_missing");
+      if (refreshed.rest.state !== "running" || refreshed.rest.endsAtMs <= Date.now()) {
+        throw new Error("phase20_quality_rest_reset_failed");
+      }
       current = refreshed;
     }
     return current;
@@ -409,8 +429,26 @@ function ActiveWorkoutQualityRoot({
       replaceExercise: runtime.replaceExercise,
       removeExercise: runtime.removeExercise,
       reorderExercises: runtime.reorderExercises,
-      updateActiveSetDraft: runtime.updateActiveSetDraft,
-      updateWarmupDraft: runtime.updateWarmupDraft,
+      updateActiveSetDraft: async (input) => {
+        const next = await runtime.updateActiveSetDraft(input);
+        onProductCallback("numeric-edit-commit", {
+          value_sha256: await digestStringAsync(
+            CryptoDigestAlgorithm.SHA256,
+            canonical(input.observation),
+          ),
+        });
+        return next;
+      },
+      updateWarmupDraft: async (input) => {
+        const next = await runtime.updateWarmupDraft(input);
+        onProductCallback("numeric-edit-commit", {
+          value_sha256: await digestStringAsync(
+            CryptoDigestAlgorithm.SHA256,
+            canonical(input.observation),
+          ),
+        });
+        return next;
+      },
       addWarmup: runtime.addWarmup,
       addWorkingSet: runtime.addWorkingSet,
       completeWarmup: runtime.completeWarmup,
@@ -422,7 +460,14 @@ function ActiveWorkoutQualityRoot({
       startManualRest: runtime.startManualRest,
       pauseRest: runtime.pauseRest,
       resumeRest: runtime.resumeRest,
-      adjustRest: runtime.adjustRest,
+      adjustRest: async (input) => {
+        const next = await runtime.adjustRest(input);
+        onProductCallback("rest-adjust-commit", {
+          delta_ms: input.deltaMs,
+          rest_revision: next.state.revision,
+        });
+        return next;
+      },
       skipRest: runtime.skipRest,
       expireRest: runtime.expireRest,
       updateSessionExerciseDefaultRest: runtime.updateSessionExerciseDefaultRest,
@@ -451,7 +496,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
   const targetRoot = phase20QualityRootForOperation(request.operation);
   const scenario = phase20QualityScenarioForOperation(request.operation);
   const callbackCounts = useRef<Record<string, number>>({});
-  const productCallback = useCallback((callbackId: string) => {
+  const productCallback = useCallback((callbackId: string, payload: Readonly<Record<string, unknown>> = {}) => {
     const callbackCount = (callbackCounts.current[callbackId] ?? 0) + 1;
     callbackCounts.current[callbackId] = callbackCount;
     void emit("callback", performance.now(), {
@@ -459,6 +504,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
       callback_id: callbackId,
       root: scenario.root,
       state_id: scenario.state_id,
+      ...payload,
     });
   }, [emit, scenario.root, scenario.state_id]);
   const activeOperation = [
@@ -529,7 +575,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
     if (request.operation.startsWith("root-switch-")) {
       benchmark.markRootSwitchStart(targetRoot);
       setArmed(true);
-      setDisplayRoot(targetRoot);
+      void emit("result", performance.now(), { armed: true, command_surface: "bottom-tabs", target_root: targetRoot });
       return;
     }
     if (request.operation.startsWith("progress-")) {
@@ -619,6 +665,17 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
     void emit("ready", performance.now(), { root: targetRoot, semantic_tree: targetRoot });
   }, [activeOperation, armed, benchmark, emit, heavyOperation, request.operation, targetRoot]);
 
+  const tabRoot = displayRoot === "workout" ? "index" : displayRoot;
+  const tabRoutes = ["index", "calendar", "library", "progress"].map((name) => ({ key: `quality-${name}`, name }));
+  const tabNavigation = {
+    emit: () => ({ defaultPrevented: false }),
+    navigate: (name: string) => {
+      const nextRoot = name === "index" ? "workout" : name as Phase20QualityRoot;
+      productCallback("root-tab-select", { target_root: nextRoot });
+      setDisplayRoot(nextRoot);
+    },
+  };
+
   return <AppRootShell
     activeRoot={displayRoot === "workout" ? "index" : displayRoot}
     currentPath={displayRoot === "workout" ? "/" : `/${displayRoot}`}
@@ -629,7 +686,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
       {!searchPrepared || !progressPrepared
         ? <View accessibilityLabel="Preparing isolated library fixture" accessibilityRole="progressbar" style={styles.center}><Text>Preparing library</Text></View>
         : activeOperation
-        ? <ActiveWorkoutQualityRoot acceptanceBenchmark={benchmark} request={request} onReady={() => {
+        ? <ActiveWorkoutQualityRoot acceptanceBenchmark={benchmark} onProductCallback={productCallback} request={request} onReady={() => {
             if (started.current) return;
             started.current = true;
             void emit("result", performance.now(), {
@@ -647,6 +704,7 @@ function Phase20QualityRuntime({ request, databaseName }: Readonly<{
             root={displayRoot}
           />}
     </View>
+    <AppTabs navigation={tabNavigation} state={{ index: tabRoutes.findIndex(({ name }) => name === tabRoot), routes: tabRoutes }} />
   </AppRootShell>;
 }
 

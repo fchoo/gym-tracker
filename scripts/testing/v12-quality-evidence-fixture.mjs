@@ -119,32 +119,70 @@ export function performanceEvidence(identity = qualityIdentity(), nonce = fixtur
   }));
   samples.phase12_merge_peak_growth_bytes = values(10, 1024);
   samples.phase12_merge_fixture = { snapshot_bytes: 24 * 1024 * 1024, rows: 100_000, writer_commits: 5, sqlite_max_variable_number: 4_000 };
+  const garminFixtureSha256 = sha("maximum-reviewed-garmin-json");
+  const garminPayloadSha256 = sha("deterministic-garmin-json");
+  const garminOutputSha256 = sha("normalized-garmin-json");
+  const garminBaselineArtifact = {
+    schema_version: 1,
+    producer: "phase20-current-source-garmin-baseline/v1",
+    source_tree_sha256: identity.source_tree_sha256,
+    native_path: "modules/garmin-connect/android/src/main/python/garmin_bridge.py#benchmarkDeterministicJson",
+    transport: "chaquopy-python-garminconnect-0.3.17",
+    fixture_sha256: garminFixtureSha256,
+    payload_sha256: garminPayloadSha256,
+    output_sha256: garminOutputSha256,
+    fixture_profile: { activity_count: 100, lap_count: 10, route_point_count: 64 },
+    normalization_ms: values(5, 6),
+    peak_rss_bytes: values(5, 2 * 1024 * 1024),
+  };
+  const garminBaselineJson = canonical(garminBaselineArtifact);
   samples.garmin_sync_normalization = {
-    state: "REVIEW_REQUIRED", limit_source: "phase18-pinned-artifact/v1", transport: "chaquopy-python-garminconnect-0.3.17",
-    fixture_sha256: sha("maximum-reviewed-garmin-json"), payload_sha256: sha("deterministic-garmin-json"), output_sha256: sha("normalized-garmin-json"),
+    state: "REVIEW_REQUIRED", limit_source: "phase20-current-source-baseline/v1", transport: "chaquopy-python-garminconnect-0.3.17",
+    fixture_sha256: garminFixtureSha256, payload_sha256: garminPayloadSha256, output_sha256: garminOutputSha256,
+    fixture_profile: { activity_count: 100, lap_count: 10, route_point_count: 64 },
     runtime_receipt_sha256: sha("chaquopy-runtime"), normalization_ms: values(5, 5), peak_rss_bytes: values(5, 1024 * 1024),
-    baseline: { source: "phase18-pinned-artifact/v1", phase18_source_tree_sha256: sha("phase18-source"), artifact_sha256: sha("phase18-baseline-artifact"), fixture_sha256: sha("maximum-reviewed-garmin-json"), normalization_ms: values(5, 6), peak_rss_bytes: values(5, 2 * 1024 * 1024) },
+    baseline: { source: "phase20-current-source-baseline/v1", source_tree_sha256: identity.source_tree_sha256,
+      artifact_sha256: sha(garminBaselineJson), artifact_json: garminBaselineJson, fixture_sha256: garminFixtureSha256,
+      normalization_ms: garminBaselineArtifact.normalization_ms, peak_rss_bytes: garminBaselineArtifact.peak_rss_bytes },
   };
   const cold_launch_cycles = samples.cold_launch_to_interactive_ms.map((duration, index) => ({
-    sequence: index + 1, operation: "launch-cold", previous_process_id: 2000 + index,
-    process_id: 3000 + index, previous_process_start_ticks: 40_000 + index * 200,
+    sequence: index + 1, operation: "launch-cold", previous_process_id: index === 0 ? 2000 : 2999 + index,
+    process_id: 3000 + index, previous_process_start_ticks: index === 0 ? 40_000 : 50_000 + (index - 1) * 200,
     process_start_ticks: 50_000 + index * 200, process_start_ms: 50_000 + index * 200,
     ready_ms: 50_000 + index * 200 + duration,
     database_name: `gym-tracker-phase20-quality-${nonce}-workout.db`,
-    readiness_sha256: sha(`cold-ready:${index}`), source_receipt_sha256: sha(`cold-source:${index}`),
+    readiness_sha256: sha(`cold-ready:${index}`), source_receipt_sha256: sha("cold-source-stable"),
+    route_callback_receipt_sha256: sha(`cold-route-ready:${index}`),
   }));
   const source_receipts = {
     source_tree_sha256: identity.source_tree_sha256, fixture_sha256: identity.fixture_sha256,
     source_before_sha256: sha("performance-before"), source_after_sha256: sha("performance-after"),
     state_sha256: sha("performance-state"),
   };
+  const input_receipts = Object.fromEntries(["numeric_edit", "rest_control"].map((name) => [name,
+    Array.from({ length: 100 }, (_, index) => ({ sequence: index + 1,
+      operation: name === "numeric_edit" ? "numeric-edit" : "rest-control",
+      callback_id: name === "numeric_edit" ? "numeric-edit-commit" : "rest-adjust-commit",
+      callback_count: 1, activation: "accessibility-action", target_id: name === "numeric_edit" ? "set-editor-save" : "rest-control-Add 15 seconds to rest",
+      callback_receipt_sha256: sha(`${name}:callback:${index}`), result_sha256: sha(`${name}:result:${index}`) }))]));
+  const root_switch_receipts = Object.fromEntries(qualityRoots.map((root) => [root,
+    Array.from({ length: 100 }, (_, index) => ({ sequence: index + 1, target_id: `root-tab-${root === "workout" ? "index" : root}`,
+      operation: `root-switch-${root}`, activation: "accessibility-action", callback_id: "route-ready", callback_count: 1, callback_receipt_sha256: sha(`${root}:route:${index}`), result_sha256: sha(`${root}:result:${index}`),
+      readiness_sha256: sha(`${root}:ready:${index}`) }))]));
+  const workloadBase = {
+    producer: "phase20-quality-workload-proof/v1", set_count: V12_PERFORMANCE_WORKLOAD.set_count,
+    correction_count: V12_PERFORMANCE_WORKLOAD.correction_count, plan_count: 3,
+    plan_kinds: ["running", "strength"], set_digest_sha256: sha("workload-sets"),
+    correction_digest_sha256: sha("workload-corrections"), plan_digest_sha256: sha("workload-plans"),
+  };
+  const workload_receipt = { ...workloadBase, workload_digest_sha256: sha(workloadBase) };
   samples.native_receipts = {
     build_variant: "release", debugger_attached: false, source_receipts, timings,
-    cold_launch_cycles,
+    cold_launch_cycles, root_switch_receipts, input_receipts, workload_receipt,
     frame_sequences_sha256: sha(samples.calendar_frame_sequences),
     merge_peak_growth_sha256: sha(samples.phase12_merge_peak_growth_bytes),
     ordinary_js_receipt: { producer: "phase20-ordinary-js-source-work/v1", database_name: `gym-tracker-phase20-quality-${nonce}-workout.db`, work_units: 100, receipt_sha256: sha("ordinary-js-work") },
-    garmin_receipt: { producer: "phase18-garmin-bounded-sync/v1", transport: "chaquopy-python-garminconnect-0.3.17", receipt_sha256: samples.garmin_sync_normalization.runtime_receipt_sha256 },
+    garmin_receipt: { producer: "phase20-garmin-installed-normalization/v1", transport: "chaquopy-python-garminconnect-0.3.17", receipt_sha256: samples.garmin_sync_normalization.runtime_receipt_sha256 },
   };
   return { schema_version: 1, suite: "v1.2-performance", producer: "v12-release-performance-collector/v1", native_execution: "EXECUTED", sample_origin: "release-native-source-backed", workload: V12_PERFORMANCE_WORKLOAD, identity, budgets: V12_PERFORMANCE_BUDGETS, samples };
 }

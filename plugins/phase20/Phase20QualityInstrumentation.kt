@@ -254,6 +254,17 @@ class Phase20QualityInstrumentation : Instrumentation() {
     }
     waitForIdleSync()
   }
+  private fun activate(node: AccessibilityNodeInfo) {
+    if (!node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) throw IllegalStateException("accessibility_action_failed")
+    waitForIdleSync()
+  }
+  private fun replaceText(node: AccessibilityNodeInfo, value: String) {
+    val arguments = Bundle().apply {
+      putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
+    }
+    if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) throw IllegalStateException("numeric_edit_failed")
+    waitForIdleSync()
+  }
   private fun key(code: Int) {
     val at = SystemClock.uptimeMillis()
     uiAutomation.injectInputEvent(KeyEvent(at, at, KeyEvent.ACTION_DOWN, code, 0), true)
@@ -305,17 +316,39 @@ class Phase20QualityInstrumentation : Instrumentation() {
     throw IllegalStateException("command_target_missing")
   }
 
-  private fun drive(operation: String) {
+  private fun rootTabName(root: String) = if (root == "workout") "index" else root
+
+  private fun drive(nonce: String, action: String, operation: String, sequence: Int) {
     when (operation) {
       "committed-set-visible-dock" -> tap(awaitTarget { it.name.startsWith("Complete Set") }.first.bounds)
-      "numeric-edit" -> awaitTarget { it.role == "textbox" }.let { tap(it.first.bounds); command("input text 9") }
-      "rest-control" -> tap(awaitTarget { it.name.contains("15") }.first.bounds)
+      "numeric-edit" -> {
+        val callbacksBefore = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), "numeric-edit-commit")
+        activate(awaitTarget { it.name.contains("Edit set values") }.second)
+        val textbox = awaitTarget { it.role == "textbox" }
+        val replacement = if (textbox.second.text?.toString() == "91") "92" else "91"
+        replaceText(textbox.second, replacement)
+        activate(awaitTarget { it.name.startsWith("Save set values") || it.name.startsWith("Save committed set edit") }.second)
+        awaitCallback(nonce, action, operation, sequence, "numeric-edit-commit", callbacksBefore)
+      }
+      "rest-control" -> {
+        val callbacksBefore = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), "rest-adjust-commit")
+        val control = awaitTarget { it.name == "Add 15 seconds to rest" && it.state.contains("enabled") }
+        activate(control.second)
+        awaitCallback(nonce, action, operation, sequence, "rest-adjust-commit", callbacksBefore)
+      }
       "search-after-debounce" -> awaitTarget { it.role == "textbox" }.let { tap(it.first.bounds); command("input text press") }
       "calendar-month-selection" -> {
         val metrics = targetContext.resources.displayMetrics; val y = (metrics.heightPixels * .45).roundToInt()
         command("input swipe ${(metrics.widthPixels * .7).roundToInt()} $y ${(metrics.widthPixels * .4).roundToInt()} $y 320")
       }
       "progress-review-open" -> tap(awaitTarget { it.name.contains("Open history") }.first.bounds)
+      else -> if (operation.startsWith("root-switch-")) {
+        val root = rootForOperation(operation)
+        val callbacksBefore = callbackCount(parseMarkers(command("logcat -d -v raw ReactNativeJS:I '*:S'"), nonce, action, operation, sequence), "route-ready")
+        val targetId = "root-tab-${rootTabName(rootForOperation(operation))}"
+        activate(awaitTarget { it.id == targetId }.second)
+        awaitCallback(nonce, action, operation, sequence, "route-ready", callbacksBefore)
+      }
     }
   }
 
@@ -361,11 +394,11 @@ class Phase20QualityInstrumentation : Instrumentation() {
       awaitCallback(nonce, action, operation, sequence, "route-ready", 0)
       frameCapture?.reset()
     }
-    if (operation in setOf("committed-set-visible-dock", "numeric-edit", "rest-control")) {
+    if (operation in setOf("committed-set-visible-dock", "numeric-edit", "rest-control") || operation.startsWith("root-switch-")) {
       awaitMarkers(nonce, action, operation, sequence, "result", 5 * 60_000L)
     }
     if (operation in setOf("committed-set-visible-dock", "numeric-edit", "rest-control", "search-after-debounce",
-        "calendar-month-selection", "progress-review-open")) drive(operation)
+        "calendar-month-selection", "progress-review-open") || operation.startsWith("root-switch-")) drive(nonce, action, operation, sequence)
     val timeout = if (operation in setOf("phase12-backup", "garmin-json-normalization", "ordinary-js-task")) 20 * 60_000L else 60_000L
     val mergeProgress = mutableSetOf<String>(); val pssGrowth = mutableListOf<Long>()
     val markers = awaitMarkers(nonce, action, operation, sequence, "ready", timeout) { output ->
@@ -567,6 +600,33 @@ class Phase20QualityInstrumentation : Instrumentation() {
         JSONObject().put("start_ms", it.marker(startKind).getDouble("monotonic_ms"))
           .put("end_ms", it.marker(endKind).getDouble("monotonic_ms"))
       }))
+  private fun actionReceipt(run: Run, callbackId: String, targetId: String): JSONObject {
+    val callback = run.markers.filter { it.kind == "callback" && it.value.optJSONObject("payload")?.optString("callback_id") == callbackId }
+      .maxByOrNull { it.value.getJSONObject("payload").getInt("callback_count") }
+      ?: throw IllegalStateException("product_callback_missing")
+    val payload = callback.value.getJSONObject("payload")
+    val resultReceipt = when (callbackId) {
+      "numeric-edit-commit" -> payload.optString("value_sha256").also {
+        if (!it.matches(Regex("[a-f0-9]{64}"))) throw IllegalStateException("numeric_edit_receipt_invalid")
+      }
+      "rest-adjust-commit" -> {
+        if (payload.optInt("delta_ms") != 15_000 || payload.optInt("rest_revision", -1) < 1) throw IllegalStateException("rest_receipt_invalid")
+        sha(canonical(JSONObject().put("delta_ms", payload.getInt("delta_ms")).put("rest_revision", payload.getInt("rest_revision"))))
+      }
+      "route-ready" -> {
+        val expectedRoot = rootForOperation(run.marker("ready").getString("operation"))
+        if (payload.optString("rendered_root") != expectedRoot) throw IllegalStateException("root_readiness_invalid")
+        sha(canonical(JSONObject().put("rendered_root", expectedRoot)))
+      }
+      else -> throw IllegalStateException("product_callback_missing")
+    }
+    return JSONObject().put("sequence", run.marker("ready").getInt("sequence"))
+      .put("operation", run.marker("ready").getString("operation")).put("target_id", targetId)
+      .put("activation", "accessibility-action").put("callback_id", callbackId)
+      .put("callback_count", payload.getInt("callback_count"))
+      .put("callback_receipt_sha256", callback.value.getString("receipt_sha256"))
+      .put("result_sha256", resultReceipt)
+  }
   private fun repeated(nonce: String, operation: String, count: Int) = (1..count).map { runOperation(nonce, "performance", operation, it) }
   private fun resultPayload(run: Run): JSONObject {
     val chunks = run.markers.filter { it.kind == "chunk" }.map { it.value.getJSONObject("payload") }
@@ -606,6 +666,22 @@ class Phase20QualityInstrumentation : Instrumentation() {
     val phase2Result = resultPayload(phase2); val phase12Result = resultPayload(phase12); val garminResult = resultPayload(garmin)
     for (result in listOf(phase2Result, phase12Result, garminResult)) if (!result.optString("command_receipt_sha256").matches(Regex("[a-f0-9]{64}"))) throw IllegalStateException("command_receipt_sha256_missing")
     val phase2Samples = phase2Result.getJSONObject("samples"); val phase12Samples = phase12Result.getJSONObject("samples"); val garminSamples = garminResult.getJSONObject("samples")
+    val source = identity.getString("source_tree_sha256")
+    val rawGarminBaseline = garminSamples.getJSONObject("baseline")
+    val garminBaselineArtifact = JSONObject().put("schema_version", 1).put("producer", "phase20-current-source-garmin-baseline/v1")
+      .put("source_tree_sha256", source)
+      .put("native_path", "modules/garmin-connect/android/src/main/python/garmin_bridge.py#benchmarkDeterministicJson")
+      .put("transport", garminSamples.getString("transport")).put("fixture_sha256", garminSamples.getString("fixture_sha256"))
+      .put("payload_sha256", rawGarminBaseline.getString("payload_sha256")).put("output_sha256", rawGarminBaseline.getString("output_sha256"))
+      .put("fixture_profile", garminSamples.getJSONObject("fixture_profile"))
+      .put("normalization_ms", array(rawGarminBaseline.get("normalization_ms")))
+      .put("peak_rss_bytes", array(rawGarminBaseline.get("peak_rss_bytes")))
+    val garminBaselineJson = canonical(garminBaselineArtifact)
+    val garminBaseline = JSONObject().put("source", "phase20-current-source-baseline/v1").put("source_tree_sha256", source)
+      .put("artifact_sha256", sha(garminBaselineJson)).put("artifact_json", garminBaselineJson)
+      .put("fixture_sha256", garminSamples.getString("fixture_sha256"))
+      .put("normalization_ms", garminBaselineArtifact.getJSONArray("normalization_ms"))
+      .put("peak_rss_bytes", garminBaselineArtifact.getJSONArray("peak_rss_bytes"))
     fun values(runs: List<Run>) = JSONArray(runs.map(Run::durationMs))
     fun markerValues(runs: List<Run>, startKind: String = "start", endKind: String = "ready") = JSONArray(runs.map {
       it.marker(endKind).getDouble("monotonic_ms") - it.marker(startKind).getDouble("monotonic_ms")
@@ -626,13 +702,13 @@ class Phase20QualityInstrumentation : Instrumentation() {
       .put("phase12_merge_peak_growth_bytes", JSONArray(phase12.pssGrowthBytes))
       .put("phase12_merge_fixture", JSONObject().put("snapshot_bytes", phase12Samples.getLong("snapshot_bytes")).put("rows", phase12Samples.getLong("total_rows"))
         .put("writer_commits", 5).put("sqlite_max_variable_number", phase12Samples.getLong("sqlite_max_variable_number")))
-      .put("garmin_sync_normalization", JSONObject().put("state", "REVIEW_REQUIRED").put("limit_source", "phase18-pinned-artifact/v1")
+      .put("garmin_sync_normalization", JSONObject().put("state", "REVIEW_REQUIRED").put("limit_source", "phase20-current-source-baseline/v1")
         .put("transport", garminSamples.getString("transport")).put("fixture_sha256", garminSamples.getString("fixture_sha256"))
+        .put("fixture_profile", garminSamples.getJSONObject("fixture_profile"))
         .put("payload_sha256", garminSamples.getString("payload_sha256")).put("output_sha256", garminSamples.getString("output_sha256"))
         .put("runtime_receipt_sha256", garminSamples.getString("runtime_receipt_sha256"))
         .put("normalization_ms", array(garminSamples.get("normalization_ms"))).put("peak_rss_bytes", array(garminSamples.get("peak_rss_bytes")))
-        .put("baseline", garminSamples.getJSONObject("baseline")))
-    val source = identity.getString("source_tree_sha256")
+        .put("baseline", garminBaseline))
     val timings = JSONObject().put("warm_launch_to_interactive_ms", timing(warm, "process-resume-to-interactive", source))
       .put("cold_launch_to_interactive_ms", coldTiming)
       .put("committed_set_to_visible_dock_ms", markerTiming(dock, "commit", "ready", "authoritative-commit-to-visible-dock", source))
@@ -653,6 +729,13 @@ class Phase20QualityInstrumentation : Instrumentation() {
         .put("source_before_sha256", sourceBefore).put("source_after_sha256", databaseSetDigest(nonce))
           .put("state_sha256", sha(canonical(samples))))
       .put("timings", timings).put("cold_launch_cycles", coldCycles)
+      .put("root_switch_receipts", JSONObject(rootRuns.mapValues { (root, runs) -> JSONArray(runs.map {
+        actionReceipt(it, "route-ready", "root-tab-${rootTabName(root)}")
+      }) }))
+      .put("input_receipts", JSONObject()
+        .put("numeric_edit", JSONArray(numeric.map { actionReceipt(it, "numeric-edit-commit", "set-editor-save") }))
+        .put("rest_control", JSONArray(rest.map { actionReceipt(it, "rest-adjust-commit", "rest-control-Add 15 seconds to rest") })))
+      .put("workload_receipt", phase2Samples.getJSONObject("workload"))
       .put("frame_sequences_sha256", sha(canonical(samples.getJSONArray("calendar_frame_sequences"))))
       .put("merge_peak_growth_sha256", sha(canonical(samples.getJSONArray("phase12_merge_peak_growth_bytes"))))
       .put("ordinary_js_receipt", JSONObject().put("producer", phase2Result.getString("producer"))

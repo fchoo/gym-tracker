@@ -47,7 +47,7 @@ function fixtureRoot() {
 
 function buildManifest(head, sourceTreeSha256) {
   return {
-    schema_version: 1, run_id: run, mode: "live", created_at: "2026-10-14T00:00:00Z",
+    schema_version: 1, run_id: run, mode: "live", evidence_origin: "test", created_at: "2026-10-14T00:00:00Z",
     source: { head, tree_sha256: sourceTreeSha256, dirty: false, package_json_sha256: sha("c"), package_lock_sha256: sha("d") },
     planning: { matrix_sha256: sha("e"), requirements_sha256: sha("f"), source_manifest_sha256: sha("1"), owner_brief_sha256: sha("2"), ui_spec_sha256: sha("3"), deviations_sha256: sha("4") },
     prototype: { revision: 18, approval_sha256: sha("5"), html_sha256: sha("6") }, fixtures: { registry_sha256: sha("7") },
@@ -78,6 +78,7 @@ function completion(root, shard) {
   assert.equal(lstatSync(file).isSymbolicLink(), false, `${shard} manifest must not be a symlink`);
   const manifest = JSON.parse(readFileSync(file, "utf8"));
   assert.equal(manifest.run_id, run); assert.equal(manifest.shard, shard); assert.equal(manifest.completed, true);
+  assert.equal(manifest.identity.evidence_origin, "test");
   assert.ok(Array.isArray(manifest.members) && manifest.members.length > 0);
   assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, ".staging")), false, `${shard} left staging behind`);
   return manifest;
@@ -135,7 +136,28 @@ function completeMultiPlanFixture(root) {
   rewriteFixturePublication(root, "multi-plan");
 }
 
-test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY from incomplete retained contracts", async (t) => {
+function deriveTestLedger(root, includeAttended = false) {
+  const code = `
+    import { readFileSync } from 'node:fs';
+    import path from 'node:path';
+    import { deriveV12Ledger } from ${JSON.stringify(path.join(project, 'scripts/verify-v12-native-evidence.mjs'))};
+    import { loadV12ContractInputs } from ${JSON.stringify(path.join(project, 'scripts/v12-evidence-contract.mjs'))};
+    import { resolveV12SourceRows } from ${JSON.stringify(path.join(project, 'scripts/v12-blocker-row-resolver.mjs'))};
+    const root = process.argv[1], run = process.argv[2], includeAttended = process.argv[3] === 'true';
+    const base = path.join(root, 'artifacts/native/v1.2', run);
+    const read = file => JSON.parse(readFileSync(path.join(base, file), 'utf8'));
+    const readArtifact = file => readFileSync(path.join(root, file));
+    try {
+      const inputs = loadV12ContractInputs({root}); const manifest = read('build.json');
+      const evidence = resolveV12SourceRows({inputs, manifest, root, readArtifact});
+      const ledger = deriveV12Ledger({inputs, manifest, evidence, root, readArtifact, ...(includeAttended ? {attended:read('attended-observations.json')} : {})});
+      process.stdout.write(JSON.stringify(ledger));
+    } catch (error) { process.stderr.write(error.message); process.exitCode = 1; }
+  `;
+  return spawnSync(process.execPath, ["--input-type=module", "-e", code, root, run, String(includeAttended)], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+}
+
+test("Phase 20 fake-device pipeline exercises every CLI but cannot publish preseal or final native evidence", async (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   // Every call below is the documented CLI order. The test intentionally does
   // not call exported production functions or manufacture final evidence.
@@ -147,35 +169,29 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
   }
   for (const shard of ["sqlite", "recovery", "garmin", "calendar", "multi-plan", "workout", "library-running", "visual", "comparison", "accessibility", "performance"]) completion(root, shard);
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "shards-only", "--ids", "multi-plan,workout,library-running"]);
-  const incomplete = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
-  assert.notEqual(incomplete.status, 0);
-  assert.match(incomplete.stderr, /functional_selectors_invalid/);
   // Fixture-only mutation: the current producer reads only the first Phase 13
   // source string. Retain the complete case set to exercise the resolver beyond
   // that known, out-of-scope producer defect.
   completeMultiPlanFixture(root);
-  pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
-  const preseal = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", run, "preseal-validation.json"), "utf8"));
-  assert.equal(preseal.row_evidence.length, 172);
-  assert.equal(new Set(preseal.row_evidence.map(row => row.row_id)).size, 172);
-  assert.ok(preseal.row_evidence.every(row => row.selector.type && row.selector.resolution.result === row.result));
-  assert.equal(preseal.row_evidence.find(row => row.row_id === "VER-07").result, "REVIEW_REQUIRED");
+  const derived = deriveTestLedger(root);
+  assert.equal(derived.status, 0, derived.stderr);
+  const testLedger = JSON.parse(derived.stdout);
+  assert.equal(testLedger.evidence_origin, "test");
+  assert.equal(testLedger.rows.length, 172);
+  assert.equal(testLedger.readiness, "NOT_READY");
   const checklist = path.join(root, "checklist.json"); const observations = path.join(root, "observations.json"); const record = path.join(root, "artifacts/native/v1.2", run, "attended-observations.json");
   writeFileSync(path.join(root, "identity.json"), JSON.stringify(attendedIdentity(root)));
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["prepare", "--identity", "identity.json", "--output", "checklist.json"]);
   writeFileSync(observations, JSON.stringify(attendedObservations(root)));
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["record", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations), "--output", path.relative(root, record)]);
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["verify", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations)]);
-  pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
-  const finalEvidence = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", run, "final-evidence.json"), "utf8"));
-  assert.equal(finalEvidence.rows.length, 172); assert.equal(finalEvidence.release_authorized, false);
-  assert.equal(finalEvidence.readiness, "NOT_READY");
-  assert.equal(finalEvidence.rows.find(row => row.requirement_id === "VER-07").verdict, "REVIEW_REQUIRED");
-  assert.equal(finalEvidence.rows.find(row => row.requirement_id === "VER-12").verdict, "PASS");
-  assert.equal(finalEvidence.source_results.length, 172);
-  pass(root, "scripts/generate-v12-parity-report.mjs", ["--final-evidence", `artifacts/native/v1.2/${run}/final-evidence.json`]);
-  assert.match(readFileSync(path.join(root, "artifacts/native/v1.2", run, "parity-report.md"), "utf8"), /Rows: 172/u);
-  assert.equal(JSON.parse(readFileSync(path.join(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md"), "utf8")).release_authorized, false);
+  const blockedPreseal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+  assert.notEqual(blockedPreseal.status, 0); assert.match(blockedPreseal.stderr, /test_origin_forbidden/u);
+  const blockedFinal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
+  assert.notEqual(blockedFinal.status, 0); assert.match(blockedFinal.stderr, /test_origin_forbidden/u);
+  for (const output of ["preseal-validation.json", "ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md", "publication/preseal.json", "publication/final.json"]) {
+    assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, output)), false, output);
+  }
   await t.test("typed ledger rejects source-result tampering and exceptions cannot erase a blocker", () => {
     // The CLI round-trip above remains the integration oracle. This separate
     // subprocess exercises the public derivation API with the same real fixture.
@@ -183,15 +199,20 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
       import assert from 'node:assert/strict';
       import { readFileSync } from 'node:fs';
       import path from 'node:path';
-      import { deriveV12Ledger } from ${JSON.stringify(path.join(project, 'scripts/verify-v12-native-evidence.mjs'))};
+      import { deriveV12Ledger, sealV12FinalEvidence } from ${JSON.stringify(path.join(project, 'scripts/verify-v12-native-evidence.mjs'))};
       import { loadV12ContractInputs } from ${JSON.stringify(path.join(project, 'scripts/v12-evidence-contract.mjs'))};
+      import { resolveV12SourceRows } from ${JSON.stringify(path.join(project, 'scripts/v12-blocker-row-resolver.mjs'))};
       const root = process.argv[1], run = process.argv[2], base = path.join(root, 'artifacts/native/v1.2', run);
       const read = file => JSON.parse(readFileSync(path.join(base, file), 'utf8'));
-      const manifest = read('build.json'), evidence = read('preseal-validation.json').row_evidence;
+      const manifest = read('build.json');
+      const evidence = resolveV12SourceRows({inputs:loadV12ContractInputs({root}), manifest, root, readArtifact:file=>readFileSync(path.join(root,file))});
       const args = { inputs: loadV12ContractInputs({root}), manifest, evidence, root, readArtifact: file => readFileSync(path.join(root, file)), attended: read('attended-observations.json') };
       const exception = { row_id: 'VER-07', deviation_id: 'DEV-203', owner_decision: 'owner-approved', decided_at: '2026-10-14', scope: 'sqlite review', configurations: [manifest.configuration.id], rationale: 'cannot override a concrete blocker', evidence_hashes: [evidence.find(x => x.row_id === 'VER-07').sha256] };
       const ledger = deriveV12Ledger({ ...args, exceptions: [exception], readiness_policy: { policy_id: 'v12-reviewed-policy', reviewed_by: 'owner', reviewed_at: '2026-10-14', permits_accepted_exceptions: true } });
       assert.equal(ledger.readiness, 'NOT_READY');
+      let writes = 0;
+      assert.throws(() => sealV12FinalEvidence({mode:'final', run_id:run, ledger, writeImmutableJson:()=>{writes += 1;}}), /test_origin_forbidden/);
+      assert.equal(writes, 0);
       assert.equal(ledger.rows.find(row => row.requirement_id === 'VER-07').verdict, 'REVIEW_REQUIRED');
       for (const mutate of [row => {row.result = 'FAIL';}, row => {row.selector.id = 'unknown';}, row => {row.bindings[0].sha256 = '0'.repeat(64);}]) {
         const changed = structuredClone(evidence); mutate(changed[0]);
@@ -244,24 +265,20 @@ async function assertSourceMutations(t, root) {
       try {
         mutate(edit);
         for (const shard of shards) rewriteFixturePublication(root, shard);
-        const preflight = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+        const preflight = deriveTestLedger(root, attended);
         if (invalid) {
           assert.notEqual(preflight.status, 0, name);
           assert.equal(existsSync(path.join(base, "preseal-validation.json")), false);
-          assert.notEqual(invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]).status, 0);
           return;
         }
         assert.equal(preflight.status, 0, preflight.stderr);
-        const report = JSON.parse(readFileSync(path.join(base, "preseal-validation.json"), "utf8"));
-        const selected = report.row_evidence.find(row => row.row_id === rowId);
-        assert.equal(selected.result, attended ? "NOT_RUN" : expected, name);
+        const ledger = JSON.parse(preflight.stdout);
+        const selected = ledger.source_results.find(row => row.row_id === rowId);
+        assert.equal(selected.result, expected, name);
         assert.equal(selected.selector.resolution.result, selected.result);
-        const final = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
-        assert.equal(final.status, 0, final.stderr);
-        const sealed = JSON.parse(readFileSync(path.join(base, "final-evidence.json"), "utf8"));
-        assert.equal(sealed.readiness, "NOT_READY");
-        assert.equal(sealed.rows.find(row => row.requirement_id === rowId).verdict, expected);
-        assert.equal(sealed.source_results.find(row => row.row_id === rowId).result, expected);
+        assert.equal(ledger.readiness, "NOT_READY");
+        assert.equal(ledger.rows.find(row => row.requirement_id === rowId).verdict, expected);
+        assert.equal(existsSync(path.join(base, "final-evidence.json")), false);
       } finally { cleanOutputs(); for (const [file, content] of saved) writeFileSync(file, content); }
     });
   }

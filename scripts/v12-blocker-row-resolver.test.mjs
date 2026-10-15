@@ -42,7 +42,7 @@ test('count-only SQLite receipts cannot certify ten concrete cases', () => {
   assert.throws(() => resolveV12SqliteReceipt({ ...receipt, cases: 3 }, 'migration'), /row_resolver_sqlite/);
 });
 test('performance gates retain explicit unreviewed Garmin baseline', () => {
-  const gates = resolveV12PerformanceGates({ raw_samples: { garmin_sync_normalization: { state: 'REVIEW_REQUIRED', limit_source: 'phase18-pinned-artifact/v1', fixture_sha256: 'a'.repeat(64) } } });
+  const gates = resolveV12PerformanceGates({ raw_samples: { garmin_sync_normalization: { state: 'REVIEW_REQUIRED', limit_source: 'phase20-current-source-baseline/v1', fixture_sha256: 'a'.repeat(64) } } });
   assert.equal(gates.garmin_sync_normalization.result, 'REVIEW_REQUIRED');
   assert.equal(gates.warm_launch_to_interactive.result, 'NOT_RUN');
 });

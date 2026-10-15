@@ -56,6 +56,22 @@ describe("Phase 20 quality instrumentation plugin", () => {
     expect(phase20InstrumentationSource).toContain("callback_receipt_sha256");
     expect(phase20InstrumentationSource).toContain("event_receipt_sha256");
     expect(phase20InstrumentationSource).toContain("background_isolated");
+    const drive = phase20InstrumentationSource.slice(
+      phase20InstrumentationSource.indexOf("private fun drive"),
+      phase20InstrumentationSource.indexOf("private fun pssBytes"),
+    );
+    expect(drive.indexOf("Edit set values")).toBeLessThan(drive.indexOf('it.role == "textbox"'));
+    expect(phase20InstrumentationSource).toContain("AccessibilityNodeInfo.ACTION_SET_TEXT");
+    expect(drive).toContain("Save set values");
+    expect(drive).toContain('"numeric-edit-commit"');
+    expect(drive).toContain('it.name == "Add 15 seconds to rest"');
+    expect(drive).toContain('"rest-adjust-commit"');
+    expect(phase20InstrumentationSource).toContain("AccessibilityNodeInfo.ACTION_CLICK");
+  });
+
+  it("drives root-switch samples through the rendered bottom tabs", () => {
+    expect(phase20InstrumentationSource).toContain('"root-tab-${rootTabName(rootForOperation(operation))}"');
+    expect(phase20InstrumentationSource).toContain('"route-ready"');
   });
 
   it("captures the Calendar gesture before readiness at the measured display refresh rate", () => {
@@ -63,8 +79,8 @@ describe("Phase 20 quality instrumentation plugin", () => {
       phase20InstrumentationSource.indexOf("private fun runOperation"),
       phase20InstrumentationSource.indexOf("private fun setting"),
     );
-    expect(runOperation.indexOf("frameCapture?.reset()")).toBeLessThan(runOperation.indexOf("drive(operation)"));
-    expect(runOperation.indexOf("drive(operation)")).toBeLessThan(runOperation.indexOf('awaitMarkers(nonce, action, operation, sequence, "ready"'));
+    expect(runOperation.indexOf("frameCapture?.reset()")).toBeLessThan(runOperation.indexOf("drive(nonce, action, operation, sequence)"));
+    expect(runOperation.indexOf("drive(nonce, action, operation, sequence)")).toBeLessThan(runOperation.indexOf('awaitMarkers(nonce, action, operation, sequence, "ready"'));
     expect(phase20InstrumentationSource).toContain("defaultDisplay.refreshRate.toDouble()");
     expect(phase20InstrumentationSource).not.toContain("val refresh = 60.0");
     expect(phase20InstrumentationSource).toContain('"calendar-gesture-before-ready"');

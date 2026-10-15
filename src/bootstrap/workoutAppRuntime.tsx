@@ -396,6 +396,10 @@ import {
   type Phase14SourceStateProof,
 } from "./phase14SourceStateProof";
 import {
+  collectPhase20QualityWorkloadProof,
+  type Phase20QualityWorkloadProof,
+} from "../testing/phase20QualityWorkload";
+import {
   createPhase17FixtureProtocol,
   type Phase17Fixture,
   type Phase17SourceProbe,
@@ -751,7 +755,7 @@ function revisionDisplayValue(value: unknown): string {
 type RuntimeValue = RuntimeState & Readonly<{
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
-  collectPhase20QualitySourceProof(): Promise<Phase14SourceStateProof>;
+  collectPhase20QualitySourceProof(): Promise<Phase20QualityWorkloadProof>;
   triggerPhase20ProgressRebuild(): Promise<void>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
@@ -5191,7 +5195,7 @@ export function WorkoutAppRuntimeProvider({
         CryptoDigestAlgorithm,
         digestStringAsync,
       } = require("expo-crypto") as typeof import("expo-crypto");
-      return collectPhase14SourceStateProofFromKernel({
+      return collectPhase20QualityWorkloadProof({
         kernel: requireServices().kernel,
         sha256: (value) =>
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),

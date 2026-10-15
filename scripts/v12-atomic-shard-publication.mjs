@@ -33,6 +33,7 @@ function publicationIdentity(runRoot) {
   let build;
   try { build = JSON.parse(readFileSync(buildPath, "utf8")); } catch { fail("build_identity_invalid"); }
   const identity = {
+    evidence_origin: build?.evidence_origin ?? "native",
     source_tree_sha256: build?.source?.tree_sha256,
     apk_sha256: build?.build?.apk?.sha256,
     installed_apk_sha256: build?.device?.installed_apk_sha256,
@@ -41,7 +42,8 @@ function publicationIdentity(runRoot) {
     configuration_id: build?.configuration?.id,
   };
   if (identity.apk_sha256 !== identity.installed_apk_sha256
-    || Object.entries(identity).some(([key, value]) => key === "configuration_id"
+    || !new Set(["native", "test"]).has(identity.evidence_origin)
+    || Object.entries(identity).some(([key, value]) => key === "configuration_id" || key === "evidence_origin"
       ? typeof value !== "string" || value.length === 0
       : typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value))) fail("build_identity_invalid");
   return Object.freeze(identity);
