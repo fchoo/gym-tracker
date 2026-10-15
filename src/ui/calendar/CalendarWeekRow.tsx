@@ -59,6 +59,7 @@ export function CalendarWeekRow({
   hidden = false,
   onLayout,
   onDateRef,
+  onFocusDate,
   onMoveDate,
   onPressDate,
   selectedDate,
@@ -73,6 +74,7 @@ export function CalendarWeekRow({
   hidden?: boolean;
   onLayout?(event: LayoutChangeEvent): void;
   onDateRef?(date: LocalDate, node: CalendarDateCellHandle | null): void;
+  onFocusDate?(date: LocalDate): void;
   onMoveDate(date: LocalDate): void;
   onPressDate(date: LocalDate, events: readonly CalendarEvent[]): void;
   selectedDate: LocalDate;
@@ -127,6 +129,7 @@ export function CalendarWeekRow({
                 onPressDate(date, events);
               }
             }}
+            onFocus={() => onFocusDate?.(date)}
             onPress={() => onPressDate(date, events)}
             ref={(node) => onDateRef?.(date, node as CalendarDateCellHandle | null)}
             style={({ pressed }: { pressed: boolean }) => [

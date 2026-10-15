@@ -16,8 +16,8 @@ export const PHASE20_CALENDAR_STAGE_GROUPS = Object.freeze({
     "drag-backward-10", "drag-backward-24_9", "drag-backward-25", "drag-backward-25_1",
     "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above",
     "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal",
-    "second-input-interrupt",
   ] as const),
+  inputInterrupt: Object.freeze(["second-input-interrupt"] as const),
   rowGeometry: Object.freeze([
     "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "adjacent-week",
   ] as const),
@@ -35,7 +35,7 @@ export const PHASE20_CALENDAR_STAGE_IDS = Object.freeze(
 );
 
 export type Phase20CalendarStage = (typeof PHASE20_CALENDAR_STAGE_IDS)[number];
-export type Phase20CalendarStageGroup = "pointer" | "row-geometry" | "month-geometry" | "lifecycle" | "reduced-motion" | "baseline";
+export type Phase20CalendarStageGroup = "pointer" | "input-interrupt" | "row-geometry" | "month-geometry" | "pointer-retarget" | "lifecycle" | "reduced-motion" | "baseline";
 
 export type Phase20CalendarRequest = Readonly<{
   stage: Phase20CalendarStage;
@@ -108,6 +108,14 @@ type PointerEvent = EventIdentity & Readonly<{
   intent_owner: "undetermined" | "horizontal" | "vertical" | "diagonal";
 }>;
 
+type InputAttemptEvent = EventIdentity & Readonly<{
+  kind: "input-attempt";
+  callback: "onTouchStart";
+  x_dp: number;
+  y_dp: number;
+  transition_phase: Phase20CalendarTransitionSnapshot["phase"];
+}>;
+
 type SemanticEvent = EventIdentity & Readonly<{
   kind: "semantic";
   title: string;
@@ -152,7 +160,7 @@ type BaselineEvent = EventIdentity & Readonly<{
   measurement: Readonly<Record<string, string | number>>;
 }>;
 
-type ObservationEvent = ViewportEvent | TransitionEvent | PointerEvent | SemanticEvent | RowLayoutEvent | CallbackEvent | FocusEvent | LifecycleEvent | MotionEvent | BaselineEvent;
+type ObservationEvent = ViewportEvent | TransitionEvent | PointerEvent | InputAttemptEvent | SemanticEvent | RowLayoutEvent | CallbackEvent | FocusEvent | LifecycleEvent | MotionEvent | BaselineEvent;
 type ObservationPayload = ObservationEvent extends infer Event
   ? Event extends EventIdentity ? Omit<Event, keyof EventIdentity> : never
   : never;
@@ -160,6 +168,7 @@ type ObservationPayload = ObservationEvent extends infer Event
 export type Phase20CalendarObservationCollector = Readonly<{
   recordViewport(input: Readonly<{ widthDp: number; heightDp: number; orientation: "portrait" | "landscape"; layoutGeneration: number }>): void;
   recordPointer(input: Readonly<{ callback: PointerEvent["callback"]; phase: PointerEvent["phase"]; xDp: number; yDp: number; dxDp: number; dyDp: number; viewportWidthDp: number; translationXDp: number; intentOwner: PointerEvent["intent_owner"]; callbackGeneration: number }>): void;
+  recordInputAttempt(input: Readonly<{ xDp: number; yDp: number; transitionPhase: Phase20CalendarTransitionSnapshot["phase"]; callbackGeneration: number }>): void;
   recordTransition(input: Readonly<{ trigger: string; before: Phase20CalendarTransitionSnapshot; after: Phase20CalendarTransitionSnapshot; commandKinds: readonly string[] }>): void;
   recordSemantic(input: Readonly<{ title: string; currentMonthId: string; selectedCivilDate: string; focusedWeekStart: string | null; weekCount: number; callbackGeneration: number }>): void;
   recordWeekLayout(input: Readonly<{ weekStart: string; yDp: number; heightDp: number; layoutGeneration: number }>): void;
@@ -201,10 +210,11 @@ function safeMonth(value: string): string {
 }
 
 function stageGroup(stage: Phase20CalendarStage): Phase20CalendarStageGroup {
-  if ((PHASE20_CALENDAR_STAGE_GROUPS.pointer as readonly string[]).includes(stage)
-    || (PHASE20_CALENDAR_STAGE_GROUPS.pointerRetarget as readonly string[]).includes(stage)) return "pointer";
+  if ((PHASE20_CALENDAR_STAGE_GROUPS.pointer as readonly string[]).includes(stage)) return "pointer";
+  if ((PHASE20_CALENDAR_STAGE_GROUPS.inputInterrupt as readonly string[]).includes(stage)) return "input-interrupt";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.rowGeometry as readonly string[]).includes(stage)) return "row-geometry";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.monthGeometry as readonly string[]).includes(stage)) return "month-geometry";
+  if ((PHASE20_CALENDAR_STAGE_GROUPS.pointerRetarget as readonly string[]).includes(stage)) return "pointer-retarget";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.lifecycle as readonly string[]).includes(stage)) return "lifecycle";
   if ((PHASE20_CALENDAR_STAGE_GROUPS.reducedMotion as readonly string[]).includes(stage)) return "reduced-motion";
   return "baseline";
@@ -283,7 +293,7 @@ function pointerReady(stage: Phase20CalendarStage, events: readonly ObservationE
   }
   if (!["onBegin", "onChange", "onEnd"].every((callback) => callbacks.has(callback as PointerEvent["callback"]))) return false;
   const finalized = pointers.filter(({ phase }) => phase === "finalize-release").length;
-  if ((stage === "second-input-interrupt" || stage === "rapid-reverse-input") && finalized < 2) return false;
+  if (stage === "rapid-reverse-input" && finalized < 2) return false;
   if (!hasTransition(events, "release")) return false;
   return hasTransition(events, "settle-complete", "idle")
     && events.filter((event) => event.kind === "semantic").length >= 2;
@@ -328,16 +338,21 @@ function lifecycleReady(stage: Phase20CalendarStage, events: readonly Observatio
 function ready(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup, events: readonly ObservationEvent[]): boolean {
   const hasViewport = events.some((event) => event.kind === "viewport-layout");
   const hasSemantic = events.some((event) => event.kind === "semantic");
-  if (!hasViewport || !hasSemantic) return false;
-  if (group === "pointer") return pointerReady(stage, events);
+  const hasMotion = events.some((event) => event.kind === "motion");
+  if (!hasViewport || !hasSemantic || !hasMotion) return false;
+  if (group === "pointer" || group === "pointer-retarget") return pointerReady(stage, events);
+  if (group === "input-interrupt") return pointerReady(stage, events)
+    && events.filter((event) => event.kind === "input-attempt").length >= 2;
   if (group === "row-geometry") return rowReady(stage, events);
   if (group === "month-geometry") return monthReady(stage, events);
   if (group === "lifecycle") return lifecycleReady(stage, events);
   if (group === "reduced-motion") return events.some((event) => event.kind === "motion" && event.reduced_motion)
-    && hasTransition(events, "expand") && events.some((event) => event.kind === "focus");
-  return events.some((event) => event.kind === "baseline" && (
+    && uniqueRows(events).length >= 2 && hasTransition(events, "expand") && events.some((event) => event.kind === "focus");
+  const semantic = events.filter((event): event is SemanticEvent => event.kind === "semantic").at(-1);
+  return semantic !== undefined && uniqueRows(events).length === semantic.week_count
+    && events.some((event) => event.kind === "baseline" && (
     stage === "dev-01-padding" ? event.measurement.kind === "adaptive-padding" : event.measurement.kind === "light-strength-title"
-  ));
+    ));
 }
 
 function stageBody(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup, startedAt: number, completedAt: number, events: readonly ObservationEvent[]) {
@@ -348,7 +363,8 @@ function stageBody(stage: Phase20CalendarStage, group: Phase20CalendarStageGroup
   const callbacks = events.filter((event): event is CallbackEvent => event.kind === "callback");
   const focus = events.filter((event): event is FocusEvent => event.kind === "focus");
   const motion = events.filter((event): event is MotionEvent => event.kind === "motion");
-  if (group === "pointer") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
+  if (group === "pointer" || group === "pointer-retarget") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
+  if (group === "input-interrupt") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), pointer_events: events.filter((event): event is PointerEvent => event.kind === "pointer"), input_attempts: events.filter((event): event is InputAttemptEvent => event.kind === "input-attempt"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion: motion.at(-1) });
   if (group === "row-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, focus_events: focus, motion: motion.at(-1) });
   if (group === "month-geometry") return Object.freeze({ ...base, viewport: viewportEvents.at(-1), row_measurements: uniqueRows(events), transition_events: transitions, semantic_samples: semantics, motion: motion.at(-1) });
   if (group === "lifecycle") return Object.freeze({ ...base, viewport_events: viewportEvents, lifecycle_events: events.filter((event): event is LifecycleEvent => event.kind === "lifecycle"), transition_events: transitions, semantic_samples: semantics, callback_events: callbacks, motion_events: motion });
@@ -373,7 +389,7 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
   emitLine?: (line: string) => void;
 }>): Phase20CalendarObservationCollector | null {
   if (input.request === null) return null;
-  const now = input.now ?? (() => globalThis.performance.now());
+  const now = input.now ?? (() => globalThis.performance?.now() ?? Date.now());
   const digest = input.sha256 ?? ((value: string) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value));
   const emitLine = input.emitLine ?? ((line: string) => console.info(line));
   const request = input.request;
@@ -434,6 +450,13 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
       viewport_width_dp: safeNumber(value.viewportWidthDp),
       translation_x_dp: safeNumber(value.translationXDp),
       intent_owner: value.intentOwner,
+    }),
+    recordInputAttempt: (value) => append(value.callbackGeneration, {
+      kind: "input-attempt",
+      callback: "onTouchStart",
+      x_dp: safeNumber(value.xDp),
+      y_dp: safeNumber(value.yDp),
+      transition_phase: value.transitionPhase,
     }),
     recordTransition: (value) => append(value.after.epoch, {
       kind: "transition",
@@ -502,6 +525,7 @@ export function clearPhase20CalendarObservationCollector(): void {
 
 export const recordPhase20CalendarViewport = (input: Parameters<Phase20CalendarObservationCollector["recordViewport"]>[0]) => activeCollector?.recordViewport(input);
 export const recordPhase20CalendarPointer = (input: Parameters<Phase20CalendarObservationCollector["recordPointer"]>[0]) => activeCollector?.recordPointer(input);
+export const recordPhase20CalendarInputAttempt = (input: Parameters<Phase20CalendarObservationCollector["recordInputAttempt"]>[0]) => activeCollector?.recordInputAttempt(input);
 export const recordPhase20CalendarTransition = (input: Parameters<Phase20CalendarObservationCollector["recordTransition"]>[0]) => activeCollector?.recordTransition(input);
 export const recordPhase20CalendarSemantic = (input: Parameters<Phase20CalendarObservationCollector["recordSemantic"]>[0]) => activeCollector?.recordSemantic(input);
 export const recordPhase20CalendarWeekLayout = (input: Parameters<Phase20CalendarObservationCollector["recordWeekLayout"]>[0]) => activeCollector?.recordWeekLayout(input);

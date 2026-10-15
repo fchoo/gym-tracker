@@ -579,14 +579,10 @@ export function CalendarScreen({
     setRetryGeneration((generation) => generation + 1);
   }, [returnFocusGeneration]);
 
-  const focusTarget = useCallback((
-    target: (View & Readonly<{ focus?: () => void }>) | null | undefined,
-    identity: string,
-  ) => {
+  const focusTarget = useCallback((target: (View & Readonly<{ focus?: () => void }>) | null | undefined) => {
     if (target === undefined || target === null) return;
     target.focus?.();
     AccessibilityInfo.sendAccessibilityEvent(target, "focus");
-    recordPhase20CalendarFocus({ identity, callbackGeneration: calendarTransitionRef.current.epoch });
   }, []);
 
   useEffect(() => {
@@ -600,10 +596,7 @@ export function CalendarScreen({
     const target = eventStillExists
       ? agendaRowRefs.current.get(pending.retained.eventId)
       : dateCellRefs.current.get(pending.retained.selectedDate);
-    focusTarget(
-      target ?? dateCellRefs.current.get(pending.retained.selectedDate),
-      eventStillExists ? `calendar-agenda-${pending.retained.eventId}` : `calendar-day-${pending.retained.selectedDate}`,
-    );
+    focusTarget(target ?? dateCellRefs.current.get(pending.retained.selectedDate));
     if (!eventStillExists) {
       AccessibilityInfo.announceForAccessibility("Calendar refreshed. The previous event is no longer available.");
     }
@@ -612,7 +605,7 @@ export function CalendarScreen({
   useEffect(() => {
     if (!pendingCollapseFocusRef.current || calendarTransition.mode !== "focused") return;
     pendingCollapseFocusRef.current = false;
-    focusTarget(collapseActionRef.current, "calendar-collapse-day");
+    focusTarget(collapseActionRef.current);
   }, [calendarTransition.mode, focusTarget]);
 
   useEffect(() => {
@@ -621,7 +614,7 @@ export function CalendarScreen({
     const target = dateCellRefs.current.get(pendingDate);
     if (target === undefined) return;
     pendingDateFocusRef.current = null;
-    focusTarget(target, `calendar-day-${pendingDate}`);
+    focusTarget(target);
   }, [calendarTransition.mode, calendarTransition.phase, focusTarget, layoutGeneration, selectedDate]);
 
   const recordWeekGeometry = useCallback((weekStart: LocalDate, geometry: Readonly<{ y: number; height: number }>) => {
@@ -745,6 +738,7 @@ export function CalendarScreen({
           accessibilityLabel="Collapse day and return to month"
           accessibilityRole="button"
           disabled={interactionDisabled}
+          onFocus={() => recordPhase20CalendarFocus({ identity: "calendar-collapse-day", callbackGeneration: calendarTransitionRef.current.epoch })}
           onKeyDown={(event) => {
             if (event.nativeEvent.key === "Escape") requestCalendarBack();
             else if (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " " || event.nativeEvent.key === "Select") collapseCalendar();
@@ -899,6 +893,7 @@ export function CalendarScreen({
                       month={panelMonth}
                       {...(interactive ? { onLayout: (event: LayoutChangeEvent) => recordWeekGeometry(dates[0]!, event.nativeEvent.layout) } : {})}
                       {...(interactive && !hidden ? { onDateRef: registerDateCell } : {})}
+                      onFocusDate={(date) => recordPhase20CalendarFocus({ identity: `calendar-day-${date}`, callbackGeneration: calendarTransitionRef.current.epoch })}
                       onMoveDate={(date) => { if (interactive) moveSelection(date, true); }}
                       onPressDate={(date) => {
                         if (!interactive) return;
@@ -937,6 +932,7 @@ export function CalendarScreen({
                     fontScale={fontScale}
                     month={visibleMonth}
                     {...(interactive ? { onDateRef: registerDateCell } : {})}
+                    onFocusDate={(date) => recordPhase20CalendarFocus({ identity: `calendar-day-${date}`, callbackGeneration: calendarTransitionRef.current.epoch })}
                     onMoveDate={(date) => { if (interactive) moveSelection(date, true); }}
                     onPressDate={(date) => {
                       if (!interactive) return;

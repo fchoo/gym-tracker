@@ -1,4 +1,8 @@
-import { describe, expect, it, jest } from "@jest/globals";
+import { describe, expect, it } from "@jest/globals";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   PHASE20_CALENDAR_STAGE_GROUPS,
@@ -39,7 +43,7 @@ function pointerCollector(stage: (typeof PHASE20_CALENDAR_STAGE_IDS)[number], em
   return createPhase20CalendarObservationCollector({
     request: request(stage),
     now: clock(),
-    sha256: async () => "c".repeat(64),
+    sha256: async (value) => createHash("sha256").update(value).digest("hex"),
     emitLine: (line) => emitted.push(line),
   });
 }
@@ -129,9 +133,16 @@ describe("Phase 20 real Calendar observation collector", () => {
     expect(terminal.stage.pointer_events.map((event: { callback: string }) => event.callback)).toEqual([
       "onTouchesDown", "onBegin", "onChange", "onEnd", "onFinalize",
     ]);
-    expect(terminal.stage.observation_digest_sha256).toBe("c".repeat(64));
+    expect(terminal.stage.observation_digest_sha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(JSON.stringify(terminal)).not.toMatch(/synthetic|expected|\bPASS\b|\bstatus\b/u);
     expect(terminal.stage.pointer_events.some((event: { observed_at_monotonic_ms: number }) => !Number.isInteger(event.observed_at_monotonic_ms))).toBe(true);
+    const hostContract = pathToFileURL(path.resolve("scripts/v12-calendar-observation-contract.mjs")).href;
+    expect(execFileSync(process.execPath, [
+      "--input-type=module",
+      "--eval",
+      `import {validateV12CalendarTerminalMarker} from ${JSON.stringify(hostContract)}; const marker=JSON.parse(process.argv[1]); validateV12CalendarTerminalMarker(marker,{nonce:marker.nonce,flowSha256:marker.flow_sha256,stageId:marker.stage.id}); process.stdout.write("valid");`,
+      JSON.stringify(terminal),
+    ], { encoding: "utf8" })).toBe("valid");
 
     collector.recordSemantic({ title: "November 2026", currentMonthId: "2026-11", selectedCivilDate: "2026-11-15", focusedWeekStart: null, weekCount: 6, callbackGeneration: 4 });
     await collector.flush();
@@ -187,7 +198,11 @@ describe("Phase 20 real Calendar observation collector", () => {
       emitLine: (line) => emitted.push(line),
     })!;
     collector.recordViewport({ widthDp: 324, heightDp: 560, orientation: "portrait", layoutGeneration: 1 });
+    collector.recordMotion({ reducedMotion: false });
     collector.recordSemantic({ title: "October 2026", currentMonthId: "2026-10", selectedCivilDate: "2026-10-15", focusedWeekStart: null, weekCount: 5, callbackGeneration: 1 });
+    for (const [index, weekStart] of ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"].entries()) {
+      collector.recordWeekLayout({ weekStart, yDp: index * 70, heightDp: 70, layoutGeneration: 1 });
+    }
     collector.recordBaseline({ kind: "adaptive-padding", safeWidthDp: 360, horizontalInsetDp: 18, viewportWidthDp: 324 });
     await expect(collector.flush()).rejects.toThrow("native digest unavailable");
     expect(emitted).toEqual([]);

@@ -21,6 +21,7 @@ import {
 } from "../../bootstrap/phase16CalendarTestControls";
 import {
   recordPhase20CalendarCallback,
+  recordPhase20CalendarInputAttempt,
   recordPhase20CalendarPointer,
   recordPhase20CalendarViewport,
 } from "../../bootstrap/phase20CalendarObservation";
@@ -618,7 +619,22 @@ export function CalendarMonthViewport({
       testID="calendar-vertical-scroll"
     >
       <GestureDetector gesture={pan}>
-        <View accessibilityLabel="Calendar month panels" onLayout={onLayout} style={styles.viewport} testID="calendar-month-viewport">
+        <View
+          accessibilityLabel="Calendar month panels"
+          onLayout={onLayout}
+          onTouchStart={(event) => {
+            const touch = event.nativeEvent.touches[0];
+            if (touch === undefined) return;
+            recordPhase20CalendarInputAttempt({
+              xDp: touch.pageX,
+              yDp: touch.pageY,
+              transitionPhase: transition.phase,
+              callbackGeneration: transition.epoch,
+            });
+          }}
+          style={styles.viewport}
+          testID="calendar-month-viewport"
+        >
         <Panel offset={-1} pointerX={pointerX} viewportWidth={viewportWidth}>
           <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
             {renderMonth(previousMonth, false)}

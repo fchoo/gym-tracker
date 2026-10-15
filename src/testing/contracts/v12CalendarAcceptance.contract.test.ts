@@ -22,7 +22,7 @@ describe("v1.2 Calendar native-acceptance contract", () => {
     expect(V12_CALENDAR_ACCEPTANCE_CASES.every(({ disposition }) => disposition === "observe-only")).toBe(true);
     expect(V12_CALENDAR_OBSERVATION_SCHEMAS.map(({ stageId }) => stageId)).toEqual(PHASE20_CALENDAR_STAGE_IDS);
     expect(new Set(V12_CALENDAR_OBSERVATION_SCHEMAS.map(({ group }) => group))).toEqual(new Set([
-      "pointer", "row-geometry", "month-geometry", "pointer-retarget", "lifecycle", "reduced-motion", "baseline",
+      "pointer", "input-interrupt", "row-geometry", "month-geometry", "pointer-retarget", "lifecycle", "reduced-motion", "baseline",
     ]));
   });
 
@@ -33,8 +33,8 @@ describe("v1.2 Calendar native-acceptance contract", () => {
   it("rejects missing, duplicate, reordered, generic, and verdict-bearing stage plans", () => {
     expect(() => runV12CalendarAcceptanceContract({ ...plan, stages: plan.stages.slice(1) })).toThrow("calendar_stage_plan_invalid");
     expect(() => runV12CalendarAcceptanceContract({ ...plan, stages: plan.stages.map((entry, index) => index === 1 ? plan.stages[0]! : entry) })).toThrow("calendar_stage_plan_invalid");
-    expect(() => runV12CalendarAcceptanceContract({ ...plan, stages: plan.stages.map((entry, index) => index === 1 ? { ...entry, group: "pointer" as const } : entry) })).toThrow("calendar_stage_plan_invalid");
-    expect(() => runV12CalendarAcceptanceContract({ ...plan, stages: plan.stages.map((entry, index) => index === 1 ? { ...entry, requiredCollections: ["samples"] } : entry) })).toThrow("calendar_stage_plan_invalid");
+    expect(() => runV12CalendarAcceptanceContract({ ...plan, stages: plan.stages.map((entry, index) => index === 20 ? { ...entry, group: "pointer" as const } : entry) })).toThrow("calendar_stage_plan_invalid");
+    expect(() => runV12CalendarAcceptanceContract({ ...plan, stages: plan.stages.map((entry, index) => index === 20 ? { ...entry, requiredCollections: ["samples"] } : entry) })).toThrow("calendar_stage_plan_invalid");
     expect(() => runV12CalendarAcceptanceContract({ ...plan, nativeExecution: "PASS" as never })).toThrow("calendar_execution_invalid");
     expect(() => runV12CalendarAcceptanceContract({ ...plan, finalVerdict: "PASS" } as never)).toThrow("calendar_observation_invalid");
   });
