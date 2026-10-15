@@ -426,7 +426,6 @@ import {
 } from "./phase17FamilyCFixture";
 import {
   createRunningPlanRuntimePort,
-  RunningPlanRuntimeProvider,
   type RunningPlanRuntimePort,
   type RunningTargetMutationInput,
   type RunningTargetMutationResult,
@@ -750,6 +749,7 @@ function revisionDisplayValue(value: unknown): string {
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
+  runningPlanRuntime: RunningPlanRuntimePort | null;
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
@@ -5171,6 +5171,9 @@ export function WorkoutAppRuntimeProvider({
 
   const value = useMemo<RuntimeValue>(() => ({
     ...state,
+    runningPlanRuntime: state.launchState === "trusted"
+      ? requireServices().runningPlans
+      : null,
     garminImport,
     actOnToday: (action) => requireServices().schedules.actOnToday(action),
     acceptRecommendation: acceptWorkoutRecommendation,
@@ -5612,11 +5615,7 @@ export function WorkoutAppRuntimeProvider({
         <CalendarSessionReadContext.Provider value={calendarSessionRead}>
           <CalendarStrengthOccurrenceReadContext.Provider value={calendarStrengthOccurrenceRead}>
             <CalendarActivityReadContext.Provider value={calendarActivityRead}>
-              {servicesRef.current === null ? children : (
-                <RunningPlanRuntimeProvider runtime={servicesRef.current.runningPlans}>
-                  {children}
-                </RunningPlanRuntimeProvider>
-              )}
+              {children}
             </CalendarActivityReadContext.Provider>
           </CalendarStrengthOccurrenceReadContext.Provider>
         </CalendarSessionReadContext.Provider>

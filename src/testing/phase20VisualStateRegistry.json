@@ -158,7 +158,7 @@
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
       "test_id": "app-settings-sheet",
       "semantics": [
         "Workout"
@@ -290,8 +290,8 @@
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -432,8 +432,8 @@
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -569,8 +569,8 @@
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -706,8 +706,8 @@
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -843,8 +843,8 @@
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -980,8 +980,8 @@
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -3914,8 +3914,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -4314,7 +4314,7 @@
       }
     ],
     "readiness": {
-      "screen_test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
       "test_id": "calendar-key-sheet",
       "semantics": [
         "Calendar"
@@ -4753,8 +4753,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -5131,8 +5131,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -5370,8 +5370,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -5655,8 +5655,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "planned-workout-detail",
-      "test_id": "planned-workout-detail",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout preview"
       ]
@@ -5891,8 +5891,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6122,8 +6122,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6353,8 +6353,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6576,8 +6576,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6807,8 +6807,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -7185,8 +7185,8 @@
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -9187,7 +9187,7 @@
       "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
       "semantics": [
-        "Starter Strength"
+        "Full Body Foundation"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9391,7 +9391,7 @@
       "screen_test_id": "starter-activation",
       "test_id": "starter-activation",
       "semantics": [
-        "Activate starter"
+        "Full Body Foundation"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9595,7 +9595,7 @@
       "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
       "semantics": [
-        "Bodyweight Basics"
+        "Minimal Equipment Full Body"
       ]
     },
     "evidence_scope": "production_screen",
@@ -12186,7 +12186,7 @@
     "scenario_steps": [],
     "readiness": {
       "screen_test_id": "owned-plan-editor",
-      "test_id": "owned-plan-editor",
+      "test_id": "owned-plan-create",
       "semantics": [
         "Create plan"
       ]
@@ -13861,7 +13861,10 @@
     "name": "progress-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all",
@@ -14024,7 +14027,10 @@
     "name": "progress-all-4w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-4w",
@@ -14182,7 +14188,10 @@
     "name": "progress-all-12w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "12_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-12w",
@@ -14345,7 +14354,10 @@
     "name": "progress-all-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "all_time"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-all",
@@ -14508,7 +14520,10 @@
     "name": "progress-strength",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength",
@@ -14692,7 +14707,10 @@
     "name": "progress-strength-4w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-4w",
@@ -14871,7 +14889,10 @@
     "name": "progress-strength-12w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "12_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-12w",
@@ -15054,7 +15075,10 @@
     "name": "progress-strength-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "all_time"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-all",
@@ -15237,7 +15261,10 @@
     "name": "progress-running",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running",
@@ -15437,7 +15464,10 @@
     "name": "progress-running-4w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-4w",
@@ -15632,7 +15662,10 @@
     "name": "progress-running-12w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "12_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-12w",
@@ -15831,7 +15864,10 @@
     "name": "progress-running-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "all_time"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-all",
@@ -16600,7 +16636,10 @@
     "name": "progress-recommendation",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-recommendation",
@@ -16803,7 +16842,10 @@
     "name": "running-effort-2.4",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-2.4",
@@ -17014,7 +17056,10 @@
     "name": "running-target-2.4",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-2.4",
@@ -17314,7 +17359,10 @@
     "name": "running-effort-10",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-10",
@@ -17525,7 +17573,10 @@
     "name": "running-target-10",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-10",
@@ -17825,7 +17876,10 @@
     "name": "running-effort-hm",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-hm",
@@ -18036,7 +18090,10 @@
     "name": "running-target-hm",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-hm",
@@ -18336,7 +18393,10 @@
     "name": "bodyweight-history",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "bodyweight-history",
@@ -18551,7 +18611,10 @@
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -18796,7 +18859,10 @@
     "name": "progress-running-empty",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-empty",
@@ -18959,7 +19025,10 @@
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -19172,7 +19241,10 @@
     "name": "progress-running-sparse",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-sparse",
@@ -19343,7 +19415,10 @@
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -19564,7 +19639,10 @@
     "name": "progress-running-loading",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-loading",
@@ -19703,7 +19781,10 @@
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -19892,7 +19973,10 @@
     "name": "progress-running-ready",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-ready",

@@ -28,6 +28,7 @@ import {
   useWorkoutAppRuntime,
   WorkoutAppRuntimeProvider,
 } from "../src/bootstrap/workoutAppRuntime";
+import { RunningPlanRuntimeProvider } from "../src/bootstrap/runningPlanRuntime";
 import {
   productionAppearanceStore,
 } from "../src/bootstrap/appearancePreference";
@@ -123,7 +124,7 @@ function RootNavigator() {
   const runtime = useWorkoutAppRuntime();
   const { colorScheme } = useAppTheme();
 
-  return (
+  const navigator = (
     <StartupReadinessGate
       launchState={runtime.launchState}
       notificationPermission={runtime.notificationPermission}
@@ -167,6 +168,11 @@ function RootNavigator() {
         <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       </>
     </StartupReadinessGate>
+  );
+  return runtime.runningPlanRuntime === null ? navigator : (
+    <RunningPlanRuntimeProvider runtime={runtime.runningPlanRuntime}>
+      {navigator}
+    </RunningPlanRuntimeProvider>
   );
 }
 

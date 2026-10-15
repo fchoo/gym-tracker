@@ -154,6 +154,8 @@ test("capture binds actual PNG, state/configuration and UI geometry, then reads 
   assert.equal(f.state.lock, false);
   assert.equal(f.state.screenId, "plan-type-chooser");
   assert.equal(f.state.readyId, "plan-type-chooser");
+  const readyAck = f.state.commands.find((command) => command[0] === "adb" && command.join(" ").includes("android.intent.action.VIEW"));
+  assert.match(readyAck?.join(" ") ?? "", /[?&]ready=[a-f0-9]{32}/u);
   assert.doesNotMatch(JSON.stringify(result), /device-private|\/private\/|\/Users\//u);
 });
 test("batch preserves requested configuration order and individually bound receipts", async (t) => {

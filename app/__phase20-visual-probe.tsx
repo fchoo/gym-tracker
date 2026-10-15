@@ -4,6 +4,7 @@ import React from "react";
 import { View } from "react-native";
 
 import { useWorkoutAppRuntime } from "../src/bootstrap/workoutAppRuntime";
+import { RunningPlanRuntimeProvider } from "../src/bootstrap/runningPlanRuntime";
 import {
   Phase20VisualProbe,
   resolvePhase20VisualProbe,
@@ -84,7 +85,12 @@ function RuntimeBoundProductionVisualState({
 }>) {
   const runtime = useWorkoutAppRuntime();
   if (runtime.launchState !== "trusted") return <AppLoadingShell />;
-  return <ProductionVisualState route={route} />;
+  if (runtime.runningPlanRuntime === null) throw new Error("phase20_visual_running_runtime_missing");
+  return (
+    <RunningPlanRuntimeProvider runtime={runtime.runningPlanRuntime}>
+      <ProductionVisualState route={route} />
+    </RunningPlanRuntimeProvider>
+  );
 }
 
 export default function Phase20VisualProbeRoute() {

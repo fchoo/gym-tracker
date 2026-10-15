@@ -25,6 +25,10 @@ test("generates all 107 ordered browser-walk occurrences with an approved refere
   assert.doesNotMatch(output, /BW-054-only|placeholder|fake UI|\/__v12-production-visual/u);
   const registry = JSON.parse(readFileSync(generatedJson, "utf8"));
   const flow = readFileSync(generatedFlow, "utf8");
+  const routeSource = readFileSync(path.join(root, "app/__phase20-visual-probe.tsx"), "utf8");
+  for (const route of new Set(registry.map((state) => state.route))) {
+    assert.ok(routeSource.includes(`case ${JSON.stringify(route)}:`), `missing production route ${route}`);
+  }
   for (const state of registry.filter(({ scenario_steps }) => scenario_steps.length > 0)) {
     assert.match(flow, new RegExp(`VISUAL_STATE == '${state.id}'`, "u"));
   }

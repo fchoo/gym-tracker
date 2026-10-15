@@ -124,6 +124,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => {
     productionWorkoutAppRuntimeDependencies: {},
     useWorkoutAppRuntime: () => ({
       launchState: "trusted",
+      runningPlanRuntime: null,
       notificationPermission: "granted",
       openRestNotificationSettings: jest.fn(),
       requestRestNotificationPermission: jest.fn(),
@@ -419,6 +420,25 @@ describe("RootLayout attended preview isolation", () => {
 
     expect(screen.getByTestId("root-stack-screen-__phase20-visual-probe"))
       .toBeOnTheScreen();
+    expect(mockCreatePhase20VisualDependencies).not.toHaveBeenCalled();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("does not activate the visual runtime outside the exact development-test suite", async () => {
+    mockPathname = "/__phase20-visual-probe";
+    mockBuildProfile = "production";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      state: "BW-001",
+      configuration: "AP-L-C390-P-F100",
+      fixture: "v12-synthetic-fixtures-r18",
+      nonce: "a".repeat(32),
+      mode: "capture",
+    };
+
+    await render(<RootLayout />);
+
     expect(mockCreatePhase20VisualDependencies).not.toHaveBeenCalled();
     expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
     expect(mockProductionAppearanceRead).not.toHaveBeenCalled();

@@ -159,7 +159,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
       "test_id": "app-settings-sheet",
       "semantics": [
         "Workout"
@@ -291,8 +291,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -433,8 +433,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -570,8 +570,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -707,8 +707,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -844,8 +844,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -981,8 +981,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
-      "screen_test_id": "today-screen",
-      "test_id": "today-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout"
       ]
@@ -3915,8 +3915,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -4315,7 +4315,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
-      "screen_test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
       "test_id": "calendar-key-sheet",
       "semantics": [
         "Calendar"
@@ -4754,8 +4754,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -5132,8 +5132,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -5371,8 +5371,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -5656,8 +5656,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "planned-workout-detail",
-      "test_id": "planned-workout-detail",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Workout preview"
       ]
@@ -5892,8 +5892,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6123,8 +6123,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6354,8 +6354,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6577,8 +6577,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -6808,8 +6808,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -7186,8 +7186,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "calendar-screen",
-      "test_id": "calendar-screen",
+      "screen_test_id": "adaptive-screen",
+      "test_id": "adaptive-screen",
       "semantics": [
         "Calendar"
       ]
@@ -9188,7 +9188,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
       "semantics": [
-        "Starter Strength"
+        "Full Body Foundation"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9392,7 +9392,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "screen_test_id": "starter-activation",
       "test_id": "starter-activation",
       "semantics": [
-        "Activate starter"
+        "Full Body Foundation"
       ]
     },
     "evidence_scope": "production_screen",
@@ -9596,7 +9596,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
       "semantics": [
-        "Bodyweight Basics"
+        "Minimal Equipment Full Body"
       ]
     },
     "evidence_scope": "production_screen",
@@ -12187,7 +12187,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "scenario_steps": [],
     "readiness": {
       "screen_test_id": "owned-plan-editor",
-      "test_id": "owned-plan-editor",
+      "test_id": "owned-plan-create",
       "semantics": [
         "Create plan"
       ]
@@ -13862,7 +13862,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all",
@@ -14025,7 +14028,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-all-4w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-4w",
@@ -14183,7 +14189,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-all-12w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "12_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-12w",
@@ -14346,7 +14355,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-all-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "all_time"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-all",
@@ -14509,7 +14521,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-strength",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength",
@@ -14693,7 +14708,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-strength-4w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-4w",
@@ -14872,7 +14890,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-strength-12w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "12_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-12w",
@@ -15055,7 +15076,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-strength-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "all_time"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-all",
@@ -15238,7 +15262,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running",
@@ -15438,7 +15465,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running-4w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-4w",
@@ -15633,7 +15663,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running-12w",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "12_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-12w",
@@ -15832,7 +15865,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running-all",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "all_time"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-all",
@@ -16601,7 +16637,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-recommendation",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Strength",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-recommendation",
@@ -16804,7 +16843,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "running-effort-2.4",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-2.4",
@@ -17015,7 +17057,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "running-target-2.4",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-2.4",
@@ -17315,7 +17360,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "running-effort-10",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-10",
@@ -17526,7 +17574,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "running-target-10",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-10",
@@ -17826,7 +17877,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "running-effort-hm",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-hm",
@@ -18037,7 +18091,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "running-target-hm",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-hm",
@@ -18337,7 +18394,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "bodyweight-history",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "bodyweight-history",
@@ -18552,7 +18612,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -18797,7 +18860,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running-empty",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-empty",
@@ -18960,7 +19026,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -19173,7 +19242,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running-sparse",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-sparse",
@@ -19344,7 +19416,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -19565,7 +19640,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running-loading",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-loading",
@@ -19704,7 +19782,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-settings",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "All",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
@@ -19893,7 +19974,10 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "name": "progress-running-ready",
     "route": "/(tabs)/progress",
     "component": "ProgressScreen",
-    "route_params": {},
+    "route_params": {
+      "sport": "Running",
+      "period": "4_weeks"
+    },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-ready",

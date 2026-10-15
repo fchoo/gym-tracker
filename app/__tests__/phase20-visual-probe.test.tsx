@@ -23,7 +23,7 @@ jest.mock("expo-router", () => ({
   },
 }));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ launchState: "trusted" }),
+  useWorkoutAppRuntime: () => ({ launchState: "trusted", runningPlanRuntime: {} }),
 }));
 
 describe("Phase 20 visual probe", () => {

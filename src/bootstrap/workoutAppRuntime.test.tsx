@@ -1647,6 +1647,29 @@ describe("WorkoutAppRuntimeProvider", () => {
     applyWorkoutMutationTestControl("reset_workout_failures");
   });
 
+  it("prepares an isolated runtime after migration and disposes it after the kernel closes", async () => {
+    const order: string[] = [];
+    const repository = runtimeRepository([noPlanView], [null]);
+    const originalRead = repository.getTodayView;
+    repository.getTodayView = jest.fn(async (input) => {
+      order.push("read");
+      return originalRead(input);
+    });
+    const runtimeDependencies = dependencies(repository, {
+      migrate: jest.fn(async () => { order.push("migrate"); }),
+      prepareRuntime: jest.fn(async () => { order.push("prepare"); }),
+      disposeRuntime: jest.fn(async () => { order.push("dispose"); }),
+    });
+    const view = await render(<RuntimeHarness dependencies={runtimeDependencies} />);
+
+    await waitFor(() => expect(screen.getByTestId("runtime-state")).toHaveTextContent("trusted"));
+    expect(order.indexOf("migrate")).toBeLessThan(order.indexOf("prepare"));
+    expect(order.indexOf("prepare")).toBeLessThan(order.indexOf("read"));
+
+    view.unmount();
+    await waitFor(() => expect(runtimeDependencies.disposeRuntime).toHaveBeenCalledTimes(1));
+  });
+
   it("delegates bounded Calendar range reads through the query-only foundation port", async () => {
     const range = Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) }) as TrainingCalendarRange;
     const loadCalendarRange = jest.fn(async () => range);

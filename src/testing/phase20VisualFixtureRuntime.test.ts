@@ -37,6 +37,11 @@ function request(state: Phase20VisualRequest["state"]): Phase20VisualRequest {
 describe("Phase 20 visual fixture runtime", () => {
   const execute = jest.fn(async () => ({ changes: 1, lastInsertRowId: 1 }));
   const kernel = {
+    queryAll: jest.fn(async () => [
+      { id: "warmup-1", session_exercise_id: "exercise-1", set_kind: "warmup", metric_profile: "load_reps", target_load_grams: 20_000, target_min_reps: 5 },
+      { id: "working-1", session_exercise_id: "exercise-1", set_kind: "working", metric_profile: "load_reps", target_load_grams: 80_000, target_min_reps: 5 },
+      { id: "working-2", session_exercise_id: "exercise-1", set_kind: "working", metric_profile: "load_reps", target_load_grams: 80_000, target_min_reps: 5 },
+    ]),
     write: jest.fn(async (operation: (transaction: { execute: typeof execute }) => Promise<unknown>) => operation({ execute })),
   } as never;
 
@@ -80,7 +85,7 @@ describe("Phase 20 visual fixture runtime", () => {
   });
 
   it("does not manufacture an active workout for non-Active families", async () => {
-    await bootstrapPhase20VisualFixture(kernel, request("BW-022"));
+    await bootstrapPhase20VisualFixture(kernel, request("BW-002"));
     expect(mockActivateStarterPlan).toHaveBeenCalledTimes(1);
     expect(mockStartWorkout).not.toHaveBeenCalled();
   });

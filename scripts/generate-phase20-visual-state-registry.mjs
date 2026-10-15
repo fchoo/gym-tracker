@@ -9,6 +9,10 @@ const approvedRoot = "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/design
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFile = (relative) => readFileSync(path.join(root, relative));
 const phase20ActiveSessionId = "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0";
+const progressRouteParams = (name) => ({
+  sport: name.includes("running") ? "Running" : name.includes("strength") || name === "progress-recommendation" ? "Strength" : "All",
+  period: name.endsWith("-12w") ? "12_weeks" : name.endsWith("-all") && name !== "progress-all" ? "all_time" : "4_weeks",
+});
 
 const destinationFor = (name) => {
   if (["appearance", "workout-root", "workout-day-0", "workout-day-1", "workout-day-2", "workout-day-3", "workout-day-4"].includes(name)) {
@@ -44,7 +48,7 @@ const destinationFor = (name) => {
         : ["5f140001-7e35-4a6d-9100-000000000005", "Plank"];
     return { route: "/exercise-history/[exerciseId]", component: "ExerciseHistoryScreen", route_params: { exerciseId: exercise[0], exerciseName: exercise[1], origin: "progress" } };
   }
-  if (name.startsWith("progress-") || name.startsWith("running-effort-") || name.startsWith("running-target-") || name === "bodyweight-history") return { route: "/(tabs)/progress", component: "ProgressScreen", route_params: {} };
+  if (name.startsWith("progress-") || name.startsWith("running-effort-") || name.startsWith("running-target-") || name === "bodyweight-history") return { route: "/(tabs)/progress", component: "ProgressScreen", route_params: progressRouteParams(name) };
   if (["garmin-outdoor", "garmin-treadmill"].includes(name)) return { route: "/garmin/activity/[activityId]", component: "ImportedActivityDetailScreen", route_params: { activityId: name === "garmin-outdoor" ? "phase20-garmin-outdoor" : "phase20-garmin-treadmill", origin: "workout" } };
   if (name.includes("match") || name.includes("confirmed")) return { route: "/garmin/match/[activityId]", component: "ActivityMatchScreen", route_params: { activityId: name.includes("treadmill") ? "phase20-garmin-treadmill" : "phase20-garmin-outdoor", origin: "workout" } };
   if (name.startsWith("garmin-")) return { route: "/garmin/index", component: "GarminSyncScreen", route_params: { origin: "workout" } };
@@ -69,6 +73,7 @@ const readinessTestIdFor = (component, name) => ({
   "calendar-key": "calendar-key-sheet",
   "plan-filters": "starter-filter-sheet-frame",
   "library-actions": "library-actions-sheet-frame",
+  "create-strength": "owned-plan-create",
   "progress-recommendation": "recommendation-review-sheet",
   "running-effort-2.4": "running-history-sheet",
   "running-effort-10": "running-history-sheet",
@@ -79,8 +84,8 @@ const readinessTestIdFor = (component, name) => ({
   "bodyweight-history": "bodyweight-history-sheet",
   "progress-settings": "progress-settings-sheet",
 }[name] ?? ({
-  TodayScreen: "today-screen", ActiveWorkoutScreen: "active-workout", CalendarScreen: "calendar-screen",
-  PlannedWorkoutDetailScreen: "planned-workout-detail", LibraryScreen: "library-screen",
+  TodayScreen: "adaptive-screen", ActiveWorkoutScreen: "active-workout", CalendarScreen: "adaptive-screen",
+  PlannedWorkoutDetailScreen: "adaptive-screen", LibraryScreen: "library-screen",
   OwnedPlanDetailScreen: "owned-plan-detail", StarterPlanDetailScreen: "starter-plan-detail",
   StarterActivationScreen: "starter-activation", OwnedPlanEditorScreen: "owned-plan-editor",
   ScheduleEditorScreen: "schedule-editor", RunningPlanDetailScreen: "running-plan-detail",
@@ -128,8 +133,8 @@ const readinessSemanticsFor = (component, name) => {
   if (component === "PlannedWorkoutDetailScreen") return ["Workout preview"];
   if (component === "LibraryScreen") return ["Library"];
   if (component === "OwnedPlanDetailScreen") return [name === "library-plan-strength" ? "Strength Reset" : "Full Body Foundation"];
-  if (component === "StarterPlanDetailScreen") return [name === "library-plan-home" ? "Bodyweight Basics" : "Starter Strength"];
-  if (component === "StarterActivationScreen") return ["Activate starter"];
+  if (component === "StarterPlanDetailScreen") return [name === "library-plan-home" ? "Minimal Equipment Full Body" : "Full Body Foundation"];
+  if (component === "StarterActivationScreen") return ["Full Body Foundation"];
   if (component === "OwnedPlanEditorScreen") return [name === "create-strength" ? "Create plan" : "Plan editor"];
   if (component === "ScheduleEditorScreen") return ["Schedule"];
   if (component === "RunningPlanDetailScreen") return ["Running"];
