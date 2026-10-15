@@ -14,7 +14,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import {
   V12_CALENDAR_FLOW_REVISION,
-  V12_CALENDAR_RESULT_MARKER,
+  V12_CALENDAR_CHUNK_MARKER,
   V12_CALENDAR_STAGE_IDS,
   deriveV12CalendarStageResult,
   hashV12CalendarObservationBody,
@@ -328,4 +328,4 @@ export async function executeProductionCalendarAction(payload, attestation) {
   }
 }
 
-export { FLOW as V12_CALENDAR_FLOW_PATH, V12_CALENDAR_RESULT_MARKER };
+export { FLOW as V12_CALENDAR_FLOW_PATH, V12_CALENDAR_CHUNK_MARKER };

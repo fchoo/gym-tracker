@@ -7,7 +7,9 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const BUILD_PROFILE = "development-test";
 const SUITE = "v1.2-acceptance";
 export const PHASE20_CALENDAR_FLOW_REVISION = "calendar-flow-r35-real-v1";
-export const PHASE20_CALENDAR_RESULT_MARKER = "GYM_TRACKER_V12_DOMAIN_RESULT:";
+export const PHASE20_CALENDAR_CHUNK_MARKER = "GYM_TRACKER_V12_CALENDAR_CHUNK:";
+const PHASE20_CALENDAR_CHUNK_SIZE = 1_800;
+const PHASE20_CALENDAR_MAX_CHUNKS = 256;
 
 export const PHASE20_CALENDAR_STAGE_GROUPS = Object.freeze({
   pointer: Object.freeze([
@@ -436,14 +438,30 @@ export function createPhase20CalendarObservationCollector(input: Readonly<{
     const body = stageBody(request.stage, group, startedAt, completedAt, Object.freeze([...events]));
     terminal = Promise.resolve(digest(JSON.stringify(body))).then((observationDigest) => {
       if (!SHA256.test(observationDigest)) throw new Error("phase20_calendar_digest_invalid");
-      emitLine(`${PHASE20_CALENDAR_RESULT_MARKER}${JSON.stringify({
+      const marker = JSON.stringify({
         schema_version: 1,
         nonce: request.nonce,
         kind: "calendar",
         flow_sha256: request.flowSha256,
         flow_revision: request.flowRevision,
         stage: Object.freeze({ ...body, observation_digest_sha256: observationDigest }),
-      })}`);
+      });
+      return digest(marker).then((payloadSha256) => {
+        if (!SHA256.test(payloadSha256)) throw new Error("phase20_calendar_digest_invalid");
+        const total = Math.ceil(marker.length / PHASE20_CALENDAR_CHUNK_SIZE);
+        if (total < 1 || total > PHASE20_CALENDAR_MAX_CHUNKS) throw new Error("phase20_calendar_chunk_count_invalid");
+        for (let index = 0; index < total; index += 1) {
+          emitLine(`${PHASE20_CALENDAR_CHUNK_MARKER}${JSON.stringify({
+            schema_version: 1,
+            nonce: request.nonce,
+            sequence: index + 1,
+            total,
+            payload_sha256: payloadSha256,
+            payload: marker.slice(index * PHASE20_CALENDAR_CHUNK_SIZE, (index + 1) * PHASE20_CALENDAR_CHUNK_SIZE),
+          })}`);
+        }
+      });
+    }).then(() => {
       emitted = true;
     });
     void terminal.catch(() => undefined);

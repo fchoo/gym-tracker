@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 export const V12_CALENDAR_FLOW_REVISION = "calendar-flow-r35-real-v1";
-export const V12_CALENDAR_RESULT_MARKER = "GYM_TRACKER_V12_DOMAIN_RESULT:";
+export const V12_CALENDAR_CHUNK_MARKER = "GYM_TRACKER_V12_CALENDAR_CHUNK:";
+const CALENDAR_CHUNK_SIZE = 1_800;
+const MAX_CALENDAR_CHUNKS = 256;
 
 export const V12_CALENDAR_STAGE_GROUPS = Object.freeze({
   pointer: Object.freeze([
@@ -439,25 +441,57 @@ export function validateV12CalendarTerminalMarker(marker, expected) {
   return Object.freeze({ observation: marker.stage, assertionResults: Object.freeze(assertions) });
 }
 
-function markerRows(logs) {
+function chunkRows(logs) {
   if (typeof logs !== "string" || logs.length > 8 * 1024 * 1024) fail("logs_invalid");
   const rows = [];
   for (const line of logs.split(/\r?\n/u)) {
-    const index = line.indexOf(V12_CALENDAR_RESULT_MARKER);
+    const index = line.indexOf(V12_CALENDAR_CHUNK_MARKER);
     if (index < 0) continue;
-    try { rows.push(JSON.parse(line.slice(index + V12_CALENDAR_RESULT_MARKER.length))); }
-    catch { fail("marker_json_invalid"); }
+    try { rows.push(JSON.parse(line.slice(index + V12_CALENDAR_CHUNK_MARKER.length))); }
+    catch { fail("chunk_json_invalid"); }
   }
   return rows;
 }
 
+export function encodeV12CalendarTerminalMarkerChunks(marker, chunkSize = CALENDAR_CHUNK_SIZE) {
+  if (!Number.isSafeInteger(chunkSize) || chunkSize < 128 || chunkSize > CALENDAR_CHUNK_SIZE) fail("chunk_size_invalid");
+  const payload = JSON.stringify(marker);
+  const total = Math.ceil(payload.length / chunkSize);
+  if (total < 1 || total > MAX_CALENDAR_CHUNKS || !NONCE.test(marker?.nonce ?? "")) fail("chunk_count_invalid");
+  const payloadSha256 = hashV12CalendarObservationBody(payload);
+  return Object.freeze(Array.from({ length: total }, (_, index) => `${V12_CALENDAR_CHUNK_MARKER}${JSON.stringify({
+    schema_version: 1,
+    nonce: marker.nonce,
+    sequence: index + 1,
+    total,
+    payload_sha256: payloadSha256,
+    payload: payload.slice(index * chunkSize, (index + 1) * chunkSize),
+  })}`));
+}
+
+function terminalFromChunks(rows, nonce) {
+  const selected = rows.filter((row) => row?.nonce === nonce);
+  if (selected.length === 0) fail("marker_missing");
+  for (const row of selected) {
+    exact(row, ["schema_version", "nonce", "sequence", "total", "payload_sha256", "payload"], "chunk_invalid");
+    if (row.schema_version !== 1 || !NONCE.test(row.nonce ?? "") || !HASH.test(row.payload_sha256 ?? "")
+      || !Number.isSafeInteger(row.sequence) || !Number.isSafeInteger(row.total)
+      || row.sequence < 1 || row.total < 1 || row.sequence > row.total || row.total > MAX_CALENDAR_CHUNKS
+      || typeof row.payload !== "string" || row.payload.length === 0 || row.payload.length > CALENDAR_CHUNK_SIZE) fail("chunk_invalid");
+  }
+  const total = selected[0].total;
+  if (selected.length !== total || selected.some((row, index) => row.sequence !== index + 1
+    || row.total !== total || row.payload_sha256 !== selected[0].payload_sha256)) fail("chunk_sequence_invalid");
+  const payload = selected.map(({ payload: chunk }) => chunk).join("");
+  if (hashV12CalendarObservationBody(payload) !== selected[0].payload_sha256) fail("chunk_hash_invalid");
+  try { return JSON.parse(payload); } catch { fail("marker_json_invalid"); }
+}
+
 export function selectV12CalendarTerminalMarker({ beforeLogs, afterLogs, nonce, flowSha256, stageId }) {
-  if (markerRows(beforeLogs).some((row) => row?.nonce === nonce)) fail("pre_stage_marker");
-  const rows = markerRows(afterLogs).filter((row) => row?.nonce === nonce);
-  if (rows.length === 0) fail("marker_missing");
-  if (rows.length !== 1) fail("marker_duplicate");
-  validateV12CalendarTerminalMarker(rows[0], { nonce, flowSha256, stageId });
-  return rows[0];
+  if (chunkRows(beforeLogs).some((row) => row?.nonce === nonce)) fail("pre_stage_marker");
+  const marker = terminalFromChunks(chunkRows(afterLogs), nonce);
+  validateV12CalendarTerminalMarker(marker, { nonce, flowSha256, stageId });
+  return marker;
 }
 
 export function deriveV12CalendarStageResult({ marker, expected, screenshotSha256, traceSha256 }) {

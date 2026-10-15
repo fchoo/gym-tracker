@@ -3,9 +3,11 @@ import test from "node:test";
 
 import {
   V12_CALENDAR_FLOW_REVISION,
+  V12_CALENDAR_CHUNK_MARKER,
   V12_CALENDAR_STAGE_GROUPS,
   V12_CALENDAR_STAGE_IDS,
   deriveV12CalendarStageResult,
+  encodeV12CalendarTerminalMarkerChunks,
   hashV12CalendarObservationBody,
   selectV12CalendarTerminalMarker,
   validateV12CalendarStageCoverage,
@@ -214,10 +216,22 @@ test("row geometry rejects duplicated fixed bounds", () => {
 });
 
 test("terminal selection rejects pre-stage and duplicate nonce markers", () => {
-  const line = `GYM_TRACKER_V12_DOMAIN_RESULT:${JSON.stringify(marker())}`;
-  assert.equal(selectV12CalendarTerminalMarker({ beforeLogs: "", afterLogs: line, nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact" }).stage.id, "drag-forward-release-exact");
-  assert.throws(() => selectV12CalendarTerminalMarker({ beforeLogs: line, afterLogs: line, nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact" }), /calendar_observation_pre_stage_marker/u);
-  assert.throws(() => selectV12CalendarTerminalMarker({ beforeLogs: "", afterLogs: `${line}\n${line}`, nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact" }), /calendar_observation_marker_duplicate/u);
+  const lines = encodeV12CalendarTerminalMarkerChunks(marker(), 300);
+  assert.ok(lines.length > 1);
+  assert.ok(lines.every((line) => line.startsWith(V12_CALENDAR_CHUNK_MARKER)));
+  assert.equal(selectV12CalendarTerminalMarker({ beforeLogs: "", afterLogs: lines.join("\n"), nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact" }).stage.id, "drag-forward-release-exact");
+  assert.throws(() => selectV12CalendarTerminalMarker({ beforeLogs: lines[0], afterLogs: lines.join("\n"), nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact" }), /calendar_observation_pre_stage_marker/u);
+  for (const changed of [
+    lines.slice(0, -1),
+    [...lines, lines[0]],
+    [lines[1], lines[0], ...lines.slice(2)],
+    lines.map((line, index) => index === 0 ? line.replace(/"payload_sha256":"[a-f0-9]{64}"/u, `"payload_sha256":"${"0".repeat(64)}"`) : line),
+    lines.map((line, index) => index === 0 ? line.replace(`"nonce":"${NONCE}"`, `"nonce":"${"c".repeat(32)}"`) : line),
+  ]) {
+    assert.throws(() => selectV12CalendarTerminalMarker({ beforeLogs: "", afterLogs: changed.join("\n"), nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact" }), /calendar_observation_(?:chunk|marker)/u);
+  }
+  const legacy = `GYM_TRACKER_V12_DOMAIN_RESULT:${JSON.stringify(marker())}`;
+  assert.throws(() => selectV12CalendarTerminalMarker({ beforeLogs: "", afterLogs: legacy, nonce: NONCE, flowSha256: FLOW_SHA, stageId: "drag-forward-release-exact" }), /calendar_observation_marker_missing/u);
 });
 
 test("coverage rejects missing, duplicate, reordered, and missing-group stage results", () => {

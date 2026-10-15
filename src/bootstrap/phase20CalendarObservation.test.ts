@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import {
   PHASE20_CALENDAR_STAGE_GROUPS,
   PHASE20_CALENDAR_STAGE_IDS,
-  PHASE20_CALENDAR_RESULT_MARKER,
+  PHASE20_CALENDAR_CHUNK_MARKER,
   createPhase20CalendarObservationCollector,
   phase20CalendarRequestFromNativeContract,
 } from "./phase20CalendarObservation";
@@ -46,6 +46,23 @@ function pointerCollector(stage: (typeof PHASE20_CALENDAR_STAGE_IDS)[number], em
     sha256: async (value) => createHash("sha256").update(value).digest("hex"),
     emitLine: (line) => emitted.push(line),
   });
+}
+
+function terminalFromChunks(lines: readonly string[]) {
+  const chunks = lines.map((line) => JSON.parse(line.slice(PHASE20_CALENDAR_CHUNK_MARKER.length)) as {
+    nonce: string;
+    sequence: number;
+    total: number;
+    payload_sha256: string;
+    payload: string;
+  });
+  expect(chunks.length).toBeGreaterThan(1);
+  expect(chunks.map(({ sequence }) => sequence)).toEqual(Array.from({ length: chunks.length }, (_, index) => index + 1));
+  expect(chunks.every(({ total }) => total === chunks.length)).toBe(true);
+  expect(chunks.every(({ nonce }) => nonce === NONCE)).toBe(true);
+  const payload = chunks.map(({ payload }) => payload).join("");
+  expect(chunks.every(({ payload_sha256 }) => payload_sha256 === createHash("sha256").update(payload).digest("hex"))).toBe(true);
+  return JSON.parse(payload);
 }
 
 const transition = (phase: "idle" | "dragging" | "settling", titlePanel: "current" | "next" = "current") => ({
@@ -119,9 +136,8 @@ describe("Phase 20 real Calendar observation collector", () => {
     collector.recordSemantic({ title: "November 2026", currentMonthId: "2026-11", selectedCivilDate: "2026-11-15", focusedWeekStart: null, weekCount: 6, callbackGeneration: 3 });
     await collector.flush();
 
-    expect(emitted).toHaveLength(1);
-    expect(emitted[0]).toMatch(/^GYM_TRACKER_V12_DOMAIN_RESULT:/u);
-    const terminal = JSON.parse(emitted[0]!.slice(PHASE20_CALENDAR_RESULT_MARKER.length));
+    expect(emitted.every((line) => line.startsWith(PHASE20_CALENDAR_CHUNK_MARKER))).toBe(true);
+    const terminal = terminalFromChunks(emitted);
     expect(terminal).toMatchObject({
       schema_version: 1,
       nonce: NONCE,
@@ -146,7 +162,7 @@ describe("Phase 20 real Calendar observation collector", () => {
 
     collector.recordSemantic({ title: "November 2026", currentMonthId: "2026-11", selectedCivilDate: "2026-11-15", focusedWeekStart: null, weekCount: 6, callbackGeneration: 4 });
     await collector.flush();
-    expect(emitted).toHaveLength(1);
+    expect(terminalFromChunks(emitted)).toEqual(terminal);
   });
 
   it("records a genuine cancelled gesture without manufacturing pointer-up", async () => {
@@ -161,7 +177,7 @@ describe("Phase 20 real Calendar observation collector", () => {
     collector.recordTransition({ trigger: "cancel", before: transition("idle"), after: { ...transition("idle"), epoch: 1 }, commandKinds: [] });
     await collector.flush();
 
-    const terminal = JSON.parse(emitted[0]!.slice(PHASE20_CALENDAR_RESULT_MARKER.length));
+    const terminal = terminalFromChunks(emitted);
     expect(terminal.stage.pointer_events.at(-1)).toMatchObject({ callback: "onFinalize", phase: "finalize-cancel" });
     expect(terminal.stage.pointer_events).not.toEqual(expect.arrayContaining([expect.objectContaining({ callback: "onEnd" })]));
   });
