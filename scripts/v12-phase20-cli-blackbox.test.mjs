@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { PNG } from "pngjs";
+
 const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const sha = (letter) => letter.repeat(64);
@@ -91,6 +93,22 @@ function attendedIdentity(root) {
   };
 }
 
+function attendedObservations(root) {
+  return {
+    schema_version: 2,
+    suite: "v12-samsung-attended-observations",
+    identity: attendedIdentity(root),
+    settings_restored: true,
+    rows: Array.from({ length: 7 }, (_, index) => {
+      const image = new PNG({ width: 1, height: 1 }); image.data.set([index + 1, 0, 0, 255]);
+      const bytes = PNG.sync.write(image); const id = `S20-0${index + 1}`;
+      const relative = `artifacts/native/v1.2/${run}/attended/${id}.png`;
+      const absolute = path.join(root, relative); mkdirSync(path.dirname(absolute), { recursive: true }); writeFileSync(absolute, bytes);
+      return { id, status: "passed", png: { path: relative, sha256: createHash("sha256").update(bytes).digest("hex"), size_bytes: bytes.length, width: 1, height: 1 } };
+    }),
+  };
+}
+
 test("Phase 20 fake-device pipeline publishes a sealed, re-readable 172-row contract", (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   // Every call below is the documented CLI order. The test intentionally does
@@ -107,7 +125,7 @@ test("Phase 20 fake-device pipeline publishes a sealed, re-readable 172-row cont
   const checklist = path.join(root, "checklist.json"); const observations = path.join(root, "observations.json"); const record = path.join(root, "artifacts/native/v1.2", run, "attended-observations.json");
   writeFileSync(path.join(root, "identity.json"), JSON.stringify(attendedIdentity(root)));
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["prepare", "--identity", "identity.json", "--output", "checklist.json"]);
-  writeFileSync(observations, JSON.stringify({ schema_version: 1, suite: "v12-samsung-attended-observations", identity: attendedIdentity(root), rows: Array.from({ length: 7 }, (_, index) => ({ id: `S20-0${index + 1}`, status: "passed", png_sha256: sha(String(index + 1)) })) }));
+  writeFileSync(observations, JSON.stringify(attendedObservations(root)));
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["record", "--checklist", checklist, "--observations", observations, "--output", record]);
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["verify", "--checklist", checklist, "--observations", observations]);
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
