@@ -1,8 +1,8 @@
 ---
 phase: 20-native-acceptance
-reviewed: 2026-10-14T08:25:08Z
+reviewed: 2026-10-15T02:31:36Z
 depth: deep
-files_reviewed: 19
+files_reviewed: 32
 files_reviewed_list:
   - maestro/v1.2/calendar.yaml
   - maestro/v1.2/garmin-progress.yaml
@@ -23,115 +23,96 @@ files_reviewed_list:
   - scripts/v12-performance-shard.mjs
   - scripts/v12-preflight-contract.test.mjs
   - scripts/verify-v12-native-evidence.mjs
+  - scripts/v12-native-adapter.mjs
+  - scripts/v12-atomic-shard-publication.mjs
+  - scripts/v12-atomic-shard-publication.test.mjs
+  - scripts/v12-atomic-publication.integration.test.mjs
+  - scripts/v12-sqlite-shard.mjs
+  - scripts/v12-recovery-shard.mjs
+  - scripts/v12-recovery-shard.test.mjs
+  - scripts/v12-phase20-cli-blackbox.test.mjs
+  - scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs
+  - scripts/testing/v12-phase20-blackbox/fake-device-tool.mjs
+  - scripts/generate-v12-attended-checklist.mjs
+  - scripts/create-v12-readiness-handoff.mjs
+  - scripts/v12-calendar-evidence-coverage.test.mjs
 findings:
-  critical: 7
-  warning: 2
-  info: 1
-  total: 10
+  critical: 5
+  warning: 0
+  info: 0
+  total: 5
 status: issues_found
 ---
 
 # Phase 20: Code Review Report
 
-**Reviewed:** 2026-10-14T08:25:08Z
+**Reviewed:** 2026-10-15T02:31:36Z
 **Depth:** deep
-**Files Reviewed:** 19
+**Files Reviewed:** 32
 **Status:** issues_found
 
 ## Summary
 
-The submitted remediation does not implement the executable, source-bound Phase 20 evidence pipeline described by Plans 20-09 through 20-12. The dominant defect is a split between injectable library helpers and the declared CLIs: the commands in the plans either fail deliberately, require unprovided in-process adapters, or validate only file presence/hashes. Consequently, synthetic or arbitrary files can pass portions of preseal, while the required visual, accessibility, performance, Garmin, attended, parity, and final-seal paths cannot run end to end.
+This deep re-review confirms that several iteration-2 changes are real: producer CLIs now go through a subprocess protocol, successful shards publish a manifest last, the visual capture writer retains and hash-checks native PNGs, exception precedence rejects blocking source results, and the black-box suite invokes the documented commands.
 
-The scoped unit tests pass, but they use injected callbacks and in-memory maps. They do not exercise the declared command lines, a real adapter boundary, or final-mode publication.
+However, Phase 20 remains unsafe to ship. The unified preseal maps existing aggregate files directly to 172 `PASS` rows without evaluating their actual outcomes. A failed Samsung observation is recorded but then treated as a passing final gate. Visual comparison proof is still hash-shaped metadata rather than retained/recomputed image evidence. The only configured adapter path is an arbitrary environment command, and the checked-in black-box fake is accepted by the same production path. Recovery also converts any sufficiently long report text into eight passed cases. Passing tests therefore demonstrate the supplied synthetic protocol, not a source-bound native acceptance seal.
+
+## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: Plan-declared execution CLIs are intentionally non-executable
+### CR-01: Preseal manufactures all 172 `PASS` inputs from artifact presence
 
-**File:** `scripts/capture-v12-visual.mjs:160-165`, `scripts/compare-v12-visual.mjs:143-148`, `scripts/v12-performance-shard.mjs:156-163`, `scripts/v12-garmin-shard.mjs:121-124`, `scripts/v12-calendar-shard.mjs:32`
+**Classification:** **BLOCKER**
 
-**Issue:** Plans 20-10 and 20-11 declare direct `node`/`npm` commands as the native producers. Those commands do not have a production adapter path. `capture-v12-visual --all` always throws `native_adapter_required`; `compare-v12-visual --all` always throws `native_comparison_input_required`; `v12-performance-shard --execute` always throws `native_collector_required`; and the Garmin/Calendar CLIs default to callbacks that throw `*_executor_required`. The only working paths are exported functions called with test-supplied callbacks. This makes the required artifacts impossible to produce from the documented commands.
+**File:** `scripts/verify-v12-native-evidence.mjs:808-827`
 
-**Fix:** Implement one real, dependency-wired device-runner adapter and make each declared CLI invoke it. The adapter must acquire the exclusive device lease, validate the installed APK and source identity, collect the actual data, restore settings in `finally`, persist immutable artifacts, and emit a privacy-safe failure receipt. Keep callback injection only as an explicit test seam; do not make it the sole execution path.
+**Issue:** `preflightRowEvidence` assigns `result: "PASS"` for every matrix row after selecting one coarse artifact per owning phase. It neither parses nor validates the selected producer's outcome, and it does not map a row to concrete case, configuration, visual comparison, or attended evidence. `executeV12EvidenceCli` persists those manufactured results at `:843` and final mode feeds them directly to `deriveV12Ledger` at `:852`. Thus a present Garmin matching file, Calendar transition file, visual index, or performance file turns every associated row into `PASS`, including rows whose actual shard/case status is `FAIL`, `NOT_RUN`, or `REVIEW_REQUIRED`.
 
-### CR-02: The unified preseal registry does not match the required Phase 20 artifact contract
+**Fix:** Replace `preflightRowEvidence` with a typed per-row resolver. It must re-read the relevant sealed producer records, validate each concrete case/configuration and map its real status to exactly one matrix row. Reject aggregate-only evidence and fail preseal for an unmapped row. Add black-box mutations that set a Calendar stage, Garmin case, comparison result, accessibility trace, and performance gate to each blocking status; final mode must then produce `NOT_READY` rather than a 172-row PASS ledger.
 
-**File:** `scripts/verify-v12-native-evidence.mjs:620-629`
+### CR-02: The documented production CLIs have no production adapter and accept the test fake as native evidence
 
-**Issue:** `V12_PREFLIGHT_SHARDS` names paths that Plans 20-09/10/11 neither declare nor require (`sqlite.json`, `recovery.json`) and omits required evidence such as `sqlite/migration.json`, `sqlite/portability.json`, `sqlite/history.json`, `recovery/lifecycle.json`, `maestro/recovery.xml`, `maestro/garmin-progress.xml`, `maestro/calendar.xml`, the screenshot/comparison corpus, and the required functional mapping files. A run with placeholder files at the two invented SQLite paths can satisfy this registry while missing the actual migration, portability, history, lifecycle, XML, visual, and comparison evidence.
+**Classification:** **BLOCKER**
 
-**Fix:** Replace the registry with a single source-of-truth artifact schema that exactly enumerates every Plan 20-09/10/11 output, including directories expanded to their expected individual records. Reuse that schema in every producer, verifier, preseal, and final-seal path; reject unknown substitutes and missing Plan-declared files.
+**File:** `scripts/v12-native-adapter.mjs:13-29`, `scripts/v12-phase20-cli-blackbox.test.mjs:57-63`, `scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs:26-98`
 
-### CR-03: Preseal checks only that arbitrary bytes exist, not that required evidence is valid or bound to the build
+**Issue:** The adapter obtains its executable solely from `V12_NATIVE_ADAPTER_COMMAND` (`:14`) and accepts any successful JSON-speaking command (`:19-29`). There is no checked-in production device-runner command or package-script configuration; the only repository wiring found is the black-box test, which points that environment variable at `scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs` (`v12-phase20-cli-blackbox.test.mjs:62`). That fake returns synthetic `EXECUTED` capture, accessibility, performance, Garmin, Calendar, SQLite, and recovery data (`fake-device-adapter.mjs:26-98`) and is not rejected by production code. A normal documented CLI therefore fails with `command_missing`, while a mistakenly exported test environment can seal fake evidence as production-native evidence.
 
-**File:** `scripts/verify-v12-native-evidence.mjs:726-745`
+**Fix:** Check in and register a production-only adapter launcher, make every Phase 20 CLI use that fixed launcher by default, and reserve an explicit test-only injection mechanism for test processes. The adapter request must carry a production attestation/identity from the real device runner, and production mode must reject executable paths under `scripts/testing/`, fake fixture attestations, and test-only environment markers. Add a subprocess test proving an unset production adapter still reaches the real launcher and that the fake adapter is rejected outside an explicit test mode.
 
-**Issue:** `preflightValidateArtifacts` only hashes files. It neither parses producer schemas nor verifies producer/run/identity fields, source/APK/install hashes, expected case ordering, raw samples, image hashes, or XML/JUnit results. `executeV12EvidenceCli` validates `build.json` but never relates its identity to the required artifacts. Any nonempty JSON/XML blob at a registered path is accepted and entered into `preseal-validation.json`, creating a false PASS path before the owner checkpoint.
+### CR-03: Preseal does not validate retained visual-comparison inputs, allowing fabricated comparison PASS records
 
-**Fix:** For each registry entry, safely read the artifact and run its concrete verifier against the manifest-derived identity. Validate the actual image bytes and comparison inputs, XML suite/case order and outcomes, exact 107×64 records, raw performance arrays, recovery/migration/portability/history data, and settings-restoration/failure receipts. Fail preseal unless every artifact independently re-reads and binds to the immutable build manifest.
+**Classification:** **BLOCKER**
 
-### CR-04: `--mode final` never derives, seals, or publishes the final evidence contract
+**File:** `scripts/compare-v12-visual.mjs:32-39`, `scripts/compare-v12-visual.mjs:120-143`, `scripts/verify-v12-native-evidence.mjs:772-794`
 
-**File:** `scripts/verify-v12-native-evidence.mjs:732-754`
+**Issue:** `compareV12Capture` accepts arbitrary hash-shaped `artifacts` values and caller-provided semantic/pixel measurements (`compare-v12-visual.mjs:32-39`), then writes them as comparison results without retaining or reading reference, overlay, difference, or mask bytes (`:120-134`). Its verifier validates only the in-memory index shape (`:137-143`). Unified preseal is weaker still: for `comparison/index.json` it checks only that the array has `107 * 64` elements (`verify-v12-native-evidence.mjs:790`); it neither invokes the comparison verifier nor recomputes any comparison input or output. This leaves the original visual-evidence fabrication path open despite capture PNG hash checks.
 
-**Issue:** The Plan 20-12 command `npm run verify:v12:evidence -- --run "$V12_RUN_ID" --mode final` always terminates in `v12_preflight_final_inputs_required` after merely checking that preseal and attended files exist. It never validates attended evidence, calls `deriveV12Ledger`, calls `sealV12FinalEvidence`, writes the 172-row matrix/final seal, emits the parity report, or creates the readiness handoff. The documented final command is therefore a guaranteed no-op failure rather than the sole final seal.
+**Fix:** Make the comparison producer receive only retained, verified capture/reference paths; write the reference, native, overlay, difference, and mask files into the atomic shard; recompute their digests, dimensions, and pixel delta in the producer; and persist those descriptors per result. In preseal, call the concrete comparison verifier, re-read every descriptor, reject duplicate/placeholder bytes, and verify the native descriptor is the corresponding retained capture record. Add negative black-box cases for a forged metric, a missing overlay/difference/mask, a hash that does not match bytes, and duplicated native PNG content.
 
-**Fix:** Make final mode perform a strict ordered transaction: re-read immutable preseal, validate a fresh attended record, validate every shard, construct the 172 source-result inputs, derive the ledger, atomically write `ui-state-matrix.json` and `final-evidence.json`, generate the parity report and readiness handoff from that sealed JSON, then re-read all outputs. It must fail before publication if any predecessor is missing or invalid.
+### CR-04: Failed Samsung observations neither block readiness nor prove their PNG hashes refer to retained bytes
 
-### CR-05: Accepted exceptions can overwrite observed failures and final derivation does not require a fresh Samsung record
+**Classification:** **BLOCKER**
 
-**File:** `scripts/verify-v12-native-evidence.mjs:547-559`
+**File:** `scripts/generate-v12-attended-checklist.mjs:124-138`, `scripts/verify-v12-native-evidence.mjs:550-565`, `scripts/verify-v12-native-evidence.mjs:591-613`
 
-**Issue:** The exception branch executes before the evidence result at line 556, so an exception converts the row to `ACCEPTED_EXCEPTION` even when its immutable source result is `FAIL`, `NOT_RUN`, or `REVIEW_REQUIRED`. This directly violates the contract that those states block conditional readiness and that an exception must never mask them. Separately, `deriveV12Ledger` receives an arbitrary `evidence` array and never reads or validates `attended-observations.json`; callers can derive all 172 rows without a fresh Samsung identity/configuration/PNG record.
+**Issue:** The attended schema stores only a hash string, not a PNG path or retained bytes (`generate-v12-attended-checklist.mjs:128-136`). Final validation only checks that each status is `passed` or `failed` and that hash strings are unique (`verify-v12-native-evidence.mjs:560-565`). It never reads an image, and it unconditionally records the attended gate as `PASS` whenever the record parses (`:595`, `:610-613`). Readiness is calculated solely from automated ledger counts (`:591-594`), so a fresh record with all seven Samsung observations marked `failed` can still produce `READY` when automated rows were manufactured as PASS.
 
-**Fix:** First reject any exception attached to a row whose source result is not an eligible successful-but-deviating result; explicitly reject `FAIL`, `NOT_RUN`, and `REVIEW_REQUIRED` before exception mapping. Make the final derivation accept the run directory, load and validate `attended-observations.json`, require the exact required attended row/key set, fresh capture hashes, manifest source/APK/signature/installed-byte/device/configuration identity, and restored settings, then bind those hashes into the affected ledger rows.
+**Fix:** Require each attended row to reference a safe, immutable PNG descriptor (`path`, `sha256`, `size_bytes`), re-read and hash/decode every image, and reject duplicates. Map failed attended rows to the associated VER-12 rows or make them a hard final-readiness block; only all-passed, validated rows may produce an attended PASS gate. Add a final CLI regression test using a valid-identity record with one `failed` status and another with a nonexistent/incorrect PNG: neither may publish `READY` final evidence.
 
-### CR-06: Calendar's claimed threshold/gesture coverage executes no threshold gesture for most required stages
+### CR-05: Recovery and Calendar evidence can report PASS without proving the prescribed native gesture/recovery behavior ran
 
-**File:** `maestro/v1.2/calendar.yaml:10-94`, `scripts/run-v12-maestro.mjs:338-416`
+**Classification:** **BLOCKER**
 
-**Issue:** The forward/backward 10%, 24.9%, 25%, 25.1%, release, fast, retreat, and cancel stages only assert that existing elements are visible; they never drive a pointer. The runner codifies this absence: `V12_CALENDAR_STAGE_CONTRACTS` requires only visibility for those stages, and `IN_APP_GESTURE_STAGES` explicitly rejects `swipe` and Back commands. These stages can produce a complete-looking report/trace without exercising the claimed boundaries, cancellation, or intent behavior.
+**File:** `scripts/v12-recovery-shard.mjs:33-42`, `scripts/v12-calendar-shard.mjs:32-34`, `maestro/v1.2/calendar.yaml:10-219`
 
-**Fix:** Define deterministic, measured pointer coordinates from the observed content width and execute the prescribed gestures/cancel sequence for every threshold stage. Record pre/during/post semantic and geometry samples from the application instrumentation, and make the runner reject traces unless their input-event receipt and expected stage-specific transition/callback invariants match.
+**Issue:** Recovery accepts any non-private report string of at least 32 bytes and deterministically translates it into eight `passed` cases and all 64 cuts (`v12-recovery-shard.mjs:33-42`); it never parses JUnit case outcomes or validates the expected recovery cuts. Calendar only validates adapter-supplied sample fields/statuses (`v12-calendar-shard.mjs:32-34`), with no event receipt, pointer path, source-flow hash, or assertion that the YAML gesture actually executed. Although the YAML now contains swipes (`calendar.yaml:10-112`), most stage outcomes remain only visibility assertions and the shard never binds its returned samples to that flow. Either adapter can therefore emit plausible metadata while no measured threshold/cancel/recovery action occurred.
 
-### CR-07: Visual evidence can be fabricated from hashes and metadata without retained, source-bound images
-
-**File:** `scripts/capture-v12-visual.mjs:120-157`, `scripts/compare-v12-visual.mjs:30-84`, `scripts/compare-v12-visual.mjs:135-140`
-
-**Issue:** Capture verification reads only `screenshots/index.json`; it never opens `native_png.path`, verifies the file exists, recomputes its SHA-256, decodes it, or verifies measured configuration/source identity. Comparison accepts caller-provided pixel/semantic measurements plus arbitrary hash-shaped strings; `decodeV12ComparisonPng` is unused, and `verifyV12VisualComparison` likewise validates only the JSON index. Thus the same `Buffer.from("native-png")` or nonexistent artifacts can represent all 6,848 captures and produce PASS classifications without any real reference/native/overlay/difference/mask image relationship.
-
-**Fix:** Persist and re-read each named image atomically. Recompute hashes from the files, decode PNG dimensions/content bounds, confirm each capture's measured configuration and source identity, generate overlay/difference from the retained reference/native bytes inside the producer, and require comparison records to point to those verified paths. The verifier must reject missing, duplicate-content, placeholder, stale, or externally supplied metric-only records.
-
-## Warnings
-
-### WR-01: Artifact publication is not atomic and producer failures leave ambiguous partial runs
-
-**File:** `scripts/capture-v12-visual.mjs:126-140`, `scripts/compare-v12-visual.mjs:124-131`, `scripts/v12-garmin-shard.mjs:127-140`, `scripts/v12-calendar-shard.mjs:32`
-
-**Issue:** Producers write hundreds of files one at a time directly to final paths. A process/device failure can leave a partial capture/comparison set; subsequent reruns are blocked by existence checks, and visual/accessibility producers do not create a durable failure receipt. The Plan requires immutable, atomic writes and retained failure evidence.
-
-**Fix:** Write each shard to a run-scoped staging directory with exclusive creation, fsync/validate all content, write a manifest last, then atomically rename the completed shard directory. On any error, preserve a separately named, privacy-safe immutable failure receipt and make preseal reject incomplete/staging artifacts.
-
-### WR-02: Tests prove injectable object shapes, not the documented end-to-end commands
-
-**File:** `scripts/capture-v12-visual.test.mjs:59-71`, `scripts/v12-calendar-shard.test.mjs:51-78`, `scripts/benchmark-v12-interactions.test.mjs:117-140`, `scripts/v12-preflight-contract.test.mjs:33-37`
-
-**Issue:** The tests pass because they inject `capture`, `executeNative`, `collect`, `write`, and in-memory maps. The preflight test only expects an error. No test invokes the Plan-declared `--all`, `--execute`, `--verify`, `shards-only`, `preseal`, or `final` command sequences with a real adapter fixture and then re-reads every produced path. This is why the missing CLIs and final seal were not detected.
-
-**Fix:** Add black-box integration tests that launch each declared CLI against a disposable fake device/ADB/Maestro adapter process, assert exact immutable files and re-read verification, simulate mid-run failure/settings restoration, test stale identity and symlink/path traversal rejection, and prove final mode writes exactly 172 rows and never promotes `FAIL`/`NOT_RUN`/`REVIEW_REQUIRED` through an exception.
-
-## Info
-
-### IN-01: Garmin shard retains dead code/imports that obscure the security boundary
-
-**File:** `scripts/v12-garmin-shard.mjs:2`, `scripts/v12-garmin-shard.mjs:36`
-
-**Issue:** `rmSync` and `safeRelative` are unused. In a security-sensitive artifact writer, unused path-handling code makes it unclear whether a path validation control is actually enforced.
-
-**Fix:** Remove the unused import/helper, or route all artifact-path construction through a tested safe-path helper.
+**Fix:** Parse and validate every retained JUnit/trace result against the exact ordered recovery and Calendar registries, preserving each actual PASS/FAIL/REVIEW_REQUIRED state. Bind the Calendar output to a hashed flow revision and require retained, ordered pointer-event receipts with measured content width, dx/dy, cancellation/settle state, callback count, and screenshots/traces for every prescribed stage. Reject any stage without an executed gesture or the expected stage-specific semantic transition. Add black-box negative fixtures for a failing JUnit case, a missing cut, a visibility-only Calendar response, and fabricated samples with no matching input receipt.
 
 ---
 
-_Reviewed: 2026-10-14T08:25:08Z_
+_Reviewed: 2026-10-15T02:31:36Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
