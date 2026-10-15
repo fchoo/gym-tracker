@@ -2,24 +2,27 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadV12VisualAuthority, v12VisualStateAuthority } from "./v12-visual-authority.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const evidence = ".planning/design/v1.2-browser-evidence";
-const approvedRoot = "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFile = (relative) => readFileSync(path.join(root, relative));
 const phase20ActiveSessionId = "session_1790818860000_alternate_day_plan_day_plan_copy_1790815260000_0";
-const canonicalGarminStates = [
-  "garmin-disconnected", "garmin-login", "garmin-mfa", "garmin-connected",
-  "garmin-syncing", "garmin-synced", "garmin-idempotent", "garmin-error",
-  "garmin-outdoor", "garmin-match-outdoor", "garmin-confirmed-outdoor",
-  "garmin-treadmill", "garmin-match-treadmill", "garmin-confirmed-treadmill",
-  "garmin-session-expired", "garmin-logged-out",
+const nativeOnlyStates = [
+  { id: "NV-GARMIN-LOGIN", name: "garmin-login", route: "/garmin/index", action: "Connect Garmin" },
+  { id: "NV-GARMIN-MFA", name: "garmin-mfa", route: "/garmin/index", action: "Continue" },
+  { id: "NV-GARMIN-SESSION-EXPIRED", name: "garmin-session-expired", route: "/garmin/index", action: "Sign in again" },
 ];
 const progressRouteParams = (name) => ({
   sport: name.includes("running") ? "Running" : name.includes("strength") || name === "progress-recommendation" ? "Strength" : "All",
   period: name.endsWith("-12w") ? "12_weeks" : name.endsWith("-all") && name !== "progress-all" ? "all_time" : "4_weeks",
 });
+
+const fixtureVariantFor = (index, name) => {
+  if (name !== "progress-settings") return name;
+  return ({ 83: "progress-settings-ready", 85: "progress-settings-empty", 87: "progress-settings-sparse", 89: "progress-settings-loading" })[index] ?? name;
+};
 
 const destinationFor = (name) => {
   if (["appearance", "workout-root", "workout-day-0", "workout-day-1", "workout-day-2", "workout-day-3", "workout-day-4"].includes(name)) {
@@ -125,7 +128,7 @@ const scenarioStepsFor = (name) => {
   if (name === "calendar-next") return [{ action: "tap_text", value: "Show November 2026" }];
   if (name === "calendar-previous") return [{ action: "tap_text", value: "Show September 2026" }];
   if (name.startsWith("calendar-agenda-")) return [{ action: "tap_id", value: `calendar-day-${name.slice("calendar-agenda-".length)}` }];
-  if (name === "calendar-adjacent-week") return [{ action: "tap_id", value: "calendar-day-2026-11-01" }];
+  if (name === "calendar-adjacent-week") return [{ action: "tap_id", value: "calendar-day-2026-10-12" }];
   if (name === "calendar-collapsed") return [{ action: "tap_id", value: "calendar-day-2026-10-01" }, { action: "tap_text", value: "Collapse day and return to month" }];
   if (name === "plan-filters") return [{ action: "tap_id", value: "library-filters-chip" }];
   if (name === "library-actions") return [{ action: "tap_text", value: "Actions" }];
@@ -141,7 +144,7 @@ const scenarioStepsFor = (name) => {
   if (name === "progress-recommendation") steps.push({ action: "tap_text", value: "Review target for Back Squat" });
   if (name === "bodyweight-history") return [{ action: "tap_text", value: "Body metrics" }];
   if (name === "progress-settings") return [{ action: "tap_text", value: "Settings" }];
-  if (name === "garmin-login") return [{ action: "tap_text", value: "Connect Garmin" }];
+  if (name === "garmin-consent") return [{ action: "tap_text", value: "Connect Garmin" }];
   if (["garmin-syncing", "garmin-synced", "garmin-idempotent", "garmin-error"].includes(name)) return [{ action: "tap_text", value: "Sync now" }];
   return steps;
 };
@@ -171,42 +174,70 @@ const readinessSemanticsFor = (component, name) => {
   throw new Error(`phase20_visual_state_readiness_missing:${name}`);
 };
 
-const walk = JSON.parse(sourceFile(`${evidence}/serial-walk.json`));
-if (!Array.isArray(walk) || walk.length !== 214) throw new Error("phase20_visual_walk_invalid");
-const sourceManifest = JSON.parse(sourceFile(`${evidence}/source-manifest.json`));
-const sourceHash = Object.fromEntries(sourceManifest.sources.map((entry) => [path.basename(entry.path), entry.sha256]));
-for (const required of ["approved-hybrid.html", "approved.json"]) {
-  const bytes = readFileSync(path.join(approvedRoot, required));
-  if (sourceHash[required] !== sha256(bytes)) throw new Error(`phase20_visual_approved_source_hash_invalid:${required}`);
+function linesFor(entry) {
+  return [...new Set(entry.text.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 2
+    && line !== "9:41" && line !== "▮ ◒" && !["Workout", "Calendar", "Library", "Progress"].includes(line)))];
 }
+
+function readinessFor(light, id, component, name, fixtureVariant, steps) {
+  const specific = linesFor(light);
+  const base = readinessSemanticsFor(component, name);
+  const semantics = [...new Set([...base, ...specific.slice(-3)])];
+  const controls = light.controls.filter(({ id: controlId, text }) => controlId || text).map(({ id: controlId, text }, index) => ({
+    id: controlId || null,
+    label: text || null,
+    order: index,
+  }));
+  const sourceIds = light.controls.map(({ id: controlId }) => controlId).filter(Boolean);
+  const screenTestId = readinessTestIdFor(component, "");
+  const readyTestId = readinessTestIdFor(component, name);
+  return {
+    status: name.includes("loading") || name === "garmin-syncing" ? "loading" : "ready",
+    screen_test_id: screenTestId,
+    test_id: readyTestId,
+    test_ids: [...new Set([screenTestId, readyTestId, `phase20-visual-state-${id}`, ...sourceIds])],
+    semantics,
+    actions: controls,
+    order: semantics,
+    non_color: specific.filter((value) => /(Active|Completed|Current|Planned|REST|Loading|Ready|Sparse|Empty|connected|revoked|Sync|Match|Imported|No )/u.test(value)).slice(0, 4).concat(semantics.slice(-1)).filter((value, index, values) => values.indexOf(value) === index),
+    focus: { target: light.controls.find(({ id: controlId }) => controlId)?.id ?? steps[0]?.value ?? "screen-heading", required: true },
+    source_receipt: { assertions: [`state:${name}`, `fixture:${fixtureVariant}`, `theme:${light.theme}`] },
+  };
+}
+
+const authority = loadV12VisualAuthority({ root });
+const walk = authority.walk;
 
 const states = walk.slice(0, 107).map((light, index) => {
   const dark = walk[index + 107];
   if (!light || !dark || light.name !== dark.name || light.theme !== "light" || dark.theme !== "dark") throw new Error(`phase20_visual_walk_pair_invalid:${index}`);
   const browserStateName = light.name;
-  const name = index < 91 ? browserStateName : canonicalGarminStates[index - 91];
-  if (name === undefined) throw new Error(`phase20_visual_state_name_missing:${index}`);
+  const name = browserStateName;
   const destination = destinationFor(name);
   const png = { light: `light-${browserStateName}.png`, dark: `dark-${browserStateName}.png` };
   const hasPng = existsSync(path.join(root, evidence, png.light)) && existsSync(path.join(root, evidence, png.dark));
   const controls = light.controls.map((control) => ({ id: control.id, text: control.text, data: control.data }));
+  const fixtureVariant = fixtureVariantFor(index, name);
+  const scenarioSteps = scenarioStepsFor(name);
+  const sourceBinding = v12VisualStateAuthority(authority, light, dark);
   return {
     id: `BW-${String(index + 1).padStart(3, "0")}`, name, ...destination,
-    fixture_id: "v12-synthetic-fixtures-r18", fixture_seed: fixtureSeedFor(index), scenario: name,
+    fixture_id: "v12-synthetic-fixtures-r18", fixture_seed: fixtureSeedFor(index), scenario: name, fixture_variant: fixtureVariant,
     fixture_facts: { date: "2026-10-01", locale: "en-SG", timezone: "Asia/Singapore", sqlite: "authoritative-synthetic" },
     interactions: controls, expected_visible_semantics: controls.filter((control) => control.text).map((control) => control.text),
     focus_target: controls.find((control) => control.id)?.id || controls.find((control) => control.text)?.text || "screen-heading",
-    scenario_steps: scenarioStepsFor(name),
-    readiness: { screen_test_id: readinessTestIdFor(destination.component, ""), test_id: readinessTestIdFor(destination.component, name), semantics: readinessSemanticsFor(destination.component, name) },
+    scenario_steps: scenarioSteps,
+    readiness: readinessFor(light, `BW-${String(index + 1).padStart(3, "0")}`, destination.component, name, fixtureVariant, scenarioSteps),
     evidence_scope: index >= 91 ? "visual_only" : "production_screen",
     reference: hasPng
-      ? { kind: "retained_png", light: { path: `${evidence}/${png.light}`, sha256: sha256(sourceFile(`${evidence}/${png.light}`)) }, dark: { path: `${evidence}/${png.dark}`, sha256: sha256(sourceFile(`${evidence}/${png.dark}`)) } }
-      : { kind: "approved_source", approved_hybrid_html_sha256: sourceHash["approved-hybrid.html"], approved_json_sha256: sourceHash["approved.json"], state_name: browserStateName },
+      ? { kind: "retained_png", light: { path: `${evidence}/${png.light}`, sha256: sha256(sourceFile(`${evidence}/${png.light}`)) }, dark: { path: `${evidence}/${png.dark}`, sha256: sha256(sourceFile(`${evidence}/${png.dark}`)) }, source: { kind: "approved_source", ...sourceBinding } }
+      : { kind: "approved_source", ...sourceBinding },
   };
 });
 if (new Set(states.map((state) => state.id)).size !== 107 || new Set(states.map((state) => `${state.id}:${state.name}`)).size !== 107) throw new Error("phase20_visual_state_duplicate");
 const output = `// Generated by scripts/generate-phase20-visual-state-registry.mjs; do not edit.\nexport const PHASE20_VISUAL_STATE_REGISTRY = ${JSON.stringify(states, null, 2)} as const;\nexport type Phase20VisualState = (typeof PHASE20_VISUAL_STATE_REGISTRY)[number];\n`;
-writeFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.generated.ts"), output);
+const nativeOutput = `export const PHASE20_NATIVE_ONLY_VISUAL_STATES = ${JSON.stringify(nativeOnlyStates, null, 2)} as const;\n`;
+writeFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.generated.ts"), `${output}${nativeOutput}`);
 writeFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.json"), `${JSON.stringify(states, null, 2)}\n`);
 
 const yamlStep = (step) => step.action === "tap_id"

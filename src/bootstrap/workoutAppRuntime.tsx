@@ -1246,6 +1246,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
     starterPlans?: StarterPlanRuntimeCatalog;
   }>): Promise<void>;
   disposeRuntime?(): Promise<void>;
+  strictDisposal?: boolean;
 }>;
 
 export type WorkoutAppRuntimeAdapters = Readonly<{
@@ -2339,10 +2340,16 @@ export function WorkoutAppRuntimeProvider({
     servicesRef.current = null;
     pendingActivityMatchRef.current = null;
     progressBodyweightCommandsRef.current.clear();
-    await services?.lifecycle.dispose?.().catch(() => undefined);
+    if (dependencies.strictDisposal) await services?.lifecycle.dispose?.();
+    else await services?.lifecycle.dispose?.().catch(() => undefined);
     services?.automaticBackupRuntime?.dispose();
-    await services?.kernel.close().catch(() => undefined);
-    await dependencies.disposeRuntime?.().catch(() => undefined);
+    if (dependencies.strictDisposal) {
+      await services?.kernel.close();
+      await dependencies.disposeRuntime?.();
+    } else {
+      await services?.kernel.close().catch(() => undefined);
+      await dependencies.disposeRuntime?.().catch(() => undefined);
+    }
   }, [dependencies]);
 
   const trustedRead = useCallback(async (

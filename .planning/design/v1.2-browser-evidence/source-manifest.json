@@ -1,19 +1,40 @@
 {
+  "schema_version": 2,
   "revision": 18,
   "observed_date": "2026-10-06",
-  "prototype_url": "http://127.0.0.1:8765/approved-hybrid.html",
   "sources": [
     {
-      "path": "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/approved.json",
+      "id": "approved-json",
+      "filename": "approved.json",
       "sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
     },
     {
-      "path": "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/approved-hybrid.html",
+      "id": "approved-hybrid-html",
+      "filename": "approved-hybrid.html",
       "sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96"
     },
     {
-      "path": "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/design-audit-revision18/design-audit-revision18.md",
+      "id": "design-audit-revision18",
+      "filename": "design-audit-revision18.md",
       "sha256": "3d121af24fe92907ab035ab49f50473107043bcd9ea126722d5d2132ece7c048"
     }
-  ]
+  ],
+  "external_authority": {
+    "environment_variable": "V12_APPROVED_SOURCE_ROOT",
+    "unavailable_code": "v12_visual_authority_unavailable_external_authority"
+  },
+  "portable_fallback": {
+    "kind": "checked_in_derived_contract",
+    "serial_walk": {
+      "path": ".planning/design/v1.2-browser-evidence/serial-walk.json",
+      "sha256": "2d2578fc5072a4d253856cc932bbaa6d1c520253c118686d3d85a69d0d89b396"
+    },
+    "renderer": {
+      "path": ".planning/design/v1.2-browser-evidence/walk-prototype.py",
+      "sha256": "b771bc7f7f6a2cbd312f0819a02b93d825f66476075c3a59ce4cc945090d6130"
+    },
+    "semantic_digest": "d156e438f3b47f08c2ad4345a9331abadf682ada1e2c48fd2196ce1358449e84",
+    "layout_digest": "54a8b7664a97abb800de02b399e6579a43a8909018c2d9635f9dacd9232413f4",
+    "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3"
+  }
 }

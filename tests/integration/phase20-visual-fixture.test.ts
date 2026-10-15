@@ -114,6 +114,38 @@ describe("Phase 20 SQLite visual fixtures", () => {
     )).resolves.toEqual([{ status: "running" }]);
   });
 
+  const activeCases: Array<[Phase20VisualRequest["state"], number, "running" | "paused" | null, number | null]> = [
+    ["BW-015", 0, null, null],
+    ["BW-016", 1, null, null],
+    ["BW-017", 2, "running", 90_000],
+    ["BW-018", 2, "paused", 90_000],
+    ["BW-019", 2, "paused", 105_000],
+    ["BW-020", 2, "running", 104_000],
+    ["BW-021", 2, null, null],
+  ];
+
+  it.each(activeCases)("seeds the exact Active sequence for %s", async (state, completedWorking, restStatus, remainingMs) => {
+    const kernel = await migratedKernel();
+    await bootstrapPhase20VisualFixture(kernel, request(state));
+    const [sets] = await kernel.queryAll<{ completed: number }>(
+      `SELECT COUNT(*) AS completed FROM session_sets set_row
+       JOIN session_exercises exercise ON exercise.id = set_row.session_exercise_id
+       WHERE exercise.session_id = ? AND set_row.set_kind = 'working' AND set_row.status = 'completed'`,
+      [PHASE20_VISUAL_ACTIVE_SESSION_ID],
+    );
+    expect(sets?.completed).toBe(completedWorking);
+    const rest = await kernel.queryAll<{ status: string; remaining_ms: number | null; ends_at_ms: number | null }>(
+      "SELECT status, remaining_ms, ends_at_ms FROM session_rest_states WHERE session_id = ?",
+      [PHASE20_VISUAL_ACTIVE_SESSION_ID],
+    );
+    if (restStatus === null) expect(rest).toEqual([]);
+    else {
+      expect(rest[0]?.status).toBe(restStatus);
+      const actualRemaining = rest[0]?.remaining_ms ?? ((rest[0]?.ends_at_ms ?? 0) - 1_790_818_860_000);
+      expect(actualRemaining).toBe(remainingMs);
+    }
+  });
+
   it("creates Calendar, Library/Running, Progress, and Garmin source families in real schema tables", async () => {
     for (const [state, assertions] of [
       ["BW-022", [["owned_plan_schedule_opportunities", 1], ["running_opportunities", 2]]],
@@ -127,6 +159,23 @@ describe("Phase 20 SQLite visual fixtures", () => {
         const [row] = await kernel.queryAll<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`);
         expect(row?.count).toBeGreaterThanOrEqual(minimum);
       }
+      await kernel.close();
+      kernels.splice(kernels.indexOf(kernel), 1);
+    }
+  });
+
+  it("seeds the named Calendar dates and Progress empty, sparse, loading and six-effort contexts", async () => {
+    const calendar = await migratedKernel();
+    await bootstrapPhase20VisualFixture(calendar, request("BW-032"));
+    await expect(calendar.queryAll<{ local_date: string }>(
+      "SELECT local_date FROM owned_plan_schedule_opportunities ORDER BY local_date",
+    )).resolves.toEqual([{ local_date: "2026-10-07" }, { local_date: "2026-10-12" }]);
+
+    for (const [state, count] of [["BW-085", 0], ["BW-087", 1], ["BW-089", 0], ["BW-091", 6]] as const) {
+      const kernel = await migratedKernel();
+      await bootstrapPhase20VisualFixture(kernel, request(state));
+      const [row] = await kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM imported_activities");
+      expect(row?.count).toBe(count);
       await kernel.close();
       kernels.splice(kernels.indexOf(kernel), 1);
     }

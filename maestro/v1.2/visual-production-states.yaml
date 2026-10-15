@@ -116,7 +116,7 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-032'}
     commands:
-      - tapOn: { id: "calendar-day-2026-11-01" }
+      - tapOn: { id: "calendar-day-2026-10-12" }
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-033'}
@@ -291,6 +291,11 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       - tapOn: { text: "Connect Garmin" }
 - runFlow:
     when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-095'}
+    commands:
+      - tapOn: { text: "Sync now" }
+- runFlow:
+    when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-096'}
     commands:
       - tapOn: { text: "Sync now" }
@@ -302,11 +307,6 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
 - runFlow:
     when:
       true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-098'}
-    commands:
-      - tapOn: { text: "Sync now" }
-- runFlow:
-    when:
-      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-099'}
     commands:
       - tapOn: { text: "Sync now" }
 - runFlow:

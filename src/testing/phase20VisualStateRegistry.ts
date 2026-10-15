@@ -22,6 +22,13 @@ export const PHASE20_VISUAL_CONFIGURATIONS = [
 export type Phase20VisualConfiguration = (typeof PHASE20_VISUAL_CONFIGURATIONS)[number];
 export type Phase20VisualStateId = Phase20VisualState["id"];
 
+const VIEWPORTS = {
+  C360: { width: 360, height: 800 },
+  C390: { width: 390, height: 844 },
+  M600: { width: 600, height: 960 },
+  X840: { width: 840, height: 1080 },
+} as const;
+
 const byId = new Map(PHASE20_VISUAL_STATE_REGISTRY.map((state) => [state.id, state]));
 
 export function phase20VisualState(stateId: string): Phase20VisualState | null {
@@ -32,15 +39,39 @@ export function isPhase20VisualConfiguration(value: string): value is Phase20Vis
   return (PHASE20_VISUAL_CONFIGURATIONS as readonly string[]).includes(value);
 }
 
+export function phase20VisualConfiguration(value: Phase20VisualConfiguration): Readonly<{
+  appearance: "Light" | "Dark" | "System";
+  scheme: "light" | "dark";
+  width: number;
+  height: number;
+  fontScale: 1 | 2;
+  orientation: "P" | "L";
+  size: keyof typeof VIEWPORTS;
+}> {
+  const [, appearanceCode, size, orientation, font] = value.split("-") as ["AP", "L" | "D" | "SL" | "SD", keyof typeof VIEWPORTS, "P" | "L", "F100" | "F200"];
+  const portrait = VIEWPORTS[size];
+  return Object.freeze({
+    appearance: appearanceCode.startsWith("S") ? "System" : appearanceCode === "L" ? "Light" : "Dark",
+    scheme: appearanceCode.endsWith("D") ? "dark" : "light",
+    width: orientation === "P" ? portrait.width : portrait.height,
+    height: orientation === "P" ? portrait.height : portrait.width,
+    fontScale: font === "F200" ? 2 : 1,
+    orientation,
+    size,
+  });
+}
+
 export function validatePhase20VisualStateRegistry(): void {
   if (PHASE20_VISUAL_STATE_REGISTRY.length !== 107 || byId.size !== 107) throw new Error("phase20_visual_registry_coverage_invalid");
   for (const [index, state] of PHASE20_VISUAL_STATE_REGISTRY.entries()) {
     if (state.id !== `BW-${String(index + 1).padStart(3, "0")}` || state.fixture_id !== PHASE20_VISUAL_FIXTURE_ID
       || !state.component || !state.route || state.route.startsWith("/__")
-      || !state.fixture_seed || state.scenario !== state.name
+      || !state.fixture_seed || state.scenario !== state.name || !state.fixture_variant
       || !Array.isArray(state.scenario_steps)
       || !state.expected_visible_semantics.length || !state.focus_target
-      || !state.readiness.screen_test_id || !state.readiness.test_id || !state.readiness.semantics.length
+      || !state.readiness.screen_test_id || !state.readiness.test_id || state.readiness.semantics.length < 2
+      || state.readiness.test_ids.length < 2 || state.readiness.actions.length < 1 || state.readiness.order.length < 2
+      || state.readiness.non_color.length < 1 || !state.readiness.focus.target || state.readiness.source_receipt.assertions.length < 1
       || state.evidence_scope !== (index >= 91 ? "visual_only" : "production_screen")
       || !state.reference || (state.reference.kind === "retained_png" && (!state.reference.light.sha256 || !state.reference.dark.sha256))) {
       throw new Error("phase20_visual_registry_entry_invalid");

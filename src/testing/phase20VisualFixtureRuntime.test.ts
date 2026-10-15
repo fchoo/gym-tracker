@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 const mockActivateStarterPlan = jest.fn<(input: unknown) => Promise<unknown>>();
 const mockStartWorkout = jest.fn<(input: unknown) => Promise<unknown>>();
 const mockCreatePlansWorkoutRepository = jest.fn<(kernel: unknown) => Readonly<{ source: "real-port" }>>(() => ({ source: "real-port" }));
+const mockDeleteDatabaseAsync = jest.fn<(name: string) => Promise<void>>();
 
 jest.mock("../domains/plans", () => ({
   activateStarterPlan: (input: unknown) => mockActivateStarterPlan(input),
@@ -13,9 +14,13 @@ jest.mock("../domains/workout", () => ({
 jest.mock("../platform/sqlite/repositories/plansWorkoutRepository", () => ({
   createPlansWorkoutRepository: (kernel: unknown) => mockCreatePlansWorkoutRepository(kernel),
 }));
+jest.mock("expo-sqlite", () => ({
+  deleteDatabaseAsync: (name: string) => mockDeleteDatabaseAsync(name),
+}));
 
 import {
   bootstrapPhase20VisualFixture,
+  createPhase20VisualRuntimeDependencies,
   PHASE20_VISUAL_ACTIVE_SESSION_ID,
   PHASE20_VISUAL_NOW_MS,
   PHASE20_VISUAL_STRENGTH_DAY_ID,
@@ -47,6 +52,7 @@ describe("Phase 20 visual fixture runtime", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDeleteDatabaseAsync.mockResolvedValue(undefined);
     mockActivateStarterPlan.mockResolvedValue({
       plan: { id: PHASE20_VISUAL_STRENGTH_PLAN_ID },
       days: [{ id: PHASE20_VISUAL_STRENGTH_DAY_ID }],
@@ -88,5 +94,13 @@ describe("Phase 20 visual fixture runtime", () => {
     await bootstrapPhase20VisualFixture(kernel, request("BW-002"));
     expect(mockActivateStarterPlan).toHaveBeenCalledTimes(1);
     expect(mockStartWorkout).not.toHaveBeenCalled();
+  });
+
+  it("awaits strict disposable database deletion and propagates cleanup failure", async () => {
+    mockDeleteDatabaseAsync.mockRejectedValueOnce(new Error("delete failed"));
+    const dependencies = createPhase20VisualRuntimeDependencies(request("BW-008"));
+    expect(dependencies.strictDisposal).toBe(true);
+    await expect(dependencies.disposeRuntime?.()).rejects.toThrow("delete failed");
+    expect(mockDeleteDatabaseAsync).toHaveBeenCalledWith(phase20VisualDatabaseName("a".repeat(32)));
   });
 });

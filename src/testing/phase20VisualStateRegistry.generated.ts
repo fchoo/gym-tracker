@@ -9,6 +9,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-shell-workout",
     "scenario": "appearance",
+    "fixture_variant": "appearance",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -159,17 +160,154 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "app-settings-sheet",
+      "test_ids": [
+        "adaptive-screen",
+        "app-settings-sheet",
+        "phase20-visual-state-BW-001",
+        "root-settings",
+        "root-day-1",
+        "root-day-2",
+        "root-day-3",
+        "root-day-4",
+        "root-day-5",
+        "view-running-plan",
+        "sync-running-activity",
+        "start-workout",
+        "root-scrim"
+      ],
       "semantics": [
-        "Workout"
-      ]
+        "Workout",
+        "Light",
+        "Dark",
+        "System"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "root-day-1",
+          "label": "Mon\n29",
+          "order": 1
+        },
+        {
+          "id": "root-day-2",
+          "label": "Tue\n30",
+          "order": 2
+        },
+        {
+          "id": "root-day-3",
+          "label": "Wed\n01",
+          "order": 3
+        },
+        {
+          "id": "root-day-4",
+          "label": "Thu\n02",
+          "order": 4
+        },
+        {
+          "id": "root-day-5",
+          "label": "Fri\n03",
+          "order": 5
+        },
+        {
+          "id": "view-running-plan",
+          "label": "View plan",
+          "order": 6
+        },
+        {
+          "id": "sync-running-activity",
+          "label": "Sync Garmin",
+          "order": 7
+        },
+        {
+          "id": "start-workout",
+          "label": "Start Full Body A\n→",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Close App Settings",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Light",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Dark",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "System",
+          "order": 17
+        }
+      ],
+      "order": [
+        "Workout",
+        "Light",
+        "Dark",
+        "System"
+      ],
+      "non_color": [
+        "Sync Garmin",
+        "Appearance applies to all four destinations and Active Workout together.",
+        "System"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:appearance",
+          "fixture:appearance",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "b89f890e19064fd67404f55f94a02f7dde7045814554816f9ceceec0ee2169a7",
+      "layout_digest": "de8476dae9480633f29533a827126ec0c39617f6f64ee87f2e7eca5a28558e9b",
       "state_name": "appearance"
     }
   },
@@ -182,6 +320,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-shell-workout",
     "scenario": "workout-root",
+    "fixture_variant": "workout-root",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -291,11 +430,116 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-002",
+        "root-settings",
+        "root-day-1",
+        "root-day-2",
+        "root-day-3",
+        "root-day-4",
+        "root-day-5",
+        "view-running-plan",
+        "sync-running-activity",
+        "start-workout"
+      ],
       "semantics": [
-        "Workout"
-      ]
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Start Full Body A"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "root-day-1",
+          "label": "Mon\n29",
+          "order": 1
+        },
+        {
+          "id": "root-day-2",
+          "label": "Tue\n30",
+          "order": 2
+        },
+        {
+          "id": "root-day-3",
+          "label": "Wed\n01",
+          "order": 3
+        },
+        {
+          "id": "root-day-4",
+          "label": "Thu\n02",
+          "order": 4
+        },
+        {
+          "id": "root-day-5",
+          "label": "Fri\n03",
+          "order": 5
+        },
+        {
+          "id": "view-running-plan",
+          "label": "View plan",
+          "order": 6
+        },
+        {
+          "id": "sync-running-activity",
+          "label": "Sync Garmin",
+          "order": 7
+        },
+        {
+          "id": "start-workout",
+          "label": "Start Full Body A\n→",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        }
+      ],
+      "order": [
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Start Full Body A"
+      ],
+      "non_color": [
+        "Sync Garmin",
+        "Start Full Body A"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:workout-root",
+          "fixture:workout-root",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -307,6 +551,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-workout-root.png",
         "sha256": "ffd8cf979d3ba679cc744e58a91d30d7bd34cda055fc0bff5ae8c09d886de301"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "1ad1b6b4f40f0506aaaf8ed798eac4938906817a23d5d89e54f895f5aeeb99d1",
+        "layout_digest": "e5dbc83e7cb69b7f088e653b99049e059425bda6694c5a355f46c2e79036a66b",
+        "state_name": "workout-root"
       }
     }
   },
@@ -319,6 +573,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-shell-workout",
     "scenario": "workout-day-0",
+    "fixture_variant": "workout-day-0",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -433,17 +688,126 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-003",
+        "root-settings",
+        "root-day-1",
+        "root-day-2",
+        "root-day-3",
+        "root-day-4",
+        "root-day-5",
+        "view-running-plan",
+        "sync-running-activity",
+        "start-workout"
+      ],
       "semantics": [
-        "Workout"
-      ]
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "root-day-1",
+          "label": "Mon\n29",
+          "order": 1
+        },
+        {
+          "id": "root-day-2",
+          "label": "Tue\n30",
+          "order": 2
+        },
+        {
+          "id": "root-day-3",
+          "label": "Wed\n01",
+          "order": 3
+        },
+        {
+          "id": "root-day-4",
+          "label": "Thu\n02",
+          "order": 4
+        },
+        {
+          "id": "root-day-5",
+          "label": "Fri\n03",
+          "order": 5
+        },
+        {
+          "id": "view-running-plan",
+          "label": "View plan",
+          "order": 6
+        },
+        {
+          "id": "sync-running-activity",
+          "label": "Sync Garmin",
+          "order": 7
+        },
+        {
+          "id": "start-workout",
+          "label": "Nothing scheduled\n→",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        }
+      ],
+      "order": [
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "non_color": [
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:workout-day-0",
+          "fixture:workout-day-0",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5e6d4cc97a6ded7d75746215239e1f93abf3fee62833057ef530f5846b517ac3",
+      "layout_digest": "e4f4edd9eaa3dac626f587e523a0588209c688b17a873617e313c3fb7328c7a4",
       "state_name": "workout-day-0"
     }
   },
@@ -456,6 +820,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-shell-workout",
     "scenario": "workout-day-1",
+    "fixture_variant": "workout-day-1",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -570,17 +935,127 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-004",
+        "root-settings",
+        "root-day-1",
+        "root-day-2",
+        "root-day-3",
+        "root-day-4",
+        "root-day-5",
+        "view-running-plan",
+        "sync-running-activity",
+        "start-workout"
+      ],
       "semantics": [
-        "Workout"
-      ]
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "root-day-1",
+          "label": "Mon\n29",
+          "order": 1
+        },
+        {
+          "id": "root-day-2",
+          "label": "Tue\n30",
+          "order": 2
+        },
+        {
+          "id": "root-day-3",
+          "label": "Wed\n01",
+          "order": 3
+        },
+        {
+          "id": "root-day-4",
+          "label": "Thu\n02",
+          "order": 4
+        },
+        {
+          "id": "root-day-5",
+          "label": "Fri\n03",
+          "order": 5
+        },
+        {
+          "id": "view-running-plan",
+          "label": "View plan",
+          "order": 6
+        },
+        {
+          "id": "sync-running-activity",
+          "label": "Sync Garmin",
+          "order": 7
+        },
+        {
+          "id": "start-workout",
+          "label": "Nothing scheduled\n→",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        }
+      ],
+      "order": [
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "non_color": [
+        "No workout planned",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:workout-day-1",
+          "fixture:workout-day-1",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "6080a7ca05b4c13118e823133762a244e2e4ba36481735ec87c164d52192a7bf",
+      "layout_digest": "b82562f65481b6526707c2714cd3a89e4192d5aa50a8b64ac843f49fd2a317b1",
       "state_name": "workout-day-1"
     }
   },
@@ -593,6 +1068,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-shell-workout",
     "scenario": "workout-day-2",
+    "fixture_variant": "workout-day-2",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -707,17 +1183,126 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-005",
+        "root-settings",
+        "root-day-1",
+        "root-day-2",
+        "root-day-3",
+        "root-day-4",
+        "root-day-5",
+        "view-running-plan",
+        "sync-running-activity",
+        "start-workout"
+      ],
       "semantics": [
-        "Workout"
-      ]
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Start Full Body A"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "root-day-1",
+          "label": "Mon\n29",
+          "order": 1
+        },
+        {
+          "id": "root-day-2",
+          "label": "Tue\n30",
+          "order": 2
+        },
+        {
+          "id": "root-day-3",
+          "label": "Wed\n01",
+          "order": 3
+        },
+        {
+          "id": "root-day-4",
+          "label": "Thu\n02",
+          "order": 4
+        },
+        {
+          "id": "root-day-5",
+          "label": "Fri\n03",
+          "order": 5
+        },
+        {
+          "id": "view-running-plan",
+          "label": "View plan",
+          "order": 6
+        },
+        {
+          "id": "sync-running-activity",
+          "label": "Sync Garmin",
+          "order": 7
+        },
+        {
+          "id": "start-workout",
+          "label": "Start Full Body A\n→",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        }
+      ],
+      "order": [
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Start Full Body A"
+      ],
+      "non_color": [
+        "Sync Garmin",
+        "Start Full Body A"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:workout-day-2",
+          "fixture:workout-day-2",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "a477adda26fde6720105d453e17e59f86c63722f191da5c5501827be074037ad",
+      "layout_digest": "bc1e9422bb488baa5c44a821dbd47c6cb734562148911cf98684928683b9ee5c",
       "state_name": "workout-day-2"
     }
   },
@@ -730,6 +1315,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-shell-workout",
     "scenario": "workout-day-3",
+    "fixture_variant": "workout-day-3",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -844,17 +1430,127 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-006",
+        "root-settings",
+        "root-day-1",
+        "root-day-2",
+        "root-day-3",
+        "root-day-4",
+        "root-day-5",
+        "view-running-plan",
+        "sync-running-activity",
+        "start-workout"
+      ],
       "semantics": [
-        "Workout"
-      ]
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "root-day-1",
+          "label": "Mon\n29",
+          "order": 1
+        },
+        {
+          "id": "root-day-2",
+          "label": "Tue\n30",
+          "order": 2
+        },
+        {
+          "id": "root-day-3",
+          "label": "Wed\n01",
+          "order": 3
+        },
+        {
+          "id": "root-day-4",
+          "label": "Thu\n02",
+          "order": 4
+        },
+        {
+          "id": "root-day-5",
+          "label": "Fri\n03",
+          "order": 5
+        },
+        {
+          "id": "view-running-plan",
+          "label": "View plan",
+          "order": 6
+        },
+        {
+          "id": "sync-running-activity",
+          "label": "Sync Garmin",
+          "order": 7
+        },
+        {
+          "id": "start-workout",
+          "label": "Nothing scheduled\n→",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        }
+      ],
+      "order": [
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "non_color": [
+        "No workout planned",
+        "Sync Garmin",
+        "Nothing scheduled"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:workout-day-3",
+          "fixture:workout-day-3",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "57aeda4531c3f6fc8bac8eefa01ed4e0e37745a8882f7465a2ad879d225d2ec1",
+      "layout_digest": "558c765ea113f621dc0e426a87210cc1b2780e7b54facba78806c03720ae03ef",
       "state_name": "workout-day-3"
     }
   },
@@ -867,6 +1563,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-shell-workout",
     "scenario": "workout-day-4",
+    "fixture_variant": "workout-day-4",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -981,17 +1678,126 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-007",
+        "root-settings",
+        "root-day-1",
+        "root-day-2",
+        "root-day-3",
+        "root-day-4",
+        "root-day-5",
+        "view-running-plan",
+        "sync-running-activity",
+        "start-workout"
+      ],
       "semantics": [
-        "Workout"
-      ]
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Start Full Body B"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "root-day-1",
+          "label": "Mon\n29",
+          "order": 1
+        },
+        {
+          "id": "root-day-2",
+          "label": "Tue\n30",
+          "order": 2
+        },
+        {
+          "id": "root-day-3",
+          "label": "Wed\n01",
+          "order": 3
+        },
+        {
+          "id": "root-day-4",
+          "label": "Thu\n02",
+          "order": 4
+        },
+        {
+          "id": "root-day-5",
+          "label": "Fri\n03",
+          "order": 5
+        },
+        {
+          "id": "view-running-plan",
+          "label": "View plan",
+          "order": 6
+        },
+        {
+          "id": "sync-running-activity",
+          "label": "Sync Garmin",
+          "order": 7
+        },
+        {
+          "id": "start-workout",
+          "label": "Start Full Body B\n→",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        }
+      ],
+      "order": [
+        "Workout",
+        "View plan",
+        "Sync Garmin",
+        "Start Full Body B"
+      ],
+      "non_color": [
+        "Sync Garmin",
+        "Start Full Body B"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:workout-day-4",
+          "fixture:workout-day-4",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5fb56dce3e899e692219479f989dca33b7f5c49981f5fab24073f2d7ed6ba607",
+      "layout_digest": "17bb07bbf069a78c3bfbad57692dbded6336052ba0624df85407affa25290af6",
       "state_name": "workout-day-4"
     }
   },
@@ -1007,6 +1813,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "active-overview",
+    "fixture_variant": "active-overview",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -1140,11 +1947,128 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-008",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Complete set 2",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 13
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 14
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 15
+        }
+      ],
+      "order": [
+        "Active",
+        "Complete set 2",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:active-overview",
+          "fixture:active-overview",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -1156,6 +2080,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-active-overview.png",
         "sha256": "aa2b56418d8cc13446fdfc0bef8ce6c1c8d7fff5bbad3ff9530c709fe4d9b61f"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "c434b6d15486961fa0d5619cc0ebef3d1185f258e499b31304488c775ca834ea",
+        "layout_digest": "167030fbe24a30575a660b46b9babd493feb2c282c0fb9452a105e09381526e3",
+        "state_name": "active-overview"
       }
     }
   },
@@ -1171,6 +2105,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "active-set-editor",
+    "fixture_variant": "active-set-editor",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -1309,11 +2244,129 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "workout-set-editor-sheet",
+      "test_ids": [
+        "active-workout",
+        "workout-set-editor-sheet",
+        "phase20-visual-state-BW-009",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Complete set 2",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 13
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 14
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 15
+        }
+      ],
+      "order": [
+        "Active",
+        "Complete set 2",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:active-set-editor",
+          "fixture:active-set-editor",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -1325,6 +2378,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-active-set-editor.png",
         "sha256": "aa2b56418d8cc13446fdfc0bef8ce6c1c8d7fff5bbad3ff9530c709fe4d9b61f"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "bcbdda11e9ea63578da7477e02c472f1634fc12bc6507eac0c4ccb102a97fbe2",
+        "layout_digest": "5afaa03f45d8ac00aee3cee36a5c09972343d7e738d5206223c9c33101c836dc",
+        "state_name": "active-set-editor"
       }
     }
   },
@@ -1340,6 +2403,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "active-plan-settings",
+    "fixture_variant": "active-plan-settings",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -1530,17 +2594,177 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "workout-plan-settings-sheet",
+      "test_ids": [
+        "active-workout",
+        "workout-plan-settings-sheet",
+        "phase20-visual-state-BW-010",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current",
+        "phone-scrim",
+        "plan-rest",
+        "edit-plan-later"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Schedule",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 13
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 14
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 15
+        },
+        {
+          "id": "phone-scrim",
+          "label": "Close bottom sheet",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Close Plan settings",
+          "order": 17
+        },
+        {
+          "id": "plan-rest",
+          "label": "Default between-set rest seconds",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "1.25",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "2.5",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "5",
+          "order": 21
+        },
+        {
+          "id": "edit-plan-later",
+          "label": "Edit plan after workout\nSchedule",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Active",
+        "Schedule",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:active-plan-settings",
+          "fixture:active-plan-settings",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "8754569f07b7c12013ea21468be10a580435f67a2f2a127750a75ee8314b969a",
+      "layout_digest": "02cc4a66682213de560e21a17a4eab5c064e6072cf59d36ff53a85bed037962e",
       "state_name": "active-plan-settings"
     }
   },
@@ -1556,6 +2780,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "view-back-squat-trend",
+    "fixture_variant": "view-back-squat-trend",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -1706,17 +2931,150 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "exercise-trend-sheet",
+      "test_ids": [
+        "active-workout",
+        "exercise-trend-sheet",
+        "phase20-visual-state-BW-011",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current",
+        "phone-scrim"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "75 kg",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 13
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 14
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 15
+        },
+        {
+          "id": "phone-scrim",
+          "label": "Close bottom sheet",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Close exercise trend",
+          "order": 17
+        }
+      ],
+      "order": [
+        "Active",
+        "75 kg",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:view-back-squat-trend",
+          "fixture:view-back-squat-trend",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5fc53db4ecf0166b87e012c8c90683c4c321c7688079cd3d1183241c8b2e893c",
+      "layout_digest": "a1946d8760fa8a74ea755f3259cd1ab11455173a8374883065aefda6c5e51656",
       "state_name": "view-back-squat-trend"
     }
   },
@@ -1732,6 +3090,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "open-back-squat-menu",
+    "fixture_variant": "open-back-squat-menu",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -1900,17 +3259,168 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "exercise-actions-sheet",
+      "test_ids": [
+        "active-workout",
+        "exercise-actions-sheet",
+        "phase20-visual-state-BW-012",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current",
+        "phone-scrim",
+        "exercise-rest",
+        "replace-exercise",
+        "delete-exercise"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Delete exercise",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 13
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 14
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 15
+        },
+        {
+          "id": "phone-scrim",
+          "label": "Close bottom sheet",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Close exercise menu",
+          "order": 17
+        },
+        {
+          "id": "exercise-rest",
+          "label": "Between-set rest seconds",
+          "order": 18
+        },
+        {
+          "id": "replace-exercise",
+          "label": "Replace exercise\nLibrary",
+          "order": 19
+        },
+        {
+          "id": "delete-exercise",
+          "label": "Delete exercise\n×",
+          "order": 20
+        }
+      ],
+      "order": [
+        "Active",
+        "Delete exercise",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:open-back-squat-menu",
+          "fixture:open-back-squat-menu",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "aed269849f11ea96b5c363771cd304623fc73b5da0c3a5c2892946358d7298ca",
+      "layout_digest": "22b5bbd9e648974ad77760d3c52a80e96ff7a4ca740166987ef3d07f90ffc46f",
       "state_name": "open-back-squat-menu"
     }
   },
@@ -1926,6 +3436,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "active-exercise-picker",
+    "fixture_variant": "active-exercise-picker",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -2127,17 +3638,181 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "add-exercise-sheet",
+      "test_ids": [
+        "active-workout",
+        "add-exercise-sheet",
+        "phase20-visual-state-BW-013",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current",
+        "phone-scrim",
+        "exercise-search"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Core",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 13
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 14
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 15
+        },
+        {
+          "id": "phone-scrim",
+          "label": "Close bottom sheet",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Close exercise picker",
+          "order": 17
+        },
+        {
+          "id": "exercise-search",
+          "label": "Search exercises",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Romanian Deadlift\nPosterior",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Dumbbell Row\nBack",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Walking Lunge\nLegs",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\nBack",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Side Plank\nCore",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Active",
+        "Core",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:active-exercise-picker",
+          "fixture:active-exercise-picker",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "3fd35030fcd32752c293b384187a32d18088e5b2f8a28ae2fa7f614376f6412e",
+      "layout_digest": "715daa926acb812e52cee511056441fab8e55f159fbbe1760a7f1c629503c39a",
       "state_name": "active-exercise-picker"
     }
   },
@@ -2153,6 +3828,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "set-action-menu",
+    "fixture_variant": "set-action-menu",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -2315,17 +3991,162 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "add-set-sheet",
+      "test_ids": [
+        "active-workout",
+        "add-set-sheet",
+        "phase20-visual-state-BW-014",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current",
+        "phone-scrim",
+        "add-warmup",
+        "add-working"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Use target",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 13
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 14
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 15
+        },
+        {
+          "id": "phone-scrim",
+          "label": "Close bottom sheet",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Close set actions",
+          "order": 17
+        },
+        {
+          "id": "add-warmup",
+          "label": "Add warm-up set\n40 kg",
+          "order": 18
+        },
+        {
+          "id": "add-working",
+          "label": "Add working set\nUse target",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Active",
+        "Use target",
+        "Demo reset to Back Squat · set 2.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:set-action-menu",
+          "fixture:set-action-menu",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "1e4bc7fd041a2a6e0ebea163d8afef096a49cb3a6c546f57cfd06a0ff0ea1d23",
+      "layout_digest": "0bc50fc4f3778d50d784205fcc6c82e19024e5d4b4439bded8b19760e6234db8",
       "state_name": "set-action-menu"
     }
   },
@@ -2341,6 +4162,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "warmup-before-working",
+    "fixture_variant": "warmup-before-working",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -2482,17 +4304,143 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-015",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Complete warm-up W1",
+        "Warm-up set added to Back Squat.",
+        "light theme applied to both screens."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCurrent",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 14
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 15
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete warm-up W1",
+          "order": 16
+        }
+      ],
+      "order": [
+        "Active",
+        "Complete warm-up W1",
+        "Warm-up set added to Back Squat.",
+        "light theme applied to both screens."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Current",
+        "Completed",
+        "Planned",
+        "light theme applied to both screens."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:warmup-before-working",
+          "fixture:warmup-before-working",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "e45de6d50fe825c30a7e479247b1ddd4344cdcacc81ec0c6b5820141c1cc1cd1",
+      "layout_digest": "7b624be63d334e75ec6c83e8204152557d384d1be454554fabb0cb42654cc17c",
       "state_name": "warmup-before-working"
     }
   },
@@ -2508,6 +4456,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "warmup-committed-no-rest",
+    "fixture_variant": "warmup-committed-no-rest",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -2649,17 +4598,143 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-016",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Complete set 2",
+        "Back Squat warm-up set 1 committed offline.",
+        "Back Squat, warm-up set 1 committed. Back Squat, working set 2 is next."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nPlanned",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 14
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 15
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 2",
+          "order": 16
+        }
+      ],
+      "order": [
+        "Active",
+        "Complete set 2",
+        "Back Squat warm-up set 1 committed offline.",
+        "Back Squat, warm-up set 1 committed. Back Squat, working set 2 is next."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Planned",
+        "Back Squat, warm-up set 1 committed. Back Squat, working set 2 is next."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:warmup-committed-no-rest",
+          "fixture:warmup-committed-no-rest",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5216543669792542581b924ca2e773a67f6b381dcb7c0acccfab106e240b2861",
+      "layout_digest": "6faee80b19eeabbf1bc65928e73b26d889723f5cccb825c2dd4e32228c4142bc",
       "state_name": "warmup-committed-no-rest"
     }
   },
@@ -2675,6 +4750,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "working-committed-rest",
+    "fixture_variant": "working-committed-rest",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -2828,11 +4904,145 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-017",
+        "open-plan-settings",
+        "rest-minus",
+        "rest-pause",
+        "rest-plus",
+        "rest-skip"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Back Squat, working set 2 committed. Back Squat, working set 3 is next. Rest timer started."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 14
+        },
+        {
+          "id": "rest-minus",
+          "label": "−15",
+          "order": 15
+        },
+        {
+          "id": "rest-pause",
+          "label": "Pause",
+          "order": 16
+        },
+        {
+          "id": "rest-plus",
+          "label": "+15",
+          "order": 17
+        },
+        {
+          "id": "rest-skip",
+          "label": "Skip",
+          "order": 18
+        }
+      ],
+      "order": [
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Back Squat, working set 2 committed. Back Squat, working set 3 is next. Rest timer started."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "RESTING",
+        "Back Squat, working set 2 committed. Back Squat, working set 3 is next. Rest timer started."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:working-committed-rest",
+          "fixture:working-committed-rest",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -2844,6 +5054,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-working-committed-rest.png",
         "sha256": "5d7a7035df19c63feedc0b400453c57c79b9ec3a1f8e51727807b867924bd0d7"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "93d437dc738b84c4353e23b2c1e144a4934f10191cebce5c51db41516c0604f0",
+        "layout_digest": "e2cd8862d53d86add894cb78e425a5a5babbf9ed055428e23616a1033e69692c",
+        "state_name": "working-committed-rest"
       }
     }
   },
@@ -2859,6 +5079,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "rest-paused",
+    "fixture_variant": "rest-paused",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -3012,17 +5233,155 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-018",
+        "open-plan-settings",
+        "rest-minus",
+        "rest-pause",
+        "rest-plus",
+        "rest-skip"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Rest timer paused."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 14
+        },
+        {
+          "id": "rest-minus",
+          "label": "−15",
+          "order": 15
+        },
+        {
+          "id": "rest-pause",
+          "label": "Resume",
+          "order": 16
+        },
+        {
+          "id": "rest-plus",
+          "label": "+15",
+          "order": 17
+        },
+        {
+          "id": "rest-skip",
+          "label": "Skip",
+          "order": 18
+        }
+      ],
+      "order": [
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Rest timer paused."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "REST PAUSED",
+        "Rest timer paused."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:rest-paused",
+          "fixture:rest-paused",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "e096d39fd1cc699e8d4ed01dfa4c32c015e10e177de497d699508ff2d2cbaa68",
+      "layout_digest": "243d89b6c06f4a8850086c0f1b402500b2aec3e0380ebc432b0c5afe723426ea",
       "state_name": "rest-paused"
     }
   },
@@ -3038,6 +5397,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "rest-adjusted",
+    "fixture_variant": "rest-adjusted",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -3191,17 +5551,155 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-019",
+        "open-plan-settings",
+        "rest-minus",
+        "rest-pause",
+        "rest-plus",
+        "rest-skip"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Rest timer paused."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 14
+        },
+        {
+          "id": "rest-minus",
+          "label": "−15",
+          "order": 15
+        },
+        {
+          "id": "rest-pause",
+          "label": "Resume",
+          "order": 16
+        },
+        {
+          "id": "rest-plus",
+          "label": "+15",
+          "order": 17
+        },
+        {
+          "id": "rest-skip",
+          "label": "Skip",
+          "order": 18
+        }
+      ],
+      "order": [
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Rest timer paused."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "REST PAUSED",
+        "Rest timer paused."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:rest-adjusted",
+          "fixture:rest-adjusted",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "b4c7684f80ed407111850bbcec1eb12761db02a5ce23d8fb5f7dc75b5e64bfbd",
+      "layout_digest": "c64ac008025fa3e2392f379f6b52977df63fe79c4de923214f3b199030d9a183",
       "state_name": "rest-adjusted"
     }
   },
@@ -3217,6 +5715,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "rest-resumed",
+    "fixture_variant": "rest-resumed",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -3370,17 +5869,155 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-020",
+        "open-plan-settings",
+        "rest-minus",
+        "rest-pause",
+        "rest-plus",
+        "rest-skip"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Rest timer resumed."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 14
+        },
+        {
+          "id": "rest-minus",
+          "label": "−15",
+          "order": 15
+        },
+        {
+          "id": "rest-pause",
+          "label": "Pause",
+          "order": 16
+        },
+        {
+          "id": "rest-plus",
+          "label": "+15",
+          "order": 17
+        },
+        {
+          "id": "rest-skip",
+          "label": "Skip",
+          "order": 18
+        }
+      ],
+      "order": [
+        "Active",
+        "Skip",
+        "Back Squat working set 2 committed offline.",
+        "Rest timer resumed."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "RESTING",
+        "Rest timer resumed."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:rest-resumed",
+          "fixture:rest-resumed",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "1d5566ba617c56786e6527c9b3af193f05fb3777395a1e3a33007b9bab166f9c",
+      "layout_digest": "f485acca154d206c12aeb5bcac89b7a10aab7c4dee4bd9fb536355f9e2823b0b",
       "state_name": "rest-resumed"
     }
   },
@@ -3396,6 +6033,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-active-workout",
     "scenario": "rest-skipped",
+    "fixture_variant": "rest-skipped",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -3537,17 +6175,142 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "open-plan-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "active-workout",
       "test_id": "active-workout",
+      "test_ids": [
+        "active-workout",
+        "phase20-visual-state-BW-021",
+        "open-plan-settings",
+        "open-add-exercise",
+        "complete-current"
+      ],
       "semantics": [
-        "Active"
-      ]
+        "Active",
+        "Complete set 3",
+        "Rest skipped. Next set ready.",
+        "Rest timer resumed."
+      ],
+      "actions": [
+        {
+          "id": null,
+          "label": "Back to workout plan",
+          "order": 0
+        },
+        {
+          "id": "open-plan-settings",
+          "label": "Open Plan settings",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "View Back Squat trend",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Open Back Squat menu",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "W1\n—\nprevious\n40 × 5\nkg × reps\nCompleted",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "01\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "02\n80 × 5\nprevious\n80 × 5\nkg × reps\nCompleted",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "03\n80 × 5\nprevious\n80 × 5\nkg × reps\nCurrent",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "+ Add set",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "View Bench Press trend",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Open Bench Press menu",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "View Lat Pulldown trend",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Open Lat Pulldown menu",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "View Plank trend",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Open Plank menu",
+          "order": 14
+        },
+        {
+          "id": "open-add-exercise",
+          "label": "+ Add exercise",
+          "order": 15
+        },
+        {
+          "id": "complete-current",
+          "label": "Complete set 3",
+          "order": 16
+        }
+      ],
+      "order": [
+        "Active",
+        "Complete set 3",
+        "Rest skipped. Next set ready.",
+        "Rest timer resumed."
+      ],
+      "non_color": [
+        "Active · saved offline",
+        "Completed",
+        "Current",
+        "Rest timer resumed."
+      ],
+      "focus": {
+        "target": "open-plan-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:rest-skipped",
+          "fixture:rest-skipped",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "94527a47e7e5ffc1b63b5ce8a81d1e5caa7ffa2645843cbb0e56a3496f856153",
+      "layout_digest": "c00dfeda20e900615a95507da861bf8cbca9d168e1f44ca5cc42df43fca8a156",
       "state_name": "rest-skipped"
     }
   },
@@ -3560,6 +6323,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-month",
+    "fixture_variant": "calendar-month",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -3915,11 +6679,266 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-022",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "1\nFull A",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "2",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "3\nFull A",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "4\nEasy",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "19",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "20",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "21",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "22",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "23",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "24",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "25",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "26",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "27",
+          "order": 34
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "31",
+          "order": 38
+        },
+        {
+          "id": null,
+          "label": "1",
+          "order": 39
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 40
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 41
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 42
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 43
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-month",
+          "fixture:calendar-month",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -3931,6 +6950,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-calendar-month.png",
         "sha256": "c41e97f31cbdcf00161c6a4070909072edbddeca70930697d61f096e676e4ed9"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "eb8e00caf36949ac8a59ee33e747f52cd1252bb49d55043e569e3d3c593beb4a",
+        "layout_digest": "5696affd53ffcd27a8af2df66ddce9a123e07ecfc29528690a246039ae9645ca",
+        "state_name": "calendar-month"
       }
     }
   },
@@ -3943,6 +6972,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-key",
+    "fixture_variant": "calendar-key",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -4315,11 +7345,278 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "calendar-key-sheet",
+      "test_ids": [
+        "adaptive-screen",
+        "calendar-key-sheet",
+        "phase20-visual-state-BW-023",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "root-scrim"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Complete",
+        "Partial",
+        "Planned"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "1\nFull A",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "2",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "3\nFull A",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "4\nEasy",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "19",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "20",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "21",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "22",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "23",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "24",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "25",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "26",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "27",
+          "order": 34
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "31",
+          "order": 38
+        },
+        {
+          "id": null,
+          "label": "1",
+          "order": 39
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 40
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 41
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 42
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 43
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 44
+        },
+        {
+          "id": null,
+          "label": "Close Calendar key",
+          "order": 45
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Complete",
+        "Partial",
+        "Planned"
+      ],
+      "non_color": [
+        "Planned"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-key",
+          "fixture:calendar-key",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -4331,6 +7628,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-calendar-key.png",
         "sha256": "58dd5398f588655c928468d0af6a191dba804664137ec15d0f267b2dd76825fd"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "9095b44568dbb8f03bce8bf581f2c4a6ddb772a0bf20213ff826a7a761072418",
+        "layout_digest": "f64b618675306119ea3e2556b15fe82c1911472d8b548af55c727a32bfcda956",
+        "state_name": "calendar-key"
       }
     }
   },
@@ -4343,6 +7650,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-next",
+    "fixture_variant": "calendar-next",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -4759,17 +8067,311 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-024",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "26",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "27",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "31",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "1",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "2",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "3",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "4",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "5",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "7",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "9",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "10",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "12",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "14",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "18",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "19",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "20",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "21",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "22",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "23",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "24",
+          "order": 34
+        },
+        {
+          "id": null,
+          "label": "25",
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "26",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "27",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 38
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 39
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 40
+        },
+        {
+          "id": null,
+          "label": "1",
+          "order": 41
+        },
+        {
+          "id": null,
+          "label": "2",
+          "order": 42
+        },
+        {
+          "id": null,
+          "label": "3",
+          "order": 43
+        },
+        {
+          "id": null,
+          "label": "4",
+          "order": 44
+        },
+        {
+          "id": null,
+          "label": "5",
+          "order": 45
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 46
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 47
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 48
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 49
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 50
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-next",
+          "fixture:calendar-next",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "88b2ab1fa10d8729b6589953f484998d109df76b92933a334ee294eb5a42e166",
+      "layout_digest": "15419bce09c78acde3f492018e848841882c123f4da8f37fbbc7477a6fd00161",
       "state_name": "calendar-next"
     }
   },
@@ -4782,6 +8384,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-previous",
+    "fixture_variant": "calendar-previous",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -5142,17 +8745,276 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-025",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "1\nFull A",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "2",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "3\nFull A",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "4\nEasy",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "19",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "20",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "21",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "22",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "23",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "24",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "25",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "26",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "27",
+          "order": 34
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "31",
+          "order": 38
+        },
+        {
+          "id": null,
+          "label": "1",
+          "order": 39
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 40
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 41
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 42
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 43
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-previous",
+          "fixture:calendar-previous",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "2bb233f471d22b7e5528e0a9aaeeeb0fb9a15f6f893e806eca2f3b97dbc74e0e",
+      "layout_digest": "51092829574e99be350b57f0cd0122f27aa80e5d36e76f688163d5edef85e9e3",
       "state_name": "calendar-previous"
     }
   },
@@ -5165,6 +9027,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-agenda-2026-10-07",
+    "fixture_variant": "calendar-agenda-2026-10-07",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -5386,11 +9249,180 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "calendar-agenda-region",
+      "test_ids": [
+        "adaptive-screen",
+        "calendar-agenda-region",
+        "phase20-visual-state-BW-026",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "cal-collapse-day"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Running plan",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 11
+        },
+        {
+          "id": "cal-collapse-day",
+          "label": "Collapse day and return to month",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Easy Run\nPlanned · 25 minutes\nRunning · planned\nRunning plan\n›",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 25
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Running plan",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "Planned · about 42 min",
+        "Planned · 25 minutes",
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-agenda-2026-10-07",
+          "fixture:calendar-agenda-2026-10-07",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -5402,6 +9434,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-calendar-agenda-2026-10-07.png",
         "sha256": "121c4f610ba0b3271e5802f2f2949375286b2b77277b9fcb38fe792f9df5c14f"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "8266106677d9e553a7e8c7e52acbd00823dc06a1c8687edc27a6fef9def7f160",
+        "layout_digest": "f2eb61b1a990a3d5556153d251f5b173302f75a73ecf74afb57c60e733f7ce3c",
+        "state_name": "calendar-agenda-2026-10-07"
       }
     }
   },
@@ -5417,6 +9459,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-planned-strength-detail",
+    "fixture_variant": "calendar-planned-strength-detail",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -5671,11 +9714,207 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "calendar-info",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-027",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "cal-collapse-day",
+        "cal-detail-back"
+      ],
       "semantics": [
-        "Workout preview"
-      ]
+        "Workout preview",
+        "18 × 8",
+        "20 × 8",
+        "Historical workout facts are read only here. Corrections remain available from the session history workflow."
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 11
+        },
+        {
+          "id": "cal-collapse-day",
+          "label": "Collapse day and return to month",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Easy Run\nPlanned · 25 minutes\nRunning · planned\nRunning plan\n›",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 21
+        },
+        {
+          "id": "cal-detail-back",
+          "label": "Back to Calendar agenda",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Deadlift\n3 × 5 · 95 kg · 0/3 complete\n›",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Incline Dumbbell Press\n3 × 8 · 24 kg · 0/3 complete\n›",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "Seated Cable Row\n3 × 10 · 55 kg · 0/3 complete\n›",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Bulgarian Split Squat\n3 × 8 · 20 kg · 0/3 complete\n›",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 30
+        }
+      ],
+      "order": [
+        "Workout preview",
+        "18 × 8",
+        "20 × 8",
+        "Historical workout facts are read only here. Corrections remain available from the session history workflow."
+      ],
+      "non_color": [
+        "Planned · about 42 min",
+        "Planned · 25 minutes",
+        "Planned preview · read only",
+        "Planned",
+        "Historical workout facts are read only here. Corrections remain available from the session history workflow."
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-planned-strength-detail",
+          "fixture:calendar-planned-strength-detail",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -5687,6 +9926,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-calendar-planned-strength-detail.png",
         "sha256": "8b8dcef7fcfc8c75dbe9dd4313e9a79dac509e50995fee7e9db86fe37d65dd03"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "bd8ec4235722cb74aaf2c053225d8e6059bce9e8dbd6e1f1fbf5b2f36bea5090",
+        "layout_digest": "e66e4969642f88845322588e8ecc996c76e8e695f39e30cadb728c32a48f4e3e",
+        "state_name": "calendar-planned-strength-detail"
       }
     }
   },
@@ -5699,6 +9948,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-agenda-2026-10-04",
+    "fixture_variant": "calendar-agenda-2026-10-04",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -5912,17 +10162,183 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "calendar-agenda-region",
+      "test_ids": [
+        "adaptive-screen",
+        "calendar-agenda-region",
+        "phase20-visual-state-BW-028",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "cal-collapse-day"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Full B",
+        "6×400",
+        "Tread"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "1\nFull A",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "2",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "3\nFull A",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "4\nEasy",
+          "order": 11
+        },
+        {
+          "id": "cal-collapse-day",
+          "label": "Collapse day and return to month",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Outdoor Run\nComplete · 3.2 km · 18:42\nRunning · completed\nGarmin imported\n›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 24
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Full B",
+        "6×400",
+        "Tread"
+      ],
+      "non_color": [
+        "Tread"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-agenda-2026-10-04",
+          "fixture:calendar-agenda-2026-10-04",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "f49d1a625779b78b1b9a9e964e8bcbdfd4a9f2f227b502be10d325f3166b0f69",
+      "layout_digest": "1921ae6eb28f3a3821fca27b5f137423e95a724789c0821f5c4c11ef291b1438",
       "state_name": "calendar-agenda-2026-10-04"
     }
   },
@@ -5935,6 +10351,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-agenda-2026-10-09",
+    "fixture_variant": "calendar-agenda-2026-10-09",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -6148,17 +10565,184 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "calendar-agenda-region",
+      "test_ids": [
+        "adaptive-screen",
+        "calendar-agenda-region",
+        "phase20-visual-state-BW-029",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "cal-collapse-day"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Running plan",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 11
+        },
+        {
+          "id": "cal-collapse-day",
+          "label": "Collapse day and return to month",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "6 × 400 m\nPlanned · 1:50/lap\nRunning · planned\nRunning plan\n›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 24
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Running plan",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "Planned · 1:50/lap",
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-agenda-2026-10-09",
+          "fixture:calendar-agenda-2026-10-09",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "f7052929c1e18be4a16413149988f13a8223c214d4e94ed967f1256c364bf0cb",
+      "layout_digest": "145e479f43965d0d7f9dfb64d4fc4b6e4cad7cda770d140bb3cadddcbe29ae7a",
       "state_name": "calendar-agenda-2026-10-09"
     }
   },
@@ -6171,6 +10755,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-agenda-2026-10-10",
+    "fixture_variant": "calendar-agenda-2026-10-10",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -6384,17 +10969,184 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "calendar-agenda-region",
+      "test_ids": [
+        "adaptive-screen",
+        "calendar-agenda-region",
+        "phase20-visual-state-BW-030",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "cal-collapse-day"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Garmin imported",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 11
+        },
+        {
+          "id": "cal-collapse-day",
+          "label": "Collapse day and return to month",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Treadmill Run\nImported · 2.4 km · 11:31\nRunning · completed\nGarmin imported\n›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 24
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Garmin imported",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "Imported · 2.4 km · 11:31",
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-agenda-2026-10-10",
+          "fixture:calendar-agenda-2026-10-10",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "0bfb54a11487fd88e72fe50d509e274662a1b7b8129cad9f4dae3854a890cc1c",
+      "layout_digest": "617a285ecbfbc2afe539a99933cba9fbd26b3f479b32efd58dcaca785f0e0d36",
       "state_name": "calendar-agenda-2026-10-10"
     }
   },
@@ -6407,6 +11159,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-agenda-2026-10-05",
+    "fixture_variant": "calendar-agenda-2026-10-05",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -6612,17 +11365,180 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "calendar-agenda-region",
+      "test_ids": [
+        "adaptive-screen",
+        "calendar-agenda-region",
+        "phase20-visual-state-BW-031",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "cal-collapse-day"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "No scheduled or imported activity for this date.",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 11
+        },
+        {
+          "id": "cal-collapse-day",
+          "label": "Collapse day and return to month",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Calendar",
+        "No scheduled or imported activity for this date.",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "No workout",
+        "No scheduled or imported activity for this date.",
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-agenda-2026-10-05",
+          "fixture:calendar-agenda-2026-10-05",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "4acb214c76e6e346613e58d6ee64069c1b89f1e107fad7f07c407220675dbc5c",
+      "layout_digest": "00ae2033f1d26c2a42bba0080bd24d2aba4174176df1ade75982ec911c28396b",
       "state_name": "calendar-agenda-2026-10-05"
     }
   },
@@ -6635,6 +11551,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-adjacent-week",
+    "fixture_variant": "calendar-adjacent-week",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -6844,21 +11761,188 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "scenario_steps": [
       {
         "action": "tap_id",
-        "value": "calendar-day-2026-11-01"
+        "value": "calendar-day-2026-10-12"
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "calendar-agenda-region",
+      "test_ids": [
+        "adaptive-screen",
+        "calendar-agenda-region",
+        "phase20-visual-state-BW-032",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month",
+        "cal-collapse-day"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Planned · about 42 min",
+        "Strength · planned",
+        "Gym Tracker"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 11
+        },
+        {
+          "id": "cal-collapse-day",
+          "label": "Collapse day and return to month",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Full Body B\nPlanned · about 42 min\nStrength · planned\nGym Tracker\n›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "19",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "20",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "21",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "22",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "23",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "24",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "25",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 24
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Planned · about 42 min",
+        "Strength · planned",
+        "Gym Tracker"
+      ],
+      "non_color": [
+        "Planned · about 42 min",
+        "Gym Tracker"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-adjacent-week",
+          "fixture:calendar-adjacent-week",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "1b5d3b8d185d0e1dac6878b9ab2c50640c9f74ccd717f0614ddf8f692be956f4",
+      "layout_digest": "2d423b3487dec2198a4171f88e26b37d1d89315cc99dbffe3cab54e0347801bb",
       "state_name": "calendar-adjacent-week"
     }
   },
@@ -6871,6 +11955,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-calendar",
     "scenario": "calendar-collapsed",
+    "fixture_variant": "calendar-collapsed",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -7235,17 +12320,276 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "adaptive-screen",
       "test_id": "adaptive-screen",
+      "test_ids": [
+        "adaptive-screen",
+        "phase20-visual-state-BW-033",
+        "calendar-info",
+        "root-settings",
+        "cal-previous-month",
+        "cal-return-today",
+        "cal-next-month"
+      ],
       "semantics": [
-        "Calendar"
-      ]
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "actions": [
+        {
+          "id": "calendar-info",
+          "label": "Open Calendar legend",
+          "order": 0
+        },
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 1
+        },
+        {
+          "id": "cal-previous-month",
+          "label": "Previous month",
+          "order": 2
+        },
+        {
+          "id": "cal-return-today",
+          "label": "Today",
+          "order": 3
+        },
+        {
+          "id": "cal-next-month",
+          "label": "Next month",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "1\nFull A",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "2",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "3\nFull A",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "4\nEasy",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "5\n−",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "6",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "7\nFull B\nEasy",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "8",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "9\n6×400",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "10\nTread",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "11",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "12\nFull B",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "13",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "14\nTempo",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "15",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "16",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "17",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "18\nLong",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "19",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "20",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "21",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "22",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "23",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "24",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "25",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "26",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "27",
+          "order": 34
+        },
+        {
+          "id": null,
+          "label": "28",
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "29",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "30",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "31",
+          "order": 38
+        },
+        {
+          "id": null,
+          "label": "1",
+          "order": 39
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 40
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 41
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 42
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 43
+        }
+      ],
+      "order": [
+        "Calendar",
+        "Tread",
+        "Tempo",
+        "Long"
+      ],
+      "non_color": [
+        "Long"
+      ],
+      "focus": {
+        "target": "calendar-info",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:calendar-collapsed",
+          "fixture:calendar-collapsed",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "cbb1468d5ed74bf46eb81db5a9e0186c982ede38b88cc85858a9d60947097944",
+      "layout_digest": "554bbf9f3ce17db577c78344ea7250863b765f47e7e287c8b739e4244a4f6e81",
       "state_name": "calendar-collapsed"
     }
   },
@@ -7258,6 +12602,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-plans",
+    "fixture_variant": "library-plans",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -7415,11 +12760,143 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "library-screen",
       "test_id": "library-screen",
+      "test_ids": [
+        "library-screen",
+        "phase20-visual-state-BW-034",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions"
+      ],
       "semantics": [
-        "Library"
-      ]
+        "Library",
+        "Bodyweight Basics",
+        "4 days / week · 4 flexible days · Bodyweight",
+        "Create plan"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 18
+        }
+      ],
+      "order": [
+        "Library",
+        "Bodyweight Basics",
+        "4 days / week · 4 flexible days · Bodyweight",
+        "Create plan"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Create plan"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-plans",
+          "fixture:library-plans",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -7431,6 +12908,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-library-plans.png",
         "sha256": "fd730f917fbc1f7f3483177fdec604563d57b17e86162d76d625168b8efffdf2"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "c1e23058522b43fa25feb9d26e552ed131af9bf5ec42684cc9e2b9de364a159e",
+        "layout_digest": "fff111d720ff99e20023061f994d61007884b17085893535a1a891b95600c689",
+        "state_name": "library-plans"
       }
     }
   },
@@ -7443,6 +12930,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "plan-filters",
+    "fixture_variant": "plan-filters",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -7677,17 +13165,207 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "library-screen",
       "test_id": "starter-filter-sheet-frame",
+      "test_ids": [
+        "library-screen",
+        "starter-filter-sheet-frame",
+        "phase20-visual-state-BW-035",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "root-scrim",
+        "lib-clear-filters",
+        "lib-apply-filters"
+      ],
       "semantics": [
-        "Library"
-      ]
+        "Library",
+        "4 days",
+        "Clear filters",
+        "Show results"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 18
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Close Library filters",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "All",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "My plans",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Starter",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Any",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "3 days",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "4 days",
+          "order": 26
+        },
+        {
+          "id": "lib-clear-filters",
+          "label": "Clear filters",
+          "order": 27
+        },
+        {
+          "id": "lib-apply-filters",
+          "label": "Show results",
+          "order": 28
+        }
+      ],
+      "order": [
+        "Library",
+        "4 days",
+        "Clear filters",
+        "Show results"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Show results"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:plan-filters",
+          "fixture:plan-filters",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "23f34b6db262d06cca735ad63e2bd4e4de0328ebd1b9324f7e7a3c5418474a10",
+      "layout_digest": "02bf2466932df30bcba7d26f68c110a3831763952383f730fac5d9ef4588ade2",
       "state_name": "plan-filters"
     }
   },
@@ -7700,6 +13378,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-actions",
+    "fixture_variant": "library-actions",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -7898,17 +13577,180 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "library-screen",
       "test_id": "library-actions-sheet-frame",
+      "test_ids": [
+        "library-screen",
+        "library-actions-sheet-frame",
+        "phase20-visual-state-BW-036",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "root-scrim"
+      ],
       "semantics": [
-        "Library"
-      ]
+        "Library",
+        "Create exercise",
+        "Import plan",
+        "Later"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 18
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Close Library actions",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Create plan\nStrength or Running",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Create exercise\n+",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Import plan\nLater",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Library",
+        "Create exercise",
+        "Import plan",
+        "Later"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Later"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-actions",
+          "fixture:library-actions",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "78da91b7bb3c772d57d18d6fae6e4e60495310c2ca13241cdf236c4b1bdc9374",
+      "layout_digest": "13578b633f5d68f54458f4999071a83aa3977801e59950ffcaf14763204d012c",
       "state_name": "library-actions"
     }
   },
@@ -7923,6 +13765,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-plan-foundation",
+    "fixture_variant": "library-plan-foundation",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -8118,17 +13961,179 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "owned-plan-detail",
       "test_id": "owned-plan-detail",
+      "test_ids": [
+        "owned-plan-detail",
+        "phase20-visual-state-BW-037",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Full Body Foundation"
-      ]
+        "Full Body Foundation",
+        "Full Body B",
+        "Deadlift · Overhead Press · Seated Row · Dead Bug",
+        "Edit planEdit scheduleDuplicateArchive plan"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Edit plan",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Edit schedule",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Duplicate",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Archive plan",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Full Body Foundation",
+        "Full Body B",
+        "Deadlift · Overhead Press · Seated Row · Dead Bug",
+        "Edit planEdit scheduleDuplicateArchive plan"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Edit planEdit scheduleDuplicateArchive plan"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-plan-foundation",
+          "fixture:library-plan-foundation",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "04b0f4cb3c30cc5c3c3a18829ec8796c8f2980f5f6972b404908de619ad6d0bd",
+      "layout_digest": "6276067ef1d3dc09f66827954c954429ee8a0c1da50c46bc028987b7a92356dc",
       "state_name": "library-plan-foundation"
     }
   },
@@ -8143,6 +14148,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "strength-editor",
+    "fixture_variant": "strength-editor",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -8333,17 +14339,181 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "owned-plan-editor",
       "test_id": "owned-plan-editor",
+      "test_ids": [
+        "owned-plan-editor",
+        "phase20-visual-state-BW-038",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-plan-name"
+      ],
       "semantics": [
-        "Plan editor"
-      ]
+        "Plan editor",
+        "Full Body A",
+        "Back Squat · Bench Press · Lat Pulldown · Plank",
+        "Save plan"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-plan-name",
+          "label": null,
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "↑",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "+",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Save plan",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Plan editor",
+        "Full Body A",
+        "Back Squat · Bench Press · Lat Pulldown · Plank",
+        "Save plan"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Future schedule changes only. Completed history remains unchanged.",
+        "Save plan"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:strength-editor",
+          "fixture:strength-editor",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "309ef2111c0a55ea0ff5f44f889579ae2f97ff9ac498fb9f0f4da79488b6b437",
+      "layout_digest": "77b7efd29765be34e680c9a12868fef7405bd38476ddd0cab808427335f8763f",
       "state_name": "strength-editor"
     }
   },
@@ -8358,6 +14528,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "schedule-editor",
+    "fixture_variant": "schedule-editor",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -8585,17 +14756,200 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "schedule-editor",
       "test_id": "schedule-editor",
+      "test_ids": [
+        "schedule-editor",
+        "phase20-visual-state-BW-039",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Schedule"
-      ]
+        "Schedule",
+        "Saving recalculates upcoming dates only.",
+        "Completed workouts, set history, and targets remain unchanged.",
+        "Save schedule"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "M",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "W",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "F",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Save schedule",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 27
+        }
+      ],
+      "order": [
+        "Schedule",
+        "Saving recalculates upcoming dates only.",
+        "Completed workouts, set history, and targets remain unchanged.",
+        "Save schedule"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Completed workouts, set history, and targets remain unchanged.",
+        "Save schedule"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:schedule-editor",
+          "fixture:schedule-editor",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "c48427c48ee2c4ab6a110f21b19dc7e8cbda30623e97dec32f8a72f088bcaf4e",
+      "layout_digest": "80d97075d657b9edf8444b7b97807d2368001eca2f4e7df6b03396146eea74aa",
       "state_name": "schedule-editor"
     }
   },
@@ -8610,6 +14964,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "archive-confirmation",
+    "fixture_variant": "archive-confirmation",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -8810,17 +15165,179 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "owned-plan-detail",
       "test_id": "owned-plan-detail",
+      "test_ids": [
+        "owned-plan-detail",
+        "phase20-visual-state-BW-040",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Full Body Foundation"
-      ]
+        "Full Body Foundation",
+        "Full Body B",
+        "Deadlift · Overhead Press · Seated Row · Dead Bug",
+        "Edit planEdit scheduleDuplicateConfirm archive Full Body Foundation"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Edit plan",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Edit schedule",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Duplicate",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Confirm archive Full Body Foundation",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Full Body Foundation",
+        "Full Body B",
+        "Deadlift · Overhead Press · Seated Row · Dead Bug",
+        "Edit planEdit scheduleDuplicateConfirm archive Full Body Foundation"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Edit planEdit scheduleDuplicateConfirm archive Full Body Foundation"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:archive-confirmation",
+          "fixture:archive-confirmation",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "9d2d72ec1d3288bb10a73135a28ecb4ea6aaf636708b5df418566bce674590d4",
+      "layout_digest": "01d713b4211bcaf92b31113b504a27ea6d305366f036cace43a43679998b536e",
       "state_name": "archive-confirmation"
     }
   },
@@ -8835,6 +15352,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-plan-strength",
+    "fixture_variant": "library-plan-strength",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -9030,17 +15548,179 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "owned-plan-detail",
       "test_id": "owned-plan-detail",
+      "test_ids": [
+        "owned-plan-detail",
+        "phase20-visual-state-BW-041",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Strength Reset"
-      ]
+        "Strength Reset",
+        "Reset B",
+        "Deadlift · Bench · Pulldown",
+        "Edit planEdit scheduleDuplicateReactivate plan"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Edit plan",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Edit schedule",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Duplicate",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Reactivate plan",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Strength Reset",
+        "Reset B",
+        "Deadlift · Bench · Pulldown",
+        "Edit planEdit scheduleDuplicateReactivate plan"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Edit planEdit scheduleDuplicateReactivate plan"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-plan-strength",
+          "fixture:library-plan-strength",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "1a8c616ac3b09585e966dfb51c1391964c4c6c3b2b12a29da643262c904dd805",
+      "layout_digest": "6f61d1f7923d21a51ecc46bc4c555300328cb5c94353e56d2b39103fee2d8150",
       "state_name": "library-plan-strength"
     }
   },
@@ -9055,6 +15735,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-plan-beginner",
+    "fixture_variant": "library-plan-beginner",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -9234,17 +15915,169 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
+      "test_ids": [
+        "starter-plan-detail",
+        "phase20-visual-state-BW-042",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Full Body Foundation"
-      ]
+        "Full Body Foundation",
+        "Strength B",
+        "Deadlift · Press · Pulldown",
+        "Preview activationSave editable copy"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Preview activation",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Save editable copy",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 21
+        }
+      ],
+      "order": [
+        "Full Body Foundation",
+        "Strength B",
+        "Deadlift · Press · Pulldown",
+        "Preview activationSave editable copy"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Preview activationSave editable copy"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-plan-beginner",
+          "fixture:library-plan-beginner",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "110d0104ecb2dfe4e1388799c51af75af6fe3bee17a6d832177bfd98ecda9b8e",
+      "layout_digest": "9ae4c3ae47029a7d93644e79ef8df49c73e24556f158aa6462528af7cb685292",
       "state_name": "library-plan-beginner"
     }
   },
@@ -9259,6 +16092,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "starter-activation-preview",
+    "fixture_variant": "starter-activation-preview",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -9438,17 +16272,170 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "starter-activation",
       "test_id": "starter-activation",
+      "test_ids": [
+        "starter-activation",
+        "phase20-visual-state-BW-043",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Full Body Foundation"
-      ]
+        "Full Body Foundation",
+        "Activation creates an editable owned copy.",
+        "The current strength schedule would be replaced. Completed history stays available. The future Running schedule remains a separate concurrent-plan concept and requires multi-active-plan architecture.",
+        "Create and activate copySave without activating"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Create and activate copy",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Save without activating",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 21
+        }
+      ],
+      "order": [
+        "Full Body Foundation",
+        "Activation creates an editable owned copy.",
+        "The current strength schedule would be replaced. Completed history stays available. The future Running schedule remains a separate concurrent-plan concept and requires multi-active-plan architecture.",
+        "Create and activate copySave without activating"
+      ],
+      "non_color": [
+        "Active Plans",
+        "The current strength schedule would be replaced. Completed history stays available. The future Running schedule remains a separate concurrent-plan concept and requires multi-active-plan architecture.",
+        "Create and activate copySave without activating"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:starter-activation-preview",
+          "fixture:starter-activation-preview",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "64d6f58ae62ff12558db7137045d9cad5df4a24495ffb9bca3b6811d498f1387",
+      "layout_digest": "ac50a22e0d676374ff8b97d469b70ede5ba821eab44af23ab926e89f017bbae8",
       "state_name": "starter-activation-preview"
     }
   },
@@ -9463,6 +16450,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-plan-home",
+    "fixture_variant": "library-plan-home",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -9642,17 +16630,169 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "starter-plan-detail",
       "test_id": "starter-plan-detail",
+      "test_ids": [
+        "starter-plan-detail",
+        "phase20-visual-state-BW-044",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Minimal Equipment Full Body"
-      ]
+        "Minimal Equipment Full Body",
+        "Basics B",
+        "Lunge · Row · Dead Bug",
+        "Preview activationSave editable copy"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Preview activation",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Save editable copy",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 21
+        }
+      ],
+      "order": [
+        "Minimal Equipment Full Body",
+        "Basics B",
+        "Lunge · Row · Dead Bug",
+        "Preview activationSave editable copy"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Preview activationSave editable copy"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-plan-home",
+          "fixture:library-plan-home",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "6420124cb087b65bbe8c05019a7cf9f56ccd070f89c711fe0bdf2ea3072e85b8",
+      "layout_digest": "2badb6b2afc71caeec5c8ad01a6483b46fa481aa9afd305962e4690ad9af7a3c",
       "state_name": "library-plan-home"
     }
   },
@@ -9667,6 +16807,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-plan-running-2k",
+    "fixture_variant": "library-plan-running-2k",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -9854,11 +16995,164 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-plan-detail",
       "test_id": "running-plan-detail",
+      "test_ids": [
+        "running-plan-detail",
+        "phase20-visual-state-BW-045",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Running"
-      ]
+        "Running",
+        "60 min · Easy throughout",
+        "This plan does not guarantee the target. Concurrent activation requires a future multi-active-plan schedule architecture. Garmin records runs; imported activities require owner confirmation before matching.",
+        "Sync Garmin / match activityEdit running planResolve Friday conflict"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Sync Garmin / match activity",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Edit running plan",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Resolve Friday conflict",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Running",
+        "60 min · Easy throughout",
+        "This plan does not guarantee the target. Concurrent activation requires a future multi-active-plan schedule architecture. Garmin records runs; imported activities require owner confirmation before matching.",
+        "Sync Garmin / match activityEdit running planResolve Friday conflict"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Sync Garmin / match activityEdit running planResolve Friday conflict"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-plan-running-2k",
+          "fixture:library-plan-running-2k",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -9870,6 +17164,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-library-plan-running-2k.png",
         "sha256": "cd2a033b6b53676f591017bae18c13006ab44eb6c29610a56484c20d9b181876"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "e9ee68c0fac4b182fbd2576c9af763d09a27429959a604a1dde0841042403917",
+        "layout_digest": "c3056c793f0896e5ba560c4f2f4b5d4ca129a374aef6776ccb447115ecc306fd",
+        "state_name": "library-plan-running-2k"
       }
     }
   },
@@ -9884,6 +17188,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-editor",
+    "fixture_variant": "running-editor",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -10159,11 +17464,217 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-plan-editor",
       "test_id": "running-plan-editor",
+      "test_ids": [
+        "running-plan-editor",
+        "phase20-visual-state-BW-046",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-distance",
+        "ldr-run-time"
+      ],
       "semantics": [
-        "Edit running plan"
-      ]
+        "Edit running plan",
+        "Flexible fast and easy speed play",
+        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE.",
+        "Save running plan"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-distance",
+          "label": "2.4 km\n10 km\nHalf Marathon",
+          "order": 16
+        },
+        {
+          "id": "ldr-run-time",
+          "label": null,
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Tue\nRecovery\n30 min · RPE 2–3 · conversational\n›",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Fri\nIntervals\n6 × 400 m · 90 sec jog\n›",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Sun\nLong run\n60 min · Easy throughout\n›",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Recovery\nShort, easy aerobic running",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Long run\nSustained easy endurance",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progression\nStart easy and finish faster",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Tempo\nContinuous or repeated threshold work",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "Intervals\nMeasured work with recovery",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Hills\nUphill repetitions with return recovery",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "Fartlek\nFlexible fast and easy speed play",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "Save running plan",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 32
+        }
+      ],
+      "order": [
+        "Edit running plan",
+        "Flexible fast and easy speed play",
+        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE.",
+        "Save running plan"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Current benchmark",
+        "Save running plan"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-editor",
+          "fixture:running-editor",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -10175,6 +17686,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-running-editor.png",
         "sha256": "548b642691f1e9e00645f012f514c4cfa06ca97a35f4d77b7fed11a92765ec7d"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "9a0a3a14e33251813161cdbd6889e34fd925699eea8ce18638c64fdc45b2dbc2",
+        "layout_digest": "6239f371617f564ded962c5a92c0fde6fb66f4e6698e7d48c0be62a84072886e",
+        "state_name": "running-editor"
       }
     }
   },
@@ -10190,6 +17711,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-session-recovery",
+    "fixture_variant": "running-session-recovery",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -10391,17 +17913,175 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
+      "test_ids": [
+        "running-session-editor",
+        "phase20-visual-state-BW-047",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-session-type"
+      ],
       "semantics": [
-        "Workout type"
-      ]
+        "Workout type",
+        "Session preview",
+        "30 min · RPE 2–3 · conversational",
+        "Save session"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-session-type",
+          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Save session",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Workout type",
+        "Session preview",
+        "30 min · RPE 2–3 · conversational",
+        "Save session"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Save session"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-session-recovery",
+          "fixture:running-session-recovery",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "b5d5e7ec2065dec8414198c443025a2d325b81da0d705a9bd0ce4aa47cb0f443",
+      "layout_digest": "52bcecc2e11388c4ce2596fe9ed529e33da89b1723ebf82c8a3700b14814151e",
       "state_name": "running-session-recovery"
     }
   },
@@ -10417,6 +18097,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-session-long",
+    "fixture_variant": "running-session-long",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -10624,17 +18305,180 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
+      "test_ids": [
+        "running-session-editor",
+        "phase20-visual-state-BW-048",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-session-type"
+      ],
       "semantics": [
-        "Workout type"
-      ]
+        "Workout type",
+        "Session preview",
+        "60 min · Easy throughout",
+        "Save session"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-session-type",
+          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Easy throughout\nSteady finish\nProgression finish",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Save session",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Workout type",
+        "Session preview",
+        "60 min · Easy throughout",
+        "Save session"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Save session"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-session-long",
+          "fixture:running-session-long",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "1f3ad84be6c99b9182c0570c499704804fd303f43658258158e89ea53dcca519",
+      "layout_digest": "66a4cd103a0c7c1277bdbeab254d0d96871f250904ebb38068207fd0c1570860",
       "state_name": "running-session-long"
     }
   },
@@ -10650,6 +18494,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-session-progression",
+    "fixture_variant": "running-session-progression",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -10861,17 +18706,175 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
+      "test_ids": [
+        "running-session-editor",
+        "phase20-visual-state-BW-049",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-session-type"
+      ],
       "semantics": [
-        "Workout type"
-      ]
+        "Workout type",
+        "Session preview",
+        "45 min · 3 stages · Easy · RPE 3 → Tempo · RPE 7",
+        "Save session"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-session-type",
+          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Save session",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Workout type",
+        "Session preview",
+        "45 min · 3 stages · Easy · RPE 3 → Tempo · RPE 7",
+        "Save session"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Save session"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-session-progression",
+          "fixture:running-session-progression",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "42c9a2bb34b0601d72a28152d45ef72373be9501848ad00195a2c8a4bdcdcf86",
+      "layout_digest": "ac1e3f24c8a88eaa58385e3a41554af3bf760499422faf40287c1a9fda66dddc",
       "state_name": "running-session-progression"
     }
   },
@@ -10887,6 +18890,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-session-tempo",
+    "fixture_variant": "running-session-tempo",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -11104,17 +19108,180 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
+      "test_ids": [
+        "running-session-editor",
+        "phase20-visual-state-BW-050",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-session-type"
+      ],
       "semantics": [
-        "Workout type"
-      ]
+        "Workout type",
+        "Session preview",
+        "20 min continuous · Threshold · RPE 7",
+        "Save session"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-session-type",
+          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Continuous\nTempo repeats",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Save session",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Workout type",
+        "Session preview",
+        "20 min continuous · Threshold · RPE 7",
+        "Save session"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Save session"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-session-tempo",
+          "fixture:running-session-tempo",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "3e0b24ff66fe953c84bf632bfddb4471e9c54e1cfd314a981acaa9c6664925ec",
+      "layout_digest": "78338b8465e83ed5361114afef265d4c9e424e8f15a7ddc18711317e03cac38f",
       "state_name": "running-session-tempo"
     }
   },
@@ -11130,6 +19297,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-session-intervals",
+    "fixture_variant": "running-session-intervals",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -11341,11 +19509,165 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
+      "test_ids": [
+        "running-session-editor",
+        "phase20-visual-state-BW-051",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-session-type"
+      ],
       "semantics": [
-        "Workout type"
-      ]
+        "Workout type",
+        "Session preview",
+        "6 × 400 m · 90 sec jog",
+        "Save session"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-session-type",
+          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Save session",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Workout type",
+        "Session preview",
+        "6 × 400 m · 90 sec jog",
+        "Save session"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Save session"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-session-intervals",
+          "fixture:running-session-intervals",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -11357,6 +19679,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-running-session-intervals.png",
         "sha256": "757da5467839360d9d2ae67d39b45e4a7e93814f551769259f16f19bddddd75b"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "685db6ed631a66078d399be34960598273acd5c4ae3fbdbb4dac372de58fa7e5",
+        "layout_digest": "b6399b5a4ec97e3bbb3c3ab6ec656dc001ec531bfeb00fb3b7b9088c3f5d2738",
+        "state_name": "running-session-intervals"
       }
     }
   },
@@ -11372,6 +19704,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-session-hills",
+    "fixture_variant": "running-session-hills",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -11583,17 +19916,175 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
+      "test_ids": [
+        "running-session-editor",
+        "phase20-visual-state-BW-052",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-session-type"
+      ],
       "semantics": [
-        "Workout type"
-      ]
+        "Workout type",
+        "Session preview",
+        "8 × 45 sec uphill · Jog down + 60 sec",
+        "Save session"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-session-type",
+          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Save session",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Workout type",
+        "Session preview",
+        "8 × 45 sec uphill · Jog down + 60 sec",
+        "Save session"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Save session"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-session-hills",
+          "fixture:running-session-hills",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "1dcd8fc90fceb495a309ee997fcff6bc039842c6b203e44d8a5f4b9e497a95ef",
+      "layout_digest": "eba9082477b9d21a26987716b45445a4c95c22c93cd7653241330d7f387e7274",
       "state_name": "running-session-hills"
     }
   },
@@ -11609,6 +20100,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "running-session-fartlek",
+    "fixture_variant": "running-session-fartlek",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -11826,17 +20318,180 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-session-editor",
       "test_id": "running-session-editor",
+      "test_ids": [
+        "running-session-editor",
+        "phase20-visual-state-BW-053",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-session-type"
+      ],
       "semantics": [
-        "Workout type"
-      ]
+        "Workout type",
+        "Session preview",
+        "10 × 1 min fast / 1 min float",
+        "Save session"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-session-type",
+          "label": "Recovery\nLong run\nProgression\nTempo\nIntervals\nHills\nFartlek",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Mon\nTue\nWed\nThu\nFri\nSat\nSun",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Structured\nUnstructured",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Save session",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Workout type",
+        "Session preview",
+        "10 × 1 min fast / 1 min float",
+        "Save session"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Save session"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-session-fartlek",
+          "fixture:running-session-fartlek",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "81ec01930eecbb03c988963b251e0745705b8dd17b62507a5343c780796b92ee",
+      "layout_digest": "d4de151ea39447387ba87229184ce32072b13588f764a9465d2d8f877429915e",
       "state_name": "running-session-fartlek"
     }
   },
@@ -11849,6 +20504,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "plan-type-chooser",
+    "fixture_variant": "plan-type-chooser",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -12028,11 +20684,159 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "plan-type-chooser",
       "test_id": "plan-type-chooser",
+      "test_ids": [
+        "plan-type-chooser",
+        "phase20-visual-state-BW-054",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "What are you training for?"
-      ]
+        "What are you training for?",
+        "Running",
+        "Distance and time goal, benchmark, and structured weekly sessions.",
+        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "GYM\nStrength\nExercises, sets, targets, and a gym schedule.\n›",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "RUN\nRunning\nDistance and time goal, benchmark, and structured weekly sessions.\n›",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 21
+        }
+      ],
+      "order": [
+        "What are you training for?",
+        "Running",
+        "Distance and time goal, benchmark, and structured weekly sessions.",
+        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically."
+      ],
+      "non_color": [
+        "Active Plans",
+        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:plan-type-chooser",
+          "fixture:plan-type-chooser",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -12044,6 +20848,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-plan-type-chooser.png",
         "sha256": "9adf83197bb3d0f32d63bb092a57020877feead3008929141133c64e9e5b835f"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "3e8a3d3207dcac105368053413d88c18ea5f387a68ea188b0a99263936fc988c",
+        "layout_digest": "0f645cdfd0737684727f416e716c6e11e6406e27f49fa1f9437dd8b469e16998",
+        "state_name": "plan-type-chooser"
       }
     }
   },
@@ -12056,6 +20870,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "create-strength",
+    "fixture_variant": "create-strength",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -12235,17 +21050,177 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "owned-plan-editor",
       "test_id": "owned-plan-create",
+      "test_ids": [
+        "owned-plan-editor",
+        "owned-plan-create",
+        "phase20-visual-state-BW-055",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-new-plan-name",
+        "ldr-new-plan-day"
+      ],
       "semantics": [
-        "Create plan"
-      ]
+        "Create plan",
+        "Plan name",
+        "First day",
+        "Continue to editor"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-new-plan-name",
+          "label": null,
+          "order": 16
+        },
+        {
+          "id": "ldr-new-plan-day",
+          "label": null,
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Continue to editor",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Create plan",
+        "Plan name",
+        "First day",
+        "Continue to editor"
+      ],
+      "non_color": [
+        "Active Plans",
+        "Continue to editor"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:create-strength",
+          "fixture:create-strength",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "758591efd90cfd6ef3e69770f718bbb5a03e0d3d0f7f8008039dbfaa0a2e982b",
+      "layout_digest": "453364dd08aa34c2fd811785747da2046f96f01ac6fd98498c01859ac94c0c12",
       "state_name": "create-strength"
     }
   },
@@ -12258,6 +21233,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "create-running",
+    "fixture_variant": "create-running",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -12533,17 +21509,227 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "running-plan-editor",
       "test_id": "running-plan-editor",
+      "test_ids": [
+        "running-plan-editor",
+        "phase20-visual-state-BW-056",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-run-distance",
+        "ldr-run-time"
+      ],
       "semantics": [
-        "Create running plan"
-      ]
+        "Create running plan",
+        "Fartlek",
+        "Flexible fast and easy speed play",
+        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search plans",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open plan filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Strength Reset\n\n4 days / week · Mon · Tue · Thu · Sat · Gym",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Starter Strength\n\n3 days / week · 3 flexible days · Gym",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bodyweight Basics\n\n4 days / week · 4 flexible days · Bodyweight",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "›",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Create plan\n+",
+          "order": 14
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 15
+        },
+        {
+          "id": "ldr-run-distance",
+          "label": "2.4 km\n10 km\nHalf Marathon",
+          "order": 16
+        },
+        {
+          "id": "ldr-run-time",
+          "label": null,
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Tue\nRecovery\n30 min · RPE 2–3 · conversational\n›",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Fri\nIntervals\n6 × 400 m · 90 sec jog\n›",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Sun\nLong run\n60 min · Easy throughout\n›",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Recovery\nShort, easy aerobic running",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Long run\nSustained easy endurance",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Progression\nStart easy and finish faster",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Tempo\nContinuous or repeated threshold work",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "Intervals\nMeasured work with recovery",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Hills\nUphill repetitions with return recovery",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "Fartlek\nFlexible fast and easy speed play",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "Create running plan",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 32
+        }
+      ],
+      "order": [
+        "Create running plan",
+        "Fartlek",
+        "Flexible fast and easy speed play",
+        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE."
+      ],
+      "non_color": [
+        "Active Plans",
+        "Current benchmark",
+        "Every structured session can include warm-up, work and recovery steps, an intensity target, and cool-down. Targets accept pace, heart-rate zone, or RPE."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:create-running",
+          "fixture:create-running",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "af209e35c164618b86bff7cf5bf871b78d595f3faea061bc1d1feb88ff956a24",
+      "layout_digest": "764112dfba183e420b80dbd720bb65a9bea8026b365960dbf2420e948befb546",
       "state_name": "create-running"
     }
   },
@@ -12556,6 +21742,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "library-exercises",
+    "fixture_variant": "library-exercises",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -12854,11 +22041,227 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "library-screen",
       "test_id": "library-screen",
+      "test_ids": [
+        "library-screen",
+        "phase20-visual-state-BW-057",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions"
+      ],
       "semantics": [
-        "Library"
-      ]
+        "Library",
+        "reps · Core · Bodyweight",
+        "Tempo Goblet Squat",
+        "kg × reps · Custom · Dumbbell"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search exercises",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open exercise filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "Dead Bug\n\nreps · Core · Bodyweight",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 34
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 35
+        }
+      ],
+      "order": [
+        "Library",
+        "reps · Core · Bodyweight",
+        "Tempo Goblet Squat",
+        "kg × reps · Custom · Dumbbell"
+      ],
+      "non_color": [
+        "kg × reps · Custom · Dumbbell"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:library-exercises",
+          "fixture:library-exercises",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -12870,6 +22273,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-library-exercises.png",
         "sha256": "3e2610a3a5388c97ba4b215284846afe15079d9403b7ec930f9d079e8bdd97f3"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "b129310ff9db09d87626489c5befba35205d7f15bf1c064d8b99fd13b8effa9c",
+        "layout_digest": "ceedb65242450a794602e96f36cf5972f78266f5f3c7b9031cceb788e7c97c8a",
+        "state_name": "library-exercises"
       }
     }
   },
@@ -12884,6 +22297,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "exercise-back-squat",
+    "fixture_variant": "exercise-back-squat",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -13199,17 +22613,254 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "exercise-detail-screen",
       "test_id": "exercise-detail-screen",
+      "test_ids": [
+        "exercise-detail-screen",
+        "phase20-visual-state-BW-058",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back"
+      ],
       "semantics": [
-        "Back Squat"
-      ]
+        "Back Squat",
+        "Used in",
+        "Full Body Foundation · Strength Reset",
+        "Toggle favoriteHide from pickers"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search exercises",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open exercise filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "Dead Bug\n\nreps · Core · Bodyweight",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 31
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "Toggle favorite",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "Hide from pickers",
+          "order": 34
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 38
+        }
+      ],
+      "order": [
+        "Back Squat",
+        "Used in",
+        "Full Body Foundation · Strength Reset",
+        "Toggle favoriteHide from pickers"
+      ],
+      "non_color": [
+        "Brace before unracking and repeat a stable range. No unlicensed media is bundled.",
+        "Toggle favoriteHide from pickers"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:exercise-back-squat",
+          "fixture:exercise-back-squat",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "942b69f48f616d9af249f777aae543f1e52c8c63acc91b2aa953b74eb575a30e",
+      "layout_digest": "5ba1600b8642b558962a6991abf2a670cb329deca9b81c30e657cb83f25917d6",
       "state_name": "exercise-back-squat"
     }
   },
@@ -13224,6 +22875,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "exercise-tempo-goblet",
+    "fixture_variant": "exercise-tempo-goblet",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -13553,17 +23205,271 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "exercise-editor-screen",
       "test_id": "exercise-editor-screen",
+      "test_ids": [
+        "exercise-editor-screen",
+        "phase20-visual-state-BW-059",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-custom-name",
+        "ldr-custom-metric",
+        "ldr-custom-equipment"
+      ],
       "semantics": [
-        "Tempo Goblet Squat"
-      ]
+        "Tempo Goblet Squat",
+        "Equipment",
+        "Save custom exercise",
+        "Archive custom exercise"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search exercises",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open exercise filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "Dead Bug\n\nreps · Core · Bodyweight",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 31
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 32
+        },
+        {
+          "id": "ldr-custom-name",
+          "label": null,
+          "order": 33
+        },
+        {
+          "id": "ldr-custom-metric",
+          "label": "Weight × reps\nDuration\nReps",
+          "order": 34
+        },
+        {
+          "id": "ldr-custom-equipment",
+          "label": null,
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "Save custom exercise",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "Archive custom exercise",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 38
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 39
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 40
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 41
+        }
+      ],
+      "order": [
+        "Tempo Goblet Squat",
+        "Equipment",
+        "Save custom exercise",
+        "Archive custom exercise"
+      ],
+      "non_color": [
+        "Archive custom exercise"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:exercise-tempo-goblet",
+          "fixture:exercise-tempo-goblet",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "e9db0c8e72671f79d6826f4417a23610e50e8ac1eef065eb6a810ec36bdfd201",
+      "layout_digest": "03ed7802d10ad8ad67523363e869572ca96037f390995570ae8d75cbfe18fa02",
       "state_name": "exercise-tempo-goblet"
     }
   },
@@ -13576,6 +23482,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-library-running",
     "scenario": "custom-exercise-create",
+    "fixture_variant": "custom-exercise-create",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -13897,17 +23804,266 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "exercise-editor-screen",
       "test_id": "exercise-editor-screen",
+      "test_ids": [
+        "exercise-editor-screen",
+        "phase20-visual-state-BW-060",
+        "root-settings",
+        "lib-plans-tab",
+        "lib-exercises-tab",
+        "lib-search",
+        "lib-open-filters",
+        "lib-open-actions",
+        "lib-deep-back",
+        "ldr-new-custom-name",
+        "ldr-new-custom-metric",
+        "ldr-new-custom-equipment"
+      ],
       "semantics": [
-        "Create exercise"
-      ]
+        "Create exercise",
+        "Reps",
+        "Equipment",
+        "Create exercise+ opened."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "lib-plans-tab",
+          "label": "Plans",
+          "order": 1
+        },
+        {
+          "id": "lib-exercises-tab",
+          "label": "Exercises",
+          "order": 2
+        },
+        {
+          "id": "lib-search",
+          "label": "Search exercises",
+          "order": 3
+        },
+        {
+          "id": "lib-open-filters",
+          "label": "Open exercise filters",
+          "order": 4
+        },
+        {
+          "id": "lib-open-actions",
+          "label": "•••",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n\nkg × reps · Strength · Barbell",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n\nkg × reps · Strength · Barbell",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Single-Arm Cable Lat Pulldown\n\nkg × reps · Hypertrophy · Cable",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Plank\n\nseconds · Core · Bodyweight",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "★",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Deadlift\n\nkg × reps · Strength · Barbell",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "Dead Bug\n\nreps · Core · Bodyweight",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "Tempo Goblet Squat\n\nkg × reps · Custom · Dumbbell",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "☆",
+          "order": 31
+        },
+        {
+          "id": "lib-deep-back",
+          "label": "Back to Library",
+          "order": 32
+        },
+        {
+          "id": "ldr-new-custom-name",
+          "label": null,
+          "order": 33
+        },
+        {
+          "id": "ldr-new-custom-metric",
+          "label": "Weight × reps\nDuration\nReps",
+          "order": 34
+        },
+        {
+          "id": "ldr-new-custom-equipment",
+          "label": null,
+          "order": 35
+        },
+        {
+          "id": null,
+          "label": "Create exercise",
+          "order": 36
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 37
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 38
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 39
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 40
+        }
+      ],
+      "order": [
+        "Create exercise",
+        "Reps",
+        "Equipment",
+        "Create exercise+ opened."
+      ],
+      "non_color": [
+        "Create exercise+ opened."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:custom-exercise-create",
+          "fixture:custom-exercise-create",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "407f4d30a84742ca3627711ab1da78d9737a1cc80477ace96ac39d4b3155a6f2",
+      "layout_digest": "53ea7a03ca76ce0c62ae802ecd9c2ba5d11559bc3487ab788f1bdc806cf97141",
       "state_name": "custom-exercise-create"
     }
   },
@@ -13923,6 +24079,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all",
+    "fixture_variant": "progress-all",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -14058,11 +24215,130 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-061",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 15
+        }
+      ],
+      "order": [
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Active goals",
+        "Planned next",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-all",
+          "fixture:progress-all",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -14074,6 +24350,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-progress-all.png",
         "sha256": "3e64eb06a9e00bcba8d1b45ae05a768435d1ab4d7017add9ced8b684a4b88632"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "e09d5321dd47f0523a2a22f2bc80a50ad9d18be96c7ce3c2e516bb0b27cfacff",
+        "layout_digest": "9a0ed2741bad7efd9cb2a9bb693b864425dfced1a9d14802bddcabd1a8cd88ff",
+        "state_name": "progress-all"
       }
     }
   },
@@ -14089,6 +24375,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-4w",
+    "fixture_variant": "progress-all-4w",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -14224,17 +24511,140 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-062",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 15
+        }
+      ],
+      "order": [
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Active goals",
+        "Planned next",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-all-4w",
+          "fixture:progress-all-4w",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5f98087497b1e2a9298bc0b8078310a5802fa8b0cdf5da166f5f615d0093b9bb",
+      "layout_digest": "7f099621f2c087ffaa52251d6e425ac3016244c1e78e8e69cb371145533c086d",
       "state_name": "progress-all-4w"
     }
   },
@@ -14250,6 +24660,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-12w",
+    "fixture_variant": "progress-all-12w",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -14390,17 +24801,140 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-063",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 15
+        }
+      ],
+      "order": [
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Active goals",
+        "Planned next",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-all-12w",
+          "fixture:progress-all-12w",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "fce63e81d38de6167c6abdff77798476ccd7bdb1fc1ed6dbffdcdc87f0826f5f",
+      "layout_digest": "7bdbaf0c97b47936cd84f8fbd7608d00eb36484bcb6f963bea37f45cd442a1f0",
       "state_name": "progress-all-12w"
     }
   },
@@ -14416,6 +24950,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-all-all",
+    "fixture_variant": "progress-all-all",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -14556,17 +25091,140 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-064",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat · 62.5 kg × 8\nLatest 60 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 15
+        }
+      ],
+      "order": [
+        "Progress",
+        "One quality run, one squat exposure",
+        "6 × 400 m rehearses the chosen 2.4 km pace. The next squat repeats 60 kg × 8 before review.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Active goals",
+        "Planned next",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-all-all",
+          "fixture:progress-all-all",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "8a8e90dc32c200fbffd2f88a00923ef3271183cc35983b46fde9806c54d39e4f",
+      "layout_digest": "0f37b1723c8a7c677ac90f608ddd27732e3d599a55ac76067c05679b638119be",
       "state_name": "progress-all-all"
     }
   },
@@ -14582,6 +25240,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength",
+    "fixture_variant": "progress-strength",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -14738,11 +25397,138 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-065",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        }
+      ],
+      "order": [
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-strength",
+          "fixture:progress-strength",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -14754,6 +25540,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-progress-strength.png",
         "sha256": "aea062bdcdde84aa70dc8b953a3d49018e28d61c3748a09afd3e2fe6a2fdd55c"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "04746dd2c99e17e585bef42e74daa1696e3314e83e361f76cf93a6dee6c51a23",
+        "layout_digest": "2ca5bc0170dcf0f6fc91407bde8514f1659a2c7633f804a155e6232d545110d1",
+        "state_name": "progress-strength"
       }
     }
   },
@@ -14769,6 +25565,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-4w",
+    "fixture_variant": "progress-strength-4w",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -14925,17 +25722,148 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-066",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        }
+      ],
+      "order": [
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-strength-4w",
+          "fixture:progress-strength-4w",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "91cf679681c5d63baa5e8724a38f92ede25ed8fb5546292e46032bd728db712e",
+      "layout_digest": "af0bfcfee17f4dfe1fcbe5e8d9312245bbfac407168ad5eba98f310e5ebac45a",
       "state_name": "progress-strength-4w"
     }
   },
@@ -14951,6 +25879,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-12w",
+    "fixture_variant": "progress-strength-12w",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -15111,17 +26040,148 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-067",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        }
+      ],
+      "order": [
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-strength-12w",
+          "fixture:progress-strength-12w",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "c9e1bd20986a9959973675a3c515ba3d43aa66f5e46c0daba07e843918801b2d",
+      "layout_digest": "458505021bdb4bf3b3e0626cdcf3c8b9eea8c0c5a6ae8cb0671779944c52fff8",
       "state_name": "progress-strength-12w"
     }
   },
@@ -15137,6 +26197,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-strength-all",
+    "fixture_variant": "progress-strength-all",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -15297,17 +26358,148 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-068",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        }
+      ],
+      "order": [
+        "Progress",
+        "Plank",
+        "45 sec · target 50 sec",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-strength-all",
+          "fixture:progress-strength-all",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "4d54d9b95fccf19fdafe2f3f3dc103448e48028fcbfc49f7b786b71a3e414c8d",
+      "layout_digest": "978ba7ead5b0112fc1521d04fa3982510c1eb71a0d4da5d2c48c8bfc08b6b59e",
       "state_name": "progress-strength-all"
     }
   },
@@ -15323,6 +26515,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running",
+    "fixture_variant": "progress-running",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -15495,11 +26688,151 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-069",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running",
+          "fixture:progress-running",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
@@ -15511,6 +26844,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-progress-running.png",
         "sha256": "83d1efb14f0e3316e24f3c16951b7ad31d211cf50693c14cbad6d1afcc267ff1"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "aa3879c604da559021896b274506361de2e3d09271499ccc8aee8ca2251dad58",
+        "layout_digest": "578fb395833a4e81c99ace2695ba4b77778a271b2f9d8b919f85372e8e73fb77",
+        "state_name": "progress-running"
       }
     }
   },
@@ -15526,6 +26869,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-4w",
+    "fixture_variant": "progress-running-4w",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -15698,17 +27042,161 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-070",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running-4w",
+          "fixture:progress-running-4w",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5e53b69c1a23c1ee1624bc7327f60167822ce32444c190fcc3f0befa7db5bc88",
+      "layout_digest": "a70890eea46740d468805375fe53e65ba58ef8d3a41a77fb85a8b281509a53df",
       "state_name": "progress-running-4w"
     }
   },
@@ -15724,6 +27212,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-12w",
+    "fixture_variant": "progress-running-12w",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -15900,17 +27389,161 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-071",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running-12w",
+          "fixture:progress-running-12w",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5541f6dcbd88b2149411e4acc3c76074706082259cd67c55ccb59b1917fb6eb7",
+      "layout_digest": "1107dfa679b32d7e431a3e134eb47b3f368fe801e5d4e185293b859e5d985af0",
       "state_name": "progress-running-12w"
     }
   },
@@ -15926,6 +27559,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-all",
+    "fixture_variant": "progress-running-all",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -16102,17 +27736,161 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-072",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running-all",
+          "fixture:progress-running-all",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "b251b4d6cb4df8ac71e08a374059980dbe6381101107a854a6dfb910dd5d7a6f",
+      "layout_digest": "7fe061eef70a82a5a8ef6afb9542fb210da6b3bda9b91d0070f4055b1ca8ff3f",
       "state_name": "progress-running-all"
     }
   },
@@ -16129,6 +27907,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "strength-detail-squat",
+    "fixture_variant": "strength-detail-squat",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -16292,17 +28071,159 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "exercise-history-screen",
       "test_id": "exercise-history-screen",
+      "test_ids": [
+        "exercise-history-screen",
+        "phase20-visual-state-BW-073",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim"
+      ],
       "semantics": [
-        "Back Squat"
-      ]
+        "Back Squat",
+        "45 sec · target 50 sec",
+        "Running preview: ready.",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Close history",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Back Squat",
+        "45 sec · target 50 sec",
+        "Running preview: ready.",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:strength-detail-squat",
+          "fixture:strength-detail-squat",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "88a935714f997f8bfc16be1436087da90321ed48a4a675b9fb124e75737e962a",
+      "layout_digest": "506b40154daee48dded5c6e2d70851ae44a01ff27e9b7f0624538959516a56c9",
       "state_name": "strength-detail-squat"
     }
   },
@@ -16319,6 +28240,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "strength-detail-bench",
+    "fixture_variant": "strength-detail-bench",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -16482,17 +28404,159 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "exercise-history-screen",
       "test_id": "exercise-history-screen",
+      "test_ids": [
+        "exercise-history-screen",
+        "phase20-visual-state-BW-074",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim"
+      ],
       "semantics": [
-        "Bench Press"
-      ]
+        "Bench Press",
+        "42.5 kg × 10",
+        "Goal 42.5",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Close history",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Bench Press",
+        "42.5 kg × 10",
+        "Goal 42.5",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:strength-detail-bench",
+          "fixture:strength-detail-bench",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "a99a131e729282cd01c66105b181fba6364b2cc4c3819a9e6efb51f9fc460981",
+      "layout_digest": "c669b8aca7e61ab539fe94e7e4762e4236186ff3556fa72c36b412534990d0a0",
       "state_name": "strength-detail-bench"
     }
   },
@@ -16509,6 +28573,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "strength-detail-plank",
+    "fixture_variant": "strength-detail-plank",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -16672,17 +28737,159 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "root-settings",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "exercise-history-screen",
       "test_id": "exercise-history-screen",
+      "test_ids": [
+        "exercise-history-screen",
+        "phase20-visual-state-BW-075",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim"
+      ],
       "semantics": [
-        "Plank"
-      ]
+        "Plank",
+        "50 sec",
+        "Goal 50",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Close history",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Plank",
+        "50 sec",
+        "Goal 50",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Comparable completed personal history with the goal shown as a separate line."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:strength-detail-plank",
+          "fixture:strength-detail-plank",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "d3485cbd6584135c929ac0a12770b1e9368c15d4a39ff170bb2e676d25e5d9df",
+      "layout_digest": "2a46f2c0566784490892fc0d9328522384269b34bee259d876056af123dda11c",
       "state_name": "strength-detail-plank"
     }
   },
@@ -16698,6 +28905,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-recommendation",
+    "fixture_variant": "progress-recommendation",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -16882,17 +29090,174 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "recommendation-review-sheet",
+      "test_ids": [
+        "progress-screen",
+        "recommendation-review-sheet",
+        "phase20-visual-state-BW-076",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-keep-target",
+        "pv2-use-target"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "No automatic change without confirmation",
+        "Keep current",
+        "Use target"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 62.5",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 completed twice. Review 45 kg × 8.\nReview\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Back Squat\n60 kg × 8 · target 62.5 kg × 8\nOn track\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Bench Press\n42.5 kg × 10 · target 42.5 kg × 10\nMaintaining\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Plank\n45 sec · target 50 sec\nOn track\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 17
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Close recommendation",
+          "order": 19
+        },
+        {
+          "id": "pv2-keep-target",
+          "label": "Keep current",
+          "order": 20
+        },
+        {
+          "id": "pv2-use-target",
+          "label": "Use target",
+          "order": 21
+        }
+      ],
+      "order": [
+        "Progress",
+        "No automatic change without confirmation",
+        "Keep current",
+        "Use target"
+      ],
+      "non_color": [
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "Current",
+        "No automatic change without confirmation",
+        "Use target"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-recommendation",
+          "fixture:progress-recommendation",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "df02da5e22c86f0182f0712261b35fccd84ab862358cc2a0bbf522e221f6e51d",
+      "layout_digest": "11b618ff972cd374befe5287baf24d8b90c054b6b00eb5e0f257a7173ce1b189",
       "state_name": "progress-recommendation"
     }
   },
@@ -16908,6 +29273,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-2.4",
+    "fixture_variant": "running-effort-2.4",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -17096,17 +29462,173 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "running-history-sheet",
+      "test_ids": [
+        "progress-screen",
+        "running-history-sheet",
+        "phase20-visual-state-BW-077",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "2.4 km best efforts",
+        "Target 11:00",
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close history",
+          "order": 21
+        }
+      ],
+      "order": [
+        "Progress",
+        "2.4 km best efforts",
+        "Target 11:00",
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-effort-2.4",
+          "fixture:running-effort-2.4",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "338568f6103d9f9d28c9871b7b5e7c0b7f5018438ce8f7c045c5a6262c9bc6f5",
+      "layout_digest": "b92305234aa247ff975058e44b1f2a2ad0f77f93dc2dcb2937291f7fa0ae4a06",
       "state_name": "running-effort-2.4"
     }
   },
@@ -17122,6 +29644,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-2.4",
+    "fixture_variant": "running-target-2.4",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -17399,17 +29922,242 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "running-target-sheet",
+      "test_ids": [
+        "progress-screen",
+        "running-target-sheet",
+        "phase20-visual-state-BW-078",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-target-distance",
+        "pv2-target-time",
+        "pv2-target-date",
+        "pv2-target-benchmark"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Calculated pacing guides do not predict or guarantee an outcome.",
+        "Cancel",
+        "Save target"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close target editor",
+          "order": 21
+        },
+        {
+          "id": "pv2-target-distance",
+          "label": "2.4 km\n10 km\nHalf Marathon",
+          "order": 22
+        },
+        {
+          "id": "pv2-target-time",
+          "label": null,
+          "order": 23
+        },
+        {
+          "id": "pv2-target-date",
+          "label": null,
+          "order": 24
+        },
+        {
+          "id": "pv2-target-benchmark",
+          "label": null,
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "M",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "W",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "F",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "Cancel",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "Save target",
+          "order": 34
+        }
+      ],
+      "order": [
+        "Progress",
+        "Calculated pacing guides do not predict or guarantee an outcome.",
+        "Cancel",
+        "Save target"
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Save target"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-target-2.4",
+          "fixture:running-target-2.4",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "4eea47b208d85f1cf6e57ed73e730e830b97f7d5fc615c10929ede4effd04553",
+      "layout_digest": "361d2dee6031e52c6f488fabdc9cdd04b47d344206509b3e22b7b8ae27d503b4",
       "state_name": "running-target-2.4"
     }
   },
@@ -17425,6 +30173,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-10",
+    "fixture_variant": "running-effort-10",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -17613,17 +30362,173 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "running-history-sheet",
+      "test_ids": [
+        "progress-screen",
+        "running-history-sheet",
+        "phase20-visual-state-BW-079",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "10 km best efforts",
+        "Target unset",
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close history",
+          "order": 21
+        }
+      ],
+      "order": [
+        "Progress",
+        "10 km best efforts",
+        "Target unset",
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Best efforts compare elapsed time at the same distance. Faster is lower on the clock."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-effort-10",
+          "fixture:running-effort-10",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "d86d186fa1271f7ab88019e12ce39b51a4c641ae5986e67dd79a300df7af7c32",
+      "layout_digest": "c6f36b02131390a6292b29317d5ba1866bceb38509287c0308f046c9fd016be9",
       "state_name": "running-effort-10"
     }
   },
@@ -17639,6 +30544,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-10",
+    "fixture_variant": "running-target-10",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -17916,17 +30822,242 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "running-target-sheet",
+      "test_ids": [
+        "progress-screen",
+        "running-target-sheet",
+        "phase20-visual-state-BW-080",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-target-distance",
+        "pv2-target-time",
+        "pv2-target-date",
+        "pv2-target-benchmark"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Calculated pacing guides do not predict or guarantee an outcome.",
+        "Cancel",
+        "Save target"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close target editor",
+          "order": 21
+        },
+        {
+          "id": "pv2-target-distance",
+          "label": "2.4 km\n10 km\nHalf Marathon",
+          "order": 22
+        },
+        {
+          "id": "pv2-target-time",
+          "label": null,
+          "order": 23
+        },
+        {
+          "id": "pv2-target-date",
+          "label": null,
+          "order": 24
+        },
+        {
+          "id": "pv2-target-benchmark",
+          "label": null,
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "M",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "W",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "F",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "Cancel",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "Save target",
+          "order": 34
+        }
+      ],
+      "order": [
+        "Progress",
+        "Calculated pacing guides do not predict or guarantee an outcome.",
+        "Cancel",
+        "Save target"
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Save target"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-target-10",
+          "fixture:running-target-10",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "9cd16502dc058fdca9f5191e0bf9d692d54448029703747def0716a1ae5b5d29",
+      "layout_digest": "2542acb96e6d5e3a3f8a27705584dbd7cba7167546eeb22dab04b03dcad2c791",
       "state_name": "running-target-10"
     }
   },
@@ -17942,6 +31073,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-effort-hm",
+    "fixture_variant": "running-effort-hm",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -18130,17 +31262,173 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "running-history-sheet",
+      "test_ids": [
+        "progress-screen",
+        "running-history-sheet",
+        "phase20-visual-state-BW-081",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Running preview: ready.",
+        "Half Marathon best efforts",
+        "Complete this distance once to establish a benchmark. No zero result is plotted."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close history",
+          "order": 21
+        }
+      ],
+      "order": [
+        "Progress",
+        "Running preview: ready.",
+        "Half Marathon best efforts",
+        "Complete this distance once to establish a benchmark. No zero result is plotted."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Complete this distance once to establish a benchmark. No zero result is plotted."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-effort-hm",
+          "fixture:running-effort-hm",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "93c6693b4685ee87d8a730da078920a8d4b9497ec447747528fe4f7988051a2f",
+      "layout_digest": "cc3601dff9e01ba8b37a4998185837910f452381576a7959af1a9a5b32eb7870",
       "state_name": "running-effort-hm"
     }
   },
@@ -18156,6 +31444,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "running-target-hm",
+    "fixture_variant": "running-target-hm",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -18433,17 +31722,242 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "running-target-sheet",
+      "test_ids": [
+        "progress-screen",
+        "running-target-sheet",
+        "phase20-visual-state-BW-082",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-target-distance",
+        "pv2-target-time",
+        "pv2-target-date",
+        "pv2-target-benchmark"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Calculated pacing guides do not predict or guarantee an outcome.",
+        "Cancel",
+        "Save target"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close target editor",
+          "order": 21
+        },
+        {
+          "id": "pv2-target-distance",
+          "label": "2.4 km\n10 km\nHalf Marathon",
+          "order": 22
+        },
+        {
+          "id": "pv2-target-time",
+          "label": null,
+          "order": 23
+        },
+        {
+          "id": "pv2-target-date",
+          "label": null,
+          "order": 24
+        },
+        {
+          "id": "pv2-target-benchmark",
+          "label": null,
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "M",
+          "order": 26
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 27
+        },
+        {
+          "id": null,
+          "label": "W",
+          "order": 28
+        },
+        {
+          "id": null,
+          "label": "T",
+          "order": 29
+        },
+        {
+          "id": null,
+          "label": "F",
+          "order": 30
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 31
+        },
+        {
+          "id": null,
+          "label": "S",
+          "order": 32
+        },
+        {
+          "id": null,
+          "label": "Cancel",
+          "order": 33
+        },
+        {
+          "id": null,
+          "label": "Save target",
+          "order": 34
+        }
+      ],
+      "order": [
+        "Progress",
+        "Calculated pacing guides do not predict or guarantee an outcome.",
+        "Cancel",
+        "Save target"
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Save target"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:running-target-hm",
+          "fixture:running-target-hm",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "8748eb502484aed255a4ab485c758875eb327f5debe8e0adb334af611df76b47",
+      "layout_digest": "5b2cbc977d085b38421cbcc3820c81f77926edeebc5ceab8b4e85f11d59abf44",
       "state_name": "running-target-hm"
     }
   },
@@ -18459,6 +31973,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "bodyweight-history",
+    "fixture_variant": "bodyweight-history",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -18651,17 +32166,178 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "bodyweight-history-sheet",
+      "test_ids": [
+        "progress-screen",
+        "bodyweight-history-sheet",
+        "phase20-visual-state-BW-083",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "No bodyweight entries",
+        "Add one only if bodyweight-relative strength is useful to you. Nothing else in Progress depends on it.",
+        "Add first entry"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close Bodyweight history",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Add first entry",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Progress",
+        "No bodyweight entries",
+        "Add one only if bodyweight-relative strength is useful to you. Nothing else in Progress depends on it.",
+        "Add first entry"
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Add first entry"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:bodyweight-history",
+          "fixture:bodyweight-history",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "db9842ac1969b47ba6f1693a3cd6bd3acf88ebced3f03fea8cb24c3448811330",
+      "layout_digest": "1ae780ab80a32010dc9f63992ee1392aab105ed1d885a9ca3faa31dd260a4ba3",
       "state_name": "bodyweight-history"
     }
   },
@@ -18677,6 +32353,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
+    "fixture_variant": "progress-settings-ready",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -18899,17 +32576,199 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-settings-sheet",
+      "test_ids": [
+        "progress-screen",
+        "progress-settings-sheet",
+        "phase20-visual-state-BW-084",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-settings-bodyweight"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Close Progress settings",
+          "order": 21
+        },
+        {
+          "id": "pv2-settings-bodyweight",
+          "label": "Bodyweight history\n→",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Ready",
+          "order": 23
+        },
+        {
+          "id": null,
+          "label": "Sparse",
+          "order": 24
+        },
+        {
+          "id": null,
+          "label": "Empty",
+          "order": 25
+        },
+        {
+          "id": null,
+          "label": "Loading",
+          "order": 26
+        }
+      ],
+      "order": [
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Loading"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-settings",
+          "fixture:progress-settings-ready",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "a123f184f67daeb64be475a1d4403d45a723f13349ec4d36a8bc0468e2a3e90b",
+      "layout_digest": "e933436be702a419020ca770dc0cf71c67d360483106b69478e6ef7fcea2c72a",
       "state_name": "progress-settings"
     }
   },
@@ -18925,6 +32784,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-empty",
+    "fixture_variant": "progress-running-empty",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -19065,17 +32925,139 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-085",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Half Marathon · Set target",
+        "No effort recorded",
+        "Running preview: empty."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 15
+        }
+      ],
+      "order": [
+        "Progress",
+        "Half Marathon · Set target",
+        "No effort recorded",
+        "Running preview: empty."
+      ],
+      "non_color": [
+        "No imported running efforts yet",
+        "No effort recorded",
+        "Running preview: empty."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running-empty",
+          "fixture:progress-running-empty",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "db24b653fe6b997ce278ae8b162e49fabfd438223b66d3eced706287e41f1c62",
+      "layout_digest": "9e29abaf3d4ae3fa8911a5c630baecd8275f7bb319a06b0b02da2b59ebce97bb",
       "state_name": "progress-running-empty"
     }
   },
@@ -19091,6 +33073,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
+    "fixture_variant": "progress-settings-empty",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -19281,17 +33264,179 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-settings-sheet",
+      "test_ids": [
+        "progress-screen",
+        "progress-settings-sheet",
+        "phase20-visual-state-BW-086",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-settings-bodyweight"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 15
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Close Progress settings",
+          "order": 17
+        },
+        {
+          "id": "pv2-settings-bodyweight",
+          "label": "Bodyweight history\n→",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Ready",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Sparse",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Empty",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Loading",
+          "order": 22
+        }
+      ],
+      "order": [
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "non_color": [
+        "No imported running efforts yet",
+        "No effort recorded",
+        "Personal history is the benchmark. No readiness or composite score is calculated.",
+        "Ready",
+        "Loading"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-settings",
+          "fixture:progress-settings-empty",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "6284fef3487fa08d612a0f86e808d7ce6330ea60e9715df8e6b1ead851cb50db",
+      "layout_digest": "1c26f1c9c6968b2ab6a4de31655ecc7b46023e1ad46c095aaba44095302d4f8c",
       "state_name": "progress-settings"
     }
   },
@@ -19307,6 +33452,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-sparse",
+    "fixture_variant": "progress-running-sparse",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -19455,17 +33601,146 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-087",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: sparse."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 16
+        }
+      ],
+      "order": [
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: sparse."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: sparse."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running-sparse",
+          "fixture:progress-running-sparse",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "b2eef989c63c124dd4161d993635e079ee7ca7e73163a9b1507c54bf9519e204",
+      "layout_digest": "f6dccf12cf6458069a106df3959de23ca8d6e9453457982dd279653621261a53",
       "state_name": "progress-running-sparse"
     }
   },
@@ -19481,6 +33756,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
+    "fixture_variant": "progress-settings-sparse",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -19679,17 +33955,184 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-settings-sheet",
+      "test_ids": [
+        "progress-screen",
+        "progress-settings-sheet",
+        "phase20-visual-state-BW-088",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-settings-bodyweight"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 16
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Close Progress settings",
+          "order": 18
+        },
+        {
+          "id": "pv2-settings-bodyweight",
+          "label": "Bodyweight history\n→",
+          "order": 19
+        },
+        {
+          "id": null,
+          "label": "Ready",
+          "order": 20
+        },
+        {
+          "id": null,
+          "label": "Sparse",
+          "order": 21
+        },
+        {
+          "id": null,
+          "label": "Empty",
+          "order": 22
+        },
+        {
+          "id": null,
+          "label": "Loading",
+          "order": 23
+        }
+      ],
+      "order": [
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Loading"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-settings",
+          "fixture:progress-settings-sparse",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "540440c3895b3bbb93e734c0d8c85740d7f5c8ea3fcee4baf27f6e69543815ab",
+      "layout_digest": "a8f55b1eb7c5c3c3faf8f7fb0edb12c6ca657c1d0b36b0d53505f0231fb6a70a",
       "state_name": "progress-settings"
     }
   },
@@ -19705,6 +34148,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-loading",
+    "fixture_variant": "progress-running-loading",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -19821,17 +34265,122 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "loading",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-089",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "12 weeks",
+        "All time",
+        "Running preview: loading."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        }
+      ],
+      "order": [
+        "Progress",
+        "12 weeks",
+        "All time",
+        "Running preview: loading."
+      ],
+      "non_color": [
+        "Running preview: loading."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running-loading",
+          "fixture:progress-running-loading",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "ba4211adf150e9a52576aa17ec3d16c313c01494603db2ec92d74a047f7562c5",
+      "layout_digest": "b5b2e898b3f208929725c7fd43dbdb278092a1241678121c63dbd8b5ec64f444",
       "state_name": "progress-running-loading"
     }
   },
@@ -19847,6 +34396,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-settings",
+    "fixture_variant": "progress-settings-loading",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20013,17 +34563,164 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-settings-sheet",
+      "test_ids": [
+        "progress-screen",
+        "progress-settings-sheet",
+        "phase20-visual-state-BW-090",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running",
+        "root-scrim",
+        "pv2-settings-bodyweight"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 12
+        },
+        {
+          "id": "root-scrim",
+          "label": "Close App Settings",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "Close Progress settings",
+          "order": 14
+        },
+        {
+          "id": "pv2-settings-bodyweight",
+          "label": "Bodyweight history\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Ready",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Sparse",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Empty",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Loading",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Progress",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "non_color": [
+        "Personal history is the benchmark. No readiness or composite score is calculated.",
+        "Ready",
+        "Sparse",
+        "Empty",
+        "Loading"
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-settings",
+          "fixture:progress-settings-loading",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "1c2f84561af29161e68da41a87bd7352fb7fb24c6d7a79951def833f6b7d4e4c",
+      "layout_digest": "7f723c14bcd95fed39ad1932aba85f9964821292650c218815b1da74564e5a26",
       "state_name": "progress-settings"
     }
   },
@@ -20039,6 +34736,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-progress",
     "scenario": "progress-running-ready",
+    "fixture_variant": "progress-running-ready",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20211,17 +34909,161 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "progress-screen",
       "test_id": "progress-screen",
+      "test_ids": [
+        "progress-screen",
+        "phase20-visual-state-BW-091",
+        "root-settings",
+        "pv2-open-bodyweight",
+        "pv2-open-settings",
+        "pv2-tab-all",
+        "pv2-tab-strength",
+        "pv2-tab-running"
+      ],
       "semantics": [
-        "Progress"
-      ]
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "actions": [
+        {
+          "id": "root-settings",
+          "label": "Open App Settings",
+          "order": 0
+        },
+        {
+          "id": "pv2-open-bodyweight",
+          "label": "Body metrics",
+          "order": 1
+        },
+        {
+          "id": "pv2-open-settings",
+          "label": "Settings",
+          "order": 2
+        },
+        {
+          "id": "pv2-tab-all",
+          "label": "All",
+          "order": 3
+        },
+        {
+          "id": "pv2-tab-strength",
+          "label": "Strength",
+          "order": 4
+        },
+        {
+          "id": "pv2-tab-running",
+          "label": "Running",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "4 weeks",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "12 weeks",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "All time",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Personal history\nOpen →\nGoal 11:00",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "2.4 km · Target 11:00\nBest 11:24\nGap closing\n→",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "10 km · Set target\nBest 54:20\nMore data needed\n→",
+          "order": 11
+        },
+        {
+          "id": null,
+          "label": "Half Marathon · Set target\nNo effort recorded\nMore data needed\n→",
+          "order": 12
+        },
+        {
+          "id": null,
+          "label": "10 km\n2 imported efforts\n54:20\n→",
+          "order": 13
+        },
+        {
+          "id": null,
+          "label": "2.4 km\n4 imported efforts\n11:24\n→",
+          "order": 14
+        },
+        {
+          "id": null,
+          "label": "Half Marathon\n0 imported efforts\nNo effort\n→",
+          "order": 15
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 16
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 17
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 18
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 19
+        }
+      ],
+      "order": [
+        "Progress",
+        "10 km next; Half Marathon later",
+        "10K and Half Marathon targets remain unset until you choose them. No finish time is invented.",
+        "Running preview: ready."
+      ],
+      "non_color": [
+        "Running facts and best efforts come from imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.",
+        "Direction is based only on comparable completed personal history. No readiness or composite score is produced.",
+        "No effort recorded",
+        "No effort",
+        "Running preview: ready."
+      ],
+      "focus": {
+        "target": "root-settings",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:progress-running-ready",
+          "fixture:progress-running-ready",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "production_screen",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "6a5f5ff14d4394b2655ac91a0b3334f2d1dca941acceb0d313e0331d2a847e70",
+      "layout_digest": "15ac8eb8cd1eb0dbc4af0200ca0cae6bd09a0b84a64a6104527b67e0c5001104",
       "state_name": "progress-running-ready"
     }
   },
@@ -20236,6 +35078,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-disconnected",
+    "fixture_variant": "garmin-disconnected",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20309,11 +35152,85 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-092",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Gym Tracker imports consented activities after Garmin Connect sync. It does not record runs.",
+        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
+        "Connect GarminImport FIT fallback"
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Connect Garmin",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT fallback",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 7
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Gym Tracker imports consented activities after Garmin Connect sync. It does not record runs.",
+        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
+        "Connect GarminImport FIT fallback"
+      ],
+      "non_color": [
+        "Garmin Sync",
+        "Garmin not connected",
+        "Connect GarminImport FIT fallback"
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-disconnected",
+          "fixture:garmin-disconnected",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
@@ -20325,12 +35242,22 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-garmin-disconnected.png",
         "sha256": "f74d715336ce63e16be016430215d0923148d29fd75394405b9e58faa4d5f569"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "e9aadb80a7f7426a24042651ddf26b5ccf28bcc21f5ad8d87819ff5ff197312d",
+        "layout_digest": "6f2895e45cc1c3fbbe0502c058f067cf041289f44129fad45e6c7fd20da2f434",
+        "state_name": "garmin-disconnected"
       }
     }
   },
   {
     "id": "BW-093",
-    "name": "garmin-login",
+    "name": "garmin-consent",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -20338,7 +35265,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-login",
+    "scenario": "garmin-consent",
+    "fixture_variant": "garmin-consent",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20417,11 +35345,84 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-093",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Authorization code flow with code challenge and verifier. No credentials are entered in this prototype.",
+        "Activity API access requires Garmin Connect Developer Program approval. The program FAQ notes typical integration work can take 1–4 weeks after access and approval.",
+        "Continue simulated consentCancel"
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Continue simulated consent",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Cancel",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 7
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Authorization code flow with code challenge and verifier. No credentials are entered in this prototype.",
+        "Activity API access requires Garmin Connect Developer Program approval. The program FAQ notes typical integration work can take 1–4 weeks after access and approval.",
+        "Continue simulated consentCancel"
+      ],
+      "non_color": [
+        "Authorization code flow with code challenge and verifier. No credentials are entered in this prototype.",
+        "Continue simulated consentCancel"
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-consent",
+          "fixture:garmin-consent",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
@@ -20433,141 +35434,21 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-garmin-consent.png",
         "sha256": "5ac4c5f3d851795e837e29394c459466c5c8ba26f6db78e62dc641c54da50cf0"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "dcb7e2a03aa8e0a745cd16a0e2a4613c69db7313e52ff44ed3c6913b5831f91e",
+        "layout_digest": "04d45d3b06d25b09f2e41c74c89259a57f10a3662640e71ab6f784f857d776a6",
+        "state_name": "garmin-consent"
       }
     }
   },
   {
     "id": "BW-094",
-    "name": "garmin-mfa",
-    "route": "/garmin/index",
-    "component": "GarminSyncScreen",
-    "route_params": {
-      "origin": "workout"
-    },
-    "fixture_id": "v12-synthetic-fixtures-r18",
-    "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-mfa",
-    "fixture_facts": {
-      "date": "2026-10-01",
-      "locale": "en-SG",
-      "timezone": "Asia/Singapore",
-      "sqlite": "authoritative-synthetic"
-    },
-    "interactions": [
-      {
-        "id": "garmin-back",
-        "text": "Back to Garmin activities",
-        "data": {}
-      },
-      {
-        "id": "garmin-settings",
-        "text": "Open Garmin appearance",
-        "data": {}
-      },
-      {
-        "id": "",
-        "text": "Sync now",
-        "data": {
-          "garminAction": "sync"
-        }
-      },
-      {
-        "id": "",
-        "text": "Import FIT",
-        "data": {
-          "garminAction": "import"
-        }
-      },
-      {
-        "id": "",
-        "text": "Preview error",
-        "data": {
-          "garminAction": "sync-error"
-        }
-      },
-      {
-        "id": "",
-        "text": "Revoke",
-        "data": {
-          "garminAction": "revoke"
-        }
-      },
-      {
-        "id": "",
-        "text": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-        "data": {
-          "garminActivity": "garmin-948201"
-        }
-      },
-      {
-        "id": "",
-        "text": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-        "data": {
-          "garminActivity": "garmin-948315"
-        }
-      },
-      {
-        "id": "",
-        "text": "Workout",
-        "data": {
-          "garminRoot": "workout"
-        }
-      },
-      {
-        "id": "",
-        "text": "Calendar",
-        "data": {
-          "garminRoot": "calendar"
-        }
-      },
-      {
-        "id": "",
-        "text": "Library",
-        "data": {
-          "garminRoot": "library"
-        }
-      },
-      {
-        "id": "",
-        "text": "Progress",
-        "data": {
-          "garminRoot": "progress"
-        }
-      }
-    ],
-    "expected_visible_semantics": [
-      "Back to Garmin activities",
-      "Open Garmin appearance",
-      "Sync now",
-      "Import FIT",
-      "Preview error",
-      "Revoke",
-      "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-      "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-      "Workout",
-      "Calendar",
-      "Library",
-      "Progress"
-    ],
-    "focus_target": "garmin-back",
-    "scenario_steps": [],
-    "readiness": {
-      "screen_test_id": "garmin-sync-screen",
-      "test_id": "garmin-sync-screen",
-      "semantics": [
-        "Garmin Sync"
-      ]
-    },
-    "evidence_scope": "visual_only",
-    "reference": {
-      "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
-      "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
-      "state_name": "garmin-connected"
-    }
-  },
-  {
-    "id": "BW-095",
     "name": "garmin-connected",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
@@ -20577,6 +35458,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-connected",
+    "fixture_variant": "garmin-connected",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20593,6 +35475,48 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "id": "garmin-settings",
         "text": "Open Garmin appearance",
         "data": {}
+      },
+      {
+        "id": "",
+        "text": "Sync now",
+        "data": {
+          "garminAction": "sync"
+        }
+      },
+      {
+        "id": "",
+        "text": "Import FIT",
+        "data": {
+          "garminAction": "import"
+        }
+      },
+      {
+        "id": "",
+        "text": "Preview error",
+        "data": {
+          "garminAction": "sync-error"
+        }
+      },
+      {
+        "id": "",
+        "text": "Revoke",
+        "data": {
+          "garminAction": "revoke"
+        }
+      },
+      {
+        "id": "",
+        "text": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+        "data": {
+          "garminActivity": "garmin-948201"
+        }
+      },
+      {
+        "id": "",
+        "text": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+        "data": {
+          "garminActivity": "garmin-948315"
+        }
       },
       {
         "id": "",
@@ -20626,6 +35550,12 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "expected_visible_semantics": [
       "Back to Garmin activities",
       "Open Garmin appearance",
+      "Sync now",
+      "Import FIT",
+      "Preview error",
+      "Revoke",
+      "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+      "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
       "Workout",
       "Calendar",
       "Library",
@@ -20634,22 +35564,122 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-094",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Garmin connection simulated."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Sync now",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Preview error",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Revoke",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 11
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Garmin connection simulated."
+      ],
+      "non_color": [
+        "Garmin Sync",
+        "Garmin account connected",
+        "Sync now",
+        "Garmin · Imported",
+        "Garmin connection simulated."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-connected",
+          "fixture:garmin-connected",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
-      "state_name": "garmin-syncing"
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "5a4d90461b6727cc386ddce0367fa3d6c667c2c72fc1e3b1ee2a2eb4072f11db",
+      "layout_digest": "7fbb79e67992974ee6c487a110b81f73612f1a6bc5fb7834f019ce282a3951a4",
+      "state_name": "garmin-connected"
     }
   },
   {
-    "id": "BW-096",
+    "id": "BW-095",
     "name": "garmin-syncing",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
@@ -20659,6 +35689,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-syncing",
+    "fixture_variant": "garmin-syncing",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20675,48 +35706,6 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
         "id": "garmin-settings",
         "text": "Open Garmin appearance",
         "data": {}
-      },
-      {
-        "id": "",
-        "text": "Sync now",
-        "data": {
-          "garminAction": "sync"
-        }
-      },
-      {
-        "id": "",
-        "text": "Import FIT",
-        "data": {
-          "garminAction": "import"
-        }
-      },
-      {
-        "id": "",
-        "text": "Preview error",
-        "data": {
-          "garminAction": "sync-error"
-        }
-      },
-      {
-        "id": "",
-        "text": "Revoke",
-        "data": {
-          "garminAction": "revoke"
-        }
-      },
-      {
-        "id": "",
-        "text": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-        "data": {
-          "garminActivity": "garmin-948201"
-        }
-      },
-      {
-        "id": "",
-        "text": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
-        "data": {
-          "garminActivity": "garmin-948315"
-        }
       },
       {
         "id": "",
@@ -20750,12 +35739,6 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "expected_visible_semantics": [
       "Back to Garmin activities",
       "Open Garmin appearance",
-      "Sync now",
-      "Import FIT",
-      "Preview error",
-      "Revoke",
-      "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
-      "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
       "Workout",
       "Calendar",
       "Library",
@@ -20769,22 +35752,89 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "loading",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-095",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Syncing Garmin activities",
+        "Checking consented Activity API updates and dedupe receipts.",
+        "Garmin connection simulated."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 5
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Syncing Garmin activities",
+        "Checking consented Activity API updates and dedupe receipts.",
+        "Garmin connection simulated."
+      ],
+      "non_color": [
+        "Syncing Garmin activities",
+        "Garmin connection simulated."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-syncing",
+          "fixture:garmin-syncing",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
-      "state_name": "garmin-synced"
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "99e86e1caf787955c6b1987e96ebcc93fe1b76221a1512c2f93d36c2cc1dea6e",
+      "layout_digest": "0635f3fd211e359d0af5e5c734e0160deea4325c4c579f5e07b8df120adab56d",
+      "state_name": "garmin-syncing"
     }
   },
   {
-    "id": "BW-097",
+    "id": "BW-096",
     "name": "garmin-synced",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
@@ -20794,6 +35844,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-synced",
+    "fixture_variant": "garmin-synced",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -20904,22 +35955,122 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-096",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Sync complete · no duplicates added."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Sync now",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Preview error",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Revoke",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 11
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Sync complete · no duplicates added."
+      ],
+      "non_color": [
+        "Garmin Sync",
+        "Garmin account connected",
+        "Sync now",
+        "Garmin · Imported",
+        "Sync complete · no duplicates added."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-synced",
+          "fixture:garmin-synced",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
-      "state_name": "garmin-idempotent"
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "45f3e0ae31dd599b12c39e45052574d88338e0b092c1e34e32c7e1fb40057235",
+      "layout_digest": "95c881a3d41a3997e86df2eae170a1246aca7a48ec202bfabe968860f9169044",
+      "state_name": "garmin-synced"
     }
   },
   {
-    "id": "BW-098",
+    "id": "BW-097",
     "name": "garmin-idempotent",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
@@ -20929,6 +36080,243 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-idempotent",
+    "fixture_variant": "garmin-idempotent",
+    "fixture_facts": {
+      "date": "2026-10-01",
+      "locale": "en-SG",
+      "timezone": "Asia/Singapore",
+      "sqlite": "authoritative-synthetic"
+    },
+    "interactions": [
+      {
+        "id": "garmin-back",
+        "text": "Back to Garmin activities",
+        "data": {}
+      },
+      {
+        "id": "garmin-settings",
+        "text": "Open Garmin appearance",
+        "data": {}
+      },
+      {
+        "id": "",
+        "text": "Sync now",
+        "data": {
+          "garminAction": "sync"
+        }
+      },
+      {
+        "id": "",
+        "text": "Import FIT",
+        "data": {
+          "garminAction": "import"
+        }
+      },
+      {
+        "id": "",
+        "text": "Preview error",
+        "data": {
+          "garminAction": "sync-error"
+        }
+      },
+      {
+        "id": "",
+        "text": "Revoke",
+        "data": {
+          "garminAction": "revoke"
+        }
+      },
+      {
+        "id": "",
+        "text": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+        "data": {
+          "garminActivity": "garmin-948201"
+        }
+      },
+      {
+        "id": "",
+        "text": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+        "data": {
+          "garminActivity": "garmin-948315"
+        }
+      },
+      {
+        "id": "",
+        "text": "Workout",
+        "data": {
+          "garminRoot": "workout"
+        }
+      },
+      {
+        "id": "",
+        "text": "Calendar",
+        "data": {
+          "garminRoot": "calendar"
+        }
+      },
+      {
+        "id": "",
+        "text": "Library",
+        "data": {
+          "garminRoot": "library"
+        }
+      },
+      {
+        "id": "",
+        "text": "Progress",
+        "data": {
+          "garminRoot": "progress"
+        }
+      }
+    ],
+    "expected_visible_semantics": [
+      "Back to Garmin activities",
+      "Open Garmin appearance",
+      "Sync now",
+      "Import FIT",
+      "Preview error",
+      "Revoke",
+      "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+      "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+      "Workout",
+      "Calendar",
+      "Library",
+      "Progress"
+    ],
+    "focus_target": "garmin-back",
+    "scenario_steps": [
+      {
+        "action": "tap_text",
+        "value": "Sync now"
+      }
+    ],
+    "readiness": {
+      "status": "ready",
+      "screen_test_id": "garmin-sync-screen",
+      "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-097",
+        "garmin-back",
+        "garmin-settings"
+      ],
+      "semantics": [
+        "Garmin Sync",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Sync complete · no duplicates added."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Sync now",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Preview error",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Revoke",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported\n›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 11
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Sync complete · no duplicates added."
+      ],
+      "non_color": [
+        "Garmin Sync",
+        "Garmin account connected",
+        "Sync now",
+        "Garmin · Imported",
+        "Sync complete · no duplicates added."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-idempotent",
+          "fixture:garmin-idempotent",
+          "theme:light"
+        ]
+      }
+    },
+    "evidence_scope": "visual_only",
+    "reference": {
+      "kind": "approved_source",
+      "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "ab1570f4df347780d6f2474ba52a0159517b565b245c0a679ec3f1dde16caec4",
+      "layout_digest": "c5157574e4f7080fcf8396b6d26632df3f4e7a091c4709a84904e11dbbbebfd7",
+      "state_name": "garmin-idempotent"
+    }
+  },
+  {
+    "id": "BW-098",
+    "name": "garmin-error",
+    "route": "/garmin/index",
+    "component": "GarminSyncScreen",
+    "route_params": {
+      "origin": "workout"
+    },
+    "fixture_id": "v12-synthetic-fixtures-r18",
+    "fixture_seed": "phase20-garmin-visual",
+    "scenario": "garmin-error",
+    "fixture_variant": "garmin-error",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21007,23 +36395,100 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       }
     ],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-098",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Try again",
+        "Import FIT",
+        "Sync complete · no duplicates added."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Try again",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 7
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Try again",
+        "Import FIT",
+        "Sync complete · no duplicates added."
+      ],
+      "non_color": [
+        "Sync could not complete",
+        "Sync complete · no duplicates added."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-error",
+          "fixture:garmin-error",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "b97a798759ff53c8ac7e36f7066c0730d2faa7c6e675cd9aa5d3f457be51efef",
+      "layout_digest": "6a58436e6e452c3a1dcf388c05aa53da0574125084f6e7583d1aaa719e871549",
       "state_name": "garmin-error"
     }
   },
   {
     "id": "BW-099",
-    "name": "garmin-error",
+    "name": "garmin-file-import",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -21031,7 +36496,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-error",
+    "scenario": "garmin-file-import",
+    "fixture_variant": "garmin-file-import",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21108,24 +36574,101 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "Progress"
     ],
     "focus_target": "garmin-back",
-    "scenario_steps": [
-      {
-        "action": "tap_text",
-        "value": "Sync now"
-      }
-    ],
+    "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-099",
+        "garmin-back",
+        "garmin-settings",
+        "garmin-fit-file"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Preview Treadmill FIT",
+        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
+        "Sync complete · no duplicates added."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": "garmin-fit-file",
+          "label": null,
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Preview Outdoor FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Preview Treadmill FIT",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 8
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Preview Treadmill FIT",
+        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
+        "Sync complete · no duplicates added."
+      ],
+      "non_color": [
+        "Sync complete · no duplicates added."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-file-import",
+          "fixture:garmin-file-import",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "a8a5bb0c35d495fbb820a92bf447ab14fefc9ba293843241da9a559413f80980",
+      "layout_digest": "49b25ea10df57bc90150ed1d7ca7e300771c485d80fa7b9e0785a0f90827f7ef",
       "state_name": "garmin-file-import"
     }
   },
@@ -21141,6 +36684,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-outdoor",
+    "fixture_variant": "garmin-outdoor",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21206,11 +36750,79 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "imported-activity-detail-screen",
       "test_id": "imported-activity-detail-screen",
+      "test_ids": [
+        "imported-activity-detail-screen",
+        "phase20-visual-state-BW-100",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Activity detail"
-      ]
+        "Activity detail",
+        "0.2 km\t1:12\t6:00/km",
+        "Match to scheduled workout",
+        "Outdoor Run FIT preview parsed."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Match to scheduled workout",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 6
+        }
+      ],
+      "order": [
+        "Activity detail",
+        "0.2 km\t1:12\t6:00/km",
+        "Match to scheduled workout",
+        "Outdoor Run FIT preview parsed."
+      ],
+      "non_color": [
+        "Match to scheduled workout",
+        "Outdoor Run FIT preview parsed."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-outdoor",
+          "fixture:garmin-outdoor",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
@@ -21222,6 +36834,16 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-garmin-outdoor.png",
         "sha256": "5a857d51a824af7109cf63c7a78bca6cada5cda0feaf9729367222051f614536"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "5bcafe56997cc36d92538a1539f34cdd3e5ab38cc8131e8bd77d45dc487b35a5",
+        "layout_digest": "c8bba1a314afbc1e62fa65a67e22a442827af596aed312c7df90d588eff35c3d",
+        "state_name": "garmin-outdoor"
       }
     }
   },
@@ -21237,6 +36859,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-match-outdoor",
+    "fixture_variant": "garmin-match-outdoor",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21322,17 +36945,104 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "activity-match-screen",
       "test_id": "activity-match-screen",
+      "test_ids": [
+        "activity-match-screen",
+        "phase20-visual-state-BW-101",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Match activity"
-      ]
+        "Match activity",
+        "25 minutes · alternate candidate",
+        "Confirm matchLeave unmatched",
+        "Outdoor Run FIT preview parsed."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Match to 6 by 400 metre speed session",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Match to Easy Run",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Confirm match",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Leave unmatched",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 9
+        }
+      ],
+      "order": [
+        "Match activity",
+        "25 minutes · alternate candidate",
+        "Confirm matchLeave unmatched",
+        "Outdoor Run FIT preview parsed."
+      ],
+      "non_color": [
+        "Match activity",
+        "Outdoor Run FIT preview parsed."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-match-outdoor",
+          "fixture:garmin-match-outdoor",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "c2a3731df5084f9c026eb2c7118d4b2b18b7a2e28233242e29d7e39c4a6e5bb2",
+      "layout_digest": "4bc4f5b37228ab7e72d84e4a1621f644d19652f67372a624407f2d23d1d5cae5",
       "state_name": "garmin-match-outdoor"
     }
   },
@@ -21348,6 +37058,7 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
     "scenario": "garmin-confirmed-outdoor",
+    "fixture_variant": "garmin-confirmed-outdoor",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21453,32 +37164,132 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "activity-match-screen",
       "test_id": "activity-match-screen",
+      "test_ids": [
+        "activity-match-screen",
+        "phase20-visual-state-BW-102",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Match activity"
-      ]
+        "Match activity",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Garmin · Imported",
+        "Activity matched after owner confirmation."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Sync now",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Preview error",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Revoke",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported · Matched\n›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported\n›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 11
+        }
+      ],
+      "order": [
+        "Match activity",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Garmin · Imported",
+        "Activity matched after owner confirmation."
+      ],
+      "non_color": [
+        "Garmin Sync",
+        "Garmin account connected",
+        "Sync now",
+        "Garmin · Imported · Matched",
+        "Activity matched after owner confirmation."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-confirmed-outdoor",
+          "fixture:garmin-confirmed-outdoor",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "a08cb0e564a04f39d4a8db21a96e3a676bda03b9dacd2320dc7e64b945ffefee",
+      "layout_digest": "c0e550ab6334b5d8e53af7fbbf45f46a5a6ffafdfcf75aa1799fb552921d5498",
       "state_name": "garmin-confirmed-outdoor"
     }
   },
   {
     "id": "BW-103",
-    "name": "garmin-treadmill",
-    "route": "/garmin/activity/[activityId]",
-    "component": "ImportedActivityDetailScreen",
+    "name": "garmin-file-import",
+    "route": "/garmin/index",
+    "component": "GarminSyncScreen",
     "route_params": {
-      "activityId": "phase20-garmin-treadmill",
       "origin": "workout"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-treadmill",
+    "scenario": "garmin-file-import",
+    "fixture_variant": "garmin-file-import",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21557,32 +37368,115 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "imported-activity-detail-screen",
-      "test_id": "imported-activity-detail-screen",
+      "status": "ready",
+      "screen_test_id": "garmin-sync-screen",
+      "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-103",
+        "garmin-back",
+        "garmin-settings",
+        "garmin-fit-file"
+      ],
       "semantics": [
-        "Activity detail"
-      ]
+        "Garmin Sync",
+        "Preview Treadmill FIT",
+        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
+        "Activity matched after owner confirmation."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": "garmin-fit-file",
+          "label": null,
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Preview Outdoor FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Preview Treadmill FIT",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 8
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Preview Treadmill FIT",
+        "Dedupe uses Garmin external activity ID when available, plus FIT/content hash. Importing the same receipt again does not create a duplicate.",
+        "Activity matched after owner confirmation."
+      ],
+      "non_color": [
+        "Activity matched after owner confirmation."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-file-import",
+          "fixture:garmin-file-import",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "d46bbd443aa93216d0a23eb46a9a5f21412c14fb4e4572205bac91250a05cf9e",
+      "layout_digest": "49b25ea10df57bc90150ed1d7ca7e300771c485d80fa7b9e0785a0f90827f7ef",
       "state_name": "garmin-file-import"
     }
   },
   {
     "id": "BW-104",
-    "name": "garmin-match-treadmill",
-    "route": "/garmin/match/[activityId]",
-    "component": "ActivityMatchScreen",
+    "name": "garmin-treadmill",
+    "route": "/garmin/activity/[activityId]",
+    "component": "ImportedActivityDetailScreen",
     "route_params": {
       "activityId": "phase20-garmin-treadmill",
       "origin": "workout"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-match-treadmill",
+    "scenario": "garmin-treadmill",
+    "fixture_variant": "garmin-treadmill",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21648,11 +37542,80 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "activity-match-screen",
-      "test_id": "activity-match-screen",
+      "status": "ready",
+      "screen_test_id": "imported-activity-detail-screen",
+      "test_id": "imported-activity-detail-screen",
+      "test_ids": [
+        "imported-activity-detail-screen",
+        "phase20-visual-state-BW-104",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Match activity"
-      ]
+        "Activity detail",
+        "2.4 km\t11:31\t4:48/km",
+        "Match to scheduled workout",
+        "Treadmill Run FIT preview parsed."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Match to scheduled workout",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 6
+        }
+      ],
+      "order": [
+        "Activity detail",
+        "2.4 km\t11:31\t4:48/km",
+        "Match to scheduled workout",
+        "Treadmill Run FIT preview parsed."
+      ],
+      "non_color": [
+        "No route for treadmill activity",
+        "Match to scheduled workout",
+        "Treadmill Run FIT preview parsed."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-treadmill",
+          "fixture:garmin-treadmill",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
@@ -21664,12 +37627,22 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
       "dark": {
         "path": ".planning/design/v1.2-browser-evidence/dark-garmin-treadmill.png",
         "sha256": "19ec464609260d7f81cd006ee7250b399b145a1da56977b3288342c1c12dd75e"
+      },
+      "source": {
+        "kind": "approved_source",
+        "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+        "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+        "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+        "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+        "semantic_digest": "36c906c208d10cc1f9110b208d4fee068b716122438788b47c89f40edef3a627",
+        "layout_digest": "534fd48f20f8d0d477790a5c58a9b28475f1c8b1142dcec0b86687e1391d0a2e",
+        "state_name": "garmin-treadmill"
       }
     }
   },
   {
     "id": "BW-105",
-    "name": "garmin-confirmed-treadmill",
+    "name": "garmin-match-treadmill",
     "route": "/garmin/match/[activityId]",
     "component": "ActivityMatchScreen",
     "route_params": {
@@ -21678,7 +37651,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-confirmed-treadmill",
+    "scenario": "garmin-match-treadmill",
+    "fixture_variant": "garmin-match-treadmill",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21764,31 +37738,120 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "activity-match-screen",
       "test_id": "activity-match-screen",
+      "test_ids": [
+        "activity-match-screen",
+        "phase20-visual-state-BW-105",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Match activity"
-      ]
+        "Match activity",
+        "25 minutes · alternate candidate",
+        "Confirm matchLeave unmatched",
+        "Treadmill Run FIT preview parsed."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Match to 6 by 400 metre speed session",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Match to Easy Run",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Confirm match",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Leave unmatched",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 9
+        }
+      ],
+      "order": [
+        "Match activity",
+        "25 minutes · alternate candidate",
+        "Confirm matchLeave unmatched",
+        "Treadmill Run FIT preview parsed."
+      ],
+      "non_color": [
+        "Match activity",
+        "Treadmill Run FIT preview parsed."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-match-treadmill",
+          "fixture:garmin-match-treadmill",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "88dde3cd5154f4623c6df608414c403894359b88b24ffd261bfc9d7ee3d25cbb",
+      "layout_digest": "ce8203f2f3c4b11d5c77e5e0218e35d51f8d94ab3962ff17cdfb138ebe8df4f0",
       "state_name": "garmin-match-treadmill"
     }
   },
   {
     "id": "BW-106",
-    "name": "garmin-session-expired",
-    "route": "/garmin/index",
-    "component": "GarminSyncScreen",
+    "name": "garmin-confirmed-treadmill",
+    "route": "/garmin/match/[activityId]",
+    "component": "ActivityMatchScreen",
     "route_params": {
+      "activityId": "phase20-garmin-treadmill",
       "origin": "workout"
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-session-expired",
+    "scenario": "garmin-confirmed-treadmill",
+    "fixture_variant": "garmin-confirmed-treadmill",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21894,23 +37957,123 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
-      "screen_test_id": "garmin-sync-screen",
-      "test_id": "garmin-sync-screen",
+      "status": "ready",
+      "screen_test_id": "activity-match-screen",
+      "test_id": "activity-match-screen",
+      "test_ids": [
+        "activity-match-screen",
+        "phase20-visual-state-BW-106",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Match activity",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Activity matched after owner confirmation."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Sync now",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Preview error",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Revoke",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Outdoor Run\n4 Oct · 07:12 · 3.20 km · 18:42 · 5:51/km\nGarmin · Imported · Matched\n›",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Treadmill Run\n10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km\nGarmin · Imported · Matched\n›",
+          "order": 7
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 8
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 9
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 10
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 11
+        }
+      ],
+      "order": [
+        "Match activity",
+        "Treadmill Run",
+        "10 Oct · 18:34 · 2.40 km · 11:31 · 4:48/km",
+        "Activity matched after owner confirmation."
+      ],
+      "non_color": [
+        "Garmin Sync",
+        "Garmin account connected",
+        "Sync now",
+        "Garmin · Imported · Matched",
+        "Activity matched after owner confirmation."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-confirmed-treadmill",
+          "fixture:garmin-confirmed-treadmill",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "f0e6fb233a2f737cc3a9fc7a67b8911416a65d34435d4ffc81340dedb2d41d64",
+      "layout_digest": "b172e805db52896c720b3dba09eea7296ae9c909c632bc93ccabe307bdb86aa3",
       "state_name": "garmin-confirmed-treadmill"
     }
   },
   {
     "id": "BW-107",
-    "name": "garmin-logged-out",
+    "name": "garmin-revoked",
     "route": "/garmin/index",
     "component": "GarminSyncScreen",
     "route_params": {
@@ -21918,7 +38081,8 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     },
     "fixture_id": "v12-synthetic-fixtures-r18",
     "fixture_seed": "phase20-garmin-visual",
-    "scenario": "garmin-logged-out",
+    "scenario": "garmin-revoked",
+    "fixture_variant": "garmin-revoked",
     "fixture_facts": {
       "date": "2026-10-01",
       "locale": "en-SG",
@@ -21992,19 +38156,117 @@ export const PHASE20_VISUAL_STATE_REGISTRY = [
     "focus_target": "garmin-back",
     "scenario_steps": [],
     "readiness": {
+      "status": "ready",
       "screen_test_id": "garmin-sync-screen",
       "test_id": "garmin-sync-screen",
+      "test_ids": [
+        "garmin-sync-screen",
+        "phase20-visual-state-BW-107",
+        "garmin-back",
+        "garmin-settings"
+      ],
       "semantics": [
-        "Garmin Sync"
-      ]
+        "Garmin Sync",
+        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
+        "Connect GarminImport FIT fallback",
+        "Garmin access revoked."
+      ],
+      "actions": [
+        {
+          "id": "garmin-back",
+          "label": "Back to Garmin activities",
+          "order": 0
+        },
+        {
+          "id": "garmin-settings",
+          "label": "Open Garmin appearance",
+          "order": 1
+        },
+        {
+          "id": null,
+          "label": "Connect Garmin",
+          "order": 2
+        },
+        {
+          "id": null,
+          "label": "Import FIT fallback",
+          "order": 3
+        },
+        {
+          "id": null,
+          "label": "Workout",
+          "order": 4
+        },
+        {
+          "id": null,
+          "label": "Calendar",
+          "order": 5
+        },
+        {
+          "id": null,
+          "label": "Library",
+          "order": 6
+        },
+        {
+          "id": null,
+          "label": "Progress",
+          "order": 7
+        }
+      ],
+      "order": [
+        "Garmin Sync",
+        "Activity API access requires an approved Garmin Connect Developer Program application. OAuth2 PKCE consent is simulated here; typical integration is listed as 1–4 weeks.",
+        "Connect GarminImport FIT fallback",
+        "Garmin access revoked."
+      ],
+      "non_color": [
+        "Garmin Sync",
+        "Garmin not connected",
+        "Garmin access revoked."
+      ],
+      "focus": {
+        "target": "garmin-back",
+        "required": true
+      },
+      "source_receipt": {
+        "assertions": [
+          "state:garmin-revoked",
+          "fixture:garmin-revoked",
+          "theme:light"
+        ]
+      }
     },
     "evidence_scope": "visual_only",
     "reference": {
       "kind": "approved_source",
-      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
       "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+      "approved_hybrid_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+      "source_manifest_sha256": "33050fd2e6fdb94584a86bb7ab61f374bfa5888cd9b0bdb58ec6d142c463150d",
+      "renderer_digest": "ff961f8aacb24e79e9a5b5068e6b81279317a62dad4ea6216f35011602c2e3d3",
+      "semantic_digest": "31f5f54f6a9d989e157d2030eda3e264f09f9ac0beb032a32ab96229656f3940",
+      "layout_digest": "6525fc433e6cdc9f7e89d713177b8ebe5d8bb269dcf24d5c2d270db8b6a9c763",
       "state_name": "garmin-revoked"
     }
   }
 ] as const;
 export type Phase20VisualState = (typeof PHASE20_VISUAL_STATE_REGISTRY)[number];
+export const PHASE20_NATIVE_ONLY_VISUAL_STATES = [
+  {
+    "id": "NV-GARMIN-LOGIN",
+    "name": "garmin-login",
+    "route": "/garmin/index",
+    "action": "Connect Garmin"
+  },
+  {
+    "id": "NV-GARMIN-MFA",
+    "name": "garmin-mfa",
+    "route": "/garmin/index",
+    "action": "Continue"
+  },
+  {
+    "id": "NV-GARMIN-SESSION-EXPIRED",
+    "name": "garmin-session-expired",
+    "route": "/garmin/index",
+    "action": "Sign in again"
+  }
+] as const;

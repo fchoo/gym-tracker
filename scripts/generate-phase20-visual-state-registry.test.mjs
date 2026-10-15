@@ -35,3 +35,32 @@ test("generates all 107 ordered browser-walk occurrences with an approved refere
   assert.match(flow, /VISUAL_SCREEN_ID/u);
   assert.match(flow, /VISUAL_READY_ID/u);
 });
+
+test("keeps browser-walk names exact and resolves authority without a private path", () => {
+  const walk = JSON.parse(readFileSync(path.join(root, ".planning/design/v1.2-browser-evidence/serial-walk.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync(path.join(root, ".planning/design/v1.2-browser-evidence/source-manifest.json"), "utf8"));
+  execFileSync(process.execPath, ["scripts/generate-phase20-visual-state-registry.mjs"], {
+    cwd: root,
+    env: { ...process.env, V12_APPROVED_SOURCE_ROOT: "" },
+  });
+  const registry = JSON.parse(readFileSync(generatedJson, "utf8"));
+  assert.deepEqual(registry.map(({ name }) => name), walk.slice(0, 107).map(({ name }) => name));
+  assert.deepEqual(registry.slice(91).map(({ name }) => name), [
+    "garmin-disconnected", "garmin-consent", "garmin-connected", "garmin-syncing",
+    "garmin-synced", "garmin-idempotent", "garmin-error", "garmin-file-import",
+    "garmin-outdoor", "garmin-match-outdoor", "garmin-confirmed-outdoor",
+    "garmin-file-import", "garmin-treadmill", "garmin-match-treadmill",
+    "garmin-confirmed-treadmill", "garmin-revoked",
+  ]);
+  assert.doesNotMatch(JSON.stringify(manifest), /\/Users\//u);
+  assert.equal(manifest.portable_fallback.kind, "checked_in_derived_contract");
+  assert.match(manifest.portable_fallback.renderer_digest, /^[a-f0-9]{64}$/u);
+  assert.ok(registry.every(({ reference }) => {
+    const binding = reference.kind === "retained_png" ? reference.source : reference;
+    return binding.approved_json_sha256 === manifest.sources.find(({ id }) => id === "approved-json").sha256
+      && binding.approved_hybrid_html_sha256 === manifest.sources.find(({ id }) => id === "approved-hybrid-html").sha256
+      && /^[a-f0-9]{64}$/u.test(binding.renderer_digest)
+      && /^[a-f0-9]{64}$/u.test(binding.semantic_digest)
+      && /^[a-f0-9]{64}$/u.test(binding.layout_digest);
+  }));
+});

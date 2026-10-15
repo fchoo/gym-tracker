@@ -117,10 +117,11 @@ async function configureActiveScenario(
   const warmups = rows.filter(({ set_kind: kind }) => kind === "warmup");
   const working = rows.filter(({ set_kind: kind }) => kind === "working");
   const beforeWorking = scenario === "warmup-before-working";
-  const warmupOnly = scenario === "warmup-committed-no-rest";
-  const completeFirstWorking = !beforeWorking && !warmupOnly;
-  const completed = [...(beforeWorking ? [] : warmups), ...(completeFirstWorking && working[0] !== undefined ? [working[0]] : [])];
-  const next = beforeWorking ? warmups[0] ?? working[0] : warmupOnly ? working[0] : working[1] ?? working[0];
+  const postWarmup = scenario === "warmup-committed-no-rest";
+  const postSecondWorking = ["working-committed-rest", "rest-paused", "rest-adjusted", "rest-resumed", "rest-skipped"].includes(scenario);
+  const completedWorking = postSecondWorking ? working.slice(0, 2) : beforeWorking ? [] : working.slice(0, 1);
+  const completed = [...(beforeWorking ? [] : warmups), ...completedWorking];
+  const next = beforeWorking ? warmups[0] ?? working[0] : postWarmup ? working[1] ?? working[0] : postSecondWorking ? working[2] ?? working.at(-1) : working[1] ?? working[0];
   if (next === undefined) throw new Error("phase20_visual_fixture_active_set_missing");
   await kernel.write(async (transaction) => {
     for (const set of completed) {
@@ -147,9 +148,10 @@ async function configureActiveScenario(
        WHERE id = ?`,
       [next.session_exercise_id, next.id, PHASE20_VISUAL_ACTIVE_SESSION_ID],
     );
-    const restState = scenario === "rest-paused" ? { status: "paused", started: null, ends: null, remaining: 45_000, expired: null }
-      : scenario === "rest-adjusted" ? { status: "running", started: PHASE20_VISUAL_NOW_MS - 30_000, ends: PHASE20_VISUAL_NOW_MS + 120_000, remaining: null, expired: null }
-        : scenario === "rest-resumed" || scenario === "working-committed-rest" ? { status: "running", started: PHASE20_VISUAL_NOW_MS - 45_000, ends: PHASE20_VISUAL_NOW_MS + 45_000, remaining: null, expired: null }
+    const restState = scenario === "rest-paused" ? { status: "paused", started: null, ends: null, remaining: 90_000, expired: null }
+      : scenario === "rest-adjusted" ? { status: "paused", started: null, ends: null, remaining: 105_000, expired: null }
+        : scenario === "rest-resumed" ? { status: "running", started: PHASE20_VISUAL_NOW_MS - 1_000, ends: PHASE20_VISUAL_NOW_MS + 104_000, remaining: null, expired: null }
+          : scenario === "working-committed-rest" ? { status: "running", started: PHASE20_VISUAL_NOW_MS, ends: PHASE20_VISUAL_NOW_MS + 90_000, remaining: null, expired: null }
           : null;
     if (restState !== null) {
       await transaction.execute(
@@ -389,26 +391,20 @@ async function seedImportedActivity(
 }
 
 async function seedProgressAndGarmin(kernel: SqliteKernel, scenario: string): Promise<void> {
-  const empty = scenario === "progress-running-empty" || scenario === "progress-running-loading";
-  const sparse = scenario === "progress-running-sparse";
-  if (!empty && !sparse) await seedImportedActivity(kernel, {
-    activityId: "phase20-garmin-outdoor",
-    externalActivityId: "phase20-outdoor-001",
-    localDate: "2026-10-04",
-    startedAtMs: Date.parse("2026-10-03T23:12:00.000Z"),
-    subtype: "outdoor",
-    distanceMeters: 3_200,
-    elapsedMs: 1_122_000,
-  });
-  if (!empty) await seedImportedActivity(kernel, {
-    activityId: "phase20-garmin-treadmill",
-    externalActivityId: "phase20-treadmill-001",
-    localDate: "2026-10-10",
-    startedAtMs: Date.parse("2026-10-10T10:34:00.000Z"),
-    subtype: "treadmill",
-    distanceMeters: 2_400,
-    elapsedMs: 691_000,
-  });
+  const empty = scenario.endsWith("-empty") || scenario.endsWith("-loading");
+  const sparse = scenario.endsWith("-sparse");
+  const efforts = [
+    ["phase20-garmin-outdoor", "phase20-outdoor-001", "2026-10-04", "2026-10-03T23:12:00.000Z", "outdoor", 2_400, 684_000],
+    ["phase20-garmin-treadmill", "phase20-treadmill-001", "2026-10-10", "2026-10-10T10:34:00.000Z", "treadmill", 2_400, 691_000],
+    ["phase20-garmin-outdoor-2", "phase20-outdoor-002", "2026-09-27", "2026-09-26T23:12:00.000Z", "outdoor", 2_400, 700_000],
+    ["phase20-garmin-treadmill-2", "phase20-treadmill-002", "2026-09-20", "2026-09-20T10:34:00.000Z", "treadmill", 2_400, 712_000],
+    ["phase20-garmin-10k-1", "phase20-10k-001", "2026-09-13", "2026-09-12T23:12:00.000Z", "outdoor", 10_000, 3_260_000],
+    ["phase20-garmin-10k-2", "phase20-10k-002", "2026-09-06", "2026-09-05T23:12:00.000Z", "outdoor", 10_000, 3_315_000],
+  ] as const;
+  const selected = empty ? [] : sparse ? efforts.slice(0, 1) : efforts;
+  for (const [activityId, externalActivityId, localDate, startedAt, subtype, distanceMeters, elapsedMs] of selected) {
+    await seedImportedActivity(kernel, { activityId, externalActivityId, localDate, startedAtMs: Date.parse(startedAt), subtype, distanceMeters, elapsedMs });
+  }
 }
 
 async function seedCalendar(kernel: SqliteKernel): Promise<void> {
@@ -419,7 +415,7 @@ async function seedCalendar(kernel: SqliteKernel): Promise<void> {
         (id, schedule_id, schedule_version_id, local_date, source, plan_day_id,
          state, outcome, session_id, revision, consumed_at_ms)
        VALUES ('phase20-strength-occurrence', 'phase20-strength-schedule',
-               'phase20-strength-schedule-v1', '2026-10-01', 'weekday',
+               'phase20-strength-schedule-v1', '2026-10-07', 'weekday',
                'phase20-strength-foundation-day-a', 'pending', NULL, NULL, 1, NULL)`,
     );
     if (!await captureStrengthOccurrenceSnapshot(
@@ -429,6 +425,14 @@ async function seedCalendar(kernel: SqliteKernel): Promise<void> {
     )) {
       throw new Error("phase20_visual_fixture_occurrence_snapshot_failed");
     }
+    await transaction.execute(
+      `INSERT INTO owned_plan_schedule_opportunities
+        (id, schedule_id, schedule_version_id, local_date, source, plan_day_id,
+         state, outcome, session_id, revision, consumed_at_ms)
+       VALUES ('phase20-strength-occurrence-adjacent', 'phase20-strength-schedule',
+               'phase20-strength-schedule-v1', '2026-10-12', 'weekday',
+               'phase20-strength-foundation-day-a', 'pending', NULL, NULL, 1, NULL)`,
+    );
   });
 }
 
@@ -491,7 +495,7 @@ export async function bootstrapPhase20VisualFixture(
     await seedLegacyStrengthWorkout(kernel, state.fixture_seed === "phase20-active-workout");
   }
   if (state.fixture_seed === "phase20-active-workout") {
-    await configureActiveScenario(kernel, state.scenario);
+    await configureActiveScenario(kernel, state.fixture_variant);
   }
   if (state.fixture_seed === "phase20-calendar") {
     await seedCalendar(kernel);
@@ -503,7 +507,7 @@ export async function bootstrapPhase20VisualFixture(
     await seedCompletedStrengthHistory(kernel);
   }
   if (state.fixture_seed === "phase20-progress" || state.fixture_seed === "phase20-garmin-visual") {
-    await seedProgressAndGarmin(kernel, state.scenario);
+    await seedProgressAndGarmin(kernel, state.fixture_variant);
   }
   await kernel.write(async (transaction) => {
     await transaction.execute(
@@ -514,6 +518,7 @@ export async function bootstrapPhase20VisualFixture(
         fixtureId: state.fixture_id,
         fixtureSeed: state.fixture_seed,
         scenario: state.scenario,
+        fixtureVariant: state.fixture_variant,
         stateId: state.id,
         configurationId: request.configuration,
       }), PHASE20_VISUAL_NOW_MS],
@@ -547,10 +552,11 @@ export function createPhase20VisualRuntimeDependencies(
     }),
     now: () => new Date(PHASE20_VISUAL_NOW),
     nowMs: () => PHASE20_VISUAL_NOW_MS,
+    strictDisposal: true,
     prepareRuntime: ({ kernel }) => bootstrapPhase20VisualFixture(kernel, request),
     async disposeRuntime() {
       const { deleteDatabaseAsync } = require("expo-sqlite") as typeof import("expo-sqlite");
-      await deleteDatabaseAsync(databaseName).catch(() => undefined);
+      await deleteDatabaseAsync(databaseName);
     },
   });
 }
