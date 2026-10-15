@@ -33,6 +33,7 @@ import {
   V12_VERDICTS as CONTRACT_VERDICTS,
 } from "./v12-evidence-contract.mjs";
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
+import { resolveV12SourceRows, combineV12SourceResults } from "./v12-blocker-row-resolver.mjs";
 import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
 
 const ROOT = process.cwd();
@@ -506,7 +507,7 @@ function finalEvidenceIndex(inputs, manifest, evidence, readArtifact) {
   for (const [index, item] of evidence.entries()) {
     const expectedKeys = item?.result === "N_A_REVIEWED"
       ? ["row_id", "artifact", "sha256", "result", "configuration_id", "na"]
-      : ["row_id", "artifact", "sha256", "result", "configuration_id"];
+      : ["row_id", "artifact", "sha256", "result", "configuration_id", "selector", "bindings"];
     if (!finalExact(item, expectedKeys) || Object.hasOwn(item, "verdict")) finalFail(Object.hasOwn(item ?? {}, "verdict") ? "producer_verdict_forbidden" : "evidence_schema_invalid");
     if (item.row_id !== expectedIds[index] || indexed.has(item.row_id) || !FINAL_RESULTS.has(item.result)
       || !HASH.test(item.sha256) || typeof item.configuration_id !== "string" || finalHasPrivateValue(item)) finalFail("evidence_schema_invalid");
@@ -552,6 +553,7 @@ function validateV12AttendedBinding(attended, manifest, root) {
   if (!finalPlainObject(attended) || attended.schema_version !== 2 || attended.suite !== "v12-samsung-attended"
     || attended.mode !== "observation-only" || attended.release_authorized !== false || !["passed", "failed"].includes(attended.status)
     || !Array.isArray(attended.rows) || attended.rows.length !== 7 || !finalPlainObject(attended.identity)) finalFail("attended_invalid");
+  if (!finalExact(attended, ["schema_version", "suite", "mode", "status", "release_authorized", "identity", "checklist_sha256", "recorded_at", "rows"])) finalFail("attended_schema_invalid");
   const identity = attended.identity;
   if (identity.run_id !== manifest.run_id || identity.source_tree_sha256 !== manifest.source.tree_sha256
     || identity.apk_sha256 !== manifest.build.apk.sha256 || identity.apk_signature_sha256 !== manifest.build.apk.signature_sha256
@@ -567,7 +569,20 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
   const validatedManifest = validateV12RunManifest(manifest);
   if (finalHasPrivateValue(evidence) || finalHasPrivateValue(exceptions)) finalFail("privacy_invalid");
   if (typeof readArtifact !== "function") finalFail("artifact_reader_required");
-  const evidenceByRow = finalEvidenceIndex(inputs, validatedManifest, evidence, readArtifact);
+  // One immutable byte snapshot per derivation: the attended overlay reuses
+  // these validated bytes, never a cache from an earlier preseal/final call.
+  const artifactSnapshot = new Map();
+  const readSource = relative => {
+    if (!artifactSnapshot.has(relative)) artifactSnapshot.set(relative, readArtifact(relative));
+    return artifactSnapshot.get(relative);
+  };
+  finalEvidenceIndex(inputs, validatedManifest, evidence, readSource);
+  const sourceEvidence = resolveV12SourceRows({ inputs, manifest: validatedManifest, root, readArtifact: readSource });
+  if (!isDeepStrictEqual(evidence, sourceEvidence)) finalFail("source_resolution_mismatch");
+  const attendedRecord = attended === undefined ? null : validateV12AttendedBinding(attended, validatedManifest, root);
+  const resolvedEvidence = attendedRecord === null ? sourceEvidence
+    : resolveV12SourceRows({ inputs, manifest: validatedManifest, root, readArtifact: readSource, attended: attendedRecord });
+  const evidenceByRow = new Map(resolvedEvidence.map(item => [item.row_id, item]));
   const exceptionsByRow = finalExceptionIndex(exceptions, inputs);
   const verdicts = inputs.matrix.rows.map(({ requirement_id }) => {
     const item = evidenceByRow.get(requirement_id);
@@ -576,17 +591,16 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
     // evidence. It is never allowed to rewrite a missing, failed, or
     // human-review-required result into a softer ledger state.
     if (exception !== undefined) {
-      if (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result)) finalFail("exception_masks_blocking_result");
+      if (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result)) return { row_id: requirement_id, verdict: item.result };
       return { row_id: requirement_id, verdict: "ACCEPTED_EXCEPTION", ...exception };
     }
     return item.result === "N_A_REVIEWED"
       ? { row_id: requirement_id, verdict: item.result, ...item.na }
       : { row_id: requirement_id, verdict: item.result };
   });
-  const baseLedger = deriveContractLedger(inputs, { observations: evidence.map((item) => ({ row_id: item.row_id, source: "final-validator", status: item.result })), verdicts });
+  const baseLedger = deriveContractLedger(inputs, { observations: resolvedEvidence.map((item) => ({ row_id: item.row_id, source: "final-validator", status: item.result })), verdicts });
   const policy = finalReadinessPolicy(readiness_policy);
   const counts = baseLedger.verdict_counts;
-  const attendedRecord = attended === undefined ? null : validateV12AttendedBinding(attended, validatedManifest, root);
   const attendedBlocked = attendedRecord !== null && attendedRecord.status !== "passed";
   const hardBlock = counts.NOT_RUN > 0 || counts.FAIL > 0 || counts.REVIEW_REQUIRED > 0 || attendedBlocked;
   const readiness = hardBlock ? "NOT_READY"
@@ -604,11 +618,11 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
       device_sha256: validatedManifest.device.identity_sha256,
       config_sha256: sha256(validatedManifest.configuration.id),
     }),
-    source_results: Object.freeze(evidence.map(({ row_id, artifact, sha256: evidence_sha256, result, configuration_id }) => Object.freeze({ row_id, artifact, evidence_sha256, result, configuration_id }))),
-    evidence_hashes: Object.freeze(evidence.map(({ sha256: evidence_sha256 }) => evidence_sha256)),
+    source_results: Object.freeze(resolvedEvidence.map(({ sha256: evidence_sha256, ...item }) => Object.freeze({ ...item, evidence_sha256 }))),
+    evidence_hashes: Object.freeze(resolvedEvidence.map(({ sha256: evidence_sha256 }) => evidence_sha256)),
     gates: Object.freeze([
       Object.freeze({ id: "identity", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(validatedManifest)) }),
-      Object.freeze({ id: "automated", verdict: "PASS", evidence_sha256: sha256(JSON.stringify(evidence)) }),
+      Object.freeze({ id: "automated", verdict: combineV12SourceResults(resolvedEvidence.map(item => item.result)), evidence_sha256: sha256(JSON.stringify(resolvedEvidence)) }),
       ...(attendedRecord === null ? [] : [Object.freeze({ id: "attended", verdict: attendedRecord.status === "passed" ? "PASS" : "FAIL", evidence_sha256: sha256(JSON.stringify(attendedRecord)) })]),
     ]),
     readiness,
@@ -621,6 +635,9 @@ export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson 
   if (mode !== "final") finalFail("explicit_final_mode_required");
   if (!V12_FINAL_RUN.test(run_id ?? "") || ledger?.run_id !== run_id || ledger?.rows?.length !== 172
     || typeof writeImmutableJson !== "function") finalFail("seal_input_invalid");
+  if (!Array.isArray(ledger.source_results) || ledger.source_results.length !== 172
+    || ledger.source_results.some((item, index) => !item.selector || item.row_id !== ledger.rows[index].requirement_id
+      || (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result) && (ledger.rows[index].verdict !== item.result || ledger.readiness !== "NOT_READY")))) finalFail("seal_source_results_invalid");
   const base = `artifacts/native/v1.2/${run_id}`;
   const matrix = Object.freeze({ schema_version: 2, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
   const finalEvidence = Object.freeze({
@@ -805,25 +822,8 @@ function preflightValidateArtifacts(root, runId, shardIds) {
 }
 
 function preflightRowEvidence(root, runId) {
-  const inputs = loadV12ContractInputs({ root });
-  const manifest = preflightManifest(root, runId).manifest;
-  const phaseArtifacts = Object.freeze({
-    13: "mapping/multi-plan.json",
-    14: "comparison/index.json",
-    15: "mapping/workout.json",
-    16: "calendar-transitions.json",
-    17: "mapping/library-running.json",
-    18: "garmin/matching.json",
-    19: "performance.json",
-    20: "build.json",
-  });
-  return inputs.matrix.rows.map(({ requirement_id, owning_phase }) => {
-    const relative = phaseArtifacts[owning_phase];
-    if (relative === undefined) preflightFail("row_evidence_incomplete");
-    const artifact = `artifacts/native/v1.2/${runId}/${relative}`;
-    const bytes = readFileSync(preflightSafeFile(root, artifact));
-    return Object.freeze({ row_id: requirement_id, artifact, sha256: sha256(bytes), result: "PASS", configuration_id: manifest.configuration.id });
-  });
+  return resolveV12SourceRows({ inputs: loadV12ContractInputs({ root }), manifest: preflightManifest(root, runId).manifest,
+    root, readArtifact: relative => readFileSync(preflightSafeFile(root, relative)) });
 }
 
 export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
@@ -845,6 +845,9 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   }
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
   if (preseal?.producer !== "v12-preseal-validation/v2" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
+  try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }
+  if (preseal.build_sha256 !== build_sha256 || !Array.isArray(preseal.all_artifact_hashes)
+    || preseal.all_artifact_hashes.some(item => preflightHashFile(root, item.path) !== item.sha256)) preflightFail("source_hash_invalid");
   // A final seal repeats the full shard validation after the owner checkpoint.
   preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
   let attended; try { attended = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/attended-observations.json`), "utf8")); } catch { preflightFail("attended_invalid"); }
