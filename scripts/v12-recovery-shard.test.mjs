@@ -10,7 +10,7 @@ import {
 const digest = 'a'.repeat(64);
 const ids = ['legacy-playback', 'foreground-reconciliation', 'queued-callback', 'relaunch', 'restore', 'merge', 'zero-cue', 'between-set-rest-pointer'];
 const cuts = ['pre-transaction', 'in-transaction', 'post-commit-before-ack', 'post-acknowledgement', 'relaunch', 'retry', 'offline', 'recovery'];
-const valid = () => ({ schema_version: 1, producer: 'v12-recovery-shard', identity: { source_digest: digest, receipt_digest: digest, pointer_digest: digest, effect_digest: digest }, cases: ids.map((id, order) => ({ id, order, status: 'passed', cuts: cuts.map((cut) => ({ cut, digest })) })) });
+const valid = () => ({ schema_version: 1, producer: 'v12-recovery-shard', identity: { source_digest: digest, receipt_digest: digest, pointer_digest: digest, effect_digest: digest }, cases: ids.map((id, order) => ({ id, order, status: 'PASS', cuts: cuts.map((cut) => ({ cut, status: 'PASS', digest })) })) });
 
 test('accepts only complete ordered lifecycle observations without a verdict', () => {
   const value = validateV12RecoveryShard(valid());
@@ -44,4 +44,10 @@ test('refuses duplicate recovery evidence before the native flow can execute', a
     }),
     /v12_recovery_output_exists/u,
   );
+});
+
+test('preserves blocking recovery outcomes instead of rewriting them to passes', () => {
+  const input = valid();
+  input.cases[0].status = 'FAIL'; input.cases[0].cuts[0].status = 'FAIL';
+  assert.equal(validateV12RecoveryShard(input).ok, true);
 });
