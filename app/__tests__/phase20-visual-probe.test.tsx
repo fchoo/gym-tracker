@@ -59,16 +59,25 @@ describe("Phase 20 visual probe", () => {
     expect(screen.queryByTestId("plan-type-chooser")).toBeNull();
     expect(screen.getByTestId("phase20-visual-reset")).toBeOnTheScreen();
   });
-  it("does not emit a receipt until the host acknowledges the visible production state", async () => {
+  it("emits only after the host acknowledges the visible production state with the same nonce", async () => {
     delete mockParams.ready;
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     try {
-      await render(<Phase20VisualProbeRoute />);
+      const view = await render(<Phase20VisualProbeRoute />);
       await fireEvent(screen.getByTestId("phase20-visual-capture"), "layout", {
         nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 844 } },
       });
       await new Promise((resolve) => setTimeout(resolve, 80));
       expect(log).not.toHaveBeenCalled();
+
+      mockParams.ready = "b".repeat(32);
+      await view.rerender(<Phase20VisualProbeRoute />);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(log).not.toHaveBeenCalled();
+
+      mockParams.ready = mockParams.nonce;
+      await view.rerender(<Phase20VisualProbeRoute />);
+      await waitFor(() => expect(log).toHaveBeenCalledTimes(1));
     } finally { log.mockRestore(); }
   });
   it("emits actual native dimensions and provider readback, never configuration-derived measurements", async () => {

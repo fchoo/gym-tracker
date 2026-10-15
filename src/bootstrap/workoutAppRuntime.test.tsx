@@ -1655,10 +1655,18 @@ describe("WorkoutAppRuntimeProvider", () => {
       order.push("read");
       return originalRead(input);
     });
+    const prepareRuntime = jest.fn<NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>>(async ({ starterPlans }) => {
+      expect(starterPlans).toEqual({ pack: {}, templates: [] });
+      order.push("prepare");
+    });
     const runtimeDependencies = dependencies(repository, {
       migrate: jest.fn(async () => { order.push("migrate"); }),
-      prepareRuntime: jest.fn(async () => { order.push("prepare"); }),
-      disposeRuntime: jest.fn(async () => { order.push("dispose"); }),
+      loadStarterPlans: jest.fn(async () => ({ pack: {}, templates: [] }) as never),
+      prepareRuntime,
+      disposeRuntime: jest.fn(async () => {
+        order.push("dispose");
+        throw new Error("fixture cleanup is best effort");
+      }),
     });
     const view = await render(<RuntimeHarness dependencies={runtimeDependencies} />);
 
@@ -1668,6 +1676,21 @@ describe("WorkoutAppRuntimeProvider", () => {
 
     view.unmount();
     await waitFor(() => expect(runtimeDependencies.disposeRuntime).toHaveBeenCalledTimes(1));
+  });
+
+  it("prepares a runtime without inventing a starter catalog when no loader exists", async () => {
+    const prepareRuntime = jest.fn<NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>>(async () => undefined);
+    const view = await render(
+      <RuntimeHarness
+        dependencies={dependencies(runtimeRepository([noPlanView], [null]), {
+          prepareRuntime,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("runtime-state")).toHaveTextContent("trusted"));
+    expect(prepareRuntime).toHaveBeenCalledWith(expect.objectContaining({ kernel: expect.any(Object) }));
+    expect(prepareRuntime.mock.calls[0]?.[0]).not.toHaveProperty("starterPlans");
+    view.unmount();
   });
 
   it("delegates bounded Calendar range reads through the query-only foundation port", async () => {

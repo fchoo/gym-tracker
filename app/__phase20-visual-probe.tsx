@@ -106,8 +106,14 @@ function RuntimeBoundProductionVisualState({
 export default function Phase20VisualProbeRoute() {
   const params = useLocalSearchParams();
   const extra = Constants.expoConfig?.extra;
-  const request = resolvePhase20VisualProbe(params);
-  const state = request === null ? null : phase20VisualState(request.state);
+  const request = React.useMemo(
+    () => resolvePhase20VisualProbe(params),
+    [params.configuration, params.fixture, params.mode, params.nonce, params.state],
+  );
+  const state = React.useMemo(
+    () => request === null ? null : phase20VisualState(request.state),
+    [request],
+  );
   if (extra?.buildProfile !== "development-test"
     || extra?.nativeContractsEnabled !== true
     || extra?.nativeContractSuite !== "v1.2-acceptance"
