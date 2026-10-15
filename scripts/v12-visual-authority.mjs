@@ -5,7 +5,10 @@ import path from "node:path";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MANIFEST_PATH = ".planning/design/v1.2-browser-evidence/source-manifest.json";
 const REQUIRED_SOURCES = Object.freeze(["approved-json", "approved-hybrid-html"]);
+export const V12_APPROVED_JSON_SHA256 = "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf";
+export const V12_APPROVED_HYBRID_HTML_SHA256 = "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96";
 const authorityCache = new Map();
+const stateBindingCache = new Map();
 
 const fail = (code) => { throw new Error(`v12_visual_authority_${code}`); };
 export const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -78,6 +81,8 @@ export function loadV12VisualAuthority({ root = process.cwd(), externalRoot = pr
     || manifest.sources.some(({ id, filename, sha256: digest }) => typeof id !== "string" || typeof filename !== "string"
       || filename !== path.basename(filename) || path.isAbsolute(filename) || !SHA256.test(digest ?? ""))) fail("manifest_invalid");
   const sourceHashes = Object.fromEntries(manifest.sources.map((entry) => [entry.id, entry.sha256]));
+  if (sourceHashes["approved-json"] !== V12_APPROVED_JSON_SHA256
+    || sourceHashes["approved-hybrid-html"] !== V12_APPROVED_HYBRID_HTML_SHA256) fail("approved_source_hash_invalid");
   const fallback = manifest.portable_fallback;
   const walkPath = safeFile(root, fallback.serial_walk.path, "portable_fallback_invalid");
   const rendererPath = safeFile(root, fallback.renderer.path, "portable_fallback_invalid");
@@ -131,7 +136,12 @@ export function validateV12VisualSourceBinding(binding, { root = process.cwd(), 
   const ordinal = /^BW-(\d{3})$/u.exec(stateId ?? "")?.[1];
   const index = ordinal === undefined ? authority.walk.slice(0, 107).findIndex((entry) => entry.name === stateName) : Number(ordinal) - 1;
   if (index < 0) fail("source_binding_invalid");
-  const expected = v12VisualStateAuthority(authority, authority.walk[index], authority.walk[index + 107]);
+  const bindingKey = `${path.resolve(root)}\u0000${index}`;
+  let expected = stateBindingCache.get(bindingKey);
+  if (expected === undefined) {
+    expected = v12VisualStateAuthority(authority, authority.walk[index], authority.walk[index + 107]);
+    stateBindingCache.set(bindingKey, expected);
+  }
   if (JSON.stringify(binding) !== JSON.stringify({ kind: "approved_source", ...expected })) fail("source_binding_invalid");
   return true;
 }

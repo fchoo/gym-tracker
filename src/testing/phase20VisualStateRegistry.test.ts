@@ -49,6 +49,38 @@ describe("Phase 20 visual state registry", () => {
     expect(product.every(({ evidence_scope }) => evidence_scope === "production_screen")).toBe(true);
   });
 
+  it("keeps each Garmin browser occurrence and native-only state independently actionable", () => {
+    const expected = [
+      ["BW-092", "garmin-disconnected", "Connect Garmin"],
+      ["BW-093", "garmin-consent", "Continue simulated consent"],
+      ["BW-094", "garmin-connected", "Sync now"],
+      ["BW-095", "garmin-syncing", "Syncing Garmin activities"],
+      ["BW-096", "garmin-synced", "Sync now"],
+      ["BW-097", "garmin-idempotent", "Sync now"],
+      ["BW-098", "garmin-error", "Try again"],
+      ["BW-099", "garmin-file-import", "Preview Outdoor FIT"],
+      ["BW-100", "garmin-outdoor", "Match to scheduled workout"],
+      ["BW-101", "garmin-match-outdoor", "Confirm match"],
+      ["BW-102", "garmin-confirmed-outdoor", "Activity matched"],
+      ["BW-103", "garmin-file-import", "Preview Treadmill FIT"],
+      ["BW-104", "garmin-treadmill", "Match to scheduled workout"],
+      ["BW-105", "garmin-match-treadmill", "Confirm match"],
+      ["BW-106", "garmin-confirmed-treadmill", "Activity matched"],
+      ["BW-107", "garmin-revoked", "Connect Garmin"],
+    ] as const;
+    for (const [id, name, action] of expected) {
+      const state = phase20VisualState(id);
+      expect(state?.name).toBe(name);
+      expect([
+        ...(state?.readiness.semantics ?? []),
+        ...(state?.readiness.actions.map(({ label }) => label ?? "") ?? []),
+      ].some((value) => value.includes(action))).toBe(true);
+    }
+    expect(PHASE20_NATIVE_ONLY_VISUAL_STATES.map(({ name, action }) => `${name}:${action}`)).toEqual([
+      "garmin-login:Connect Garmin", "garmin-mfa:Continue", "garmin-session-expired:Sign in again",
+    ]);
+  });
+
   it("uses exact portrait and corresponding landscape dimensions", () => {
     expect(phase20VisualConfiguration("AP-L-C360-P-F100")).toMatchObject({ width: 360, height: 800 });
     expect(phase20VisualConfiguration("AP-L-C360-L-F100")).toMatchObject({ width: 800, height: 360 });

@@ -152,6 +152,8 @@ const scenarioStepsFor = (name) => {
   if (name === "progress-settings") return [{ action: "tap_text", value: "Settings" }];
   if (name === "garmin-consent") return [{ action: "tap_text", value: "Connect Garmin" }];
   if (["garmin-syncing", "garmin-synced", "garmin-idempotent", "garmin-error"].includes(name)) return [{ action: "tap_text", value: "Sync now" }];
+  if (name.startsWith("garmin-confirmed-")) return [{ action: "tap_text", value: "Confirm match" }];
+  if (name === "garmin-revoked") return [{ action: "tap_text", value: "Disconnect Garmin" }, { action: "tap_text", value: "Disconnect Garmin" }];
   return steps;
 };
 

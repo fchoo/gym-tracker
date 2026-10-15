@@ -100,7 +100,7 @@ test("writes every live native capture once and rejects fixture-only or un-resto
     write: (file, value) => written.set(file, value),
   });
   assert.equal(index.records.length, 107 * 64);
-  assert.equal(written.size, 1 + 2 * 107 * 64);
+  assert.equal(written.size, 1 + 107 * 64);
   assert.equal(verifyV12VisualCapture({ runId, root: ROOT, readJson: (file) => written.get(file), readBytes: (file) => written.get(file) }), true);
   assert.throws(() => executeLiveV12VisualCapture({ runId, capture: () => ({ native_execution: "NOT_RUN" }) }), /capture_invalid/u);
 });

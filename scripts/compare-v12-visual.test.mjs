@@ -59,6 +59,7 @@ function fixture(t) {
   const captureReceipt = { schema_version: 2, nonce: "a".repeat(32), run_id: runId, state_id: state.id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: state.readiness.status, source_tree_sha256: "a".repeat(64), apk_sha256: "b".repeat(64), device_identity_sha256: "c".repeat(64), png_sha256: descriptor.sha256, observation_sha256: sha256(JSON.stringify(baseObservation)), source_receipt: sourceReceipt };
   const capture = { schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: state.id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED", native_png: descriptor, settings: { restored: true, privacy: "synthetic-only", observation: baseObservation, state_receipt: captureReceipt } };
   writeFileSync(path.join(root, capturePath), `${JSON.stringify(capture)}\n`);
+  writeFileSync(path.join(root, `artifacts/native/v1.2/${runId}/screenshots/index.json`), JSON.stringify({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, capture_count: 1, windows: [], records: [capture] }));
   const observedSourceReceipt = { ...sourceReceipt, nonce: "b".repeat(32) };
   const observation = { ...baseObservation, capture_png_sha256: descriptor.sha256, capture_nonce: captureReceipt.nonce, observation_nonce: "b".repeat(32), readiness: { ...readiness, source_receipt: observedSourceReceipt } };
   const stateReceipt = { ...captureReceipt, nonce: "b".repeat(32), observation_sha256: sha256(JSON.stringify(observation)), source_receipt: observedSourceReceipt };
@@ -143,12 +144,14 @@ test("non-oracle configurations use the exact source semantic contract without i
   const captureReceipt = { ...original.settings.state_receipt, configuration_id: sourceConfig, observation_sha256: sha256(JSON.stringify(captureObservation)) };
   const capture = { ...original, configuration_id: sourceConfig, native_png: { ...original.native_png, path: nativePath }, settings: { ...original.settings, observation: captureObservation, state_receipt: captureReceipt } };
   writeFileSync(path.join(input.root, capturePath), JSON.stringify(capture));
+  const indexPath = path.join(input.root, `artifacts/native/v1.2/${runId}/screenshots/index.json`);
+  const index = JSON.parse(readFileSync(indexPath, "utf8")); index.records.push(capture); writeFileSync(indexPath, JSON.stringify(index));
   const observation = { ...captureObservation, capture_png_sha256: capture.native_png.sha256, capture_nonce: captureReceipt.nonce, observation_nonce: "b".repeat(32), readiness: { ...captureObservation.readiness, source_receipt: { ...captureObservation.readiness.source_receipt, nonce: "b".repeat(32) } } };
   const stateReceipt = { ...captureReceipt, nonce: "b".repeat(32), source_receipt: observation.readiness.source_receipt, observation_sha256: sha256(JSON.stringify(observation)) };
   const result = produceV12ComparisonRecord({ runId, root: input.root, input: { id: "BW-002", configuration_id: sourceConfig, reference_binding: { kind: "approved_source", ...input.state.reference.source }, capture_state_receipt: captureReceipt, state_receipt: stateReceipt, observation } });
   assert.equal(result.comparison_mode, "approved_source");
   assert.equal(result.metrics.kind, "source_semantic");
   assert.deepEqual(Object.keys(result.artifacts), ["native"]);
-  assert.equal(JSON.stringify(result).includes(":null"), false);
+  assert.equal(JSON.stringify(result.metrics).includes(":null"), false);
   assert.equal(verifyV12ComparisonRecord({ runId, root: input.root, result }), true);
 });

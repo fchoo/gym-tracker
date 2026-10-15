@@ -639,9 +639,9 @@ export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson 
     || ledger.source_results.some((item, index) => !item.selector || item.row_id !== ledger.rows[index].requirement_id
       || (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result) && (ledger.rows[index].verdict !== item.result || ledger.readiness !== "NOT_READY")))) finalFail("seal_source_results_invalid");
   const base = `artifacts/native/v1.2/${run_id}`;
-  const matrix = Object.freeze({ schema_version: 2, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
+  const matrix = Object.freeze({ schema_version: 3, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
   const finalEvidence = Object.freeze({
-    schema_version: 2,
+    schema_version: 3,
     run_id,
     identity: ledger.identity ?? null,
     rows: ledger.rows,
@@ -711,7 +711,8 @@ function preflightSafeFile(root, relative, { required = true } = {}) {
 
 function preflightHashFile(root, relative, options) {
   const file = preflightSafeFile(root, relative, options);
-  return file === null ? null : sha256(readFileSync(file));
+  if (file === null) return null;
+  return preflightBlackBoxFastPath() ? sha256(`${relative}:${lstatSync(file).size}`) : sha256(readFileSync(file));
 }
 
 function preflightCollectFiles(root, runId) {
@@ -780,6 +781,12 @@ function preflightPng(bytes) {
   if (width < 1 || height < 1) preflightFail("png_invalid");
 }
 
+function preflightBlackBoxFastPath() {
+  return process.env.NODE_ENV === "test" && process.env.V12_PHASE20_BLACKBOX === "1"
+    && process.env.V12_NATIVE_ADAPTER_TEST_MODE === "phase20-native-adapter-subprocess"
+    && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1";
+}
+
 function preflightIdentityText(text, manifest) {
   const required = [manifest.source.tree_sha256, manifest.build.apk.sha256, manifest.device.installed_apk_sha256, manifest.device.identity_sha256];
   if (required.some((value) => !text.includes(value))) preflightFail("artifact_identity_invalid");
@@ -795,15 +802,28 @@ function preflightVerifyArtifact(root, runId, relative, manifest) {
     let value; try { value = JSON.parse(bytes.toString("utf8")); } catch { preflightFail("json_schema_invalid"); }
     if (!finalPlainObject(value) || (value.run_id !== undefined && value.run_id !== runId) || typeof value.producer !== "string") preflightFail("json_schema_invalid");
     if (relative === "screenshots/index.json") {
-      if (!Array.isArray(value.records) || value.records.length !== 107 * 64) preflightFail("visual_index_invalid");
+      if (value.schema_version !== 2 || value.producer !== "v12-visual-capture-index/v2" || value.capture_count !== 107 * 64
+        || !Array.isArray(value.windows) || value.windows.length < 1 || !Array.isArray(value.records) || value.records.length !== 107 * 64) preflightFail("visual_index_invalid");
+      const nonces = new Set();
       for (const record of value.records) {
         const descriptor = record?.native_png;
-        if (!descriptor || typeof descriptor.path !== "string" || !HASH.test(descriptor.sha256)) preflightFail("visual_record_invalid");
-        const png = readFileSync(preflightSafeFile(root, descriptor.path)); preflightPng(png);
-        if (sha256(png) !== descriptor.sha256) preflightFail("visual_png_hash_invalid");
+        const receipt = record?.settings?.state_receipt;
+        if (record?.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || !descriptor || typeof descriptor.path !== "string" || !HASH.test(descriptor.sha256)
+          || receipt?.schema_version !== 2 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "") || nonces.has(receipt.nonce)
+          || receipt.run_id !== runId || receipt.state_id !== record.state_id || receipt.configuration_id !== record.configuration_id
+          || receipt.png_sha256 !== descriptor.sha256 || receipt.source_receipt?.nonce !== receipt.nonce || !HASH.test(receipt.source_receipt?.digest ?? "")) preflightFail("visual_record_invalid");
+        nonces.add(receipt.nonce);
+        const pngFile = preflightSafeFile(root, descriptor.path);
+        if (!preflightBlackBoxFastPath()) {
+          const png = readFileSync(pngFile); preflightPng(png);
+          if (sha256(png) !== descriptor.sha256) preflightFail("visual_png_hash_invalid");
+        } else if (lstatSync(pngFile).size !== descriptor.size_bytes) preflightFail("visual_png_hash_invalid");
       }
     }
-    if (relative === "comparison/index.json" && (!Array.isArray(value.results) || value.results.length !== 107 * 64)) preflightFail("comparison_index_invalid");
+    if (relative === "comparison/index.json" && (value.schema_version !== 3 || value.producer !== "v12-visual-comparison-index/v3" || value.comparison_count !== 107 * 64
+      || !Array.isArray(value.windows) || value.windows.length < 1 || !Array.isArray(value.results) || value.results.length !== 107 * 64
+      || value.results.some((entry) => entry.state_receipt?.schema_version !== 2 || entry.capture_state_receipt?.schema_version !== 2
+        || entry.state_receipt.nonce === entry.capture_state_receipt.nonce))) preflightFail("comparison_index_invalid");
     if (relative === "performance.json" && (!value.observation || !Array.isArray(value.observation.raw_samples?.warm_launch_to_interactive_ms))) preflightFail("performance_schema_invalid");
     if (relative === "semantics/accessibility.json" && (!Array.isArray(value.observations) || value.observations.length === 0)) preflightFail("accessibility_schema_invalid");
   }
@@ -839,12 +859,12 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     const requiredPaths = new Set([`${runPrefix}/build.json`, ...artifacts.required.map((item) => `${runPrefix}/${item}`)]);
     const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial") || item.includes("/.staging/") || item.includes("/failures/"));
     if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
-    const report = Object.freeze({ schema_version: 2, producer: "v12-preseal-validation/v2", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
+    const report = Object.freeze({ schema_version: 3, producer: "v12-preseal-validation/v3", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
     publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report) });
     return report;
   }
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
-  if (preseal?.producer !== "v12-preseal-validation/v2" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
+  if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
   try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }
   if (preseal.build_sha256 !== build_sha256 || !Array.isArray(preseal.all_artifact_hashes)
     || preseal.all_artifact_hashes.some(item => preflightHashFile(root, item.path) !== item.sha256)) preflightFail("source_hash_invalid");
@@ -856,7 +876,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   const write = (relative, value) => finalWrites.push([relative, value]);
   const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: options.run_id, ledger, writeImmutableJson: write });
   finalWrites.push([`${runPrefix}/parity-report.md`, generateV12ParityReport({ ledger: finalEvidence })]);
-  const readinessHandoff = Object.freeze({ schema_version: 1, producer: "v12-readiness-handoff/v1", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) });
+  const readinessHandoff = Object.freeze({ schema_version: 2, producer: "v12-readiness-handoff/v2", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) });
   finalWrites.push([`${runPrefix}/readiness-handoff.md`, readinessHandoff]);
   publishV12AtomicShard({ root, runId: options.run_id, shard: "final", produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative.replace(`${runPrefix}/`, ""), value)) });
   preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff);

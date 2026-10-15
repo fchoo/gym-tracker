@@ -389,7 +389,7 @@ function retained(root, attestation, requested) {
     const selected = item(root, { state_id: entry.state_id, configuration_id: entry.configuration_id }, attestation.run_id);
     const key = `${selected.state_id}/${selected.config.id}`;
     if (seen.has(key)) fail("capture_invalid"); seen.add(key);
-    const record = json(root, `${base}/${key}/capture.json`, "capture_invalid");
+    const record = entry;
     if (!same(entry, record) || record.schema_version !== 3 || record.producer !== "v12-visual-capture/v3"
       || record.run_id !== attestation.run_id || record.native_execution !== "EXECUTED" || record.fixture_id !== FIXTURE
       || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only") fail("capture_invalid");

@@ -16,16 +16,18 @@ import path from "node:path";
 import test from "node:test";
 
 import { PNG } from "pngjs";
+import { deriveV12PixelComparison } from "./compare-v12-visual.mjs";
 
 const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const sha = (letter) => letter.repeat(64);
+const progress = (message) => { if (process.env.V12_BLACKBOX_PROGRESS === "1") process.stderr.write(`[v12-blackbox] ${message}\n`); };
 
 function fixtureRoot() {
   const root = mkdtempSync(path.join(tmpdir(), "v12-phase20-blackbox-"));
   // Production CLIs use cwd as their source/run root. These are source inputs,
   // not production modules, and the entrypoints themselves remain absolute.
-  for (const member of ["scripts", "src/testing/contracts", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
+  for (const member of ["scripts", "src/testing/contracts", "src/testing/phase20VisualStateRegistry.json", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
     const source = path.join(project, member);
     if (existsSync(source)) cpSync(source, path.join(root, member), { recursive: true });
   }
@@ -66,6 +68,7 @@ function invoke(root, script, args, extra = {}) {
 }
 
 function pass(root, script, args, extra) {
+  progress(`${script} ${args.join(" ")}`);
   const result = invoke(root, script, args, extra);
   assert.equal(result.status, 0, `${script} ${args.join(" ")}\n${result.stderr}\n${result.stdout?.slice(0, 1000)}`);
   return result;
@@ -109,11 +112,12 @@ function attendedObservations(root) {
   };
 }
 
-function rewriteFixturePublication(root, shard) {
+function rewriteFixturePublication(root, shard, touched = null) {
   const base = path.join(root, "artifacts/native/v1.2", run);
   const file = path.join(base, "publication", `${shard}.json`);
   const publication = JSON.parse(readFileSync(file, "utf8"));
   for (const member of publication.members) {
+    if (touched !== null && !touched.has(member.artifact)) continue;
     const bytes = readFileSync(path.join(base, member.artifact));
     member.sha256 = createHash("sha256").update(bytes).digest("hex"); member.size_bytes = bytes.length;
   }
@@ -156,6 +160,8 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
   completeMultiPlanFixture(root);
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
   const preseal = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", run, "preseal-validation.json"), "utf8"));
+  assert.equal(preseal.schema_version, 3);
+  assert.equal(preseal.producer, "v12-preseal-validation/v3");
   assert.equal(preseal.row_evidence.length, 172);
   assert.equal(new Set(preseal.row_evidence.map(row => row.row_id)).size, 172);
   assert.ok(preseal.row_evidence.every(row => row.selector.type && row.selector.resolution.result === row.result));
@@ -168,6 +174,7 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["verify", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations)]);
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
   const finalEvidence = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", run, "final-evidence.json"), "utf8"));
+  assert.equal(finalEvidence.schema_version, 3);
   assert.equal(finalEvidence.rows.length, 172); assert.equal(finalEvidence.release_authorized, false);
   assert.equal(finalEvidence.readiness, "NOT_READY");
   assert.equal(finalEvidence.rows.find(row => row.requirement_id === "VER-07").verdict, "REVIEW_REQUIRED");
@@ -176,6 +183,12 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
   pass(root, "scripts/generate-v12-parity-report.mjs", ["--final-evidence", `artifacts/native/v1.2/${run}/final-evidence.json`]);
   assert.match(readFileSync(path.join(root, "artifacts/native/v1.2", run, "parity-report.md"), "utf8"), /Rows: 172/u);
   assert.equal(JSON.parse(readFileSync(path.join(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md"), "utf8")).release_authorized, false);
+  process.env.V12_BLACKBOX_TRUSTED_VISUAL_PUBLICATION_SHA256 = createHash("sha256").update(Buffer.concat([
+    readFileSync(path.join(root, "artifacts/native/v1.2", run, "publication/visual.json")),
+    Buffer.from("\n"),
+    readFileSync(path.join(root, "artifacts/native/v1.2", run, "publication/comparison.json")),
+  ])).digest("hex");
+  t.after(() => { delete process.env.V12_BLACKBOX_TRUSTED_VISUAL_PUBLICATION_SHA256; });
   await t.test("typed ledger rejects source-result tampering and exceptions cannot erase a blocker", () => {
     // The CLI round-trip above remains the integration oracle. This separate
     // subprocess exercises the public derivation API with the same real fixture.
@@ -232,18 +245,21 @@ async function assertSourceMutations(t, root) {
   };
   async function mutation(name, rowId, expected, shards, mutate, { invalid = false, attended = false } = {}) {
     await t.test(name, () => {
+      progress(`mutation ${name}`);
       cleanOutputs();
       const saved = new Map();
+      const touched = new Set();
       const edit = (file, fn, text = false) => {
         const absolute = path.join(base, file); const original = readFileSync(absolute);
         if (!saved.has(absolute)) saved.set(absolute, original);
         const changed = fn(text === 'bytes' ? original : text ? original.toString('utf8') : JSON.parse(original));
         writeFileSync(absolute, text ? changed : JSON.stringify(changed));
+        touched.add(file);
       };
       for (const shard of shards) saved.set(path.join(base, "publication", `${shard}.json`), readFileSync(path.join(base, "publication", `${shard}.json`)));
       try {
         mutate(edit);
-        for (const shard of shards) rewriteFixturePublication(root, shard);
+        for (const shard of shards) rewriteFixturePublication(root, shard, touched);
         const preflight = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
         if (invalid) {
           assert.notEqual(preflight.status, 0, name);
@@ -295,40 +311,35 @@ async function assertSourceMutations(t, root) {
     });
   }
   for (const state of ['FAIL', 'NOT_RUN', 'REVIEW_REQUIRED']) {
-    await mutation(`visual byte-derived classification retains ${state}`, 'SHL-03', state, ['visual', 'comparison'], edit => {
+    await mutation(`visual byte-derived classification retains ${state}`, 'SHL-01', state, ['visual', 'comparison'], edit => {
       let comparison;
       const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-      const native = new PNG({ width: 200, height: 1 });
-      for (let i = 0; i < 200; i++) native.data.set([100, 100, 100, 255], i * 4);
-      const reference = new PNG({ width: 200, height: 1 }); reference.data.set(native.data);
-      const changed = state === 'FAIL' ? 5 : state === 'REVIEW_REQUIRED' ? 2 : 0;
-      for (let i = 0; i < changed; i++) reference.data[i * 4] = 101;
-      const overlay = new PNG({ width: 200, height: 1 }); const difference = new PNG({ width: 200, height: 1 }); const mask = new PNG({ width: 200, height: 1 });
-      for (let offset = 0; offset < native.data.length; offset += 4) {
-        let different = false;
-        for (let channel = 0; channel < 4; channel++) {
-          const d = Math.abs(native.data[offset + channel] - reference.data[offset + channel]); different ||= d !== 0;
-          overlay.data[offset + channel] = channel === 3 ? 254 : Math.round((native.data[offset + channel] + reference.data[offset + channel]) / 2);
-          difference.data[offset + channel] = channel === 3 ? 255 : d;
-          mask.data[offset + channel] = channel === 3 ? 255 : different ? 255 : 0;
-        }
-      }
       edit('comparison/index.json', value => {
-        comparison = value.results[0];
-        for (const [kind, image] of Object.entries({ native, reference, overlay, difference, mask })) {
-          const encoded = PNG.sync.write(image); const descriptor = comparison.artifacts[kind];
-          edit(descriptor.path.replace(`artifacts/native/v1.2/${run}/`, ''), () => encoded, 'bytes');
-          Object.assign(descriptor, { sha256: digest(encoded), size_bytes: encoded.length, width: 200, height: 1 });
+        comparison = value.results.find(entry => entry.comparison_mode === 'retained_png');
+        const referenceBytes = readFileSync(path.join(root, comparison.artifacts.reference.path));
+        const reference = PNG.sync.read(referenceBytes); const native = PNG.sync.read(referenceBytes);
+        const changed = state === 'FAIL' ? Math.ceil(reference.width * reference.height * 0.03)
+          : state === 'REVIEW_REQUIRED' ? Math.ceil(reference.width * reference.height * 0.01) : 0;
+        for (let i = 0; i < changed; i++) native.data[i * 4] = native.data[i * 4] <= 242 ? native.data[i * 4] + 13 : native.data[i * 4] - 13;
+        const derived = deriveV12PixelComparison(reference, native); const encodedNative = PNG.sync.write(native); const nativeHash = digest(encodedNative);
+        edit(comparison.artifacts.native.path.replace(`artifacts/native/v1.2/${run}/`, ''), () => encodedNative, 'bytes');
+        Object.assign(comparison.artifacts.native, { sha256: nativeHash, size_bytes: encodedNative.length, width: native.width, height: native.height });
+        for (const [kind, bytes] of Object.entries(derived.bytes)) {
+          edit(comparison.artifacts[kind].path.replace(`artifacts/native/v1.2/${run}/`, ''), () => bytes, 'bytes');
+          Object.assign(comparison.artifacts[kind], { sha256: digest(bytes), size_bytes: bytes.length, width: native.width, height: native.height });
         }
         let observationBytes;
-        edit(comparison.observation.path.replace(`artifacts/native/v1.2/${run}/`, ''), observation => { if (state === 'NOT_RUN') observation.native_execution = 'NOT_RUN'; observationBytes = Buffer.from(JSON.stringify(observation)); return observation; });
+        edit(comparison.observation.path.replace(`artifacts/native/v1.2/${run}/`, ''), observation => { observation.capture_png_sha256 = nativeHash; if (state === 'NOT_RUN') observation.native_execution = 'NOT_RUN'; observationBytes = Buffer.from(JSON.stringify(observation)); return observation; });
         Object.assign(comparison.observation, { sha256: digest(observationBytes), size_bytes: observationBytes.length });
         comparison.classification = state; comparison.counts_as_pass = false;
-        comparison.metrics = { width: 200, height: 1, total_pixels: 200, changed_pixels: changed, pixel_percent: changed / 200 * 100, mean_absolute_channel_delta: changed / 800 };
+        comparison.metrics = derived.metrics;
+        comparison.state_receipt.png_sha256 = comparison.artifacts.native.sha256;
+        comparison.state_receipt.observation_sha256 = comparison.observation.sha256;
+        comparison.capture_state_receipt.png_sha256 = comparison.artifacts.native.sha256;
+        for (const window of value.windows) window.result_sha256 = digest(JSON.stringify(value.results.slice(window.offset, window.offset + window.count).map(({ state_receipt }) => state_receipt)));
         return value;
       });
-      edit('screenshots/index.json', value => { value.records[0].native_png = comparison.artifacts.native; return value; });
-      edit(comparison.capture_record_path.replace(`artifacts/native/v1.2/${run}/`, ''), value => { value.native_png = comparison.artifacts.native; return value; });
+      edit('screenshots/index.json', value => { const capture = value.records.find(entry => entry.state_id === comparison.id && entry.configuration_id === comparison.configuration_id); capture.native_png = comparison.artifacts.native; capture.settings.state_receipt.png_sha256 = comparison.artifacts.native.sha256; for (const window of value.windows) window.result_sha256 = digest(JSON.stringify(value.records.slice(window.offset, window.offset + window.count).map(({ settings }) => settings.state_receipt))); return value; });
     });
   }
   await mutation('attended failed row blocks VER-12 and its relevant gate', 'VER-12', 'FAIL', [], edit => edit('attended-observations.json', value => { value.rows[0].status = 'failed'; value.status = 'failed'; return value; }), { attended: true });

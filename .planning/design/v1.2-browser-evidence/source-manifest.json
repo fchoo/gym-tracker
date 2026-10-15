@@ -12,11 +12,6 @@
       "id": "approved-hybrid-html",
       "filename": "approved-hybrid.html",
       "sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96"
-    },
-    {
-      "id": "design-audit-revision18",
-      "filename": "design-audit-revision18.md",
-      "sha256": "3d121af24fe92907ab035ab49f50473107043bcd9ea126722d5d2132ece7c048"
     }
   ],
   "external_authority": {

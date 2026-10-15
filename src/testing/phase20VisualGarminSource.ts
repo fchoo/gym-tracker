@@ -56,7 +56,7 @@ export function createPhase20VisualGarminSource(
   }
   const scenario = phase20VisualState(request.state)?.name;
   if (scenario === undefined) throw new Error("phase20_visual_garmin_state_invalid");
-  const initialConnection = ["garmin-disconnected", "garmin-consent", "garmin-file-import", "garmin-revoked"].includes(scenario)
+  const initialConnection = ["garmin-disconnected", "garmin-consent", "garmin-file-import"].includes(scenario)
       ? { kind: "disconnected" as const }
       : { kind: "connected" as const, account_namespace: ACCOUNT, generation: 1 };
   return Object.freeze({

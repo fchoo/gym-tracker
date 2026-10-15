@@ -190,7 +190,6 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
     const dimensions = decodeNativePng(measured.png);
     const pngSha256 = hash(measured.png);
     const pngPath = `artifacts/native/v1.2/${runId}/screenshots/${item.state_id}/${item.configuration_id}/native.png`;
-    const recordPath = `artifacts/native/v1.2/${runId}/screenshots/${item.state_id}/${item.configuration_id}/capture.json`;
     if (typeof write === "function") write(pngPath, measured.png);
     else {
       const absolute = path.resolve(root, pngPath);
@@ -200,11 +199,12 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
     }
     const receipt = validateStateReceipt(root, runId, item, measured, pngSha256);
     const record = Object.freeze({ schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) });
-    immutableJson(root, recordPath, record, write);
     records.push(record);
   }
   if (new Set(records.map(({ settings }) => settings.state_receipt.nonce)).size !== records.length) fail("state_receipt_duplicate");
-  const effectiveWindows = windows.length > 0 ? windows : plan.captures.map((item, offset) => Object.freeze({ ordinal: offset, offset, count: 1, first: `${item.state_id}/${item.configuration_id}`, last: `${item.state_id}/${item.configuration_id}` }));
+  const effectiveWindows = windows.length > 0 ? windows : plan.captures.map((item, offset) => Object.freeze({ ordinal: offset, offset, count: 1, first: `${item.state_id}/${item.configuration_id}`, last: `${item.state_id}/${item.configuration_id}`,
+    request_bytes: Buffer.byteLength(JSON.stringify({ run_id: runId, captures: [item] })), response_bytes: 0,
+    request_sha256: hash(JSON.stringify([item])), result_sha256: hash(JSON.stringify([records[offset].settings.state_receipt])) }));
   const index = Object.freeze({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, source_hashes: plan.source_hashes, capture_count: records.length, windows: Object.freeze(effectiveWindows), records: Object.freeze(records) });
   immutableJson(root, `artifacts/native/v1.2/${runId}/screenshots/index.json`, index, write);
   return index;
@@ -237,12 +237,16 @@ export function verifyV12VisualCapture({ runId, root = process.cwd(), readJson, 
   const ordered = index.records.map((record) => `${record.state_id}/${record.configuration_id}`);
   const expected = V12_BROWSER_WALK_STATE_IDS.flatMap((state) => V12_CONFIG_IDS.map((configuration) => `${state}/${configuration}`));
   if (JSON.stringify(ordered) !== JSON.stringify(expected)) fail("capture_order_invalid");
+  const plan = executeV12VisualCapture({ root, mode: "plan" });
   let offset = 0;
   for (const [ordinal, window] of index.windows.entries()) {
     if (window.ordinal !== ordinal || window.offset !== offset || !Number.isSafeInteger(window.count) || window.count < 1 || window.count > 512
       || window.first !== ordered[offset] || window.last !== ordered[offset + window.count - 1]) fail("window_manifest_invalid");
     if (window.request_bytes !== undefined && (!Number.isSafeInteger(window.request_bytes) || window.request_bytes > 1024 * 1024
       || !Number.isSafeInteger(window.response_bytes) || window.response_bytes > 32 * 1024 * 1024)) fail("window_manifest_invalid");
+    const planSlice = plan.captures.slice(window.offset, window.offset + window.count);
+    const recordSlice = index.records.slice(window.offset, window.offset + window.count);
+    if (window.request_sha256 !== hash(JSON.stringify(planSlice)) || window.result_sha256 !== hash(JSON.stringify(recordSlice.map(({ settings }) => settings.state_receipt)))) fail("window_manifest_invalid");
     offset += window.count;
   }
   if (offset !== expected.length) fail("window_manifest_invalid");

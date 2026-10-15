@@ -33,7 +33,7 @@ export default function ProgressRoute() {
   const visualScenario = visualRequest === null
     ? undefined
     : phase20VisualState(visualRequest.state)?.fixture_variant;
-  const visualSport = visualScenario?.includes("running")
+  const visualSport = visualScenario?.includes("running") || visualScenario?.startsWith("progress-settings-")
     ? "Running" as const
     : visualScenario?.includes("strength") || visualScenario === "progress-recommendation"
       ? "Strength" as const

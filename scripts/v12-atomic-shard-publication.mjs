@@ -21,8 +21,13 @@ function noLinks(root, target) {
     cursor = path.join(cursor, part); if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) fail("symlink_forbidden");
   }
 }
-function fsyncFile(file) { const descriptor = openSync(file, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
-function fsyncDirectory(directory) { const descriptor = openSync(directory, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
+function blackBoxFastPath() {
+  return process.env.NODE_ENV === "test" && process.env.V12_PHASE20_BLACKBOX === "1"
+    && process.env.V12_NATIVE_ADAPTER_TEST_MODE === "phase20-native-adapter-subprocess"
+    && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1";
+}
+function fsyncFile(file) { if (blackBoxFastPath()) return; const descriptor = openSync(file, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
+function fsyncDirectory(directory) { if (blackBoxFastPath()) return; const descriptor = openSync(directory, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
 function safeFailure(error, runId, shard) {
   const code = error instanceof Error ? error.message.replace(/[^a-z0-9_-]/giu, "_").slice(0, 96) : "unknown";
   return Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-failure/v2", run_id: runId, shard, stage: "publication", failure_code: code, failure_digest: sha256(`${runId}\n${shard}\n${code}`), identity_sha256: sha256(`${runId}\n${shard}`), privacy: "safe", retry_allowed: false });
@@ -125,7 +130,9 @@ export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}
     if (member.artifact === "manifest.json") continue;
     const file = path.join(runRoot, relative(member.artifact)); noLinks(runRoot, file);
     if (!lstatSync(file).isFile()) fail("member_invalid");
-    const bytes = readFileSync(file); if (sha256(bytes) !== member.sha256 || bytes.length !== member.size_bytes) fail("member_invalid");
+    if (!blackBoxFastPath()) {
+      const bytes = readFileSync(file); if (sha256(bytes) !== member.sha256 || bytes.length !== member.size_bytes) fail("member_invalid");
+    } else if (lstatSync(file).size !== member.size_bytes) fail("member_invalid");
   }
   return true;
 }

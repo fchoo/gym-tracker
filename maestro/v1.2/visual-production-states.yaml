@@ -311,6 +311,22 @@ tags: [v1.2, phase-20, visual, synthetic-fixture]
       - tapOn: { text: "Sync now" }
 - runFlow:
     when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-102'}
+    commands:
+      - tapOn: { text: "Confirm match" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-106'}
+    commands:
+      - tapOn: { text: "Confirm match" }
+- runFlow:
+    when:
+      true: ${VISUAL_MODE == 'capture' && VISUAL_STATE == 'BW-107'}
+    commands:
+      - tapOn: { text: "Disconnect Garmin" }
+      - tapOn: { text: "Disconnect Garmin" }
+- runFlow:
+    when:
       true: ${VISUAL_MODE == 'capture'}
     commands:
       - extendedWaitUntil:
