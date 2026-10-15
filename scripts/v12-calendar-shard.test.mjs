@@ -58,17 +58,28 @@ test("Calendar shard writes one privacy-safe immutable report and rejects placeh
     device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
     configuration: { id: "AP-L-C390-P-F100" },
   };
+  const flowSha256 = "9".repeat(64);
+  const receipt = (id, status = "PASS") => ({
+    content_width_dp: 400, start_dp: [300, 180], end_dp: [200, 180], dx_dp: -100, dy_dp: 0,
+    event_sequence: ["pointer-down", "pointer-move", "pointer-up"], cancelled: false, settled: status !== "NOT_RUN",
+    callback_count: 1, semantic_transition: { pre: "month", during: "dragging", post: "month" },
+    screenshot_sha256: "1".repeat(64), trace_sha256: "2".repeat(64), expected_outcome: id,
+  });
   const native = {
+    flow_sha256: flowSha256,
+    flow_revision: "calendar-flow-r35",
     stages: V12_CALENDAR_SHARD_STAGE_IDS.map((id, order) => ({
       id, order, status: "NOT_RUN", samples: [
         { timestampMs: order * 2 + 1, widthDp: 400, dxDp: id.includes("25") ? -100 : -40, dyDp: 0, intentOwner: "horizontal", translationDp: id.includes("25") ? -100 : -40, title: "synthetic", selectedCivilDate: "2026-11-01", generation: 1, focusedWeek: "synthetic-week", rowBounds: [0, 64], callbackCount: 1, focusIdentity: "synthetic-focus", motion: id === "reduced-motion" ? "reduced" : "normal" },
         { timestampMs: order * 2 + 2, widthDp: 400, dxDp: id.includes("25") ? -100 : -40, dyDp: 0, intentOwner: "horizontal", translationDp: id.includes("25") ? -100 : -40, title: "synthetic", selectedCivilDate: "2026-11-01", generation: 1, focusedWeek: "synthetic-week", rowBounds: [0, 64], callbackCount: 1, focusIdentity: "synthetic-focus", motion: id === "reduced-motion" ? "reduced" : "normal" },
       ],
+      receipt: receipt(id),
     })),
+    junit_cases: V12_CALENDAR_SHARD_STAGE_IDS.map((id, order) => ({ id, order, status: "NOT_RUN" })),
   };
   const writes = new Map();
   const result = await executeV12CalendarShardCli(["--run", runId, "--execute"], {
-    root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      root: "/synthetic-root", flowSha256: "9".repeat(64), readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
     isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
     snapshotSettings: () => ({}), restoreSettings: () => true, executeNative: () => native,
     writeImmutable: (file, value) => writes.set(file, value), outputExists: () => false,
@@ -80,7 +91,7 @@ test("Calendar shard writes one privacy-safe immutable report and rejects placeh
   malformed.stages[1].id = malformed.stages[0].id;
   await assert.rejects(
     executeV12CalendarShardCli(["--run", runId, "--execute"], {
-      root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      root: "/synthetic-root", flowSha256, readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
       isAncestor: () => true, acquireLease: () => ({}), releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
       executeNative: () => malformed, writeImmutable: () => {}, outputExists: () => false,
     }),
@@ -90,7 +101,7 @@ test("Calendar shard writes one privacy-safe immutable report and rejects placeh
   injected.stages[0].samples[0].injected = true;
   await assert.rejects(
     executeV12CalendarShardCli(["--run", runId, "--execute"], {
-      root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      root: "/synthetic-root", flowSha256, readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
       isAncestor: () => true, acquireLease: () => ({}), releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
       executeNative: () => injected, writeImmutable: () => {}, outputExists: () => false,
     }),
@@ -100,6 +111,7 @@ test("Calendar shard writes one privacy-safe immutable report and rejects placeh
 
 test("Calendar shard rejects visibility-only stages that do not carry an executed flow-bound receipt", async () => {
   const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const flowSha256 = "9".repeat(64);
   const manifest = {
     run_id: runId,
     source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) },
@@ -121,7 +133,7 @@ test("Calendar shard rejects visibility-only stages that do not carry an execute
   };
   await assert.rejects(
     executeV12CalendarShardCli(["--run", runId, "--execute"], {
-      root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      root: "/synthetic-root", flowSha256, readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
       isAncestor: () => true, acquireLease: () => ({}), releaseLease: () => true, snapshotSettings: () => ({}), restoreSettings: () => true,
       executeNative: () => visibilityOnly, writeImmutable: () => {}, outputExists: () => false,
     }),
