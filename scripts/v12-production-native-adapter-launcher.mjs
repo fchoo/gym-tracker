@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
+import { executeProductionQualityAction } from "./v12-production-native-quality-actions.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SELF = fileURLToPath(import.meta.url);
@@ -28,13 +29,15 @@ function validateAttestation(request, action) {
   return value;
 }
 async function execute(action, payload, attestation) {
+  const quality = await executeProductionQualityAction(action, payload, attestation);
+  if (quality !== undefined) return quality;
   const runtime = createProductionNativeRuntime(attestation, { cleanup: ["restore-settings", "release-lease"].includes(action) });
   if (action === "acquire-lease") return runtime.acquireLease();
   if (action === "release-lease") return runtime.releaseLease(payload.lease);
   if (action === "snapshot-settings") return runtime.snapshotSettings(payload.lease);
   if (action === "restore-settings") return runtime.restoreSettings(payload.settings, payload.lease);
   if (action === "sqlite") return runtime.withLease(payload, runtime.sqlite);
-  // These producers do not exist in the source tree yet. Never convert a
+  // The remaining producers do not exist in the source tree yet. Never convert a
   // screenshot of an arbitrary screen or a successful Maestro process into
   // a state/observation receipt. Keep the unsupported actions explicitly closed.
   fail("action_contract_unavailable");

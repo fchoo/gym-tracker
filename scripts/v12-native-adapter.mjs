@@ -10,6 +10,12 @@ const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher
 const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackbox/fake-device-adapter.mjs", import.meta.url));
 const TEST_MODE = "phase20-native-adapter-subprocess";
 
+export const V12_NATIVE_ADAPTER_TIMEOUTS_MS = Object.freeze({
+  accessibility: 26 * 60_000,
+  performance: 26 * 60_000,
+  sqlite: 26 * 60_000,
+});
+
 function fail(code) { throw new Error(`v12_native_adapter_${code}`); }
 function sha256(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
 function sourceHash(file) { return sha256(readFileSync(file)); }
@@ -93,8 +99,8 @@ export function invokeV12NativeAdapter(action, payload, {
     cwd: root,
     input: `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`,
     encoding: "utf8",
-    // The SQLite aggregate has bounded native progress, plus restoration time.
-    timeout: action === "sqlite" ? 26 * 60_000 : 5 * 60_000,
+    // Quality and SQLite aggregates have bounded native progress plus restoration time.
+    timeout: V12_NATIVE_ADAPTER_TIMEOUTS_MS[action] ?? 5 * 60_000,
     maxBuffer: 32 * 1024 * 1024,
   });
   if (result.error || result.signal || result.status !== 0) {
