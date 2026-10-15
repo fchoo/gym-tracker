@@ -82,6 +82,7 @@ function v12LiveManifest(runId = "phase20-20261014T000000Z-aaaaaaaaaaaa") {
     schema_version: 1,
     run_id: runId,
     mode: "live",
+    evidence_origin: "native",
     created_at: "2026-10-14T00:00:00Z",
     source: {
       head: "a".repeat(40), tree_sha256: "b".repeat(64), dirty: false,

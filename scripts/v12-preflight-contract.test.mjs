@@ -59,6 +59,8 @@ test("final native identity requires current source, retained APK bytes, signatu
   for (const key of ["source_tree_sha256", "apk_sha256", "signature_sha256", "installed_apk_sha256", "device_identity_sha256", "settings_sha256"]) {
     assert.throws(() => validateV12FinalNativeIdentity(manifest, { ...observed, [key]: h("9") }), /v12_final_native_identity_invalid/u, key);
   }
+  assert.throws(() => validateV12FinalNativeIdentity({ ...manifest, evidence_origin: "test" }, observed), /v12_final_test_origin_forbidden/u);
+  assert.throws(() => validateV12FinalNativeIdentity({ ...manifest, evidence_origin: undefined }, observed), /v12_final_native_identity_invalid/u);
 });
 
 // Deliberately uses the former PASS-by-hash shape. This must never regain a

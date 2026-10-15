@@ -610,7 +610,7 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
   return Object.freeze({
     ...baseLedger,
     run_id: validatedManifest.run_id,
-    evidence_origin: validatedManifest.evidence_origin ?? "native",
+    evidence_origin: validatedManifest.evidence_origin ?? "unspecified",
     identity: Object.freeze({
       run_id: validatedManifest.run_id,
       source_tree_sha256: validatedManifest.source.tree_sha256,
@@ -720,7 +720,7 @@ function preflightHashFile(root, relative, options) {
 
 export function validateV12FinalNativeIdentity(manifest, observed) {
   if (!finalPlainObject(manifest) || manifest.evidence_origin === "test") finalFail("test_origin_forbidden");
-  if (manifest.evidence_origin !== undefined && manifest.evidence_origin !== "native") finalFail("native_identity_invalid");
+  if (manifest.evidence_origin !== "native") finalFail("native_identity_invalid");
   if (!finalExact(observed, ["source_head", "source_tree_sha256", "apk_sha256", "apk_size_bytes", "signature_sha256", "certificate_sha256", "installed_apk_sha256", "device_identity_sha256", "settings_sha256"])) finalFail("native_identity_invalid");
   const expected = {
     source_head: manifest.source?.head,
@@ -752,6 +752,7 @@ function finalAndroidTool(name) {
 
 export function verifyV12FinalNativeIdentity(manifest, { root = ROOT } = {}) {
   if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
+  if (manifest.evidence_origin !== "native") preflightFail("native_origin_required");
   const apkFile = preflightSafeFile(root, manifest.build?.apk?.path);
   const apkBytes = readFileSync(apkFile);
   const apksigner = finalAndroidTool("apksigner"); const adb = finalAndroidTool("adb");
