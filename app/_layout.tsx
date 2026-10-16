@@ -1,7 +1,7 @@
 import React from "react";
 import Constants from "expo-constants";
 import { useFonts } from "expo-font";
-import { Stack, usePathname } from "expo-router";
+import { Stack, useLocalSearchParams, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
   Keyboard,
@@ -28,6 +28,7 @@ import {
   useWorkoutAppRuntime,
   WorkoutAppRuntimeProvider,
 } from "../src/bootstrap/workoutAppRuntime";
+import { RunningPlanRuntimeProvider } from "../src/bootstrap/runningPlanRuntime";
 import {
   productionAppearanceStore,
 } from "../src/bootstrap/appearancePreference";
@@ -40,6 +41,13 @@ import {
 import {
   SemanticToastProvider,
 } from "../src/ui/components/SemanticToast";
+import {
+  createPhase20VisualRuntimeDependencies,
+} from "../src/testing/phase20VisualFixtureRuntime";
+import {
+  PHASE20_VISUAL_ROUTE,
+  phase20VisualGate,
+} from "../src/testing/phase20VisualRequest";
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
@@ -116,7 +124,7 @@ function RootNavigator() {
   const runtime = useWorkoutAppRuntime();
   const { colorScheme } = useAppTheme();
 
-  return (
+  const navigator = (
     <StartupReadinessGate
       launchState={runtime.launchState}
       notificationPermission={runtime.notificationPermission}
@@ -160,6 +168,11 @@ function RootNavigator() {
         <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       </>
     </StartupReadinessGate>
+  );
+  return runtime.runningPlanRuntime === null ? navigator : (
+    <RunningPlanRuntimeProvider runtime={runtime.runningPlanRuntime}>
+      {navigator}
+    </RunningPlanRuntimeProvider>
   );
 }
 
@@ -246,6 +259,17 @@ function NativeContractsNavigator() {
   );
 }
 
+function Phase20VisualNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase20-visual-probe"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__phase20-visual-probe" />
+    </Stack>
+  );
+}
+
 function PreRuntimeFailure({
   category,
   onRetry,
@@ -300,6 +324,29 @@ function RootLayoutAttempt({
   const phase14FontProofEnabled = nativeContractsEnabled
     && nativeContractSuite === "phase14-font-proof";
   const pathname = usePathname();
+  const searchParams = useLocalSearchParams() as Readonly<Record<string, unknown>>;
+  const phase20VisualPath = pathname === PHASE20_VISUAL_ROUTE;
+  const phase20VisualRequest = phase20VisualGate({
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    nativeContractsEnabled,
+    nativeContractSuite,
+    pathname,
+    params: searchParams,
+  });
+  const phase20VisualDependencies = React.useMemo(
+    () => phase20VisualRequest === null || phase20VisualRequest.mode === "reset"
+      ? null
+      : createPhase20VisualRuntimeDependencies(phase20VisualRequest),
+    [phase20VisualRequest?.configuration, phase20VisualRequest?.mode, phase20VisualRequest?.nonce, phase20VisualRequest?.state],
+  );
+  const phase20VisualAppearanceStore = React.useMemo(
+    () => createMemoryAppearanceStore(
+      phase20VisualRequest?.appearance === "Light" || phase20VisualRequest?.appearance === "Dark"
+        ? phase20VisualRequest.appearance
+        : null,
+    ),
+    [phase20VisualRequest?.appearance, phase20VisualRequest?.nonce],
+  );
   const { width } = useWindowDimensions();
   const attendedPreviewEnabled = phase14FontProofEnabled
     || nativeContractsEnabled && pathname === "/__phase2-attended-preview";
@@ -325,7 +372,8 @@ function RootLayoutAttempt({
     || phase12GoogleAuthSmokeEnabled
     || phase18GarminProofEnabled
     || phase18GarminAdversarialEnabled
-    || v12NativeContractsEnabled;
+    || v12NativeContractsEnabled
+    || phase20VisualPath;
   const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
     ? productionAppearanceStore.read()
     : null;
@@ -444,6 +492,26 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={phase12CleanupAppearanceStore}>
             <NativeContractsNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase20VisualPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase20VisualAppearanceStore}>
+            {phase20VisualDependencies === null ? (
+              <Phase20VisualNavigator />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={phase20VisualDependencies}>
+                <ProductionToastBoundary>
+                  <Phase20VisualNavigator />
+                </ProductionToastBoundary>
+              </WorkoutAppRuntimeProvider>
+            )}
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

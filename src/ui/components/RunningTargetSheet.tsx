@@ -277,6 +277,7 @@ export function RunningTargetSheet({
       onCancel={onClose}
       restoreFocusRef={restoreFocusRef}
       scrollTestID="running-target-sheet-content"
+      testID="running-target-sheet"
       visible={visible}
     >
       {source === undefined || draft === undefined ? null : (

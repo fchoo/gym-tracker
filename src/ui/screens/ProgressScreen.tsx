@@ -53,6 +53,8 @@ export type ProgressScreenProps = Readonly<{
   returnFocusToken?: string;
   width?: number;
   fontScale?: number;
+  initialPeriod?: ProgressPeriod;
+  initialSport?: ProgressSport;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
@@ -513,15 +515,15 @@ function DashboardContent({ dashboard, exerciseActionRefs, historyActionRefs, on
   </View>;
 }
 
-export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSession, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, progressRecommendationRuntime, progressBodyweightRuntime, returnFocusToken, returnFocusVersion = 0, width, fontScale, headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
+export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSession, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, progressRecommendationRuntime, progressBodyweightRuntime, returnFocusToken, returnFocusVersion = 0, width, fontScale, initialPeriod = "4_weeks", initialSport = "All", headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
   const { colors } = useAppTheme();
   const windowDimensions = useWindowDimensions();
-  const [sport, setSport] = useState<ProgressSport>("All");
+  const [sport, setSport] = useState<ProgressSport>(initialSport);
   const [sportFocusRequest, setSportFocusRequest] = useState<Readonly<{
     value: ProgressSport;
     version: number;
   }> | null>(null);
-  const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
+  const [period, setPeriod] = useState<ProgressPeriod>(initialPeriod);
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);

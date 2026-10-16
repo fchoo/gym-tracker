@@ -7,6 +7,8 @@ import { createProductionNativeRuntime } from "./v12-production-native-runtime.m
 import { validateV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
 import { executeV12PerformanceShard } from "./v12-performance-shard.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "./benchmark-v12-interactions.mjs";
+import { V12_QUALITY_RUNTIME_SETTINGS } from "./v12-device-settings-contract.mjs";
+import { V12_NATIVE_ADB_CALL_TIMEOUT_MS, V12_QUALITY_PRODUCER_TIMEOUT_MS } from "./v12-native-time-budgets.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const COMPONENT = `${PACKAGE}/com.fchoo.gymtracker.Phase20QualityInstrumentation`;
@@ -14,7 +16,7 @@ const MARKER = "GYM_TRACKER_V12_QUALITY:";
 const HASH = /^[a-f0-9]{64}$/u;
 const ROOTS = ["workout", "calendar", "library", "progress"];
 const INPUTS = ["touch", "software-keyboard", "hardware-keyboard", "dpad"];
-const SETTINGS = { font_scale: "system", window_animation_scale: "global", transition_animation_scale: "global", animator_duration_scale: "global", show_ime_with_hard_keyboard: "secure" };
+const SETTINGS = V12_QUALITY_RUNTIME_SETTINGS;
 const MAX_BYTES = 4 * 1024 * 1024;
 const fail = (code) => { throw new Error(`v12_production_native_launcher_quality_${code}`); };
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -50,7 +52,7 @@ function assertIdentity(actual, expected) {
 // The commands are fixed; neither executable paths nor shell fragments come from a request.
 // https://nodejs.org/docs/latest-v24.x/api/child_process.html#child_processspawnsynccommand-args-options
 function adb(serial, args) {
-  const child = spawnSync("adb", ["-s", serial, ...args], { encoding: "utf8", timeout: 20_000, killSignal: "SIGKILL", maxBuffer: MAX_BYTES });
+  const child = spawnSync("adb", ["-s", serial, ...args], { encoding: "utf8", timeout: V12_NATIVE_ADB_CALL_TIMEOUT_MS, killSignal: "SIGKILL", maxBuffer: MAX_BYTES });
   if (child.error || child.signal || child.status !== 0) fail("device_command_failed");
   return child.stdout.trim();
 }
@@ -98,7 +100,7 @@ function instrument(serial, action, identity, nonce) {
     let idle;
     const abort = (code) => { problem ??= code; child.kill("SIGKILL"); };
     const resetIdle = () => { clearTimeout(idle); idle = setTimeout(() => abort("marker_timeout"), 30_000); };
-    const deadline = setTimeout(() => abort("execution_timeout"), 20 * 60_000);
+    const deadline = setTimeout(() => abort("execution_timeout"), V12_QUALITY_PRODUCER_TIMEOUT_MS);
     resetIdle();
     const parseLine = (line) => {
       if (/^INSTRUMENTATION_(?:FAILED|ABORTED):/u.test(line)) fail("instrumentation_failed");
@@ -305,10 +307,8 @@ function validatePerformance(performance, identity) {
  * debugger_attached:false,observations} or the same envelope with performance.
  * The strict validators above define the complete source/measurement receipt contract.
  * TalkBack and switch scanning remain attended and cannot appear in this schema.
- * Integration prerequisite: the invoking adapter needs at least 26 minutes for
- * performance (20 minute native deadline plus bounded identity/settings cleanup).
- * Its current five minute non-SQLite timeout is insufficient; that file is owned
- * by the launcher worker and is deliberately not modified by this module.
+ * The invoking adapter derives its deadline from the 20-minute producer plus
+ * every independently bounded ADB call through restoration and lease release.
  */
 export async function executeProductionQualityAction(action, payload, attestation) {
   if (action !== "accessibility" && action !== "performance") return undefined;

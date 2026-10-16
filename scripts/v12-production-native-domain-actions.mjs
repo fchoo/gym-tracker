@@ -41,8 +41,8 @@ function validate(action, payload, a, root) {
 function session(root, a, action) {
   const serial = process.env.V12_DEVICE_SERIAL;
   let nonce = randomBytes(16).toString('hex');
-  // Recovery owns 224 bounded arm/recover flows. Leave five minutes for the
-  // launcher's identity/settings cleanup; shorter domain actions keep 3 minutes.
+  // The producer deadline stays inside the adapter timeout so identity and
+  // settings cleanup retain grace. Recovery owns 224 bounded arm/recover flows.
   const deadline = Date.now() + (action === 'recovery' ? 40 : 3) * 60_000;
   const command = (exe, args, { timeout = 20_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
     if (!cleanup && Date.now() >= deadline) fail('domain_timeout');

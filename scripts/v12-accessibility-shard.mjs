@@ -82,7 +82,10 @@ export function runV12AccessibilityCli(args = process.argv.slice(2), io = proces
   try {
     if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
     if (args[2] === "--verify") verifyV12AccessibilityShard({ runId: args[1] });
-    else publishV12AtomicShard({ runId: args[1], shard: "accessibility", produce: ({ write }) => executeLiveV12AccessibilityShard({ runId: args[1], observe: createV12NativeAdapter().observeAccessibility, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+    else {
+      const adapter = createV12NativeAdapter();
+      publishV12AtomicShard({ runId: args[1], shard: "accessibility", executionOrigin: adapter.executionOrigin, produce: ({ write }) => executeLiveV12AccessibilityShard({ runId: args[1], observe: adapter.observeAccessibility, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+    }
     io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

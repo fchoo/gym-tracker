@@ -15,6 +15,7 @@ import {
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_CALENDAR_REQUIRED_CASES,
   V12_CALENDAR_ROUTE_JOURNEY_IDS,
@@ -26,7 +27,7 @@ import {
   stableCanonicalJson,
 } from "./v12-calendar-artifacts.mjs";
 import { validateV12RunManifest as validateGenericRunManifest } from "./create-v12-run-manifest.mjs";
-import { publishV12AtomicShard, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
+import { publishV12AtomicShard, validateV12ExecutionOrigin, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 import {
   deriveV12Ledger as deriveContractLedger,
   loadV12ContractInputs,
@@ -35,6 +36,11 @@ import {
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
 import { resolveV12SourceRows, combineV12SourceResults } from "./v12-blocker-row-resolver.mjs";
 import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
+import {
+  V12_DEVICE_LEASE_PATHS,
+  digestV12CanonicalRestorationSnapshot,
+  readV12CanonicalRestorationSnapshot,
+} from "./v12-device-settings-contract.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -639,9 +645,9 @@ export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson 
     || ledger.source_results.some((item, index) => !item.selector || item.row_id !== ledger.rows[index].requirement_id
       || (["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(item.result) && (ledger.rows[index].verdict !== item.result || ledger.readiness !== "NOT_READY")))) finalFail("seal_source_results_invalid");
   const base = `artifacts/native/v1.2/${run_id}`;
-  const matrix = Object.freeze({ schema_version: 2, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
+  const matrix = Object.freeze({ schema_version: 3, run_id, rows: ledger.rows, verdict_counts: ledger.verdict_counts, readiness: ledger.readiness, release_authorized: false });
   const finalEvidence = Object.freeze({
-    schema_version: 2,
+    schema_version: 3,
     run_id,
     identity: ledger.identity ?? null,
     rows: ledger.rows,
@@ -679,6 +685,7 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
 });
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
 const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
+const V12_ADAPTER_SHARDS = Object.freeze(["sqlite", "recovery", "garmin", "calendar", "visual", "comparison", "accessibility", "performance"]);
 
 function preflightFail(code) { throw new Error(`v12_preflight_${code}`); }
 
@@ -711,7 +718,8 @@ function preflightSafeFile(root, relative, { required = true } = {}) {
 
 function preflightHashFile(root, relative, options) {
   const file = preflightSafeFile(root, relative, options);
-  return file === null ? null : sha256(readFileSync(file));
+  if (file === null) return null;
+  return sha256(readFileSync(file));
 }
 
 function preflightCollectFiles(root, runId) {
@@ -795,19 +803,123 @@ function preflightVerifyArtifact(root, runId, relative, manifest) {
     let value; try { value = JSON.parse(bytes.toString("utf8")); } catch { preflightFail("json_schema_invalid"); }
     if (!finalPlainObject(value) || (value.run_id !== undefined && value.run_id !== runId) || typeof value.producer !== "string") preflightFail("json_schema_invalid");
     if (relative === "screenshots/index.json") {
-      if (!Array.isArray(value.records) || value.records.length !== 107 * 64) preflightFail("visual_index_invalid");
+      if (value.schema_version !== 2 || value.producer !== "v12-visual-capture-index/v2" || value.capture_count !== 107 * 64
+        || !Array.isArray(value.windows) || value.windows.length < 1 || !Array.isArray(value.records) || value.records.length !== 107 * 64) preflightFail("visual_index_invalid");
+      const nonces = new Set();
       for (const record of value.records) {
         const descriptor = record?.native_png;
-        if (!descriptor || typeof descriptor.path !== "string" || !HASH.test(descriptor.sha256)) preflightFail("visual_record_invalid");
-        const png = readFileSync(preflightSafeFile(root, descriptor.path)); preflightPng(png);
+        const receipt = record?.settings?.state_receipt;
+        if (record?.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || !descriptor || typeof descriptor.path !== "string" || !HASH.test(descriptor.sha256)
+          || receipt?.schema_version !== 3 || !/^[a-f0-9]{32}$/u.test(receipt.nonce ?? "") || nonces.has(receipt.nonce)
+          || receipt.run_id !== runId || receipt.state_id !== record.state_id || receipt.configuration_id !== record.configuration_id
+          || receipt.png_sha256 !== descriptor.sha256 || receipt.source_receipt?.nonce !== receipt.nonce || !HASH.test(receipt.source_receipt?.digest ?? "")) preflightFail("visual_record_invalid");
+        nonces.add(receipt.nonce);
+        const pngFile = preflightSafeFile(root, descriptor.path);
+        const png = readFileSync(pngFile); preflightPng(png);
         if (sha256(png) !== descriptor.sha256) preflightFail("visual_png_hash_invalid");
       }
     }
-    if (relative === "comparison/index.json" && (!Array.isArray(value.results) || value.results.length !== 107 * 64)) preflightFail("comparison_index_invalid");
+    if (relative === "comparison/index.json" && (value.schema_version !== 3 || value.producer !== "v12-visual-comparison-index/v3" || value.comparison_count !== 107 * 64
+      || !Array.isArray(value.windows) || value.windows.length < 1 || !Array.isArray(value.results) || value.results.length !== 107 * 64
+      || value.results.some((entry) => entry.state_receipt?.schema_version !== 3 || entry.capture_state_receipt?.schema_version !== 3
+        || entry.state_receipt.nonce === entry.capture_state_receipt.nonce))) preflightFail("comparison_index_invalid");
     if (relative === "performance.json" && (!value.observation || !Array.isArray(value.observation.raw_samples?.warm_launch_to_interactive_ms))) preflightFail("performance_schema_invalid");
     if (relative === "semantics/accessibility.json" && (!Array.isArray(value.observations) || value.observations.length === 0)) preflightFail("accessibility_schema_invalid");
   }
   return { path: full, sha256: sha256(bytes) };
+}
+
+function assertNonTestEvidenceEnvironment() {
+  if (process.env.NODE_ENV === "test" || process.env.V12_PHASE20_BLACKBOX !== undefined
+    || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined
+    || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined
+    || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) preflightFail("test_provenance_forbidden");
+}
+
+function validateV12ProductionPublicationOrigins(root, runId) {
+  const adapterSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-native-adapter.mjs")));
+  const launcherSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-production-native-adapter-launcher.mjs")));
+  for (const shard of V12_ADAPTER_SHARDS) {
+    let publication;
+    try { publication = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8")); }
+    catch { preflightFail("adapter_provenance_missing"); }
+    let origin;
+    try { origin = validateV12ExecutionOrigin(publication.execution_origin); }
+    catch { preflightFail("adapter_provenance_invalid"); }
+    if (origin.kind === "test-fixture" || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
+    if (origin.adapter_source_sha256 !== adapterSha256 || origin.launcher_source_sha256 !== launcherSha256) preflightFail("adapter_provenance_stale");
+  }
+  return true;
+}
+
+function defaultApkSignature(apkPath) {
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+  if (typeof sdk !== "string" || sdk.length === 0) preflightFail("final_identity_invalid");
+  const apksigner = path.join(sdk, "build-tools", "36.0.0", "apksigner");
+  if (!existsSync(apksigner)) preflightFail("final_identity_invalid");
+  let report;
+  try { report = execFileSync(apksigner, ["verify", "--verbose", "--print-certs", apkPath], { maxBuffer: 16 * 1024 * 1024 }); }
+  catch { preflightFail("final_identity_invalid"); }
+  const text = report.toString("utf8");
+  const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(text)?.[1]?.replaceAll(":", "").toLowerCase();
+  if (!text.includes("Verified using v2 scheme (APK Signature Scheme v2): true") || !HASH.test(certificate ?? "")) preflightFail("final_identity_invalid");
+  return { signature_sha256: sha256(report), certificate_sha256: certificate };
+}
+
+export function readV12FinalDeviceState(manifest, {
+  serial = process.env.V12_DEVICE_SERIAL,
+  executeAdb = (...args) => execFileSync("adb", ["-s", serial, ...args], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 20_000 }),
+} = {}) {
+  if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) preflightFail("final_identity_invalid");
+  const adb = (...args) => {
+    try { return String(executeAdb(...args)).trim(); }
+    catch { preflightFail("final_identity_invalid"); }
+  };
+  if (adb("get-state") !== "device") preflightFail("final_identity_invalid");
+  const abi = adb("shell", "getprop", "ro.product.cpu.abi");
+  const identity_sha256 = phase18DeviceIdentitySha256({ serial, abi, apiLevel: adb("shell", "getprop", "ro.build.version.sdk"), model: adb("shell", "getprop", "ro.product.model") });
+  const installed = adb("shell", "pm", "path", manifest.build.package);
+  if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)) preflightFail("final_identity_invalid");
+  const installed_apk_sha256 = adb("shell", "sha256sum", installed.slice(8)).split(/\s/u)[0];
+  const restoration = readV12CanonicalRestorationSnapshot((args) => adb(...args));
+  const leaseCommand = `${V12_DEVICE_LEASE_PATHS.map((leasePath) => `[ ! -e '${leasePath}' ]`).join(" && ")} && printf clear || printf active`;
+  const lease_state = adb("shell", "sh", "-c", leaseCommand);
+  return {
+    identity_sha256,
+    installed_apk_sha256,
+    abi,
+    restoration_sha256: digestV12CanonicalRestorationSnapshot(restoration),
+    lease_state,
+  };
+}
+
+export function validateV12FinalProductionIdentity(manifest, {
+  root = ROOT,
+  currentHead = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+  currentSourceTreeSha256 = () => sourceTreeSha256(root),
+  verifyApkSignature = defaultApkSignature,
+  readDeviceIdentity = () => readV12FinalDeviceState(manifest),
+} = {}) {
+  const validated = validateV12RunManifest(manifest);
+  const apkPath = preflightSafeFile(root, validated.build.apk.path);
+  const apkBytes = readFileSync(apkPath);
+  if (apkBytes.length < 4 || !apkBytes.subarray(0, 4).equals(Buffer.from("504b0304", "hex"))) preflightFail("final_identity_invalid");
+  let signature; let device; let head; let source;
+  try {
+    signature = verifyApkSignature(apkPath);
+    device = readDeviceIdentity();
+    head = currentHead();
+    source = currentSourceTreeSha256();
+  }
+  catch (error) { if (error instanceof Error && error.message.startsWith("v12_preflight_")) throw error; preflightFail("final_identity_invalid"); }
+  if (device?.lease_state !== "clear") preflightFail("final_lease_active");
+  if (device?.restoration_sha256 !== validated.device.restoration_sha256) preflightFail("final_restoration_invalid");
+  if (apkBytes.length !== validated.build.apk.size_bytes || sha256(apkBytes) !== validated.build.apk.sha256
+    || head !== validated.source.head || source !== validated.source.tree_sha256
+    || signature?.signature_sha256 !== validated.build.apk.signature_sha256 || signature?.certificate_sha256 !== validated.build.apk.certificate_sha256
+    || device?.identity_sha256 !== validated.device.identity_sha256 || device?.installed_apk_sha256 !== validated.device.installed_apk_sha256
+    || device?.installed_apk_sha256 !== validated.build.apk.sha256 || device?.abi !== validated.device.abi) preflightFail("final_identity_invalid");
+  return true;
 }
 
 function preflightValidateArtifacts(root, runId, shardIds) {
@@ -833,18 +945,23 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
 
   const runPrefix = `artifacts/native/v1.2/${options.run_id}`;
   if (options.mode === "preseal") {
+    assertNonTestEvidenceEnvironment();
+    validateV12ProductionPublicationOrigins(root, options.run_id);
     for (const output of V12_PREFLIGHT_FINAL_OUTPUTS) if (preflightSafeFile(root, `${runPrefix}/${output}`, { required: false }) !== null) preflightFail("final_output_present");
     const artifacts = preflightValidateArtifacts(root, options.run_id, Object.keys(V12_PREFLIGHT_SHARDS));
     const allFiles = preflightCollectFiles(root, options.run_id);
     const requiredPaths = new Set([`${runPrefix}/build.json`, ...artifacts.required.map((item) => `${runPrefix}/${item}`)]);
     const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial") || item.includes("/.staging/") || item.includes("/failures/"));
     if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
-    const report = Object.freeze({ schema_version: 2, producer: "v12-preseal-validation/v2", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
+    const report = Object.freeze({ schema_version: 3, producer: "v12-preseal-validation/v3", run_id: options.run_id, mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
     publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report) });
     return report;
   }
+  assertNonTestEvidenceEnvironment();
+  validateV12ProductionPublicationOrigins(root, options.run_id);
+  validateV12FinalProductionIdentity(manifest, { root });
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
-  if (preseal?.producer !== "v12-preseal-validation/v2" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
+  if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
   try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }
   if (preseal.build_sha256 !== build_sha256 || !Array.isArray(preseal.all_artifact_hashes)
     || preseal.all_artifact_hashes.some(item => preflightHashFile(root, item.path) !== item.sha256)) preflightFail("source_hash_invalid");
@@ -856,7 +973,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   const write = (relative, value) => finalWrites.push([relative, value]);
   const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: options.run_id, ledger, writeImmutableJson: write });
   finalWrites.push([`${runPrefix}/parity-report.md`, generateV12ParityReport({ ledger: finalEvidence })]);
-  const readinessHandoff = Object.freeze({ schema_version: 1, producer: "v12-readiness-handoff/v1", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) });
+  const readinessHandoff = Object.freeze({ schema_version: 2, producer: "v12-readiness-handoff/v2", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) });
   finalWrites.push([`${runPrefix}/readiness-handoff.md`, readinessHandoff]);
   publishV12AtomicShard({ root, runId: options.run_id, shard: "final", produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative.replace(`${runPrefix}/`, ""), value)) });
   preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff);

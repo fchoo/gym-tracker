@@ -2,8 +2,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, lstatSync } from 'node:fs';
 import path from 'node:path';
-import { PNG } from 'pngjs';
 import { V12_CONFIG_IDS, V12_BROWSER_WALK_STATE_IDS } from './v12-evidence-contract.mjs';
+import { verifyV12ComparisonRecord } from './compare-v12-visual.mjs';
 import { V12_MAESTRO_FLOW_CONTRACTS } from './run-v12-maestro.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
@@ -372,56 +372,41 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   }
   function resolveVisual() {
     const index = json('comparison/index.json'); const captures = json('screenshots/index.json');
-    ensure(index.run_id === manifest.run_id && index.producer === 'v12-visual-comparison-index/v2' && captures.run_id === manifest.run_id
-      && captures.producer === 'v12-visual-capture-index/v1' && same(captures.source_hashes, { browser_walk: inputs.source_hashes.browser_walk, source_manifest: inputs.source_hashes.source_manifest }), 'visual_schema_invalid');
+    ensure(index.run_id === manifest.run_id && index.producer === 'v12-visual-comparison-index/v3' && index.schema_version === 3
+      && captures.run_id === manifest.run_id && captures.producer === 'v12-visual-capture-index/v2' && captures.schema_version === 2
+      && same(captures.source_hashes, { browser_walk: inputs.source_hashes.browser_walk, source_manifest: inputs.source_hashes.source_manifest }), 'visual_schema_invalid');
     const expected = V12_BROWSER_WALK_STATE_IDS.flatMap(id => V12_CONFIG_IDS.map(config => `${id}:${config}`));
     exactIds(index.results?.map(x => `${x.id}:${x.configuration_id}`), expected, 'visual_selectors_invalid');
     exactIds(captures.records?.map(x => `${x.state_id}:${x.configuration_id}`), expected, 'visual_capture_selectors_invalid');
-    const pngCache = new Map();
-    function png(value) { const content = descriptor(value); if (!pngCache.has(value.sha256)) { try { pngCache.set(value.sha256, PNG.sync.read(content)); } catch { fail('png_invalid'); } } const image = pngCache.get(value.sha256); ensure(image.width === value.width && image.height === value.height, 'png_dimensions_invalid'); return image; }
     index.results.forEach((comparison, index) => {
       const capture = captures.records[index];
-      ensure(capture.schema_version === 2 && capture.producer === 'v12-visual-capture/v2' && capture.run_id === manifest.run_id && capture.native_execution === 'EXECUTED' && capture.settings?.restored === true && capture.settings.privacy === 'synthetic-only' && capture.fixture_id === 'v12-synthetic-fixtures-r18'
+      ensure(capture.schema_version === 3 && capture.producer === 'v12-visual-capture/v3' && capture.run_id === manifest.run_id && capture.native_execution === 'EXECUTED' && capture.settings?.restored === true && capture.settings.privacy === 'synthetic-only' && capture.fixture_id === 'v12-synthetic-fixtures-r18'
         && capture.native_png.path === full(`screenshots/${comparison.id}/${comparison.configuration_id}/native.png`)
-        && same(comparison.artifacts?.native, capture.native_png) && comparison.capture_record_path === full(`screenshots/${comparison.id}/${comparison.configuration_id}/capture.json`), 'visual_capture_invalid');
-      ensure(same(JSON.parse(bytes(comparison.capture_record_path)), capture), 'visual_capture_binding_invalid');
-      const native = png(comparison.artifacts.native); const reference = png(comparison.artifacts.reference);
-      const approved = comparison.approved_reference_source;
-      if (typeof approved === 'string' && approved.startsWith('.planning/design/v1.2-browser-evidence/')) {
-        ensure(!approved.includes('\\') && !approved.split('/').some(part => !part || part === '.' || part === '..'), 'visual_reference_path_invalid');
-        let cursor = root;
-        for (const part of approved.split('/')) { cursor = path.join(cursor, part); ensure(!lstatSync(cursor).isSymbolicLink(), 'visual_reference_path_invalid'); }
-        ensure(readFileSync(cursor).equals(descriptor(comparison.artifacts.reference)), 'visual_approved_reference_invalid');
-      } else ensure(approved === 'adapter-approved-reference', 'visual_reference_invalid');
-      if (comparison.classification !== 'NOT_RUN') {
-        const unique = new Set([comparison.artifacts.native.sha256, comparison.artifacts.reference.sha256]);
-        for (const kind of ['overlay', 'difference', 'mask']) { ensure(!unique.has(comparison.artifacts[kind]?.sha256), 'visual_duplicate_bytes'); unique.add(comparison.artifacts[kind].sha256); }
-      }
-      ensure(native.width === reference.width && native.height === reference.height, 'visual_dimensions_invalid');
-      let changed = 0, delta = 0;
-      const overlay = new PNG({ width: native.width, height: native.height }); const difference = new PNG({ width: native.width, height: native.height }); const mask = new PNG({ width: native.width, height: native.height });
-      for (let offset = 0; offset < native.data.length; offset += 4) {
-        let pixelChanged = false;
-        for (let channel = 0; channel < 4; channel++) {
-          const d = Math.abs(native.data[offset + channel] - reference.data[offset + channel]); delta += d; pixelChanged ||= d !== 0;
-          overlay.data[offset + channel] = channel === 3 ? 254 : Math.round((reference.data[offset + channel] + native.data[offset + channel]) / 2);
-          difference.data[offset + channel] = channel === 3 ? 255 : d; mask.data[offset + channel] = channel === 3 ? 255 : pixelChanged ? 255 : 0;
-        }
-        if (pixelChanged) changed++;
-      }
-      const metrics = { width: native.width, height: native.height, total_pixels: native.width * native.height, changed_pixels: changed, pixel_percent: changed / (native.width * native.height) * 100, mean_absolute_channel_delta: delta / native.data.length };
-      ensure(same(metrics, comparison.metrics), 'visual_metrics_invalid');
-      for (const [kind, image] of Object.entries({ overlay, difference, mask })) ensure(descriptor(comparison.artifacts[kind]).equals(PNG.sync.write(image)), 'visual_derived_bytes_invalid');
-      const observation = JSON.parse(descriptor(comparison.observation));
-      ensure(observation.state_id === comparison.id && observation.configuration_id === comparison.configuration_id, 'visual_configuration_invalid');
-      const semantic = ['content', 'actions', 'copy', 'state', 'route', 'focus', 'order', 'non_color_state', 'commit_read_only', 'token_exact'].every(key => observation[key] === true)
-        && Array.isArray(observation.targets) && observation.targets.length > 0 && observation.targets.every(t => Number.isFinite(t.width_dp) && t.width_dp >= 48 && Number.isFinite(t.height_dp) && t.height_dp >= 48 && t.overlap === false);
-      const measured = Number.isFinite(observation.geometry_dp) && observation.geometry_dp <= 1 && Number.isFinite(observation.baseline_icon_dp) && observation.baseline_icon_dp <= 2 && Number.isFinite(observation.ciede2000) && observation.ciede2000 <= 2;
-      const state = observation.native_execution !== 'EXECUTED' ? 'NOT_RUN' : !semantic || !measured || metrics.pixel_percent > 2 ? 'FAIL' : metrics.pixel_percent > 0.5 ? 'REVIEW_REQUIRED' : 'PASS';
-      ensure(comparison.classification === state && comparison.counts_as_pass === (state === 'PASS'), 'visual_classification_invalid');
+        && same(comparison.artifacts?.native, capture.native_png) && comparison.capture_record_path === full('screenshots/index.json'), 'visual_capture_invalid');
+      const captureReceipt = capture.settings.state_receipt; const observedReceipt = comparison.state_receipt;
+      for (const receipt of [captureReceipt, comparison.capture_state_receipt, observedReceipt]) ensure(receipt?.schema_version === 3
+        && receipt.run_id === manifest.run_id && receipt.state_id === comparison.id && receipt.configuration_id === comparison.configuration_id
+        && receipt.source_tree_sha256 === manifest.source.tree_sha256 && receipt.apk_sha256 === manifest.build.apk.sha256
+        && receipt.device_identity_sha256 === manifest.device.identity_sha256 && /^[a-f0-9]{32}$/u.test(receipt.nonce ?? ''), 'visual_state_receipt_invalid');
+      ensure(same(captureReceipt, comparison.capture_state_receipt) && observedReceipt.nonce !== captureReceipt.nonce, 'visual_state_receipt_invalid');
+      const observation = comparison.comparison_mode === 'approved_source'
+        ? comparison.observation?.inline
+        : JSON.parse(descriptor(comparison.observation));
+      ensure(observation?.state_id === comparison.id && observation.configuration_id === comparison.configuration_id
+        && observation.capture_nonce === captureReceipt.nonce && observation.observation_nonce === observedReceipt.nonce, 'visual_configuration_invalid');
+      try { verifyV12ComparisonRecord({ runId: manifest.run_id, root, result: comparison, trustPublishedNative: true }); } catch { fail('visual_comparison_invalid'); }
+      const state = comparison.classification;
+      ensure(RESULTS.includes(state) && comparison.counts_as_pass === (state === 'PASS'), 'visual_classification_invalid');
       // Both indexes bind the recursively validated PNG/observation descriptors.
       const artifacts = ['comparison/index.json', 'screenshots/index.json'];
-      leaf(`visual:${comparison.id}:${comparison.configuration_id}`, 'comparison', `${comparison.id}:${comparison.configuration_id}`, state, artifacts, { state_id: comparison.id, configuration_id: comparison.configuration_id, classification: state });
+      leaf(`visual:${comparison.id}:${comparison.configuration_id}`, 'comparison', `${comparison.id}:${comparison.configuration_id}`, state, artifacts, {
+        state_id: comparison.id,
+        configuration_id: comparison.configuration_id,
+        classification: state,
+        capture_state_receipt_sha256: jsonHash(captureReceipt),
+        state_receipt_sha256: jsonHash(observedReceipt),
+        source_receipt_sha256: jsonHash(observedReceipt.source_receipt),
+      });
     });
   }
   function resolveAccessibility() {

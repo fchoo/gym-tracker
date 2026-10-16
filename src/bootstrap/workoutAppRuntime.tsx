@@ -749,6 +749,7 @@ function revisionDisplayValue(value: unknown): string {
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
+  runningPlanRuntime: RunningPlanRuntimePort | null;
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
@@ -1240,6 +1241,13 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ScheduleRuntimeAdapter;
   now(): Date;
   nowMs(): number;
+  prepareRuntime?(input: Readonly<{
+    kernel: SqliteKernel;
+    starterPlans?: StarterPlanRuntimeCatalog;
+  }>): Promise<void>;
+  disposeRuntime?(): Promise<void>;
+  strictDisposal?: boolean;
+  reportDisposalFailure?(error: unknown): void;
 }>;
 
 export type WorkoutAppRuntimeAdapters = Readonly<{
@@ -1353,11 +1361,13 @@ const CalendarActivityReadContext = createContext<CalendarActivityReadPort | nul
 
 export function createWorkoutAppRuntimeDependencies(
   adapters: WorkoutAppRuntimeAdapters,
+  options: Readonly<{ databaseName?: string }> = {},
 ): WorkoutAppRuntimeDependencies {
+  const databaseName = options.databaseName ?? DATABASE_NAME;
   return {
-    openKernel: () => adapters.openKernel(DATABASE_NAME),
+    openKernel: () => adapters.openKernel(databaseName),
     migrate: (kernel) => adapters.runMigrations({
-      databaseName: DATABASE_NAME,
+      databaseName,
       kernel,
     }),
     activateInitialStarter: adapters.activateInitialStarter,
@@ -1501,8 +1511,7 @@ function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
   return fixture === null ? null : phase12BackupFixtureViewModel(fixture);
 }
 
-export const productionWorkoutAppRuntimeDependencies =
-  createWorkoutAppRuntimeDependencies({
+const productionWorkoutAppRuntimeAdapters: WorkoutAppRuntimeAdapters = {
     openKernel: openSqliteKernel,
     runMigrations: async ({ databaseName, kernel }) => {
       const recoveryOpenOptions = {
@@ -1728,7 +1737,19 @@ export const productionWorkoutAppRuntimeDependencies =
       }),
     now: () => new Date(),
     nowMs: () => Date.now(),
-  });
+  };
+
+export function createProductionWorkoutAppRuntimeDependencies(
+  databaseName = DATABASE_NAME,
+): WorkoutAppRuntimeDependencies {
+  return createWorkoutAppRuntimeDependencies(
+    productionWorkoutAppRuntimeAdapters,
+    { databaseName },
+  );
+}
+
+export const productionWorkoutAppRuntimeDependencies =
+  createProductionWorkoutAppRuntimeDependencies();
 
 function localContext(now: Date): LocalContext {
   const localDate = [
@@ -2320,10 +2341,22 @@ export function WorkoutAppRuntimeProvider({
     servicesRef.current = null;
     pendingActivityMatchRef.current = null;
     progressBodyweightCommandsRef.current.clear();
-    await services?.lifecycle.dispose?.().catch(() => undefined);
-    services?.automaticBackupRuntime?.dispose();
-    await services?.kernel.close().catch(() => undefined);
-  }, []);
+    try {
+      if (dependencies.strictDisposal) await services?.lifecycle.dispose?.();
+      else await services?.lifecycle.dispose?.().catch(() => undefined);
+      services?.automaticBackupRuntime?.dispose();
+      if (dependencies.strictDisposal) {
+        await services?.kernel.close();
+        await dependencies.disposeRuntime?.();
+      } else {
+        await services?.kernel.close().catch(() => undefined);
+        await dependencies.disposeRuntime?.().catch(() => undefined);
+      }
+    } catch (error) {
+      dependencies.reportDisposalFailure?.(error);
+      throw error;
+    }
+  }, [dependencies]);
 
   const trustedRead = useCallback(async (
     services: RuntimeServices,
@@ -2600,6 +2633,12 @@ export function WorkoutAppRuntimeProvider({
     }
 
     try {
+      await dependencies.prepareRuntime?.({
+        kernel,
+        ...(starterPlansRef.current === undefined
+          ? {}
+          : { starterPlans: starterPlansRef.current }),
+      });
       await lifecycle.trigger("launch").catch(() => undefined);
       if (services.automaticBackupRuntime !== undefined) {
         automaticBackupUnsubscribeRef.current = services.automaticBackupRuntime.subscribe((automaticBackup) => {
@@ -2657,7 +2696,10 @@ export function WorkoutAppRuntimeProvider({
     void initialize();
     return () => {
       generationRef.current += 1;
-      void closeServices();
+      void closeServices().catch((error: unknown) => {
+        if (!dependencies.strictDisposal) return;
+        console.error("workout_runtime_strict_disposal_failed", error instanceof Error ? error.message : "unknown");
+      });
     };
   }, [closeServices, initialize]);
 
@@ -5145,6 +5187,9 @@ export function WorkoutAppRuntimeProvider({
 
   const value = useMemo<RuntimeValue>(() => ({
     ...state,
+    runningPlanRuntime: state.launchState === "trusted"
+      ? requireServices().runningPlans
+      : null,
     garminImport,
     actOnToday: (action) => requireServices().schedules.actOnToday(action),
     acceptRecommendation: acceptWorkoutRecommendation,

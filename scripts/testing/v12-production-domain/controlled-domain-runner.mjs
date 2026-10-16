@@ -13,6 +13,7 @@ import { V12_GARMIN_SHARD_CASE_IDS } from '../../v12-garmin-shard.mjs';
 const project = fileURLToPath(new URL('../../../', import.meta.url));
 export const hash = (value) => createHash('sha256').update(value).digest('hex');
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
+const controlledActionTimeoutMs = (action) => action === 'recovery' ? 5 * 60_000 : 100_000;
 
 export function createDomainRunner() {
   const runner = createControlledRunner();
@@ -39,14 +40,14 @@ export function createDomainRunner() {
     const program = `import fs from 'node:fs'; import {executeProductionDomainAction} from './scripts/v12-production-native-domain-actions.mjs'; const r=JSON.parse(fs.readFileSync(0,'utf8')); try {const result=await executeProductionDomainAction(r.action,r.payload,r.attestation);process.stdout.write(JSON.stringify({result:result??null,node_env:process.env.NODE_ENV,native_evidence:false}));} catch(e) {process.stderr.write(e.message);process.exitCode=1;}`;
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: 'controlled-device-20', V12_CONTROLLED_STATE: runner.scratch, NODE_ENV: 'production', ...environment };
     for (const name of ['V12_NATIVE_ADAPTER_COMMAND', 'V12_NATIVE_ADAPTER_TEST_MODE', 'V12_NATIVE_ADAPTER_TEST_PROCESS', 'NODE_TEST_CONTEXT']) delete env[name];
-    return spawnSync(process.execPath, ['--input-type=module', '--eval', program], { cwd: runner.root, env, input: JSON.stringify(input), encoding: 'utf8', timeout: 100_000, maxBuffer: 4 * 1024 * 1024 });
+    return spawnSync(process.execPath, ['--input-type=module', '--eval', program], { cwd: runner.root, env, input: JSON.stringify(input), encoding: 'utf8', timeout: controlledActionTimeoutMs(action), maxBuffer: 4 * 1024 * 1024 });
   }
   function invokeDefault(action, payload = {}, environment = {}) {
     const input = { action, payload: { run_id: runner.build.run_id, ...payload } };
     const program = `import fs from 'node:fs'; import {invokeV12NativeAdapter} from './scripts/v12-native-adapter.mjs'; const r=JSON.parse(fs.readFileSync(0,'utf8')); try {const result=invokeV12NativeAdapter(r.action,r.payload);process.stdout.write(JSON.stringify({result,node_env:process.env.NODE_ENV,native_evidence:false}));} catch(e) {process.stderr.write(e.message);process.exitCode=1;}`;
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: 'controlled-device-20', V12_CONTROLLED_STATE: runner.scratch, NODE_ENV: 'production', ...environment };
     for (const name of ['V12_NATIVE_ADAPTER_COMMAND', 'V12_NATIVE_ADAPTER_TEST_MODE', 'V12_NATIVE_ADAPTER_TEST_PROCESS', 'NODE_TEST_CONTEXT']) delete env[name];
-    return spawnSync(process.execPath, ['--input-type=module', '--eval', program], { cwd: runner.root, env, input: JSON.stringify(input), encoding: 'utf8', timeout: 100_000, maxBuffer: 4 * 1024 * 1024 });
+    return spawnSync(process.execPath, ['--input-type=module', '--eval', program], { cwd: runner.root, env, input: JSON.stringify(input), encoding: 'utf8', timeout: controlledActionTimeoutMs(action), maxBuffer: 4 * 1024 * 1024 });
   }
   return { ...runner, invoke, invokeDefault, flow };
 }

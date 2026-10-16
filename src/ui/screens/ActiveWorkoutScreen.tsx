@@ -2545,6 +2545,7 @@ function PopulatedWorkoutOverview({
         onCancel={() => setMoreVisible(false)}
         restoreFocusRef={moreActionRef}
         scrollTestID="workout-actions-sheet-content"
+        testID="workout-actions-sheet"
         visible={moreVisible}
       >
             {view.activeSetId === null ? (
@@ -2652,6 +2653,7 @@ function PopulatedWorkoutOverview({
         heading="Exercise actions"
         onCancel={closeExerciseActions}
         scrollTestID="exercise-actions-sheet-content"
+        testID="exercise-actions-sheet"
         visible={exerciseActionsVisibleForId !== null}
       >
             {exerciseActionsVisibleForId === null ? null : (
@@ -2700,6 +2702,7 @@ function PopulatedWorkoutOverview({
         onCancel={closeExerciseAddPicker}
         restoreFocusRef={exerciseAddTriggerRef}
         scrollTestID="active-workout-add-exercise-picker-content"
+        testID="add-exercise-sheet"
         visible={exerciseAddPickerVisible}
       >
         {selectedExerciseToAdd === undefined ? null : (
@@ -2948,6 +2951,7 @@ function PopulatedWorkoutOverview({
             heading={`Add set · ${exercise.name}`}
             onCancel={() => setAddSetMenuExerciseId(null)}
             restoreFocusRef={workingAddRef}
+            testID="add-set-sheet"
             visible
           >
             <PrimaryAction

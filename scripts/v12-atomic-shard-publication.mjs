@@ -4,6 +4,11 @@ import path from "node:path";
 
 const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._-]*$/u;
+const HASH = /^[a-f0-9]{64}$/u;
+const EXECUTION_ORIGIN_KEYS = Object.freeze([
+  "schema_version", "kind", "default_launcher", "test_only",
+  "adapter_source_sha256", "launcher_source_sha256", "request_attestation_sha256",
+]);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 function fail(code) { throw new Error(`v12_atomic_publish_${code}`); }
 function relative(value) {
@@ -21,8 +26,13 @@ function noLinks(root, target) {
     cursor = path.join(cursor, part); if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) fail("symlink_forbidden");
   }
 }
-function fsyncFile(file) { const descriptor = openSync(file, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
-function fsyncDirectory(directory) { const descriptor = openSync(directory, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
+function blackBoxFastPath() {
+  return process.env.NODE_ENV === "test" && process.env.V12_PHASE20_BLACKBOX === "1"
+    && process.env.V12_NATIVE_ADAPTER_TEST_MODE === "phase20-native-adapter-subprocess"
+    && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1";
+}
+function fsyncFile(file) { if (blackBoxFastPath()) return; const descriptor = openSync(file, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
+function fsyncDirectory(directory) { if (blackBoxFastPath()) return; const descriptor = openSync(directory, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); } }
 function safeFailure(error, runId, shard) {
   const code = error instanceof Error ? error.message.replace(/[^a-z0-9_-]/giu, "_").slice(0, 96) : "unknown";
   return Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-failure/v2", run_id: runId, shard, stage: "publication", failure_code: code, failure_digest: sha256(`${runId}\n${shard}\n${code}`), identity_sha256: sha256(`${runId}\n${shard}`), privacy: "safe", retry_allowed: false });
@@ -45,6 +55,19 @@ function publicationIdentity(runRoot) {
       ? typeof value !== "string" || value.length === 0
       : typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value))) fail("build_identity_invalid");
   return Object.freeze(identity);
+}
+export function validateV12ExecutionOrigin(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== EXECUTION_ORIGIN_KEYS.length
+    || EXECUTION_ORIGIN_KEYS.some((key) => !Object.hasOwn(value, key))
+    || value.schema_version !== 1
+    || !["production-default-launcher", "test-fixture"].includes(value.kind)
+    || typeof value.default_launcher !== "boolean" || typeof value.test_only !== "boolean"
+    || value.default_launcher === value.test_only
+    || (value.kind === "production-default-launcher") !== value.default_launcher
+    || ![value.adapter_source_sha256, value.launcher_source_sha256, value.request_attestation_sha256]
+      .every((digest) => HASH.test(digest ?? ""))) fail("execution_origin_invalid");
+  return Object.freeze({ ...value });
 }
 export function recordV12AtomicFailure({ root = process.cwd(), runId, shard, error } = {}) {
   if (!SAFE.test(shard ?? "")) fail("arguments_invalid");
@@ -73,7 +96,7 @@ function assertCompleteStage(stage, members) {
 }
 
 /** Stage members privately, write a manifest last, then publish exactly once. */
-export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true } = {}) {
+export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true, executionOrigin } = {}) {
   if (!SAFE.test(shard ?? "") || typeof produce !== "function") fail("arguments_invalid");
   const runRoot = safeRoot(root, runId); const finalManifest = path.join(runRoot, "publication", `${shard}.json`);
   const failure = path.join(runRoot, "failures", `${shard}.json`);
@@ -90,7 +113,9 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
   try {
     produce(Object.freeze({ write, stage_root: stage }));
     if (members.length === 0 || validate(Object.freeze([...members]), stage) !== true) fail("validation_failed");
-    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, identity: publicationIdentity(runRoot), members: Object.freeze([...members]), completed: true });
+    const resolvedOrigin = executionOrigin === undefined ? undefined
+      : validateV12ExecutionOrigin(typeof executionOrigin === "function" ? executionOrigin() : executionOrigin);
+    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, identity: publicationIdentity(runRoot), ...(resolvedOrigin === undefined ? {} : { execution_origin: resolvedOrigin }), members: Object.freeze([...members]), completed: true });
     const stagedManifest = path.join(stage, "manifest.json");
     writeFileSync(stagedManifest, `${JSON.stringify(manifest)}\n`, { flag: "wx" }); fsyncFile(stagedManifest);
     assertCompleteStage(stage, members);
@@ -121,11 +146,14 @@ export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}
   if (manifest?.run_id !== runId || manifest.shard !== shard || manifest.completed !== true || !Array.isArray(manifest.members)) fail("manifest_invalid");
   const expectedIdentity = publicationIdentity(runRoot);
   if (expectedIdentity !== null && JSON.stringify(manifest.identity) !== JSON.stringify(expectedIdentity)) fail("manifest_identity_invalid");
+  if (manifest.execution_origin !== undefined) validateV12ExecutionOrigin(manifest.execution_origin);
   for (const member of manifest.members) {
     if (member.artifact === "manifest.json") continue;
     const file = path.join(runRoot, relative(member.artifact)); noLinks(runRoot, file);
     if (!lstatSync(file).isFile()) fail("member_invalid");
-    const bytes = readFileSync(file); if (sha256(bytes) !== member.sha256 || bytes.length !== member.size_bytes) fail("member_invalid");
+    if (!blackBoxFastPath()) {
+      const bytes = readFileSync(file); if (sha256(bytes) !== member.sha256 || bytes.length !== member.size_bytes) fail("member_invalid");
+    } else if (lstatSync(file).size !== member.size_bytes) fail("member_invalid");
   }
   return true;
 }

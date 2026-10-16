@@ -30,3 +30,9 @@ test("the v1.2 acceptance build accepts the explicit one-build guard without cha
   assert.match(source, /single_build=0/u);
   assert.match(source, /\[ "\$single_build" -eq 0 \] \|\| \[ "\$suite" = 'v1\.2-acceptance' \] \|\|/u);
 });
+
+test("the v1.2 acceptance build uses the canonical restoration digest contract", () => {
+  const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");
+  assert.match(source, /v12-device-settings-contract\.mjs --read-digest/u);
+  assert.doesNotMatch(source, /shell settings get system font_scale[\s\S]*shasum -a 256/u);
+});

@@ -142,6 +142,7 @@ export function AppRootShell({
             requestNativeFocus={requestNativeFocus}
             restoreFocusNativeID={activeSettingsTriggerNativeID}
             restoreFocusRef={activeSettingsTriggerRef}
+            testID="app-settings-sheet"
             visible={settingsVisible}
           >
             {resolvedSettingsContent}

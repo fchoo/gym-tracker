@@ -5,6 +5,11 @@ import { loadV12ContractInputs } from './v12-evidence-contract.mjs';
 import { parseV12SourceJUnit, resolveV12PerformanceGates, createV12RowSelectorTable, resolveV12SqliteReceipt } from './v12-blocker-row-resolver.mjs';
 
 const inputs = loadV12ContractInputs();
+
+test('resolver has no environment-controlled shortcut around retained visual bytes', () => {
+  const source = readFileSync('scripts/v12-blocker-row-resolver.mjs', 'utf8');
+  assert.doesNotMatch(source, /V12_BLACKBOX_TRUSTED|trustBlackBoxVisual|NODE_ENV/u);
+});
 test('canonical matrix has exactly 172 typed selectors in source order', () => {
   const table = createV12RowSelectorTable({ inputs });
   assert.equal(table.length, 172);

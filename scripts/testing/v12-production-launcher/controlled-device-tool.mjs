@@ -10,7 +10,10 @@ const state = JSON.parse(readFileSync(stateFile, "utf8"));
 const save = () => writeFileSync(stateFile, JSON.stringify(state));
 const output = (value) => process.stdout.write(`${value}\n`);
 const fail = () => { process.stderr.write("private-native-error /Users/private device-private bearer credential\n"); process.exit(1); };
-let args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+state.commands = [...(state.commands ?? []), rawArgs];
+save();
+let args = rawArgs;
 if (args[0] === "-s") args = args.slice(2);
 if (args[0] === "get-state") { output(state.noDevice ? "offline" : "device"); process.exit(0); }
 if (args[0] === "shell") {
@@ -27,7 +30,10 @@ if (args[0] === "shell") {
   if (process.argv.at(-1).startsWith("cat > ")) {
     writeFileSync(path.join(lock, "owner.json"), readFileSync(0)); process.exit(0);
   }
-  if (command === "cat") { if (!existsSync(path.join(lock, "owner.json"))) fail(); output(readFileSync(path.join(lock, "owner.json"), "utf8")); process.exit(0); }
+  if (command === "cat") {
+    if (!existsSync(path.join(lock, "owner.json"))) fail();
+    output(state.invalidOwnerRead ? "{}" : readFileSync(path.join(lock, "owner.json"), "utf8")); process.exit(0);
+  }
   if (command === "settings") {
     const [operation, , key, value] = rest;
     if (operation === "get") output(state.settings[key] ?? "null");

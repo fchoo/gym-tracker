@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
+import { V12_NATIVE_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 
 function fixture(t) { const value = createControlledRunner(); t.after(value.cleanup); return value; }
 function bounded(result, code = "command_failed") {
@@ -75,6 +76,13 @@ for (const [name, update, code] of [
   assert.ok(Date.now() - started < 5_000);
   assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
 });
+test("lease acquisition failure after owner read runs both cleanup commands", (t) => {
+  const runner = fixture(t); runner.updateState({ invalidOwnerRead: true });
+  bounded(runner.invoke("acquire-lease"), "lease_invalid");
+  assert.equal(runner.readState().commands.length,
+    V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length + V12_NATIVE_COMMAND_GRAPH.acquire_lease.failure_after_owner_read.length);
+  assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
+});
 test("SQLite returns exact native counts and never reconstructs them", (t) => {
   const runner = fixture(t);
   assert.deepEqual(runner.success("sqlite"), { status: "passed", contract: runner.contract });
@@ -98,9 +106,33 @@ for (const marker of ["missingMarker", "staleMarker", "routeError"]) test(`SQLit
   assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
   assert.equal(runner.readState().settings.font_scale, "1.15");
 });
-for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "performance", "garmin", "calendar"]) {
-  test(`${action} cannot return invented native observations`, (t) => {
+for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "recovery", "garmin", "calendar"]) {
+  test(`${action} reaches its checked-in production action module`, (t) => {
     const runner = fixture(t);
-    bounded(runner.invoke(action), "action_contract_unavailable");
+    const result = runner.invoke(action);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /action_contract_unavailable/u);
+    assert.doesNotMatch(result.stderr, /bearer|\/Users\/|private-native|device-private/u);
   });
 }
+test("performance identity dispatches through the production quality module", (t) => {
+  const runner = fixture(t);
+  const result = runner.success("performance", { request: "identity" });
+  assert.equal(result.identity.source_tree_sha256, runner.build.source.tree_sha256);
+  assert.equal(result.identity.apk_sha256, runner.build.build.apk.sha256);
+});
+test("unknown actions fail closed before a module can run", (t) => {
+  const runner = fixture(t);
+  bounded(runner.invoke("unknown-action"), "action_invalid");
+});
+test("the launcher itself rejects undeclared actions before reading a request", () => {
+  const launcher = path.join(process.cwd(), "scripts/v12-production-native-adapter-launcher.mjs");
+  const environment = { ...process.env, NODE_ENV: "production" };
+  for (const key of ["V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "NODE_TEST_CONTEXT"]) delete environment[key];
+  const result = spawnSync(process.execPath, [launcher, "--action", "unknown-action"], {
+    cwd: process.cwd(), env: environment, input: "{}", encoding: "utf8", timeout: 5_000,
+  });
+  assert.notEqual(result.status, 0);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "v12_production_native_launcher_action_invalid\n");
+});

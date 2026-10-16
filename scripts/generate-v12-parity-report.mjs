@@ -37,7 +37,7 @@ export function runV12ParityReportCli(args = process.argv.slice(2), io = process
     const file = args[1];
     if (path.isAbsolute(file) || file.includes("\\") || file.split("/").includes("..")) throw new Error("path");
     const seal = JSON.parse(readFileSync(file, "utf8"));
-    if (seal?.schema_version !== 2 || !Array.isArray(seal.rows) || seal.rows.length !== 172 || seal.release_authorized !== false) throw new Error("seal");
+    if (seal?.schema_version !== 3 || !Array.isArray(seal.rows) || seal.rows.length !== 172 || seal.release_authorized !== false) throw new Error("seal");
     io.stdout.write(`${generateV12ParityReport({ ledger: seal })}\n`);
     return 0;
   } catch {

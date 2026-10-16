@@ -3,12 +3,63 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  V12_NATIVE_ADAPTER_GRACE_MS,
+  V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_NATIVE_CLEANUP_BUDGET,
+  V12_NATIVE_COMMAND_GRAPH,
+  V12_NATIVE_LEASE_ACTION_BUDGETS,
+  V12_QUALITY_ACTION_BUDGETS,
+  V12_QUALITY_COMMAND_GRAPH,
+  V12_SQLITE_PRODUCER_BOUND_MS,
+  V12_VISUAL_ACTION_WINDOW,
+  V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
+  V12_VISUAL_CLEANUP_BUDGET,
+  V12_VISUAL_COMMAND_GRAPH,
+  V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
+  v12CommandPathMaxMs,
+} from "./v12-native-time-budgets.mjs";
+
+export {
+  V12_NATIVE_ADAPTER_GRACE_MS,
+  V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_NATIVE_CLEANUP_BUDGET,
+  V12_NATIVE_COMMAND_GRAPH,
+  V12_NATIVE_LEASE_ACTION_BUDGETS,
+  V12_QUALITY_ACTION_BUDGETS,
+  V12_QUALITY_COMMAND_GRAPH,
+  V12_SQLITE_PRODUCER_BOUND_MS,
+  V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
+  V12_VISUAL_CLEANUP_BUDGET,
+  V12_VISUAL_COMMAND_GRAPH,
+  V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
+  v12CommandPathMaxMs,
+};
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
+const ADAPTER = fileURLToPath(import.meta.url);
 const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url));
 const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackbox/fake-device-adapter.mjs", import.meta.url));
 const TEST_MODE = "phase20-native-adapter-subprocess";
+export const V12_NATIVE_MAX_REQUEST_BYTES = 1024 * 1024;
+export const V12_NATIVE_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = 35 * (180_000 + 60_000) + 23 * 180_000 + V12_NATIVE_ADAPTER_GRACE_MS;
+export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
+  "acquire-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  "release-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["release-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  "snapshot-settings": V12_NATIVE_LEASE_ACTION_BUDGETS["snapshot-settings"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  "restore-settings": V12_NATIVE_LEASE_ACTION_BUDGETS["restore-settings"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  "visual-capture": V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  "visual-capture-batch": V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  "visual-compare": V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  accessibility: V12_QUALITY_ACTION_BUDGETS.accessibility.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  performance: V12_QUALITY_ACTION_BUDGETS.performance.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  sqlite: V12_SQLITE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
+  recovery: 45 * 60_000,
+  garmin: 20 * 60_000,
+  calendar: V12_CALENDAR_ADAPTER_TIMEOUT_MS,
+});
 
 function fail(code) { throw new Error(`v12_native_adapter_${code}`); }
 function sha256(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
@@ -19,24 +70,24 @@ function cliRunId() {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-function testInjectionEnabled() {
-  const mode = process.env.V12_NATIVE_ADAPTER_TEST_MODE;
-  const processMarker = process.env.V12_NATIVE_ADAPTER_TEST_PROCESS;
-  const nodeTest = process.env.NODE_ENV === "test";
+function testInjectionEnabled(environment) {
+  const mode = environment.V12_NATIVE_ADAPTER_TEST_MODE;
+  const processMarker = environment.V12_NATIVE_ADAPTER_TEST_PROCESS;
+  const nodeTest = environment.NODE_ENV === "test";
   if (mode === undefined && processMarker === undefined && !nodeTest) return false;
   if (mode !== TEST_MODE || processMarker !== "1" || !nodeTest) fail("test_mode_inconsistent");
   return true;
 }
 
-function commandFor(root, command) {
-  const testMode = testInjectionEnabled();
-  const injected = command ?? process.env.V12_NATIVE_ADAPTER_COMMAND;
-  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER });
+function commandFor(root, command, environment) {
+  const testMode = testInjectionEnabled(environment);
+  const injected = command ?? environment.V12_NATIVE_ADAPTER_COMMAND;
+  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER, testOnly: false });
   if (!testMode) fail("command_override_forbidden");
   const resolved = realpathSync(path.resolve(root, injected));
   const fixtureFake = realpathSync(path.resolve(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"));
   if (resolved !== fixtureFake && resolved !== realpathSync(CHECKED_IN_TEST_FAKE)) fail("test_command_invalid");
-  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved });
+  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved, testOnly: true });
 }
 
 function readBuildIdentity(root, runId) {
@@ -82,21 +133,24 @@ function sameAttestation(expected, actual) {
  * is fixed and checked in; a subprocess fake is accepted only for a Node test
  * process that deliberately opts into the exact test-mode triplet above.
  */
-export function invokeV12NativeAdapter(action, payload, {
+export function invokeV12NativeAdapterEnvelope(action, payload, {
   command,
+  environment = process.env,
   root = process.cwd(),
 } = {}) {
-  if (typeof action !== "string" || action.length === 0 || !payload || typeof payload !== "object") fail("request_invalid");
-  const target = commandFor(root, command);
+  if (typeof action !== "string" || !Object.hasOwn(V12_NATIVE_ACTION_TIMEOUT_MS, action)) fail("action_invalid");
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) fail("request_invalid");
+  const target = commandFor(root, command, environment);
   const attestation = createAttestation(action, payload, root);
+  const request = `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`;
+  if (Buffer.byteLength(request) > V12_NATIVE_MAX_REQUEST_BYTES) fail("request_too_large");
   const result = spawnSync(target.executable, [...target.args, "--action", action], {
     cwd: root,
-    input: `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`,
+    input: request,
     encoding: "utf8",
-    // Recovery executes 224 bounded arm/recover Maestro subprocesses and must
-    // retain time for identity/settings cleanup without outliving the host.
-    timeout: action === "sqlite" ? 26 * 60_000 : action === "recovery" ? 45 * 60_000 : 5 * 60_000,
-    maxBuffer: 32 * 1024 * 1024,
+    env: environment,
+    timeout: V12_NATIVE_ACTION_TIMEOUT_MS[action],
+    maxBuffer: V12_NATIVE_MAX_RESPONSE_BYTES,
   });
   if (result.error || result.signal || result.status !== 0) {
     const bounded = /^v12_production_native_launcher_([a-z_]+)\s*$/u.exec(result.stderr ?? "");
@@ -106,12 +160,36 @@ export function invokeV12NativeAdapter(action, payload, {
   try { response = JSON.parse(result.stdout); } catch { fail("response_invalid"); }
   if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)) fail("response_invalid");
   if (!sameAttestation(attestation, response.attestation)) fail("attestation_invalid");
-  return response.result;
+  return Object.freeze({
+    result: response.result,
+    execution_origin: Object.freeze({
+      schema_version: 1,
+      kind: target.testOnly ? "test-fixture" : "production-default-launcher",
+      default_launcher: target.testOnly === false,
+      test_only: target.testOnly,
+      adapter_source_sha256: sourceHash(ADAPTER),
+      launcher_source_sha256: sourceHash(target.source),
+      request_attestation_sha256: sha256(JSON.stringify(attestation)),
+    }),
+  });
+}
+
+export function invokeV12NativeAdapter(action, payload, options = {}) {
+  return invokeV12NativeAdapterEnvelope(action, payload, options).result;
 }
 
 export function createV12NativeAdapter(options = {}) {
-  const call = (action, payload) => invokeV12NativeAdapter(action, { ...payload, run_id: payload.run_id ?? options.runId ?? cliRunId() }, options);
+  let latestExecutionOrigin;
+  const call = (action, payload) => {
+    const response = invokeV12NativeAdapterEnvelope(action, { ...payload, run_id: payload.run_id ?? options.runId ?? cliRunId() }, options);
+    latestExecutionOrigin = response.execution_origin;
+    return response.result;
+  };
   return Object.freeze({
+    executionOrigin: () => {
+      if (latestExecutionOrigin === undefined) fail("execution_origin_missing");
+      return latestExecutionOrigin;
+    },
     acquireLease: () => call("acquire-lease", {}),
     releaseLease: (lease) => call("release-lease", { lease }),
     snapshotSettings: (lease) => call("snapshot-settings", { lease }),

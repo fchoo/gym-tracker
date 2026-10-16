@@ -11,11 +11,17 @@ import React from "react";
 
 let mockFontsLoaded = true;
 let mockFontError: Error | null = null;
+let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;
 let mockNativeContractSuite: string | null = null;
 let mockPathname = "/__phase2-attended-preview";
+let mockSearchParams: Record<string, string> = {};
 let mockSafeAreaInsets = { bottom: 0, left: 0, right: 0, top: 0 };
 const mockRuntimeProviderMounted = jest.fn();
+const mockRuntimeProviderDependencies = jest.fn();
+const mockCreatePhase20VisualDependencies = jest.fn<
+  (request: unknown) => Readonly<{ fixture: true }>
+>(() => ({ fixture: true }));
 const mockProductionAppearanceRead = jest.fn(() => null);
 const mockProductionAppearanceWrite = jest.fn();
 const mockPreviewAppearanceRead = jest.fn(() => null);
@@ -31,6 +37,9 @@ jest.mock("expo-constants", () => ({
   default: {
     expoConfig: {
       extra: {
+        get buildProfile() {
+          return mockBuildProfile;
+        },
         get nativeContractsEnabled() {
           return mockNativeContractsEnabled;
         },
@@ -62,8 +71,18 @@ jest.mock("expo-router", () => {
   return {
     Stack,
     usePathname: () => mockPathname,
+    useLocalSearchParams: () => mockSearchParams,
   };
 });
+
+jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
+  createPhase20VisualRuntimeDependencies: (request: unknown) => {
+    mockCreatePhase20VisualDependencies(request);
+    return { fixture: true };
+  },
+  phase20VisualCleanupStatus: () => "complete",
+  clearPhase20VisualCleanupStatus: jest.fn(),
+}));
 
 jest.mock("expo-status-bar", () => {
   const { View } = require("react-native") as typeof import("react-native");
@@ -107,14 +126,17 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => {
     productionWorkoutAppRuntimeDependencies: {},
     useWorkoutAppRuntime: () => ({
       launchState: "trusted",
+      runningPlanRuntime: null,
       notificationPermission: "granted",
       openRestNotificationSettings: jest.fn(),
       requestRestNotificationPermission: jest.fn(),
     }),
     WorkoutAppRuntimeProvider: ({
       children,
-    }: Readonly<{ children: React.ReactNode }>) => {
+      dependencies,
+    }: Readonly<{ children: React.ReactNode; dependencies: unknown }>) => {
       mockRuntimeProviderMounted();
+      mockRuntimeProviderDependencies(dependencies);
       return <View testID="workout-runtime-provider">{children}</View>;
     },
   };
@@ -224,11 +246,15 @@ describe("RootLayout attended preview isolation", () => {
   beforeEach(() => {
     mockFontsLoaded = true;
     mockFontError = null;
+    mockBuildProfile = "development-test";
     mockNativeContractsEnabled = true;
     mockNativeContractSuite = null;
     mockPathname = "/__phase2-attended-preview";
+    mockSearchParams = {};
     mockSafeAreaInsets = { bottom: 0, left: 0, right: 0, top: 0 };
     mockRuntimeProviderMounted.mockClear();
+    mockRuntimeProviderDependencies.mockClear();
+    mockCreatePhase20VisualDependencies.mockClear();
     mockUseFonts.mockClear();
     mockProductionAppearanceRead.mockReset();
     mockProductionAppearanceRead.mockReturnValue(null);
@@ -357,6 +383,67 @@ describe("RootLayout attended preview isolation", () => {
     expect(screen.getByTestId("startup-readiness-gate"))
       .toBeOnTheScreen();
     expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates a valid Phase 20 visual request before production startup", async () => {
+    mockPathname = "/__phase20-visual-probe";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      state: "BW-001",
+      configuration: "AP-L-C390-P-F100",
+      fixture: "v12-synthetic-fixtures-r18",
+      nonce: "a".repeat(32),
+      mode: "capture",
+    };
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__phase20-visual-probe"))
+      .toBeOnTheScreen();
+    expect(mockCreatePhase20VisualDependencies).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "BW-001", nonce: "a".repeat(32) }),
+    );
+    expect(mockRuntimeProviderDependencies).toHaveBeenCalledWith({ fixture: true });
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("never opens a fixture or production database for an invalid visual request", async () => {
+    mockPathname = "/__phase20-visual-probe";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      state: "BW-001",
+      configuration: "AP-L-C390-P-F100",
+      fixture: "v12-synthetic-fixtures-r18",
+      nonce: "invalid",
+      mode: "capture",
+    };
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__phase20-visual-probe"))
+      .toBeOnTheScreen();
+    expect(mockCreatePhase20VisualDependencies).not.toHaveBeenCalled();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("does not activate the visual runtime outside the exact development-test suite", async () => {
+    mockPathname = "/__phase20-visual-probe";
+    mockBuildProfile = "production";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      state: "BW-001",
+      configuration: "AP-L-C390-P-F100",
+      fixture: "v12-synthetic-fixtures-r18",
+      nonce: "a".repeat(32),
+      mode: "capture",
+    };
+
+    await render(<RootLayout />);
+
+    expect(mockCreatePhase20VisualDependencies).not.toHaveBeenCalled();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
   });
 
   it("keeps the Phase 6 gesture fixture isolated while fonts are pending", async () => {

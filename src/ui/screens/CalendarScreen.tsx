@@ -886,6 +886,7 @@ export function CalendarScreen({
             horizontalInset={14}
             onCancel={() => setCalendarKeyOpen(false)}
             restoreFocusRef={infoActionRef}
+            testID="calendar-key-sheet"
             visible={isCalendarKeyOpen}
           >
             <Text style={[calendarTypeScale.body as TextStyle, { color: colors.textSecondary }]}>Color identifies the activity. Fill and border style identify its status.</Text>

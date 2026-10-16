@@ -31,6 +31,7 @@ import {
   type Phase16CalendarStage,
 } from "../../src/bootstrap/phase16CalendarTestControls";
 import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
+import { usePhase20VisualRequest } from "../../src/testing/phase20VisualContext";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -96,7 +97,10 @@ export default function CalendarRoute() {
     : Object.freeze({ producer: diagnosticsProducer, request: diagnosticsRequest }), [diagnosticsProducer, diagnosticsRequest]);
   const [returnFocusGeneration, setReturnFocusGeneration] = React.useState(0);
   const hasFocused = React.useRef(false);
-  const initialDate = useCurrentLocalDate();
+  const currentLocalDate = useCurrentLocalDate();
+  const initialDate = usePhase20VisualRequest() === null
+    ? currentLocalDate
+    : "2026-10-01";
   const openEvent = (destination: CalendarEventDestination, returnEventId?: string) => {
     switch (destination.kind) {
       case "session": {
