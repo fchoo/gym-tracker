@@ -9,6 +9,7 @@ import { executeProductionQualityAction } from "./v12-production-native-quality-
 import { executeLiveV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
 import { executeV12PerformanceShard } from "./v12-performance-shard.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "./benchmark-v12-interactions.mjs";
+import { V12_NATIVE_COMMAND_GRAPH, V12_QUALITY_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 
 // Deliberately synthetic transport data. It is never installed, published, or
 // presented as measurements. Only the ADB executable is controlled; the module,
@@ -78,9 +79,12 @@ const args = process.argv.slice(2);
 const command = args[2] === 'shell' ? [...args[3].matchAll(/'([^']*)'/g)].map(m => m[1]) : [];
 const component = 'com.fchoo.gymtracker.devtest/com.fchoo.gymtracker.Phase20QualityInstrumentation';
 const save = () => writeFileSync(file, JSON.stringify(state));
+const record = () => { state.commands = [...(state.commands ?? []), args]; save(); };
 if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
+  record();
   if (!state.noInstrumentation) process.stdout.write('instrumentation:' + component + ' (target=com.fchoo.gymtracker.devtest)\n');
 } else if (command[0] === 'am' && command[1] === 'instrument') {
+  record();
   if (process.env.NODE_ENV !== 'production' || process.env.NODE_TEST_CONTEXT || process.env.V12_NATIVE_ADAPTER_COMMAND || process.env.V12_NATIVE_ADAPTER_TEST_MODE) process.exit(79);
   state.instrumentCalls = (state.instrumentCalls ?? 0) + 1;
   state.instrumentCommand = command;
@@ -107,6 +111,7 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   if (state.duplicateResult) emit('result',{sha256:'0'.repeat(64)});
   if (!state.noCompletion) process.stdout.write(state.failedCompletion ? 'INSTRUMENTATION_CODE: 0\n' : 'INSTRUMENTATION_CODE: -1\n');
 } else if (command[0] === 'am' && command[1] === 'force-stop' && state.failStop) {
+  record();
   process.stderr.write('private-device /Users/private bearer'); process.exit(1);
 } else {
   await import(pathToFileURL(path.join(process.cwd(),'scripts/testing/v12-production-launcher/controlled-device-tool.mjs')));
@@ -150,6 +155,9 @@ function released(runner) { assert.equal(existsSync(path.join(runner.scratch, "l
 function successful(runner, payload) {
   const result = runner.invoke(payload); assert.equal(result.status, 0, result.stderr); return JSON.parse(result.stdout);
 }
+function independentQualityCommands(runner) {
+  return runner.readState().commands.filter((args) => !args.join(" ").includes("'am' 'instrument'"));
+}
 
 test("unsupported actions return undefined without reading identity or running ADB", async () => {
   for (const action of ["sqlite", "calendar", "garmin", "recovery", "visual-capture", "unknown", undefined]) {
@@ -166,6 +174,8 @@ test("production subprocess returns the complete native performance raw schema u
   assert.deepEqual(shard.raw_samples.native_receipts, result.samples.native_receipts);
   assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(runner.readState().instrumentCalls, 1);
+  assert.equal(independentQualityCommands(runner).length,
+    V12_QUALITY_COMMAND_GRAPH.performance.length - V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length);
   assert.equal(result.samples.garmin_sync_normalization.baseline.source, "phase18-exact-artifact-baseline");
 });
 test("production subprocess returns measured F200/accessibility with restored settings and attended exclusions", (t) => {
@@ -176,6 +186,8 @@ test("production subprocess returns measured F200/accessibility with restored se
   const shard = executeLiveV12AccessibilityShard({ runId: runner.build.run_id, observe: () => result, write: (file, value) => writes.push([file, value]) });
   assert.deepEqual(shard.semantic.excludes, ["live-talkback", "switch-scanning", "final-verdict"]);
   assert.equal(writes.length, 2); assert.deepEqual(runner.readState().settings, before); released(runner);
+  assert.equal(independentQualityCommands(runner).length,
+    V12_QUALITY_COMMAND_GRAPH.accessibility.length - V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length);
 });
 test("identity request verifies installed identity under a lease and does not start instrumentation", (t) => {
   const runner = fixture(t); assert.deepEqual(successful(runner, { request: "identity" }), { identity: runner.identity });

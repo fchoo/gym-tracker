@@ -13,6 +13,9 @@ import {
   V12_VISUAL_ADB_CALL_TIMEOUT_MS,
   V12_VISUAL_CAPTURE_CLEANUP_TIMEOUT_MS,
   V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS,
+  V12_VISUAL_MARKER_POLL_DELAY_MS,
+  V12_VISUAL_MARKER_WINDOW_MS,
+  V12_VISUAL_NAVIGATION_COMMAND_TIMEOUT_MS,
 } from "./v12-native-time-budgets.mjs";
 
 export { V12_VISUAL_CAPTURE_CLEANUP_TIMEOUT_MS, V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS };
@@ -208,7 +211,7 @@ function restore(shell, snapshot) {
 }
 
 async function marker(native, nonce, selected, mode, expectedScheme = selected.config.scheme) {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + V12_VISUAL_MARKER_WINDOW_MS;
   do {
     const output = native.adb("logcat", "-d", "-v", "raw", "ReactNativeJS:I", "*:S").toString("utf8");
     let found;
@@ -263,7 +266,7 @@ async function marker(native, nonce, selected, mode, expectedScheme = selected.c
       }
       return found;
     }
-    await delay(100);
+    await delay(V12_VISUAL_MARKER_POLL_DELAY_MS);
   } while (Date.now() < deadline);
   fail("marker_timeout");
 }
@@ -274,7 +277,7 @@ async function navigate(native, root, serial, selected, mode, nonce = randomByte
     params.set(key, value);
   }
   const link = `gymtracker-devtest://${ROUTE}?${params}`;
-  native.command("maestro", ["--device", serial, "test", "-e", `VISUAL_LINK=${link}`, "-e", `VISUAL_STATE=${selected.state_id}`, "-e", `VISUAL_SCREEN_ID=${selected.state.readiness.screen_test_id}`, "-e", `VISUAL_READY_ID=${selected.state.readiness.test_id}`, "-e", `VISUAL_MODE=${mode}`, path.join(root, FLOW)], { timeout: 40_000 });
+  native.command("maestro", ["--device", serial, "test", "-e", `VISUAL_LINK=${link}`, "-e", `VISUAL_STATE=${selected.state_id}`, "-e", `VISUAL_SCREEN_ID=${selected.state.readiness.screen_test_id}`, "-e", `VISUAL_READY_ID=${selected.state.readiness.test_id}`, "-e", `VISUAL_MODE=${mode}`, path.join(root, FLOW)], { timeout: V12_VISUAL_NAVIGATION_COMMAND_TIMEOUT_MS });
   if (mode === "capture") {
     params.set("ready", nonce);
     native.shell("am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", `gymtracker-devtest://${ROUTE}?${params}`, PACKAGE);

@@ -19,6 +19,14 @@ export const V12_NATIVE_RUNTIME_SETTINGS = Object.freeze({
   airplane_mode_on: "global",
 });
 
+export const V12_QUALITY_RUNTIME_SETTINGS = Object.freeze({
+  font_scale: "system",
+  window_animation_scale: "global",
+  transition_animation_scale: "global",
+  animator_duration_scale: "global",
+  show_ime_with_hard_keyboard: "secure",
+});
+
 export const V12_VISUAL_SYSTEM_SETTINGS = Object.freeze([
   "font_scale",
   "accelerometer_rotation",

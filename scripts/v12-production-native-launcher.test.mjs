@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
+import { V12_NATIVE_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 
 function fixture(t) { const value = createControlledRunner(); t.after(value.cleanup); return value; }
 function bounded(result, code = "command_failed") {
@@ -73,6 +74,13 @@ for (const [name, update, code] of [
   const runner = fixture(t); runner.updateState(update);
   const started = Date.now(); bounded(runner.invoke("acquire-lease"), code);
   assert.ok(Date.now() - started < 5_000);
+  assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
+});
+test("lease acquisition failure after owner read runs both cleanup commands", (t) => {
+  const runner = fixture(t); runner.updateState({ invalidOwnerRead: true });
+  bounded(runner.invoke("acquire-lease"), "lease_invalid");
+  assert.equal(runner.readState().commands.length,
+    V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length + V12_NATIVE_COMMAND_GRAPH.acquire_lease.failure_after_owner_read.length);
   assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
 });
 test("SQLite returns exact native counts and never reconstructs them", (t) => {

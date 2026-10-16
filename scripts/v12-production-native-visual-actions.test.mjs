@@ -10,6 +10,7 @@ import { PNG } from "pngjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { executeProductionVisualAction, resolveV12ProductionVisualConfiguration } from "./v12-production-native-visual-actions.mjs";
+import { V12_VISUAL_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 
 const project = fileURLToPath(new URL("../", import.meta.url));
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -181,6 +182,11 @@ test("capture binds actual PNG, state/configuration and UI geometry, then reads 
   assert.equal(f.state.lock, false);
   assert.equal(f.state.screenId, "plan-type-chooser");
   assert.equal(f.state.readyId, "plan-type-chooser");
+  const visualLockAcquisition = f.state.commands.findIndex((command) => command.join(" ").includes("'mkdir' '/data/local/tmp/gym-tracker-v12-visual'"));
+  assert.equal(visualLockAcquisition, V12_VISUAL_COMMAND_GRAPH.device_verification.length);
+  const resetNavigation = f.state.commands.findIndex((command) => command[0] === "maestro" && command.includes("VISUAL_MODE=reset"));
+  const cleanupAdbCommands = f.state.commands.slice(resetNavigation + 1).filter((command) => command[0] === "adb");
+  assert.equal(cleanupAdbCommands.length, 1 + V12_VISUAL_COMMAND_GRAPH.cleanup.length);
   const readyAck = f.state.commands.find((command) => command[0] === "adb" && command.join(" ").includes("android.intent.action.VIEW"));
   assert.match(readyAck?.join(" ") ?? "", /[?&]ready=[a-f0-9]{32}/u);
   assert.doesNotMatch(JSON.stringify(result), /device-private|\/private\/|\/Users\//u);

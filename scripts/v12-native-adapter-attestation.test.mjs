@@ -11,14 +11,19 @@ import {
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   V12_NATIVE_CLEANUP_BUDGET,
+  V12_NATIVE_COMMAND_GRAPH,
   V12_NATIVE_LEASE_ACTION_BUDGETS,
   V12_NATIVE_MAX_REQUEST_BYTES,
   V12_NATIVE_MAX_RESPONSE_BYTES,
+  V12_QUALITY_ACTION_BUDGETS,
+  V12_QUALITY_COMMAND_GRAPH,
   V12_SQLITE_PRODUCER_BOUND_MS,
   V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
   V12_VISUAL_CLEANUP_BUDGET,
+  V12_VISUAL_COMMAND_GRAPH,
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
   invokeV12NativeAdapterEnvelope,
+  v12CommandPathMaxMs,
 } from "./v12-native-adapter.mjs";
 
 function fixture(t) {
@@ -120,8 +125,23 @@ test("every adapter action has an explicit bounded timeout and transport budget"
     "visual-capture", "visual-capture-batch", "visual-compare",
   ]);
   assert.ok(Object.values(V12_NATIVE_ACTION_TIMEOUT_MS).every((value) => Number.isSafeInteger(value) && value >= 1_000 && value <= 4 * 60 * 60_000));
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.performance >= 35 * 60_000);
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.accessibility >= 26 * 60_000);
+  assert.equal(V12_NATIVE_COMMAND_GRAPH.acquire_lease.success.length, 5);
+  assert.equal(V12_NATIVE_COMMAND_GRAPH.acquire_lease.failure_after_owner_read.length, 7);
+  assert.equal(V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].adb_call_count,
+    V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length + V12_NATIVE_COMMAND_GRAPH.acquire_lease.failure_after_owner_read.length);
+  assert.equal(V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].max_ms, 220_000);
+  assert.equal(V12_VISUAL_COMMAND_GRAPH.device_verification.length, 7);
+  assert.equal(V12_VISUAL_CLEANUP_BUDGET.reset_bound_ms, 60_100);
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance.length, 75);
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.accessibility.length, 76);
+  for (const action of ["performance", "accessibility"]) {
+    const budget = V12_QUALITY_ACTION_BUDGETS[action];
+    assert.equal(budget.adb_call_count, V12_QUALITY_COMMAND_GRAPH[action].length);
+    assert.equal(budget.adb_max_ms, v12CommandPathMaxMs(V12_QUALITY_COMMAND_GRAPH[action]));
+    assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action], budget.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
+  }
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.performance > 45 * 60_000);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.accessibility > 45 * 60_000 + 20_000);
   assert.equal(V12_NATIVE_ADAPTER_GRACE_MS, V12_NATIVE_CLEANUP_BUDGET.max_ms + V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture"], V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture-batch"], V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
@@ -137,14 +157,9 @@ test("every adapter action has an explicit bounded timeout and transport budget"
 });
 
 test("outer adapter survives maximum producers and every restoration/release call", () => {
-  const simulateFinally = (producerMs, cleanup) => {
-    let elapsed = producerMs;
-    for (let index = 0; index < cleanup.restore_adb_call_count; index += 1) elapsed += cleanup.adb_call_timeout_ms;
-    for (let index = 0; index < cleanup.release_adb_call_count; index += 1) elapsed += cleanup.adb_call_timeout_ms;
-    return elapsed;
-  };
+  const simulateCommands = (elapsed, path) => elapsed + v12CommandPathMaxMs(path);
 
-  const sqliteFinallyCompletedAt = simulateFinally(V12_SQLITE_PRODUCER_BOUND_MS, V12_NATIVE_CLEANUP_BUDGET);
+  const sqliteFinallyCompletedAt = simulateCommands(V12_SQLITE_PRODUCER_BOUND_MS, V12_NATIVE_COMMAND_GRAPH.runtime_cleanup);
   assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.sqlite > sqliteFinallyCompletedAt);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.sqlite - sqliteFinallyCompletedAt, V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms);
 
@@ -153,12 +168,22 @@ test("outer adapter survives maximum producers and every restoration/release cal
     ["visual-capture-batch", V12_VISUAL_BATCH_PRODUCER_BOUND_MS],
     ["visual-compare", V12_VISUAL_BATCH_PRODUCER_BOUND_MS],
   ]) {
-    const finallyCompletedAt = simulateFinally(producerMs, V12_NATIVE_CLEANUP_BUDGET);
+    const finallyCompletedAt = simulateCommands(producerMs, V12_NATIVE_COMMAND_GRAPH.runtime_cleanup);
     assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS[action] > finallyCompletedAt, `${action} can be killed before runtime finally completes`);
+    assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action] - finallyCompletedAt, V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
   }
 
   const visualRestoreCompletedAt = V12_VISUAL_CLEANUP_BUDGET.reset_bound_ms
-    + (V12_VISUAL_CLEANUP_BUDGET.restore_adb_call_count + V12_VISUAL_CLEANUP_BUDGET.release_adb_call_count)
-      * V12_VISUAL_CLEANUP_BUDGET.adb_call_timeout_ms;
+    + v12CommandPathMaxMs(V12_VISUAL_COMMAND_GRAPH.cleanup);
   assert.ok(V12_VISUAL_CLEANUP_BUDGET.max_ms > visualRestoreCompletedAt);
+  assert.equal(V12_VISUAL_CLEANUP_BUDGET.max_ms - visualRestoreCompletedAt, V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
+
+  for (const action of ["performance", "accessibility"]) {
+    const cleanupCompletedAt = V12_QUALITY_ACTION_BUDGETS[action].producer_max_ms
+      + v12CommandPathMaxMs(V12_QUALITY_COMMAND_GRAPH[action]);
+    assert.equal(cleanupCompletedAt, V12_QUALITY_ACTION_BUDGETS[action].max_ms);
+    assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS[action] > cleanupCompletedAt,
+      `${action} can be killed before quality cleanup and lease release complete`);
+    assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action] - cleanupCompletedAt, V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
+  }
 });
