@@ -35,6 +35,9 @@ let mockParams: Readonly<{
   origin?: string | readonly string[];
   returnToken?: string | readonly string[];
   sourceRevision?: string | readonly string[];
+  phase20CalendarFixture?: string | readonly string[];
+  phase20CalendarEvidenceNonce?: string | readonly string[];
+  phase20CalendarRequirementsSha256?: string | readonly string[];
 }> = {};
 let mockShellProps: Readonly<Record<string, unknown>> = {};
 let pendingLoads: Array<Readonly<{
@@ -51,6 +54,16 @@ jest.mock("expo-router", () => ({
     effect();
   },
   useLocalSearchParams: () => mockParams,
+}));
+
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      android: { package: "com.fchoo.gymtracker.devtest" },
+      extra: { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" },
+    },
+  },
 }));
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
@@ -136,7 +149,7 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
   });
 
   it("loads exactly one validated local activity and uses stack Back", async () => {
-    await renderRoute();
+    await act(async () => { await renderRoute(); });
     expect(screen.getByTestId("garmin-route-shell")).toBeTruthy();
     expect(mockShellProps.origin).toBe("calendar");
 
@@ -148,6 +161,23 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     expect(screen.getByText("Outdoor run")).toBeTruthy();
     fireEvent.press(screen.getByRole("button", { name: "Back to Calendar agenda" }));
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads the accepted Phase 20 Garmin fixture through the real Calendar activity route", async () => {
+    mockParams = {
+      activityId: "activity-v12-garmin-outdoor",
+      origin: "calendar",
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "b".repeat(32),
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+
+    await act(async () => { await renderRoute(); });
+
+    expect(await screen.findByText("Outdoor run")).toBeOnTheScreen();
+    expect(screen.getByText("5.00 km")).toBeOnTheScreen();
+    expect(screen.queryByText("Activity not found")).toBeNull();
+    expect(mockLoadImportedActivityDetail).not.toHaveBeenCalled();
   });
 
   it.each([

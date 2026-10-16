@@ -94,7 +94,7 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
     const lease = { lease_id: randomBytes(24).toString("hex"), native_execution: "EXECUTED" };
     try {
       verifyApk();
-      writeLeaseState({ ...lease, run_id: attestation.run_id, device_identity_sha256: identity, settings: null });
+      writeLeaseState({ ...lease, run_id: attestation.run_id, device_identity_sha256: identity, settings: null, calendar_settings: null, calendar_restored: true });
       leaseState(lease);
       return lease;
     } catch (error) {
@@ -111,6 +111,18 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
       return [key, value];
     }));
   }
+  function readWindowSetting(key) {
+    const shape = key === "size" ? "[1-9][0-9]{1,4}x[1-9][0-9]{1,4}" : "[1-9][0-9]{1,3}";
+    const match = new RegExp(`^Physical ${key}: (${shape})(?:\\r?\\nOverride ${key}: (${shape}))?$`, "u").exec(shell("wm", key));
+    if (match === null) nativeFailure("settings_invalid");
+    return Object.freeze({ physical: match[1], override: match[2] ?? null });
+  }
+  function readCalendarSettings() {
+    const airplane = shell("cmd", "connectivity", "airplane-mode");
+    const night = /^Night mode: (auto|yes|no|custom)$/u.exec(shell("cmd", "uimode", "night"))?.[1];
+    if (!/^Airplane mode is (?:enabled|disabled)$/u.test(airplane) || night === undefined) nativeFailure("settings_invalid");
+    return Object.freeze({ values: readSettings(), airplane, size: readWindowSetting("size"), density: readWindowSetting("density"), night });
+  }
   function snapshotSettings(lease) {
     const state = leaseState(lease);
     if (state.settings !== null) nativeFailure("settings_already_snapshotted");
@@ -118,6 +130,15 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
     writeLeaseState({ ...state, settings });
     if (JSON.stringify(leaseState(lease).settings) !== JSON.stringify(settings)) nativeFailure("settings_snapshot_failed");
     return settings;
+  }
+  function snapshotCalendarSettings(lease) {
+    const state = leaseState(lease);
+    if (state.calendar_settings !== null && state.calendar_settings !== undefined) nativeFailure("settings_already_snapshotted");
+    const calendarSettings = readCalendarSettings();
+    writeLeaseState({ ...state, calendar_settings: calendarSettings, calendar_restored: false });
+    const persisted = leaseState(lease).calendar_settings;
+    if (JSON.stringify(persisted) !== JSON.stringify(calendarSettings)) nativeFailure("settings_snapshot_failed");
+    return calendarSettings;
   }
   function restoreSettings(settings, lease) {
     const state = leaseState(lease);
@@ -135,9 +156,32 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
     // Keep the original snapshot until release so a later modification cannot be hidden.
     return true;
   }
+  function restoreCalendarSettings(calendarSettings, lease) {
+    const state = leaseState(lease);
+    if (!state.calendar_settings || JSON.stringify(calendarSettings) !== JSON.stringify(state.calendar_settings)) nativeFailure("settings_invalid");
+    let failed = false;
+    try { shell("cmd", "connectivity", "airplane-mode", calendarSettings.airplane.endsWith(" enabled") ? "enable" : "disable"); } catch { failed = true; }
+    for (const [key, namespace] of Object.entries(SETTINGS)) {
+      try {
+        if (calendarSettings.values[key] === "null") shell("settings", "delete", namespace, key);
+        else shell("settings", "put", namespace, key, calendarSettings.values[key]);
+      } catch { failed = true; }
+    }
+    for (const key of ["size", "density"]) {
+      try { shell("wm", key, calendarSettings[key].override ?? "reset"); } catch { failed = true; }
+    }
+    try { shell("cmd", "uimode", "night", calendarSettings.night); } catch { failed = true; }
+    let current;
+    try { current = readCalendarSettings(); } catch { failed = true; }
+    if (failed || JSON.stringify(current) !== JSON.stringify(calendarSettings)) nativeFailure("settings_restore_failed");
+    writeLeaseState({ ...leaseState(lease), calendar_settings: calendarSettings, calendar_restored: true });
+    return true;
+  }
   function releaseLease(lease) {
     const state = leaseState(lease);
     if (state.settings !== null && JSON.stringify(readSettings()) !== JSON.stringify(state.settings)) nativeFailure("settings_restore_failed");
+    if (state.calendar_settings !== null && state.calendar_settings !== undefined
+      && (state.calendar_restored !== true || JSON.stringify(readCalendarSettings()) !== JSON.stringify(state.calendar_settings))) nativeFailure("settings_restore_failed");
     shell("rm", `${LOCK}/owner.json`);
     shell("rmdir", LOCK);
     return true;
@@ -187,5 +231,5 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
     }
     nativeFailure("marker_timeout");
   }
-  return Object.freeze({ acquireLease, releaseLease, snapshotSettings, restoreSettings, withLease, sqlite });
+  return Object.freeze({ acquireLease, releaseLease, snapshotSettings, restoreSettings, snapshotCalendarSettings, restoreCalendarSettings, withLease, sqlite });
 }

@@ -6,11 +6,18 @@ import { V12_CONFIG_IDS, V12_BROWSER_WALK_STATE_IDS } from './v12-evidence-contr
 import { verifyV12ComparisonRecord } from './compare-v12-visual.mjs';
 import { V12_MAESTRO_FLOW_CONTRACTS } from './run-v12-maestro.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
+import { V12_CALENDAR_FLOW_REVISION, validateV12CalendarStageResult } from './v12-calendar-observation-contract.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
 import { V12_SQLITE_SHARD_CASE_IDS } from './v12-sqlite-shard.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_UNCOMMITTED_CUT_IDS, validateV12RecoveryShard } from './v12-recovery-shard.mjs';
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, nearestRankP95 } from './benchmark-v12-interactions.mjs';
 import { validateV12PerformanceShard } from './v12-performance-shard.mjs';
+import {
+  deriveV12CalendarRequirementSelectors,
+  validateV12CalendarProbeReceipt,
+  V12_CALENDAR_REQUIREMENT_DEFINITIONS,
+  V12_CALENDAR_REQUIREMENT_PROBE_COUNT,
+} from './v12-calendar-requirement-map.mjs';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
@@ -55,16 +62,28 @@ const DOM_SHARED = {
   3: 'Occurrence selection and offline commit acknowledgement share the completion/retry transaction fixture.',
 };
 const SHL_STATES = [2, 34, 1, 61, 9, 17, 8, 10, 84, 83, 86, 88, 90];
-const CAL_STAGES = [24, 34, 26, 33, 22, 25, 0, 2, 6, 13, 17, 20, 21, 23, 32, 18, 19, 27, 28, 29, 31, 30, 16];
 const GAR_CASES = [0, 1, 5, 4, 2, 3, 17, 6, 7, 8, 9, 11, 10, 15, 12, 14];
 const PERFORMANCE_GATES = [...Object.keys(V12_PERFORMANCE_BUDGETS), 'phase12_merge_peak_growth'];
 const VER_GATES = ['inventory', 'appearance', 'viewports', 'targets', 'input-focus', 'reduced-motion', 'sqlite', 'recovery', 'calendar', 'garmin', 'performance', 'attended', 'preseal'];
+
+export function validateV12CalendarExecutionOrigin(value, root = process.cwd(), allowTestFixture = false) {
+  const keys = ['schema_version', 'kind', 'default_launcher', 'test_only', 'adapter_source_sha256', 'launcher_source_sha256', 'request_attestation_sha256'];
+  ensure(value && same(Object.keys(value), keys), 'calendar_origin_invalid');
+  const adapterMatches = value.adapter_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-native-adapter.mjs')));
+  const production = value.kind === 'production-default-launcher' && value.default_launcher === true && value.test_only === false
+    && value.launcher_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-production-native-adapter-launcher.mjs')));
+  const testOnly = allowTestFixture && value.kind === 'test-fixture' && value.default_launcher === false && value.test_only === true
+    && value.launcher_source_sha256 === sha(readFileSync(path.join(root, 'scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs')));
+  ensure(value.schema_version === 1 && adapterMatches && (production || testOnly) && HASH.test(value.request_attestation_sha256 ?? ''), 'calendar_origin_invalid');
+  return true;
+}
 
 export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
   const phases = { DOM: [13, 17], SHL: [14, 13], WRK: [15, 36], CAL: [16, 23], LIB: [17, 36], GAR: [18, 16], PRO: [19, 18], VER: [20, 13] };
   const expected = Object.entries(phases).flatMap(([prefix, [, count]]) => Array.from({ length: count }, (_, i) => `${prefix}-${String(i + 1).padStart(2, '0')}`));
   exactIds(inputs?.matrix?.rows?.map(row => row.requirement_id), expected, 'matrix_invalid');
   const functional = Object.fromEntries(['multi-plan', 'workout', 'library-running'].map(shard => [shard, readV12FunctionalRegistry(shard, root)]));
+  const calendar = new Map(deriveV12CalendarRequirementSelectors(inputs.matrix.rows).map(entry => [entry.row_id, entry]));
   const table = inputs.matrix.rows.map(row => {
     const [prefix, suffix] = row.requirement_id.split('-'); const ordinal = Number(suffix) - 1;
     ensure(row.owning_phase === phases[prefix][0], 'matrix_phase_invalid');
@@ -72,7 +91,13 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
     if (prefix === 'DOM') { type = 'functional-case'; shard = 'multi-plan'; id = functional[shard][DOM_CASES[ordinal]]; shared_contract = DOM_SHARED[DOM_CASES[ordinal]]; }
     if (prefix === 'WRK' || prefix === 'LIB') { type = 'functional-case'; shard = prefix === 'WRK' ? 'workout' : 'library-running'; id = functional[shard][ordinal]; }
     if (prefix === 'SHL') { type = 'comparison-state'; shard = 'visual'; id = `BW-${String(SHL_STATES[ordinal]).padStart(3, '0')}`; }
-    if (prefix === 'CAL') { type = 'calendar-stage'; shard = 'calendar'; id = V12_CALENDAR_SHARD_STAGE_IDS[CAL_STAGES[ordinal]]; }
+    if (prefix === 'CAL') {
+      const mapping = calendar.get(row.requirement_id);
+      ensure(mapping !== undefined && mapping.evidence_id === row.inventory_id, 'calendar_selector_invalid');
+      type = 'calendar-requirement'; shard = 'calendar'; id = mapping.evidence_id;
+      return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
+        selector: { type, shard, id, contract: row.acceptance_contract, stage_ids: mapping.stage_ids, probe_ids: mapping.probe_ids } };
+    }
     if (prefix === 'GAR') { type = 'garmin-case'; shard = 'garmin'; id = V12_GARMIN_SHARD_CASE_IDS[GAR_CASES[ordinal]]; }
     if (prefix === 'PRO') { type = 'performance-budget'; shard = 'performance'; id = PERFORMANCE_GATES[ordinal]; }
     if (prefix === 'VER') { type = 'phase20-gate'; shard = 'verification'; id = VER_GATES[ordinal]; }
@@ -164,7 +189,7 @@ export function resolveV12PerformanceGates(observation) {
 }
 
 /** Resolve the complete source graph once; every leaf is tied to actual bytes. */
-export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), readArtifact, attended } = {}) {
+export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), readArtifact, attended, allowTestCalendarFixture = false } = {}) {
   const table = createV12RowSelectorTable({ inputs, root });
   const prefix = `artifacts/native/v1.2/${manifest.run_id}/`;
   ensure(V12_CONFIG_IDS.includes(manifest.configuration?.id), 'configuration_invalid');
@@ -196,7 +221,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const value = { type, id, result: result(state), ...metadata, bindings: [...new Set(artifacts)].map(relative => ({ artifact: full(relative), sha256: artifactHash(full(relative)) })) };
     leaves.set(key, value); return value;
   }
-  const group = (keys, id) => ({ type: 'acceptance-gate', id, shared_contract: 'This verification gate requires every listed concrete source result; constituent results may also close their source-owned requirement rows.', result: combineV12SourceResults(keys.map(key => { ensure(leaves.has(key), 'selector_unknown'); return leaves.get(key).result; })), members: keys.map(key => leaves.get(key)) });
+  const group = (keys, id) => ({ type: 'acceptance-gate', id, shared_contract: 'This verification gate requires every listed concrete source result; constituent results may also close their source-owned requirement rows.', result: combineV12SourceResults(keys.map(key => { ensure(leaves.has(key), `selector_unknown:${key}`); return leaves.get(key).result; })), members: keys.map(key => leaves.get(key)) });
   ensure(same(json('build.json'), manifest), 'build_binding_invalid');
   for (const shard of ['multi-plan', 'workout', 'library-running']) {
     const mappingPath = `mapping/${shard}.json`; const xmlPath = `maestro/${shard}.xml`;
@@ -218,34 +243,116 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     });
   }
   const calendar = json('calendar-transitions.json'); bindIdentity(calendar.identity);
+  const calendarRequirements = json('calendar-requirements.json'); bindIdentity(calendarRequirements.identity);
+  const calendarArtifacts = json('calendar/artifact-registry.json');
   const calendarIds = V12_CALENDAR_SHARD_STAGE_IDS;
-  ensure(calendar.run_id === manifest.run_id && calendar.producer === 'v12-calendar-shard/v3' && calendar.flow_revision === 'calendar-flow-r35'
+  ensure(calendar.run_id === manifest.run_id && calendar.schema_version === 5 && calendar.producer === 'v12-calendar-shard/v6' && calendar.flow_revision === V12_CALENDAR_FLOW_REVISION
     && calendar.identity.configuration_id === manifest.configuration.id
-    && calendar.flow_sha256 === jsonHash(readFileSync(path.join(root, 'maestro/v1.2/calendar.yaml'))), 'calendar_schema_invalid');
+    && calendar.flow_sha256 === sha(readFileSync(path.join(root, 'maestro/v1.2/calendar.yaml'))), 'calendar_schema_invalid');
+  validateV12CalendarExecutionOrigin(calendar.execution_origin, root, allowTestCalendarFixture);
+  validateV12CalendarExecutionOrigin(calendarRequirements.execution_origin, root, allowTestCalendarFixture);
+  ensure(calendarRequirements.schema_version === 2 && calendarRequirements.producer === 'v12-calendar-requirements/v2'
+    && calendarRequirements.run_id === manifest.run_id && calendarRequirements.fixture_id === 'v12-calendar-isolated-facts-v1'
+    && calendarRequirements.flow_sha256 === sha(readFileSync(path.join(root, 'maestro/v1.2/calendar-requirements.yaml'))), 'calendar_requirement_schema_invalid');
+  ensure(calendarArtifacts?.schema_version === 2 && calendarArtifacts.producer === 'v12-calendar-artifact-registry/v2'
+    && calendarArtifacts.run_id === manifest.run_id && calendarArtifacts.execution_origin_sha256 === jsonHash(calendar.execution_origin)
+    && calendar.artifact_registry_sha256 === jsonHash(calendarArtifacts), 'calendar_artifact_registry_invalid');
+  const nativeRequirements = { flow_sha256: calendarRequirements.flow_sha256, fixture_id: calendarRequirements.fixture_id,
+    records: calendarRequirements.records, junit_cases: calendarRequirements.junit_cases };
+  const nativeArtifactDescriptors = calendarArtifacts.members.map((member) => member.stage_id === undefined
+    ? { requirement_id: member.requirement_id, probe_id: member.probe_id, kind: member.kind, relative_path: member.path, sha256: member.sha256, size_bytes: member.size_bytes }
+    : { stage_id: member.stage_id, kind: member.kind, relative_path: member.path, sha256: member.sha256, size_bytes: member.size_bytes });
+  const nativeReceipt = calendar.native_receipt;
+  ensure(nativeReceipt?.schema_version === 2 && nativeReceipt.producer === 'v12-calendar-native-receipt/v2'
+    && nativeReceipt.native_execution === 'EXECUTED' && nativeReceipt.run_id === manifest.run_id
+    && nativeReceipt.source_tree_sha256 === manifest.source.tree_sha256 && nativeReceipt.apk_sha256 === manifest.build.apk.sha256
+    && nativeReceipt.installed_apk_sha256 === manifest.device.installed_apk_sha256 && nativeReceipt.apk_signature_sha256 === manifest.build.apk.signature_sha256
+    && nativeReceipt.device_identity_sha256 === manifest.device.identity_sha256 && nativeReceipt.launcher_source_sha256 === calendar.execution_origin.launcher_source_sha256
+    && nativeReceipt.flow_sha256 === calendar.flow_sha256 && nativeReceipt.requirements_flow_sha256 === calendarRequirements.flow_sha256
+    && nativeReceipt.fixture_id === calendarRequirements.fixture_id && nativeReceipt.stage_count === calendar.stages.length
+    && nativeReceipt.requirement_count === calendarRequirements.records.length
+    && nativeReceipt.probe_count === calendarRequirements.junit_cases.length
+    && nativeReceipt.evidence_set_sha256 === jsonHash({ stages: calendar.stages, requirements: nativeRequirements, artifacts: nativeArtifactDescriptors }), 'calendar_native_receipt_invalid');
   exactIds(calendar.stages?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
   exactIds(calendar.junit_cases?.map(x => x.id), calendarIds, 'calendar_selectors_invalid');
+  ensure(Array.isArray(calendarArtifacts.members) && calendarArtifacts.members.length === (calendarIds.length + V12_CALENDAR_REQUIREMENT_PROBE_COUNT) * 2, 'calendar_artifact_registry_invalid');
   const calendarTests = parseV12SourceJUnit(bytes(full('maestro/calendar.xml')).toString('utf8'), calendarIds, Object.fromEntries(calendar.stages.map(x => [x.id, result(x.status)])));
   calendar.stages.forEach((stage, index) => {
     ensure(stage.order === index && calendar.junit_cases[index].order === index && calendar.junit_cases[index].status === stage.status, 'calendar_order_invalid');
-    const receipt = stage.receipt;
-    exactIds(Object.keys(receipt ?? {}).sort(), ['content_width_dp', 'start_dp', 'end_dp', 'dx_dp', 'dy_dp', 'event_sequence', 'cancelled', 'settled', 'callback_count', 'semantic_transition', 'screenshot_sha256', 'trace_sha256', 'expected_outcome'].sort(), 'calendar_receipt_invalid');
-    ensure(receipt?.expected_outcome === stage.id && HASH.test(receipt.trace_sha256 ?? '') && HASH.test(receipt.screenshot_sha256 ?? '') && Number.isFinite(receipt.content_width_dp) && receipt.content_width_dp > 0
-      && Array.isArray(receipt.start_dp) && Array.isArray(receipt.end_dp) && receipt.start_dp.length === 2 && receipt.end_dp.length === 2 && receipt.start_dp.concat(receipt.end_dp).every(Number.isFinite)
-      && Number.isFinite(receipt.dx_dp) && Number.isFinite(receipt.dy_dp) && Math.abs(receipt.end_dp[0] - receipt.start_dp[0] - receipt.dx_dp) <= 0.01 && Math.abs(receipt.end_dp[1] - receipt.start_dp[1] - receipt.dy_dp) <= 0.01
-      && Array.isArray(receipt.event_sequence) && receipt.event_sequence.length >= 3 && receipt.event_sequence[0] === 'pointer-down' && receipt.event_sequence.at(-1) === 'pointer-up' && receipt.event_sequence.every(x => ['pointer-down', 'pointer-move', 'pointer-up', 'cancel'].includes(x))
-      && typeof receipt.cancelled === 'boolean' && typeof receipt.settled === 'boolean' && !(receipt.cancelled && receipt.settled) && Number.isInteger(receipt.callback_count) && receipt.callback_count > 0
-      && same(Object.keys(receipt.semantic_transition ?? {}).sort(), ['during', 'post', 'pre']) && Object.values(receipt.semantic_transition).every(x => typeof x === 'string' && x.length > 0), 'calendar_receipt_invalid');
-    ensure(Array.isArray(stage.samples) && stage.samples.length >= 2 && stage.samples.every((sample, n) => Number.isFinite(sample.timestampMs) && (!n || sample.timestampMs > stage.samples[n - 1].timestampMs) && Number.isFinite(sample.dxDp) && Number.isFinite(sample.translationDp) && Math.abs(sample.dxDp - sample.translationDp) <= 2 && Number.isFinite(sample.widthDp) && sample.widthDp > 0 && Number.isInteger(sample.callbackCount) && sample.callbackCount > 0), 'calendar_samples_invalid');
-    stage.samples.forEach((sample, index) => {
-      exactIds(Object.keys(sample).sort(), ['timestampMs', 'widthDp', 'dxDp', 'dyDp', 'intentOwner', 'translationDp', 'title', 'selectedCivilDate', 'generation', 'focusedWeek', 'rowBounds', 'callbackCount', 'focusIdentity', 'motion'].sort(), 'calendar_sample_fields_invalid');
-      ensure(Number.isFinite(sample.dyDp) && ['horizontal', 'vertical', 'diagonal'].includes(sample.intentOwner) && typeof sample.title === 'string'
-        && /^\d{4}-\d{2}-\d{2}$/u.test(sample.selectedCivilDate) && Number.isInteger(sample.generation) && sample.generation >= 1 && (!index || sample.generation >= stage.samples[index - 1].generation)
-        && typeof sample.focusedWeek === 'string' && Array.isArray(sample.rowBounds) && sample.rowBounds.length === 2 && sample.rowBounds.every(Number.isFinite) && sample.rowBounds[1] > sample.rowBounds[0]
-        && typeof sample.focusIdentity === 'string' && ['normal', 'reduced'].includes(sample.motion) && (!index || sample.callbackCount >= stage.samples[index - 1].callbackCount), 'calendar_samples_invalid');
-    });
-    const state = combineV12SourceResults([result(stage.status), calendarTests[index].result, receipt.settled || stage.status !== 'PASS' ? 'PASS' : 'FAIL']);
-    leaf(`calendar:${stage.id}`, 'calendar-stage', stage.id, state, ['calendar-transitions.json', 'maestro/calendar.xml'], { receipt_sha256: jsonHash(receipt), testcase: stage.id, stage_result: result(stage.status), junit_result: calendarTests[index].result });
+    try { validateV12CalendarStageResult(stage, stage.id, index); } catch { fail('calendar_observation_invalid'); }
+    const members = calendarArtifacts.members.slice(index * 2, index * 2 + 2);
+    const stem = `${String(index).padStart(2, '0')}-${stage.id}`;
+    ensure(members.length === 2 && same(members.map(({ stage_id, kind, path: artifactPath }) => ({ stage_id, kind, path: artifactPath })), [
+      { stage_id: stage.id, kind: 'png', path: `calendar/stages/${stem}.png` },
+      { stage_id: stage.id, kind: 'trace', path: `calendar/stages/${stem}.trace.json` },
+    ]), 'calendar_artifact_registry_invalid');
+    for (const member of members) {
+      ensure(HASH.test(member.sha256 ?? '') && Number.isSafeInteger(member.size_bytes) && member.size_bytes > 0, 'calendar_artifact_registry_invalid');
+      const content = bytes(full(member.path));
+      ensure(content.length === member.size_bytes && sha(content) === member.sha256, 'calendar_artifact_hash_invalid');
+      if (member.kind === 'png') ensure(member.sha256 === stage.screenshot_sha256 && content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')), 'calendar_artifact_hash_invalid');
+      else ensure(member.sha256 === stage.trace_sha256 && content.toString('utf8') === JSON.stringify(stage.observation), 'calendar_artifact_hash_invalid');
+    }
+    const state = combineV12SourceResults([result(stage.status), calendarTests[index].result]);
+    leaf(`calendar-stage:${stage.id}`, 'calendar-stage', stage.id, state, ['calendar-transitions.json', 'maestro/calendar.xml', 'calendar/artifact-registry.json', ...members.map(({ path: artifactPath }) => artifactPath)], { receipt_sha256: jsonHash(stage.observation), testcase: stage.id, stage_result: result(stage.status), junit_result: calendarTests[index].result });
   });
+  const requirementMappings = deriveV12CalendarRequirementSelectors(inputs.matrix.rows);
+  exactIds(calendarRequirements.records?.map(({ evidence_id: id }) => id), requirementMappings.map(({ evidence_id: id }) => id), 'calendar_requirement_selectors_invalid');
+  const probeMappings = requirementMappings.flatMap((mapping) => mapping.probe_ids.map((probeId) => ({ mapping, probeId })));
+  const probeTestIds = probeMappings.map(({ mapping, probeId }) => `${mapping.row_id}:${probeId}`);
+  exactIds(calendarRequirements.junit_cases?.map(({ id }) => id), probeTestIds, 'calendar_requirement_selectors_invalid');
+  const requirementTests = parseV12SourceJUnit(bytes(full('maestro/calendar-requirements.xml')).toString('utf8'), probeTestIds);
+  const fixtureSha256 = sha(readFileSync(path.join(root, 'src/testing/phase20CalendarFixture.ts')));
+  let probeOrder = 0;
+  const probeNonces = new Set();
+  for (const [index, mapping] of requirementMappings.entries()) {
+    const record = calendarRequirements.records[index];
+    ensure(record.requirement_id === mapping.row_id && record.evidence_id === mapping.evidence_id && record.native_execution === 'EXECUTED'
+      && record.fixture_id === calendarRequirements.fixture_id && record.fixture_storage === 'isolated-in-memory'
+      && record.fixture_source_sha256 === fixtureSha256 && record.source_digest_before === fixtureSha256 && record.source_digest_after === fixtureSha256
+      && Array.isArray(record.probe_receipts), 'calendar_requirement_invalid');
+    exactIds(record.probe_receipts.map(({ probe_id: id }) => id), mapping.probe_ids, 'calendar_requirement_probe_selectors_invalid');
+    const probeResults = [];
+    const artifacts = [];
+    for (const [localOrder, probeId] of mapping.probe_ids.entries()) {
+      const receipt = record.probe_receipts[localOrder];
+      try { validateV12CalendarProbeReceipt(receipt, { nonce: receipt?.nonce, flowSha256: calendarRequirements.flow_sha256,
+        fixtureSourceSha256: fixtureSha256, requirementId: mapping.row_id, evidenceId: mapping.evidence_id, probeId }); }
+      catch { fail('calendar_requirement_probe_receipt_invalid'); }
+      ensure(!probeNonces.has(receipt.nonce), 'calendar_requirement_probe_nonce_duplicate');
+      probeNonces.add(receipt.nonce);
+      const junit = calendarRequirements.junit_cases[probeOrder];
+      const parsed = requirementTests[probeOrder];
+      ensure(junit.id === `${mapping.row_id}:${probeId}` && junit.requirement_id === mapping.row_id
+        && junit.probe_id === probeId && junit.order === probeOrder && junit.status === parsed.result
+        && receipt.status === parsed.result, 'calendar_requirement_probe_status_invalid');
+      const offset = calendarIds.length * 2 + probeOrder * 2;
+      const members = calendarArtifacts.members.slice(offset, offset + 2);
+      const stem = `${String(probeOrder).padStart(2, '0')}-${mapping.row_id}-${probeId}`;
+      ensure(members.length === 2 && same(members.map(({ requirement_id, probe_id, kind, path: artifactPath }) => ({ requirement_id, probe_id, kind, path: artifactPath })), [
+        { requirement_id: mapping.row_id, probe_id: probeId, kind: 'png', path: `calendar/requirements/${stem}.png` },
+        { requirement_id: mapping.row_id, probe_id: probeId, kind: 'trace', path: `calendar/requirements/${stem}.trace.xml` },
+      ]), 'calendar_requirement_artifacts_invalid');
+      for (const artifact of members) {
+        const content = bytes(full(artifact.path));
+        ensure(HASH.test(artifact.sha256 ?? '') && Number.isSafeInteger(artifact.size_bytes) && artifact.size_bytes === content.length && artifact.sha256 === sha(content), 'calendar_requirement_artifacts_invalid');
+        if (artifact.kind === 'png') ensure(content.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')), 'calendar_requirement_artifacts_invalid');
+        else ensure(content.toString('utf8').includes('<hierarchy') && !/(?:\/Users\/|\/home\/|password="true"|(?:text|content-desc)="[^"]*(?:@|bearer|password|credential|latitude|longitude|gps))/iu.test(content.toString('utf8')), 'calendar_requirement_artifacts_invalid');
+      }
+      artifacts.push(...members);
+      probeResults.push(parsed.result);
+      probeOrder += 1;
+    }
+    const stages = mapping.stage_ids.map((stageId) => leaves.get(`calendar-stage:${stageId}`));
+    ensure(stages.every(Boolean), 'calendar_selector_invalid');
+    const state = combineV12SourceResults([...probeResults, ...stages.map(({ result: memberResult }) => memberResult)]);
+    leaf(`calendar:${mapping.evidence_id}`, 'calendar-requirement', mapping.evidence_id, state,
+      ['calendar-requirements.json', 'maestro/calendar-requirements.xml', 'calendar/artifact-registry.json', ...artifacts.map(({ path: artifactPath }) => artifactPath),
+        ...stages.flatMap(({ bindings }) => bindings.map(({ artifact }) => artifact.replace(prefix, '')))],
+      { requirement_id: mapping.row_id, stage_ids: mapping.stage_ids,
+        probe_receipts: record.probe_receipts.map(({ probe_id, receipt_sha256, status }) => ({ probe_id, receipt_sha256, status })), native_observation: 'EXECUTED' });
+  }
+  ensure(probeOrder === V12_CALENDAR_REQUIREMENT_PROBE_COUNT && probeNonces.size === probeOrder, 'calendar_requirement_probe_count_invalid');
   const garminGroups = { 'packaging-auth': ['packaging', 'bridge-allowlist', 'account-lifecycle', 'recovery'], 'sync-read': ['canonical-json', 'sync-read', 'privacy'], dedupe: V12_GARMIN_SHARD_CASE_IDS.slice(6, 9), matching: V12_GARMIN_SHARD_CASE_IDS.slice(9, 17) };
   const garminValues = Object.fromEntries(Object.keys(garminGroups).map(name => [name, json(`garmin/${name}.json`)]));
   const garminStates = {};
@@ -340,7 +447,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     inventory: group([...keys('multi-plan'), ...keys('workout'), ...keys('library-running')], 'inventory'),
     appearance: group(keys('visual'), 'appearance'), viewports: group(keys('visual'), 'viewports'),
     targets: group(['accessibility:targets'], 'targets'), 'input-focus': group(['accessibility:input-focus'], 'input-focus'),
-    'reduced-motion': group(['accessibility:motion', 'calendar:reduced-motion'], 'reduced-motion'),
+    'reduced-motion': group(['accessibility:motion', 'calendar-stage:reduced-motion'], 'reduced-motion'),
     sqlite: group(keys('sqlite'), 'sqlite'), recovery: group(keys('recovery'), 'recovery'), calendar: group(keys('calendar'), 'calendar'),
     garmin: group(keys('garmin'), 'garmin'), performance: group(keys('performance'), 'performance'),
     attended: attendedGate(), preseal: group(automated, 'preseal'),

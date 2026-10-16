@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createProductionNativeRuntime } from './v12-production-native-runtime.mjs';
-import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_SCENARIOS as RECOVERY_SCENARIO_DEFINITIONS, V12_RECOVERY_UNCOMMITTED_CUT_IDS } from './v12-recovery-shard.mjs';
-import { calendarStage, exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
+import { exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
+import { executeProductionCalendarAction } from './v12-production-native-calendar-action.mjs';
 
 const PACKAGE = 'com.fchoo.gymtracker.devtest';
 const RESULT = 'GYM_TRACKER_V12_DOMAIN_RESULT:';
@@ -170,31 +170,6 @@ async function garmin(io) {
     if (!exact(value, ['schema_version', 'nonce', 'kind', 'cases'])) fail('garmin_result_invalid');
     return garminCases({ cases: value.cases });
   } finally { io.stop(); }
-}
-
-async function calendar(io, root, payload) {
-  const flow = 'maestro/v1.2/calendar.yaml';
-  // This deliberately matches v12-calendar-shard's JSON-encoded Buffer digest.
-  const flowSha = hash(JSON.stringify(readFileSync(path.join(root, flow))));
-  if (payload.flow_sha256 !== flowSha || payload.flow_revision !== 'calendar-flow-r35') fail('calendar_flow_invalid');
-  io.version(); const stages = []; const junit = [];
-  for (const [order, id] of V12_CALENDAR_SHARD_STAGE_IDS.entries()) {
-    const status = io.maestro(flow, { PHASE16_CALENDAR_STAGE: id, PHASE16_CALENDAR_FIXTURE_ID: 'synthetic-calendar-v1', V12_DOMAIN_FLOW_SHA256: flowSha, V12_DOMAIN_FLOW_REVISION: payload.flow_revision }, order);
-    const value = await io.marker('calendar', (entry) => entry.stage?.id === id);
-    if (!exact(value, ['schema_version', 'nonce', 'kind', 'flow_sha256', 'flow_revision', 'stage']) || value.flow_sha256 !== flowSha || value.flow_revision !== payload.flow_revision) fail('calendar_flow_invalid');
-    const receipt = value.stage?.receipt;
-    if (!exact(receipt, ['content_width_dp', 'start_dp', 'end_dp', 'dx_dp', 'dy_dp', 'event_sequence', 'cancelled', 'settled', 'callback_count', 'semantic_transition', 'expected_outcome'])) fail('calendar_receipt_invalid');
-    const png = io.screenshot();
-    if (png.length < 33 || !png.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
-      || png.toString('ascii', 12, 16) !== 'IHDR' || png.readUInt32BE(16) < 1 || png.readUInt32BE(20) < 1) fail('calendar_screenshot_invalid');
-    const stage = calendarStage({ ...value.stage, receipt: { ...receipt, screenshot_sha256: hash(png), trace_sha256: hash(JSON.stringify(value.stage.samples)) } }, id, order);
-    writeFileSync(path.join(io.retained(), `${order}.png`), png, { flag: 'wx', mode: 0o600 });
-    writeFileSync(path.join(io.retained(), `${order}.trace.json`), JSON.stringify(stage.samples), { flag: 'wx', mode: 0o600 });
-    stage.status = worse(status, stage.status);
-    stages.push(stage); junit.push({ id, order, status: stage.status });
-  }
-  if (!stages.some((s) => s.samples.some((v) => v.intentOwner === 'horizontal' && Math.abs(Math.abs(v.dxDp) / v.widthDp - 0.25) < 0.0001))) fail('calendar_boundary_missing');
-  return { flow_sha256: flowSha, flow_revision: payload.flow_revision, stages, junit_cases: junit };
 }
 
 function recoverySnapshot(value) {
@@ -363,6 +338,7 @@ async function recovery(io) {
  */
 export async function executeProductionDomainAction(action, payload, attestation) {
   if (!['garmin', 'calendar', 'recovery'].includes(action)) return undefined;
+  if (action === 'calendar') return executeProductionCalendarAction(payload, attestation);
   try {
     const root = process.cwd(); validate(action, payload, attestation, root);
     const runtime = createProductionNativeRuntime(attestation, { root });
@@ -375,7 +351,7 @@ export async function executeProductionDomainAction(action, payload, attestation
         const io = session(root, attestation, action);
         io.standalone();
         try {
-          return await io.restoreAround(() => action === 'garmin' ? garmin(io) : action === 'calendar' ? calendar(io, root, payload) : recovery(io));
+          return await io.restoreAround(() => action === 'garmin' ? garmin(io) : recovery(io));
         } catch (error) {
           restoreFailed = error?.message === 'v12_production_native_launcher_settings_restore_failed';
           throw error;

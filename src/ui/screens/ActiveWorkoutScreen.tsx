@@ -496,6 +496,8 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onResolveUnknownOutcome?: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
   onRequestPlanEdit?: () => void;
   onOpenPlanSettings?: () => void;
+  initialHeaderFocus?: boolean;
+  onInitialHeaderFocused?: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   width?: number;
 }>;
@@ -518,6 +520,8 @@ export function ActiveWorkoutScreen({
   },
   onRequestPlanEdit = () => undefined,
   onOpenPlanSettings = () => undefined,
+  initialHeaderFocus = false,
+  onInitialHeaderFocused,
   loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
@@ -558,6 +562,8 @@ export function ActiveWorkoutScreen({
       onDiscarded={onDiscarded}
       onRequestPlanEdit={onRequestPlanEdit}
       onOpenPlanSettings={onOpenPlanSettings}
+      initialHeaderFocus={initialHeaderFocus}
+      {...(onInitialHeaderFocused === undefined ? {} : { onInitialHeaderFocused })}
       loadExerciseHistory={loadExerciseHistory}
       onFinishLater={onFinishLater}
       onGoBack={onGoBack}
@@ -909,6 +915,8 @@ function PopulatedWorkoutOverview({
   },
   onRequestPlanEdit = () => undefined,
   onOpenPlanSettings = () => undefined,
+  initialHeaderFocus = false,
+  onInitialHeaderFocused,
   loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
@@ -1018,6 +1026,11 @@ function PopulatedWorkoutOverview({
   const completionInFlightRef = useRef(false);
   const finishCompletedInputRef = useRef<FinishCompletedInput | null>(null);
   const finishPartialInputRef = useRef<FinishPartialInput | null>(null);
+  useEffect(() => {
+    if (!initialHeaderFocus || moreActionRef.current?.focus === undefined) return;
+    moreActionRef.current.focus();
+    onInitialHeaderFocused?.();
+  }, [initialHeaderFocus, onInitialHeaderFocused]);
   const saveZeroSetInputRef = useRef<SaveZeroSetInput | null>(null);
   const discardWorkoutInputRef = useRef<DiscardWorkoutInput | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);

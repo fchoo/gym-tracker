@@ -3,7 +3,6 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { createDomainRunner } from './testing/v12-production-domain/controlled-domain-runner.mjs';
-import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
 
 const fixture = (t) => { const r = createDomainRunner(); t.after(r.cleanup); return r; };
@@ -29,23 +28,12 @@ for (const mutation of ['private', 'extra', 'order', 'count']) test(`Garmin reje
   if (mutation === 'count') garmin.cases[0].count = -1;
   r.updateState({ garmin }); bounded(r.invoke('garmin'), 'garmin_result_invalid');
 });
-for (const action of ['garmin', 'calendar', 'recovery']) test(`${action} validates attestation and device before actions`, (t) => {
+for (const action of ['garmin', 'recovery']) test(`${action} validates attestation and device before actions`, (t) => {
   const r = fixture(t); bounded(r.invoke(action, {}, { build_profile: 'production' }), 'attestation_invalid');
   bounded(r.invoke(action, {}, { source_tree_sha256: '0'.repeat(64) }), 'identity_mismatch');
   r.updateState({ wrongApk: true }); bounded(r.invoke(action), 'apk_identity_mismatch');
   assert.equal(r.readState().domainCalls.length, 0);
 });
-test('Calendar executes all 35 source-bound stages with exact receipts', (t) => {
-  const r = fixture(t); const result = success(r.invoke('calendar'));
-  assert.deepEqual(Object.keys(result).sort(), ['flow_revision', 'flow_sha256', 'junit_cases', 'stages']);
-  assert.equal(result.flow_sha256, r.flow); assert.equal(result.flow_revision, 'calendar-flow-r35');
-  assert.deepEqual(result.stages.map((s) => s.id), V12_CALENDAR_SHARD_STAGE_IDS);
-  assert.equal(r.readState().domainCalls.length, 35);
-  result.stages.forEach((s, i) => assert.deepEqual(result.junit_cases[i], { id: s.id, order: i, status: s.status }));
-});
-for (const [key, code] of [['noReceipt', 'calendar_receipt_invalid'], ['wrongFlow', 'calendar_flow_invalid'], ['missingJunit', 'junit_missing']]) test(`Calendar rejects ${key}`, (t) => { const r = fixture(t); r.updateState({ [key]: true }); bounded(r.invoke('calendar'), code); });
-test('Calendar binds requested flow before Maestro', (t) => { const r = fixture(t); bounded(r.invoke('calendar', { flow_sha256: '0'.repeat(64) }), 'calendar_flow_invalid'); assert.equal(r.readState().domainCalls.length, 0); });
-test('Calendar keeps real failing JUnit outcomes and no private failure text', (t) => { const r = fixture(t); r.updateState({ junitFailure: true }); const result = success(r.invoke('calendar')); assert.ok(result.stages.every((s) => s.status === 'FAIL')); assert.doesNotMatch(JSON.stringify(result), /private-native|bearer|\/Users\//u); });
 test('Recovery derives all 14 command steps by 8 cuts from durable native readback facts', (t) => {
   const r = fixture(t); const report = success(r.invoke('recovery')); const xml = report.junit_xml;
   assert.equal((xml.match(/<testcase\b/gu) ?? []).length, 112);

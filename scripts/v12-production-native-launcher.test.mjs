@@ -43,6 +43,31 @@ test("only saved settings can be restored; absent settings are deleted", (t) => 
   assert.equal(runner.readState().settings.transition_animation_scale, undefined);
   assert.equal(runner.success("release-lease", { lease }), true);
 });
+test("Calendar snapshots every display setting under the lease and releases only after read-back", (t) => {
+  const runner = fixture(t);
+  const result = runner.calendarSettingsScenario();
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.deepEqual(Object.keys(output.calendar), ["values", "airplane", "size", "density", "night"]);
+  assert.deepEqual(output.calendar.size, { physical: "1080x2340", override: null });
+  assert.deepEqual(output.calendar.density, { physical: "420", override: null });
+  assert.equal(output.calendar.night, "auto");
+  assert.equal(output.restore_error, null);
+  assert.equal(output.release_error, null);
+  assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
+});
+test("Calendar restoration failure keeps the persisted snapshot and lease", (t) => {
+  const runner = fixture(t);
+  runner.updateState({ ignoredCalendarSetting: "night" });
+  const result = runner.calendarSettingsScenario();
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.match(output.restore_error, /settings_restore_failed/u);
+  assert.match(output.release_error, /settings_restore_failed/u);
+  const owner = JSON.parse(readFileSync(path.join(runner.scratch, "lock", "owner.json"), "utf8"));
+  assert.equal(owner.calendar_restored, false);
+  assert.deepEqual(owner.calendar_settings, output.calendar);
+});
 for (const failure of ["failedSetting", "ignoredSetting"]) test(`${failure}: restoration cannot report success or relinquish the lease`, (t) => {
   const runner = fixture(t);
   const lease = runner.success("acquire-lease");

@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
+import { V12_CALENDAR_STAGE_IDS } from "./v12-calendar-observation-contract.mjs";
+import { V12_CALENDAR_REQUIREMENT_PROBE_COUNT } from "./v12-calendar-requirement-map.mjs";
 import {
   V12_CALENDAR_ADAPTER_TIMEOUT_MS,
   V12_NATIVE_ACTION_TIMEOUT_MS,
@@ -71,6 +73,24 @@ test("adapter envelope labels the checked-in fake as test-only provenance", (t) 
     }
   }
 });
+test("Calendar adapter labels the checked-in subprocess fixture as test-only", (t) => {
+  const runner = fixture(t);
+  const result = runner.invokeCalendar(markers(runner.root));
+  assert.equal(result.status, 0, result.stderr);
+  const value = JSON.parse(result.stdout);
+  assert.equal(value.execution_origin.kind, "test-fixture");
+  assert.equal(value.execution_origin.default_launcher, false);
+  assert.equal(value.execution_origin.test_only, true);
+});
+test("Calendar timeout covers all source-derived stages, probes, and runtime restoration", () => {
+  assert.equal(V12_CALENDAR_STAGE_IDS.length, 35);
+  assert.equal(V12_CALENDAR_REQUIREMENT_PROBE_COUNT, 69);
+  assert.equal(
+    V12_CALENDAR_ADAPTER_TIMEOUT_MS,
+    (V12_CALENDAR_STAGE_IDS.length + V12_CALENDAR_REQUIREMENT_PROBE_COUNT) * (180_000 + 60_000)
+      + V12_NATIVE_ADAPTER_GRACE_MS,
+  );
+});
 test("fake command rejected outside explicit test mode", (t) => {
   const runner = fixture(t);
   const result = runner.invoke("acquire-lease", {}, { V12_NATIVE_ADAPTER_COMMAND: path.join(runner.root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs") });
@@ -124,7 +144,7 @@ test("every adapter action has an explicit bounded timeout and transport budget"
     "release-lease", "restore-settings", "snapshot-settings", "sqlite",
     "visual-capture", "visual-capture-batch", "visual-compare",
   ]);
-  assert.ok(Object.values(V12_NATIVE_ACTION_TIMEOUT_MS).every((value) => Number.isSafeInteger(value) && value >= 1_000 && value <= 4 * 60 * 60_000));
+  assert.ok(Object.values(V12_NATIVE_ACTION_TIMEOUT_MS).every((value) => Number.isSafeInteger(value) && value >= 1_000 && value <= 8 * 60 * 60_000));
   assert.equal(V12_NATIVE_COMMAND_GRAPH.acquire_lease.success.length, 5);
   assert.equal(V12_NATIVE_COMMAND_GRAPH.acquire_lease.failure_after_owner_read.length, 7);
   assert.equal(V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].adb_call_count,

@@ -197,6 +197,35 @@ describe("Calendar semantic transitions", () => {
     }
   });
 
+  it("delivers one week-settle navigation for one active epoch across effect replays", async () => {
+    const onComplete = jest.fn();
+    const common = {
+      focusedWeek: {
+        selectedDates: ["2026-11-02" as LocalDate],
+        followingDates: ["2026-11-09" as LocalDate],
+        selectedGeometry: { y: 70, height: 70, generation: 0 },
+        followingGeometry: { y: 140, height: 70, generation: 0 },
+      },
+      month: "2026-11-01" as LocalDate,
+      onCancel: jest.fn(),
+      onComplete,
+      onPreview: jest.fn(),
+      onRelease: jest.fn(),
+      renderMonth: () => <View />,
+      renderWeek: () => <View />,
+      transition: Object.freeze({ ...initial(), mode: "focused" as const, phase: "settling" as const, epoch: 1 }),
+    } as const;
+    const command = { kind: "settle-week", epoch: 1, phase: "expand", durationMs: 260, easing: [0.22, 0.8, 0.3, 1], agendaDelayMs: 70, agendaDurationMs: 170 } as const;
+    const rendered = await render(<CalendarMonthViewport {...common} command={command} />);
+    await fireEvent(screen.getByTestId("calendar-month-viewport"), "layout", {
+      nativeEvent: { layout: { height: 500, width: 400, x: 0, y: 0 } },
+    });
+    await rendered.rerender(<CalendarMonthViewport {...common} command={command} />);
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledWith(1);
+  });
+
   it("arbitrates touch intent, publishes drag markers, and cancels an unfinished gesture", async () => {
     const createPan = Gesture.Pan.bind(Gesture);
     let latestPan: unknown;

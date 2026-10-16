@@ -26,23 +26,28 @@ import {
   clearPhase16CalendarTestControls,
   configurePhase16CalendarTestControls,
   createPhase16CalendarDiagnosticsProducer,
-  PHASE16_CALENDAR_STAGES,
   phase16CalendarDiagnosticsRequestFromNativeContract,
-  type Phase16CalendarStage,
+  phase16CalendarStageFromNativeContract,
 } from "../../src/bootstrap/phase16CalendarTestControls";
+import {
+  clearPhase20CalendarObservationCollector,
+  configurePhase20CalendarObservationCollector,
+  phase20CalendarInitialDate,
+  phase20CalendarRequestFromNativeContract,
+} from "../../src/bootstrap/phase20CalendarObservation";
 import { createImportedActivityDetailHref } from "../../src/navigation/importedActivityRoute";
 import { usePhase20VisualRequest } from "../../src/testing/phase20VisualContext";
+import {
+  createPhase20CalendarFixtureReadPort,
+  emitPhase20CalendarProbeReceipt,
+  phase20CalendarFixtureRequestFromNativeContract,
+  phase20CalendarProbeReceiptRequestFromNativeContract,
+} from "../../src/testing/phase20CalendarFixture";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? encodeURIComponent(value)
     : null;
-}
-
-function phase16CalendarStage(value: string | readonly string[] | undefined): Phase16CalendarStage | undefined {
-  return typeof value === "string" && (PHASE16_CALENDAR_STAGES as readonly string[]).includes(value)
-    ? value as Phase16CalendarStage
-    : undefined;
 }
 
 function scalarRouteParam(value: string | readonly string[] | undefined): string | undefined {
@@ -67,8 +72,19 @@ export default function CalendarRoute() {
     querySamples?: string | string[];
     interactionSamples?: string | string[];
     diagnosticStreamId?: string | string[];
+    phase20CalendarStage?: string | string[];
+    phase20CalendarNonce?: string | string[];
+    phase20CalendarFlowSha256?: string | string[];
+    phase20CalendarFlowRevision?: string | string[];
+    phase20CalendarFixture?: string | string[];
+    phase20CalendarEvidenceNonce?: string | string[];
+    phase20CalendarRequirementsSha256?: string | string[];
+    phase20CalendarFixtureSourceSha256?: string | string[];
+    phase20CalendarRequirement?: string | string[];
+    phase20CalendarEvidenceId?: string | string[];
+    phase20CalendarProbe?: string | string[];
+    phase20CalendarProbeReceipt?: string | string[];
   }>();
-  const phase16Stage = phase16CalendarStage(routeParams.phase16CalendarStage);
   const extra = Constants.expoConfig?.extra;
   const nativeIdentity = {
     packageName: Constants.expoConfig?.android?.package,
@@ -76,6 +92,45 @@ export default function CalendarRoute() {
     nativeContractsEnabled: extra?.nativeContractsEnabled === true,
     suite: typeof extra?.nativeContractSuite === "string" ? extra.nativeContractSuite : undefined,
   } as const;
+  const phase16Stage = phase16CalendarStageFromNativeContract({
+    ...nativeIdentity,
+    stage: scalarRouteParam(routeParams.phase16CalendarStage),
+  }) ?? undefined;
+  const phase20Request = phase20CalendarRequestFromNativeContract({
+    ...nativeIdentity,
+    stage: scalarRouteParam(routeParams.phase20CalendarStage),
+    nonce: scalarRouteParam(routeParams.phase20CalendarNonce),
+    flowSha256: scalarRouteParam(routeParams.phase20CalendarFlowSha256),
+    flowRevision: scalarRouteParam(routeParams.phase20CalendarFlowRevision),
+  });
+  const phase20FixtureRequested = phase20Request !== null || phase20CalendarFixtureRequestFromNativeContract({
+    ...nativeIdentity,
+    fixtureId: scalarRouteParam(routeParams.phase20CalendarFixture),
+    nonce: scalarRouteParam(routeParams.phase20CalendarEvidenceNonce),
+    requirementsSha256: scalarRouteParam(routeParams.phase20CalendarRequirementsSha256),
+  });
+  const phase20ProbeId = scalarRouteParam(routeParams.phase20CalendarProbe);
+  const calendarRangeRead = React.useMemo(() => phase20FixtureRequested
+    ? createPhase20CalendarFixtureReadPort(phase20ProbeId)
+    : calendarRead, [calendarRead, phase20FixtureRequested, phase20ProbeId]);
+  const phase20ProbeReceipt = phase20CalendarProbeReceiptRequestFromNativeContract({
+    ...nativeIdentity,
+    fixtureId: scalarRouteParam(routeParams.phase20CalendarFixture),
+    nonce: scalarRouteParam(routeParams.phase20CalendarEvidenceNonce),
+    flowSha256: scalarRouteParam(routeParams.phase20CalendarRequirementsSha256),
+    fixtureSourceSha256: scalarRouteParam(routeParams.phase20CalendarFixtureSourceSha256),
+    requirementId: scalarRouteParam(routeParams.phase20CalendarRequirement),
+    evidenceId: scalarRouteParam(routeParams.phase20CalendarEvidenceId),
+    probeId: phase20ProbeId,
+    status: scalarRouteParam(routeParams.phase20CalendarProbeReceipt),
+  });
+  const phase20EvidenceEntries: readonly [string, string][] = phase20FixtureRequested
+    ? [
+        ["phase20CalendarFixture", scalarRouteParam(routeParams.phase20CalendarFixture) ?? "v12-calendar-isolated-facts-v1"],
+        ["phase20CalendarEvidenceNonce", scalarRouteParam(routeParams.phase20CalendarEvidenceNonce) ?? phase20Request?.nonce ?? ""],
+        ["phase20CalendarRequirementsSha256", scalarRouteParam(routeParams.phase20CalendarRequirementsSha256) ?? phase20Request?.flowSha256 ?? ""],
+      ]
+    : [];
   const diagnosticsEnabled = scalarRouteParam(routeParams.phase16CalendarDiagnostics);
   const diagnosticsQuerySamples = scalarRouteParam(routeParams.querySamples);
   const diagnosticsInteractionSamples = scalarRouteParam(routeParams.interactionSamples);
@@ -101,18 +156,21 @@ export default function CalendarRoute() {
   const initialDate = usePhase20VisualRequest() === null
     ? currentLocalDate
     : "2026-10-01";
+  const routedInitialDate = phase20Request === null
+    ? phase20FixtureRequested ? "2026-10-15" : initialDate
+    : phase20CalendarInitialDate(phase20Request.stage);
   const openEvent = (destination: CalendarEventDestination, returnEventId?: string) => {
     switch (destination.kind) {
       case "session": {
         const sessionId = routeId(destination.sessionId);
         if (sessionId === null) return;
-        router.push((`/session/${sessionId}?${calendarQuery(returnEventId)}`) as Href);
+        router.push((`/session/${sessionId}?${calendarQuery(returnEventId, phase20EvidenceEntries)}`) as Href);
         return;
       }
       case "occurrence": {
         const occurrenceId = routeId(destination.occurrenceId);
         if (occurrenceId === null) return;
-        router.push((`/calendar/plan/${occurrenceId}?${calendarQuery(returnEventId)}`) as Href);
+        router.push((`/calendar/plan/${occurrenceId}?${calendarQuery(returnEventId, phase20EvidenceEntries)}`) as Href);
         return;
       }
       case "plan": {
@@ -120,14 +178,18 @@ export default function CalendarRoute() {
         const sessionId = routeId(destination.sessionId);
         if (planId === null || sessionId === null) return;
         // This preserves the typed handoff only; Plan 16-07 owns real Running integration.
-        router.push((`/library/running/${planId}?${calendarQuery(returnEventId, [["sessionId", destination.sessionId]])}`) as Href);
+        router.push((`/library/running/${planId}?${calendarQuery(returnEventId, [["sessionId", destination.sessionId], ...phase20EvidenceEntries])}`) as Href);
         return;
       }
       case "activity": {
-        router.push(createImportedActivityDetailHref({
+        const href = createImportedActivityDetailHref({
           activityId: destination.activityId,
           origin: "calendar",
-        }));
+        });
+        if (phase20EvidenceEntries.length === 0) router.push(href);
+        else router.push({ pathname: "/garmin/activity/[activityId]", params: {
+          activityId: destination.activityId, origin: "calendar", ...Object.fromEntries(phase20EvidenceEntries),
+        } } as Href);
         return;
       }
     }
@@ -149,12 +211,21 @@ export default function CalendarRoute() {
     return clearPhase16CalendarTestControls;
   }, [phase16Stage]);
 
+  React.useLayoutEffect(() => {
+    configurePhase20CalendarObservationCollector({ request: phase20Request });
+    return clearPhase20CalendarObservationCollector;
+  }, [phase20Request?.flowRevision, phase20Request?.flowSha256, phase20Request?.nonce, phase20Request?.stage]);
+
+  React.useEffect(() => {
+    void emitPhase20CalendarProbeReceipt(phase20ProbeReceipt);
+  }, [phase20ProbeReceipt?.evidenceId, phase20ProbeReceipt?.fixtureSourceSha256, phase20ProbeReceipt?.flowSha256, phase20ProbeReceipt?.nonce, phase20ProbeReceipt?.probeId, phase20ProbeReceipt?.requirementId]);
+
   return (
     <CalendarScreen
       {...(phase16Stage === undefined ? {} : { diagnosticStage: phase16Stage })}
-      initialDate={initialDate}
+      initialDate={routedInitialDate}
       {...(diagnosticsRuntime === undefined ? {} : { diagnostics: diagnosticsRuntime })}
-      loadCalendarRange={calendarRead.loadCalendarRange}
+      loadCalendarRange={calendarRangeRead.loadCalendarRange}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "calendar",
         triggerNativeID: settingsActionNativeID,

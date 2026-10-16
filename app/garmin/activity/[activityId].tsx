@@ -4,6 +4,7 @@ import {
   useLocalSearchParams,
   type Href,
 } from "expo-router";
+import Constants from "expo-constants";
 import React, {
   useCallback,
   useEffect,
@@ -38,8 +39,14 @@ import {
   ImportedActivityDetailScreen,
   type ImportedActivityDetailScreenState,
 } from "../../../src/ui/screens/ImportedActivityDetailScreen";
+import {
+  phase20CalendarFixtureRequestFromNativeContract,
+  phase20CalendarImportedActivityDetail,
+} from "../../../src/testing/phase20CalendarFixture";
 
 const MATCH_RETURN_FOCUS_TOKEN = /^match:[A-Za-z0-9_-]{1,96}$/u;
+const loadPhase20CalendarActivity = async (activityId: string) => phase20CalendarImportedActivityDetail(activityId);
+const loadNoPhase20Revision = async () => null;
 
 function hasRevisionReview(
   state: ImportedActivityDetailScreenState,
@@ -196,6 +203,9 @@ export default function ImportedActivityDetailRoute() {
     origin?: string | readonly string[];
     returnToken?: string | readonly string[];
     sourceRevision?: string | readonly string[];
+    phase20CalendarFixture?: string | readonly string[];
+    phase20CalendarEvidenceNonce?: string | readonly string[];
+    phase20CalendarRequirementsSha256?: string | readonly string[];
   }>;
   const parsedOrigin = parseCalendarRouteOrigin(params.origin, {
     absentManagementOrigin: "workout",
@@ -204,6 +214,19 @@ export default function ImportedActivityDetailRoute() {
   const parsedActivityId = parseScalarRouteParam(params.activityId);
   const parsedReturnToken = parseScalarRouteParam(params.returnToken);
   const parsedSourceRevision = parseScalarRouteParam(params.sourceRevision);
+  const parsedFixture = parseScalarRouteParam(params.phase20CalendarFixture);
+  const parsedEvidenceNonce = parseScalarRouteParam(params.phase20CalendarEvidenceNonce);
+  const parsedRequirementsSha256 = parseScalarRouteParam(params.phase20CalendarRequirementsSha256);
+  const extra = Constants.expoConfig?.extra;
+  const phase20FixtureEnabled = phase20CalendarFixtureRequestFromNativeContract({
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: extra?.buildProfile,
+    nativeContractsEnabled: extra?.nativeContractsEnabled,
+    suite: extra?.nativeContractSuite,
+    fixtureId: parsedFixture.kind === "value" ? parsedFixture.value : undefined,
+    nonce: parsedEvidenceNonce.kind === "value" ? parsedEvidenceNonce.value : undefined,
+    requirementsSha256: parsedRequirementsSha256.kind === "value" ? parsedRequirementsSha256.value : undefined,
+  });
   const sourceRevision = parsedSourceRevision.kind === "absent"
     ? undefined
     : parsedSourceRevision.kind === "value" && /^\d+$/u.test(parsedSourceRevision.value)
@@ -229,7 +252,14 @@ export default function ImportedActivityDetailRoute() {
     return <CalendarImportedActivityRouteAdapter activityId={null} onBack={() => router.back()} />;
   }
   if (parsedOrigin.kind === "calendar") {
-    return <CalendarImportedActivityRouteAdapter activityId={activityId} onBack={() => router.back()} />;
+    return <CalendarImportedActivityRouteAdapter
+      activityId={activityId}
+      {...(phase20FixtureEnabled ? {
+        loadActivityDetail: loadPhase20CalendarActivity,
+        loadRevisionReview: loadNoPhase20Revision,
+      } : {})}
+      onBack={() => router.back()}
+    />;
   }
   return <ManagementImportedActivityDetailRoute
     activityId={activityId}

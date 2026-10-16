@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { V12_CALENDAR_STAGE_IDS } from "./v12-calendar-observation-contract.mjs";
+import { V12_CALENDAR_REQUIREMENT_PROBE_COUNT } from "./v12-calendar-requirement-map.mjs";
 import {
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
@@ -44,7 +46,9 @@ const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackb
 const TEST_MODE = "phase20-native-adapter-subprocess";
 export const V12_NATIVE_MAX_REQUEST_BYTES = 1024 * 1024;
 export const V12_NATIVE_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = 35 * (180_000 + 60_000) + 23 * 180_000 + V12_NATIVE_ADAPTER_GRACE_MS;
+export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = (
+  V12_CALENDAR_STAGE_IDS.length + V12_CALENDAR_REQUIREMENT_PROBE_COUNT
+) * (180_000 + 60_000) + V12_NATIVE_ADAPTER_GRACE_MS;
 export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
   "acquire-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   "release-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["release-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
@@ -202,6 +206,10 @@ export function createV12NativeAdapter(options = {}) {
     executeSqlite: (payload) => call("sqlite", payload),
     executeRecovery: (payload) => call("recovery", payload),
     executeGarmin: (lease, settings, payload) => call("garmin", { lease, settings, ...payload }),
-    executeCalendar: (lease, settings, payload) => call("calendar", { lease, settings, ...payload }),
+    executeCalendar: (lease, settings, payload) => {
+      const result = call("calendar", { lease, settings, ...payload });
+      if (result === null || typeof result !== "object" || Array.isArray(result)) fail("response_invalid");
+      return Object.freeze({ ...result, execution_origin: latestExecutionOrigin });
+    },
   });
 }

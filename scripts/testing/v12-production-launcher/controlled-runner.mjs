@@ -25,6 +25,9 @@ export function createControlledRunner() {
   cpSync(path.join(project, "scripts"), path.join(root, "scripts"), { recursive: true });
   mkdirSync(path.join(root, "src/testing/contracts"), { recursive: true });
   cpSync(path.join(project, "src/testing/contracts/v12Acceptance.contract.ts"), path.join(root, "src/testing/contracts/v12Acceptance.contract.ts"));
+  cpSync(path.join(project, "src/testing/phase20CalendarFixture.ts"), path.join(root, "src/testing/phase20CalendarFixture.ts"));
+  mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });
+  cpSync(path.join(project, "maestro/v1.2/calendar-requirements.yaml"), path.join(root, "maestro/v1.2/calendar-requirements.yaml"));
   execFileSync("git", ["init", "--quiet"], { cwd: root });
   symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");
   const digest = sourceTreeSha256(root);
@@ -40,7 +43,7 @@ export function createControlledRunner() {
   const apkHash = hash(apk);
   writeFileSync(path.join(scratch, "fixture.apk"), apk);
   const stateFile = path.join(scratch, "state.json");
-  writeFileSync(stateFile, JSON.stringify({ apkHash, props: { "ro.product.cpu.abi": facts.abi, "ro.build.version.sdk": facts.apiLevel, "ro.product.model": facts.model }, settings: { font_scale: "1.15", user_rotation: "0", accelerometer_rotation: "1", animator_duration_scale: "0.5", window_animation_scale: "1", airplane_mode_on: "0" } }));
+  writeFileSync(stateFile, JSON.stringify({ apkHash, props: { "ro.product.cpu.abi": facts.abi, "ro.build.version.sdk": facts.apiLevel, "ro.product.model": facts.model }, settings: { font_scale: "1.15", user_rotation: "0", accelerometer_rotation: "1", animator_duration_scale: "0.5", window_animation_scale: "1", airplane_mode_on: "0" }, display: { size: { physical: "1080x2340", override: null }, density: { physical: "420", override: null }, night: "auto", airplane: "disabled" } }));
   const ids = ["fresh-migration", "schema27-upgrade", "supported-legacy-upgrade", "failure-reopen", "backup", "restore", "merge", "noop-replay", "rebuild", "immutable-history"];
   const contract = { schemaVersion: 1, contractVersion: 1, status: "passed", total: 10, passed: 10, failed: 0, skipped: 0, cases: ids.map((id, index) => ({ id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: index + 1 } })) };
   writeFileSync(path.join(scratch, "native-marker.json"), JSON.stringify(contract));
@@ -54,6 +57,24 @@ export function createControlledRunner() {
     const program = `import fs from 'node:fs'; import {invokeV12NativeAdapter} from './scripts/v12-native-adapter.mjs'; const {action,payload}=JSON.parse(fs.readFileSync(0,'utf8')); try { process.stdout.write(JSON.stringify(invokeV12NativeAdapter(action,payload))); } catch(e) { process.stderr.write(e.message); process.exitCode=1; }`;
     return spawnSync(process.execPath, ["--input-type=module", "--eval", program], { cwd: root, env: { ...environment, ...extra }, input: JSON.stringify(input), encoding: "utf8", timeout: 70_000, maxBuffer: 2 * 1024 * 1024 });
   }
+  function invokeCalendar(extra = {}) {
+    const payload = { run_id: fixtureRun, flow_sha256: "f".repeat(64), flow_revision: "calendar-flow-r35-real-v1" };
+    const program = `import {createV12NativeAdapter} from './scripts/v12-native-adapter.mjs'; try { process.stdout.write(JSON.stringify(createV12NativeAdapter().executeCalendar(undefined, undefined, ${JSON.stringify(payload)}))); } catch(e) { process.stderr.write(e.message); process.exitCode=1; }`;
+    return spawnSync(process.execPath, ["--input-type=module", "--eval", program], { cwd: root, env: { ...environment, ...extra }, encoding: "utf8", timeout: 70_000, maxBuffer: 16 * 1024 * 1024 });
+  }
+  function calendarSettingsScenario(extra = {}) {
+    const program = `
+      import fs from 'node:fs'; import crypto from 'node:crypto';
+      import {createProductionNativeRuntime} from './scripts/v12-production-native-runtime.mjs';
+      const build=JSON.parse(fs.readFileSync(${JSON.stringify(manifestPath)},'utf8'));
+      const launcher=fs.readFileSync('./scripts/v12-production-native-adapter-launcher.mjs');
+      const attestation={schema_version:1,action:'calendar',launcher_source_sha256:crypto.createHash('sha256').update(launcher).digest('hex'),run_id:build.run_id,build_profile:build.build.profile,suite:'v1.2-acceptance',source_tree_sha256:build.source.tree_sha256,apk_sha256:build.build.apk.sha256,installed_apk_sha256:build.device.installed_apk_sha256,apk_signature_sha256:build.build.apk.signature_sha256,device_identity_sha256:build.device.identity_sha256,package:build.build.package};
+      const runtime=createProductionNativeRuntime(attestation,{root:process.cwd()}); const lease=runtime.acquireLease(); const base=runtime.snapshotSettings(lease); const calendar=runtime.snapshotCalendarSettings(lease);
+      const file=process.env.V12_CONTROLLED_STATE+'/state.json'; const state=JSON.parse(fs.readFileSync(file,'utf8')); state.settings={...state.settings,font_scale:'2',animator_duration_scale:'0'}; state.display={...state.display,size:{...state.display.size,override:'720x1600'},density:{...state.display.density,override:'320'},night:'no'}; fs.writeFileSync(file,JSON.stringify(state));
+      let restore_error=null,release_error=null; try{runtime.restoreCalendarSettings(calendar,lease)}catch(e){restore_error=e.message} try{if(!restore_error){runtime.restoreSettings(base,lease);runtime.releaseLease(lease)}else runtime.releaseLease(lease)}catch(e){release_error=e.message}
+      process.stdout.write(JSON.stringify({base,calendar,restore_error,release_error}));`;
+    return spawnSync(process.execPath, ["--input-type=module", "--eval", program], { cwd: root, env: { ...environment, ...extra }, encoding: "utf8", timeout: 20_000, maxBuffer: 2 * 1024 * 1024 });
+  }
   function success(action, payload) {
     const result = invoke(action, payload);
     assert.equal(result.status, 0, result.stderr);
@@ -61,7 +82,7 @@ export function createControlledRunner() {
   }
   const readState = () => JSON.parse(readFileSync(stateFile, "utf8"));
   const updateState = (update) => writeFileSync(stateFile, JSON.stringify({ ...readState(), ...update }));
-  return { root, scratch, build, manifestPath, contract, invoke, success, readState, updateState, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, scratch, build, manifestPath, contract, invoke, invokeCalendar, calendarSettingsScenario, success, readState, updateState, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 export function runControlledIntegration() {

@@ -27,7 +27,7 @@ function fixtureRoot() {
   const root = mkdtempSync(path.join(tmpdir(), "v12-phase20-blackbox-"));
   // Production CLIs use cwd as their source/run root. These are source inputs,
   // not production modules, and the entrypoints themselves remain absolute.
-  for (const member of ["scripts", "src/testing/contracts", "src/testing/phase20VisualStateRegistry.json", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
+  for (const member of ["scripts", "src/testing/contracts", "src/testing/phase20VisualStateRegistry.json", "src/testing/phase20CalendarFixture.ts", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
     const source = path.join(project, member);
     if (existsSync(source)) cpSync(source, path.join(root, member), { recursive: true });
   }
@@ -130,6 +130,18 @@ function attendedObservations(root) {
 
 function rewriteFixturePublication(root, shard, touched = null) {
   const base = path.join(root, "artifacts/native/v1.2", run);
+  if (shard === "calendar") {
+    const transitionsPath = path.join(base, "calendar-transitions.json");
+    const transitions = JSON.parse(readFileSync(transitionsPath, "utf8"));
+    const requirements = JSON.parse(readFileSync(path.join(base, "calendar-requirements.json"), "utf8"));
+    const registry = JSON.parse(readFileSync(path.join(base, "calendar/artifact-registry.json"), "utf8"));
+    const nativeRequirements = { flow_sha256: requirements.flow_sha256, fixture_id: requirements.fixture_id, records: requirements.records, junit_cases: requirements.junit_cases };
+    const artifacts = registry.members.map((member) => member.stage_id === undefined
+      ? { requirement_id: member.requirement_id, probe_id: member.probe_id, kind: member.kind, relative_path: member.path, sha256: member.sha256, size_bytes: member.size_bytes }
+      : { stage_id: member.stage_id, kind: member.kind, relative_path: member.path, sha256: member.sha256, size_bytes: member.size_bytes });
+    transitions.native_receipt.evidence_set_sha256 = createHash("sha256").update(JSON.stringify({ stages: transitions.stages, requirements: nativeRequirements, artifacts })).digest("hex");
+    writeFileSync(transitionsPath, JSON.stringify(transitions));
+  }
   const file = path.join(base, "publication", `${shard}.json`);
   const publication = JSON.parse(readFileSync(file, "utf8"));
   for (const member of publication.members) {
@@ -202,7 +214,12 @@ test("Phase 20 fake-device pipeline can exercise failures but cannot publish can
   // Every call below is the documented CLI order. The test intentionally does
   // not call exported production functions or manufacture final evidence.
   for (const script of ["scripts/v12-sqlite-shard.mjs", "scripts/v12-recovery-shard.mjs"]) for (const mode of ["--execute", "--verify"]) pass(root, script, ["--run", run, mode]);
-  for (const script of ["scripts/v12-garmin-shard.mjs", "scripts/v12-calendar-shard.mjs"]) for (const mode of ["--execute", "--verify"]) pass(root, script, ["--run", run, mode]);
+  for (const mode of ["--execute", "--verify"]) pass(root, "scripts/v12-garmin-shard.mjs", ["--run", run, mode]);
+  const rejectedCalendar = invoke(root, "scripts/v12-calendar-shard.mjs", ["--run", run, "--execute"]);
+  assert.notEqual(rejectedCalendar.status, 0);
+  assert.match(rejectedCalendar.stderr, /calendar_native_origin_invalid/u);
+  rmSync(path.join(root, "artifacts/native/v1.2", run, "failures/calendar.json"));
+  pass(root, "scripts/v12-calendar-shard.mjs", ["--run", run, "--execute", "--test-fixture"]);
   for (const shard of ["multi-plan", "workout", "library-running"]) pass(root, "scripts/run-v12-maestro.mjs", ["--run", run, "--shard", shard]);
   for (const [script, execute, shard] of [["scripts/capture-v12-visual.mjs", "--all", "visual"], ["scripts/compare-v12-visual.mjs", "--all", "comparison"], ["scripts/v12-accessibility-shard.mjs", "--execute", "accessibility"], ["scripts/v12-performance-shard.mjs", "--execute", "performance"]]) {
     pass(root, script, ["--run", run, execute]); completion(root, shard); pass(root, script, ["--run", run, execute === "--all" ? "--verify" : "--verify"]);
@@ -223,6 +240,48 @@ test("Phase 20 fake-device pipeline can exercise failures but cannot publish can
   assert.notEqual(final.status, 0);
   assert.equal(existsSync(path.join(base, "final-evidence.json")), false);
   assert.equal(existsSync(path.join(base, "publication/final.json")), false);
+  const resolved = JSON.parse(pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "test-resolve"]).stdout);
+  assert.equal(resolved.sealable, false);
+  assert.equal(resolved.row_evidence.length, 172);
+  assert.equal(new Set(resolved.row_evidence.map(row => row.row_id)).size, 172);
+  assert.ok(resolved.row_evidence.every(row => row.selector.type && row.selector.resolution.result === row.result));
+  assert.equal(resolved.row_evidence.find(row => row.row_id === "VER-07").result, "REVIEW_REQUIRED");
+  writeFileSync(path.join(root, "test-resolution.json"), JSON.stringify(resolved));
+  const checklist = path.join(root, "checklist.json"); const observations = path.join(root, "observations.json"); const record = path.join(root, "artifacts/native/v1.2", run, "attended-observations.json");
+  writeFileSync(path.join(root, "identity.json"), JSON.stringify(attendedIdentity(root)));
+  pass(root, "scripts/generate-v12-attended-checklist.mjs", ["prepare", "--identity", "identity.json", "--output", "checklist.json"]);
+  writeFileSync(observations, JSON.stringify(attendedObservations(root)));
+  pass(root, "scripts/generate-v12-attended-checklist.mjs", ["record", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations), "--output", path.relative(root, record)]);
+  pass(root, "scripts/generate-v12-attended-checklist.mjs", ["verify", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations)]);
+  const rejectedFinal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
+  assert.notEqual(rejectedFinal.status, 0);
+  assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, "final-evidence.json")), false);
+  await t.test("typed ledger rejects source-result tampering and exceptions cannot erase a blocker", () => {
+    // The CLI round-trip above remains the integration oracle. This separate
+    // subprocess exercises the public derivation API with the same real fixture.
+    const code = `
+      import assert from 'node:assert/strict';
+      import { readFileSync } from 'node:fs';
+      import path from 'node:path';
+      import { deriveV12Ledger } from ${JSON.stringify(path.join(project, 'scripts/verify-v12-native-evidence.mjs'))};
+      import { loadV12ContractInputs } from ${JSON.stringify(path.join(project, 'scripts/v12-evidence-contract.mjs'))};
+      const root = process.argv[1], run = process.argv[2], base = path.join(root, 'artifacts/native/v1.2', run);
+      const read = file => JSON.parse(readFileSync(path.join(base, file), 'utf8'));
+      const manifest = read('build.json'), evidence = JSON.parse(readFileSync(path.join(root,'test-resolution.json'),'utf8')).row_evidence;
+      const args = { inputs: loadV12ContractInputs({root}), manifest, evidence, root, readArtifact: file => readFileSync(path.join(root, file)), attended: read('attended-observations.json') };
+      const exception = { row_id: 'VER-07', deviation_id: 'DEV-203', owner_decision: 'owner-approved', decided_at: '2026-10-14', scope: 'sqlite review', configurations: [manifest.configuration.id], rationale: 'cannot override a concrete blocker', evidence_hashes: [evidence.find(x => x.row_id === 'VER-07').sha256] };
+      const ledger = deriveV12Ledger({ ...args, allowTestCalendarFixture: true, exceptions: [exception], readiness_policy: { policy_id: 'v12-reviewed-policy', reviewed_by: 'owner', reviewed_at: '2026-10-14', permits_accepted_exceptions: true } });
+      assert.equal(ledger.readiness, 'NOT_READY');
+      assert.equal(ledger.rows.find(row => row.requirement_id === 'VER-07').verdict, 'REVIEW_REQUIRED');
+      for (const mutate of [row => {row.result = 'FAIL';}, row => {row.selector.id = 'unknown';}, row => {row.bindings[0].sha256 = '0'.repeat(64);}]) {
+        const changed = structuredClone(evidence); mutate(changed[0]);
+        assert.throws(() => deriveV12Ledger({...args, evidence: changed, allowTestCalendarFixture: true}), /source_resolution_mismatch/);
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, root, run], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+    assert.equal(result.status, 0, result.stderr);
+  });
+  await assertSourceMutations(t, root);
 });
 
 test("Phase 20 subprocesses fail closed without leaking device identity or publishing partial staging", (t) => {
@@ -267,26 +326,29 @@ async function assertSourceMutations(t, root) {
       try {
         mutate(edit);
         for (const shard of shards) rewriteFixturePublication(root, shard, touched);
-        const preflight = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+        const preflight = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "test-resolve"]);
         if (invalid) {
           assert.notEqual(preflight.status, 0, name);
           assert.equal(existsSync(path.join(base, "preseal-validation.json")), false);
-          assert.notEqual(invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]).status, 0);
           return;
         }
         assert.equal(preflight.status, 0, preflight.stderr);
-        const report = JSON.parse(readFileSync(path.join(base, "preseal-validation.json"), "utf8"));
+        const report = JSON.parse(preflight.stdout);
         const selected = report.row_evidence.find(row => row.row_id === rowId);
-        assert.equal(selected.result, attended ? "NOT_RUN" : expected, name);
+        assert.equal(selected.result, expected, name);
         assert.equal(selected.selector.resolution.result, selected.result);
-        const final = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
-        assert.equal(final.status, 0, final.stderr);
-        const sealed = JSON.parse(readFileSync(path.join(base, "final-evidence.json"), "utf8"));
-        assert.equal(sealed.readiness, "NOT_READY");
-        assert.equal(sealed.rows.find(row => row.requirement_id === rowId).verdict, expected);
-        assert.equal(sealed.source_results.find(row => row.row_id === rowId).result, expected);
       } finally { cleanOutputs(); for (const [file, content] of saved) writeFileSync(file, content); }
     });
+  }
+  for (const [name, mutateReceipt] of [
+    ["Calendar resolver rejects a missing probe receipt", (record) => { record.probe_receipts.pop(); }],
+    ["Calendar resolver rejects a duplicate probe receipt", (record) => { record.probe_receipts[1] = structuredClone(record.probe_receipts[0]); }],
+    ["Calendar resolver rejects a non-PASS probe receipt", (record) => { record.probe_receipts[0].status = "FAIL"; }],
+  ]) {
+    await mutation(name, "CAL-01", "FAIL", ["calendar"], edit => {
+      edit("calendar-transitions.json", value => value);
+      edit("calendar-requirements.json", value => { mutateReceipt(value.records[0]); return value; });
+    }, { invalid: true });
   }
   for (const state of ["FAIL", "NOT_RUN", "REVIEW_REQUIRED"]) {
     await mutation(`Calendar stage retains ${state}`, "CAL-07", state, ["calendar"], edit => edit("calendar-transitions.json", value => { value.stages[0].status = state; value.junit_cases[0].status = state; return value; }));
