@@ -300,7 +300,12 @@ test("production module rejects adapter overrides, test markers and unknown requ
   assert.equal(runner.readState().instrumentCalls, undefined);
 });
 test("missing progress is bounded even when the ADB subprocess never exits", (t) => {
-  const runner = fixture(t); runner.updateState({ hang: true });
-  const started = Date.now(); rejected(runner.invoke(), "marker_timeout");
+  // The idle timeout is action-independent. Accessibility avoids spending the
+  // parent harness budget on the performance path's 20 cold-launch cycles.
+  const runner = fixture(t, "accessibility"); runner.updateState({ hang: true });
+  const started = Date.now(); const result = runner.invoke();
+  assert.equal(result.error, undefined); assert.equal(result.signal, null);
+  assert.equal(result.stderr, "v12_production_native_launcher_quality_marker_timeout");
+  assert.ok(result.stderr.length > 0 && result.stderr.length <= 256); rejected(result, "marker_timeout");
   assert.ok(Date.now() - started < 40_000); released(runner);
 });
