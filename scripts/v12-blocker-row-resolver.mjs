@@ -247,23 +247,29 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     leaf(`calendar:${stage.id}`, 'calendar-stage', stage.id, state, ['calendar-transitions.json', 'maestro/calendar.xml'], { receipt_sha256: jsonHash(receipt), testcase: stage.id, stage_result: result(stage.status), junit_result: calendarTests[index].result });
   });
   const garminGroups = { 'packaging-auth': ['packaging', 'bridge-allowlist', 'account-lifecycle', 'recovery'], 'sync-read': ['canonical-json', 'sync-read', 'privacy'], dedupe: V12_GARMIN_SHARD_CASE_IDS.slice(6, 9), matching: V12_GARMIN_SHARD_CASE_IDS.slice(9, 17) };
+  const garminSchemas = { 'packaging-auth': 'packaging-auth/v1', 'sync-read': 'sync-read/v1', dedupe: 'dedupe/v1', matching: 'matching/v1' };
   const garminValues = Object.fromEntries(Object.keys(garminGroups).map(name => [name, json(`garmin/${name}.json`)]));
   const garminStates = {};
   for (const [name, ids] of Object.entries(garminGroups)) {
     const value = garminValues[name]; bindIdentity(value.identity);
-    ensure(value.producer === 'v12-garmin-shard/v2' && value.identity.configuration_id === manifest.configuration.id && (value.run_id === undefined || value.run_id === manifest.run_id), 'garmin_schema_invalid');
-    exactIds(value.observation?.case_ids, ids, 'garmin_selectors_invalid');
-    if (name === 'packaging-auth') ensure(value.observation.source === 'bundled-chaquopy' && same(value.observation.bridge_methods, ['login', 'mfa', 'activities', 'activity', 'splits', 'details']), 'garmin_packaging_invalid');
-    if (name === 'sync-read') ensure(value.observation.fixture_manifest_sha256 === manifest.fixtures.registry_sha256, 'garmin_fixture_invalid');
-    if (name === 'dedupe' || name === 'matching') ensure(HASH.test(value.observation.receipt_sha256 ?? ''), 'garmin_receipt_invalid');
-    if (name === 'matching') ensure(Number.isSafeInteger(value.observation.selected_opportunity_count) && value.observation.selected_opportunity_count >= 0, 'garmin_count_invalid');
-    ids.forEach(id => { garminStates[id] = result(value.observation.status); });
-    if (name === 'matching' && value.observation.selected_opportunity_count !== 1) garminStates['match-one'] = 'FAIL';
+    ensure(value.schema_version === 2 && value.producer === 'v12-garmin-shard/v3' && value.schema === garminSchemas[name]
+      && value.identity.configuration_id === manifest.configuration.id && value.run_id === manifest.run_id && Array.isArray(value.cases), 'garmin_schema_invalid');
+    exactIds(value.cases.map(entry => entry.id), ids, 'garmin_selectors_invalid');
+    value.cases.forEach((entry) => {
+      ensure(Object.keys(entry).sort().join(',') === 'code,count,id,order,receipt_sha256,status'
+        && entry.order === V12_GARMIN_SHARD_CASE_IDS.indexOf(entry.id)
+        && ['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED'].includes(entry.status)
+        && entry.code === `${entry.id}-${entry.status === 'FAIL' ? 'evidence-mismatch' : 'observed'}`
+        && Number.isSafeInteger(entry.count) && entry.count >= 0 && HASH.test(entry.receipt_sha256 ?? ''), 'garmin_receipt_invalid');
+      garminStates[entry.id] = result(entry.status);
+    });
+    if (name === 'matching' && value.cases.find(entry => entry.id === 'match-one')?.count !== 1) garminStates['match-one'] = 'FAIL';
   }
   const garminTests = parseV12SourceJUnit(bytes(full('maestro/garmin-progress.xml')).toString('utf8'), V12_GARMIN_SHARD_CASE_IDS, garminStates);
   for (const test of garminTests) {
     const name = Object.keys(garminGroups).find(key => garminGroups[key].includes(test.id));
-    leaf(`garmin:${test.id}`, 'garmin-case', test.id, combineV12SourceResults([test.result, garminStates[test.id]]), [`garmin/${name}.json`, 'maestro/garmin-progress.xml'], { testcase: test.id, junit_result: test.result, group_result: garminStates[test.id], shared_contract: `The ${name} artifact reports one status for its exact case_ids; a blocking group status blocks every member.` });
+    const receipt = garminValues[name].cases.find(entry => entry.id === test.id);
+    leaf(`garmin:${test.id}`, 'garmin-case', test.id, combineV12SourceResults([test.result, garminStates[test.id]]), [`garmin/${name}.json`, 'maestro/garmin-progress.xml'], { testcase: test.id, junit_result: test.result, case_result: garminStates[test.id], receipt_sha256: receipt.receipt_sha256, shared_contract: `The ${name} artifact retains one host-derived status and receipt for each exact operation-backed case.` });
   }
   for (const name of ['migration', 'portability', 'history']) {
     const value = json(`sqlite/${name}.json`); bindIdentity(value.identity);

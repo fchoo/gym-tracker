@@ -57,13 +57,17 @@ _ADVERSARIAL_CASE_IDS = frozenset(
         "PH18-ADV-LOGOUT",
         "PH18-ADV-RESTART",
         "PH18-ADV-LATE-GENERATION",
+        "PH18-ADV-EXPIRED",
+        "PH18-ADV-401",
         "PH18-ADV-403",
         "PH18-ADV-429",
         "PH18-ADV-OFFLINE",
         "PH18-ADV-TIMEOUT",
         "PH18-ADV-5XX",
         "PH18-ADV-MALFORMED",
+        "PH18-ADV-TRUNCATED",
         "PH18-ADV-OVERSIZED",
+        "PH18-ADV-UNSUPPORTED-JSON",
         "PH18-ADV-MISSING-COMPONENT",
         "PH18-ADV-PARTIAL-PAGE",
         "PH18-ADV-ROTATION",
@@ -258,6 +262,8 @@ class _AdversarialClient:
         _activity_type: str,
     ) -> Any:
         mode = self.controller.mode
+        if mode in {"PH18-ADV-EXPIRED", "PH18-ADV-401"}:
+            raise _adversarial_provider_error("GarminConnectAuthenticationError", 401)
         if mode == "PH18-ADV-403":
             raise _adversarial_provider_error("GarminConnectConnectionError", 403)
         if mode == "PH18-ADV-429":
@@ -295,6 +301,8 @@ class _AdversarialClient:
         }
 
     def get_activity_splits(self, _activity_id: str) -> dict[str, Any] | None:
+        if self.controller.mode == "PH18-ADV-TRUNCATED":
+            return object()  # type: ignore[return-value]
         if self.controller.mode == "PH18-ADV-MISSING-COMPONENT":
             return None
         if self.controller.mode == "PH18-ADV-ROTATION":
@@ -307,6 +315,8 @@ class _AdversarialClient:
         maxchart: int,
         maxpoly: int,
     ) -> dict[str, Any]:
+        if self.controller.mode == "PH18-ADV-UNSUPPORTED-JSON":
+            return {"metricDescriptors": {"unsupported"}}  # type: ignore[dict-item]
         return {
             "metricDescriptors": [],
             "activityDetailMetrics": [],
@@ -743,3 +753,54 @@ def dispatch(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
 def take_persistable_tokens() -> bytes | None:
     """Internal Kotlin-only token handoff; never registered as an Expo method."""
     return _BRIDGE.take_persistable_tokens()
+
+
+def evidence_rejections() -> dict[str, str]:
+    """Exercise the fixed dispatcher allowlist without exposing rejected input."""
+    operation = _BRIDGE.dispatch("unsupportedEvidenceOperation", {})
+    arguments = _BRIDGE.dispatch("getActivities", {})
+    return {
+        "operation_rejection": operation.get("error", {}).get("code", "temporary_failure"),
+        "arguments_rejection": arguments.get("error", {}).get("code", "temporary_failure"),
+    }
+
+
+def evidence_recovery_extensions() -> list[dict[str, Any]]:
+    """Exercise Phase 20 conditions absent from the frozen Phase 18 ledger."""
+    rows: list[dict[str, Any]] = []
+    expected = (
+        ("PH18-ADV-EXPIRED", "sign_in_required"),
+        ("PH18-ADV-401", "sign_in_required"),
+        ("PH18-ADV-TRUNCATED", "malformed_response"),
+        ("PH18-ADV-UNSUPPORTED-JSON", "malformed_response"),
+    )
+    for case_id, expected_code in expected:
+        controller = _AdversarialController()
+        controller.mode = case_id
+        bridge = GarminBridge()
+        bridge._adversarial = controller
+        restore = bridge.dispatch("restoreSession", {"tokenPayload": controller.token_payload()})
+        code = restore.get("error", {}).get("code")
+        if restore.get("status") == "ok":
+            page = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
+            code = page.get("error", {}).get("code")
+            if page.get("status") == "ok":
+                identifier = str(page["data"]["items"][0]["activityId"])
+                for operation, arguments in (
+                    ("getActivity", {"externalActivityId": identifier}),
+                    ("getActivitySplits", {"externalActivityId": identifier}),
+                    ("getActivityDetails", {"externalActivityId": identifier, "maxchart": 2000, "maxpoly": 4000}),
+                ):
+                    result = bridge.dispatch(operation, arguments)
+                    code = result.get("error", {}).get("code")
+                    if result.get("status") != "ok":
+                        break
+        rows.append({
+            "id": case_id,
+            "code": code if code == expected_code else "temporary_failure",
+            "call_count": sum(controller.operation_counts.values()),
+            "automatic_retry_count": 0,
+            "retry_after_ms": 0,
+        })
+        bridge._clear_client()
+    return rows

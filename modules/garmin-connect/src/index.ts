@@ -26,6 +26,12 @@ export type GarminConnectNativeModule = Readonly<{
   restoreSession(): Promise<unknown>;
   forceRefreshForTest(): Promise<unknown>;
   sessionRecordState(): Promise<unknown>;
+  consumeV12EvidenceArm(input: Readonly<{
+    nonce: string;
+    phase: "preflight" | "execute";
+  }>): Promise<unknown>;
+  runV12StoredSessionLifecycle(): Promise<unknown>;
+  completeV12EvidenceArm(): Promise<unknown>;
   logout(): Promise<unknown>;
   getActivities(input: Readonly<{ start: number; limit: number; activityType: "running" }>): Promise<unknown>;
   getActivity(input: Readonly<{ externalActivityId: string }>): Promise<unknown>;

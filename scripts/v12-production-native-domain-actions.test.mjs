@@ -13,21 +13,29 @@ function bounded(result, code) { assert.notEqual(result.status, 0); assert.equal
 test('unowned actions return undefined without native work', (t) => { const r = fixture(t); assert.equal(success(r.invoke('visual-capture')), null); });
 test('Garmin returns exactly 18 ordered privacy-safe native aggregates', (t) => {
   const r = fixture(t); const result = success(r.invoke('garmin'));
-  assert.deepEqual(Object.keys(result), ['cases']);
+  assert.deepEqual(Object.keys(result), ['producer', 'cases']);
+  assert.equal(result.producer, 'v12-production-garmin-host/v1');
   assert.deepEqual(result.cases.map((c) => c.id), V12_GARMIN_SHARD_CASE_IDS);
-  assert.deepEqual(result, r.readState().garmin);
+  assert.ok(result.cases.every((entry) => entry.status === 'PASS' && /^[a-f0-9]{64}$/u.test(entry.receipt_sha256)));
+  assert.ok(result.cases.every((entry) => Object.keys(entry).sort().join(',') === 'code,count,id,order,receipt_sha256,status'));
   assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
+});
+test('Garmin is reachable through the production adapter and checked-in default launcher subprocess', (t) => {
+  const r = fixture(t); const result = success(r.invokeDefault('garmin'));
+  assert.equal(result.producer, 'v12-production-garmin-host/v1');
+  assert.equal(result.cases.length, 18);
+  assert.ok(result.cases.every(({ status }) => status === 'PASS'));
 });
 for (const [key, code] of [['authRequired', 'auth_required'], ['missingMarker', 'marker_timeout'], ['staleMarker', 'marker_timeout']]) test(`Garmin ${key} is bounded and never emits evidence`, (t) => {
   const r = fixture(t); r.updateState({ [key]: true }); const start = Date.now(); bounded(r.invoke('garmin'), code); assert.ok(Date.now() - start < 70_000); assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
 });
 for (const mutation of ['private', 'extra', 'order', 'count']) test(`Garmin rejects ${mutation}`, (t) => {
   const r = fixture(t); const garmin = r.readState().garmin;
-  if (mutation === 'private') garmin.cases[0].code = 'bearer secret';
-  if (mutation === 'extra') garmin.cases[0].account_id = 'private';
-  if (mutation === 'order') garmin.cases.reverse();
-  if (mutation === 'count') garmin.cases[0].count = -1;
-  r.updateState({ garmin }); bounded(r.invoke('garmin'), 'garmin_result_invalid');
+  if (mutation === 'private') garmin.receipts[0].code = 'bearer secret';
+  if (mutation === 'extra') garmin.receipts[0].account_id = 'private';
+  if (mutation === 'order') garmin.receipts.reverse();
+  if (mutation === 'count') garmin.receipts[0].count = -1;
+  r.updateState({ garmin }); bounded(r.invoke('garmin'), mutation === 'private' ? 'garmin_privacy_failed' : 'garmin_result_invalid');
 });
 for (const action of ['garmin', 'calendar', 'recovery']) test(`${action} validates attestation and device before actions`, (t) => {
   const r = fixture(t); bounded(r.invoke(action, {}, { build_profile: 'production' }), 'attestation_invalid');

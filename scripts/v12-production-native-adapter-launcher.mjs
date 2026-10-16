@@ -35,7 +35,7 @@ async function execute(action, payload, attestation) {
   if (action === "snapshot-settings") return runtime.snapshotSettings(payload.lease);
   if (action === "restore-settings") return runtime.restoreSettings(payload.settings, payload.lease);
   if (action === "sqlite") return runtime.withLease(payload, runtime.sqlite);
-  if (action === "recovery") {
+  if (["recovery", "garmin"].includes(action)) {
     const domainResult = await executeProductionDomainAction(action, payload, attestation);
     if (domainResult !== undefined) return domainResult;
   }

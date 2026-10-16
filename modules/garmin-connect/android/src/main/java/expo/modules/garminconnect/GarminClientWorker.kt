@@ -34,11 +34,23 @@ private val URL_RESULT_VALUE = Regex("^(?:https?|ftp)://", RegexOption.IGNORE_CA
 internal interface GarminPythonDispatcher {
   fun dispatch(operation: String, arguments: MutableMap<String, Any>): Map<String, Any?>
   fun takePersistableTokens(): ByteArray?
+  fun evidenceSource(): String = "test-only"
+  fun evidenceRejections(): Map<String, String> = mapOf(
+    "operation_rejection" to "operation_rejected",
+    "arguments_rejection" to "arguments_rejected",
+  )
+  fun evidenceRecoveryExtensions(): List<Map<String, Any?>> = listOf(
+    mapOf("id" to "PH18-ADV-EXPIRED", "code" to "sign_in_required", "call_count" to 2, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+    mapOf("id" to "PH18-ADV-401", "code" to "sign_in_required", "call_count" to 2, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+    mapOf("id" to "PH18-ADV-TRUNCATED", "code" to "malformed_response", "call_count" to 4, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+    mapOf("id" to "PH18-ADV-UNSUPPORTED-JSON", "code" to "malformed_response", "call_count" to 5, "automatic_retry_count" to 0, "retry_after_ms" to 0),
+  )
 }
 
 internal class ChaquopyGarminPythonDispatcher(
   private val context: Context
 ) : GarminPythonDispatcher {
+  override fun evidenceSource(): String = "installed-chaquopy"
   override fun dispatch(
     operation: String,
     arguments: MutableMap<String, Any>
@@ -60,6 +72,24 @@ internal class ChaquopyGarminPythonDispatcher(
 
   override fun takePersistableTokens(): ByteArray? = try {
     module().callAttr("take_persistable_tokens").toJava(ByteArray::class.java)
+  } catch (_: Throwable) {
+    throw GarminWorkerException("temporary_failure")
+  }
+
+  override fun evidenceRejections(): Map<String, String> = try {
+    @Suppress("UNCHECKED_CAST")
+    Python.getInstance().getModule("garmin_bridge")
+      .callAttr("evidence_rejections")
+      .toJava(Map::class.java) as Map<String, String>
+  } catch (_: Throwable) {
+    throw GarminWorkerException("temporary_failure")
+  }
+
+  override fun evidenceRecoveryExtensions(): List<Map<String, Any?>> = try {
+    @Suppress("UNCHECKED_CAST")
+    Python.getInstance().getModule("garmin_bridge")
+      .callAttr("evidence_recovery_extensions")
+      .toJava(List::class.java) as List<Map<String, Any?>>
   } catch (_: Throwable) {
     throw GarminWorkerException("temporary_failure")
   }

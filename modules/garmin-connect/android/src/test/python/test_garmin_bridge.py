@@ -742,6 +742,23 @@ class GarminBridgeTests(unittest.TestCase):
             ("temporary_failure", None),
         )
 
+    def test_phase20_rejection_and_recovery_extensions_are_operation_backed(self):
+        self.assertEqual(garmin_bridge.evidence_rejections(), {
+            "operation_rejection": "operation_rejected",
+            "arguments_rejection": "arguments_rejected",
+        })
+        rows = garmin_bridge.evidence_recovery_extensions()
+        self.assertEqual([row["id"] for row in rows], [
+            "PH18-ADV-EXPIRED", "PH18-ADV-401", "PH18-ADV-TRUNCATED",
+            "PH18-ADV-UNSUPPORTED-JSON",
+        ])
+        self.assertEqual([row["code"] for row in rows], [
+            "sign_in_required", "sign_in_required", "malformed_response",
+            "malformed_response",
+        ])
+        self.assertEqual([row["call_count"] for row in rows], [2, 2, 4, 5])
+        self.assertTrue(all(row["automatic_retry_count"] == 0 for row in rows))
+
 
 if __name__ == "__main__":
     unittest.main()

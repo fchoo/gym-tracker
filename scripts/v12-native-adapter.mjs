@@ -95,7 +95,7 @@ export function invokeV12NativeAdapter(action, payload, {
     encoding: "utf8",
     // Recovery executes 224 bounded arm/recover Maestro subprocesses and must
     // retain time for identity/settings cleanup without outliving the host.
-    timeout: action === "sqlite" ? 26 * 60_000 : action === "recovery" ? 45 * 60_000 : 5 * 60_000,
+    timeout: action === "sqlite" ? 26 * 60_000 : action === "recovery" ? 45 * 60_000 : action === "garmin" ? 16 * 60_000 : 5 * 60_000,
     maxBuffer: 32 * 1024 * 1024,
   });
   if (result.error || result.signal || result.status !== 0) {

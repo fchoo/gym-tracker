@@ -28,7 +28,24 @@ export function createDomainRunner() {
   const sample = (timestampMs) => ({ timestampMs, widthDp: 400, dxDp: 100, dyDp: 0, intentOwner: 'horizontal', translationDp: 100, title: 'October 2026', selectedCivilDate: '2026-10-15', generation: 1, focusedWeek: '2026-10-12', rowBounds: [100, 150], callbackCount: 1, focusIdentity: 'calendar', motion: 'normal' });
   runner.updateState({
     domainCalls: [],
-    garmin: { cases: V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({ id, order, status: 'PASS', code: 'observed', count: 1 })) },
+    garmin: {
+      receipts: V12_GARMIN_SHARD_CASE_IDS.slice(0, -1).map((id, order) => ({
+        id, order, code: `${id}-observed`,
+        count: { 'bridge-allowlist': 2, 'account-lifecycle': 5, recovery: 20, 'match-zero': 0, 'match-many': 2, 'match-alternate': 2, 'match-cancel': 0 }[id] ?? 1,
+        receipt_sha256: hash(`garmin:${id}`),
+      })),
+      host_observations: {
+        bridge: { evidence_source: 'installed-chaquopy', operations: ['connectionState', 'login', 'resumeMfa', 'restoreSession', 'logout', 'getActivities', 'getActivity', 'getActivitySplits', 'getActivityDetails', 'forceRefreshForTest', 'runAdversarialSuite'], operation_rejection: 'operation_rejected', arguments_rejection: 'arguments_rejected' },
+        lifecycle: { restore: 'connected', refresh: 'connected', cold_restore: 'connected', logout: 'disconnected', restored: 'connected', rotation: 'rotated', restart: 'same-account', storage: 'no-backup-encrypted', before_sha256: hash('controlled-session'), refreshed_sha256: hash('controlled-refreshed'), restored_sha256: hash('controlled-restored') },
+        recovery: [
+          ['PH18-ADV-RESTORE', 'completed'], ['PH18-ADV-REFRESH', 'completed'], ['PH18-ADV-READ', 'completed'], ['PH18-ADV-LOGOUT', 'completed'], ['PH18-ADV-RESTART', 'sign_in_required'], ['PH18-ADV-LATE-GENERATION', 'stale_generation'],
+          ['PH18-ADV-EXPIRED', 'sign_in_required'], ['PH18-ADV-401', 'sign_in_required'], ['PH18-ADV-403', 'data_access_denied'], ['PH18-ADV-429', 'rate_limited'], ['PH18-ADV-OFFLINE', 'offline'], ['PH18-ADV-TIMEOUT', 'timeout'],
+          ['PH18-ADV-5XX', 'temporary_failure'], ['PH18-ADV-MALFORMED', 'malformed_response'], ['PH18-ADV-TRUNCATED', 'malformed_response'], ['PH18-ADV-OVERSIZED', 'malformed_response'], ['PH18-ADV-UNSUPPORTED-JSON', 'malformed_response'],
+          ['PH18-ADV-MISSING-COMPONENT', 'malformed_response'], ['PH18-ADV-PARTIAL-PAGE', 'temporary_failure'], ['PH18-ADV-ROTATION', 'stale_generation'],
+        ].map(([id, code], order) => ({ id, code, call_count: [1, 1, 4, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 4, 1, 5, 3, 5, 3][order], automatic_retry_count: 0, retry_after_ms: id === 'PH18-ADV-429' ? 900_000 : 0 })),
+      },
+    },
+    processCounter: 1000,
     calendar: V12_CALENDAR_SHARD_STAGE_IDS.map((id, order) => ({ id, order, status: 'PASS', samples: [sample(1), sample(2)], receipt: { content_width_dp: 400, start_dp: [0, 10], end_dp: [100, 10], dx_dp: 100, dy_dp: 0, event_sequence: ['pointer-down', 'pointer-move', 'pointer-up'], cancelled: false, settled: true, callback_count: 1, semantic_transition: { pre: 'month', during: 'drag', post: 'month' }, screenshot_sha256: hash('controlled-png'), trace_sha256: hash(JSON.stringify([sample(1), sample(2)])), expected_outcome: id } })),
     flow,
   });

@@ -73,11 +73,29 @@ if (shell[0] === 'cmd' && shell[1] === 'connectivity') {
   }
   out(`Airplane mode is ${state.airplane ? 'enabled' : 'disabled'}`); process.exit();
 }
+if (shell[0] === 'date' && shell[1] === '+%s') { out('2000000'); process.exit(); }
+if (shell[0] === 'run-as') {
+  const script = shell.at(-1) ?? '';
+  if (shell[2] === 'sh' && shell[3] === '-c' && script.includes('base64 -d')) {
+    if (state.arm) process.exit(1);
+    state.arm = true; save(); process.exit();
+  }
+  if (shell[2] === 'sh' && shell[3] === '-c') {
+    if (state.arm || state.databasesPresent || (script.includes('garmin-di-session.bin') && state.authRequired)) process.exit(1);
+    process.exit();
+  }
+  if (shell[2] === 'rm') { state.arm = false; save(); process.exit(); }
+}
 if (shell[0] === 'am' && shell[1] === 'start') {
   const link = new URL(shell[shell.indexOf('-d') + 1]);
   state.nonce = link.searchParams.get('nonce');
+  state.garminPhase = link.searchParams.get('mode');
+  state.arm = false;
+  state.processCounter += 1; state.currentPid = state.processCounter;
   save(); out('Status: ok'); process.exit();
 }
+if (shell[0] === 'am' && shell[1] === 'force-stop') { state.currentPid = null; save(); process.exit(); }
+if (shell[0] === 'pidof') { if (state.currentPid) out(String(state.currentPid)); process.exit(state.currentPid ? 0 : 1); }
 if (tool === 'adb' && args[2] === 'exec-out') { out(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=', 'base64')); process.exit(); }
 if (tool === 'adb' && args[2] === 'logcat') {
   if (state.missingMarker) process.exit();
@@ -113,11 +131,20 @@ if (tool === 'adb' && args[2] === 'logcat') {
       };
     }
   }
-  else value = state.authRequired ? { kind: 'error', code: 'auth_required' } : { kind: 'garmin', ...state.garmin };
+  else if (state.authRequired) value = { kind: 'error', code: 'auth_required' };
+  else if (state.garminPhase === 'preflight') value = { schema_version: 2, kind: 'garmin-preflight', session_sha256: hash('controlled-session') };
+  else value = { schema_version: 2, kind: 'garmin', ...state.garmin, cleanup: { arm: 'cleared', databases_deleted: 3 } };
   if (state.noReceipt && value.stage) delete value.stage.receipt;
   if (value.stage?.receipt) { delete value.stage.receipt.screenshot_sha256; delete value.stage.receipt.trace_sha256; }
-  const prefix = value?.kind === 'ARMED' ? 'GYM_TRACKER_V12_DOMAIN_PROGRESS:' : 'GYM_TRACKER_V12_DOMAIN_RESULT:';
-  out(`${prefix}${JSON.stringify({ schema_version: value?.schema_version ?? 1, nonce, ...value })}\n`);
+  const payload = { schema_version: value?.schema_version ?? 1, nonce, ...value };
+  if (value?.kind === 'garmin') {
+    const serialized = JSON.stringify(payload); const chunks = Array.from({ length: Math.ceil(serialized.length / 1500) }, (_, index) => serialized.slice(index * 1500, (index + 1) * 1500));
+    chunks.forEach((data, index) => out(`GYM_TRACKER_V12_DOMAIN_RESULT_CHUNK:${JSON.stringify({ schema_version: 2, nonce, kind: 'chunk', sequence: index + 1, total: chunks.length, data })}\n`));
+    out(`GYM_TRACKER_V12_DOMAIN_RESULT:${JSON.stringify({ schema_version: 2, nonce, kind: 'chunked', total: chunks.length, sha256: hash(serialized) })}\n`);
+  } else {
+    const prefix = value?.kind === 'ARMED' ? 'GYM_TRACKER_V12_DOMAIN_PROGRESS:' : 'GYM_TRACKER_V12_DOMAIN_RESULT:';
+    out(`${prefix}${JSON.stringify(payload)}\n`);
+  }
   process.exit();
 }
 const fallback = new URL('../v12-production-launcher/controlled-device-tool.mjs', import.meta.url);

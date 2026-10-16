@@ -235,6 +235,17 @@ function Phase18GarminAdversarialNavigator() {
   );
 }
 
+function V12ProductionGarminNavigator() {
+  return (
+    <Stack
+      initialRouteName="__v12-production-garmin"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__v12-production-garmin" />
+    </Stack>
+  );
+}
+
 function NativeContractsNavigator() {
   return (
     <Stack
@@ -315,6 +326,11 @@ function RootLayoutAttempt({
   const phase18GarminAdversarialEnabled = nativeContractsEnabled
     && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__phase18-garmin-adversarial";
+  const v12ProductionGarminEnabled = nativeContractsEnabled
+    && nativeContractSuite === "v1.2-acceptance"
+    && Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig?.android?.package === "com.fchoo.gymtracker.devtest"
+    && pathname === "/__v12-production-garmin";
   const v12NativeContractsEnabled = nativeContractsEnabled
     && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__native-contracts";
@@ -325,6 +341,7 @@ function RootLayoutAttempt({
     || phase12GoogleAuthSmokeEnabled
     || phase18GarminProofEnabled
     || phase18GarminAdversarialEnabled
+    || v12ProductionGarminEnabled
     || v12NativeContractsEnabled;
   const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
     ? productionAppearanceStore.read()
@@ -356,6 +373,7 @@ function RootLayoutAttempt({
                   || phase12GoogleAuthSmokeEnabled
                   || phase18GarminProofEnabled
                   || phase18GarminAdversarialEnabled
+                  || v12ProductionGarminEnabled
                 ? phase12CleanupAppearanceStore
                 : productionAppearanceStore}
           >
@@ -432,6 +450,18 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={phase12CleanupAppearanceStore}>
             <Phase18GarminAdversarialNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12ProductionGarminEnabled) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+            <V12ProductionGarminNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

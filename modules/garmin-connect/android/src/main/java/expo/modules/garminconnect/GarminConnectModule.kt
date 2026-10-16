@@ -50,6 +50,11 @@ private data class GarminAdversarialSuiteInput(
   @Field val deviceIdentitySha256: String = ""
 ) : Record
 
+private data class GarminV12EvidenceArmInput(
+  @Field val nonce: String = "",
+  @Field val phase: String = "",
+) : Record
+
 internal fun phase18DeviceIdentitySha256(
   serial: String,
   abi: String,
@@ -180,6 +185,11 @@ private data class GarminBenchmarkRuntimeInfo(
 
 class GarminConnectModule : Module() {
   private var clientWorker: GarminClientWorker? = null
+  private var clientDispatcher: GarminPythonDispatcher? = null
+  private var clientSessionStore: GarminSessionStore? = null
+  private var evidenceArmStore: GarminEvidenceArmStore? = null
+  private val evidenceAuthorizationLock = Any()
+  private var evidenceAuthorization: GarminEvidenceAuthorization? = null
   private var adversarialSuiteRunner: GarminAdversarialSuiteRunner? = null
 
   override fun definition() = ModuleDefinition {
@@ -223,6 +233,24 @@ class GarminConnectModule : Module() {
       }
       .runOnQueue(appContext.backgroundCoroutineScope)
 
+    (AsyncFunction("consumeV12EvidenceArm") Coroutine { input: GarminV12EvidenceArmInput ->
+      consumeV12EvidenceArm(input)
+    }).runOnQueue(appContext.backgroundCoroutineScope)
+
+    AsyncFunction("runV12StoredSessionLifecycle")
+      .SuspendBody<Map<String, Any?>> {
+        val authorization = synchronized(evidenceAuthorizationLock) {
+          evidenceAuthorization
+        } ?: throw IllegalStateException("garmin_operation_rejected")
+        require(authorization.phase == "execute") { "garmin_operation_rejected" }
+        GarminStoredSessionEvidenceRunner(worker(), dispatcher(), sessionStore()).run()
+      }
+      .runOnQueue(appContext.backgroundCoroutineScope)
+
+    AsyncFunction("completeV12EvidenceArm")
+      .SuspendBody<Map<String, Any?>> { completeV12EvidenceArm() }
+      .runOnQueue(appContext.backgroundCoroutineScope)
+
     AsyncFunction("logout")
       .SuspendBody<Map<String, Any?>> { worker().logout() }
       .runOnQueue(appContext.backgroundCoroutineScope)
@@ -259,14 +287,83 @@ class GarminConnectModule : Module() {
 
   private fun worker(): GarminClientWorker {
     clientWorker?.let { return it }
+    return synchronized(this) {
+      clientWorker ?: GarminClientWorker(dispatcher(), sessionStore()).also { clientWorker = it }
+    }
+  }
+
+  private fun dispatcher(): GarminPythonDispatcher {
+    clientDispatcher?.let { return it }
     val context = appContext.reactContext?.applicationContext
       ?: throw IllegalStateException("garmin_runtime_unavailable")
     return synchronized(this) {
-      clientWorker ?: GarminClientWorker(
-        dispatcher = ChaquopyGarminPythonDispatcher(context),
-        sessionStore = GarminTokenStore(context.noBackupFilesDir.resolve("garmin-session"))
-      ).also { clientWorker = it }
+      clientDispatcher ?: ChaquopyGarminPythonDispatcher(context).also { clientDispatcher = it }
     }
+  }
+
+  private fun sessionStore(): GarminSessionStore {
+    clientSessionStore?.let { return it }
+    val context = appContext.reactContext?.applicationContext
+      ?: throw IllegalStateException("garmin_runtime_unavailable")
+    return synchronized(this) {
+      clientSessionStore ?: GarminTokenStore(
+        context.noBackupFilesDir.resolve("garmin-session")
+      ).also { clientSessionStore = it }
+    }
+  }
+
+  private fun armStore(): GarminEvidenceArmStore {
+    evidenceArmStore?.let { return it }
+    val context = appContext.reactContext?.applicationContext
+      ?: throw IllegalStateException("garmin_runtime_unavailable")
+    return synchronized(this) {
+      evidenceArmStore ?: GarminEvidenceArmStore(
+        context.noBackupFilesDir.resolve("v12-evidence")
+      ).also { evidenceArmStore = it }
+    }
+  }
+
+  private fun consumeV12EvidenceArm(input: GarminV12EvidenceArmInput): Map<String, Any?> {
+    val context = appContext.reactContext?.applicationContext
+      ?: throw IllegalStateException("garmin_runtime_unavailable")
+    require(context.packageName == "com.fchoo.gymtracker.devtest") { "garmin_operation_rejected" }
+    val intent = appContext.currentActivity?.intent
+      ?: throw IllegalStateException("garmin_operation_rejected")
+    require(intent.data?.scheme == "gymtracker-devtest"
+      && intent.data?.host == "__v12-production-garmin") { "garmin_operation_rejected" }
+    val authorization = synchronized(evidenceAuthorizationLock) {
+      require(evidenceAuthorization == null) { "garmin_operation_rejected" }
+      armStore().consume(GarminEvidenceArmExpectation(
+        phase = input.phase,
+        nonce = input.nonce,
+        runIdSha256 = intent.getStringExtra("v12RunIdSha256") ?: "",
+        deviceIdentitySha256 = intent.getStringExtra("v12DeviceIdentitySha256") ?: "",
+        leaseIdSha256 = intent.getStringExtra("v12LeaseIdSha256") ?: "",
+      )).also { evidenceAuthorization = it }
+    }
+    return mapOf(
+      "schema_version" to 1,
+      "code" to "arm-consumed",
+      "receipt_sha256" to authorization.receiptSha256,
+    )
+  }
+
+  private fun completeV12EvidenceArm(): Map<String, Any?> {
+    val authorization = synchronized(evidenceAuthorizationLock) {
+      val value = evidenceAuthorization
+        ?: throw IllegalStateException("garmin_operation_rejected")
+      evidenceAuthorization = null
+      value
+    }
+    armStore().clear()
+    val receipt = MessageDigest.getInstance("SHA-256")
+      .digest("${authorization.receiptSha256}:cleared".toByteArray(Charsets.UTF_8))
+      .joinToString("") { byte -> "%02x".format(byte) }
+    return mapOf(
+      "schema_version" to 1,
+      "code" to "arm-cleared",
+      "receipt_sha256" to receipt,
+    )
   }
 
   private fun runtimeInfo(): Map<String, Any> {

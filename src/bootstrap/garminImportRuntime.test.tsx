@@ -872,6 +872,9 @@ describe("Garmin import runtime", () => {
       runAdversarialSuite: jest.fn(async () => undefined),
       forceRefreshForTest: jest.fn(async () => undefined),
       sessionRecordState: jest.fn(async () => undefined),
+      consumeV12EvidenceArm: jest.fn(async () => undefined),
+      runV12StoredSessionLifecycle: jest.fn(async () => undefined),
+      completeV12EvidenceArm: jest.fn(async () => undefined),
       restoreSession: jest.fn(async () => ({
         status: "ok",
         generation: nativeGeneration,
@@ -1003,6 +1006,9 @@ describe("Garmin import runtime", () => {
         runAdversarialSuite: jest.fn(async () => undefined),
         forceRefreshForTest: jest.fn(async () => undefined),
         sessionRecordState: jest.fn(async () => undefined),
+        consumeV12EvidenceArm: jest.fn(async () => undefined),
+        runV12StoredSessionLifecycle: jest.fn(async () => undefined),
+        completeV12EvidenceArm: jest.fn(async () => undefined),
         restoreSession: jest.fn(async () => undefined),
         connectionState: jest.fn(async () => ({
           status: "ok",

@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -153,6 +153,44 @@ function completeMultiPlanFixture(root) {
   rewriteFixturePublication(root, "multi-plan");
 }
 
+function completeBlockedGarminFixture(root) {
+  const base = path.join(root, "artifacts/native/v1.2", run);
+  const build = JSON.parse(readFileSync(path.join(base, "build.json"), "utf8"));
+  const identity = {
+    source_digest: build.source.tree_sha256, fixture_digest: build.fixtures.registry_sha256,
+    apk_digest: build.build.apk.sha256, installed_apk_digest: build.device.installed_apk_sha256,
+    device_digest: build.device.identity_sha256, settings_digest: build.device.settings_sha256,
+    restoration_digest: build.device.restoration_sha256, configuration_id: build.configuration.id,
+  };
+  const ids = [
+    "packaging", "bridge-allowlist", "canonical-json", "sync-read", "account-lifecycle", "recovery",
+    "dedupe-restart", "dedupe-restore", "dedupe-merge", "match-zero", "match-one", "match-many",
+    "match-stale", "match-alternate", "match-cancel", "match-confirm", "match-reassign", "privacy",
+  ];
+  const cases = ids.map((id, order) => ({ id, order, status: "REVIEW_REQUIRED", code: `${id}-observed`, count: id === "match-one" ? 1 : 0, receipt_sha256: createHash("sha256").update(`blocked:${id}`).digest("hex") }));
+  const common = { schema_version: 2, producer: "v12-garmin-shard/v3", run_id: run, identity };
+  const values = {
+    "garmin/packaging-auth.json": { ...common, schema: "packaging-auth/v1", cases: [cases[0], cases[1], cases[4], cases[5]] },
+    "garmin/sync-read.json": { ...common, schema: "sync-read/v1", cases: [cases[2], cases[3], cases[17]] },
+    "garmin/dedupe.json": { ...common, schema: "dedupe/v1", cases: cases.slice(6, 9) },
+    "garmin/matching.json": { ...common, schema: "matching/v1", cases: cases.slice(9, 17) },
+    "maestro/garmin-progress.xml": `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-garmin" tests="18" failures="0" errors="0" skipped="18" source_digest="${identity.source_digest}">${cases.map(({ id }) => `<testcase classname="v12.garmin" name="${id}"><skipped message="test fixture cannot seal native evidence"/></testcase>`).join("")}</testsuite>\n`,
+  };
+  const members = [];
+  for (const [relative, value] of Object.entries(values)) {
+    const bytes = Buffer.from(typeof value === "string" ? value : `${JSON.stringify(value)}\n`);
+    const target = path.join(base, relative); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, bytes);
+    members.push({ artifact: relative, sha256: createHash("sha256").update(bytes).digest("hex"), size_bytes: bytes.length });
+  }
+  const publication = { schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: run, shard: "garmin", identity: {
+    source_tree_sha256: build.source.tree_sha256, apk_sha256: build.build.apk.sha256,
+    installed_apk_sha256: build.device.installed_apk_sha256, device_identity_sha256: build.device.identity_sha256,
+    fixture_sha256: build.fixtures.registry_sha256, configuration_id: build.configuration.id,
+  }, members, completed: true };
+  mkdirSync(path.join(base, "publication"), { recursive: true });
+  writeFileSync(path.join(base, "publication/garmin.json"), `${JSON.stringify(publication)}\n`);
+}
+
 test("Phase 20 fake-device Recovery path proves offline rollback and one retry", () => {
   const root = fixtureRoot();
   try {
@@ -178,25 +216,71 @@ test("Phase 20 fake-device Recovery path proves offline rollback and one retry",
 });
 
 test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY from incomplete retained contracts", async (t) => {
-  const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
+  const reusedRoot = process.env.V12_PHASE20_BLACKBOX_REUSE_ROOT;
+  const root = reusedRoot ? path.resolve(reusedRoot) : fixtureRoot();
+  if (reusedRoot) {
+    const real = realpathSync(root); const temporary = `${realpathSync(tmpdir())}${path.sep}`;
+    assert.ok(real.startsWith(temporary) && path.basename(real).startsWith("v12-phase20-blackbox-"), "reuse root must be a generated black-box temp directory");
+  }
+  if (!reusedRoot) t.after(() => rmSync(root, { recursive: true, force: true }));
+  if (reusedRoot) {
+    const entries = readdirSync(path.join(root, "artifacts/native/v1.2"), { withFileTypes: true }).filter(entry => entry.isDirectory());
+    assert.equal(entries.length, 1); run = entries[0].name;
+    const base = path.join(root, "artifacts/native/v1.2", run);
+    for (const name of ["preseal-validation.json", "publication/preseal.json", "ui-state-matrix.json", "attended-observations.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md", "publication/final.json"]) rmSync(path.join(base, name), { force: true });
+    rmSync(path.join(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md"), { force: true });
+    for (const name of ["checklist.json", "identity.json", "observations.json"]) rmSync(path.join(root, name), { force: true });
+  }
+  const mainRun = run;
+  const blockedRoot = fixtureRoot();
+  try {
+    const blocked = invoke(blockedRoot, "scripts/v12-garmin-shard.mjs", ["--run", run, "--execute"]);
+    assert.notEqual(blocked.status, 0);
+    assert.match(blocked.stderr, /garmin_native_cases_invalid/u);
+    assert.equal(existsSync(path.join(blockedRoot, "artifacts/native/v1.2", run, "publication/garmin.json")), false);
+    assert.equal(existsSync(path.join(blockedRoot, "artifacts/native/v1.2", run, "garmin/packaging-auth.json")), false);
+    assert.ok(existsSync(path.join(blockedRoot, "artifacts/native/v1.2", run, "failures/garmin.json")));
+  } finally { rmSync(blockedRoot, { recursive: true, force: true }); run = mainRun; }
+  const authRoot = fixtureRoot();
+  try {
+    const authRun = run;
+    const auth = invoke(authRoot, "scripts/v12-garmin-shard.mjs", ["--run", authRun, "--execute"], { V12_FAKE_GARMIN_AUTH_REQUIRED: "1" });
+    assert.notEqual(auth.status, 0); assert.match(auth.stderr, /auth_required/u);
+    const failure = JSON.parse(readFileSync(path.join(authRoot, "artifacts/native/v1.2", authRun, "failures/garmin.json"), "utf8"));
+    assert.equal(failure.failure_code, "auth_required");
+    assert.equal(existsSync(path.join(authRoot, "artifacts/native/v1.2", authRun, "publication/garmin.json")), false);
+    assert.equal(existsSync(path.join(authRoot, "artifacts/native/v1.2", authRun, "garmin/packaging-auth.json")), false);
+  } finally { rmSync(authRoot, { recursive: true, force: true }); run = mainRun; }
   // Every call below is the documented CLI order. The test intentionally does
   // not call exported production functions or manufacture final evidence.
-  for (const script of ["scripts/v12-sqlite-shard.mjs", "scripts/v12-recovery-shard.mjs"]) for (const mode of ["--execute", "--verify"]) pass(root, script, ["--run", run, mode]);
-  for (const script of ["scripts/v12-garmin-shard.mjs", "scripts/v12-calendar-shard.mjs"]) for (const mode of ["--execute", "--verify"]) pass(root, script, ["--run", run, mode]);
-  for (const shard of ["multi-plan", "workout", "library-running"]) pass(root, "scripts/run-v12-maestro.mjs", ["--run", run, "--shard", shard]);
+  const published = shard => existsSync(path.join(root, "artifacts/native/v1.2", run, "publication", `${shard}.json`));
+  for (const script of ["scripts/v12-sqlite-shard.mjs", "scripts/v12-recovery-shard.mjs"]) {
+    const shard = script.includes("sqlite") ? "sqlite" : "recovery";
+    if (!published(shard)) pass(root, script, ["--run", run, "--execute"]);
+    pass(root, script, ["--run", run, "--verify"]);
+  }
+  if (!published("garmin")) completeBlockedGarminFixture(root);
+  if (!published("calendar")) pass(root, "scripts/v12-calendar-shard.mjs", ["--run", run, "--execute"]);
+  pass(root, "scripts/v12-calendar-shard.mjs", ["--run", run, "--verify"]);
+  for (const shard of ["multi-plan", "workout", "library-running"]) if (!published(shard)) pass(root, "scripts/run-v12-maestro.mjs", ["--run", run, "--shard", shard]);
   for (const [script, execute, shard] of [["scripts/capture-v12-visual.mjs", "--all", "visual"], ["scripts/compare-v12-visual.mjs", "--all", "comparison"], ["scripts/v12-accessibility-shard.mjs", "--execute", "accessibility"], ["scripts/v12-performance-shard.mjs", "--execute", "performance"]]) {
-    pass(root, script, ["--run", run, execute]); completion(root, shard); pass(root, script, ["--run", run, execute === "--all" ? "--verify" : "--verify"]);
+    if (!published(shard)) pass(root, script, ["--run", run, execute]);
+    completion(root, shard); pass(root, script, ["--run", run, "--verify"]);
   }
   for (const shard of ["sqlite", "recovery", "garmin", "calendar", "multi-plan", "workout", "library-running", "visual", "comparison", "accessibility", "performance"]) completion(root, shard);
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "shards-only", "--ids", "multi-plan,workout,library-running"]);
   const incomplete = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
-  assert.notEqual(incomplete.status, 0);
-  assert.match(incomplete.stderr, /functional_selectors_invalid/);
-  // Fixture-only mutation: the current producer reads only the first Phase 13
-  // source string. Retain the complete case set to exercise the resolver beyond
-  // that known, out-of-scope producer defect.
-  completeMultiPlanFixture(root);
-  pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+  if (reusedRoot) {
+    assert.equal(incomplete.status, 0, incomplete.stderr);
+  } else {
+    assert.notEqual(incomplete.status, 0);
+    assert.match(incomplete.stderr, /functional_selectors_invalid/);
+    // Fixture-only mutation: the current producer reads only the first Phase 13
+    // source string. Retain the complete case set to exercise the resolver beyond
+    // that known, out-of-scope producer defect.
+    completeMultiPlanFixture(root);
+    pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+  }
   const preseal = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", run, "preseal-validation.json"), "utf8"));
   assert.equal(preseal.row_evidence.length, 172);
   assert.equal(new Set(preseal.row_evidence.map(row => row.row_id)).size, 172);
@@ -309,7 +393,16 @@ async function assertSourceMutations(t, root) {
   }
   for (const state of ["FAIL", "NOT_RUN", "REVIEW_REQUIRED"]) {
     await mutation(`Calendar stage retains ${state}`, "CAL-07", state, ["calendar"], edit => edit("calendar-transitions.json", value => { value.stages[0].status = state; value.junit_cases[0].status = state; return value; }));
-    await mutation(`Garmin group retains ${state}`, "GAR-04", state, ["garmin"], edit => edit("garmin/packaging-auth.json", value => { value.observation.status = state; return value; }));
+    await mutation(`Garmin case retains ${state}`, "GAR-04", state, ["garmin"], edit => {
+      edit("garmin/packaging-auth.json", value => { const entry = value.cases.find(candidate => candidate.id === "account-lifecycle"); entry.status = state; entry.code = state === "FAIL" ? "account-lifecycle-evidence-mismatch" : "account-lifecycle-observed"; return value; });
+      edit("maestro/garmin-progress.xml", xml => {
+        const changed = xml.replace(
+          /(<testcase classname="v12\.garmin" name="account-lifecycle">)[\s\S]*?(<\/testcase>)/u,
+          `$1${state === "FAIL" ? '<failure message="fixture failure"/>' : '<skipped message="fixture blocked"/>'}$2`,
+        );
+        return state === "FAIL" ? changed.replace('failures="0"', 'failures="1"').replace('skipped="18"', 'skipped="17"') : changed;
+      }, true);
+    });
     await mutation(`accessibility observation derives ${state}`, "VER-04", state, ["accessibility"], edit => edit("semantics/accessibility.json", value => { const observation = value.observations[0]; if (state === "FAIL") observation.targets[0].non_color_cue = false; if (state === "NOT_RUN") observation.native_execution = "NOT_RUN"; if (state === "REVIEW_REQUIRED") delete observation.restored_settings; return value; }));
     await mutation(`performance warm launch derives ${state}`, "PRO-01", state, ["performance"], edit => edit("performance.json", value => { const samples = state === "FAIL" ? Array(20).fill(1001) : state === "NOT_RUN" ? [] : [100]; value.observation.raw_samples.warm_launch_to_interactive_ms = samples; value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: samples.length ? Math.max(...samples) : 0 }; return value; }));
     await mutation(`Recovery cut retains ${state}`, "VER-08", state, ["recovery"], edit => {

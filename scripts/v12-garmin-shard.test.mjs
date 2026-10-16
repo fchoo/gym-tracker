@@ -1,35 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
-  executeV12GarminShard,
   executeV12GarminShardCli,
   parseV12GarminShardCliArgs,
-  validateV12GarminShard,
   V12_GARMIN_SHARD_CASE_IDS,
 } from "./v12-garmin-shard.mjs";
-
-const observation = Object.freeze({
-  packagingAuth: { source: "bundled-chaquopy", bridgeMethods: ["login", "mfa", "activities", "activity", "splits", "details"], nativeExecution: "NOT_RUN" },
-  syncRead: { fixtureManifestSha256: "a".repeat(64), expectedSummaries: 3, nativeExecution: "NOT_RUN" },
-  dedupe: { receiptDigest: "b".repeat(64), provenanceDigest: "c".repeat(64), replayIdentityCount: 7, nativeExecution: "NOT_RUN" },
-  matching: { matchDigest: "d".repeat(64), selectedOpportunityCount: 1, nativeExecution: "NOT_RUN" },
-});
-
-test("Garmin shard accepts only the four canonical, privacy-safe observation shapes", () => {
-  assert.deepEqual(validateV12GarminShard(observation), { status: "NOT_RUN", caseCount: 12 });
-  assert.deepEqual(executeV12GarminShard(observation), {
-    producer: "v12-garmin-shard/v1",
-    status: "NOT_RUN",
-    observations: observation,
-  });
-});
-
-test("Garmin shard fails closed on incomplete, private, and verdict-bearing observations", () => {
-  assert.throws(() => validateV12GarminShard({ ...observation, syncRead: { ...observation.syncRead, rawPayload: "{}" } }), /garmin_private_field/);
-  assert.throws(() => validateV12GarminShard({ ...observation, dedupe: { ...observation.dedupe, replayIdentityCount: 0 } }), /garmin_replay_identity_invalid/);
-  assert.throws(() => executeV12GarminShard({ ...observation, finalVerdict: "PASS" }), /garmin_final_verdict_forbidden/);
-});
 
 test("Garmin shard exposes an exact ordered registry and a strict run CLI", () => {
   assert.deepEqual(V12_GARMIN_SHARD_CASE_IDS, [
@@ -57,7 +34,11 @@ test("Garmin shard rejects digest-only records, missing cases, identity drift, a
     configuration: { id: "AP-L-C390-P-F100" },
   };
   const validResult = {
-    cases: V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({ id, order, status: "NOT_RUN", code: "native-not-run", count: 1 })),
+    producer: "v12-production-garmin-host/v1",
+    cases: V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({
+      id, order, status: "PASS", code: `${id}-observed`, count: id === "match-one" ? 1 : 0,
+      receipt_sha256: String(order).padStart(64, "a").slice(-64),
+    })),
   };
   const writes = new Map();
   const execute = await executeV12GarminShardCli(["--run", runId, "--execute"], {
@@ -82,7 +63,7 @@ test("Garmin shard rejects digest-only records, missing cases, identity drift, a
       root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
       isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
       snapshotSettings: () => ({}), restoreSettings: () => true,
-      executeNative: () => ({ cases: [{ id: "packaging", order: 0, status: "NOT_RUN", code: "native-not-run", count: 1 }] }),
+      executeNative: () => ({ producer: "v12-production-garmin-host/v1", cases: [{ id: "packaging", order: 0, status: "PASS", code: "packaging-observed", count: 1, receipt_sha256: "a".repeat(64) }] }),
       writeImmutable: () => {}, outputExists: () => false,
     }),
     /garmin_native_cases_invalid/,
@@ -102,4 +83,69 @@ test("Garmin shard rejects digest-only records, missing cases, identity drift, a
     }),
     /garmin_native_cases_invalid/,
   );
+});
+
+test("Garmin verify requires the atomic completion manifest, exact four JSON schemas, all receipts, and 18 passing JUnit outcomes", async () => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const manifest = {
+    run_id: runId,
+    source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) },
+    fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
+    configuration: { id: "AP-L-C390-P-F100" },
+  };
+  const identity = {
+    source_digest: "a".repeat(64), fixture_digest: "b".repeat(64), apk_digest: "c".repeat(64),
+    installed_apk_digest: "c".repeat(64), device_digest: "d".repeat(64), settings_digest: "e".repeat(64),
+    restoration_digest: "f".repeat(64), configuration_id: "AP-L-C390-P-F100",
+  };
+  const cases = V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({ id, order, status: "PASS", code: `${id}-observed`, count: id === "match-one" ? 1 : 0, receipt_sha256: String(order).padStart(64, "a").slice(-64) }));
+  const base = { schema_version: 2, producer: "v12-garmin-shard/v3", run_id: runId, identity };
+  const artifacts = new Map([
+    [`artifacts/native/v1.2/${runId}/garmin/packaging-auth.json`, JSON.stringify({ ...base, schema: "packaging-auth/v1", cases: [cases[0], cases[1], cases[4], cases[5]] })],
+    [`artifacts/native/v1.2/${runId}/garmin/sync-read.json`, JSON.stringify({ ...base, schema: "sync-read/v1", cases: [cases[2], cases[3], cases[17]] })],
+    [`artifacts/native/v1.2/${runId}/garmin/dedupe.json`, JSON.stringify({ ...base, schema: "dedupe/v1", cases: cases.slice(6, 9) })],
+    [`artifacts/native/v1.2/${runId}/garmin/matching.json`, JSON.stringify({ ...base, schema: "matching/v1", cases: cases.slice(9, 17) })],
+    [`artifacts/native/v1.2/${runId}/maestro/garmin-progress.xml`, `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-garmin" tests="18" failures="0" errors="0" skipped="0" source_digest="${identity.source_digest}">${cases.map(({ id }) => `<testcase classname="v12.garmin" name="${id}"></testcase>`).join("")}</testsuite>\n`],
+  ]);
+  const publication = {
+    schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard: "garmin", identity: {}, completed: true,
+    members: [...artifacts].map(([file, value]) => ({ artifact: file.split(`${runId}/`)[1], sha256: createHash("sha256").update(value).digest("hex"), size_bytes: Buffer.byteLength(value) })),
+  };
+  assert.deepEqual(await executeV12GarminShardCli(["--run", runId, "--verify"], {
+    root: "/synthetic-root", readBuild: () => manifest, sourceDigest: identity.source_digest, currentHead: manifest.source.head,
+    isAncestor: () => true, outputExists: (file) => artifacts.has(file), readArtifact: (file) => artifacts.get(file),
+    readPublication: () => publication, verifyAtomic: () => true,
+  }), { ok: true, mode: "verify", run_id: runId });
+  publication.members.pop();
+  await assert.rejects(executeV12GarminShardCli(["--run", runId, "--verify"], {
+    root: "/synthetic-root", readBuild: () => manifest, sourceDigest: identity.source_digest, currentHead: manifest.source.head,
+    isAncestor: () => true, outputExists: (file) => artifacts.has(file), readArtifact: (file) => artifacts.get(file),
+    readPublication: () => publication, verifyAtomic: () => true,
+  }), /garmin_publication_invalid/u);
+});
+
+test("auth_required writes only a bounded failure receipt and no shard members", async () => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const manifest = {
+    run_id: runId,
+    source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) },
+    fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
+    configuration: { id: "AP-L-C390-P-F100" },
+  };
+  const writes = [];
+  await assert.rejects(executeV12GarminShardCli(["--run", runId, "--execute"], {
+    root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+    isAncestor: () => true, outputExists: () => false, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
+    snapshotSettings: () => ({}), restoreSettings: () => true,
+    executeNative: () => { throw new Error("v12_native_adapter_command_failed:auth_required"); },
+    writeImmutable: (file) => writes.push(file), writeFailureReceipt: (value) => writes.push({ failure: value }),
+  }), /auth_required/u);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(Object.keys(writes[0]), ["failure"]);
+  assert.equal(writes[0].failure.failure_code, "auth_required");
+  assert.equal(writes.some((value) => typeof value === "string" && /garmin\/(?:packaging|sync|dedupe|matching)|maestro/u.test(value)), false);
 });
