@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
@@ -202,6 +202,16 @@ test("production subprocess returns measured F200/accessibility with restored se
 test("identity request verifies installed identity under a lease and does not start instrumentation", (t) => {
   const runner = fixture(t); assert.deepEqual(successful(runner, { request: "identity" }), { identity: runner.identity });
   assert.equal(runner.readState().instrumentCalls, undefined); released(runner);
+});
+test("quality actions use the resolved absolute ADB even when PATH is poisoned", (t) => {
+  const runner = fixture(t);
+  const poison = path.join(runner.scratch, "poison");
+  mkdirSync(poison);
+  writeFileSync(path.join(poison, "adb"), "#!/bin/sh\nexit 92\n", { mode: 0o755 });
+  const result = runner.invoke({ request: "identity" }, { PATH: `${poison}:/usr/bin:/bin` });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), { identity: runner.identity });
+  released(runner);
 });
 for (const action of ["accessibility", "performance"]) {
   for (const [flag, code] of [["noInstrumentation", "instrumentation_missing"], ["missingMarker", "marker_missing"], ["staleMarker", "marker_invalid"],

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
@@ -21,6 +22,8 @@ import {
   V12_NATIVE_LEASE_ACTION_BUDGETS,
   V12_NATIVE_MAX_REQUEST_BYTES,
   V12_NATIVE_MAX_RESPONSE_BYTES,
+  V12_NATIVE_PROCESS_TREE_KILL_GRACE_MS,
+  V12_NATIVE_PROCESS_TREE_TERM_GRACE_MS,
   V12_QUALITY_ACTION_BUDGETS,
   V12_QUALITY_COMMAND_GRAPH,
   V12_QUALITY_WAIT_GRAPH,
@@ -33,6 +36,7 @@ import {
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
   createV12NativeAdapter,
   invokeV12NativeAdapterEnvelope,
+  superviseV12NativeProcess,
   v12CommandPathMaxMs,
 } from "./v12-native-adapter.mjs";
 
@@ -100,6 +104,105 @@ test("default launcher provenance preserves a controlled toolchain as test-only 
   assert.equal(result.execution_origin.kind, "production-default-launcher");
   assert.equal(result.execution_origin.default_launcher, true);
   assert.equal(result.execution_origin.toolchain_origin, "test-controlled/v1");
+  assert.doesNotMatch(JSON.stringify(result.execution_origin), /\/Users\/|\/private\//u);
+});
+test("default launcher provenance changes when controlled executable bytes change", (t) => {
+  const runner = fixture(t);
+  const environment = {
+    ...process.env,
+    ...runner.executionEnvironment,
+    NODE_ENV: "production",
+    V12_DEVICE_SERIAL: "controlled-device-20",
+    V12_CONTROLLED_STATE: runner.scratch,
+  };
+  for (const key of ["V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "NODE_TEST_CONTEXT"]) delete environment[key];
+  const first = invokeV12NativeAdapterEnvelope("acquire-lease", { run_id: runner.build.run_id }, { root: runner.root, environment });
+  assert.equal(invokeV12NativeAdapterEnvelope("release-lease", { run_id: runner.build.run_id, lease: first.result }, { root: runner.root, environment }).result, true);
+  const adb = runner.executionEnvironment.V12_ADB_PATH;
+  writeFileSync(adb, `${readFileSync(adb, "utf8")}\n# immutable-byte-change\n`, { mode: 0o755 });
+  const second = invokeV12NativeAdapterEnvelope("acquire-lease", { run_id: runner.build.run_id }, { root: runner.root, environment });
+  assert.notEqual(first.execution_origin.request_attestation_sha256, second.execution_origin.request_attestation_sha256);
+  assert.equal(invokeV12NativeAdapterEnvelope("release-lease", { run_id: runner.build.run_id, lease: second.result }, { root: runner.root, environment }).result, true);
+});
+
+test("supervisor gives a process tree TERM cleanup time before bounded KILL", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-term-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cleaned = path.join(root, "cleaned");
+  const program = `import fs from "node:fs"; process.on("SIGTERM",()=>{fs.writeFileSync(${JSON.stringify(cleaned)},"yes"); setTimeout(()=>process.exit(0),20)}); setInterval(()=>{},1000);`;
+  const result = await superviseV12NativeProcess({
+    executable: process.execPath,
+    args: ["--input-type=module", "--eval", program],
+    cwd: root,
+    environment: process.env,
+    input: "",
+    timeoutMs: 150,
+    termGraceMs: 250,
+    killGraceMs: 250,
+    maxBuffer: 1024,
+  });
+  assert.equal(readFileSync(cleaned, "utf8"), "yes");
+  assert.equal(result.timed_out, true);
+  assert.equal(result.termination, "SIGTERM");
+  assert.equal(result.status, 0);
+});
+
+test("supervisor escalates an uncooperative process tree from TERM to KILL", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-kill-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const grandchild = `process.on("SIGTERM",()=>{}); setInterval(()=>{},1000);`;
+  const program = `import {spawn} from "node:child_process"; process.on("SIGTERM",()=>{}); const child=spawn(process.execPath,["--input-type=module","--eval",${JSON.stringify(grandchild)}],{stdio:"ignore"}); process.stdout.write(process.pid+":"+child.pid+"\\n"); setInterval(()=>{},1000);`;
+  const started = Date.now();
+  const result = await superviseV12NativeProcess({
+    executable: process.execPath,
+    args: ["--input-type=module", "--eval", program],
+    cwd: root,
+    environment: process.env,
+    input: "",
+    timeoutMs: 150,
+    termGraceMs: 40,
+    killGraceMs: 250,
+    maxBuffer: 1024,
+  });
+  const pids = result.stdout.trim().split(":").map(Number);
+  assert.equal(result.timed_out, true);
+  assert.equal(result.termination, "SIGKILL");
+  assert.equal(result.signal, "SIGKILL");
+  assert.ok(Date.now() - started < 2_000);
+  assert.equal(pids.length, 2);
+  for (const pid of pids) {
+    let alive = true;
+    for (let attempt = 0; attempt < 50 && alive; attempt += 1) {
+      try { process.kill(pid, 0); await new Promise((resolve) => setTimeout(resolve, 10)); }
+      catch { alive = false; }
+    }
+    assert.equal(alive, false, `process tree member ${pid} survived SIGKILL`);
+  }
+});
+
+test("supervisor forwards host cancellation through the same bounded TERM path", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-signal-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cleaned = path.join(root, "signal-cleaned");
+  const program = `import fs from "node:fs"; process.on("SIGTERM",()=>{fs.writeFileSync(${JSON.stringify(cleaned)},"yes"); process.exit(0)}); setInterval(()=>{},1000);`;
+  const controller = new AbortController();
+  const running = superviseV12NativeProcess({
+    executable: process.execPath,
+    args: ["--input-type=module", "--eval", program],
+    cwd: root,
+    environment: process.env,
+    input: "",
+    timeoutMs: 5_000,
+    termGraceMs: 250,
+    killGraceMs: 250,
+    maxBuffer: 1024,
+    signal: controller.signal,
+  });
+  setTimeout(() => controller.abort(), 150);
+  const result = await running;
+  assert.equal(readFileSync(cleaned, "utf8"), "yes");
+  assert.equal(result.cancelled, true);
+  assert.equal(result.termination, "SIGTERM");
 });
 test("adapter provenance is immutable and action-scoped across borrowed-lease cleanup", (t) => {
   const runner = fixture(t);
@@ -209,6 +312,8 @@ test("every adapter action has an explicit bounded timeout and transport budget"
   assert.equal(V12_VISUAL_COMMAND_GRAPH.device_verification.length, 7);
   assert.equal(V12_VISUAL_CLEANUP_BUDGET.reset_bound_ms, 60_100);
   assert.equal(V12_RECOVERY_COMMAND_GRAPH.producer[0].max_ms, 40 * 60_000);
+  assert.equal(V12_RECOVERY_COMMAND_GRAPH.post_producer_cleanup.length, 1);
+  assert.equal(V12_RECOVERY_COMMAND_GRAPH.post_producer_cleanup[0].name, "domain.recovery.post-producer.force-stop");
   assert.equal(V12_RECOVERY_COMMAND_GRAPH.local_cleanup.length, 16);
   assert.equal(V12_RECOVERY_ACTION_BUDGET.max_ms,
     Object.values(V12_RECOVERY_COMMAND_GRAPH).reduce((total, path) => total + v12CommandPathMaxMs(path), 0));
@@ -228,6 +333,8 @@ test("every adapter action has an explicit bounded timeout and transport budget"
   assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.performance > 110 * 60_000);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.accessibility, 44 * 60_000 + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
   assert.equal(V12_NATIVE_ADAPTER_GRACE_MS, V12_NATIVE_CLEANUP_BUDGET.max_ms + V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms);
+  assert.equal(V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+    V12_NATIVE_PROCESS_TREE_TERM_GRACE_MS + V12_NATIVE_PROCESS_TREE_KILL_GRACE_MS + 1_000);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture"], V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture-batch"], V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-compare"], V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);

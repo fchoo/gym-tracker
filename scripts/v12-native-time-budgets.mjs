@@ -8,7 +8,14 @@ import { V12_CALENDAR_REQUIREMENT_PROBE_COUNT } from "./v12-calendar-requirement
 
 export const V12_NATIVE_ADB_CALL_TIMEOUT_MS = 20_000;
 export const V12_VISUAL_ADB_CALL_TIMEOUT_MS = 15_000;
-export const V12_NATIVE_ADAPTER_EXIT_MARGIN_MS = 1_000;
+// A terminating launcher owns up to 16 local Recovery restoration calls plus
+// the shared 25-call settings/lease cleanup. Keep that full bounded window
+// outside every normal command graph before the supervisor escalates to KILL.
+export const V12_NATIVE_PROCESS_TREE_TERM_GRACE_MS = 14 * 60_000;
+export const V12_NATIVE_PROCESS_TREE_KILL_GRACE_MS = 5_000;
+export const V12_NATIVE_ADAPTER_EXIT_MARGIN_MS = V12_NATIVE_PROCESS_TREE_TERM_GRACE_MS
+  + V12_NATIVE_PROCESS_TREE_KILL_GRACE_MS
+  + 1_000;
 export const V12_VISUAL_NAVIGATION_COMMAND_TIMEOUT_MS = 40_000;
 export const V12_VISUAL_MARKER_WINDOW_MS = 5_000;
 export const V12_VISUAL_MARKER_POLL_DELAY_MS = 100;
@@ -102,6 +109,11 @@ export const V12_NATIVE_ADAPTER_GRACE_MS = V12_NATIVE_CLEANUP_BUDGET.max_ms
   + V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms;
 
 const recoveryProducer = commands("domain.recovery", ["producer"], 40 * 60_000);
+const recoveryPostProducerCleanup = commands(
+  "domain.recovery.post-producer",
+  ["force-stop"],
+  V12_NATIVE_ADB_CALL_TIMEOUT_MS,
+);
 const recoveryLocalCleanup = concat(
   commands("domain.recovery.cleanup", ["airplane-mode-write"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
   commands("domain.recovery.cleanup", nativeSettings.map((key) => `settings-write-${key}`), V12_NATIVE_ADB_CALL_TIMEOUT_MS),
@@ -111,6 +123,7 @@ const recoveryLocalCleanup = concat(
 export const V12_RECOVERY_COMMAND_GRAPH = Object.freeze({
   shared_setup: nativeOwnedLeaseSetup,
   producer: recoveryProducer,
+  post_producer_cleanup: recoveryPostProducerCleanup,
   local_cleanup: recoveryLocalCleanup,
   shared_cleanup: nativeRuntimeCleanup,
 });
