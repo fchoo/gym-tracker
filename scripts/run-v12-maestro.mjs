@@ -12,6 +12,12 @@ import {
   recordV12CalendarStageResult,
 } from "./v12-calendar-artifacts.mjs";
 import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import {
+  digestV12CanonicalRestorationSnapshot,
+  readV12CanonicalRestorationSnapshot,
+  V12_CANONICAL_RESTORATION_SETTINGS,
+} from "./v12-device-settings-contract.mjs";
 import {
   readV12RetainedGitExecution,
   resolveV12GitExecution,
@@ -26,6 +32,10 @@ import {
   V12_CALENDAR_STAGE_GROUPS,
   V12_CALENDAR_STAGE_IDS,
 } from "./v12-calendar-observation-contract.mjs";
+import {
+  deriveV12MaestroCaseIdsFromSource,
+  V12_MAESTRO_FUNCTIONAL_REGISTRIES,
+} from "./v12-maestro-source-registry.mjs";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -34,6 +44,12 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_HEAD = /^[a-f0-9]{40}$/u;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const LIVE_GENERIC_SHARDS = Object.freeze(["multi-plan", "workout", "library-running"]);
+const DIRECT_MAESTRO_TOOL_NAMES = Object.freeze(["adb", "maestro", "unzip"]);
+const DIRECT_MAESTRO_TOOL_VERSIONS = Object.freeze({
+  adb: Object.freeze(["version"]),
+  maestro: Object.freeze(["--version"]),
+  unzip: Object.freeze(["-v"]),
+});
 const sourceSha256 = (file) => {
   try { return sha256(readFileSync(file)); }
   catch { genericFail("toolchain_invalid"); }
@@ -47,9 +63,9 @@ export const V12_MAESTRO_FLOW_CONTRACTS = Object.freeze({
   recovery: Object.freeze({ flow: "maestro/v1.2/recovery.yaml", sources: Object.freeze(["scripts/v12-recovery-shard.mjs"]) }),
   garmin: Object.freeze({ flow: "maestro/v1.2/garmin-progress.yaml", sources: Object.freeze(["scripts/v12-garmin-shard.mjs"]) }),
   calendar: Object.freeze({ flow: "maestro/v1.2/calendar.yaml", sources: Object.freeze(["scripts/v12-calendar-shard.mjs"]) }),
-  "multi-plan": Object.freeze({ flow: "maestro/v1.2/multi-plan.yaml", sources: Object.freeze(["src/testing/contracts/multiPlanRunning.contract.ts"]), prefix: "phase13-" }),
-  workout: Object.freeze({ flow: "maestro/v1.2/workout.yaml", sources: Object.freeze(["src/testing/contracts/phase15Workout.contract.ts"]), prefix: "workout." }),
-  "library-running": Object.freeze({ flow: "maestro/v1.2/library-running.yaml", sources: Object.freeze(["src/testing/contracts/phase17LibraryRunning.contract.ts"]), prefix: "library." }),
+  "multi-plan": Object.freeze({ flow: "maestro/v1.2/multi-plan.yaml", sources: Object.freeze([V12_MAESTRO_FUNCTIONAL_REGISTRIES["multi-plan"].source]), prefix: V12_MAESTRO_FUNCTIONAL_REGISTRIES["multi-plan"].prefix }),
+  workout: Object.freeze({ flow: "maestro/v1.2/workout.yaml", sources: Object.freeze([V12_MAESTRO_FUNCTIONAL_REGISTRIES.workout.source]), prefix: V12_MAESTRO_FUNCTIONAL_REGISTRIES.workout.prefix }),
+  "library-running": Object.freeze({ flow: "maestro/v1.2/library-running.yaml", sources: Object.freeze([V12_MAESTRO_FUNCTIONAL_REGISTRIES["library-running"].source]), prefix: V12_MAESTRO_FUNCTIONAL_REGISTRIES["library-running"].prefix }),
   accessibility: Object.freeze({ flow: "maestro/v1.2/accessibility.yaml", sources: Object.freeze(["scripts/v12-accessibility-shard.mjs"]) }),
 });
 
@@ -104,14 +120,9 @@ function immutableWrite(root, relativePath, value, write = undefined) {
   writeFileSync(absolute, `${JSON.stringify(value)}\n`, { encoding: "utf8", flag: "wx" });
 }
 
-function sourceOrderedCaseIds(bytes, prefix) {
-  if (typeof prefix !== "string") return Object.freeze([]);
-  const ids = [...bytes.toString("utf8").matchAll(/\[\s*["']([^"']+)["']/gu)]
-    .map(([, id]) => id)
-    .filter((id) => id.startsWith(prefix));
-  const ordered = [...new Set(ids)];
-  if (ordered.length === 0) genericFail("source_case_ids_invalid");
-  return Object.freeze(ordered);
+function sourceOrderedCaseIds(bytes, shard) {
+  try { return deriveV12MaestroCaseIdsFromSource(shard, bytes.toString("utf8")); }
+  catch { genericFail("source_case_ids_invalid"); }
 }
 
 function validateSourceOrderedObservations(observations, caseIds, shard) {
@@ -128,9 +139,10 @@ function validateSourceOrderedObservations(observations, caseIds, shard) {
 }
 
 function resolvedExecutionTools(value) {
-  if (!value || ![V12_PRODUCTION_EXECUTION_ORIGIN, V12_TEST_EXECUTION_ORIGIN].includes(value.execution_origin)) genericFail("toolchain_invalid");
-  const resolved = { execution_origin: value.execution_origin };
-  for (const name of ["adb", "maestro", "unzip"]) {
+  if (!value || ![V12_PRODUCTION_EXECUTION_ORIGIN, V12_TEST_EXECUTION_ORIGIN].includes(value.execution_origin)
+    || value.test_only !== (value.execution_origin === V12_TEST_EXECUTION_ORIGIN)) genericFail("toolchain_invalid");
+  const resolved = { execution_origin: value.execution_origin, test_only: value.test_only };
+  for (const name of DIRECT_MAESTRO_TOOL_NAMES) {
     if (typeof value[name] !== "string" || !path.isAbsolute(value[name])) genericFail("toolchain_invalid");
     try {
       const executable = realpathSync(value[name]);
@@ -145,7 +157,50 @@ function resolvedExecutionTools(value) {
   return Object.freeze(resolved);
 }
 
-function executionOrigin({ root, runId, shard, manifest, snapshot, tools, gitAttestationSha256 }) {
+function toolVersion(execute, name, executable, testOnly) {
+  if (testOnly) return "test-controlled";
+  let output;
+  try { output = execute(executable, DIRECT_MAESTRO_TOOL_VERSIONS[name], { encoding: "utf8", maxBuffer: 64 * 1024, timeout: 10_000 }); }
+  catch { genericFail("toolchain_invalid"); }
+  const line = String(output).split(/\r?\n/u).map((value) => value.trim()).find(Boolean);
+  if (line === undefined || line.length > 512 || /[\u0000-\u001f\u007f]/u.test(line)) genericFail("toolchain_invalid");
+  return line;
+}
+
+export function createV12DirectMaestroToolAttestation({ execute = execFileSync, executionTools, shard } = {}) {
+  const tools = resolvedExecutionTools(executionTools);
+  if (!LIVE_GENERIC_SHARDS.includes(shard)) genericFail("tool_attestation_invalid");
+  return Object.freeze({
+    schema_version: 1,
+    action: shard,
+    execution_origin: tools.execution_origin,
+    test_only: tools.test_only,
+    tools: Object.freeze(DIRECT_MAESTRO_TOOL_NAMES.map((name) => Object.freeze({
+      name,
+      executable_realpath_sha256: sha256(tools[name]),
+      executable_sha256: sourceSha256(tools[name]),
+      version: toolVersion(execute, name, tools[name], tools.test_only),
+    }))),
+  });
+}
+
+function directMaestroRequestAttestation({ runId, shard, manifest, snapshot, gitAttestationSha256, toolAttestation, observations }) {
+  return sha256(JSON.stringify({
+    schema_version: 2,
+    action: shard,
+    run_id: runId,
+    source_tree_sha256: manifest.source.tree_sha256,
+    apk_sha256: manifest.build.apk.sha256,
+    device_identity_sha256: manifest.device.identity_sha256,
+    flow_sha256: snapshot.flow_sha256,
+    source_sha256: snapshot.source_sha256,
+    git_attestation_sha256: gitAttestationSha256,
+    tool_attestation_sha256: sha256(JSON.stringify(toolAttestation)),
+    measurement_sha256: sha256(JSON.stringify(observations.map(({ device_measurement: measurement }) => measurement))),
+  }));
+}
+
+function executionOrigin({ root, runId, shard, manifest, snapshot, tools, gitAttestationSha256, toolAttestation, observations }) {
   const production = tools.execution_origin === V12_PRODUCTION_EXECUTION_ORIGIN;
   const sources = V12_MAESTRO_SOURCE_PATHS[shard];
   if (sources === undefined) genericFail("toolchain_invalid");
@@ -159,23 +214,179 @@ function executionOrigin({ root, runId, shard, manifest, snapshot, tools, gitAtt
     adapter_source_sha256: sourceSha256(path.join(root, sources.adapter)),
     launcher_source_sha256: sourceSha256(path.join(root, sources.launcher)),
     domain_source_sha256: snapshot.source_sha256[sources.domain],
-    request_attestation_sha256: sha256(JSON.stringify({
-      schema_version: 1,
-      action: shard,
-      run_id: runId,
-      source_tree_sha256: manifest.source.tree_sha256,
-      apk_sha256: manifest.build.apk.sha256,
-      device_identity_sha256: manifest.device.identity_sha256,
-      flow_sha256: snapshot.flow_sha256,
-      source_sha256: snapshot.source_sha256,
-      git_attestation_sha256: gitAttestationSha256,
-      tool_sha256: {
-        adb: sourceSha256(tools.adb),
-        maestro: sourceSha256(tools.maestro),
-        unzip: sourceSha256(tools.unzip),
-      },
-    })),
+    request_attestation_sha256: directMaestroRequestAttestation({
+      runId, shard, manifest, snapshot, gitAttestationSha256, toolAttestation, observations,
+    }),
   });
+}
+
+function directMaestroAdb(execute, adbExecutable, serial) {
+  return (...command) => {
+    try {
+      return String(execute(adbExecutable, ["-s", serial, ...command], {
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 20_000,
+      })).trim();
+    } catch { genericFail("native_command_failed"); }
+  };
+}
+
+function measureDirectMaestroDevice(adb, serial, manifest) {
+  if (adb("get-state") !== "device") genericFail("identity_mismatch");
+  const packageName = manifest.build.package;
+  const packages = adb("shell", "pm", "list", "packages", packageName).split(/\r?\n/u).filter(Boolean);
+  if (packages.length !== 1 || packages[0] !== `package:${packageName}`) genericFail("identity_mismatch");
+  const installedPaths = adb("shell", "pm", "path", packageName).split(/\r?\n/u).filter(Boolean);
+  if (installedPaths.length !== 1 || !/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installedPaths[0])) genericFail("identity_mismatch");
+  const installedApkSha256 = adb("shell", "sha256sum", installedPaths[0].slice("package:".length)).split(/\s/u)[0];
+  const abi = adb("shell", "getprop", "ro.product.cpu.abi");
+  const apiLevel = adb("shell", "getprop", "ro.build.version.sdk");
+  const model = adb("shell", "getprop", "ro.product.model");
+  const settings = readV12CanonicalRestorationSnapshot((args) => adb(...args));
+  const measurement = Object.freeze({
+    schema_version: 1,
+    source: "attested-absolute-adb/v1",
+    package: packageName,
+    installed_apk_sha256: installedApkSha256,
+    device_identity_sha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
+    abi,
+    settings_sha256: digestV12CanonicalRestorationSnapshot(settings),
+    configuration_id: manifest.configuration.id,
+  });
+  if (!SHA256.test(measurement.installed_apk_sha256)) genericFail("identity_mismatch");
+  return Object.freeze({ measurement, settings });
+}
+
+export function readV12DirectMaestroDeviceMeasurement(manifest, {
+  serial = process.env.V12_DEVICE_SERIAL,
+  execute = execFileSync,
+  executionTools = resolveV12NativeExecutionTools({ domain: true }),
+} = {}) {
+  if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]+$/u.test(serial) || serial.startsWith("emulator-")) genericFail("ephemeral_device_required");
+  const tools = resolvedExecutionTools(executionTools);
+  return measureDirectMaestroDevice(directMaestroAdb(execute, tools.adb, serial), serial, manifest).measurement;
+}
+
+function restoreDirectMaestroSettings(adb, settings) {
+  for (const { key, adb_args: getArgs } of V12_CANONICAL_RESTORATION_SETTINGS) {
+    const [, , scope] = getArgs;
+    const value = settings[key];
+    adb("shell", "settings", value === "null" ? "delete" : "put", scope, key, ...(value === "null" ? [] : [value]));
+  }
+}
+
+function directMaestroIdentity(manifest, sourceIdentity, apkSha256, measurement) {
+  return Object.freeze({
+    source_tree_sha256: sourceIdentity.tree_sha256,
+    package: measurement.package,
+    apk_sha256: apkSha256,
+    installed_apk_sha256: measurement.installed_apk_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256,
+    device_identity_sha256: measurement.device_identity_sha256,
+    settings_sha256: measurement.settings_sha256,
+    configuration_id: measurement.configuration_id,
+  });
+}
+
+function assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, measurement) {
+  genericIdentityMatches(manifest, {
+    head: sourceIdentity.head,
+    tree_sha256: sourceIdentity.tree_sha256,
+    package: measurement.package,
+    apk_sha256: apkSha256,
+    installed_apk_sha256: measurement.installed_apk_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256,
+    device_identity_sha256: measurement.device_identity_sha256,
+    settings_sha256: measurement.settings_sha256,
+    configuration_id: measurement.configuration_id,
+  });
+  if (measurement.abi !== manifest.device.abi) genericFail("identity_mismatch");
+}
+
+function validateDirectMaestroToolAttestation(value, shard, executionOrigin, allowTest) {
+  if (!exactKeys(value, ["schema_version", "action", "execution_origin", "test_only", "tools"])
+    || value.schema_version !== 1 || value.action !== shard
+    || value.execution_origin !== executionOrigin.toolchain_origin
+    || value.test_only !== executionOrigin.test_only
+    || (!allowTest && value.test_only !== false)
+    || !Array.isArray(value.tools) || value.tools.length !== DIRECT_MAESTRO_TOOL_NAMES.length) genericFail("tool_attestation_invalid");
+  for (const [index, descriptor] of value.tools.entries()) {
+    if (!exactKeys(descriptor, ["name", "executable_realpath_sha256", "executable_sha256", "version"])
+      || descriptor.name !== DIRECT_MAESTRO_TOOL_NAMES[index]
+      || !SHA256.test(descriptor.executable_realpath_sha256 ?? "")
+      || !SHA256.test(descriptor.executable_sha256 ?? "")
+      || typeof descriptor.version !== "string" || descriptor.version.length < 1 || descriptor.version.length > 512
+      || /[\u0000-\u001f\u007f]/u.test(descriptor.version)
+      || (value.test_only ? descriptor.version !== "test-controlled" : descriptor.version === "test-controlled")) genericFail("tool_attestation_invalid");
+  }
+}
+
+function validateDirectMaestroMeasurement(value, manifest) {
+  if (!exactKeys(value, ["schema_version", "source", "package", "installed_apk_sha256", "device_identity_sha256", "abi", "settings_sha256", "configuration_id"])
+    || value.schema_version !== 1 || value.source !== "attested-absolute-adb/v1"
+    || value.package !== manifest.build.package
+    || value.installed_apk_sha256 !== manifest.device.installed_apk_sha256
+    || value.installed_apk_sha256 !== manifest.build.apk.sha256
+    || value.device_identity_sha256 !== manifest.device.identity_sha256
+    || value.abi !== manifest.device.abi
+    || value.settings_sha256 !== manifest.device.settings_sha256
+    || value.configuration_id !== manifest.configuration.id) genericFail("measurement_invalid");
+}
+
+export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest, shard, allowTest = false } = {}) {
+  if (!LIVE_GENERIC_SHARDS.includes(shard)
+    || !exactKeys(mapping, ["schema_version", "producer", "run_id", "shard", "identity", "git_attestation_sha256", "execution_origin", "tool_attestation", "flow_sha256", "source_sha256", "case_ids", "observations"])
+    || mapping.schema_version !== 2 || mapping.producer !== "v12-maestro-source-map/v2" || mapping.shard !== shard
+    || !manifest || mapping.run_id !== manifest.run_id || !SHA256.test(mapping.git_attestation_sha256 ?? "")) genericFail("mapping_invalid");
+  const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
+  const caseIds = deriveV12MaestroCaseIdsFromSource(shard, readFileSync(path.join(root, contract.sources[0]), "utf8"));
+  if (JSON.stringify(mapping.case_ids) !== JSON.stringify(caseIds)) genericFail("mapping_invalid");
+  validateSourceOrderedObservations(mapping.observations, caseIds, shard);
+  const origin = mapping.execution_origin;
+  const production = origin?.kind === "production-default-launcher" && origin.default_launcher === true
+    && origin.test_only === false && origin.toolchain_origin === V12_PRODUCTION_EXECUTION_ORIGIN;
+  const testOnly = allowTest && origin?.kind === "test-fixture" && origin.default_launcher === false
+    && origin.test_only === true && origin.toolchain_origin === V12_TEST_EXECUTION_ORIGIN;
+  if (!exactKeys(origin, ["schema_version", "action", "kind", "toolchain_origin", "default_launcher", "test_only", "adapter_source_sha256", "launcher_source_sha256", "domain_source_sha256", "request_attestation_sha256"])
+    || origin.schema_version !== 1 || origin.action !== shard || (!production && !testOnly)
+    || origin.adapter_source_sha256 !== sourceSha256(path.join(root, V12_MAESTRO_SOURCE_PATHS[shard].adapter))
+    || origin.launcher_source_sha256 !== sourceSha256(path.join(root, V12_MAESTRO_SOURCE_PATHS[shard].launcher))
+    || origin.domain_source_sha256 !== sourceSha256(path.join(root, V12_MAESTRO_SOURCE_PATHS[shard].domain))) genericFail("mapping_origin_invalid");
+  validateDirectMaestroToolAttestation(mapping.tool_attestation, shard, origin, allowTest);
+  for (const observation of mapping.observations) {
+    if (!exactKeys(observation, ["case_id", "ordinal", "fixture_id", "report_sha256", "device_measurement"])
+      || !exactKeys(observation.device_measurement, ["before", "after"])) genericFail("measurement_invalid");
+    validateDirectMaestroMeasurement(observation.device_measurement.before, manifest);
+    validateDirectMaestroMeasurement(observation.device_measurement.after, manifest);
+    if (JSON.stringify(observation.device_measurement.before) !== JSON.stringify(observation.device_measurement.after)) genericFail("measurement_drift");
+  }
+  const firstMeasurement = mapping.observations[0]?.device_measurement.before;
+  const expectedIdentity = firstMeasurement === undefined ? undefined : {
+    source_tree_sha256: manifest.source.tree_sha256,
+    package: firstMeasurement.package,
+    apk_sha256: manifest.build.apk.sha256,
+    installed_apk_sha256: firstMeasurement.installed_apk_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256,
+    device_identity_sha256: firstMeasurement.device_identity_sha256,
+    settings_sha256: firstMeasurement.settings_sha256,
+    configuration_id: firstMeasurement.configuration_id,
+  };
+  if (JSON.stringify(mapping.identity) !== JSON.stringify(expectedIdentity)
+    || mapping.flow_sha256 !== sourceSha256(path.join(root, contract.flow))
+    || !exactKeys(mapping.source_sha256, contract.sources)
+    || contract.sources.some((file) => mapping.source_sha256[file] !== sourceSha256(path.join(root, file)))) genericFail("mapping_identity_invalid");
+  const requestSha256 = directMaestroRequestAttestation({
+    runId: mapping.run_id,
+    shard,
+    manifest,
+    snapshot: { flow_sha256: mapping.flow_sha256, source_sha256: mapping.source_sha256 },
+    gitAttestationSha256: mapping.git_attestation_sha256,
+    toolAttestation: mapping.tool_attestation,
+    observations: mapping.observations,
+  });
+  if (origin.request_attestation_sha256 !== requestSha256) genericFail("request_attestation_invalid");
+  return true;
 }
 
 export function executeGenericV12Maestro(args = process.argv.slice(2), dependencies = {}) {
@@ -198,7 +409,7 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
     source_sha256: Object.freeze(Object.fromEntries(contract.sources.map((file) => [file, sha256(readBytes(file))]))),
   });
   const before = snapshot();
-  const caseIds = contract.prefix === undefined ? Object.freeze([]) : sourceOrderedCaseIds(readBytes(contract.sources[0]), contract.prefix);
+  const caseIds = contract.prefix === undefined ? Object.freeze([]) : sourceOrderedCaseIds(readBytes(contract.sources[0]), shard);
   const adapter = dependencies.adapter;
   if (!adapter || typeof adapter.snapshotSettings !== "function" || typeof adapter.execute !== "function" || typeof adapter.restoreSettings !== "function") genericFail("adapter_invalid");
   const settings = adapter.snapshotSettings();
@@ -261,18 +472,19 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
     ? readV12RetainedGitExecution({ root, runManifest: manifest, env: dependencies.environment ?? process.env })
     : resolveV12GitExecution({ env: dependencies.environment ?? process.env }));
   const sourceIdentity = validateV12LiveSourceLineage(manifest, { ...dependencies, gitExecution });
-  genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root, sourceIdentity));
   const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
   const flowPath = path.join(root, contract.flow);
   if (!existsSync(flowPath)) genericFail("artifact_missing");
   const sourceBytes = readFileSync(path.join(root, contract.sources[0]));
-  const caseIds = sourceOrderedCaseIds(sourceBytes, contract.prefix);
+  const caseIds = sourceOrderedCaseIds(sourceBytes, shard);
   const serial = dependencies.serial ?? process.env.V12_DEVICE_SERIAL;
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]+$/u.test(serial) || serial.startsWith("emulator-")) genericFail("ephemeral_device_required");
   const execute = dependencies.execFileSync ?? execFileSync;
   const tools = resolvedExecutionTools(dependencies.executionTools
     ?? resolveV12NativeExecutionTools({ domain: true, env: dependencies.environment ?? process.env }));
   assertMaestroVersion(execute, tools.maestro);
+  const toolAttestation = createV12DirectMaestroToolAttestation({ execute, executionTools: tools, shard });
+  const apkSha256 = retainedApkSha256(root, manifest);
   const outputRoot = `artifacts/native/v1.2/${runId}`;
   const reportPath = `${outputRoot}/maestro/${shard}.xml`;
   const mappingPath = `${outputRoot}/mapping/${shard}.json`;
@@ -280,37 +492,50 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
   if ([reportPath, mappingPath].some((file) => existsSync(path.join(root, file))) || existsSync(leasePath)) genericFail("immutable_output_invalid");
   mkdirSync(path.dirname(leasePath), { recursive: true });
   writeFileSync(leasePath, `${sha256(serial)}\n`, { flag: "wx" });
-  const adb = dependencies.adb ?? ((...command) => {
-    try { return execute(tools.adb, ["-s", serial, ...command], { encoding: "utf8" }).trim(); }
-    catch { genericFail("native_command_failed"); }
-  });
+  const adb = dependencies.adb ?? directMaestroAdb(execute, tools.adb, serial);
   const reports = [];
+  const observations = [];
   let restored = false;
   let outcome;
-  let previousSettings;
   try {
-    previousSettings = Object.freeze({
-      font_scale: adb("shell", "settings", "get", "system", "font_scale"),
-      animator_duration_scale: adb("shell", "settings", "get", "global", "animator_duration_scale"),
-    });
     for (const [index, caseId] of caseIds.entries()) {
       const temporary = path.join(root, `${outputRoot}/maestro/.${shard}-${index + 1}.xml`);
       mkdirSync(path.dirname(temporary), { recursive: true });
+      const before = measureDirectMaestroDevice(adb, serial, manifest);
+      assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, before.measurement);
+      let after;
+      let flowError;
       try {
         execute(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", "V12_FIXTURE_ID=v12-synthetic-fixtures-r18", "--format", "junit", "--output", temporary, flowPath], { stdio: "inherit" });
-      } catch { genericFail("native_command_failed"); }
+      } catch { flowError = new Error("v12_maestro_native_command_failed"); }
+      finally {
+        restoreDirectMaestroSettings(adb, before.settings);
+        after = measureDirectMaestroDevice(adb, serial, manifest);
+        assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, after.measurement);
+        if (JSON.stringify(before.measurement) !== JSON.stringify(after.measurement)) genericFail("measurement_drift");
+      }
+      if (flowError !== undefined) throw flowError;
       if (!existsSync(temporary)) genericFail("report_missing");
-      reports.push(readFileSync(temporary, "utf8"));
+      const report = readFileSync(temporary, "utf8");
+      reports.push(report);
+      observations.push(Object.freeze({
+        case_id: caseId,
+        ordinal: index + 1,
+        fixture_id: "v12-synthetic-fixtures-r18",
+        report_sha256: sha256(report),
+        device_measurement: Object.freeze({ before: before.measurement, after: after.measurement }),
+      }));
       unlinkSync(temporary);
     }
-    const reportText = `<testsuites source_tree_sha256="${manifest.source.tree_sha256}" apk_sha256="${manifest.build.apk.sha256}" installed_apk_sha256="${manifest.device.installed_apk_sha256}" device_identity_sha256="${manifest.device.identity_sha256}">${reports.join("")}</testsuites>\n`;
+    const measuredIdentity = directMaestroIdentity(manifest, sourceIdentity, apkSha256, observations[0].device_measurement.before);
+    const reportText = `<testsuites source_tree_sha256="${measuredIdentity.source_tree_sha256}" apk_sha256="${measuredIdentity.apk_sha256}" installed_apk_sha256="${measuredIdentity.installed_apk_sha256}" device_identity_sha256="${measuredIdentity.device_identity_sha256}">${reports.join("")}</testsuites>\n`;
     const flowSha256 = sha256(readFileSync(flowPath));
-    const observations = caseIds.map((caseId, index) => Object.freeze({ case_id: caseId, ordinal: index + 1, fixture_id: "v12-synthetic-fixtures-r18", report_sha256: sha256(reports[index]) }));
     const sourceSnapshot = Object.freeze({ flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }) });
     const gitAttestationSha256 = gitExecution.retained_sha256 ?? sha256(`${JSON.stringify(gitExecution.attestation)}\n`);
-    const provenance = executionOrigin({ root, runId, shard, manifest, snapshot: sourceSnapshot, tools, gitAttestationSha256 });
-    const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), git_attestation_sha256: gitAttestationSha256, execution_origin: provenance, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
+    const provenance = executionOrigin({ root, runId, shard, manifest, snapshot: sourceSnapshot, tools, gitAttestationSha256, toolAttestation, observations });
+    const mapping = Object.freeze({ schema_version: 2, producer: "v12-maestro-source-map/v2", run_id: runId, shard, identity: measuredIdentity, git_attestation_sha256: gitAttestationSha256, execution_origin: provenance, tool_attestation: toolAttestation, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
     validateSourceOrderedObservations(observations, caseIds, shard);
+    validateV12DirectMaestroMapping(mapping, { root, manifest, shard, allowTest: tools.test_only });
     const writeReport = dependencies.writeReport ?? ((file, value) => {
       const absoluteReport = path.join(root, file);
       mkdirSync(path.dirname(absoluteReport), { recursive: true });
@@ -319,16 +544,8 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
     writeReport(reportPath, reportText);
     immutableWrite(root, mappingPath, mapping, dependencies.writeImmutableJson);
     outcome = Object.freeze({ run_id: runId, shard, report: reportPath, mapping: mappingPath, cases: caseIds.length, execution_origin: provenance });
-  } finally {
-    try {
-      if (previousSettings !== undefined) {
-        adb("shell", "settings", "put", "system", "font_scale", previousSettings.font_scale);
-        adb("shell", "settings", "put", "global", "animator_duration_scale", previousSettings.animator_duration_scale);
-        restored = adb("shell", "settings", "get", "system", "font_scale") === previousSettings.font_scale
-          && adb("shell", "settings", "get", "global", "animator_duration_scale") === previousSettings.animator_duration_scale;
-      }
-    } finally { unlinkSync(leasePath); }
-  }
+    restored = true;
+  } finally { unlinkSync(leasePath); }
   if (!restored) genericFail("settings_restore_failed");
   return outcome;
 }
@@ -375,6 +592,23 @@ function liveIdentity(manifest, root, sourceIdentity) {
     settings_sha256: manifest.device.settings_sha256,
     configuration_id: manifest.configuration.id,
   };
+}
+
+function retainedApkSha256(root, manifest) {
+  const workspace = path.resolve(root);
+  const apkPath = path.resolve(root, manifest.build.apk.path);
+  if (!apkPath.startsWith(`${workspace}${path.sep}`)) genericFail("identity_mismatch");
+  let bytes;
+  try {
+    if (!statSync(apkPath).isFile()) genericFail("identity_mismatch");
+    bytes = readFileSync(apkPath);
+  } catch (error) {
+    if (error instanceof Error && error.message === "v12_maestro_identity_mismatch") throw error;
+    genericFail("identity_mismatch");
+  }
+  const digest = sha256(bytes);
+  if (bytes.length !== manifest.build.apk.size_bytes || digest !== manifest.build.apk.sha256) genericFail("identity_mismatch");
+  return digest;
 }
 
 function assertMaestroVersion(execute = execFileSync, maestro = "maestro") {

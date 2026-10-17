@@ -13,7 +13,14 @@ import {
   validateV12CalendarComparison,
 } from "./compare-v12-calendar.mjs";
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
-import { V12_MAESTRO_SOURCE_PATHS, validateV12CalendarManifest, validateV12LiveSourceLineage } from "./run-v12-maestro.mjs";
+import {
+  createV12DirectMaestroToolAttestation,
+  readV12DirectMaestroDeviceMeasurement,
+  V12_MAESTRO_SOURCE_PATHS,
+  validateV12CalendarManifest,
+  validateV12DirectMaestroMapping,
+  validateV12LiveSourceLineage,
+} from "./run-v12-maestro.mjs";
 import { sourceTreeSha256, v12ContractSourceDigests } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
@@ -43,7 +50,7 @@ import {
   digestV12CanonicalRestorationSnapshot,
   readV12CanonicalRestorationSnapshot,
 } from "./v12-device-settings-contract.mjs";
-import { readV12RetainedGitExecution, resolveV12GitExecution } from "./v12-native-execution-origin.mjs";
+import { readV12RetainedGitExecution, resolveV12GitExecution, resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 import { verifyV12RollbackEvidence, V12_ROLLBACK_PUBLICATION_MEMBERS } from "./v12-rollback-evidence.mjs";
 
 const ROOT = process.cwd();
@@ -1124,7 +1131,7 @@ function assertNonTestEvidenceEnvironment() {
     || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) preflightFail("test_provenance_forbidden");
 }
 
-export function validateV12ProductionPublicationOrigins(root, runId, shards = V12_ADAPTER_SHARDS) {
+export function validateV12ProductionPublicationOrigins(root, runId, shards = V12_ADAPTER_SHARDS, dependencies = {}) {
   if (!Array.isArray(shards) || shards.length === 0 || new Set(shards).size !== shards.length
     || shards.some(shard => !V12_ADAPTER_SHARDS.includes(shard))) preflightFail("adapter_provenance_invalid");
   for (const shard of shards) {
@@ -1142,6 +1149,30 @@ export function validateV12ProductionPublicationOrigins(root, runId, shards = V1
     ]));
     if (!expected.actions.includes(origin.action) || origin.adapter_source_sha256 !== sourceDigests.adapter
       || origin.launcher_source_sha256 !== sourceDigests.launcher || origin.domain_source_sha256 !== sourceDigests.domain) preflightFail("adapter_provenance_stale");
+    const mappingMember = `mapping/${shard}.json`;
+    if (["multi-plan", "workout", "library-running"].includes(shard)
+      && publication.members?.some((member) => member?.artifact === mappingMember)) {
+      let manifest; let mapping;
+      try {
+        manifest = preflightManifest(root, runId).manifest;
+        mapping = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/${mappingMember}`), "utf8"));
+        validateV12DirectMaestroMapping(mapping, { root, manifest, shard });
+      } catch { preflightFail("adapter_provenance_invalid"); }
+      if (!isDeepStrictEqual(mapping.execution_origin, origin)) preflightFail("adapter_provenance_invalid");
+      let tools; let currentToolAttestation; let currentDeviceMeasurement;
+      try {
+        tools = dependencies.executionTools ?? resolveV12NativeExecutionTools({ domain: true });
+        currentToolAttestation = createV12DirectMaestroToolAttestation({ execute: dependencies.execFileSync, executionTools: tools, shard });
+        currentDeviceMeasurement = readV12DirectMaestroDeviceMeasurement(manifest, {
+          serial: dependencies.serial,
+          execute: dependencies.execFileSync,
+          executionTools: tools,
+        });
+      } catch { preflightFail("adapter_provenance_invalid"); }
+      const retainedMeasurement = mapping.observations.at(-1)?.device_measurement?.after;
+      if (!isDeepStrictEqual(mapping.tool_attestation, currentToolAttestation)
+        || !isDeepStrictEqual(retainedMeasurement, currentDeviceMeasurement)) preflightFail("adapter_provenance_invalid");
+    }
   }
   return true;
 }
