@@ -47,13 +47,15 @@ test("the retained black-box fixture covers source resolution and final-ledger i
     readArtifact: (file) => readFileSync(path.join(root, file)),
     attended: read("attended-observations.json"),
   };
-  const blocker = sourceEvidence.find(({ row_id }) => row_id === "VER-07");
+  const blocker = sourceEvidence.find(({ result }) =>
+    ["FAIL", "NOT_RUN", "REVIEW_REQUIRED"].includes(result));
+  assert.ok(blocker);
   const exception = {
-    row_id: "VER-07",
+    row_id: blocker.row_id,
     deviation_id: "DEV-203",
     owner_decision: "owner-approved",
     decided_at: "2026-10-14",
-    scope: "sqlite review",
+    scope: "retained blocker review",
     configurations: [manifest.configuration.id],
     rationale: "cannot override a concrete blocker",
     evidence_hashes: [blocker.sha256],
@@ -72,8 +74,8 @@ test("the retained black-box fixture covers source resolution and final-ledger i
   assert.equal(ledger.evidence_origin, "test");
   assert.equal(ledger.readiness, "NOT_READY");
   assert.equal(
-    ledger.rows.find(({ requirement_id }) => requirement_id === "VER-07").verdict,
-    "REVIEW_REQUIRED",
+    ledger.rows.find(({ requirement_id }) => requirement_id === blocker.row_id).verdict,
+    blocker.result,
   );
   assert.throws(
     () => sealV12FinalEvidence({
