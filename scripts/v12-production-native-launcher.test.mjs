@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import test from "node:test";
+import nodeTest from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
 import { V12_NATIVE_ACTION_TIMEOUT_MS } from "./v12-native-adapter.mjs";
 import { V12_NATIVE_ADAPTER_EXIT_MARGIN_MS, V12_NATIVE_COMMAND_GRAPH, V12_QUALITY_ACTION_BUDGETS } from "./v12-native-time-budgets.mjs";
+
+const TEST_TIMEOUT_MS = 2 * 60_000;
+const test = (name, optionsOrFunction, maybeFunction) => typeof optionsOrFunction === "function"
+  ? nodeTest(name, { timeout: TEST_TIMEOUT_MS }, optionsOrFunction)
+  : nodeTest(name, { timeout: TEST_TIMEOUT_MS, ...optionsOrFunction }, maybeFunction);
 
 function fixture(t) { const value = createControlledRunner(); t.after(value.cleanup); return value; }
 function bounded(result, code = "command_failed") {

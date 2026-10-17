@@ -115,7 +115,9 @@
     "verify:phase13:evidence": "node scripts/verify-phase13-evidence.mjs"
     ,"verify:phase14:evidence": "node scripts/verify-phase14-evidence.mjs"
     ,"test:evidence:v12:shell": "node --test scripts/phase14-evidence-scripts.test.mjs"
+    ,"pretest:evidence:v12": "npm run test:evidence:v12:all"
     ,"test:evidence:v12": "node --test scripts/v12-evidence-scripts.test.mjs scripts/generate-v12-attended-checklist.test.mjs scripts/create-v12-readiness-handoff.test.mjs"
+    ,"test:evidence:v12:all": "node --test --test-concurrency=2 --test-timeout=600000 scripts/build-current-native-test-apk.test.mjs scripts/doctor-android.test.mjs scripts/native-device-selection.test.mjs scripts/run-coverage-gate.test.mjs scripts/run-v12-maestro.test.mjs scripts/validate-v12-prebuild-predecessors.test.mjs scripts/v12-*.test.mjs"
     ,"test:evidence:phase14": "node --test scripts/phase14-font-proof.test.mjs scripts/phase14-evidence-scripts.test.mjs scripts/phase14-native-matrix.test.mjs"
     ,"test:maestro:phase15": "node scripts/run-phase15-maestro.mjs"
     ,"benchmark:phase15:host": "node scripts/benchmark-phase15-workout.mjs --host"
@@ -150,6 +152,7 @@
     ,"test:evidence:v12:calendar": "node --test scripts/v12-evidence-scripts.test.mjs scripts/v12-calendar-comparison.test.mjs scripts/v12-calendar-evidence-coverage.test.mjs"
     ,"verify:v12:calendar": "node scripts/verify-v12-native-evidence.mjs"
     ,"test:coverage:v12:calendar": "node scripts/run-coverage-gate.mjs --focus-phase16-evidence --runInBand"
+    ,"validate:v12:prebuild": "node scripts/validate-v12-prebuild-predecessors.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",

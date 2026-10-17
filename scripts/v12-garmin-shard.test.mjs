@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import test from "node:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import nodeTest from "node:test";
 
 import {
   executeV12GarminShardCli,
@@ -8,6 +12,10 @@ import {
   V12_GARMIN_SHARD_CASE_IDS,
 } from "./v12-garmin-shard.mjs";
 
+const TEST_TIMEOUT_MS = 60_000;
+const test = (name, optionsOrFunction, maybeFunction) => typeof optionsOrFunction === "function"
+  ? nodeTest(name, { timeout: TEST_TIMEOUT_MS }, optionsOrFunction)
+  : nodeTest(name, { timeout: TEST_TIMEOUT_MS, ...optionsOrFunction }, maybeFunction);
 const publicationOrigin = Object.freeze({
   schema_version: 1,
   action: "garmin",
@@ -181,4 +189,53 @@ test("auth_required writes only a bounded failure receipt and no shard members",
   assert.deepEqual(Object.keys(writes[0]), ["failure"]);
   assert.equal(writes[0].failure.failure_code, "auth_required");
   assert.equal(writes.some((value) => typeof value === "string" && /garmin\/(?:packaging|sync|dedupe|matching)|maestro/u.test(value)), false);
+});
+
+test("Garmin subprocess execute publishes atomically and the independent CLI verifies filesystem output", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-garmin-cli-"));
+  try {
+    const runId = "phase20-20261017T000000Z-aaaaaaaaaaaa";
+    const build = {
+      run_id: runId,
+      evidence_origin: "test",
+      source: { tree_sha256: "a".repeat(64), head: "a".repeat(40) },
+      fixtures: { registry_sha256: "b".repeat(64) },
+      build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64) } },
+      device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) },
+      configuration: { id: "AP-L-C390-P-F100" },
+    };
+    const buildPath = path.join(root, "artifacts/native/v1.2", runId, "build.json");
+    mkdirSync(path.dirname(buildPath), { recursive: true });
+    writeFileSync(buildPath, `${JSON.stringify(build)}\n`);
+    const executeProgram = `
+      import { readFileSync } from 'node:fs';
+      import { executeV12GarminShardCli, V12_GARMIN_SHARD_CASE_IDS } from ${JSON.stringify(new URL("./v12-garmin-shard.mjs", import.meta.url).pathname)};
+      import { publishV12AtomicShard } from ${JSON.stringify(new URL("./v12-atomic-shard-publication.mjs", import.meta.url).pathname)};
+      const root = process.argv[1]; const runId = process.argv[2]; const build = JSON.parse(readFileSync(root + '/artifacts/native/v1.2/' + runId + '/build.json', 'utf8')); const writes = [];
+      const origin = { ...${JSON.stringify(publicationOrigin)}, kind: 'test-fixture', toolchain_origin: 'test-controlled/v1', default_launcher: false, test_only: true };
+      const result = { producer: 'v12-production-garmin-host/v1', execution_origin: 'production-attested/v1', cases: V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({ id, order, status: 'PASS', code: id + '-observed', count: id === 'match-one' ? 1 : 0, receipt_sha256: String(order).padStart(64, 'a').slice(-64) })) };
+      const value = await executeV12GarminShardCli(['--run', runId, '--execute'], { root, readBuild: () => build, sourceDigest: build.source.tree_sha256, currentHead: build.source.head, isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true, snapshotSettings: () => ({ bounded: true }), restoreSettings: () => true, executeNative: () => result, writeImmutable: (file, content) => writes.push([file, content]), outputExists: () => false });
+      publishV12AtomicShard({ root, runId, shard: 'garmin', executionOrigin: origin, domainExecutionOrigin: value.execution_origin, produce: ({write}) => writes.forEach(([file, content]) => write(file.replace('artifacts/native/v1.2/' + runId + '/', ''), content)) });
+      process.stdout.write(JSON.stringify(value));
+    `;
+    const execute = spawnSync(process.execPath, ["--input-type=module", "--eval", executeProgram, root, runId], {
+      cwd: root, encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
+    });
+    assert.equal(execute.status, 0, execute.stderr);
+    assert.equal(JSON.parse(execute.stdout).mode, "execute");
+    const publicationPath = path.join(root, "artifacts/native/v1.2", runId, "publication/garmin.json");
+    assert.ok(existsSync(publicationPath));
+    assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", runId, ".staging")), false);
+
+    const verify = spawnSync(process.execPath, [new URL("./v12-garmin-shard.mjs", import.meta.url).pathname, "--run", runId, "--verify"], {
+      cwd: root, encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
+    });
+    assert.equal(verify.status, 0, verify.stderr);
+    assert.deepEqual(JSON.parse(verify.stdout), { ok: true, mode: "verify", run_id: runId });
+    const publication = JSON.parse(readFileSync(publicationPath, "utf8"));
+    assert.equal(publication.completed, true);
+    assert.equal(publication.members.length, 5);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
