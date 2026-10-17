@@ -124,6 +124,21 @@ test("--execute validates and byte-stably replays an existing atomic publication
   assert.deepEqual(readFileSync(manifestPath), before.manifest);
   assert.deepEqual(readFileSync(observationPath), before.observation);
 
+  const wrongOrigin = JSON.parse(before.manifest);
+  wrongOrigin.execution_origin.action = "calendar";
+  writeFileSync(manifestPath, `${JSON.stringify(wrongOrigin)}\n`);
+  stderr = "";
+  assert.equal(runV12PerformanceCli(["--run", runId, "--execute"], {
+    stdout: { write: () => undefined },
+    stderr: { write: (value) => { stderr += value; } },
+  }, {
+    root,
+    createAdapter: () => { adapterCalls += 1; throw new Error("live_adapter_must_not_run"); },
+  }), 1);
+  assert.match(stderr, /v12_performance_shard_publication_invalid/u);
+  assert.equal(adapterCalls, 0);
+
+  writeFileSync(manifestPath, before.manifest);
   writeFileSync(observationPath, Buffer.from("tampered\n"));
   stderr = "";
   assert.equal(runV12PerformanceCli(["--run", runId, "--execute"], {

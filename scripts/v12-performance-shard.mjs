@@ -229,6 +229,17 @@ export function verifyV12PerformanceObservation({ runId, root = process.cwd(), r
   return validateV12PerformanceShard(output.observation, expectedIdentity);
 }
 
+function verifyExistingPerformancePublication(root, runId, publication) {
+  verifyV12AtomicShard({ root, runId, shard: "performance" });
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(publication, "utf8")); }
+  catch { fail("publication_invalid"); }
+  if (manifest?.execution_origin?.action !== "performance"
+    || !Array.isArray(manifest.members) || manifest.members.length !== 1
+    || manifest.members[0]?.artifact !== "performance.json") fail("publication_invalid");
+  verifyV12PerformanceObservation({ runId, root });
+}
+
 export function runV12PerformanceCli(args = process.argv.slice(2), io = process, {
   root = process.cwd(),
   createAdapter = createV12NativeAdapter,
@@ -238,8 +249,7 @@ export function runV12PerformanceCli(args = process.argv.slice(2), io = process,
     if (args[2] === "--execute") {
       const publication = path.join(root, "artifacts/native/v1.2", args[1], "publication/performance.json");
       if (existsSync(publication)) {
-        verifyV12AtomicShard({ root, runId: args[1], shard: "performance" });
-        verifyV12PerformanceObservation({ runId: args[1], root });
+        verifyExistingPerformancePublication(root, args[1], publication);
       } else {
         const adapter = createAdapter();
         const identity = adapter.collectPerformance({ run_id: args[1], request: "identity" }).identity;
