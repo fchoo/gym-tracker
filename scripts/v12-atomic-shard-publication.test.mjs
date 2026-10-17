@@ -234,6 +234,33 @@ test("crash immediately after the manifest link cleans validated dead claim and 
   assert.deepEqual(publishV12AtomicShard({ root, runId, shard: "performance", produce: () => { throw new Error("must stay idempotent"); } }), recovered);
 });
 
+test("a reused live PID cannot keep a dead atomic owner claim forever", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-pid-reuse-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(path.join(root, "artifacts/native/v1.2", runId), { recursive: true });
+  const code = `
+    import { publishV12AtomicShard } from ${JSON.stringify(moduleUrl)};
+    const [root, runId] = process.argv.slice(1);
+    publishV12AtomicShard({root, runId, shard:'performance', produce:({write}) =>
+      write('performance.json', {schema_version:1, producer:'test', run_id:runId}),
+      beforeManifest: () => process.exit(94),
+    });
+  `;
+  const crashed = spawnSync(process.execPath, ["--input-type=module", "-e", code, root, runId], { encoding: "utf8" });
+  assert.equal(crashed.status, 94);
+  const claimPath = path.join(root, "artifacts/native/v1.2", runId, ".claims/performance.json");
+  const claim = JSON.parse(readFileSync(claimPath, "utf8"));
+  assert.match(claim.process_birth_sha256, /^[a-f0-9]{64}$/u);
+  writeFileSync(claimPath, `${JSON.stringify({ ...claim, pid: process.pid })}\n`);
+
+  const recovered = publishV12AtomicShard({
+    root, runId, shard: "performance", produce: () => { throw new Error("must recover staged bytes"); },
+    beforeManifest: () => true,
+  });
+  assert.equal(recovered.manifest.completed, true);
+  assert.equal(verifyV12AtomicShard({ root, runId, shard: "performance" }), true);
+});
+
 test("existing publication recovery rejects unvalidated staged residue", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-publish-post-manifest-tamper-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
