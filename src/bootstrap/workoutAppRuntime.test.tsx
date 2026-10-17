@@ -1698,10 +1698,12 @@ describe("WorkoutAppRuntimeProvider", () => {
     const migration = new Promise<void>((resolve) => {
       releaseMigration = resolve;
     });
+    const close = jest.fn(async () => undefined);
     const prepareRuntime = jest.fn<
       NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>
     >(async () => undefined);
     const runtimeDependencies = dependencies(runtimeRepository([noPlanView], [null]), {
+      openKernel: jest.fn(async () => ({ close } as unknown as SqliteKernel)),
       migrate: jest.fn(() => migration),
       prepareRuntime,
       strictDisposal: true,
@@ -1710,10 +1712,8 @@ describe("WorkoutAppRuntimeProvider", () => {
 
     await waitFor(() => expect(runtimeDependencies.migrate).toHaveBeenCalledTimes(1));
     view.unmount();
-    await act(async () => {
-      releaseMigration?.();
-      await migration;
-    });
+    releaseMigration?.();
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(2));
 
     expect(prepareRuntime).not.toHaveBeenCalled();
   });
