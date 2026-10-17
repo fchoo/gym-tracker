@@ -56,12 +56,45 @@ test('JUnit rejects missing, unknown, duplicate and malformed selectors', () => 
     assert.throws(() => parseV12SourceJUnit(xml, ['case-1']), /row_resolver_.*junit/);
   }
 });
-test('count-only SQLite receipts cannot certify ten concrete cases', () => {
-  const receipt = { schema_version: 1, producer: 'v12-sqlite-shard', cases: 4, digest: 'a'.repeat(64) };
-  const result = resolveV12SqliteReceipt(receipt, 'migration');
-  assert.equal(result.result, 'REVIEW_REQUIRED');
-  assert.match(result.reason, /case.*status/);
-  assert.throws(() => resolveV12SqliteReceipt({ ...receipt, cases: 3 }, 'migration'), /row_resolver_sqlite/);
+test('SQLite resolver passes only exact bounded ordered all-passed case facts', () => {
+  const caseFacts = [
+    'fresh-migration', 'schema27-upgrade', 'supported-legacy-upgrade', 'failure-reopen',
+  ].map((id, order) => ({ id, order, status: 'passed', digest: createHash('sha256').update(id).digest('hex') }));
+  const receipt = {
+    schema_version: 1,
+    producer: 'v12-sqlite-shard',
+    identity: {
+      source_digest: 'a'.repeat(64), fixture_digest: 'b'.repeat(64),
+      apk_digest: 'c'.repeat(64), installed_apk_digest: 'c'.repeat(64), device_digest: 'd'.repeat(64),
+    },
+    cases: caseFacts.length,
+    case_facts: caseFacts,
+    all_passed: true,
+    digest: createHash('sha256').update(JSON.stringify(caseFacts)).digest('hex'),
+  };
+  assert.deepEqual(resolveV12SqliteReceipt(receipt, 'migration'), {
+    result: 'PASS',
+    case_ids: caseFacts.map(({ id }) => id),
+    digest: receipt.digest,
+  });
+
+  for (const mutate of [
+    (value) => { value.cases = 3; },
+    (value) => { value.case_facts.reverse(); },
+    (value) => { value.case_facts[0].order = 1; },
+    (value) => { value.case_facts[0].status = 'failed'; },
+    (value) => { value.case_facts[0].digest = '0'.repeat(64); },
+    (value) => { value.all_passed = false; },
+    (value) => { value.digest = '0'.repeat(64); },
+  ]) {
+    const changed = structuredClone(receipt);
+    mutate(changed);
+    assert.throws(() => resolveV12SqliteReceipt(changed, 'migration'), /row_resolver_sqlite/);
+  }
+  assert.throws(
+    () => resolveV12SqliteReceipt({ schema_version: 1, producer: 'v12-sqlite-shard', cases: 4, digest: 'a'.repeat(64) }, 'migration'),
+    /row_resolver_sqlite/,
+  );
 });
 test('performance gates retain explicit unreviewed Garmin baseline', () => {
   const gates = resolveV12PerformanceGates({ summary: { gates: {

@@ -333,7 +333,7 @@ test("Phase 20 fake-device pipeline exercises every CLI but cannot publish prese
   assert.equal(resolved.row_evidence.length, 172);
   assert.equal(new Set(resolved.row_evidence.map(row => row.row_id)).size, 172);
   assert.ok(resolved.row_evidence.every(row => row.selector.type && row.selector.resolution.result === row.result));
-  assert.equal(resolved.row_evidence.find(row => row.row_id === "VER-07").result, "REVIEW_REQUIRED");
+  assert.equal(resolved.row_evidence.find(row => row.row_id === "VER-07").result, "PASS");
   writeFileSync(path.join(root, "test-resolution.json"), JSON.stringify(resolved));
   const checklist = path.join(root, "checklist.json"); const observations = path.join(root, "observations.json"); const record = path.join(root, "artifacts/native/v1.2", run, "attended-observations.json");
   writeFileSync(path.join(root, "identity.json"), JSON.stringify(attendedIdentity(root)));
@@ -350,7 +350,7 @@ test("Phase 20 fake-device pipeline exercises every CLI but cannot publish prese
   for (const output of ["preseal-validation.json", "ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md", "publication/preseal.json", "publication/final.json"]) {
     assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, output)), false, output);
   }
-  await t.test("typed ledger rejects source-result tampering and exceptions cannot erase a blocker", () => {
+  await t.test("typed ledger retains SQLite PASS and rejects source-result tampering", () => {
     // The CLI round-trip above remains the integration oracle. This separate
     // subprocess exercises the public derivation API with the same real fixture.
     const code = `
@@ -364,14 +364,13 @@ test("Phase 20 fake-device pipeline exercises every CLI but cannot publish prese
       const read = file => JSON.parse(readFileSync(path.join(base, file), 'utf8'));
       const manifest = read('build.json'), evidence = JSON.parse(readFileSync(path.join(root,'test-resolution.json'),'utf8')).row_evidence;
       const args = { inputs: loadV12ContractInputs({root}), manifest, evidence, root, readArtifact: file => readFileSync(path.join(root, file)), attended: read('attended-observations.json') };
-      const exception = { row_id: 'VER-07', deviation_id: 'DEV-203', owner_decision: 'owner-approved', decided_at: '2026-10-14', scope: 'sqlite review', configurations: [manifest.configuration.id], rationale: 'cannot override a concrete blocker', evidence_hashes: [evidence.find(x => x.row_id === 'VER-07').sha256] };
-      const ledger = deriveV12Ledger({ ...args, allowTestCalendarFixture: true, exceptions: [exception], readiness_policy: { policy_id: 'v12-reviewed-policy', reviewed_by: 'owner', reviewed_at: '2026-10-14', permits_accepted_exceptions: true } });
+      const ledger = deriveV12Ledger({ ...args, allowTestCalendarFixture: true });
       assert.equal(ledger.evidence_origin, 'test');
       assert.equal(ledger.readiness, 'NOT_READY');
       let writes = 0;
       assert.throws(() => sealV12FinalEvidence({mode:'final', run_id:run, ledger, writeImmutableJson:()=>{writes += 1;}}), /test_origin_forbidden/);
       assert.equal(writes, 0);
-      assert.equal(ledger.rows.find(row => row.requirement_id === 'VER-07').verdict, 'REVIEW_REQUIRED');
+      assert.equal(ledger.rows.find(row => row.requirement_id === 'VER-07').verdict, 'PASS');
       for (const mutate of [row => {row.result = 'FAIL';}, row => {row.selector.id = 'unknown';}, row => {row.bindings[0].sha256 = '0'.repeat(64);}]) {
         const changed = structuredClone(evidence); mutate(changed[0]);
         assert.throws(() => deriveV12Ledger({...args, evidence: changed, allowTestCalendarFixture: true}), /source_resolution_mismatch/);

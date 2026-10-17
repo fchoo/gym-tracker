@@ -46,6 +46,50 @@ function validateCase(entry, index) {
     || !Object.values(entry.digests).every(hash)) fail('case_invalid');
 }
 
+const GROUP_BOUNDS = Object.freeze({
+  migration: Object.freeze([0, 4]),
+  portability: Object.freeze([4, 8]),
+  history: Object.freeze([8, 10]),
+});
+
+function caseFacts(cases, [start, end]) {
+  return Object.freeze(cases.slice(start, end).map((entry) => Object.freeze({
+    id: entry.id,
+    order: entry.order,
+    status: entry.status,
+    digest: digest(entry.digests),
+  })));
+}
+
+function retainedObservation(observation, cases, group) {
+  const facts = caseFacts(cases, GROUP_BOUNDS[group]);
+  return Object.freeze({
+    ...observation,
+    cases: facts.length,
+    case_facts: facts,
+    all_passed: facts.every(({ status }) => status === 'passed'),
+    digest: digest(facts),
+  });
+}
+
+function validateRetainedObservation(value, group) {
+  const bounds = GROUP_BOUNDS[group];
+  const expectedIds = V12_SQLITE_SHARD_CASE_IDS.slice(...bounds);
+  if (!exactKeys(value, ['schema_version', 'producer', 'identity', 'cases', 'case_facts', 'all_passed', 'digest'])
+    || value.schema_version !== 1 || value.producer !== 'v12-sqlite-shard'
+    || !exactKeys(value.identity, ['source_digest', 'fixture_digest', 'apk_digest', 'installed_apk_digest', 'device_digest'])
+    || !Object.values(value.identity).every(hash) || value.identity.apk_digest !== value.identity.installed_apk_digest
+    || value.cases !== expectedIds.length || !Array.isArray(value.case_facts)
+    || value.case_facts.length !== expectedIds.length || value.all_passed !== true) fail('observation_invalid');
+  value.case_facts.forEach((entry, index) => {
+    if (!exactKeys(entry, ['id', 'order', 'status', 'digest'])
+      || entry.id !== expectedIds[index] || entry.order !== bounds[0] + index
+      || entry.status !== 'passed' || !hash(entry.digest)) fail('observation_invalid');
+  });
+  if (value.digest !== digest(value.case_facts)) fail('observation_invalid');
+  return value;
+}
+
 export function validateV12SqliteShard(input) {
   privacySafe(input);
   if (!exactKeys(input, ['schema_version', 'producer', 'identity', 'cases'])
@@ -69,9 +113,9 @@ export function validateV12SqliteShard(input) {
   return Object.freeze({
     ok: true,
     observations: Object.freeze({
-      migration: Object.freeze({ ...observation, cases: 4, digest: input.cases[3].digests.reopen }),
-      portability: Object.freeze({ ...observation, cases: 4, digest: input.cases[7].digests.rebuild }),
-      history: Object.freeze({ ...observation, cases: 2, digest: input.cases[9].digests.post }),
+      migration: retainedObservation(observation, input.cases, 'migration'),
+      portability: retainedObservation(observation, input.cases, 'portability'),
+      history: retainedObservation(observation, input.cases, 'history'),
     }),
   });
 }
@@ -142,10 +186,11 @@ export async function executeV12SqliteShardCli(args = process.argv.slice(2), dep
     const expected = ['migration', 'portability', 'history'];
     for (const [index, file] of outputPaths.entries()) {
       const observation = readJson(file);
-      if (observation?.producer !== 'v12-sqlite-shard' || observation?.identity?.source_digest !== manifest.source.tree_sha256
+      try { validateRetainedObservation(observation, expected[index]); } catch { fail(`verify_${expected[index]}_invalid`); }
+      if (observation.identity.source_digest !== manifest.source.tree_sha256
         || observation?.identity?.fixture_digest !== manifest.fixtures.registry_sha256 || observation?.identity?.apk_digest !== manifest.build.apk.sha256
         || observation?.identity?.installed_apk_digest !== manifest.device.installed_apk_sha256 || observation?.identity?.device_digest !== manifest.device.identity_sha256
-        || observation?.cases !== [4, 4, 2][index] || !hash(observation?.digest) || Object.hasOwn(observation, 'verdict')) fail(`verify_${expected[index]}_invalid`);
+        || Object.hasOwn(observation, 'verdict')) fail(`verify_${expected[index]}_invalid`);
     }
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
