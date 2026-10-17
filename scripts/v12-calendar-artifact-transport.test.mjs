@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -23,7 +23,7 @@ const binding = Object.freeze({
   tool_facts: Object.freeze({ adb_sha256: "5".repeat(64), maestro_sha256: "6".repeat(64), unzip_sha256: "7".repeat(64) }),
 });
 
-test("Calendar artifact transport commits monotonic units and resumes a completed compact result", (t) => {
+test("Calendar artifact transport recovers the result-before-manifest crash boundary idempotently", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-transport-"));
   mkdirSync(path.join(root, "artifacts/native/v1.2", RUN_ID), { recursive: true });
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -60,7 +60,15 @@ test("Calendar artifact transport commits monotonic units and resumes a complete
   assert.deepEqual(partiallyResumed.readArtifact(first.artifacts[0]), png);
 
   const result = { stages: [first.payload.stage], requirements: [second.payload.receipt], artifacts: [...first.artifacts, ...second.artifacts] };
-  partiallyResumed.complete(result);
+  const transportDirectory = path.join(root, "artifacts/native/v1.2", RUN_ID, ".calendar-transport");
+  const resultPath = path.join(transportDirectory, "result.json");
+  const resultBytes = Buffer.from(`${JSON.stringify(result)}\n`);
+  writeFileSync(resultPath, resultBytes, { flag: "wx" });
+  assert.equal(existsSync(path.join(transportDirectory, "manifest.json")), false);
+
+  assert.deepEqual(partiallyResumed.complete(result), result);
+  assert.deepEqual(readFileSync(resultPath), resultBytes);
+  assert.deepEqual(partiallyResumed.complete(result), result);
   const reopened = openV12CalendarArtifactTransport({ root, runId: RUN_ID });
   assert.deepEqual(reopened.loadCompleted(), result);
   assert.ok(Buffer.byteLength(JSON.stringify(reopened.loadCompleted())) < 1024 * 1024);
@@ -72,4 +80,34 @@ test("Calendar artifact transport commits monotonic units and resumes a complete
   assert.throws(() => reopened.readArtifact(first.artifacts[0]), /calendar_transport_artifact_invalid/u);
   writeFileSync(artifactPath, original);
   assert.equal(sha(reopened.readArtifact(first.artifacts[0])), first.artifacts[0].sha256);
+});
+
+test("Calendar result-only recovery fails closed before publishing a manifest", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-result-only-invalid-"));
+  mkdirSync(path.join(root, "artifacts/native/v1.2", RUN_ID), { recursive: true });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const transport = createV12CalendarArtifactTransport({ root, runId: RUN_ID, binding });
+  const unit = transport.appendUnit({
+    kind: "stage",
+    key: "stage-one",
+    payload: { stage: { id: "stage-one" }, junit: { id: "stage-one", status: "PASS" } },
+    artifacts: [
+      { stage_id: "stage-one", kind: "png", relative_path: "calendar/stages/00-stage-one.png", bytes: Buffer.from("png") },
+      { stage_id: "stage-one", kind: "trace", relative_path: "calendar/stages/00-stage-one.trace.json", bytes: Buffer.from("trace") },
+    ],
+  });
+  const directory = path.join(root, "artifacts/native/v1.2", RUN_ID, ".calendar-transport");
+  writeFileSync(path.join(directory, "result.json"), `${JSON.stringify({
+    stages: [unit.payload.stage],
+    requirements: [],
+    artifacts: [],
+  })}\n`);
+
+  const resumed = openV12CalendarArtifactTransport({ root, runId: RUN_ID });
+  assert.throws(() => resumed.complete({
+    stages: [unit.payload.stage],
+    requirements: [],
+    artifacts: [...unit.artifacts],
+  }), /calendar_transport_result_invalid/u);
+  assert.equal(existsSync(path.join(directory, "manifest.json")), false);
 });

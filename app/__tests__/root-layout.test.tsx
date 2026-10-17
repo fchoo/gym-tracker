@@ -25,6 +25,9 @@ const mockCreatePhase20VisualDependencies = jest.fn<
 const mockCreatePhase20CalendarDependencies = jest.fn(
   (databaseName: string) => ({ calendarFixture: databaseName }),
 );
+const mockCreateRecoveryDependencies = jest.fn(
+  (databaseName: string) => ({ recoveryFixture: databaseName }),
+);
 const mockProductionAppearanceRead = jest.fn(() => null);
 const mockProductionAppearanceWrite = jest.fn();
 const mockPreviewAppearanceRead = jest.fn(() => null);
@@ -95,6 +98,15 @@ jest.mock("../../src/testing/phase20CalendarRuntime", () => {
     ...actual,
     createPhase20CalendarRuntimeDependencies: (databaseName: string) =>
       mockCreatePhase20CalendarDependencies(databaseName),
+  };
+});
+
+jest.mock("../../src/testing/isolatedWorkoutRuntime", () => {
+  const actual = jest.requireActual("../../src/testing/isolatedWorkoutRuntime") as object;
+  return {
+    ...actual,
+    createStrictIsolatedWorkoutRuntimeDependencies: ({ databaseName }: { databaseName: string }) =>
+      mockCreateRecoveryDependencies(databaseName),
   };
 });
 
@@ -270,6 +282,7 @@ describe("RootLayout attended preview isolation", () => {
     mockRuntimeProviderDependencies.mockClear();
     mockCreatePhase20VisualDependencies.mockClear();
     mockCreatePhase20CalendarDependencies.mockClear();
+    mockCreateRecoveryDependencies.mockClear();
     mockUseFonts.mockClear();
     mockProductionAppearanceRead.mockReset();
     mockProductionAppearanceRead.mockReturnValue(null);
@@ -548,6 +561,54 @@ describe("RootLayout attended preview isolation", () => {
       calendarFixture: databaseName,
     });
     expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("mounts a loaded Recovery v2 route over a strict nonce-scoped runtime", async () => {
+    mockPathname = "/__v12-production-recovery";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      nonce: "a".repeat(32),
+      caseId: "queued-callback",
+      stepId: "queued-set-commit",
+      cutId: "post-commit-before-ack",
+      phase: "arm",
+    };
+
+    await render(<RootLayout />);
+
+    const databaseName = `gym-tracker-phase20-recovery-shell-${"a".repeat(32)}.db`;
+    expect(screen.getByTestId("root-stack-screen-__v12-production-recovery"))
+      .toBeOnTheScreen();
+    expect(mockCreateRecoveryDependencies).toHaveBeenCalledWith(databaseName);
+    expect(mockRuntimeProviderDependencies).toHaveBeenCalledWith({
+      recoveryFixture: databaseName,
+    });
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["malformed", { nonce: "short" }, true],
+    ["disabled", {}, false],
+  ])("fails a %s Recovery v2 route closed before production bootstrap", async (_label, overrides, enabled) => {
+    mockPathname = "/__v12-production-recovery";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockNativeContractsEnabled = enabled;
+    mockSearchParams = {
+      nonce: "a".repeat(32),
+      caseId: "queued-callback",
+      stepId: "queued-set-commit",
+      cutId: "post-commit-before-ack",
+      phase: "arm",
+      ...overrides,
+    };
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("evidence-route-disabled")).toBeOnTheScreen();
+    expect(mockCreateRecoveryDependencies).not.toHaveBeenCalled();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
   it("fails malformed Calendar evidence closed before any runtime mounts", async () => {

@@ -159,11 +159,19 @@ export function parseV12SourceJUnit(xml, expectedIds, states = {}) {
 
 export function resolveV12SqliteReceipt(value, group) {
   const bounds = { migration: [0, 4], portability: [4, 8], history: [8, 10] }[group];
+  const expectedIds = bounds && V12_SQLITE_SHARD_CASE_IDS.slice(...bounds);
   ensure(bounds && value?.schema_version === 1 && value.producer === 'v12-sqlite-shard'
-    && value.cases === bounds[1] - bounds[0] && HASH.test(value.digest ?? ''), 'sqlite_receipt_invalid');
-  // The current producer intentionally discards its native case statuses. A
-  // count and an opaque digest cannot be reverse-engineered into ten PASSes.
-  return { result: 'REVIEW_REQUIRED', case_ids: V12_SQLITE_SHARD_CASE_IDS.slice(...bounds), reason: 'Retained receipt omits concrete case statuses.' };
+    && value.cases === expectedIds.length && Array.isArray(value.case_facts)
+    && value.case_facts.length === expectedIds.length && value.all_passed === true
+    && HASH.test(value.digest ?? ''), 'sqlite_receipt_invalid');
+  exactIds(value.case_facts.map(entry => entry?.id), expectedIds, 'sqlite_case_order_invalid');
+  value.case_facts.forEach((entry, index) => {
+    ensure(entry && same(Object.keys(entry), ['id', 'order', 'status', 'digest'])
+      && entry.order === bounds[0] + index && entry.status === 'passed'
+      && HASH.test(entry.digest ?? ''), 'sqlite_case_fact_invalid');
+  });
+  ensure(value.digest === jsonHash(value.case_facts), 'sqlite_digest_invalid');
+  return { result: 'PASS', case_ids: expectedIds, digest: value.digest };
 }
 
 export function resolveV12PerformanceGates(observation) {

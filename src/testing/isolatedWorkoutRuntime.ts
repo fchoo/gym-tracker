@@ -7,6 +7,10 @@ import type {
   RestNotificationPort,
   RestNotificationScheduleInput,
 } from "../domains/rest";
+import {
+  type V12ProductionRecoveryIdentity,
+  v12ProductionRecoveryEnabled,
+} from "./v12ProductionRecovery";
 
 type PrepareRuntime = NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>;
 
@@ -18,6 +22,19 @@ export type StrictIsolatedWorkoutRuntimeOptions = Readonly<{
   onDisposed?: () => void;
   onDisposalFailure?: (error: unknown) => void;
 }>;
+
+export function resolveV12RecoveryIsolatedRuntime(
+  identity: V12ProductionRecoveryIdentity,
+  phase: unknown,
+): Readonly<{ databaseName: string }> | null {
+  if ((phase !== "arm" && phase !== "recover")
+    || !v12ProductionRecoveryEnabled(identity)) {
+    return null;
+  }
+  return Object.freeze({
+    databaseName: `gym-tracker-phase20-recovery-shell-${identity.nonce as string}.db`,
+  });
+}
 
 function createIsolatedNotificationPort(): RestNotificationPort {
   const scheduled = new Map<string, RestNotificationScheduleInput>();

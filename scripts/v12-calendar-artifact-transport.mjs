@@ -167,6 +167,16 @@ function createTransport({ root, runId, binding, create }) {
     receipts.push(receipt);
   }
 
+  const expectedArtifacts = () => receipts.flatMap(({ artifacts }) => artifacts);
+  function validateResult(result, resultBytes, code, requireCanonical = false) {
+    const artifacts = expectedArtifacts();
+    if (resultBytes.length > MAX_RESULT_BYTES || !Array.isArray(result?.artifacts)
+      || JSON.stringify(result.artifacts) !== JSON.stringify(artifacts)
+      || resultBytes.includes(Buffer.from("bytes_base64"))
+      || (requireCanonical && !resultBytes.equals(jsonBytes(result)))) fail(code);
+    return result;
+  }
+
   const api = {
     binding: validatedBinding,
     resumeUnit({ ordinal, kind, key }) {
@@ -224,14 +234,26 @@ function createTransport({ root, runId, binding, create }) {
         if (JSON.stringify(existing) !== JSON.stringify(result)) fail("result_mismatch");
         return existing;
       }
-      const resultBytes = jsonBytes(result);
-      const expectedArtifacts = receipts.flatMap(({ artifacts }) => artifacts);
-      if (resultBytes.length > MAX_RESULT_BYTES || !Array.isArray(result?.artifacts)
-        || JSON.stringify(result.artifacts) !== JSON.stringify(expectedArtifacts)
-        || resultBytes.includes(Buffer.from("bytes_base64"))) fail("result_invalid");
-      writeDurable(path.join(directory, "result.json"), resultBytes);
+      const requestedBytes = jsonBytes(result);
+      validateResult(result, requestedBytes, "result_invalid", true);
+      const resultFile = path.join(directory, "result.json");
+      noLinks(directory, resultFile);
+      let resultBytes = requestedBytes;
+      if (existsSync(resultFile)) {
+        let resumed;
+        try {
+          resultBytes = readFileSync(resultFile);
+          resumed = JSON.parse(resultBytes);
+        } catch { fail("result_invalid"); }
+        validateResult(resumed, resultBytes, "result_invalid", true);
+        if (JSON.stringify(resumed) !== JSON.stringify(result)) fail("result_mismatch");
+      } else {
+        writeDurable(resultFile, resultBytes);
+        syncDirectory(directory);
+      }
+      const artifacts = expectedArtifacts();
       const manifest = Object.freeze({ schema_version: 1, producer: "v12-calendar-artifact-transport/v1", run_id: runId,
-        binding_sha256: bindingSha256, unit_count: receipts.length, artifact_count: expectedArtifacts.length,
+        binding_sha256: bindingSha256, unit_count: receipts.length, artifact_count: artifacts.length,
         final_chain_sha256: receipts.at(-1)?.unit_chain_sha256 ?? "0".repeat(64), result_sha256: sha256(resultBytes) });
       writeDurable(path.join(directory, "manifest.json"), jsonBytes(manifest));
       syncDirectory(directory);
@@ -240,19 +262,21 @@ function createTransport({ root, runId, binding, create }) {
     loadCompleted() {
       const manifestFile = path.join(directory, "manifest.json");
       if (!existsSync(manifestFile)) return null;
+      noLinks(directory, manifestFile);
+      const resultFile = path.join(directory, "result.json");
+      noLinks(directory, resultFile);
       let manifest; let result; let resultBytes;
       try {
         manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
-        resultBytes = readFileSync(path.join(directory, "result.json"));
+        resultBytes = readFileSync(resultFile);
         result = JSON.parse(resultBytes);
       } catch { fail("manifest_invalid"); }
-      const expectedArtifacts = receipts.flatMap(({ artifacts }) => artifacts);
       if (!exact(manifest, ["schema_version", "producer", "run_id", "binding_sha256", "unit_count", "artifact_count", "final_chain_sha256", "result_sha256"])
         || manifest.schema_version !== 1 || manifest.producer !== "v12-calendar-artifact-transport/v1" || manifest.run_id !== runId
         || manifest.binding_sha256 !== bindingSha256 || manifest.unit_count !== receipts.length
         || manifest.artifact_count !== receipts.length * 2 || manifest.final_chain_sha256 !== (receipts.at(-1)?.unit_chain_sha256 ?? "0".repeat(64))
-        || manifest.result_sha256 !== sha256(resultBytes) || Buffer.byteLength(JSON.stringify(result)) > MAX_RESULT_BYTES
-        || !Array.isArray(result?.artifacts) || JSON.stringify(result.artifacts) !== JSON.stringify(expectedArtifacts)) fail("manifest_invalid");
+        || manifest.result_sha256 !== sha256(resultBytes)) fail("manifest_invalid");
+      validateResult(result, resultBytes, "manifest_invalid");
       return result;
     },
     cleanup() {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -52,6 +53,15 @@ test('validates the complete ordered privacy-safe SQLite observation set', () =>
   assert.equal(result.observations.migration.cases, 4);
   assert.equal(result.observations.portability.cases, 4);
   assert.equal(result.observations.history.cases, 2);
+  assert.deepEqual(
+    Object.values(result.observations).flatMap(({ case_facts: caseFacts }) => caseFacts.map(({ id }) => id)),
+    caseIds,
+  );
+  assert.ok(Object.values(result.observations).every((observation) => (
+    observation.all_passed === true
+      && observation.case_facts.length === observation.cases
+      && observation.case_facts.every((entry) => entry.status === 'passed')
+  )));
 });
 
 test('rejects duplicate, skipped, stale, out-of-order, raw, and impossible downgrade observations', () => {
@@ -74,6 +84,20 @@ test('writes observations only and never a verdict', async () => {
   await executeV12SqliteShard(valid(), async (path, value) => writes.push({ path, value }));
   assert.deepEqual(writes.map(({ path }) => path), ['migration.json', 'portability.json', 'history.json']);
   assert.equal(JSON.stringify(writes).includes('verdict'), false);
+});
+
+test('binds each bounded group digest to its exact ordered passed case facts', () => {
+  const { observations } = validateV12SqliteShard(valid());
+  for (const observation of Object.values(observations)) {
+    assert.equal(
+      observation.digest,
+      createHash('sha256').update(JSON.stringify(observation.case_facts)).digest('hex'),
+    );
+    assert.deepEqual(
+      observation.case_facts.map(({ order }) => order),
+      observation.case_facts.map((_, index) => observation.case_facts[0].order + index),
+    );
+  }
 });
 
 test('requires an explicit immutable run command instead of silently succeeding as a no-op', () => {
