@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
-import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
+import { publishV12AtomicShard, recordV12AtomicFailure, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 import {
   canonicalV12CalendarArtifactDescriptor,
   hasV12CalendarArtifactTransport,
@@ -194,6 +194,69 @@ function validatedStages(result, expectedFlowSha256, allowTestFixture = false, r
 }
 function xml(stages, id, flowSha256) { return `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-calendar" tests="${stages.length}" source_digest="${id.source_digest}" flow_sha256="${flowSha256}">${stages.map(({ id: stageId, status }) => `<testcase classname="v12.calendar" name="${stageId}">${status === "FAIL" ? "<failure message=\"observed failure\"/>" : status === "NOT_RUN" || status === "REVIEW_REQUIRED" ? "<skipped message=\"observation incomplete\"/>" : ""}</testcase>`).join("")}</testsuite>\n`; }
 function requirementsXml(requirements, id) { return `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-calendar-requirements" tests="${requirements.junit_cases.length}" source_digest="${id.source_digest}" flow_sha256="${requirements.flow_sha256}">${requirements.junit_cases.map(({ id: evidenceId, status }) => `<testcase classname="v12.calendar.requirement" name="${evidenceId}">${status === "FAIL" ? "<failure message=\"observed failure\"/>" : status === "NOT_RUN" || status === "REVIEW_REQUIRED" ? "<skipped message=\"observation incomplete\"/>" : ""}</testcase>`).join("")}</testsuite>\n`; }
+
+function verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read }) {
+  const files = ARTIFACTS.map((file) => outputPath(runId, file));
+  if (files.some((file) => !exists(file))) fail("output_missing");
+  const observation = JSON.parse(read(files[0]).toString());
+  const requirementEvidence = JSON.parse(read(files[1]).toString());
+  const registry = JSON.parse(read(files[4]).toString());
+  noPrivate(observation);
+  if (observation?.schema_version !== 5 || observation?.producer !== "v12-calendar-shard/v6"
+    || observation.run_id !== runId || JSON.stringify(observation.identity) !== JSON.stringify(id)
+    || observation.flow_sha256 !== flowSha256 || observation.flow_revision !== FLOW_REVISION
+    || requirementEvidence?.schema_version !== 2 || requirementEvidence.producer !== "v12-calendar-requirements/v2"
+    || requirementEvidence.run_id !== runId || JSON.stringify(requirementEvidence.execution_origin) !== JSON.stringify(observation.execution_origin)
+    || registry?.schema_version !== 2 || registry.producer !== "v12-calendar-artifact-registry/v2"
+    || registry.run_id !== runId || registry.execution_origin_sha256 !== sha(observation.execution_origin)
+    || observation.artifact_registry_sha256 !== sha(registry)) fail("verify_invalid");
+  const artifactPayloads = registry.members.map((member) => {
+    const artifact = outputPath(runId, member.path);
+    if (!exists(artifact)) fail("output_missing");
+    return { ...(member.requirement_id === undefined ? { stage_id: member.stage_id } : { requirement_id: member.requirement_id, probe_id: member.probe_id }), kind: member.kind, relative_path: member.path,
+      sha256: member.sha256, size_bytes: member.size_bytes };
+  });
+  const validated = validatedStages({ flow_sha256: observation.flow_sha256, flow_revision: observation.flow_revision,
+    stages: observation.stages, junit_cases: observation.junit_cases, requirements: { flow_sha256: requirementEvidence.flow_sha256,
+      fixture_id: requirementEvidence.fixture_id, records: requirementEvidence.records, junit_cases: requirementEvidence.junit_cases },
+    native_receipt: observation.native_receipt, execution_origin: observation.execution_origin, artifacts: artifactPayloads }, flowSha256, false,
+  (descriptor) => Buffer.from(read(outputPath(runId, descriptor.relative_path))));
+  validateNativeReceipt(validated.native_receipt, { ...id, run_id: runId }, validated);
+  const report = read(files[2]).toString(); const requirementReport = read(files[3]).toString();
+  if (!report.includes(`source_digest="${id.source_digest}"`) || !report.includes(`flow_sha256="${flowSha256}"`)
+    || !requirementReport.includes(`source_digest="${id.source_digest}"`) || !requirementReport.includes(`flow_sha256="${requirementEvidence.flow_sha256}"`)) fail("verify_invalid");
+  return Object.freeze({ observation, requirementEvidence, registry, validated });
+}
+
+function verifyExistingCalendarPublication({ root, runId, id, flowSha256, exists, read, cleanupTransport }) {
+  verifyV12AtomicShard({ root, runId, shard: "calendar", allowOtherShardResidue: true });
+  const retained = verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read });
+  if (!hasV12CalendarArtifactTransport({ root, runId })) return retained;
+  const transport = openV12CalendarArtifactTransport({ root, runId });
+  const completed = transport.loadCompleted();
+  if (completed === null) fail("transport_result_missing");
+  const native = validatedStages(completed, flowSha256, false, (descriptor) => transport.readArtifact(descriptor));
+  validateNativeReceipt(native.native_receipt, { ...id, run_id: runId }, native);
+  const bindings = [
+    [native.flow_sha256, retained.observation.flow_sha256],
+    [native.flow_revision, retained.observation.flow_revision],
+    [native.stages, retained.observation.stages],
+    [native.junit_cases, retained.observation.junit_cases],
+    [native.native_receipt, retained.observation.native_receipt],
+    [native.execution_origin, retained.observation.execution_origin],
+    [native.requirements.flow_sha256, retained.requirementEvidence.flow_sha256],
+    [native.requirements.fixture_id, retained.requirementEvidence.fixture_id],
+    [native.requirements.records, retained.requirementEvidence.records],
+    [native.requirements.junit_cases, retained.requirementEvidence.junit_cases],
+    [native.artifact_descriptors, retained.registry.members],
+  ];
+  if (bindings.some(([actual, expected]) => JSON.stringify(actual) !== JSON.stringify(expected))) {
+    fail("transport_result_binding_invalid");
+  }
+  (cleanupTransport ?? ((value) => value.cleanup()))(transport);
+  return retained;
+}
+
 export async function executeV12CalendarShardCli(args = process.argv.slice(2), dependencies = {}) {
   const { runId, mode, testFixture = false } = parseV12CalendarShardCliArgs(args);
   if (testFixture && (process.env.NODE_ENV !== "test" || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== "phase20-native-adapter-subprocess" || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== "1")) fail("test_fixture_forbidden");
@@ -210,34 +273,13 @@ export async function executeV12CalendarShardCli(args = process.argv.slice(2), d
     return nativeTransport.readArtifact(descriptor);
   });
   if (mode === "verify") {
-    if (files.some((file) => !exists(file))) fail("output_missing");
-    const observation = JSON.parse(read(files[0]).toString());
-    const requirementEvidence = JSON.parse(read(files[1]).toString());
-    const registry = JSON.parse(read(files[4]).toString());
-    noPrivate(observation);
-    if (observation?.schema_version !== 5 || observation?.producer !== "v12-calendar-shard/v6"
-      || observation.run_id !== runId || JSON.stringify(observation.identity) !== JSON.stringify(id)
-      || observation.flow_sha256 !== flowSha256 || observation.flow_revision !== FLOW_REVISION
-      || requirementEvidence?.schema_version !== 2 || requirementEvidence.producer !== "v12-calendar-requirements/v2"
-      || requirementEvidence.run_id !== runId || JSON.stringify(requirementEvidence.execution_origin) !== JSON.stringify(observation.execution_origin)
-      || registry?.schema_version !== 2 || registry.producer !== "v12-calendar-artifact-registry/v2"
-      || registry.run_id !== runId || registry.execution_origin_sha256 !== sha(observation.execution_origin)
-      || observation.artifact_registry_sha256 !== sha(registry)) fail("verify_invalid");
-    const artifactPayloads = registry.members.map((member) => {
-      const artifact = outputPath(runId, member.path);
-      if (!exists(artifact)) fail("output_missing");
-      return { ...(member.requirement_id === undefined ? { stage_id: member.stage_id } : { requirement_id: member.requirement_id, probe_id: member.probe_id }), kind: member.kind, relative_path: member.path,
-        sha256: member.sha256, size_bytes: member.size_bytes };
-    });
-    const validated = validatedStages({ flow_sha256: observation.flow_sha256, flow_revision: observation.flow_revision,
-      stages: observation.stages, junit_cases: observation.junit_cases, requirements: { flow_sha256: requirementEvidence.flow_sha256,
-        fixture_id: requirementEvidence.fixture_id, records: requirementEvidence.records, junit_cases: requirementEvidence.junit_cases },
-      native_receipt: observation.native_receipt, execution_origin: observation.execution_origin, artifacts: artifactPayloads }, flowSha256, false,
-    (descriptor) => Buffer.from(read(outputPath(runId, descriptor.relative_path))));
-    validateNativeReceipt(validated.native_receipt, { ...id, run_id: runId }, validated);
-    const report = read(files[2]).toString(); const requirementReport = read(files[3]).toString();
-    if (!report.includes(`source_digest=\"${id.source_digest}\"`) || !report.includes(`flow_sha256=\"${flowSha256}\"`)
-      || !requirementReport.includes(`source_digest=\"${id.source_digest}\"`) || !requirementReport.includes(`flow_sha256=\"${requirementEvidence.flow_sha256}\"`) || !validated) fail("verify_invalid");
+    verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read });
+    return Object.freeze({ ok: true, mode, run_id: runId });
+  }
+  const publication = path.join(root, `artifacts/native/v1.2/${runId}/publication/calendar.json`);
+  if (existsSync(publication)) {
+    verifyExistingCalendarPublication({ root, runId, id, flowSha256, exists, read,
+      cleanupTransport: dependencies.cleanupTransport });
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
   if (files.some(exists) || exists(outputPath(runId, "calendar-failure.json"))) fail("output_exists");
@@ -285,7 +327,7 @@ export async function executeV12CalendarShardCli(args = process.argv.slice(2), d
   }
 }
 
-export function publishV12CalendarShardWrites({ root = process.cwd(), runId, writes, executionOrigin } = {}) {
+export function publishV12CalendarShardWrites({ root = process.cwd(), runId, writes, executionOrigin, cleanupTransport } = {}) {
   if (!RUN_ID.test(runId ?? "") || !Array.isArray(writes)) fail("cli_invalid");
   let transport;
   const publication = publishV12AtomicShard({ root, runId, shard: "calendar", executionOrigin, produce: ({ write }) => {
@@ -299,7 +341,15 @@ export function publishV12CalendarShardWrites({ root = process.cwd(), runId, wri
       write(file.slice(prefix.length), bytes);
     }
   } });
-  if (hasV12CalendarArtifactTransport({ root, runId })) (transport ?? openV12CalendarArtifactTransport({ root, runId })).cleanup();
+  const build = JSON.parse(readFileSync(path.join(root, outputPath(runId, "build.json")), "utf8"));
+  const id = identity(build, runId, { sourceDigest: build?.source?.tree_sha256, currentHead: build?.source?.head, isAncestor: () => true });
+  const retainedObservation = JSON.parse(readFileSync(path.join(root, outputPath(runId, "calendar-transitions.json")), "utf8"));
+  verifyExistingCalendarPublication({
+    root, runId, id, flowSha256: retainedObservation.flow_sha256,
+    exists: (file) => existsSync(path.join(root, file)),
+    read: (file) => readFileSync(path.join(root, file)),
+    cleanupTransport,
+  });
   return publication;
 }
 
