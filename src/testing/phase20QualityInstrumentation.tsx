@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import {
-  productionWorkoutAppRuntimeDependencies,
   useCalendarRangeReadPort,
   useWorkoutAppRuntime,
   WorkoutAppRuntimeProvider,
@@ -13,7 +12,6 @@ import {
   createV12AcceptanceBenchmark,
   type V12AcceptanceBenchmarkMarker,
 } from "../bootstrap/v12AcceptanceBenchmark";
-import { openSqliteKernel } from "../platform/sqlite";
 import { seedPhase20CalendarQualityFixture, seedPhase20ProgressQualityFixture } from "./contracts/progressParity.contract";
 import { seedPhase20QualityWorkloadFixture } from "./phase20QualityWorkload";
 import { AppRootShell, useRootSettingsController } from "../ui/shell/AppRootShell";
@@ -40,6 +38,7 @@ import {
   type Phase20QualityRoot,
 } from "./phase20QualityProtocol";
 import { runPhase20HeavyWorkload } from "./phase20QualityWorkloads";
+import { createStrictIsolatedWorkoutRuntimeDependencies } from "./isolatedWorkoutRuntime";
 
 export type { Phase20QualityAction, Phase20QualityRequest } from "./phase20QualityProtocol";
 export { resolvePhase20QualityRequest } from "./phase20QualityProtocol";
@@ -60,12 +59,13 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function isolatedDependencies(databaseName: string, root: Phase20QualityRoot): WorkoutAppRuntimeDependencies {
-  return Object.freeze({
-    ...productionWorkoutAppRuntimeDependencies,
-    openKernel: () => openSqliteKernel(databaseName),
-    migrate: async (kernel) => {
-      await productionWorkoutAppRuntimeDependencies.migrate(kernel);
+export function createPhase20QualityRuntimeDependencies(
+  databaseName: string,
+  root: Phase20QualityRoot,
+): WorkoutAppRuntimeDependencies {
+  return createStrictIsolatedWorkoutRuntimeDependencies({
+    databaseName,
+    prepareRuntime: async ({ kernel }) => {
       await seedPhase20QualityWorkloadFixture(kernel);
       if (root === "calendar") await seedPhase20CalendarQualityFixture(kernel);
       if (root === "progress") await seedPhase20ProgressQualityFixture(kernel);
@@ -713,7 +713,10 @@ export function Phase20QualityProbe({ request }: Readonly<{ request: Phase20Qual
   const dimensions = useWindowDimensions();
   const root = phase20QualityRootForOperation(request.operation);
   const databaseName = phase20QualityDatabaseName(request.nonce, root);
-  const dependencies = useMemo(() => isolatedDependencies(databaseName, root), [databaseName, root]);
+  const dependencies = useMemo(
+    () => createPhase20QualityRuntimeDependencies(databaseName, root),
+    [databaseName, root],
+  );
   const appearance = useMemo(() => createMemoryAppearanceStore(null), []);
   return <AppearanceProvider store={appearance}>
     <WorkoutAppRuntimeProvider dependencies={dependencies}>

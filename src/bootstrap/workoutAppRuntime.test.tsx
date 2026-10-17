@@ -1693,6 +1693,31 @@ describe("WorkoutAppRuntimeProvider", () => {
     view.unmount();
   });
 
+  it("checks cancellation after migration and before fixture mutation", async () => {
+    let releaseMigration: (() => void) | undefined;
+    const migration = new Promise<void>((resolve) => {
+      releaseMigration = resolve;
+    });
+    const prepareRuntime = jest.fn<
+      NonNullable<WorkoutAppRuntimeDependencies["prepareRuntime"]>
+    >(async () => undefined);
+    const runtimeDependencies = dependencies(runtimeRepository([noPlanView], [null]), {
+      migrate: jest.fn(() => migration),
+      prepareRuntime,
+      strictDisposal: true,
+    });
+    const view = await render(<RuntimeHarness dependencies={runtimeDependencies} />);
+
+    await waitFor(() => expect(runtimeDependencies.migrate).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => {
+      releaseMigration?.();
+      await migration;
+    });
+
+    expect(prepareRuntime).not.toHaveBeenCalled();
+  });
+
   it("delegates bounded Calendar range reads through the query-only foundation port", async () => {
     const range = Object.freeze({ events: Object.freeze([]), days: Object.freeze([]) }) as TrainingCalendarRange;
     const loadCalendarRange = jest.fn(async () => range);

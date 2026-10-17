@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import React from "react";
-import { AccessibilityInfo, Dimensions, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Dimensions, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { BottomSheet } from "./BottomSheet";
@@ -18,6 +18,15 @@ import {
 } from "./bottomSheetFocus";
 import { FocusablePressable, FocusClearanceProvider } from "./index";
 import { AppearanceProvider, radius, sizes } from "../theme";
+import { Phase20VisualContextProvider } from "../../testing/phase20VisualContext";
+
+const phase20VisualRequest = {
+  appearance: "Light",
+  configuration: "AP-L-C390-P-F100",
+  mode: "capture",
+  nonce: "a".repeat(32),
+  state: "BW-001",
+} as const;
 
 const mockRequestAndroidViewFocus = jest.fn<
   (nativeID: string) => Promise<boolean>
@@ -235,6 +244,50 @@ describe("BottomSheet", () => {
 
     expect(screen.getByTestId("bottom-sheet-header")).toHaveStyle({ paddingHorizontal: 14 });
     expect(StyleSheet.flatten(screen.getByTestId("bottom-sheet-scroll").props.contentContainerStyle)).toMatchObject({ paddingHorizontal: 14 });
+  });
+
+  it("never resets ordinary production sheet scroll during layout", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    await render(
+      <SheetTestProviders>
+        <BottomSheet heading="Production sheet" onCancel={jest.fn()} visible>
+          <Text>Sheet body</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent(screen.getByTestId("bottom-sheet-scroll"), "layout");
+    await fireEvent(screen.getByTestId("bottom-sheet-scroll"), "layout");
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("forces the initial visual evidence sheet scroll exactly once", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    await render(
+      <SheetTestProviders>
+        <Phase20VisualContextProvider
+          onScrollOffset={() => undefined}
+          request={phase20VisualRequest}
+        >
+          <BottomSheet heading="Evidence sheet" onCancel={jest.fn()} visible>
+            <Text>Sheet body</Text>
+          </BottomSheet>
+        </Phase20VisualContextProvider>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent(screen.getByTestId("bottom-sheet-scroll"), "layout");
+    await fireEvent(screen.getByTestId("bottom-sheet-scroll"), "layout");
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ animated: false, x: 0, y: 0 });
   });
 
   it("uses one no-write cancellation path for close, Back, Escape, and scrim, then restores the exact trigger", async () => {

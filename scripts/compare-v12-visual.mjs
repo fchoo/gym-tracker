@@ -121,6 +121,10 @@ function capture(root, runId, id, configurationId, { trustPublishedNative = fals
 }
 function readinessPass(value, state) {
   const ready = value?.readiness;
+  const nativeFocusResourceId = value?.native_focus?.resource_id;
+  const nativeFocusMatchesTarget = typeof nativeFocusResourceId === "string"
+    && (nativeFocusResourceId === state.readiness.focus.target
+      || nativeFocusResourceId.endsWith(`/${state.readiness.focus.target}`));
   const exactChecks = (actual, expected, key = "value") => Array.isArray(actual) && actual.length === expected.length
     && actual.every((entry, index) => entry?.[key] === expected[index]?.[key] && entry.matched === true);
   if (!value || value.native_execution !== "EXECUTED" || value.state_id !== state.id || ready?.status !== state.readiness.status
@@ -130,7 +134,10 @@ function readinessPass(value, state) {
     || ready.actions.some((entry, index) => entry.id !== state.readiness.actions[index].id || entry.label !== state.readiness.actions[index].label || entry.order !== index || entry.matched !== true || entry.enabled !== true)
     || !Array.isArray(ready.order) || ready.order.length !== state.readiness.order.length || ready.order.some((entry, index) => entry.value !== state.readiness.order[index] || entry.observed_order < 0 || index > 0 && entry.observed_order < ready.order[index - 1].observed_order)
     || !exactChecks(ready.non_color, state.readiness.non_color.map((value) => ({ value })))
-    || ready.focus?.target !== state.readiness.focus.target || ready.focus.matched !== true || ready.focus.focusable !== true
+    || state.readiness.focus.required !== true
+    || ready.focus?.target !== state.readiness.focus.target || ready.focus.matched !== true
+    || ready.focus.focusable !== true || ready.focus.focused !== true
+    || !nativeFocusMatchesTarget
     || !Array.isArray(value.targets) || value.targets.length === 0 || value.targets.some((target) => !Number.isFinite(target?.width_dp) || target.width_dp < 48 || !Number.isFinite(target?.height_dp) || target.height_dp < 48 || target.overlap !== false)) fail("observation_invalid");
   validateSourceReceipt(ready.source_receipt, state);
   const source = state.reference.kind === "retained_png" ? state.reference.source : state.reference;

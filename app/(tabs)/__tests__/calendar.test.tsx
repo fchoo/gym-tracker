@@ -15,6 +15,7 @@ import React from "react";
 const mockPush = jest.fn();
 const mockConfigurePhase16CalendarTestControls = jest.fn();
 const mockConfigurePhase20CalendarObservationCollector = jest.fn();
+const mockUseCalendarRangeReadPort = jest.fn(() => ({ loadCalendarRange: jest.fn() }));
 let mockLocalSearchParams: Readonly<Record<string, string | readonly string[] | undefined>> = {};
 let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;
@@ -45,6 +46,10 @@ jest.mock("../../../src/bootstrap/phase20CalendarObservation", () => {
 });
 
 jest.mock("expo-router", () => ({
+  Redirect: () => {
+    const { View } = require("react-native") as typeof import("react-native");
+    return <View testID="calendar-evidence-disabled" />;
+  },
   router: { push: (...args: readonly unknown[]) => mockPush(...args) },
   useFocusEffect: () => undefined,
   useLocalSearchParams: () => mockLocalSearchParams,
@@ -60,7 +65,7 @@ jest.mock("../../../src/bootstrap/phase16CalendarTestControls", () => {
 });
 
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
-  useCalendarRangeReadPort: () => ({ loadCalendarRange: jest.fn() }),
+  useCalendarRangeReadPort: () => mockUseCalendarRangeReadPort(),
 }));
 
 jest.mock("../../../src/ui/shell/AppRootShell", () => ({
@@ -136,6 +141,7 @@ describe("CalendarRoute", () => {
     mockPush.mockReset();
     mockConfigurePhase16CalendarTestControls.mockReset();
     mockConfigurePhase20CalendarObservationCollector.mockReset();
+    mockUseCalendarRangeReadPort.mockClear();
     mockLocalSearchParams = {};
     mockBuildProfile = "development-test";
     mockNativeContractsEnabled = true;
@@ -172,9 +178,24 @@ describe("CalendarRoute", () => {
       "v12-cal-strength-complete", "v12-cal-strength-partial", "v12-cal-strength-extra", "v12-cal-strength-planned",
       "v12-cal-running-planned", "v12-cal-running-imported",
     ]);
+    expect(mockUseCalendarRangeReadPort).not.toHaveBeenCalled();
   });
 
-  it("rejects partial or non-v1.2 Phase 20 route identities", async () => {
+  it("fails a malformed Phase 20 evidence deep link closed before reading the app runtime", async () => {
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockLocalSearchParams = {
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "short",
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+
+    await render(<CalendarRoute />);
+
+    expect(screen.getByTestId("calendar-evidence-disabled")).toBeOnTheScreen();
+    expect(mockUseCalendarRangeReadPort).not.toHaveBeenCalled();
+  });
+
+  it("fails partial or non-v1.2 Phase 20 route identities closed", async () => {
     mockNativeContractSuite = "v1.2-acceptance";
     mockLocalSearchParams = {
       phase20CalendarStage: "drag-forward-25",
@@ -183,7 +204,9 @@ describe("CalendarRoute", () => {
       phase20CalendarFlowRevision: "calendar-flow-r35-real-v1",
     };
     const rendered = await render(<CalendarRoute />);
-    expect(mockConfigurePhase20CalendarObservationCollector).toHaveBeenLastCalledWith(expect.objectContaining({ request: null }));
+    expect(screen.getByTestId("calendar-evidence-disabled")).toBeOnTheScreen();
+    expect(mockConfigurePhase20CalendarObservationCollector).not.toHaveBeenCalled();
+    expect(mockUseCalendarRangeReadPort).not.toHaveBeenCalled();
 
     mockNativeContractSuite = "phase16-calendar";
     mockLocalSearchParams = {
@@ -193,7 +216,9 @@ describe("CalendarRoute", () => {
       phase20CalendarFlowRevision: "calendar-flow-r35-real-v1",
     };
     await rendered.rerender(<CalendarRoute />);
-    expect(mockConfigurePhase20CalendarObservationCollector).toHaveBeenLastCalledWith(expect.objectContaining({ request: null }));
+    expect(screen.getByTestId("calendar-evidence-disabled")).toBeOnTheScreen();
+    expect(mockConfigurePhase20CalendarObservationCollector).not.toHaveBeenCalled();
+    expect(mockUseCalendarRangeReadPort).not.toHaveBeenCalled();
   });
 
   it("reads only a scalar known diagnostic stage from Expo Router", async () => {

@@ -1,6 +1,7 @@
 import React from "react";
 import Constants from "expo-constants";
 import {
+  Redirect,
   router,
   useFocusEffect,
   useLocalSearchParams,
@@ -43,6 +44,7 @@ import {
   phase20CalendarFixtureRequestFromNativeContract,
   phase20CalendarProbeReceiptRequestFromNativeContract,
 } from "../../src/testing/phase20CalendarFixture";
+import { phase20CalendarEvidencePathRequested } from "../../src/testing/phase20CalendarRuntime";
 
 function routeId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -60,13 +62,7 @@ function calendarQuery(returnEventId: string | undefined, extra: readonly [strin
   return entries.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
 }
 
-export default function CalendarRoute() {
-  const settingsActionNativeID = rootSettingsTriggerNativeID("calendar");
-  const headingRef = useRootHeadingRef("calendar");
-  const settingsActionRef = React.useRef(null);
-  const rootSettings = useRootSettingsController();
-  const calendarRead = useCalendarRangeReadPort();
-  const routeParams = useLocalSearchParams<{
+type CalendarRouteParams = Readonly<{
     phase16CalendarStage?: string | string[];
     phase16CalendarDiagnostics?: string | string[];
     querySamples?: string | string[];
@@ -84,18 +80,26 @@ export default function CalendarRoute() {
     phase20CalendarEvidenceId?: string | string[];
     phase20CalendarProbe?: string | string[];
     phase20CalendarProbeReceipt?: string | string[];
-  }>();
+}>;
+
+type NativeIdentity = Readonly<{
+  packageName: string | undefined;
+  buildProfile: string | undefined;
+  nativeContractsEnabled: boolean;
+  suite: string | undefined;
+}>;
+
+export default function CalendarRoute() {
+  const routeParams = useLocalSearchParams<CalendarRouteParams>();
   const extra = Constants.expoConfig?.extra;
   const nativeIdentity = {
-    packageName: Constants.expoConfig?.android?.package,
+    packageName: typeof Constants.expoConfig?.android?.package === "string"
+      ? Constants.expoConfig.android.package
+      : undefined,
     buildProfile: typeof extra?.buildProfile === "string" ? extra.buildProfile : undefined,
     nativeContractsEnabled: extra?.nativeContractsEnabled === true,
     suite: typeof extra?.nativeContractSuite === "string" ? extra.nativeContractSuite : undefined,
   } as const;
-  const phase16Stage = phase16CalendarStageFromNativeContract({
-    ...nativeIdentity,
-    stage: scalarRouteParam(routeParams.phase16CalendarStage),
-  }) ?? undefined;
   const phase20Request = phase20CalendarRequestFromNativeContract({
     ...nativeIdentity,
     stage: scalarRouteParam(routeParams.phase20CalendarStage),
@@ -110,9 +114,71 @@ export default function CalendarRoute() {
     requirementsSha256: scalarRouteParam(routeParams.phase20CalendarRequirementsSha256),
   });
   const phase20ProbeId = scalarRouteParam(routeParams.phase20CalendarProbe);
-  const calendarRangeRead = React.useMemo(() => phase20FixtureRequested
-    ? createPhase20CalendarFixtureReadPort(phase20ProbeId)
-    : calendarRead, [calendarRead, phase20FixtureRequested, phase20ProbeId]);
+  const calendarRangeRead = React.useMemo(
+    () => createPhase20CalendarFixtureReadPort(phase20ProbeId),
+    [phase20ProbeId],
+  );
+  if (phase20CalendarEvidencePathRequested(routeParams)) {
+    if (!phase20FixtureRequested) return <Redirect href="/" />;
+    return (
+      <CalendarRouteContent
+        calendarRangeRead={calendarRangeRead}
+        nativeIdentity={nativeIdentity}
+        phase20FixtureRequested
+        phase20Request={phase20Request}
+        routeParams={routeParams}
+      />
+    );
+  }
+  return (
+    <ProductionCalendarRouteContent
+      nativeIdentity={nativeIdentity}
+      routeParams={routeParams}
+    />
+  );
+}
+
+function ProductionCalendarRouteContent({
+  nativeIdentity,
+  routeParams,
+}: Readonly<{
+  nativeIdentity: NativeIdentity;
+  routeParams: CalendarRouteParams;
+}>) {
+  const calendarRead = useCalendarRangeReadPort();
+  return (
+    <CalendarRouteContent
+      calendarRangeRead={calendarRead}
+      nativeIdentity={nativeIdentity}
+      phase20FixtureRequested={false}
+      phase20Request={null}
+      routeParams={routeParams}
+    />
+  );
+}
+
+function CalendarRouteContent({
+  calendarRangeRead,
+  nativeIdentity,
+  phase20FixtureRequested,
+  phase20Request,
+  routeParams,
+}: Readonly<{
+  calendarRangeRead: ReturnType<typeof useCalendarRangeReadPort>;
+  nativeIdentity: NativeIdentity;
+  phase20FixtureRequested: boolean;
+  phase20Request: ReturnType<typeof phase20CalendarRequestFromNativeContract>;
+  routeParams: CalendarRouteParams;
+}>) {
+  const settingsActionNativeID = rootSettingsTriggerNativeID("calendar");
+  const headingRef = useRootHeadingRef("calendar");
+  const settingsActionRef = React.useRef(null);
+  const rootSettings = useRootSettingsController();
+  const phase16Stage = phase16CalendarStageFromNativeContract({
+    ...nativeIdentity,
+    stage: scalarRouteParam(routeParams.phase16CalendarStage),
+  }) ?? undefined;
+  const phase20ProbeId = scalarRouteParam(routeParams.phase20CalendarProbe);
   const phase20ProbeReceipt = phase20CalendarProbeReceiptRequestFromNativeContract({
     ...nativeIdentity,
     fixtureId: scalarRouteParam(routeParams.phase20CalendarFixture),

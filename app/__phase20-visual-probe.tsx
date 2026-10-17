@@ -174,10 +174,21 @@ export default function Phase20VisualProbeRoute() {
     || extra?.nativeContractSuite !== "v1.2-acceptance"
     || request === null
     || state === null) return <Redirect href="/" />;
+  if (request.mode === "reset") {
+    return (
+      <Phase20VisualProbe
+        ready
+        request={request}
+        timerReceipt={null}
+      >
+        {null}
+      </Phase20VisualProbe>
+    );
+  }
   return (
     <RuntimeBoundProductionVisualState
       key={request.nonce}
-      ready={request.mode === "reset" || params.ready === request.nonce}
+      ready={params.ready === request.nonce}
       request={request}
       route={state.route}
     />

@@ -85,6 +85,7 @@ export function AdaptiveScreen({
 }: AdaptiveScreenProps) {
   const scrollViewRef = React.useRef<ScrollView>(null);
   const reportVisualScroll = usePhase20VisualScrollReporter();
+  const forcedEvidenceScrollRef = React.useRef(false);
   const previousScrollRestoreKeyRef = React.useRef(scrollRestoreKey);
   const completedMeasuredScrollKeysRef = React.useRef(new Set<string>());
   const { width: windowWidth } = useWindowDimensions();
@@ -99,6 +100,15 @@ export function AdaptiveScreen({
     reportVisualScroll?.({ native_id: scrollNativeID, x, y });
     onScroll?.(event);
   }, [onScroll, reportVisualScroll, scrollNativeID]);
+  const initializeEvidenceScroll = React.useCallback(() => {
+    if (reportVisualScroll === null || forcedEvidenceScrollRef.current) return;
+    forcedEvidenceScrollRef.current = true;
+    scrollViewRef.current?.scrollTo({
+      animated: false,
+      x: 0,
+      y: Number.isFinite(scrollOffset) ? Math.max(0, scrollOffset) : 0,
+    });
+  }, [reportVisualScroll, scrollOffset]);
 
   React.useEffect(() => {
     if (onRequestBack === undefined) {
@@ -212,7 +222,7 @@ export function AdaptiveScreen({
             ]}
             keyboardShouldPersistTaps="handled"
             nativeID={scrollNativeID}
-            onLayout={() => scrollViewRef.current?.scrollTo({ animated: false, x: 0, y: scrollOffset })}
+            onLayout={initializeEvidenceScroll}
             onScroll={handleScroll}
             refreshControl={onRefresh === undefined ? undefined : (
               <RefreshControl

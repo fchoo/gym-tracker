@@ -1,7 +1,7 @@
 import React from "react";
 import Constants from "expo-constants";
 import { useFonts } from "expo-font";
-import { Stack, useLocalSearchParams, usePathname } from "expo-router";
+import { Redirect, Stack, useLocalSearchParams, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
   Keyboard,
@@ -48,6 +48,11 @@ import {
   PHASE20_VISUAL_ROUTE,
   phase20VisualGate,
 } from "../src/testing/phase20VisualRequest";
+import {
+  createPhase20CalendarRuntimeDependencies,
+  phase20CalendarEvidencePathRequested,
+  resolvePhase20CalendarIsolatedRuntime,
+} from "../src/testing/phase20CalendarRuntime";
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
@@ -348,6 +353,32 @@ function RootLayoutAttempt({
   const pathname = usePathname();
   const searchParams = useLocalSearchParams() as Readonly<Record<string, unknown>>;
   const phase20VisualPath = pathname === PHASE20_VISUAL_ROUTE;
+  const attendedPreviewPath = pathname === "/__phase2-attended-preview";
+  const phase6GestureSmokePath = pathname === "/__phase6-gesture-smoke";
+  const phase12CleanupPath = pathname === "/__phase12-google-cleanup";
+  const phase12GoogleAuthSmokePath = pathname === "/__phase12-google-auth-smoke";
+  const phase18GarminProofPath = pathname === "/__phase18-garmin-proof";
+  const phase18GarminAdversarialPath = pathname === "/__phase18-garmin-adversarial";
+  const v12ProductionGarminPath = pathname === "/__v12-production-garmin";
+  const v12NativeContractsPath = pathname === "/__native-contracts";
+  const phase20QualityPath = pathname === "/__phase20-quality-probe";
+  const phase20CalendarEvidencePath = phase20CalendarEvidencePathRequested(searchParams);
+  const nativeIdentity = {
+    packageName: Constants.expoConfig?.android?.package,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    nativeContractsEnabled,
+    suite: nativeContractSuite,
+  } as const;
+  const phase20CalendarRuntime = resolvePhase20CalendarIsolatedRuntime(
+    nativeIdentity,
+    searchParams,
+  );
+  const phase20CalendarDependencies = React.useMemo(
+    () => phase20CalendarRuntime === null
+      ? null
+      : createPhase20CalendarRuntimeDependencies(phase20CalendarRuntime.databaseName),
+    [phase20CalendarRuntime?.databaseName],
+  );
   const phase20VisualRequest = phase20VisualGate({
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
     nativeContractsEnabled,
@@ -370,45 +401,25 @@ function RootLayoutAttempt({
     [phase20VisualRequest?.appearance, phase20VisualRequest?.nonce],
   );
   const { width } = useWindowDimensions();
-  const attendedPreviewEnabled = phase14FontProofEnabled
-    || nativeContractsEnabled && pathname === "/__phase2-attended-preview";
-  const phase6GestureSmokeEnabled =
-    nativeContractsEnabled && pathname === "/__phase6-gesture-smoke";
-  const phase12CleanupEnabled =
-    nativeContractsEnabled && pathname === "/__phase12-google-cleanup";
-  const phase12GoogleAuthSmokeEnabled =
-    nativeContractsEnabled && pathname === "/__phase12-google-auth-smoke";
-  const phase18GarminProofEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && pathname === "/__phase18-garmin-proof";
-  const phase18GarminAdversarialEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && pathname === "/__phase18-garmin-adversarial";
-  const v12ProductionGarminEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && Constants.expoConfig?.extra?.buildProfile === "development-test"
-    && Constants.expoConfig?.android?.package === "com.fchoo.gymtracker.devtest"
-    && pathname === "/__v12-production-garmin";
-  const v12NativeContractsEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && pathname === "/__native-contracts";
-  const phase20QualityEnabled = nativeContractsEnabled
-    && nativeContractSuite === "v1.2-acceptance"
-    && pathname === "/__phase20-quality-probe";
-
+  const attendedPreviewEnabled = phase14FontProofEnabled || attendedPreviewPath;
   const isolatedNativeRoute = attendedPreviewEnabled
-    || phase6GestureSmokeEnabled
-    || phase12CleanupEnabled
-    || phase12GoogleAuthSmokeEnabled
-    || phase18GarminProofEnabled
-    || phase18GarminAdversarialEnabled
-    || v12NativeContractsEnabled
+    || phase6GestureSmokePath
+    || phase12CleanupPath
+    || phase12GoogleAuthSmokePath
+    || phase18GarminProofPath
+    || phase18GarminAdversarialPath
+    || v12NativeContractsPath
     || phase20VisualPath
-    || phase20QualityEnabled
-    || v12ProductionGarminEnabled;
+    || phase20QualityPath
+    || v12ProductionGarminPath
+    || phase20CalendarEvidencePath;
+  const failClosedFontRoute = phase20VisualPath
+    || phase20QualityPath
+    || v12ProductionGarminPath
+    || phase20CalendarEvidencePath;
   const fontLoadingAppearanceStore = attendedPreviewEnabled
     ? attendedPreviewAppearanceStore
-    : phase6GestureSmokeEnabled
+    : phase6GestureSmokePath
       ? phase6GestureSmokeAppearanceStore
       : phase20VisualPath
         ? phase20VisualAppearanceStore
@@ -419,7 +430,7 @@ function RootLayoutAttempt({
     ? productionAppearanceStore.read()
     : null;
 
-  if (!isolatedNativeRoute && !fontsLoaded && fontError !== null) {
+  if ((!isolatedNativeRoute || failClosedFontRoute) && !fontsLoaded && fontError !== null) {
     return <PreRuntimeFailure category="font" onRetry={onRetryPreRuntime} />;
   }
 
@@ -457,7 +468,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase6GestureSmokeEnabled) {
+  if (phase6GestureSmokePath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -469,7 +480,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase12CleanupEnabled) {
+  if (phase12CleanupPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -481,7 +492,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase12GoogleAuthSmokeEnabled) {
+  if (phase12GoogleAuthSmokePath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -493,7 +504,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase18GarminProofEnabled) {
+  if (phase18GarminProofPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -505,7 +516,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase18GarminAdversarialEnabled) {
+  if (phase18GarminAdversarialPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -517,7 +528,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (v12ProductionGarminEnabled) {
+  if (v12ProductionGarminPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -529,7 +540,7 @@ function RootLayoutAttempt({
     );
   }
 
-  if (v12NativeContractsEnabled) {
+  if (v12NativeContractsPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
@@ -561,12 +572,32 @@ function RootLayoutAttempt({
     );
   }
 
-  if (phase20QualityEnabled) {
+  if (phase20QualityPath) {
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
           <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase20QualityNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase20CalendarEvidencePath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            {phase20CalendarDependencies === null ? (
+              <Redirect href="/" />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={phase20CalendarDependencies}>
+                <ProductionToastBoundary>
+                  <RootNavigator />
+                </ProductionToastBoundary>
+              </WorkoutAppRuntimeProvider>
+            )}
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
