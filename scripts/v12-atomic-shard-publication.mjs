@@ -6,8 +6,9 @@ const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._-]*$/u;
 const HASH = /^[a-f0-9]{64}$/u;
 const EXECUTION_ORIGIN_KEYS = Object.freeze([
-  "schema_version", "kind", "default_launcher", "test_only",
-  "adapter_source_sha256", "launcher_source_sha256", "request_attestation_sha256",
+  "schema_version", "action", "kind", "default_launcher", "test_only",
+  "adapter_source_sha256", "launcher_source_sha256", "domain_source_sha256",
+  "request_attestation_sha256",
 ]);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 function fail(code) { throw new Error(`v12_atomic_publish_${code}`); }
@@ -63,11 +64,12 @@ export function validateV12ExecutionOrigin(value) {
     || Object.keys(value).length !== EXECUTION_ORIGIN_KEYS.length
     || EXECUTION_ORIGIN_KEYS.some((key) => !Object.hasOwn(value, key))
     || value.schema_version !== 1
+    || typeof value.action !== "string" || !/^[a-z][a-z0-9-]*$/u.test(value.action)
     || !["production-default-launcher", "test-fixture"].includes(value.kind)
     || typeof value.default_launcher !== "boolean" || typeof value.test_only !== "boolean"
     || value.default_launcher === value.test_only
     || (value.kind === "production-default-launcher") !== value.default_launcher
-    || ![value.adapter_source_sha256, value.launcher_source_sha256, value.request_attestation_sha256]
+    || ![value.adapter_source_sha256, value.launcher_source_sha256, value.domain_source_sha256, value.request_attestation_sha256]
       .every((digest) => HASH.test(digest ?? ""))) fail("execution_origin_invalid");
   return Object.freeze({ ...value });
 }

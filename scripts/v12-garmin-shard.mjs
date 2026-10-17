@@ -146,14 +146,18 @@ export async function executeV12GarminShardCli(args = process.argv.slice(2), dep
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const adapter = createV12NativeAdapter();
-  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  const args = process.argv.slice(2); const runId = args[1]; const writes = []; let executionOrigin;
   executeV12GarminShardCli(args, {
     acquireLease: adapter.acquireLease, releaseLease: adapter.releaseLease, snapshotSettings: adapter.snapshotSettings,
-    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => adapter.executeGarmin(lease, settings, { run_id: runId }),
+    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings) => {
+      const result = adapter.executeGarmin(lease, settings, { run_id: runId });
+      executionOrigin = result.execution_origin;
+      return result;
+    },
     writeImmutable: (file, value) => writes.push([file, value]),
     writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/garmin/failure.json`, value]),
   }).then((value) => {
-    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "garmin", executionOrigin: adapter.executionOrigin, produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
+    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "garmin", executionOrigin, produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
     process.stdout.write(`${JSON.stringify(value)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? "")) { try { recordV12AtomicFailure({ runId, shard: "garmin", error }); } catch { /* the first immutable receipt wins */ } }

@@ -51,7 +51,7 @@ import {
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
-const phase12CleanupAppearanceStore = createMemoryAppearanceStore();
+const isolatedNativeAppearanceStore = createMemoryAppearanceStore();
 const APPROVED_ROOT_HEADER_HEIGHT = 56;
 const APPROVED_ROOT_NAVIGATION_HEIGHT = 74;
 
@@ -389,6 +389,15 @@ function RootLayoutAttempt({
     || v12NativeContractsEnabled
     || phase20VisualPath
     || phase20QualityEnabled;
+  const fontLoadingAppearanceStore = attendedPreviewEnabled
+    ? attendedPreviewAppearanceStore
+    : phase6GestureSmokeEnabled
+      ? phase6GestureSmokeAppearanceStore
+      : phase20VisualPath
+        ? phase20VisualAppearanceStore
+        : isolatedNativeRoute
+          ? isolatedNativeAppearanceStore
+          : productionAppearanceStore;
   const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
     ? productionAppearanceStore.read()
     : null;
@@ -411,17 +420,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={attendedPreviewEnabled
-            ? attendedPreviewAppearanceStore
-            : phase6GestureSmokeEnabled
-              ? phase6GestureSmokeAppearanceStore
-              : phase12CleanupEnabled
-                  || phase12GoogleAuthSmokeEnabled
-                  || phase18GarminProofEnabled
-                  || phase18GarminAdversarialEnabled
-                ? phase12CleanupAppearanceStore
-                : productionAppearanceStore}
-          >
+          <AppearanceProvider store={fontLoadingAppearanceStore}>
             <AppLoadingShell width={width} />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -457,7 +456,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase12CleanupNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -469,7 +468,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase12GoogleAuthSmokeNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -481,7 +480,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase18GarminProofNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -493,7 +492,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase18GarminAdversarialNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -505,7 +504,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <NativeContractsNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
@@ -537,7 +536,7 @@ function RootLayoutAttempt({
     return (
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
-          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase20QualityNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>

@@ -27,7 +27,7 @@ const FLOW = "maestro/v1.2/calendar.yaml";
 const FLOW_REVISION = V12_CALENDAR_FLOW_REVISION;
 export const V12_CALENDAR_SHARD_STAGE_IDS = V12_CALENDAR_STAGE_IDS;
 const ARTIFACTS = Object.freeze(["calendar-transitions.json", "calendar-requirements.json", "maestro/calendar.xml", "maestro/calendar-requirements.xml", "calendar/artifact-registry.json"]);
-const ORIGIN_KEYS = Object.freeze(["schema_version", "kind", "default_launcher", "test_only", "adapter_source_sha256", "launcher_source_sha256", "request_attestation_sha256"]);
+const ORIGIN_KEYS = Object.freeze(["schema_version", "action", "kind", "default_launcher", "test_only", "adapter_source_sha256", "launcher_source_sha256", "domain_source_sha256", "request_attestation_sha256"]);
 function fail(code) { throw new Error(`calendar_${code}`); }
 function record(value, code) { if (value === null || typeof value !== "object" || Array.isArray(value)) fail(code); return value; }
 function exactKeys(value, keys) { return Object.keys(record(value, "schema_invalid")).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
@@ -40,7 +40,8 @@ function identity(manifest, runId, dependencies) { record(manifest, "build_inval
 
 function validateExecutionOrigin(value, allowTestFixture = false) {
   if (!exactKeys(value, ORIGIN_KEYS) || value.schema_version !== 1
-    || ![value.adapter_source_sha256, value.launcher_source_sha256, value.request_attestation_sha256].every((entry) => SHA256.test(entry ?? ""))) fail("native_origin_invalid");
+    || value.action !== "calendar"
+    || ![value.adapter_source_sha256, value.launcher_source_sha256, value.domain_source_sha256, value.request_attestation_sha256].every((entry) => SHA256.test(entry ?? ""))) fail("native_origin_invalid");
   const production = value.kind === "production-default-launcher" && value.default_launcher === true && value.test_only === false;
   const testOnly = value.kind === "test-fixture" && value.default_launcher === false && value.test_only === true;
   if (!production && !(allowTestFixture && testOnly)) fail("native_origin_invalid");
@@ -243,14 +244,18 @@ export async function executeV12CalendarShardCli(args = process.argv.slice(2), d
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const adapter = createV12NativeAdapter();
-  const args = process.argv.slice(2); const runId = args[1]; const writes = [];
+  const args = process.argv.slice(2); const runId = args[1]; const writes = []; let executionOrigin;
   executeV12CalendarShardCli(args, {
     acquireLease: adapter.acquireLease, releaseLease: adapter.releaseLease, snapshotSettings: adapter.snapshotSettings,
-    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings, payload) => adapter.executeCalendar(lease, settings, payload),
+    restoreSettings: adapter.restoreSettings, executeNative: (lease, settings, payload) => {
+      const result = adapter.executeCalendar(lease, settings, payload);
+      executionOrigin = result.execution_origin;
+      return result;
+    },
     writeImmutable: (file, value) => writes.push([file, value]),
     writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/calendar-failure.json`, value]),
   }).then((value) => {
-    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "calendar", executionOrigin: adapter.executionOrigin, produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
+    if (args[2] === "--execute") publishV12AtomicShard({ runId, shard: "calendar", executionOrigin, produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)) });
     process.stdout.write(`${JSON.stringify(value)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? "")) { try { recordV12AtomicFailure({ runId, shard: "calendar", error }); } catch { /* the first immutable receipt wins */ } }

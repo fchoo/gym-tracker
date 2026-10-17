@@ -285,7 +285,8 @@ export function runV12VisualCaptureCli(args = process.argv.slice(2), io = proces
     if (command === "--verify") verifyV12VisualCapture({ runId });
     else {
       const adapter = createV12NativeAdapter();
-      publishV12AtomicShard({ runId, shard: "visual", executionOrigin: adapter.executionOrigin, produce: ({ write }) => {
+      const visualAction = process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? "visual-capture-batch" : "visual-capture";
+      publishV12AtomicShard({ runId, shard: "visual", executionOrigin: () => adapter.executionOrigin(visualAction), produce: ({ write }) => {
       const testWindow = process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" ? 512 : V12_VISUAL_BATCH_WINDOW;
       return executeLiveV12VisualCapture({ runId, capture: adapter.capture, ...(process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? { captureAll: adapter.captureBatch, batchWindow: testWindow } : {}), write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
       } });

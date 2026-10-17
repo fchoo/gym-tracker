@@ -479,6 +479,38 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: "Phase 20 visual",
+      pathname: "/__phase20-visual-probe",
+      params: {
+        state: "BW-001",
+        configuration: "AP-L-C390-P-F100",
+        fixture: "v12-synthetic-fixtures-r18",
+        nonce: "a".repeat(32),
+        mode: "capture",
+      },
+    },
+    { label: "Phase 20 quality", pathname: "/__phase20-quality-probe", params: {} },
+    { label: "v1.2 native contracts", pathname: "/__native-contracts", params: {} },
+    { label: "Garmin evidence", pathname: "/__phase18-garmin-proof", params: {} },
+  ])(
+    "keeps the $label route off production preferences during cold font loading",
+    async ({ pathname, params }) => {
+      mockFontsLoaded = false;
+      mockNativeContractSuite = "v1.2-acceptance";
+      mockPathname = pathname;
+      mockSearchParams = params;
+
+      await render(<RootLayout />);
+
+      expect(screen.getByTestId("app-loading-shell")).toBeOnTheScreen();
+      expect(mockPreviewAppearanceRead).toHaveBeenCalledTimes(1);
+      expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+      expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps production runtime initialization when the preview path lacks the exact flag", async () => {
     mockNativeContractsEnabled = false;
 

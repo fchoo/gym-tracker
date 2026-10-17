@@ -95,9 +95,22 @@ function completion(root, shard) {
   assert.equal(manifest.identity.evidence_origin, "test");
   assert.ok(Array.isArray(manifest.members) && manifest.members.length > 0);
   if (["sqlite", "recovery", "garmin", "calendar", "visual", "comparison", "accessibility", "performance"].includes(shard)) {
+    const expectedAction = {
+      sqlite: "sqlite",
+      recovery: "recovery",
+      garmin: "garmin",
+      calendar: "calendar",
+      visual: "visual-capture-batch",
+      comparison: "visual-compare",
+      accessibility: "accessibility",
+      performance: "performance",
+    }[shard];
     assert.equal(manifest.execution_origin?.kind, "test-fixture");
+    assert.equal(manifest.execution_origin?.action, expectedAction);
     assert.equal(manifest.execution_origin?.default_launcher, false);
     assert.equal(manifest.execution_origin?.test_only, true);
+    assert.match(manifest.execution_origin?.domain_source_sha256 ?? "", /^[a-f0-9]{64}$/u);
+    assert.equal(manifest.execution_origin.domain_source_sha256, manifest.execution_origin.launcher_source_sha256);
   }
   assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, ".staging")), false, `${shard} left staging behind`);
   return manifest;
@@ -354,7 +367,7 @@ async function assertSourceMutations(t, root) {
     await mutation(`Calendar stage retains ${state}`, "CAL-07", state, ["calendar"], edit => edit("calendar-transitions.json", value => { value.stages[0].status = state; value.junit_cases[0].status = state; return value; }));
     await mutation(`Garmin group retains ${state}`, "GAR-04", state, ["garmin"], edit => edit("garmin/packaging-auth.json", value => { value.observation.status = state; return value; }));
     await mutation(`accessibility observation rejects non-producer ${state}`, "VER-04", state, ["accessibility"], edit => edit("semantics/accessibility.json", value => { const observation = value.observations[0]; if (state === "FAIL") observation.targets[0].non_color_cue = false; if (state === "NOT_RUN") observation.native_execution = "NOT_RUN"; if (state === "REVIEW_REQUIRED") delete observation.restored_settings; return value; }), { invalid: true });
-    await mutation(`performance warm launch derives ${state}`, "PRO-01", state, ["performance"], edit => edit("performance.json", value => { const samples = state === "FAIL" ? Array(20).fill(1001) : state === "NOT_RUN" ? [] : [100]; value.observation.raw_samples.warm_launch_to_interactive_ms = samples; value.observation.raw_samples.native_receipts.timings.warm_launch_to_interactive_ms.spans = samples.map((duration, index) => ({ start_ms: index * 2000, end_ms: index * 2000 + duration })); value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: samples.length ? Math.max(...samples) : 0 }; return value; }), { invalid: state !== "FAIL" });
+    await mutation(`performance warm launch derives ${state}`, "PRO-01", state, ["performance"], edit => edit("performance.json", value => { const samples = state === "FAIL" ? Array(20).fill(1001) : state === "NOT_RUN" ? [] : [100]; value.observation.raw_samples.warm_launch_to_interactive_ms = samples; value.observation.raw_samples.native_receipts.timings.warm_launch_to_interactive_ms.spans = samples.map((duration, index) => ({ start_ms: index * 2000, end_ms: index * 2000 + duration })); value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: samples.length ? Math.max(...samples) : 0 }; if (state === "FAIL") { value.observation.observation_state = "FAIL"; value.observation.summary.classification = "FAIL"; value.observation.summary.gates.warm_launch_to_interactive = { result: "FAIL", samples: 20, measured: 1001, limit: 1000, metric: "max" }; } return value; }), { invalid: state !== "FAIL" });
     await mutation(`Recovery cut retains ${state}`, "VER-08", state, ["recovery"], edit => {
       let report;
       edit("maestro/recovery.xml", xml => { report = xml.replace('</properties>', `</properties>${state === 'FAIL' ? '<error/>' : '<skipped/>'}`); return report; }, true);

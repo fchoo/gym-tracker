@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import {
   readV12FinalDeviceState,
   validateV12FinalNativeIdentity,
   validateV12FinalProductionIdentity,
+  validateV12ProductionPublicationOrigins,
 } from "./verify-v12-native-evidence.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
 
@@ -57,6 +58,59 @@ test("unified preflight execution is explicitly source-only and never falls thro
     () => executeV12EvidenceCli(["--run", RUN_ID, "--mode", "preseal", "--no-final-write"], { root: process.cwd() }),
     /v12_preflight_/u,
   );
+});
+
+test("preseal binds every adapter shard to its expected action and production domain bytes", (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-origin-preseal-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const sourceFiles = {
+    "scripts/v12-native-adapter.mjs": "adapter\n",
+    "scripts/v12-production-native-adapter-launcher.mjs": "launcher\n",
+    "scripts/v12-production-native-runtime.mjs": "runtime\n",
+    "scripts/v12-production-native-domain-actions.mjs": "domain\n",
+    "scripts/v12-production-native-calendar-action.mjs": "calendar\n",
+    "scripts/v12-production-native-visual-actions.mjs": "visual\n",
+    "scripts/v12-production-native-quality-actions.mjs": "quality\n",
+  };
+  for (const [relative, bytes] of Object.entries(sourceFiles)) {
+    mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
+    writeFileSync(path.join(root, relative), bytes);
+  }
+  const digest = (relative) => createHash("sha256").update(sourceFiles[relative]).digest("hex");
+  const contracts = {
+    sqlite: ["sqlite", "scripts/v12-production-native-runtime.mjs"],
+    recovery: ["recovery", "scripts/v12-production-native-domain-actions.mjs"],
+    garmin: ["garmin", "scripts/v12-production-native-domain-actions.mjs"],
+    calendar: ["calendar", "scripts/v12-production-native-calendar-action.mjs"],
+    visual: ["visual-capture", "scripts/v12-production-native-visual-actions.mjs"],
+    comparison: ["visual-compare", "scripts/v12-production-native-visual-actions.mjs"],
+    accessibility: ["accessibility", "scripts/v12-production-native-quality-actions.mjs"],
+    performance: ["performance", "scripts/v12-production-native-quality-actions.mjs"],
+  };
+  const publicationDirectory = path.join(root, "artifacts/native/v1.2", RUN_ID, "publication");
+  mkdirSync(publicationDirectory, { recursive: true });
+  for (const [shard, [action, domain]] of Object.entries(contracts)) {
+    writeFileSync(path.join(publicationDirectory, `${shard}.json`), JSON.stringify({
+      execution_origin: {
+        schema_version: 1,
+        action,
+        kind: "production-default-launcher",
+        default_launcher: true,
+        test_only: false,
+        adapter_source_sha256: digest("scripts/v12-native-adapter.mjs"),
+        launcher_source_sha256: digest("scripts/v12-production-native-adapter-launcher.mjs"),
+        domain_source_sha256: digest(domain),
+        request_attestation_sha256: h("f"),
+      },
+    }));
+  }
+
+  assert.equal(validateV12ProductionPublicationOrigins(root, RUN_ID), true);
+  const calendarPath = path.join(publicationDirectory, "calendar.json");
+  const calendar = JSON.parse(readFileSync(calendarPath, "utf8"));
+  calendar.execution_origin.action = "release-lease";
+  writeFileSync(calendarPath, JSON.stringify(calendar));
+  assert.throws(() => validateV12ProductionPublicationOrigins(root, RUN_ID), /v12_preflight_adapter_provenance_stale/u);
 });
 
 test("final native identity requires current source, retained APK bytes, signature, installed bytes, settings, and device", () => {

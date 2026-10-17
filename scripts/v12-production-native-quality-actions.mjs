@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
-import { executeV12PerformanceShard } from "./v12-performance-shard.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "./benchmark-v12-interactions.mjs";
 import { V12_QUALITY_RUNTIME_SETTINGS } from "./v12-device-settings-contract.mjs";
 import { V12_NATIVE_ADB_CALL_TIMEOUT_MS, V12_QUALITY_PRODUCER_TIMEOUT_MS } from "./v12-native-time-budgets.mjs";
@@ -246,10 +245,6 @@ function validateAccessibility(observations, identity) {
 
 function validatePerformance(performance, identity) {
   validateV12PerformanceProducer(performance, identity, V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, fail);
-  for (const [key, budget] of [["warm_launch_to_interactive_ms", V12_PERFORMANCE_BUDGETS.warm_launch_to_interactive], ["cold_launch_to_interactive_ms", V12_PERFORMANCE_BUDGETS.cold_launch_to_interactive]]) {
-    if (performance.samples[key].some((value) => value > budget.maximum_ms)) fail("performance_launch_budget_exceeded");
-  }
-  executeV12PerformanceShard({ identity, performance });
   return performance;
 }
 

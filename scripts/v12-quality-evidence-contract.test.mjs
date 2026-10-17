@@ -79,3 +79,31 @@ test("persisted performance writer and verifier apply the identical producer sch
   const stale = structuredClone(output); delete stale.observation.raw_samples.native_receipts.garmin_receipt;
   assert.throws(() => verifyV12PerformanceObservation({ runId, identity, readJson: () => stale }), /performance_native_receipts_invalid/u);
 });
+
+test("collector-path budget failures are published once as derived FAIL observations", () => {
+  const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
+  const identity = qualityIdentity();
+  const performance = performanceEvidence(identity);
+  performance.samples.warm_launch_to_interactive_ms[0] = 1001;
+  performance.samples.native_receipts.timings.warm_launch_to_interactive_ms.spans[0].end_ms = 11001;
+  const written = new Map();
+
+  const output = writeV12PerformanceObservation({
+    runId,
+    identity,
+    collect: () => performance,
+    write: (file, value) => {
+      assert.equal(written.has(file), false);
+      written.set(file, value);
+    },
+  });
+
+  assert.equal(written.size, 1);
+  assert.equal(output.observation.observation_state, "FAIL");
+  assert.equal(output.observation.summary.classification, "FAIL");
+  assert.equal(output.observation.summary.gates.warm_launch_to_interactive.result, "FAIL");
+  assert.deepEqual(
+    verifyV12PerformanceObservation({ runId, identity, readJson: (file) => written.get(file) }),
+    output.observation.summary,
+  );
+});

@@ -3,18 +3,20 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { V12_CALENDAR_STAGE_IDS } from "./v12-calendar-observation-contract.mjs";
-import { V12_CALENDAR_REQUIREMENT_PROBE_COUNT } from "./v12-calendar-requirement-map.mjs";
 import {
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_CALENDAR_ACTION_BUDGET,
+  V12_CALENDAR_COMMAND_GRAPH,
   V12_NATIVE_CLEANUP_BUDGET,
   V12_NATIVE_COMMAND_GRAPH,
   V12_NATIVE_LEASE_ACTION_BUDGETS,
   V12_QUALITY_ACTION_BUDGETS,
   V12_QUALITY_COMMAND_GRAPH,
+  V12_QUALITY_WAIT_GRAPH,
+  V12_RECOVERY_ACTION_BUDGET,
+  V12_RECOVERY_COMMAND_GRAPH,
   V12_SQLITE_PRODUCER_BOUND_MS,
-  V12_VISUAL_ACTION_WINDOW,
   V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
   V12_VISUAL_CLEANUP_BUDGET,
   V12_VISUAL_COMMAND_GRAPH,
@@ -25,11 +27,16 @@ import {
 export {
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_CALENDAR_ACTION_BUDGET,
+  V12_CALENDAR_COMMAND_GRAPH,
   V12_NATIVE_CLEANUP_BUDGET,
   V12_NATIVE_COMMAND_GRAPH,
   V12_NATIVE_LEASE_ACTION_BUDGETS,
   V12_QUALITY_ACTION_BUDGETS,
   V12_QUALITY_COMMAND_GRAPH,
+  V12_QUALITY_WAIT_GRAPH,
+  V12_RECOVERY_ACTION_BUDGET,
+  V12_RECOVERY_COMMAND_GRAPH,
   V12_SQLITE_PRODUCER_BOUND_MS,
   V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
   V12_VISUAL_CLEANUP_BUDGET,
@@ -42,13 +49,32 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const ADAPTER = fileURLToPath(import.meta.url);
 const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url));
+const NATIVE_RUNTIME = fileURLToPath(new URL("./v12-production-native-runtime.mjs", import.meta.url));
+const DOMAIN_ACTIONS = fileURLToPath(new URL("./v12-production-native-domain-actions.mjs", import.meta.url));
+const CALENDAR_ACTION = fileURLToPath(new URL("./v12-production-native-calendar-action.mjs", import.meta.url));
+const VISUAL_ACTIONS = fileURLToPath(new URL("./v12-production-native-visual-actions.mjs", import.meta.url));
+const QUALITY_ACTIONS = fileURLToPath(new URL("./v12-production-native-quality-actions.mjs", import.meta.url));
 const CHECKED_IN_TEST_FAKE = fileURLToPath(new URL("./testing/v12-phase20-blackbox/fake-device-adapter.mjs", import.meta.url));
 const TEST_MODE = "phase20-native-adapter-subprocess";
 export const V12_NATIVE_MAX_REQUEST_BYTES = 1024 * 1024;
 export const V12_NATIVE_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = (
-  V12_CALENDAR_STAGE_IDS.length + V12_CALENDAR_REQUIREMENT_PROBE_COUNT
-) * (180_000 + 60_000) + V12_NATIVE_ADAPTER_GRACE_MS;
+const ACTION_DOMAIN_SOURCE = Object.freeze({
+  "acquire-lease": NATIVE_RUNTIME,
+  "release-lease": NATIVE_RUNTIME,
+  "snapshot-settings": NATIVE_RUNTIME,
+  "restore-settings": NATIVE_RUNTIME,
+  sqlite: NATIVE_RUNTIME,
+  recovery: DOMAIN_ACTIONS,
+  garmin: DOMAIN_ACTIONS,
+  calendar: CALENDAR_ACTION,
+  "visual-capture": VISUAL_ACTIONS,
+  "visual-capture-batch": VISUAL_ACTIONS,
+  "visual-compare": VISUAL_ACTIONS,
+  accessibility: QUALITY_ACTIONS,
+  performance: QUALITY_ACTIONS,
+});
+export const V12_CALENDAR_ADAPTER_TIMEOUT_MS = V12_CALENDAR_ACTION_BUDGET.max_ms
+  + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS;
 export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
   "acquire-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   "release-lease": V12_NATIVE_LEASE_ACTION_BUDGETS["release-lease"].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
@@ -60,7 +86,7 @@ export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
   accessibility: V12_QUALITY_ACTION_BUDGETS.accessibility.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   performance: V12_QUALITY_ACTION_BUDGETS.performance.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   sqlite: V12_SQLITE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
-  recovery: 45 * 60_000,
+  recovery: V12_RECOVERY_ACTION_BUDGET.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   garmin: 20 * 60_000,
   calendar: V12_CALENDAR_ADAPTER_TIMEOUT_MS,
 });
@@ -169,11 +195,13 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
     result: response.result,
     execution_origin: Object.freeze({
       schema_version: 1,
+      action,
       kind: target.testOnly ? "test-fixture" : "production-default-launcher",
       default_launcher: target.testOnly === false,
       test_only: target.testOnly,
       adapter_source_sha256: sourceHash(ADAPTER),
       launcher_source_sha256: sourceHash(target.source),
+      domain_source_sha256: sourceHash(target.testOnly ? target.source : ACTION_DOMAIN_SOURCE[action]),
       request_attestation_sha256: sha256(JSON.stringify(attestation)),
     }),
   });
@@ -184,16 +212,18 @@ export function invokeV12NativeAdapter(action, payload, options = {}) {
 }
 
 export function createV12NativeAdapter(options = {}) {
-  let latestExecutionOrigin;
-  const call = (action, payload) => {
+  const executionOrigins = new Map();
+  const callEnvelope = (action, payload) => {
     const response = invokeV12NativeAdapterEnvelope(action, { ...payload, run_id: payload.run_id ?? options.runId ?? cliRunId() }, options);
-    latestExecutionOrigin = response.execution_origin;
-    return response.result;
+    executionOrigins.set(action, response.execution_origin);
+    return response;
   };
+  const call = (action, payload) => callEnvelope(action, payload).result;
   return Object.freeze({
-    executionOrigin: () => {
-      if (latestExecutionOrigin === undefined) fail("execution_origin_missing");
-      return latestExecutionOrigin;
+    executionOrigin: (action) => {
+      const origin = executionOrigins.get(action);
+      if (origin === undefined) fail("execution_origin_missing");
+      return origin;
     },
     acquireLease: () => call("acquire-lease", {}),
     releaseLease: (lease) => call("release-lease", { lease }),
@@ -206,11 +236,15 @@ export function createV12NativeAdapter(options = {}) {
     collectPerformance: (payload) => call("performance", payload),
     executeSqlite: (payload) => call("sqlite", payload),
     executeRecovery: (payload) => call("recovery", payload),
-    executeGarmin: (lease, settings, payload) => call("garmin", { lease, settings, ...payload }),
+    executeGarmin: (lease, settings, payload) => {
+      const response = callEnvelope("garmin", { lease, settings, ...payload });
+      if (response.result === null || typeof response.result !== "object" || Array.isArray(response.result)) fail("response_invalid");
+      return Object.freeze({ ...response.result, execution_origin: response.execution_origin });
+    },
     executeCalendar: (lease, settings, payload) => {
-      const result = call("calendar", { lease, settings, ...payload });
-      if (result === null || typeof result !== "object" || Array.isArray(result)) fail("response_invalid");
-      return Object.freeze({ ...result, execution_origin: latestExecutionOrigin });
+      const response = callEnvelope("calendar", { lease, settings, ...payload });
+      if (response.result === null || typeof response.result !== "object" || Array.isArray(response.result)) fail("response_invalid");
+      return Object.freeze({ ...response.result, execution_origin: response.execution_origin });
     },
   });
 }

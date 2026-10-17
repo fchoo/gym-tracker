@@ -9,6 +9,8 @@ import { V12_CALENDAR_STAGE_IDS } from "./v12-calendar-observation-contract.mjs"
 import { V12_CALENDAR_REQUIREMENT_PROBE_COUNT } from "./v12-calendar-requirement-map.mjs";
 import {
   V12_CALENDAR_ADAPTER_TIMEOUT_MS,
+  V12_CALENDAR_ACTION_BUDGET,
+  V12_CALENDAR_COMMAND_GRAPH,
   V12_NATIVE_ACTION_TIMEOUT_MS,
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
@@ -19,11 +21,15 @@ import {
   V12_NATIVE_MAX_RESPONSE_BYTES,
   V12_QUALITY_ACTION_BUDGETS,
   V12_QUALITY_COMMAND_GRAPH,
+  V12_QUALITY_WAIT_GRAPH,
+  V12_RECOVERY_ACTION_BUDGET,
+  V12_RECOVERY_COMMAND_GRAPH,
   V12_SQLITE_PRODUCER_BOUND_MS,
   V12_VISUAL_BATCH_PRODUCER_BOUND_MS,
   V12_VISUAL_CLEANUP_BUDGET,
   V12_VISUAL_COMMAND_GRAPH,
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
+  createV12NativeAdapter,
   invokeV12NativeAdapterEnvelope,
   v12CommandPathMaxMs,
 } from "./v12-native-adapter.mjs";
@@ -61,9 +67,10 @@ test("adapter envelope labels the checked-in fake as test-only provenance", (t) 
       command: path.join(runner.root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"),
     });
     assert.deepEqual(Object.keys(result.execution_origin).sort(), [
-      "adapter_source_sha256", "default_launcher", "kind", "launcher_source_sha256",
+      "action", "adapter_source_sha256", "default_launcher", "domain_source_sha256", "kind", "launcher_source_sha256",
       "request_attestation_sha256", "schema_version", "test_only",
     ]);
+    assert.equal(result.execution_origin.action, "acquire-lease");
     assert.equal(result.execution_origin.kind, "test-fixture");
     assert.equal(result.execution_origin.default_launcher, false);
     assert.equal(result.execution_origin.test_only, true);
@@ -72,6 +79,30 @@ test("adapter envelope labels the checked-in fake as test-only provenance", (t) 
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
+});
+test("adapter provenance is immutable and action-scoped across borrowed-lease cleanup", (t) => {
+  const runner = fixture(t);
+  const environment = markers(runner.root);
+  const adapter = createV12NativeAdapter({
+    command: environment.V12_NATIVE_ADAPTER_COMMAND,
+    environment,
+    root: runner.root,
+    runId: runner.build.run_id,
+  });
+  const lease = adapter.acquireLease();
+  const settings = adapter.snapshotSettings(lease);
+  const calendar = adapter.executeCalendar(lease, settings, {
+    flow_sha256: "a".repeat(64),
+    flow_revision: 6,
+  });
+  const captured = calendar.execution_origin;
+  adapter.restoreSettings(settings, lease);
+  adapter.releaseLease(lease);
+
+  assert.equal(captured.action, "calendar");
+  assert.deepEqual(adapter.executionOrigin("calendar"), captured);
+  assert.equal(adapter.executionOrigin("release-lease").action, "release-lease");
+  assert.notEqual(captured.request_attestation_sha256, adapter.executionOrigin("release-lease").request_attestation_sha256);
 });
 test("Calendar adapter labels the checked-in subprocess fixture as test-only", (t) => {
   const runner = fixture(t);
@@ -85,11 +116,15 @@ test("Calendar adapter labels the checked-in subprocess fixture as test-only", (
 test("Calendar timeout covers all source-derived stages, probes, and runtime restoration", () => {
   assert.equal(V12_CALENDAR_STAGE_IDS.length, 35);
   assert.equal(V12_CALENDAR_REQUIREMENT_PROBE_COUNT, 69);
-  assert.equal(
-    V12_CALENDAR_ADAPTER_TIMEOUT_MS,
-    (V12_CALENDAR_STAGE_IDS.length + V12_CALENDAR_REQUIREMENT_PROBE_COUNT) * (180_000 + 60_000)
-      + V12_NATIVE_ADAPTER_GRACE_MS,
-  );
+  assert.equal(V12_CALENDAR_COMMAND_GRAPH.shared_setup.length, 8);
+  assert.equal(V12_CALENDAR_COMMAND_GRAPH.settings_snapshot.length, 14);
+  assert.equal(V12_CALENDAR_COMMAND_GRAPH.producer.length, 1);
+  assert.equal(V12_CALENDAR_COMMAND_GRAPH.producer[0].max_ms,
+    (V12_CALENDAR_STAGE_IDS.length + V12_CALENDAR_REQUIREMENT_PROBE_COUNT) * (180_000 + 60_000));
+  assert.equal(V12_CALENDAR_COMMAND_GRAPH.settings_restore.length, 25);
+  assert.equal(V12_CALENDAR_ACTION_BUDGET.max_ms,
+    Object.values(V12_CALENDAR_COMMAND_GRAPH).reduce((total, path) => total + v12CommandPathMaxMs(path), 0));
+  assert.equal(V12_CALENDAR_ADAPTER_TIMEOUT_MS, V12_CALENDAR_ACTION_BUDGET.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
 });
 test("fake command rejected outside explicit test mode", (t) => {
   const runner = fixture(t);
@@ -152,16 +187,25 @@ test("every adapter action has an explicit bounded timeout and transport budget"
   assert.equal(V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].max_ms, 220_000);
   assert.equal(V12_VISUAL_COMMAND_GRAPH.device_verification.length, 7);
   assert.equal(V12_VISUAL_CLEANUP_BUDGET.reset_bound_ms, 60_100);
-  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance.length, 95);
-  assert.equal(V12_QUALITY_COMMAND_GRAPH.accessibility.length, 76);
+  assert.equal(V12_RECOVERY_COMMAND_GRAPH.producer[0].max_ms, 40 * 60_000);
+  assert.equal(V12_RECOVERY_COMMAND_GRAPH.local_cleanup.length, 16);
+  assert.equal(V12_RECOVERY_ACTION_BUDGET.max_ms,
+    Object.values(V12_RECOVERY_COMMAND_GRAPH).reduce((total, path) => total + v12CommandPathMaxMs(path), 0));
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance_cold_initialization.length, 5);
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance_cold_cycle.length, 7);
+  assert.equal(V12_QUALITY_WAIT_GRAPH.performance_cold_readiness.length, 20);
+  assert.ok(V12_QUALITY_WAIT_GRAPH.performance_cold_readiness.every(({ max_ms: maxMs }) => maxMs === 60_000));
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance.length, 216);
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.accessibility.length, 72);
   for (const action of ["performance", "accessibility"]) {
     const budget = V12_QUALITY_ACTION_BUDGETS[action];
     assert.equal(budget.adb_call_count, V12_QUALITY_COMMAND_GRAPH[action].length);
     assert.equal(budget.adb_max_ms, v12CommandPathMaxMs(V12_QUALITY_COMMAND_GRAPH[action]));
+    assert.equal(budget.readiness_max_ms, v12CommandPathMaxMs(V12_QUALITY_WAIT_GRAPH[action]));
     assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action], budget.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
   }
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.performance > 45 * 60_000);
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.accessibility > 45 * 60_000 + 20_000);
+  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.performance > 110 * 60_000);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.accessibility, 44 * 60_000 + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
   assert.equal(V12_NATIVE_ADAPTER_GRACE_MS, V12_NATIVE_CLEANUP_BUDGET.max_ms + V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture"], V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS["visual-capture-batch"], V12_VISUAL_BATCH_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS);
@@ -171,7 +215,7 @@ test("every adapter action has an explicit bounded timeout and transport budget"
     assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action], budget.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
   }
   assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.calendar, V12_CALENDAR_ADAPTER_TIMEOUT_MS);
-  assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS.recovery >= 45 * 60_000);
+  assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS.recovery, V12_RECOVERY_ACTION_BUDGET.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
   assert.equal(V12_NATIVE_MAX_REQUEST_BYTES, 1024 * 1024);
   assert.equal(V12_NATIVE_MAX_RESPONSE_BYTES, 32 * 1024 * 1024);
 });
@@ -200,10 +244,21 @@ test("outer adapter survives maximum producers and every restoration/release cal
 
   for (const action of ["performance", "accessibility"]) {
     const cleanupCompletedAt = V12_QUALITY_ACTION_BUDGETS[action].producer_max_ms
-      + v12CommandPathMaxMs(V12_QUALITY_COMMAND_GRAPH[action]);
+      + v12CommandPathMaxMs(V12_QUALITY_COMMAND_GRAPH[action])
+      + v12CommandPathMaxMs(V12_QUALITY_WAIT_GRAPH[action]);
     assert.equal(cleanupCompletedAt, V12_QUALITY_ACTION_BUDGETS[action].max_ms);
     assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS[action] > cleanupCompletedAt,
       `${action} can be killed before quality cleanup and lease release complete`);
     assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action] - cleanupCompletedAt, V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
+  }
+
+  for (const [action, budget, graph] of [
+    ["recovery", V12_RECOVERY_ACTION_BUDGET, V12_RECOVERY_COMMAND_GRAPH],
+    ["calendar", V12_CALENDAR_ACTION_BUDGET, V12_CALENDAR_COMMAND_GRAPH],
+  ]) {
+    const completedAt = Object.values(graph).reduce((total, path) => total + v12CommandPathMaxMs(path), 0);
+    assert.equal(completedAt, budget.max_ms);
+    assert.ok(V12_NATIVE_ACTION_TIMEOUT_MS[action] > completedAt, `${action} outer spawnSync can kill its real command graph`);
+    assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action] - completedAt, V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
   }
 });

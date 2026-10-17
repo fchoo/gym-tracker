@@ -689,6 +689,16 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
 const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
 const V12_ADAPTER_SHARDS = Object.freeze(["sqlite", "recovery", "garmin", "calendar", "visual", "comparison", "accessibility", "performance"]);
+const V12_ADAPTER_SHARD_ORIGINS = Object.freeze({
+  sqlite: Object.freeze({ action: "sqlite", domain: "scripts/v12-production-native-runtime.mjs" }),
+  recovery: Object.freeze({ action: "recovery", domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  garmin: Object.freeze({ action: "garmin", domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  calendar: Object.freeze({ action: "calendar", domain: "scripts/v12-production-native-calendar-action.mjs" }),
+  visual: Object.freeze({ action: "visual-capture", domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  comparison: Object.freeze({ action: "visual-compare", domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  accessibility: Object.freeze({ action: "accessibility", domain: "scripts/v12-production-native-quality-actions.mjs" }),
+  performance: Object.freeze({ action: "performance", domain: "scripts/v12-production-native-quality-actions.mjs" }),
+});
 
 function preflightFail(code) { throw new Error(`v12_preflight_${code}`); }
 
@@ -905,10 +915,11 @@ function assertNonTestEvidenceEnvironment() {
     || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) preflightFail("test_provenance_forbidden");
 }
 
-function validateV12ProductionPublicationOrigins(root, runId) {
+export function validateV12ProductionPublicationOrigins(root, runId) {
   const adapterSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-native-adapter.mjs")));
   const launcherSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-production-native-adapter-launcher.mjs")));
   for (const shard of V12_ADAPTER_SHARDS) {
+    const expected = V12_ADAPTER_SHARD_ORIGINS[shard];
     let publication;
     try { publication = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8")); }
     catch { preflightFail("adapter_provenance_missing"); }
@@ -916,7 +927,9 @@ function validateV12ProductionPublicationOrigins(root, runId) {
     try { origin = validateV12ExecutionOrigin(publication.execution_origin); }
     catch { preflightFail("adapter_provenance_invalid"); }
     if (origin.kind === "test-fixture" || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
-    if (origin.adapter_source_sha256 !== adapterSha256 || origin.launcher_source_sha256 !== launcherSha256) preflightFail("adapter_provenance_stale");
+    const domainSha256 = sha256(readFileSync(preflightSafeFile(root, expected.domain)));
+    if (origin.action !== expected.action || origin.adapter_source_sha256 !== adapterSha256
+      || origin.launcher_source_sha256 !== launcherSha256 || origin.domain_source_sha256 !== domainSha256) preflightFail("adapter_provenance_stale");
   }
   return true;
 }

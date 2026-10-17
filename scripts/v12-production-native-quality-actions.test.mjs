@@ -9,7 +9,7 @@ import { executeProductionQualityAction } from "./v12-production-native-quality-
 import { executeLiveV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
 import { executeV12PerformanceShard } from "./v12-performance-shard.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "./benchmark-v12-interactions.mjs";
-import { V12_NATIVE_COMMAND_GRAPH, V12_QUALITY_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
+import { V12_QUALITY_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 import { accessibilityEvidence, performanceEvidence } from "./testing/v12-quality-evidence-fixture.mjs";
 
 // Deliberately synthetic transport data. It is never installed, published, or
@@ -41,14 +41,19 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   record();
   if (!state.noInstrumentation) process.stdout.write('instrumentation:' + component + ' (target=com.fchoo.gymtracker.devtest)\n');
 } else if (command[0] === 'pidof') {
+  record();
   if (state.processId) process.stdout.write(String(state.processId)); else process.exitCode = 1;
 } else if (command[0] === 'getconf' && command[1] === 'CLK_TCK') {
+  record();
   process.stdout.write('100');
 } else if (command[0] === 'cat' && command[1]?.startsWith('/proc/')) {
+  record();
   process.stdout.write(String(state.processId) + ' (gymtracker) S ' + Array(18).fill('0').join(' ') + ' ' + String(state.processStartTicks));
 } else if (command[0] === 'logcat' && command[1] === '-c') {
+  record();
   state.coldLog = ''; save();
 } else if (command[0] === 'logcat' && command.includes('monotonic')) {
+  record();
   process.stdout.write(state.coldLog ?? '');
 } else if (command[0] === 'am' && command[1] === 'force-stop') {
   record();
@@ -56,6 +61,7 @@ if (command.slice(0,3).join(' ') === 'pm list instrumentation') {
   state.lastProcessId = state.processId; state.lastProcessStartTicks = state.processStartTicks;
   state.processId = null; state.processStartTicks = null; save();
 } else if (command[0] === 'am' && command[1] === 'start') {
+  record();
   const uri = new URL(command[command.indexOf('-d') + 1]);
   state.coldSequence = (state.coldSequence ?? 0) + 1;
   state.processId = state.reuseProcess ? state.lastProcessId : 3000 + state.coldSequence;
@@ -171,7 +177,7 @@ test("production subprocess returns the complete native performance raw schema u
   assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(runner.readState().instrumentCalls, 1);
   assert.equal(independentQualityCommands(runner).length,
-    V12_QUALITY_COMMAND_GRAPH.performance.length - V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length);
+    V12_QUALITY_COMMAND_GRAPH.performance.length);
   assert.equal(result.samples.garmin_sync_normalization.baseline.source, "phase20-current-source-baseline/v1");
 });
 test("cold launch rejects a clear-task-style cycle which does not restart the app process", (t) => {
@@ -191,7 +197,7 @@ test("production subprocess returns measured F200/accessibility with restored se
   assert.deepEqual(shard.semantic.excludes, ["live-talkback", "switch-scanning", "final-verdict"]);
   assert.equal(writes.length, 2); assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(independentQualityCommands(runner).length,
-    V12_QUALITY_COMMAND_GRAPH.accessibility.length - V12_NATIVE_COMMAND_GRAPH.runtime_initialization.length);
+    V12_QUALITY_COMMAND_GRAPH.accessibility.length);
 });
 test("identity request verifies installed identity under a lease and does not start instrumentation", (t) => {
   const runner = fixture(t); assert.deepEqual(successful(runner, { request: "identity" }), { identity: runner.identity });
@@ -273,12 +279,23 @@ test("accessibility compares source outcomes across the actual normal and reduce
   runner.measured.observations[1].motion.destination = "different";
   rejected(runner.invoke(), "accessibility_motion_invalid"); released(runner);
 });
-test("warm launch maximum is enforced even when raw spans are valid", (t) => {
+test("producer returns valid over-budget measurements for immutable FAIL publication", (t) => {
   const runner = fixture(t);
   runner.measured.performance.samples.warm_launch_to_interactive_ms[0] = 1001;
   const span = runner.measured.performance.samples.native_receipts.timings.warm_launch_to_interactive_ms.spans[0];
   span.end_ms = span.start_ms + 1001;
-  rejected(runner.invoke(), "performance_launch_budget_exceeded"); released(runner);
+  const performance = successful(runner, {
+    workload: V12_PERFORMANCE_WORKLOAD,
+    budgets: V12_PERFORMANCE_BUDGETS,
+    build_variant: "release",
+    sample_origin: "release-native-source-backed",
+  });
+  assert.equal(performance.samples.warm_launch_to_interactive_ms[0], 1001);
+  const shard = executeV12PerformanceShard({ identity: runner.identity, performance });
+  assert.equal(shard.observation_state, "FAIL");
+  assert.equal(shard.summary.classification, "FAIL");
+  assert.equal(shard.summary.gates.warm_launch_to_interactive.result, "FAIL");
+  released(runner);
 });
 test("timing endpoints cannot be relabelled after collection", (t) => {
   const runner = fixture(t);

@@ -299,7 +299,7 @@ export function runV12VisualComparisonCli(args = process.argv.slice(2), io = pro
     if (command === "--verify") verifyV12VisualComparison({ runId });
     else {
       const adapter = createV12NativeAdapter();
-      publishV12AtomicShard({ runId, shard: "comparison", executionOrigin: adapter.executionOrigin, produce: ({ write }) => {
+      publishV12AtomicShard({ runId, shard: "comparison", executionOrigin: () => adapter.executionOrigin("visual-compare"), produce: ({ write }) => {
       const captures = JSON.parse(readFileSync(`artifacts/native/v1.2/${runId}/screenshots/index.json`, "utf8")).records;
       const windowSize = process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" ? 512 : V12_VISUAL_BATCH_WINDOW;
       const comparisons = []; const windows = [];

@@ -29,11 +29,13 @@ const observation = Object.freeze({
 
 const productionOrigin = Object.freeze({
   schema_version: 1,
+  action: "calendar",
   kind: "production-default-launcher",
   default_launcher: true,
   test_only: false,
   adapter_source_sha256: "6".repeat(64),
   launcher_source_sha256: "7".repeat(64),
+  domain_source_sha256: "9".repeat(64),
   request_attestation_sha256: "8".repeat(64),
 });
 const productionResult = (flowSha256) => {

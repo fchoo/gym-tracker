@@ -280,7 +280,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     writeLifecycle: async (value) => writes.push(['recovery/lifecycle.json', value]),
     writeReport: async (value) => writes.push(['maestro/recovery.xml', value]),
   }).then((result) => {
-    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'recovery', executionOrigin: adapter.executionOrigin, produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'recovery', executionOrigin: () => adapter.executionOrigin('recovery'), produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? '')) { try { recordV12AtomicFailure({ runId, shard: 'recovery', error }); } catch { /* first receipt wins */ } }

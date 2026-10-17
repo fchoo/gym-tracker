@@ -3,6 +3,8 @@ import {
   V12_NATIVE_RUNTIME_SETTINGS,
   V12_VISUAL_SYSTEM_SETTINGS,
 } from "./v12-device-settings-contract.mjs";
+import { V12_CALENDAR_STAGE_IDS } from "./v12-calendar-observation-contract.mjs";
+import { V12_CALENDAR_REQUIREMENT_PROBE_COUNT } from "./v12-calendar-requirement-map.mjs";
 
 export const V12_NATIVE_ADB_CALL_TIMEOUT_MS = 20_000;
 export const V12_VISUAL_ADB_CALL_TIMEOUT_MS = 15_000;
@@ -55,9 +57,8 @@ const nativeBorrowedLeaseSetup = concat(nativeLeaseOwnerRead, nativeVerifyApk, n
 const nativeOwnedLeaseSetup = concat(
   nativeRuntimeInitialization,
   nativeLeaseAcquireSuccess,
-  nativeLeaseOwnerRead,
-  nativeVerifyApk,
   nativeSnapshotSettings,
+  nativeBorrowedLeaseSetup,
 );
 const nativeRuntimeCleanup = concat(nativeRestoreSettings, nativeReleaseLease);
 
@@ -99,6 +100,60 @@ export const V12_NATIVE_CLEANUP_BUDGET = Object.freeze({
 
 export const V12_NATIVE_ADAPTER_GRACE_MS = V12_NATIVE_CLEANUP_BUDGET.max_ms
   + V12_NATIVE_CLEANUP_BUDGET.exit_margin_ms;
+
+const recoveryProducer = commands("domain.recovery", ["producer"], 40 * 60_000);
+const recoveryLocalCleanup = concat(
+  commands("domain.recovery.cleanup", ["airplane-mode-write"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  commands("domain.recovery.cleanup", nativeSettings.map((key) => `settings-write-${key}`), V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  commands("domain.recovery.cleanup", nativeSettings.map((key) => `settings-read-${key}`), V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  commands("domain.recovery.cleanup", ["airplane-mode-read"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+);
+export const V12_RECOVERY_COMMAND_GRAPH = Object.freeze({
+  shared_setup: nativeOwnedLeaseSetup,
+  producer: recoveryProducer,
+  local_cleanup: recoveryLocalCleanup,
+  shared_cleanup: nativeRuntimeCleanup,
+});
+export const V12_RECOVERY_ACTION_BUDGET = Object.freeze({
+  producer_max_ms: v12CommandPathMaxMs(recoveryProducer),
+  local_cleanup_adb_call_count: recoveryLocalCleanup.length,
+  max_ms: Object.values(V12_RECOVERY_COMMAND_GRAPH)
+    .reduce((total, path) => total + v12CommandPathMaxMs(path), 0),
+});
+
+const calendarReadSettings = concat(
+  commands("calendar.settings", ["airplane-mode-read", "night-mode-read"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  commands("calendar.settings", nativeSettings.map((key) => `settings-read-${key}`), V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  commands("calendar.settings", ["wm-size-read", "wm-density-read"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+);
+const calendarSettingsSnapshot = concat(
+  nativeLeaseOwnerRead,
+  calendarReadSettings,
+  nativeLeaseOwnerWrite,
+  nativeLeaseOwnerRead,
+);
+const calendarSettingsRestore = concat(
+  nativeLeaseOwnerRead,
+  commands("calendar.restore", ["airplane-mode-write"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  commands("calendar.restore", nativeSettings.map((key) => `settings-write-${key}`), V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  commands("calendar.restore", ["wm-size-write", "wm-density-write", "night-mode-write"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
+  calendarReadSettings,
+  nativeLeaseOwnerRead,
+  nativeLeaseOwnerWrite,
+);
+const calendarProducer = commands("calendar", ["35-stages-and-69-requirement-probes"],
+  (V12_CALENDAR_STAGE_IDS.length + V12_CALENDAR_REQUIREMENT_PROBE_COUNT) * (180_000 + 60_000));
+export const V12_CALENDAR_COMMAND_GRAPH = Object.freeze({
+  shared_setup: concat(nativeRuntimeInitialization, nativeBorrowedLeaseSetup),
+  settings_snapshot: calendarSettingsSnapshot,
+  producer: calendarProducer,
+  settings_restore: calendarSettingsRestore,
+});
+export const V12_CALENDAR_ACTION_BUDGET = Object.freeze({
+  producer_max_ms: v12CommandPathMaxMs(calendarProducer),
+  max_ms: Object.values(V12_CALENDAR_COMMAND_GRAPH)
+    .reduce((total, path) => total + v12CommandPathMaxMs(path), 0),
+});
 
 export const V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS = 90_000;
 const visualReadSettings = concat(
@@ -170,7 +225,6 @@ const qualitySettingsRestore = concat(
 );
 const qualityCommonBeforeProducer = concat(
   nativeRuntimeInitialization,
-  nativeRuntimeInitialization,
   nativeLeaseAcquireSuccess,
   nativeSnapshotSettings,
   nativeBorrowedLeaseSetup,
@@ -185,13 +239,23 @@ const qualityCommonAfterProducer = concat(
   nativeRestoreSettings,
   nativeReleaseLease,
 );
-const qualityColdLaunchProcessCycles = commands(
+const qualityColdLaunchInitialization = commands("quality.performance.cold-initialization", [
+  "clock-ticks-read", "prior-process-id-read", "warm-launch-if-needed",
+  "warm-process-id-read", "warm-process-stat-read",
+], V12_NATIVE_ADB_CALL_TIMEOUT_MS);
+const qualityColdLaunchCycle = commands("quality.performance.cold-cycle", [
+  "logcat-clear", "force-stop", "stopped-process-id-read", "cold-launch",
+  "readiness-logcat-tail", "current-process-id-read", "current-process-stat-read",
+], V12_NATIVE_ADB_CALL_TIMEOUT_MS);
+const qualityColdLaunchProcessCycles = concat(...Array.from({ length: 20 }, () => qualityColdLaunchCycle));
+const qualityColdLaunchReadiness = commands(
   "quality.performance",
-  Array.from({ length: 20 }, (_, index) => `cold-launch-${index + 1}-force-stop`),
-  V12_NATIVE_ADB_CALL_TIMEOUT_MS,
+  Array.from({ length: 20 }, (_, index) => `cold-launch-${index + 1}-readiness-window`),
+  60_000,
 );
 const qualityPerformance = concat(
   qualityCommonBeforeProducer,
+  qualityColdLaunchInitialization,
   qualityColdLaunchProcessCycles,
   qualityCommonAfterProducer,
 );
@@ -204,17 +268,26 @@ const qualityAccessibility = concat(
 export const V12_QUALITY_COMMAND_GRAPH = Object.freeze({
   performance: qualityPerformance,
   accessibility: qualityAccessibility,
+  performance_cold_initialization: qualityColdLaunchInitialization,
+  performance_cold_cycle: qualityColdLaunchCycle,
   settings_snapshot: qualitySettingsSnapshot,
   settings_restore: qualitySettingsRestore,
+});
+export const V12_QUALITY_WAIT_GRAPH = Object.freeze({
+  performance: qualityColdLaunchReadiness,
+  accessibility: Object.freeze([]),
+  performance_cold_readiness: qualityColdLaunchReadiness,
 });
 export const V12_QUALITY_ACTION_BUDGETS = Object.freeze(Object.fromEntries(
   Object.entries({ performance: qualityPerformance, accessibility: qualityAccessibility }).map(([action, path]) => {
     const adbMaxMs = v12CommandPathMaxMs(path);
+    const readinessMaxMs = v12CommandPathMaxMs(V12_QUALITY_WAIT_GRAPH[action]);
     return [action, Object.freeze({
       adb_call_count: path.length,
       adb_max_ms: adbMaxMs,
+      readiness_max_ms: readinessMaxMs,
       producer_max_ms: V12_QUALITY_PRODUCER_TIMEOUT_MS,
-      max_ms: V12_QUALITY_PRODUCER_TIMEOUT_MS + adbMaxMs,
+      max_ms: V12_QUALITY_PRODUCER_TIMEOUT_MS + readinessMaxMs + adbMaxMs,
     })];
   }),
 ));

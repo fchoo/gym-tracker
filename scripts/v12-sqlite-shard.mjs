@@ -211,7 +211,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     writeObservation: async (name, value) => writes.push([`sqlite/${name}`, value]),
     writeFailureReceipt: async () => {},
   }).then((result) => {
-    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'sqlite', executionOrigin: adapter.executionOrigin, produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+    if (args[2] === '--execute') publishV12AtomicShard({ runId, shard: 'sqlite', executionOrigin: () => adapter.executionOrigin('sqlite'), produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   }).catch((error) => {
     if (RUN_ID.test(runId ?? '')) { try { recordV12AtomicFailure({ runId, shard: 'sqlite', error }); } catch { /* first receipt wins */ } }

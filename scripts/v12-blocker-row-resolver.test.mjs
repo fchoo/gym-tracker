@@ -64,13 +64,18 @@ test('count-only SQLite receipts cannot certify ten concrete cases', () => {
   assert.throws(() => resolveV12SqliteReceipt({ ...receipt, cases: 3 }, 'migration'), /row_resolver_sqlite/);
 });
 test('performance gates retain explicit unreviewed Garmin baseline', () => {
-  const gates = resolveV12PerformanceGates({ raw_samples: { garmin_sync_normalization: { state: 'REVIEW_REQUIRED', limit_source: 'phase20-current-source-baseline/v1', fixture_sha256: 'a'.repeat(64) } } });
+  const gates = resolveV12PerformanceGates({ summary: { gates: {
+    garmin_sync_normalization: { result: 'REVIEW_REQUIRED', reason: 'Source budget requires the fresh exact-source Phase 20 baseline.' },
+    warm_launch_to_interactive: { result: 'PASS', samples: 20, measured: 100, limit: 1000, metric: 'max' },
+  } } });
   assert.equal(gates.garmin_sync_normalization.result, 'REVIEW_REQUIRED');
-  assert.equal(gates.warm_launch_to_interactive.result, 'NOT_RUN');
+  assert.equal(gates.warm_launch_to_interactive.result, 'PASS');
 });
-for (const [samples, expected] of [[Array(20).fill(100), 'PASS'], [Array(20).fill(1001), 'FAIL'], [[], 'NOT_RUN'], [[100], 'REVIEW_REQUIRED']]) {
-  test(`warm launch numeric gate derives ${expected} from raw samples`, () => {
-    assert.equal(resolveV12PerformanceGates({ raw_samples: { warm_launch_to_interactive_ms: samples } }).warm_launch_to_interactive.result, expected);
+for (const expected of ['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED']) {
+  test(`performance resolver reads published ${expected} classification`, () => {
+    assert.equal(resolveV12PerformanceGates({ summary: { gates: {
+      warm_launch_to_interactive: { result: expected },
+    } } }).warm_launch_to_interactive.result, expected);
   });
 }
 test('multi-plan registry reads the complete source array, not just its first string', () => {
@@ -84,11 +89,13 @@ test('Calendar resolver accepts only source-bound default-launcher origin', () =
   const digest = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
   const origin = {
     schema_version: 1,
+    action: 'calendar',
     kind: 'production-default-launcher',
     default_launcher: true,
     test_only: false,
     adapter_source_sha256: digest('scripts/v12-native-adapter.mjs'),
     launcher_source_sha256: digest('scripts/v12-production-native-adapter-launcher.mjs'),
+    domain_source_sha256: digest('scripts/v12-production-native-calendar-action.mjs'),
     request_attestation_sha256: 'a'.repeat(64),
   };
   assert.equal(validateV12CalendarExecutionOrigin(origin), true);
@@ -96,6 +103,8 @@ test('Calendar resolver accepts only source-bound default-launcher origin', () =
     (value) => { value.kind = 'test-fixture'; value.default_launcher = false; value.test_only = true; },
     (value) => { value.adapter_source_sha256 = '0'.repeat(64); },
     (value) => { value.launcher_source_sha256 = '0'.repeat(64); },
+    (value) => { value.domain_source_sha256 = '0'.repeat(64); },
+    (value) => { value.action = 'release-lease'; },
   ]) {
     const changed = structuredClone(origin); mutate(changed);
     assert.throws(() => validateV12CalendarExecutionOrigin(changed), /row_resolver_calendar_origin_invalid/u);

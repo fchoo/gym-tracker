@@ -24,14 +24,12 @@ function samples(values, minimum, label) {
 function p95Summary(values, minimum, maximum, label) {
   samples(values, minimum, label);
   const p95 = nearestRankP95(values);
-  if (p95 > maximum) fail(`${label}_budget_exceeded`);
   return Object.freeze({ samples: values.length, p95_ms: p95, max_ms: Math.max(...values) });
 }
 
 function maxSummary(values, minimum, maximum, label) {
   samples(values, minimum, label);
   const max = Math.max(...values);
-  if (max > maximum) fail(`${label}_budget_exceeded`);
   return Object.freeze({ samples: values.length, max_ms: max });
 }
 
@@ -44,13 +42,67 @@ function validateFrameSequences(sequences) {
     return Math.max(...sequence.frame_work_ms);
   });
   const p95 = nearestRankP95(maxima);
-  if (p95 > budget.maximum_p95_ms) fail("calendar_frame_budget_exceeded");
   return Object.freeze({
     samples: sequences.length,
     p95_ms: p95,
     missed_frames: sequences.reduce((sum, sequence) => sum + sequence.missed_frames, 0),
     refresh_rates_hz: Object.freeze([...new Set(sequences.map((sequence) => sequence.refresh_rate_hz))].sort((a, b) => a - b)),
     profiler_overhead_max_ms: Math.max(...sequences.map((sequence) => sequence.profiler_overhead_ms)),
+  });
+}
+
+const CLASSIFICATIONS = Object.freeze(["FAIL", "REVIEW_REQUIRED", "NOT_RUN", "PASS"]);
+function combineClassifications(values) {
+  return CLASSIFICATIONS.find((value) => values.includes(value));
+}
+function numericGate(values, minimum, maximum, metric = "p95") {
+  if (!Array.isArray(values) || values.length === 0) return Object.freeze({ result: "NOT_RUN" });
+  if (values.some((value) => !Number.isFinite(value) || value < 0)) return Object.freeze({ result: "FAIL" });
+  const measured = metric === "max" ? Math.max(...values) : nearestRankP95(values);
+  return Object.freeze({ result: measured > maximum ? "FAIL" : values.length < minimum ? "REVIEW_REQUIRED" : "PASS", samples: values.length, measured, limit: maximum, metric });
+}
+
+export function classifyV12PerformanceGates(raw = {}) {
+  const gates = {};
+  for (const [id, budget] of Object.entries(V12_PERFORMANCE_BUDGETS)) {
+    if (id === "garmin_sync_normalization") {
+      const value = raw[id];
+      gates[id] = Object.freeze({
+        result: value?.state === "REVIEW_REQUIRED" && value.limit_source === budget.limit_source && HASH.test(value.fixture_sha256 ?? "")
+          ? "REVIEW_REQUIRED" : value === undefined ? "NOT_RUN" : "FAIL",
+        reason: "Source budget requires the fresh exact-source Phase 20 baseline.",
+      });
+    } else if (id === "root_switch_to_useful" || id === "input_response") {
+      const grouped = raw[`${id}_ms`];
+      const keys = id === "root_switch_to_useful" ? ["workout", "calendar", "library", "progress"] : Object.keys(grouped ?? {});
+      const members = keys.map((key) => Object.freeze({ id: key, ...numericGate(grouped?.[key], budget.minimum_samples_per_root ?? budget.minimum_samples_per_path, budget.maximum_p95_ms) }));
+      gates[id] = Object.freeze({ result: members.length ? combineClassifications(members.map(({ result }) => result)) : "NOT_RUN", members: Object.freeze(members) });
+    } else if (id === "calendar_frame_work") {
+      const sequences = raw.calendar_frame_sequences;
+      const valid = Array.isArray(sequences) && sequences.every((sequence) => Array.isArray(sequence.frame_work_ms) && sequence.frame_work_ms.length > 0
+        && sequence.frame_work_ms.every((value) => Number.isFinite(value) && value >= 0) && Number.isInteger(sequence.missed_frames) && sequence.missed_frames >= 0
+        && Number.isFinite(sequence.refresh_rate_hz) && sequence.refresh_rate_hz > 0 && Number.isFinite(sequence.profiler_overhead_ms) && sequence.profiler_overhead_ms >= 0);
+      gates[id] = !sequences ? Object.freeze({ result: "NOT_RUN" }) : !valid ? Object.freeze({ result: "FAIL" })
+        : numericGate(sequences.map((sequence) => Math.max(...sequence.frame_work_ms)), budget.minimum_sequences, budget.maximum_p95_ms);
+    } else {
+      gates[id] = numericGate(raw[`${id}_ms`], budget.minimum_samples, budget.maximum_ms ?? budget.maximum_p95_ms, budget.maximum_ms === undefined ? "p95" : "max");
+    }
+  }
+  gates.phase12_merge_peak_growth = numericGate(raw.phase12_merge_peak_growth_bytes,
+    V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.minimum_samples,
+    V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.maximum_peak_growth_bytes);
+  return Object.freeze(gates);
+}
+
+function summarizePerformance(performance, identity) {
+  const core = validateV12PerformanceEvidence(performance, identity);
+  const extension = validateExtendedSamples(performance.samples ?? {});
+  const gates = classifyV12PerformanceGates(performance.samples);
+  return Object.freeze({
+    classification: combineClassifications(Object.values(gates).map(({ result }) => result)),
+    gates,
+    ...core,
+    ...extension,
   });
 }
 
@@ -93,23 +145,22 @@ function validateExtendedSamples(raw) {
 /** Creates a bounded, privacy-safe observation payload; it neither writes files nor assigns evidence verdicts. */
 export function executeV12PerformanceShard({ identity, performance }) {
   validateV12PerformanceProducer(performance, identity, V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, fail);
-  const core = validateV12PerformanceEvidence(performance, identity);
-  const extension = validateExtendedSamples(performance.samples ?? {});
+  const summary = summarizePerformance(performance, identity);
   return Object.freeze({
     schema_version: 1,
     suite: "v1.2-performance",
     producer: "v12-performance-observation-shard/v1",
-    observation_state: "REVIEW_REQUIRED",
+    observation_state: summary.classification,
     identity: Object.freeze({ ...identity }),
     budgets: V12_PERFORMANCE_BUDGETS,
     workload: V12_PERFORMANCE_WORKLOAD,
     raw_samples: Object.freeze(structuredClone(performance.samples)),
-    summary: Object.freeze({ ...core, ...extension }),
+    summary,
   });
 }
 
 export function validateV12PerformanceShard(observation, identity) {
-  if (!observation || observation.schema_version !== 1 || observation.suite !== "v1.2-performance" || observation.producer !== "v12-performance-observation-shard/v1" || observation.observation_state !== "REVIEW_REQUIRED" || Object.hasOwn(observation, "verdict") || Object.hasOwn(observation, "status") || JSON.stringify(observation.budgets) !== JSON.stringify(V12_PERFORMANCE_BUDGETS) || JSON.stringify(observation.workload) !== JSON.stringify(V12_PERFORMANCE_WORKLOAD)) fail("envelope_invalid");
+  if (!observation || observation.schema_version !== 1 || observation.suite !== "v1.2-performance" || observation.producer !== "v12-performance-observation-shard/v1" || !CLASSIFICATIONS.includes(observation.observation_state) || Object.hasOwn(observation, "verdict") || Object.hasOwn(observation, "status") || JSON.stringify(observation.budgets) !== JSON.stringify(V12_PERFORMANCE_BUDGETS) || JSON.stringify(observation.workload) !== JSON.stringify(V12_PERFORMANCE_WORKLOAD)) fail("envelope_invalid");
   const performance = {
     schema_version: 1,
     suite: "v1.2-performance",
@@ -122,9 +173,9 @@ export function validateV12PerformanceShard(observation, identity) {
     samples: observation.raw_samples,
   };
   validateV12PerformanceProducer(performance, identity, V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, fail);
-  const core = validateV12PerformanceEvidence(performance, identity);
-  const extension = validateExtendedSamples(observation.raw_samples);
-  return Object.freeze({ ...core, ...extension });
+  const summary = summarizePerformance(performance, identity);
+  if (observation.observation_state !== summary.classification || JSON.stringify(observation.summary) !== JSON.stringify(summary)) fail("summary_invalid");
+  return summary;
 }
 
 function immutableWrite(root, relativePath, value, write = undefined) {
@@ -163,7 +214,7 @@ export function runV12PerformanceCli(args = process.argv.slice(2), io = process)
     if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
     const adapter = createV12NativeAdapter();
     const identity = adapter.collectPerformance({ run_id: args[1], request: "identity" }).identity;
-    if (args[2] === "--execute") publishV12AtomicShard({ runId: args[1], shard: "performance", executionOrigin: adapter.executionOrigin, produce: ({ write }) => writeV12PerformanceObservation({ runId: args[1], identity, collect: adapter.collectPerformance, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+    if (args[2] === "--execute") publishV12AtomicShard({ runId: args[1], shard: "performance", executionOrigin: () => adapter.executionOrigin("performance"), produce: ({ write }) => writeV12PerformanceObservation({ runId: args[1], identity, collect: adapter.collectPerformance, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
     else verifyV12PerformanceObservation({ runId: args[1], identity });
     io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
     return 0;

@@ -91,6 +91,8 @@ test("performance shard keeps the complete raw observation schema review-require
     performance: performanceEvidence(identity),
   });
   assert.equal(observation.observation_state, "REVIEW_REQUIRED");
+  assert.equal(observation.summary.classification, "REVIEW_REQUIRED");
+  assert.equal(observation.summary.gates.warm_launch_to_interactive.result, "PASS");
   assert.equal(Object.hasOwn(observation, "verdict"), false);
   assert.equal(validateV12PerformanceShard(observation, identity).calendar_frame_sequences.samples, 100);
   const inventedGarminLimit = structuredClone(observation);

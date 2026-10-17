@@ -8,11 +8,13 @@ import { publishV12AtomicShard, verifyV12AtomicShard } from "./v12-atomic-shard-
 const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const productionOrigin = Object.freeze({
   schema_version: 1,
+  action: "visual-capture",
   kind: "production-default-launcher",
   default_launcher: true,
   test_only: false,
   adapter_source_sha256: "a".repeat(64),
   launcher_source_sha256: "b".repeat(64),
+  domain_source_sha256: "d".repeat(64),
   request_attestation_sha256: "c".repeat(64),
 });
 test("atomic publisher rejects traversal, second writes, failed retries, and symlink attempts", () => {

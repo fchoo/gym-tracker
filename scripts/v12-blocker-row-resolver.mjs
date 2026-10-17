@@ -10,7 +10,7 @@ import { V12_CALENDAR_FLOW_REVISION, validateV12CalendarStageResult } from './v1
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
 import { V12_SQLITE_SHARD_CASE_IDS } from './v12-sqlite-shard.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_UNCOMMITTED_CUT_IDS, validateV12RecoveryShard } from './v12-recovery-shard.mjs';
-import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, nearestRankP95 } from './benchmark-v12-interactions.mjs';
+import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from './benchmark-v12-interactions.mjs';
 import { validateV12PerformanceShard } from './v12-performance-shard.mjs';
 import {
   deriveV12CalendarRequirementSelectors,
@@ -68,14 +68,16 @@ const PERFORMANCE_GATES = [...Object.keys(V12_PERFORMANCE_BUDGETS), 'phase12_mer
 const VER_GATES = ['inventory', 'appearance', 'viewports', 'targets', 'input-focus', 'reduced-motion', 'sqlite', 'recovery', 'calendar', 'garmin', 'performance', 'attended', 'preseal'];
 
 export function validateV12CalendarExecutionOrigin(value, root = process.cwd(), allowTestFixture = false) {
-  const keys = ['schema_version', 'kind', 'default_launcher', 'test_only', 'adapter_source_sha256', 'launcher_source_sha256', 'request_attestation_sha256'];
+  const keys = ['schema_version', 'action', 'kind', 'default_launcher', 'test_only', 'adapter_source_sha256', 'launcher_source_sha256', 'domain_source_sha256', 'request_attestation_sha256'];
   ensure(value && same(Object.keys(value), keys), 'calendar_origin_invalid');
   const adapterMatches = value.adapter_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-native-adapter.mjs')));
   const production = value.kind === 'production-default-launcher' && value.default_launcher === true && value.test_only === false
-    && value.launcher_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-production-native-adapter-launcher.mjs')));
+    && value.launcher_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-production-native-adapter-launcher.mjs')))
+    && value.domain_source_sha256 === sha(readFileSync(path.join(root, 'scripts/v12-production-native-calendar-action.mjs')));
   const testOnly = allowTestFixture && value.kind === 'test-fixture' && value.default_launcher === false && value.test_only === true
-    && value.launcher_source_sha256 === sha(readFileSync(path.join(root, 'scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs')));
-  ensure(value.schema_version === 1 && adapterMatches && (production || testOnly) && HASH.test(value.request_attestation_sha256 ?? ''), 'calendar_origin_invalid');
+    && value.launcher_source_sha256 === sha(readFileSync(path.join(root, 'scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs')))
+    && value.domain_source_sha256 === value.launcher_source_sha256;
+  ensure(value.schema_version === 1 && value.action === 'calendar' && adapterMatches && (production || testOnly) && HASH.test(value.request_attestation_sha256 ?? ''), 'calendar_origin_invalid');
   return true;
 }
 
@@ -162,30 +164,12 @@ export function resolveV12SqliteReceipt(value, group) {
   return { result: 'REVIEW_REQUIRED', case_ids: V12_SQLITE_SHARD_CASE_IDS.slice(...bounds), reason: 'Retained receipt omits concrete case statuses.' };
 }
 
-function numericGate(values, minimum, maximum, metric = 'p95') {
-  if (!Array.isArray(values) || values.length === 0) return { result: 'NOT_RUN' };
-  if (values.some(value => !Number.isFinite(value) || value < 0)) return { result: 'FAIL' };
-  const measured = metric === 'max' ? Math.max(...values) : nearestRankP95(values);
-  return { result: measured > maximum ? 'FAIL' : values.length < minimum ? 'REVIEW_REQUIRED' : 'PASS', samples: values.length, measured, limit: maximum, metric };
-}
 export function resolveV12PerformanceGates(observation) {
-  const raw = observation?.raw_samples ?? {}; const gates = {};
-  for (const [id, budget] of Object.entries(V12_PERFORMANCE_BUDGETS)) {
-    if (id === 'garmin_sync_normalization') {
-      const value = raw[id];
-      gates[id] = { result: value?.state === 'REVIEW_REQUIRED' && value.limit_source === budget.limit_source && HASH.test(value.fixture_sha256 ?? '') ? 'REVIEW_REQUIRED' : value === undefined ? 'NOT_RUN' : 'FAIL', reason: 'Source budget requires the fresh exact-source Phase 20 baseline.' };
-    } else if (id === 'root_switch_to_useful' || id === 'input_response') {
-      const grouped = raw[`${id}_ms`];
-      const keys = id === 'root_switch_to_useful' ? ['workout', 'calendar', 'library', 'progress'] : Object.keys(grouped ?? {});
-      const members = keys.map(key => ({ id: key, ...numericGate(grouped?.[key], budget.minimum_samples_per_root ?? budget.minimum_samples_per_path, budget.maximum_p95_ms) }));
-      gates[id] = { result: members.length ? combineV12SourceResults(members.map(x => x.result)) : 'NOT_RUN', members };
-    } else if (id === 'calendar_frame_work') {
-      const sequences = raw.calendar_frame_sequences;
-      const valid = Array.isArray(sequences) && sequences.every(s => Array.isArray(s.frame_work_ms) && s.frame_work_ms.length && s.frame_work_ms.every(x => Number.isFinite(x) && x >= 0) && Number.isInteger(s.missed_frames) && s.missed_frames >= 0 && Number.isFinite(s.refresh_rate_hz) && s.refresh_rate_hz > 0 && Number.isFinite(s.profiler_overhead_ms) && s.profiler_overhead_ms >= 0);
-      gates[id] = !sequences ? { result: 'NOT_RUN' } : !valid ? { result: 'FAIL' } : numericGate(sequences.map(s => Math.max(...s.frame_work_ms)), budget.minimum_sequences, budget.maximum_p95_ms);
-    } else gates[id] = numericGate(raw[`${id}_ms`], budget.minimum_samples, budget.maximum_ms ?? budget.maximum_p95_ms, budget.maximum_ms === undefined ? 'p95' : 'max');
+  const gates = observation?.summary?.gates;
+  ensure(gates && typeof gates === 'object' && !Array.isArray(gates), 'performance_summary_invalid');
+  for (const gate of Object.values(gates)) {
+    ensure(gate && typeof gate === 'object' && RESULTS.includes(gate.result), 'performance_summary_invalid');
   }
-  gates.phase12_merge_peak_growth = numericGate(raw.phase12_merge_peak_growth_bytes, V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.minimum_samples, V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.maximum_peak_growth_bytes);
   return gates;
 }
 
@@ -551,17 +535,14 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   function resolvePerformance() {
     const value = json('performance.json'); const observation = value.observation;
     ensure(value.run_id === manifest.run_id && value.producer === 'v12-release-performance-writer/v1' && value.build_variant === 'release' && value.sample_origin === 'release-native-source-backed'
-      && observation?.producer === 'v12-performance-observation-shard/v1' && observation.observation_state === 'REVIEW_REQUIRED' && same(observation.budgets, V12_PERFORMANCE_BUDGETS) && same(observation.workload, V12_PERFORMANCE_WORKLOAD), 'performance_schema_invalid');
+      && observation?.producer === 'v12-performance-observation-shard/v1' && RESULTS.includes(observation.observation_state) && same(observation.budgets, V12_PERFORMANCE_BUDGETS) && same(observation.workload, V12_PERFORMANCE_WORKLOAD), 'performance_schema_invalid');
     bindIdentity(observation.identity, 'sha');
     ensure(observation.identity.base_head === manifest.source.head && observation.identity.package === manifest.build.package && observation.identity.fixture_sha256 === manifest.fixtures.registry_sha256, 'performance_identity_invalid');
     validateV12PerformanceProducer({ schema_version: 1, suite: 'v1.2-performance', producer: 'v12-release-performance-collector/v1', native_execution: 'EXECUTED', sample_origin: 'release-native-source-backed', workload: observation.workload, identity: observation.identity, budgets: observation.budgets, samples: observation.raw_samples }, observation.identity, V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, code => fail(code));
-    const gates = resolveV12PerformanceGates(observation);
     const fixture = observation.raw_samples.phase12_merge_fixture;
     ensure(fixture?.snapshot_bytes === V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.required_snapshot_bytes && fixture.rows === V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.required_rows && fixture.writer_commits === 5 && fixture.sqlite_max_variable_number >= 4000, 'performance_fixture_invalid');
-    // Recompute summary when the producer validator can represent this sample set.
-    // Its budget rejection is a FAIL result, not a reason to lose the row.
-    try { ensure(same(validateV12PerformanceShard(observation, observation.identity), observation.summary), 'performance_summary_invalid'); }
-    catch (error) { if (error.message.startsWith('v12_row_resolver_') || !Object.values(gates).some(gate => ['FAIL', 'NOT_RUN', 'REVIEW_REQUIRED'].includes(gate.result) && gate.reason === undefined)) throw error; }
+    ensure(same(validateV12PerformanceShard(observation, observation.identity), observation.summary), 'performance_summary_invalid');
+    const gates = resolveV12PerformanceGates(observation);
     for (const [id, gate] of Object.entries(gates)) leaf(`performance:${id}`, 'performance-budget', id, gate.result, ['performance.json'], { measurement: gate });
   }
   function attendedGate() {
