@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { PNG } from "pngjs";
 
@@ -12,11 +15,13 @@ import {
   executeV12CalendarShard,
   executeV12CalendarShardCli,
   parseV12CalendarShardCliArgs,
+  publishV12CalendarShardWrites,
   validateV12CalendarShard,
   V12_CALENDAR_SHARD_STAGE_IDS,
 } from "./v12-calendar-shard.mjs";
 import { createV12CalendarObservationResult } from "./testing/v12-calendar-observation-fixture.mjs";
 import { createV12CalendarProbeReceipt, V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
+import { createV12CalendarArtifactTransport } from "./v12-calendar-artifact-transport.mjs";
 
 const observation = Object.freeze({
   sourceDigest: "a".repeat(64),
@@ -183,6 +188,65 @@ test("Calendar shard writes the exact stage-specific host-derived observation se
   assert.equal(registry.members.every(({ path, sha256 }) => writes.has(`artifacts/native/v1.2/${runId}/${path}`)
     && createHash("sha256").update(writes.get(`artifacts/native/v1.2/${runId}/${path}`)).digest("hex") === sha256), true);
   assert.doesNotMatch(JSON.stringify([...writes.values()]), /expected_outcome|synthetic/u);
+});
+
+test("Calendar shard streams compact staged artifacts without changing published schemas", async (t) => {
+  const runId = "phase20-20261014T031137Z-5917481c1fd1";
+  const flowSha256 = "9".repeat(64);
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-shard-transport-"));
+  mkdirSync(path.join(root, "artifacts/native/v1.2", runId), { recursive: true });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const manifest = {
+    run_id: runId, source: { tree_sha256: "a".repeat(64), head: "5917481c1fd1" + "b".repeat(28) }, fixtures: { registry_sha256: "b".repeat(64) },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { sha256: "c".repeat(64), signature_sha256: "1".repeat(64) } },
+    device: { installed_apk_sha256: "c".repeat(64), identity_sha256: "d".repeat(64), settings_sha256: "e".repeat(64), restoration_sha256: "f".repeat(64) }, configuration: { id: "AP-L-C390-P-F100" },
+  };
+  writeFileSync(path.join(root, `artifacts/native/v1.2/${runId}/build.json`), JSON.stringify(manifest));
+  const transport = createV12CalendarArtifactTransport({ root, runId, binding: {
+    schema_version: 1, run_id: runId, execution_origin: "production-attested/v1", request_sha256: "1".repeat(64),
+    flow_sha256: flowSha256, requirements_flow_sha256: "5".repeat(64), fixture_source_sha256: "4".repeat(64),
+    tool_facts: { adb_sha256: "2".repeat(64), maestro_sha256: "3".repeat(64), unzip_sha256: "4".repeat(64) },
+  } });
+  const native = productionResult(flowSha256);
+  const compactArtifacts = [];
+  for (let ordinal = 0; ordinal < native.artifacts.length / 2; ordinal += 1) {
+    const pair = native.artifacts.slice(ordinal * 2, ordinal * 2 + 2);
+    const stage = ordinal < native.stages.length;
+    const first = pair[0];
+    const committed = transport.appendUnit({
+      kind: stage ? "stage" : "requirement",
+      key: stage ? first.stage_id : `${first.requirement_id}:${first.probe_id}`,
+      payload: { ordinal },
+      artifacts: pair.map(({ bytes_base64: bytesBase64, ...descriptor }) => ({ ...descriptor, bytes: Buffer.from(bytesBase64, "base64") })),
+    });
+    compactArtifacts.push(...committed.artifacts);
+  }
+  const compactNative = { ...native, artifacts: compactArtifacts };
+  transport.complete(compactNative);
+  assert.ok(Buffer.byteLength(JSON.stringify(compactNative)) < 4 * 1024 * 1024);
+  assert.equal(JSON.stringify(compactNative).includes("bytes_base64"), false);
+
+  const writes = [];
+  await executeV12CalendarShardCli(["--run", runId, "--execute"], {
+    root, flowSha256, readBuild: () => manifest, sourceDigest: manifest.source.tree_sha256, currentHead: manifest.source.head,
+    isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
+    snapshotSettings: () => ({}), restoreSettings: () => true, executeNative: () => compactNative,
+    writeImmutable: (file, value) => writes.push([file, value]),
+    writeNativeArtifact: (file, descriptor) => writes.push([file, descriptor, true]),
+    outputExists: () => false,
+  });
+  assert.equal(writes.filter(([, , nativeArtifact]) => nativeArtifact === true).length, 208);
+  assert.equal(writes.some(([, value]) => Buffer.isBuffer(value) && value.length > 300 * 1024), false);
+  publishV12CalendarShardWrites({ root, runId, writes, executionOrigin: productionOrigin });
+  const observationOutput = JSON.parse(readFileSync(path.join(root, `artifacts/native/v1.2/${runId}/calendar-transitions.json`), "utf8"));
+  const registry = JSON.parse(readFileSync(path.join(root, `artifacts/native/v1.2/${runId}/calendar/artifact-registry.json`), "utf8"));
+  assert.equal(observationOutput.schema_version, 5);
+  assert.equal(registry.schema_version, 2);
+  assert.equal(registry.members.length, 208);
+  assert.equal(writes.length, 213);
+  assert.equal(existsSync(path.join(root, `artifacts/native/v1.2/${runId}/publication/calendar.json`)), true);
+  assert.equal(existsSync(path.join(root, `artifacts/native/v1.2/${runId}/.calendar-transport`)), false);
+  assert.deepEqual(await executeV12CalendarShardCli(["--run", runId, "--verify"], { root, flowSha256 }), { ok: true, mode: "verify", run_id: runId });
 });
 
 test("Calendar shard exposes exhaustive stage order and strict immutable CLI arguments", () => {
