@@ -13,6 +13,11 @@ const mockUseWorkoutAppRuntime = jest.fn(() => ({
   runningPlanRuntime: {},
   getActiveWorkout: jest.fn(),
 }));
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async (_algorithm: string, value: string) =>
+    require("node:crypto").createHash("sha256").update(value).digest("hex"),
+}));
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: { expoConfig: { get extra() { return mockExtra; } } },
@@ -95,7 +100,7 @@ describe("Phase 20 visual probe", () => {
       await waitFor(() => expect(log).toHaveBeenCalledTimes(1));
     } finally { log.mockRestore(); }
   });
-  it("emits actual native dimensions and provider readback, never configuration-derived measurements", async () => {
+  it("emits actual native dimensions and opaque provider readback, never raw source metadata", async () => {
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     try {
       await render(<Phase20VisualProbeRoute />);
@@ -117,26 +122,21 @@ describe("Phase 20 visual probe", () => {
       expect(marker.color_scheme).toBe("light");
       expect(marker.nonce).toBe(mockParams.nonce);
       expect(marker.status).toBe("ready");
-      expect(marker.source_route).toBe("/library/plan/create");
-      expect(marker.source_component).toBe("PlanTypeChooserScreen");
-      expect(marker.fixture_seed).toBe("phase20-library-running");
-      expect(marker.scenario).toBe("plan-type-chooser");
-      expect(marker.readiness_semantics).toEqual([
-        "What are you training for?",
-        "Running",
-        "Distance and time goal, benchmark, and structured weekly sessions.",
-        "Garmin connection is optional after a Running plan is created. Imported activities never create or activate a plan automatically.",
-      ]);
-      expect(marker.readiness_test_ids).toContain("phase20-visual-state-BW-054");
-      expect(Array.isArray(marker.readiness_actions) ? marker.readiness_actions.length : 0).toBeGreaterThan(1);
-      expect(marker.readiness_non_color).toContain("Active Plans");
-      expect(marker.evidence_scope).toBe("production_screen");
+      expect(marker.schema_version).toBe(3);
+      expect(marker.registry_sha256).toMatch(/^[a-f0-9]{64}$/u);
+      expect(marker.readiness_sha256).toMatch(/^[a-f0-9]{64}$/u);
+      for (const rawField of [
+        "source_route", "source_component", "fixture_seed", "scenario",
+        "readiness_semantics", "readiness_test_ids", "readiness_actions",
+        "readiness_non_color", "evidence_scope",
+      ]) expect(marker).not.toHaveProperty(rawField);
       expect(marker.source_receipt).toMatchObject({
-        schema_version: 2,
+        schema_version: 3,
         nonce: mockParams.nonce,
         state_id: mockParams.state,
         timer: null,
-        scroll_offsets: [{ native_id: "plan-type-chooser-scroll", x: 0, y: 144 }],
+        assertions_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        scroll_offsets: [{ native_id_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u), x: 0, y: 144 }],
       });
       expect((marker.source_receipt as { production_instance_id: string }).production_instance_id).toMatch(/^phase20-production-instance-/u);
       expect((marker.source_receipt as { mount_id: string }).mount_id).toMatch(/^phase20-production-mount-/u);
