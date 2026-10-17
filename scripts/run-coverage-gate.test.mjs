@@ -55,9 +55,13 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.equal(manifest.phase20_coverage.node_subprocess_v8_100.length, 4);
   assert.equal(manifest.phase20_coverage.jest_istanbul_100.length, 6);
   const separate = Object.values(manifest.phase20_coverage.separately_enforced_gates);
-  assert.equal(new Set(separate.flatMap(({ modules }) => modules)).size, 8);
+  assert.equal(new Set(separate.flatMap(({ modules }) => modules)).size, 9);
   assert.ok(separate.every(({ tests }) => tests.length > 0
     && tests.every((file) => manifest.phase20.includes(file))));
+  assert.match(
+    readFileSync("scripts/capture-v12-visual.test.mjs", "utf8"),
+    /import "\.\/testing\/v12-visual-streaming\.test\.mjs";/u,
+  );
 
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
   assert.equal(packageJson.scripts["pretest:evidence:v12"], "npm run test:evidence:v12:all");

@@ -152,21 +152,33 @@ function fileSha256(file) {
 function validMember(runRoot, stage, member) {
   if (!member || relativeArtifact(member.artifact) !== member.artifact || !SHA256.test(member.sha256 ?? "")
     || !Number.isSafeInteger(member.size_bytes) || member.size_bytes < 1) return false;
+  let found = false;
   for (const base of [stage, runRoot]) {
     if (!isDirectory(base)) continue;
     const file = path.join(base, member.artifact);
     assertInside(base, file);
     const stat = lstatSync(file, { throwIfNoEntry: false });
     if (stat?.isSymbolicLink()) fail("path_invalid");
-    if (stat?.isFile() && stat.size === member.size_bytes && fileSha256(file) === member.sha256) return true;
+    if (stat === undefined) continue;
+    if (!stat.isFile() || stat.size !== member.size_bytes || fileSha256(file) !== member.sha256) return false;
+    found = true;
   }
-  return false;
+  return found;
 }
 
 function processAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
   try { process.kill(pid, 0); return true; }
   catch (error) { return error?.code === "EPERM"; }
+}
+
+function validateClaimOwner(value, runId, shard) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== 5 || value.schema_version !== 1
+    || value.run_id !== runId || value.shard !== shard
+    || !Number.isSafeInteger(value.pid) || value.pid < 1
+    || typeof value.nonce !== "string" || !/^[a-f0-9]{32}$/u.test(value.nonce)) fail("claim_conflict");
+  return value;
 }
 
 function acquireClaim(runRoot, runId, shard) {
@@ -185,7 +197,8 @@ function acquireClaim(runRoot, runId, shard) {
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       let current;
-      try { current = JSON.parse(readFileSync(claim, "utf8")); } catch { fail("claim_conflict"); }
+      try { current = validateClaimOwner(JSON.parse(readFileSync(claim, "utf8")), runId, shard); }
+      catch { fail("claim_conflict"); }
       if (processAlive(current?.pid)) fail("claim_conflict");
       const stale = path.join(claims, `${shard}.stale-${nonce}-${attempt}.json`);
       try { renameSync(claim, stale); } catch (renameError) { if (renameError?.code === "ENOENT") continue; throw renameError; }
@@ -564,11 +577,18 @@ function publicationHeader(file, runId, shard) {
 function verifyPublication({ runRoot, stage, runId, shard, manifestFile }) {
   publicationHeader(manifestFile, runId, shard);
   let count = 0;
+  let stagedMemberCount = 0;
   for (const { value: member } of iterateV12VisualJsonArray({ file: manifestFile, arrayKey: "members" })) {
     if (!validMember(runRoot, stage, member)) fail("manifest_member_invalid");
+    const staged = path.join(stage, member.artifact);
+    if (lstatSync(staged, { throwIfNoEntry: false })?.isFile()) stagedMemberCount += 1;
     count += 1;
   }
   if (count < 1) fail("manifest_invalid");
+  if (isDirectory(stage)) {
+    const stagedManifestCount = path.resolve(manifestFile) === path.resolve(stage, "manifest.json") ? 1 : 0;
+    if (countStageFiles(stage) !== stagedMemberCount + stagedManifestCount) fail("stage_member_invalid");
+  }
   return count;
 }
 
@@ -593,7 +613,6 @@ function publishMember(runRoot, stage, member) {
 
 function completePublication({ runRoot, stage, paths, runId, shard, manifestFile }) {
   const memberCount = verifyPublication({ runRoot, stage, runId, shard, manifestFile });
-  if (countStageFiles(stage) > memberCount + 1) fail("stage_member_invalid");
   for (const { value: member } of iterateV12VisualJsonArray({ file: manifestFile, arrayKey: "members" })) publishMember(runRoot, stage, member);
   const publication = ensureDirectory(runRoot, path.join(runRoot, "publication"));
   const finalManifest = path.join(publication, `${shard}.json`);

@@ -254,6 +254,7 @@ const phase20SeparatelyEnforcedGates = Object.freeze({
     modules: Object.freeze([
       "scripts/capture-v12-visual.mjs",
       "scripts/compare-v12-visual.mjs",
+      "scripts/v12-visual-streaming.mjs",
     ]),
     tests: Object.freeze([
       "scripts/capture-v12-visual.test.mjs",

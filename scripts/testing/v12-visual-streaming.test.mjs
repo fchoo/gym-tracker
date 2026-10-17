@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createReadStream, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -8,6 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  executeV12VisualStreamingShard,
   inspectV12VisualJournal,
   iterateV12VisualJsonArray,
   readV12VisualJsonHeader,
@@ -17,6 +18,29 @@ import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../v12-evidence-cont
 const project = fileURLToPath(new URL("../../", import.meta.url));
 const worker = fileURLToPath(new URL("./v12-visual-streaming-worker.mjs", import.meta.url));
 const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
+
+function executeSingleRecord(root) {
+  return executeV12VisualStreamingShard({
+    root,
+    runId,
+    shard: "visual",
+    totalCount: 1,
+    indexRelative: "screenshots/index.json",
+    indexHeader: Object.freeze({
+      schema_version: 2,
+      producer: "v12-visual-capture-index/v2",
+      run_id: runId,
+      capture_count: 1,
+    }),
+    resultKey: "records",
+    expectedWindow: () => Object.freeze([{ id: "record-1" }]),
+    processWindow: ({ offset, ordinal }) => Object.freeze({
+      records: Object.freeze([{ id: "record-1" }]),
+      window: Object.freeze({ ordinal, offset, count: 1 }),
+    }),
+    validateBatch: () => true,
+  });
+}
 
 function invoke(root, phase, crashAfter = 0) {
   return spawnSync(process.execPath, ["--expose-gc", worker, root, phase, String(crashAfter)], {
@@ -165,4 +189,27 @@ test("visual capture and comparison resume monotonic journals without replay and
 
   await assertExactCalls(path.join(root, "capture-calls.ndjson"));
   await assertExactCalls(path.join(root, "comparison-calls.ndjson"));
+});
+
+test("visual streaming rejects malformed stale claim ownership", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-visual-claim-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const claims = path.join(root, `artifacts/native/v1.2/${runId}/.claims`);
+  mkdirSync(claims, { recursive: true });
+  writeFileSync(path.join(claims, "visual.json"), '{"pid":0}\n');
+
+  assert.throws(() => executeSingleRecord(root), /v12_visual_stream_claim_conflict/u);
+});
+
+test("visual streaming rejects unknown residue beside an existing publication", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-visual-residue-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(path.join(root, `artifacts/native/v1.2/${runId}`), { recursive: true });
+  executeSingleRecord(root);
+
+  const stage = path.join(root, `artifacts/native/v1.2/${runId}/.staging/visual`);
+  mkdirSync(stage, { recursive: true });
+  writeFileSync(path.join(stage, "unknown.bin"), "unknown");
+
+  assert.throws(() => executeSingleRecord(root), /v12_visual_stream_stage_member_invalid/u);
 });
