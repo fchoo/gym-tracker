@@ -10,6 +10,7 @@ import {
   loadPhase18LanguageCoverageReports,
   validatePhase18LanguageCoverageReport,
 } from "./phase18-language-coverage.mjs";
+import { createPhase18KotlinCoverageReport } from "./run-phase18-kotlin-coverage.mjs";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -61,12 +62,33 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
     "expo/modules/garminconnect/GarminTokenStore",
     "expo/modules/garminconnect/GarminEvidenceArmStore",
     "expo/modules/garminconnect/GarminStoredSessionEvidenceRunner",
+    "expo/modules/garminconnect/GarminEvidenceAuthorizationController",
     "expo/modules/garminconnect/GarminConnectModuleKt",
   ]);
   const gradle = readFileSync("modules/garmin-connect/android/build.gradle", "utf8");
   for (const className of spec.requiredClasses) {
     assert.match(gradle, new RegExp(`include '${className.replaceAll("/", "\\/")}\\*?\\.class'`, "u"));
   }
+});
+
+test("Kotlin coverage rejects a 100 percent aggregate XML that omits the authorization controller", () => {
+  const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
+  const controller = "expo/modules/garminconnect/GarminEvidenceAuthorizationController";
+  const counters = '<counter type="INSTRUCTION" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/><counter type="METHOD" missed="0" covered="10"/><counter type="LINE" missed="0" covered="10"/>';
+  const classes = [...new Set([...spec.requiredClasses, controller])];
+  const completeXml = `<report>${classes.map((name) => `<class name="${name}">${counters}</class>`).join("")}${counters}</report>`;
+  const omittedXml = completeXml.replace(`<class name="${controller}">${counters}</class>`, "");
+  const suite = `<testsuite tests="${spec.requiredCases.length}" skipped="0" failures="0" errors="0">${spec.requiredCases.map((name) => `<testcase name="${name}"/>`).join("")}</testsuite>`;
+
+  assert.match(omittedXml, /<counter type="BRANCH" missed="0" covered="10"\/>/u);
+  assert.throws(
+    () => createPhase18KotlinCoverageReport({
+      jacocoXml: omittedXml,
+      junitXmls: spec.testPaths.map(() => suite),
+      readBytes,
+    }),
+    /phase18_kotlin_coverage_class_missing/u,
+  );
 });
 
 test("language coverage reports bind current sources and every required branch case", () => {

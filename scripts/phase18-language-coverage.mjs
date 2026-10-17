@@ -57,6 +57,7 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "expo/modules/garminconnect/GarminTokenStore",
       "expo/modules/garminconnect/GarminEvidenceArmStore",
       "expo/modules/garminconnect/GarminStoredSessionEvidenceRunner",
+      "expo/modules/garminconnect/GarminEvidenceAuthorizationController",
       "expo/modules/garminconnect/GarminConnectModuleKt",
     ]),
     // INSTRUCTION and METHOD are JaCoCo's statement and function counters.
@@ -81,6 +82,9 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "arm clear and default construction leave no authorization state",
       "stored session lifecycle rotates logs out restores and returns hashes only",
       "stored session lifecycle rejects malformed bridge outcomes and restores bytes",
+      "authorization controller consumes exactly one arm and clears it with derived receipt",
+      "authorization controller rejects missing and preflight execution but runs execute phase",
+      "authorization controller rejects invalid routes and failed arm consumption without authorizing",
       "Kotlin device identity equals the source-owned JavaScript canonical vectors",
       "Kotlin device identity rejects malformed facts and covers every JSON escape",
       "Garmin evidence route requires the exact devtest package scheme and host",

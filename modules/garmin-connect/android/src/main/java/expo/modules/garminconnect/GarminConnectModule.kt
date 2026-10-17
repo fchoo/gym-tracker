@@ -106,6 +106,57 @@ internal fun requireGarminEvidenceRoute(
   }
 }
 
+internal class GarminEvidenceAuthorizationController(
+  private val armStore: GarminEvidenceArmStore,
+  private val sessionRunner: () -> Map<String, Any?>,
+) {
+  private val authorizationLock = Any()
+  private var authorization: GarminEvidenceAuthorization? = null
+
+  fun consume(
+    packageName: String?,
+    scheme: String?,
+    host: String?,
+    expected: GarminEvidenceArmExpectation,
+  ): Map<String, Any?> {
+    requireGarminEvidenceRoute(packageName, scheme, host)
+    val consumed = synchronized(authorizationLock) {
+      require(authorization == null) { "garmin_operation_rejected" }
+      armStore.consume(expected).also { authorization = it }
+    }
+    return mapOf(
+      "schema_version" to 1,
+      "code" to "arm-consumed",
+      "receipt_sha256" to consumed.receiptSha256,
+    )
+  }
+
+  fun runStoredSessionLifecycle(): Map<String, Any?> {
+    val current = synchronized(authorizationLock) { authorization }
+      ?: throw IllegalStateException("garmin_operation_rejected")
+    require(current.phase == "execute") { "garmin_operation_rejected" }
+    return sessionRunner()
+  }
+
+  fun complete(): Map<String, Any?> {
+    val current = synchronized(authorizationLock) {
+      val value = authorization
+        ?: throw IllegalStateException("garmin_operation_rejected")
+      authorization = null
+      value
+    }
+    armStore.clear()
+    val receipt = MessageDigest.getInstance("SHA-256")
+      .digest("${current.receiptSha256}:cleared".toByteArray(Charsets.UTF_8))
+      .joinToString("") { byte -> "%02x".format(byte) }
+    return mapOf(
+      "schema_version" to 1,
+      "code" to "arm-cleared",
+      "receipt_sha256" to receipt,
+    )
+  }
+}
+
 private class GarminAdversarialRotationGate {
   @Volatile
   private var armed = false
@@ -199,9 +250,15 @@ class GarminConnectModule : Module() {
   private var clientDispatcher: GarminPythonDispatcher? = null
   private var clientSessionStore: GarminSessionStore? = null
   private var evidenceArmStore: GarminEvidenceArmStore? = null
-  private val evidenceAuthorizationLock = Any()
-  private var evidenceAuthorization: GarminEvidenceAuthorization? = null
   private var adversarialSuiteRunner: GarminAdversarialSuiteRunner? = null
+  private val evidenceAuthorizationController by lazy {
+    GarminEvidenceAuthorizationController(
+      armStore = armStore(),
+      sessionRunner = {
+        GarminStoredSessionEvidenceRunner(worker(), dispatcher(), sessionStore()).run()
+      },
+    )
+  }
 
   override fun definition() = ModuleDefinition {
     Name("GarminConnect")
@@ -249,17 +306,11 @@ class GarminConnectModule : Module() {
     }).runOnQueue(appContext.backgroundCoroutineScope)
 
     AsyncFunction("runV12StoredSessionLifecycle")
-      .SuspendBody<Map<String, Any?>> {
-        val authorization = synchronized(evidenceAuthorizationLock) {
-          evidenceAuthorization
-        } ?: throw IllegalStateException("garmin_operation_rejected")
-        require(authorization.phase == "execute") { "garmin_operation_rejected" }
-        GarminStoredSessionEvidenceRunner(worker(), dispatcher(), sessionStore()).run()
-      }
+      .SuspendBody<Map<String, Any?>> { evidenceAuthorizationController.runStoredSessionLifecycle() }
       .runOnQueue(appContext.backgroundCoroutineScope)
 
     AsyncFunction("completeV12EvidenceArm")
-      .SuspendBody<Map<String, Any?>> { completeV12EvidenceArm() }
+      .SuspendBody<Map<String, Any?>> { evidenceAuthorizationController.complete() }
       .runOnQueue(appContext.backgroundCoroutineScope)
 
     AsyncFunction("logout")
@@ -339,39 +390,17 @@ class GarminConnectModule : Module() {
       ?: throw IllegalStateException("garmin_runtime_unavailable")
     val intent = appContext.currentActivity?.intent
       ?: throw IllegalStateException("garmin_operation_rejected")
-    requireGarminEvidenceRoute(context.packageName, intent.data?.scheme, intent.data?.host)
-    val authorization = synchronized(evidenceAuthorizationLock) {
-      require(evidenceAuthorization == null) { "garmin_operation_rejected" }
-      armStore().consume(GarminEvidenceArmExpectation(
+    return evidenceAuthorizationController.consume(
+      packageName = context.packageName,
+      scheme = intent.data?.scheme,
+      host = intent.data?.host,
+      expected = GarminEvidenceArmExpectation(
         phase = input.phase,
         nonce = input.nonce,
         runIdSha256 = intent.getStringExtra("v12RunIdSha256") ?: "",
         deviceIdentitySha256 = intent.getStringExtra("v12DeviceIdentitySha256") ?: "",
         leaseIdSha256 = intent.getStringExtra("v12LeaseIdSha256") ?: "",
-      )).also { evidenceAuthorization = it }
-    }
-    return mapOf(
-      "schema_version" to 1,
-      "code" to "arm-consumed",
-      "receipt_sha256" to authorization.receiptSha256,
-    )
-  }
-
-  private fun completeV12EvidenceArm(): Map<String, Any?> {
-    val authorization = synchronized(evidenceAuthorizationLock) {
-      val value = evidenceAuthorization
-        ?: throw IllegalStateException("garmin_operation_rejected")
-      evidenceAuthorization = null
-      value
-    }
-    armStore().clear()
-    val receipt = MessageDigest.getInstance("SHA-256")
-      .digest("${authorization.receiptSha256}:cleared".toByteArray(Charsets.UTF_8))
-      .joinToString("") { byte -> "%02x".format(byte) }
-    return mapOf(
-      "schema_version" to 1,
-      "code" to "arm-cleared",
-      "receipt_sha256" to receipt,
+      ),
     )
   }
 
