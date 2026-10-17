@@ -30,6 +30,22 @@ describe("Phase 20 real heavy workloads", () => {
     expect(result?.samples.workload).toEqual(workloadProof);
   });
 
+  it("yields bounded ordinary work and observes cancellation before the next work unit", async () => {
+    const controller = new AbortController();
+    let yields = 0;
+    await expect(runPhase20HeavyWorkload("ordinary-js-task", {
+      phase12: unused,
+      garmin: unused,
+    }, "a".repeat(48), workloadProof, {
+      signal: controller.signal,
+      yieldControl: async () => {
+        yields += 1;
+        if (yields === 2) controller.abort();
+      },
+    })).rejects.toThrow("phase20_quality_cancelled");
+    expect(yields).toBe(2);
+  });
+
   it("retains installed Chaquopy transport hashes and a fresh exact-source Phase 20 baseline", async () => {
     const actual = [1, 2, 3, 4, 5];
     const baseline = [6, 7, 8, 9, 10];
@@ -50,7 +66,9 @@ describe("Phase 20 real heavy workloads", () => {
   });
   it("maps the existing Phase 12 producer without inventing timing samples", async () => {
     const result = await runPhase20HeavyWorkload("phase12-backup", {
-      phase12: async (observe, observeDatabaseName) => {
+      phase12: async (observe, observeDatabaseName, controls) => {
+        expect(controls?.signal?.aborted).toBe(false);
+        expect(controls?.yieldControl).toEqual(expect.any(Function));
         observeDatabaseName?.("gym-tracker-phase12-benchmark-aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa.db");
         for (const [operation, count, duration] of [
           ["dirty-trigger", 1, 1],
@@ -85,7 +103,7 @@ describe("Phase 20 real heavy workloads", () => {
         }) as Phase12BackupBenchmarkResult;
       },
       garmin: unused,
-    });
+    }, undefined, undefined, { signal: new AbortController().signal, yieldControl: async () => undefined });
     expect(result).toMatchObject({
       operation: "phase12-backup",
       producer: "phase12-backup-benchmark/v1",

@@ -150,6 +150,30 @@ describe("Phase 12 native backup benchmark", () => {
     expect(events).toEqual(["capture", "captured", "mutate"]);
   });
 
+  it("checks cancellation after snapshot start before mutating source facts", async () => {
+    const controller = new AbortController();
+    let mutated = false;
+    let yielded = false;
+    await expect(measureReaderSnapshotWithConcurrentMutation({
+      capture: {
+        capture: async () => {
+          controller.abort();
+          return { generation: 1, snapshot: buildPhase12SyntheticSnapshot() };
+        },
+      },
+      waitForCopyStart: Promise.resolve(),
+      mutate: async () => { mutated = true; },
+      now: () => 0,
+      sample: 1,
+      controls: {
+        signal: controller.signal,
+        yieldControl: async () => { yielded = true; },
+      },
+    })).rejects.toThrow("phase12_benchmark_cancelled");
+    expect(yielded).toBe(false);
+    expect(mutated).toBe(false);
+  });
+
   it("keeps the maximum fixture valid for indexed merge preflight", async () => {
     const archive = buildPhase12SyntheticSnapshot(2);
     const local = buildPhase12SyntheticSnapshot(1);
