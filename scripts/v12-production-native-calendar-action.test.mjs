@@ -265,6 +265,7 @@ test("Calendar device commands use only resolver-owned absolute native tools", (
   } });
   assert.deepEqual(tools, {
     execution_origin: "test-controlled/v1",
+    test_only: true,
     adb: realpathSync(path.join(bin, "adb")),
     maestro: realpathSync(path.join(bin, "maestro")),
     unzip: realpathSync(path.join(bin, "unzip")),

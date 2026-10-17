@@ -178,8 +178,9 @@ export function createV12CalendarDeviceSession(root, runId, executionTools, {
   spawn = spawnSync,
 } = {}) {
   if (typeof serial !== "string" || serial.trim().length === 0) fail("device_missing");
-  if (!exact(executionTools, ["execution_origin", "adb", "maestro", "unzip"])
+  if (!exact(executionTools, ["execution_origin", "test_only", "adb", "maestro", "unzip"])
     || !["production-attested/v1", "test-controlled/v1"].includes(executionTools.execution_origin)
+    || executionTools.test_only !== (executionTools.execution_origin === "test-controlled/v1")
     || ![executionTools.adb, executionTools.maestro, executionTools.unzip].every((file) => typeof file === "string" && path.isAbsolute(file))) fail("toolchain_invalid");
   const deadline = Date.now() + 35 * (180_000 + 60_000) + V12_CALENDAR_REQUIREMENT_PROBE_COUNT * (180_000 + 60_000);
   const command = (executable, args, { timeout = 180_000, binary = false, acceptFailure = false, cleanup = false } = {}) => {
