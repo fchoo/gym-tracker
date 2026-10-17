@@ -8,6 +8,7 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { selectV12VisualReference } from "./v12-visual-authority.mjs";
 import { V12_NATIVE_LEASE_PATH, V12_VISUAL_LEASE_PATH, V12_VISUAL_SYSTEM_SETTINGS } from "./v12-device-settings-contract.mjs";
+import { resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 import {
   V12_VISUAL_ACTION_WINDOW,
   V12_VISUAL_ADB_CALL_TIMEOUT_MS,
@@ -32,7 +33,7 @@ const CONFIG = /^AP-(L|D|SL|SD)-(C360|C390|M600|X840)-(P|L)-F(100|200)$/u;
 const ACTIONS = new Set(["visual-capture", "visual-capture-batch", "visual-compare"]);
 export { V12_VISUAL_ACTION_WINDOW };
 const SETTINGS = V12_VISUAL_SYSTEM_SETTINGS;
-const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "route", "source_route", "source_component", "source_state", "fixture_seed", "fixture_variant", "scenario", "screen_test_id", "readiness_test_ids", "readiness_semantics", "readiness_actions", "readiness_order", "readiness_non_color", "focus_target", "evidence_scope", "source_revision", "source_read_only", "source_receipt"];
+const MARKER_KEYS = ["schema_version", "nonce", "state_id", "configuration_id", "fixture_id", "mode", "status", "appearance", "color_scheme", "width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density", "registry_sha256", "readiness_sha256", "source_revision", "source_read_only", "source_receipt"];
 // These are the retained Revision 18 images, not caller-selected paths or hashes.
 // They exist only for the 390x844, portrait, 100% configuration. Never resize an
 // approved PNG or label it as a reference for a different configuration.
@@ -134,12 +135,22 @@ function attest(root, action, payload, value) {
   if (hash(file(root, build.build.apk.path, "apk_mismatch")) !== value.apk_sha256) fail("apk_mismatch");
 }
 
-function nativeTransport(runCommand, root, serial) {
+function registryBinding(state) {
+  return [state.route, state.component, state.name, state.fixture_seed, state.fixture_variant,
+    state.scenario, state.readiness.screen_test_id, state.readiness.test_ids,
+    state.focus_target, state.evidence_scope];
+}
+function readinessBinding(state) {
+  return [state.readiness.semantics, state.readiness.actions, state.readiness.order,
+    state.readiness.non_color, state.readiness.source_receipt.assertions];
+}
+
+function nativeTransport(runCommand, root, serial, executionTools, now) {
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) fail("device_invalid");
   let deadline = null;
   const command = (executable, args, options = {}) => {
     try {
-      const remaining = deadline === null ? Number.POSITIVE_INFINITY : deadline - Date.now();
+      const remaining = deadline === null ? Number.POSITIVE_INFINITY : deadline - now();
       if (remaining <= 0) fail("deadline_exceeded");
       const result = runCommand(executable, args, { cwd: root, encoding: null, maxBuffer: 16 * 1024 * 1024, ...options,
         timeout: Math.min(options.timeout ?? V12_VISUAL_ADB_CALL_TIMEOUT_MS, remaining) });
@@ -150,9 +161,10 @@ function nativeTransport(runCommand, root, serial) {
       fail("command_failed");
     }
   };
-  const adb = (...args) => command("adb", ["-s", serial, ...args]);
+  const adb = (...args) => command(executionTools.adb, ["-s", serial, ...args]);
   const shell = (...args) => adb("shell", args.map(quote).join(" ")).toString("utf8").trim();
-  return { command, adb, shell, setDeadline: (durationMs) => { deadline = Date.now() + durationMs; } };
+  return { command, adb, shell, adbPath: executionTools.adb, maestroPath: executionTools.maestro,
+    setDeadline: (durationMs) => { deadline = now() + durationMs; } };
 }
 function verifyDevice(native, attestation, payload, serial) {
   const { adb, shell } = native;
@@ -223,30 +235,23 @@ async function marker(native, nonce, selected, mode, expectedScheme = selected.c
       if (value.nonce === nonce && (mode === "reset" || value.color_scheme === expectedScheme)) found = value;
     }
     if (found) {
-      if (!keys(found, MARKER_KEYS) || found.schema_version !== 2 || found.fixture_id !== FIXTURE
-        || found.route !== ROUTE || found.source_revision !== 18 || found.source_read_only !== true
+      if (!keys(found, MARKER_KEYS) || found.schema_version !== 3 || found.fixture_id !== FIXTURE
+        || found.source_revision !== 18 || found.source_read_only !== true
         || !["width_dp", "height_dp", "screen_width_dp", "screen_height_dp", "font_scale", "density"].every((k) => Number.isFinite(found[k]) && found[k] > 0)) fail("marker_invalid");
-      if (found.state_id !== selected.state_id || found.source_state !== selected.state.name
+      if (found.state_id !== selected.state_id
         || found.configuration_id !== selected.config.id || found.mode !== mode
-        || found.source_route !== selected.state.route || found.source_component !== selected.state.component
-        || found.fixture_seed !== selected.state.fixture_seed || found.fixture_variant !== selected.state.fixture_variant || found.scenario !== selected.state.scenario
-        || found.screen_test_id !== selected.state.readiness.screen_test_id
-        || !same(found.readiness_test_ids, selected.state.readiness.test_ids)
-        || !same(found.readiness_semantics, selected.state.readiness.semantics)
-        || !same(found.readiness_actions, selected.state.readiness.actions)
-        || !same(found.readiness_order, selected.state.readiness.order)
-        || !same(found.readiness_non_color, selected.state.readiness.non_color)
-        || found.focus_target !== selected.state.focus_target || found.evidence_scope !== selected.state.evidence_scope) fail("state_mismatch");
+        || found.registry_sha256 !== hash(JSON.stringify(registryBinding(selected.state)))
+        || found.readiness_sha256 !== hash(JSON.stringify(readinessBinding(selected.state)))) fail("state_mismatch");
       const source = found.source_receipt;
       const timer = source?.timer;
-      if (!keys(source, ["schema_version", "nonce", "state_id", "fixture_variant", "assertions", "production_instance_id", "mount_id", "scroll_offsets", "timer"])
-        || source.schema_version !== 2 || source.nonce !== found.nonce || source.state_id !== selected.state_id
-        || source.fixture_variant !== selected.state.fixture_variant || !same(source.assertions, selected.state.readiness.source_receipt.assertions)
+      if (!keys(source, ["schema_version", "nonce", "state_id", "assertions_sha256", "production_instance_id", "mount_id", "scroll_offsets", "timer"])
+        || source.schema_version !== 3 || source.nonce !== found.nonce || source.state_id !== selected.state_id
+        || source.assertions_sha256 !== hash(JSON.stringify(selected.state.readiness.source_receipt.assertions))
         || !/^phase20-production-instance-\d+$/u.test(source.production_instance_id ?? "")
         || !/^phase20-production-mount-\d+$/u.test(source.mount_id ?? "") || !Array.isArray(source.scroll_offsets)
-        || source.scroll_offsets.some((entry) => !keys(entry, ["native_id", "x", "y"]) || typeof entry.native_id !== "string" || !entry.native_id
+        || source.scroll_offsets.some((entry) => !keys(entry, ["native_id_sha256", "x", "y"]) || !HASH.test(entry.native_id_sha256 ?? "")
           || !Number.isFinite(entry.x) || entry.x < 0 || !Number.isFinite(entry.y) || entry.y < 0)
-        || new Set(source.scroll_offsets.map(({ native_id: nativeId }) => nativeId)).size !== source.scroll_offsets.length
+        || new Set(source.scroll_offsets.map(({ native_id_sha256: nativeId }) => nativeId)).size !== source.scroll_offsets.length
         || timer !== null && (!keys(timer, ["state", "revision", "remaining_ms", "ends_at_ms"])
           || !["idle", "running", "paused", "expired"].includes(timer.state) || !Number.isSafeInteger(timer.revision) || timer.revision < 0
           || timer.remaining_ms !== null && (!Number.isFinite(timer.remaining_ms) || timer.remaining_ms < 0)
@@ -264,7 +269,17 @@ async function marker(native, nonce, selected, mode, expectedScheme = selected.c
           || found.width_dp !== selected.config.width || found.height_dp > found.screen_height_dp
           || source.scroll_offsets.length === 0) fail("configuration_mismatch");
       }
-      return found;
+      return { ...found, source_receipt: {
+        schema_version: 2,
+        nonce: source.nonce,
+        state_id: source.state_id,
+        fixture_variant: selected.state.fixture_variant,
+        assertions: selected.state.readiness.source_receipt.assertions,
+        production_instance_id: source.production_instance_id,
+        mount_id: source.mount_id,
+        scroll_offsets: source.scroll_offsets,
+        timer: source.timer,
+      } };
     }
     await delay(V12_VISUAL_MARKER_POLL_DELAY_MS);
   } while (Date.now() < deadline);
@@ -277,7 +292,7 @@ async function navigate(native, root, serial, selected, mode, nonce = randomByte
     params.set(key, value);
   }
   const link = `gymtracker-devtest://${ROUTE}?${params}`;
-  native.command("maestro", ["--device", serial, "test", "-e", `VISUAL_LINK=${link}`, "-e", `VISUAL_STATE=${selected.state_id}`, "-e", `VISUAL_SCREEN_ID=${selected.state.readiness.screen_test_id}`, "-e", `VISUAL_READY_ID=${selected.state.readiness.test_id}`, "-e", `VISUAL_MODE=${mode}`, path.join(root, FLOW)], { timeout: V12_VISUAL_NAVIGATION_COMMAND_TIMEOUT_MS });
+  native.command(native.maestroPath, ["--device", serial, "test", "-e", `VISUAL_LINK=${link}`, "-e", `VISUAL_STATE=${selected.state_id}`, "-e", `VISUAL_SCREEN_ID=${selected.state.readiness.screen_test_id}`, "-e", `VISUAL_READY_ID=${selected.state.readiness.test_id}`, "-e", `VISUAL_MODE=${mode}`, path.join(root, FLOW)], { timeout: V12_VISUAL_NAVIGATION_COMMAND_TIMEOUT_MS });
   if (mode === "capture") {
     params.set("ready", nonce);
     native.shell("am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", `gymtracker-devtest://${ROUTE}?${params}`, PACKAGE);
@@ -323,10 +338,22 @@ function observe(native, measured, selected) {
   const nonColor = selected.state.readiness.non_color.map((value) => ({ value, matched: semanticValues.some((actual) => actual === value || actual.includes(value)) }));
   const focusNode = nodes.find((node) => node["resource-id"]?.endsWith(selected.state.readiness.focus.target)
     || node["content-desc"] === selected.state.readiness.focus.target || node.text === selected.state.readiness.focus.target);
+  const productionNode = nodes.find((node) => node.package === PACKAGE && node["resource-id"]?.endsWith(measured.source_receipt.production_instance_id));
+  const scrollOffsets = measured.source_receipt.scroll_offsets.map((offset) => {
+    const matches = nodes.filter((node) => node.package === PACKAGE && node.scrollable === "true" && typeof node["resource-id"] === "string").flatMap((node) => {
+      const resourceId = node["resource-id"];
+      const candidates = [...new Set([resourceId, resourceId.split(":id/").at(-1), resourceId.split("/").at(-1)].filter(Boolean))];
+      return candidates.filter((candidate) => hash(JSON.stringify(candidate)) === offset.native_id_sha256);
+    });
+    if (matches.length !== 1) fail("source_receipt_invalid");
+    return { native_id: matches[0], x: offset.x, y: offset.y };
+  });
+  if (productionNode === undefined) fail("source_receipt_invalid");
+  const sourceReceipt = { ...measured.source_receipt, scroll_offsets: scrollOffsets };
   const readiness = { status: measured.status, semantics, test_ids: testIds, actions, order, non_color: nonColor,
     focus: { target: selected.state.readiness.focus.target, matched: focusNode !== undefined, focusable: focusNode?.focusable === "true", focused: focusNode?.focused === "true" },
     source_receipt: (() => {
-      const source = measured.source_receipt;
+      const source = sourceReceipt;
       const material = { state_id: selected.state_id, fixture_variant: selected.state.fixture_variant, assertions: source.assertions,
         production_instance_id: source.production_instance_id, mount_id: source.mount_id, scroll_offsets: source.scroll_offsets, timer: source.timer };
       return { ...source, digest: hash(JSON.stringify(material)) };
@@ -338,8 +365,6 @@ function observe(native, measured, selected) {
     class_name: focusedNodes[0].class || null,
     bounds: focusedNodes[0].bounds || null,
   };
-  const productionNode = nodes.find((node) => node.package === PACKAGE && node["resource-id"]?.endsWith(measured.source_receipt.production_instance_id));
-  if (productionNode === undefined || measured.source_receipt.scroll_offsets.some(({ native_id: nativeId }) => !nodes.some((node) => node.package === PACKAGE && node.scrollable === "true" && node["resource-id"]?.endsWith(nativeId)))) fail("source_receipt_invalid");
   return { native_execution: "EXECUTED", state_id: measured.state_id, configuration_id: measured.configuration_id,
     readiness, native_focus: nativeFocus, targets: targets.map((v, index) => ({ ...v, overlap: overlaps[index] })),
     viewport: { width_dp: measured.width_dp, height_dp: measured.height_dp, density: measured.density },
@@ -351,7 +376,7 @@ function observe(native, measured, selected) {
 function preservationSnapshot(measured, observation) {
   return {
     native_focus: observation.native_focus,
-    scroll_offsets: measured.source_receipt.scroll_offsets,
+    scroll_offsets: observation.readiness.source_receipt.scroll_offsets,
     timer: measured.source_receipt.timer,
     production_instance_id: measured.source_receipt.production_instance_id,
     mount_id: measured.source_receipt.mount_id,
@@ -362,14 +387,14 @@ async function capture(native, root, serial, selected, attestation) {
   const { shell } = native;
   // Separate device-side exclusion prevents two actions borrowing the same
   // runtime lease from interleaving size/night-mode changes.
+  native.setDeadline(V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS);
   shell("mkdir", LOCK);
   const captureNonce = randomBytes(16).toString("hex");
   let snapshot; let configured = false; let routeAttempted = false; let result;
-  native.setDeadline(V12_VISUAL_CAPTURE_OPERATION_TIMEOUT_MS);
   try {
     snapshot = readSettings(shell);
     const savedState = { run_id: attestation.run_id, device_identity_sha256: attestation.device_identity_sha256, snapshot };
-    native.command("adb", ["-s", serial, "shell", `cat > ${quote(`${LOCK}/restore.json`)}`], {
+    native.command(native.adbPath, ["-s", serial, "shell", `cat > ${quote(`${LOCK}/restore.json`)}`], {
       input: JSON.stringify(savedState),
     });
     let saved;
@@ -476,7 +501,8 @@ function retained(root, attestation, requested) {
  * Compare reads retained captures and returns a manifest-bound reference plus
  * a newly executed state receipt tied to the same PNG bytes.
  */
-export async function executeProductionVisualAction({ action, payload, attestation, root = process.cwd(), serial = process.env.V12_DEVICE_SERIAL, runCommand = spawnSync } = {}) {
+export async function executeProductionVisualAction({ action, payload, attestation, root = process.cwd(), serial = process.env.V12_DEVICE_SERIAL,
+  runCommand = spawnSync, executionTools, environment = process.env, now = Date.now } = {}) {
   if (!ACTIONS.has(action)) return undefined;
   try {
     if (!object(payload) || !RUN.test(payload.run_id ?? "") || payload.run_id !== attestation?.run_id) fail("payload_invalid");
@@ -496,7 +522,8 @@ export async function executeProductionVisualAction({ action, payload, attestati
     file(root, FLOW, "state_route_missing");
     file(root, `app${ROUTE}.tsx`, "state_route_missing");
     const comparisons = action === "visual-compare" ? retained(root, attestation, selected) : undefined;
-    const native = nativeTransport(runCommand, root, serial);
+    const resolvedExecutionTools = executionTools ?? resolveV12NativeExecutionTools({ requiredTools: ["adb", "maestro"], env: environment });
+    const native = nativeTransport(runCommand, root, serial, resolvedExecutionTools, now);
     verifyDevice(native, attestation, payload, serial);
     if (comparisons) {
       const results = [];

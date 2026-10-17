@@ -20,6 +20,45 @@ import { clearPhase20VisualCleanupStatus, phase20VisualCleanupStatus } from "./p
 
 export const resolvePhase20VisualProbe = resolvePhase20VisualRequest;
 
+async function phase20VisualSha256(value: unknown): Promise<string> {
+  const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+  return digestStringAsync(CryptoDigestAlgorithm.SHA256, JSON.stringify(value));
+}
+
+export async function phase20VisualProbeDigests(
+  state: NonNullable<ReturnType<typeof phase20VisualState>>,
+  scrollOffsets: readonly Phase20VisualScrollOffset[] = [],
+): Promise<Readonly<{
+  registry_sha256: string;
+  readiness_sha256: string;
+  assertions_sha256: string;
+  scroll_offsets: readonly Readonly<{ native_id_sha256: string; x: number; y: number }>[];
+}>> {
+  const assertions = state.readiness.source_receipt.assertions;
+  const [registrySha256, readinessSha256, assertionsSha256] = await Promise.all([
+    phase20VisualSha256([
+      state.route, state.component, state.name, state.fixture_seed,
+      state.fixture_variant, state.scenario, state.readiness.screen_test_id,
+      state.readiness.test_ids, state.focus_target, state.evidence_scope,
+    ]),
+    phase20VisualSha256([
+      state.readiness.semantics, state.readiness.actions, state.readiness.order,
+      state.readiness.non_color, assertions,
+    ]),
+    phase20VisualSha256(assertions),
+  ]);
+  return Object.freeze({
+    registry_sha256: registrySha256,
+    readiness_sha256: readinessSha256,
+    assertions_sha256: assertionsSha256,
+    scroll_offsets: Object.freeze(await Promise.all(scrollOffsets.map(async ({ native_id: nativeId, x, y }) => Object.freeze({
+      native_id_sha256: await phase20VisualSha256(nativeId),
+      x,
+      y,
+    })))),
+  });
+}
+
 export type Phase20VisualTimerReceipt = Readonly<{
   state: ActiveWorkoutRestState["state"];
   revision: number;
@@ -99,58 +138,49 @@ function ObservedScreen({ children, mount, ready, request, scrollOffsets, timerR
   }, [request.mode, request.nonce]);
   useEffect(() => {
     if (!laidOut || !ready || !cleanupReady || (request.mode === "capture" && (mount === null || scrollOffsets.length === 0))) return;
+    let cancelled = false;
     let second: number | undefined;
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(() => {
-        const screen = Dimensions.get("screen");
-        console.log(`PHASE20_VISUAL_RESULT ${JSON.stringify({
-          schema_version: 2,
-          nonce: request.nonce,
-          state_id: request.state,
-          configuration_id: request.configuration,
-          fixture_id: PHASE20_VISUAL_FIXTURE_ID,
-          mode: request.mode,
-          status: request.mode === "reset" ? "reset" : state.readiness.status,
-          appearance,
-          color_scheme: colorScheme,
-          width_dp: window.width,
-          height_dp: window.height,
-          screen_width_dp: screen.width,
-          screen_height_dp: screen.height,
-          font_scale: window.fontScale,
-          density: window.scale,
-          route: "/__phase20-visual-probe",
-          source_route: state.route,
-          source_component: state.component,
-          source_state: state.name,
-          fixture_seed: state.fixture_seed,
-          fixture_variant: state.fixture_variant,
-          scenario: state.scenario,
-          screen_test_id: state.readiness.screen_test_id,
-          readiness_test_ids: state.readiness.test_ids,
-          readiness_semantics: state.readiness.semantics,
-          readiness_actions: state.readiness.actions,
-          readiness_order: state.readiness.order,
-          readiness_non_color: state.readiness.non_color,
-          focus_target: state.focus_target,
-          evidence_scope: state.evidence_scope,
-          source_revision: 18,
-          source_read_only: true,
-          source_receipt: {
-            schema_version: 2,
+        void phase20VisualProbeDigests(state, scrollOffsets).then((digests) => {
+          if (cancelled) return;
+          const screen = Dimensions.get("screen");
+          console.log(`PHASE20_VISUAL_RESULT ${JSON.stringify({
+            schema_version: 3,
             nonce: request.nonce,
             state_id: request.state,
-            fixture_variant: state.fixture_variant,
-            assertions: state.readiness.source_receipt.assertions,
-            ...(mount ?? { production_instance_id: "", mount_id: "" }),
-            scroll_offsets: scrollOffsets,
-            timer: timerReceipt,
-          },
-        })}`);
-        if (request.mode === "reset") clearPhase20VisualCleanupStatus(request.nonce);
+            configuration_id: request.configuration,
+            fixture_id: PHASE20_VISUAL_FIXTURE_ID,
+            mode: request.mode,
+            status: request.mode === "reset" ? "reset" : state.readiness.status,
+            appearance,
+            color_scheme: colorScheme,
+            width_dp: window.width,
+            height_dp: window.height,
+            screen_width_dp: screen.width,
+            screen_height_dp: screen.height,
+            font_scale: window.fontScale,
+            density: window.scale,
+            registry_sha256: digests.registry_sha256,
+            readiness_sha256: digests.readiness_sha256,
+            source_revision: 18,
+            source_read_only: true,
+            source_receipt: {
+              schema_version: 3,
+              nonce: request.nonce,
+              state_id: request.state,
+              assertions_sha256: digests.assertions_sha256,
+              ...(mount ?? { production_instance_id: "", mount_id: "" }),
+              scroll_offsets: digests.scroll_offsets,
+              timer: timerReceipt,
+            },
+          })}`);
+          if (request.mode === "reset") clearPhase20VisualCleanupStatus(request.nonce);
+        }).catch(() => { console.error("phase20_visual_digest_failed"); });
       });
     });
     return () => {
+      cancelled = true;
       cancelAnimationFrame(first);
       if (second !== undefined) cancelAnimationFrame(second);
     };
