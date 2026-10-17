@@ -27,7 +27,7 @@ test("completed publication is verifiable and interrupted publications remain in
   } });
   assert.equal(verifyV12AtomicShard({ root, runId, shard: "visual" }), true);
   assert.throws(() => publishV12AtomicShard({ root, runId, shard: "calendar", produce: ({ write }) => {
-    write("calendar-transitions.json", "partial"); throw new Error("rename_failure");
+    write("calendar-transitions.json", { run_id: runId, producer: "fixture" }); throw new Error("rename_failure");
   }}), /rename_failure/u);
   assert.equal(existsSync(path.join(runRoot, "publication/calendar.json")), false);
   assert.throws(() => verifyV12AtomicShard({ root, runId, shard: "calendar" }), /incomplete_attempt/u);
@@ -40,7 +40,7 @@ test("publication rejects staging, symlink, and traversal substitution", () => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-publication-rejection-"));
   const runRoot = path.join(root, "artifacts/native/v1.2", runId); mkdirSync(runRoot, { recursive: true });
   assert.throws(() => publishV12AtomicShard({ root, runId, shard: "invalid", produce: ({ write }) => write("../performance.json", "x") }), /path_invalid/u);
-  publishV12AtomicShard({ root, runId, shard: "performance", produce: ({ write }) => write("performance.json", "ok") });
+  publishV12AtomicShard({ root, runId, shard: "performance", produce: ({ write }) => write("performance.json", { run_id: runId, producer: "fixture" }) });
   mkdirSync(path.join(runRoot, ".staging")); symlinkSync(root, path.join(runRoot, ".staging", "escape"));
   assert.throws(() => verifyV12AtomicShard({ root, runId, shard: "performance" }), /incomplete_attempt/u);
 });
