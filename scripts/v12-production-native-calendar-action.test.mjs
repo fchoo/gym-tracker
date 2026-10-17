@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,12 +12,15 @@ import {
 } from "./v12-calendar-observation-contract.mjs";
 import {
   createV12CalendarProbeInvocation,
+  createV12CalendarDeviceSession,
   createV12CalendarStageInvocation,
   collectV12ProductionCalendarStages,
   createV12CalendarProbeReceipt,
+  resolveV12CalendarExecutionTools,
   selectV12CalendarProbeReceipt,
   validateProductionCalendarActionRequest,
 } from "./v12-production-native-calendar-action.mjs";
+import { createV12CalendarArtifactTransport } from "./v12-calendar-artifact-transport.mjs";
 import { V12_CALENDAR_REQUIREMENT_DEFINITIONS } from "./v12-calendar-requirement-map.mjs";
 import { createV12CalendarMarkerFixture } from "./testing/v12-calendar-observation-fixture.mjs";
 
@@ -144,11 +147,10 @@ test("the requirement flow names every parity row and all high-risk Calendar des
   assert.match(flow, /GYM_TRACKER_V12_CALENDAR_PROBE_RECEIPT|phase20CalendarProbeReceipt=PASS/u);
 });
 
-test("the Calendar action collects every stage in order and retains raw traces and screenshots", async (t) => {
+test("the Calendar action stages every raw trace and realistic screenshot without response retention", async (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-action-"));
-  const retained = path.join(root, "retained");
   mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });
-  mkdirSync(retained);
+  mkdirSync(path.join(root, "artifacts/native/v1.2", RUN_ID), { recursive: true });
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const flow = readFileSync(new URL("../maestro/v1.2/calendar.yaml", import.meta.url));
   writeFileSync(path.join(root, "maestro/v1.2/calendar.yaml"), flow);
@@ -159,33 +161,54 @@ test("the Calendar action collects every stage in order and retains raw traces a
   const flowSha256 = createHash("sha256").update(flow).digest("hex");
   const invocations = [];
   const driven = [];
-  const image = new PNG({ width: 2, height: 1 });
-  image.data.set([155, 71, 11, 255, 255, 255, 255, 255]);
+  const image = new PNG({ width: 320, height: 480 });
+  let random = 0xCA1E2026;
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    random = (Math.imul(random, 1_664_525) + 1_013_904_223) >>> 0;
+    image.data[offset] = random & 255;
+    image.data[offset + 1] = (random >>> 8) & 255;
+    image.data[offset + 2] = (random >>> 16) & 255;
+    image.data[offset + 3] = 255;
+  }
+  image.data.set([155, 71, 11, 255, 255, 255, 255, 255], 0);
   const screenshot = PNG.sync.write(image);
+  assert.ok(screenshot.length >= 300 * 1024, `fixture must be realistic-sized, got ${screenshot.length}`);
+  const binding = Object.freeze({
+    schema_version: 1,
+    run_id: RUN_ID,
+    execution_origin: "test-controlled/v1",
+    request_sha256: "1".repeat(64),
+    flow_sha256: flowSha256,
+    requirements_flow_sha256: createHash("sha256").update(requirementsFlow).digest("hex"),
+    fixture_source_sha256: createHash("sha256").update("isolated calendar fixture\n").digest("hex"),
+    tool_facts: Object.freeze({ adb_sha256: "2".repeat(64), maestro_sha256: "3".repeat(64), unzip_sha256: "4".repeat(64) }),
+  });
+  const transport = createV12CalendarArtifactTransport({ root, runId: RUN_ID, binding });
+  const createIo = ({ resumed = false } = {}) => ({
+    version: () => undefined,
+    standalone: () => undefined,
+    configureStage: () => { if (resumed) throw new Error("completed units must not execute again"); },
+    clearLogs: () => undefined,
+    logs: () => "",
+    maestro: (invocation) => { if (resumed) throw new Error("completed units must not execute again"); invocations.push(invocation); return { status: "PASS", xml: "<testsuite><testcase/></testsuite>" }; },
+    drive: (driver) => { driven.push(driver); },
+    awaitMarker: (_before, invocation) => Promise.resolve(createV12CalendarMarkerFixture(invocation.stageId, invocation.order, flowSha256, invocation.nonce)),
+    awaitProbeReceipt: (_before, invocation) => Promise.resolve(createV12CalendarProbeReceipt({
+      nonce: invocation.nonce,
+      flowSha256: invocation.variables.V12_CALENDAR_REQUIREMENTS_SHA256,
+      fixtureSourceSha256: invocation.variables.V12_CALENDAR_FIXTURE_SOURCE_SHA256,
+      requirementId: invocation.definition.requirement_id,
+      evidenceId: invocation.definition.evidence_id,
+      probeId: invocation.probeId,
+    })),
+    screenshot: () => screenshot,
+    uiDump: () => "<hierarchy><node resource-id=\"calendar-month-viewport\" text=\"Calendar isolated fixture\"/></hierarchy>",
+  });
   const result = await collectV12ProductionCalendarStages({
     root,
     payload: { run_id: RUN_ID, flow_sha256: flowSha256, flow_revision: V12_CALENDAR_FLOW_REVISION },
-    io: {
-      version: () => undefined,
-      standalone: () => undefined,
-      configureStage: () => undefined,
-      clearLogs: () => undefined,
-      logs: () => "",
-      maestro: (invocation) => { invocations.push(invocation); return { status: "PASS", xml: "<testsuite><testcase/></testsuite>" }; },
-      drive: (driver) => { driven.push(driver); },
-      awaitMarker: (_before, invocation) => Promise.resolve(createV12CalendarMarkerFixture(invocation.stageId, invocation.order, flowSha256, invocation.nonce)),
-      awaitProbeReceipt: (_before, invocation) => Promise.resolve(createV12CalendarProbeReceipt({
-        nonce: invocation.nonce,
-        flowSha256: invocation.variables.V12_CALENDAR_REQUIREMENTS_SHA256,
-        fixtureSourceSha256: invocation.variables.V12_CALENDAR_FIXTURE_SOURCE_SHA256,
-        requirementId: invocation.definition.requirement_id,
-        evidenceId: invocation.definition.evidence_id,
-        probeId: invocation.probeId,
-      })),
-      screenshot: () => screenshot,
-      uiDump: () => "<hierarchy><node resource-id=\"calendar-month-viewport\" text=\"Calendar isolated fixture\"/></hierarchy>",
-      temporary: () => retained,
-    },
+    io: createIo(),
+    transport,
   });
   assert.deepEqual(result.stages.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
   assert.deepEqual(result.junit_cases.map(({ id }) => id), V12_CALENDAR_STAGE_IDS);
@@ -197,11 +220,13 @@ test("the Calendar action collects every stage in order and retains raw traces a
   assert.equal(driven.filter(({ protocol }) => protocol === "adb-runtime-toggle/v1").length, 1);
   assert.equal(result.stages.every(({ observation, assertion_results }) => !Object.hasOwn(observation, "status") && assertion_results.length > 0), true);
   assert.equal(result.artifacts.length, 208);
-  assert.equal(result.artifacts.every(({ relative_path, sha256, size_bytes, bytes_base64 }) => {
-    const bytes = Buffer.from(bytes_base64, "base64");
-    return /^calendar\/(?:stages|requirements)\//u.test(relative_path)
+  assert.equal(result.artifacts.every((artifact) => {
+    const { relative_path: relativePath, sha256, size_bytes: sizeBytes } = artifact;
+    const bytes = transport.readArtifact(artifact);
+    assert.equal(Object.hasOwn(artifact, "bytes_base64"), false);
+    return /^calendar\/(?:stages|requirements)\//u.test(relativePath)
       && createHash("sha256").update(bytes).digest("hex") === sha256
-      && bytes.length === size_bytes;
+      && bytes.length === sizeBytes;
   }), true);
   assert.equal(result.requirements.records.length, 23);
   assert.equal(result.requirements.junit_cases.length, 69);
@@ -213,5 +238,54 @@ test("the Calendar action collects every stage in order and retains raw traces a
   ))), true);
   assert.equal(result.requirements.records.every(({ fixture_id, fixture_storage, source_digest_before, source_digest_after }) => fixture_id === "v12-calendar-isolated-facts-v1"
     && fixture_storage === "isolated-in-memory" && source_digest_before === source_digest_after), true);
-  assert.equal(readdirSync(retained).length, 208);
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) < 4 * 1024 * 1024, "compact Calendar response must remain far below 32 MiB");
+  transport.complete(result);
+  const resumedTransport = createV12CalendarArtifactTransport({ root, runId: RUN_ID, binding });
+  assert.deepEqual(resumedTransport.loadCompleted(), result);
+  const resumed = await collectV12ProductionCalendarStages({
+    root,
+    payload: { run_id: RUN_ID, flow_sha256: flowSha256, flow_revision: V12_CALENDAR_FLOW_REVISION },
+    io: createIo({ resumed: true }),
+    transport: resumedTransport,
+  });
+  assert.deepEqual(resumed, result);
+});
+
+test("Calendar device commands use only resolver-owned absolute native tools", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-calendar-tools-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const bin = path.join(root, "bin");
+  mkdirSync(bin, { recursive: true });
+  for (const name of ["adb", "maestro", "unzip"]) writeFileSync(path.join(bin, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const tools = resolveV12CalendarExecutionTools({ env: {
+    V12_EXECUTION_ORIGIN: "test-controlled/v1",
+    V12_ADB_PATH: path.join(bin, "adb"),
+    V12_MAESTRO_PATH: path.join(bin, "maestro"),
+    V12_UNZIP_PATH: path.join(bin, "unzip"),
+  } });
+  assert.deepEqual(tools, {
+    execution_origin: "test-controlled/v1",
+    adb: realpathSync(path.join(bin, "adb")),
+    maestro: realpathSync(path.join(bin, "maestro")),
+    unzip: realpathSync(path.join(bin, "unzip")),
+  });
+
+  const runRoot = path.join(root, "artifacts/native/v1.2", RUN_ID);
+  mkdirSync(runRoot, { recursive: true });
+  writeFileSync(path.join(root, "fixture.apk"), "fixture");
+  writeFileSync(path.join(runRoot, "build.json"), JSON.stringify({ build: { apk: { path: "fixture.apk" } } }));
+  const commands = [];
+  const spawn = (executable, args) => {
+    commands.push([executable, ...args]);
+    if (executable === tools.maestro) return { status: 0, signal: null, error: undefined, stdout: "2.8.0\n", stderr: "" };
+    if (executable === tools.unzip && args[0] === "-Z1") return { status: 0, signal: null, error: undefined, stdout: "assets/index.android.bundle\nassets/app.config\n", stderr: "" };
+    if (executable === tools.unzip) return { status: 0, signal: null, error: undefined, stdout: JSON.stringify({ android: { package: "com.fchoo.gymtracker.devtest" }, scheme: "gymtracker-devtest", extra: { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" } }), stderr: "" };
+    return { status: 0, signal: null, error: undefined, stdout: "", stderr: "" };
+  };
+  const session = createV12CalendarDeviceSession(root, RUN_ID, tools, { serial: "device-1", spawn });
+  session.clearLogs();
+  session.version();
+  session.standalone();
+  session.cleanup();
+  assert.deepEqual(commands.map(([executable]) => executable), [tools.adb, tools.maestro, tools.unzip, tools.unzip]);
 });
