@@ -22,8 +22,10 @@ const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const sha = (letter) => letter.repeat(64);
 const progress = (message) => { if (process.env.V12_BLACKBOX_PROGRESS === "1") process.stderr.write(`[v12-blackbox] ${message}\n`); };
-const TEST_TIMEOUT_MS = 20 * 60_000;
+const TEST_TIMEOUT_MS = 30 * 60_000;
 const SUBPROCESS_TIMEOUT_MS = 5 * 60_000;
+const FIXTURE_COMMAND_TIMEOUT_MS = 10_000;
+const INLINE_HELPER_TIMEOUT_MS = 240_000;
 const test = (name, optionsOrFunction, maybeFunction) => typeof optionsOrFunction === "function"
   ? nodeTest(name, { timeout: TEST_TIMEOUT_MS }, optionsOrFunction)
   : nodeTest(name, { timeout: TEST_TIMEOUT_MS, ...optionsOrFunction }, maybeFunction);
@@ -46,14 +48,25 @@ function fixtureRoot({ performanceOverBudget = false } = {}) {
   }
   writeFileSync(path.join(root, "package.json"), readFileSync(path.join(project, "package.json")));
   writeFileSync(path.join(root, "package-lock.json"), readFileSync(path.join(project, "package-lock.json")));
-  execFileSync("git", ["init", "--quiet"], { cwd: root });
-  execFileSync("git", ["config", "user.email", "phase20-test@example.invalid"], { cwd: root });
-  execFileSync("git", ["config", "user.name", "Phase 20 test"], { cwd: root });
-  execFileSync("git", ["add", "."], { cwd: root });
-  execFileSync("git", ["commit", "--quiet", "-m", "fixture"], { cwd: root });
-  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const git = (args, options = {}) => execFileSync("git", args, {
+    cwd: root,
+    timeout: FIXTURE_COMMAND_TIMEOUT_MS,
+    maxBuffer: 4 * 1024 * 1024,
+    ...options,
+  });
+  git(["init", "--quiet"]);
+  git(["config", "user.email", "phase20-test@example.invalid"]);
+  git(["config", "user.name", "Phase 20 test"]);
+  git(["add", "."]);
+  git(["commit", "--quiet", "-m", "fixture"]);
+  const head = git(["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   run = `phase20-20261014T000000Z-${head.slice(0, 12)}`;
-  const tree = spawnSync(process.execPath, [path.join(project, "scripts/source-tree-digest.mjs")], { cwd: root, encoding: "utf8" });
+  const tree = spawnSync(process.execPath, [path.join(project, "scripts/source-tree-digest.mjs")], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: FIXTURE_COMMAND_TIMEOUT_MS,
+    maxBuffer: 4 * 1024 * 1024,
+  });
   assert.equal(tree.status, 0, tree.stderr);
   mkdirSync(path.join(root, "artifacts/native/v1.2", run), { recursive: true });
   writeFileSync(path.join(root, "artifacts/native/v1.2", run, "build.json"), `${JSON.stringify(buildManifest(head, tree.stdout.trim()))}\n`);
@@ -290,7 +303,18 @@ test("over-budget performance executes through the CLI and publishes one immutab
 });
 
 test("Phase 20 fake-device pipeline exercises every CLI but cannot publish preseal or final native evidence", async (t) => {
-  const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
+  const root = fixtureRoot();
+  t.after(() => {
+    const coverageFixture = process.env.V12_PHASE20_COVERAGE_FIXTURE;
+    if (coverageFixture !== undefined) {
+      rmSync(coverageFixture, { recursive: true, force: true });
+      cpSync(root, coverageFixture, {
+        recursive: true,
+        filter: (source) => path.basename(source) !== "node_modules",
+      });
+    }
+    rmSync(root, { recursive: true, force: true });
+  });
   const mainRun = run;
   const blockedRoot = fixtureRoot();
   try {
@@ -376,7 +400,11 @@ test("Phase 20 fake-device pipeline exercises every CLI but cannot publish prese
         assert.throws(() => deriveV12Ledger({...args, evidence: changed, allowTestCalendarFixture: true}), /source_resolution_mismatch/);
       }
     `;
-    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, root, run], { encoding: 'utf8', maxBuffer: 1024 * 1024 });
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, root, run], {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      timeout: INLINE_HELPER_TIMEOUT_MS,
+    });
     assert.equal(result.status, 0, result.stderr);
   });
   await assertSourceMutations(t, root);
