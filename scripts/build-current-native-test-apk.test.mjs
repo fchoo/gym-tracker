@@ -41,11 +41,20 @@ test("the v1.2 acceptance build validates predecessors and uses privacy-safe doc
   const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");
   const predecessor = source.indexOf("node scripts/validate-v12-prebuild-predecessors.mjs");
   const doctor = source.indexOf("sh scripts/doctor-android.sh --phase20");
-  const freeze = source.indexOf("base_head=$(git rev-parse HEAD)");
+  const freeze = source.indexOf('base_head=$("$git_executable" rev-parse HEAD)');
   const generation = source.indexOf("npx expo prebuild --clean");
 
   assert.ok(predecessor >= 0);
   assert.ok(doctor > predecessor);
   assert.ok(freeze > doctor);
   assert.ok(generation > freeze);
+});
+
+test("the v1.2 acceptance build resolves one absolute Git and retains its attestation", () => {
+  const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");
+  assert.match(source, /git_executable=.*v12-native-execution-origin\.mjs --git-path/u);
+  assert.match(source, /v12-native-execution-origin\.mjs --git-attestation/u);
+  assert.match(source, /V12_GIT_ATTESTATION_PATH=/u);
+  assert.match(source, /git-execution-origin\.json/u);
+  assert.doesNotMatch(source, /\$\(git |^git /mu);
 });

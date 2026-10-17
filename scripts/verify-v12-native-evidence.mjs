@@ -13,7 +13,7 @@ import {
   validateV12CalendarComparison,
 } from "./compare-v12-calendar.mjs";
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
-import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
+import { V12_MAESTRO_SOURCE_PATHS, validateV12CalendarManifest, validateV12LiveSourceLineage } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256, v12ContractSourceDigests } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
@@ -36,13 +36,15 @@ import {
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
 import { resolveV12SourceRows, combineV12SourceResults, validateV12CalendarExecutionOrigin } from "./v12-blocker-row-resolver.mjs";
 import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
-import { buildV12ReadinessHandoff, validateV12ReadinessHandoff } from "./create-v12-readiness-handoff.mjs";
+import { buildV12ReadinessHandoff, validateV12ReadinessHandoff, V12_FINAL_PUBLICATION_MEMBERS } from "./create-v12-readiness-handoff.mjs";
 import { assertV12ArtifactPrivacySafe, assertV12PrivacySafeValue } from "./v12-artifact-privacy.mjs";
 import {
   V12_DEVICE_LEASE_PATHS,
   digestV12CanonicalRestorationSnapshot,
   readV12CanonicalRestorationSnapshot,
 } from "./v12-device-settings-contract.mjs";
+import { readV12RetainedGitExecution, resolveV12GitExecution } from "./v12-native-execution-origin.mjs";
+import { verifyV12RollbackEvidence, V12_ROLLBACK_PUBLICATION_MEMBERS } from "./v12-rollback-evidence.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -396,8 +398,9 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
     fail("manifest_missing");
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const head = currentIdentity?.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-  const source = currentIdentity?.source ?? sourceTreeSha256(root);
+  const gitExecution = resolveV12GitExecution();
+  const head = currentIdentity?.head ?? execFileSync(gitExecution.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const source = currentIdentity?.source ?? sourceTreeSha256(root, { gitExecution, expectedGitAttestation: gitExecution.attestation });
   validateV12CalendarManifest(manifest, { head, source });
   const evidencePath = path.join(path.dirname(manifestPath), "evidence", "calendar-evidence.json");
   let safeEvidencePath;
@@ -693,19 +696,20 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
   performance: Object.freeze(["performance.json"]),
 });
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
-const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
+const V12_PREFLIGHT_FINAL_OUTPUTS = V12_FINAL_PUBLICATION_MEMBERS;
+const V12_FINAL_PHASE_COUNTS = Object.freeze({ "13": 17, "14": 13, "15": 36, "16": 23, "17": 36, "18": 16, "19": 18, "20": 13 });
 export const V12_NATIVE_PROVENANCE_REGISTRY = Object.freeze({
-  sqlite: Object.freeze({ actions: Object.freeze(["sqlite"]), domain: "scripts/v12-production-native-runtime.mjs" }),
-  recovery: Object.freeze({ actions: Object.freeze(["recovery"]), domain: "scripts/v12-production-native-domain-actions.mjs" }),
-  garmin: Object.freeze({ actions: Object.freeze(["garmin"]), domain: "scripts/v12-production-native-domain-actions.mjs" }),
-  calendar: Object.freeze({ actions: Object.freeze(["calendar"]), domain: "scripts/v12-production-native-calendar-action.mjs" }),
-  "multi-plan": Object.freeze({ actions: Object.freeze(["multi-plan"]), domain: "scripts/run-v12-maestro.mjs" }),
-  workout: Object.freeze({ actions: Object.freeze(["workout"]), domain: "scripts/run-v12-maestro.mjs" }),
-  "library-running": Object.freeze({ actions: Object.freeze(["library-running"]), domain: "scripts/run-v12-maestro.mjs" }),
-  visual: Object.freeze({ actions: Object.freeze(["visual-capture", "visual-capture-batch"]), domain: "scripts/v12-production-native-visual-actions.mjs" }),
-  comparison: Object.freeze({ actions: Object.freeze(["visual-compare"]), domain: "scripts/v12-production-native-visual-actions.mjs" }),
-  accessibility: Object.freeze({ actions: Object.freeze(["accessibility"]), domain: "scripts/v12-production-native-quality-actions.mjs" }),
-  performance: Object.freeze({ actions: Object.freeze(["performance"]), domain: "scripts/v12-production-native-quality-actions.mjs" }),
+  sqlite: Object.freeze({ actions: Object.freeze(["sqlite"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-runtime.mjs" }),
+  recovery: Object.freeze({ actions: Object.freeze(["recovery"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  garmin: Object.freeze({ actions: Object.freeze(["garmin"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  calendar: Object.freeze({ actions: Object.freeze(["calendar"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-calendar-action.mjs" }),
+  "multi-plan": Object.freeze({ actions: Object.freeze(["multi-plan"]), ...V12_MAESTRO_SOURCE_PATHS["multi-plan"] }),
+  workout: Object.freeze({ actions: Object.freeze(["workout"]), ...V12_MAESTRO_SOURCE_PATHS.workout }),
+  "library-running": Object.freeze({ actions: Object.freeze(["library-running"]), ...V12_MAESTRO_SOURCE_PATHS["library-running"] }),
+  visual: Object.freeze({ actions: Object.freeze(["visual-capture", "visual-capture-batch"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  comparison: Object.freeze({ actions: Object.freeze(["visual-compare"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  accessibility: Object.freeze({ actions: Object.freeze(["accessibility"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-quality-actions.mjs" }),
+  performance: Object.freeze({ actions: Object.freeze(["performance"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-quality-actions.mjs" }),
 });
 const V12_ADAPTER_SHARDS = Object.freeze(Object.keys(V12_NATIVE_PROVENANCE_REGISTRY));
 
@@ -794,11 +798,12 @@ function finalAndroidTool(name) {
   return file;
 }
 
-export function verifyV12FinalNativeIdentity(manifest, { root = ROOT } = {}) {
+export function verifyV12FinalNativeIdentity(manifest, { root = ROOT, gitExecution = undefined } = {}) {
   if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
   if (manifest.evidence_origin !== "native") preflightFail("native_origin_required");
   const apkFile = preflightSafeFile(root, manifest.build?.apk?.path);
   const apkBytes = readFileSync(apkFile);
+  const sourceControl = gitExecution ?? readV12RetainedGitExecution({ root, runManifest: manifest });
   const apksigner = finalAndroidTool("apksigner"); const adb = finalAndroidTool("adb");
   const signatureReport = finalNativeCommand(apksigner, ["verify", "--verbose", "--print-certs", apkFile]);
   const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(signatureReport.toString("utf8"))?.[1]?.replaceAll(":", "").toLowerCase();
@@ -815,8 +820,8 @@ export function verifyV12FinalNativeIdentity(manifest, { root = ROOT } = {}) {
   const installedBytes = finalNativeCommand(adb, ["-s", serial, "exec-out", "cat", installedPaths[0].slice("package:".length)]);
   const settings = [adbText("shell", "settings", "get", "system", "font_scale"), adbText("shell", "settings", "get", "secure", "ui_night_mode"), adbText("shell", "settings", "get", "global", "animator_duration_scale")];
   validateV12FinalNativeIdentity(manifest, {
-    source_head: finalNativeCommand("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
-    source_tree_sha256: sourceTreeSha256(root), apk_sha256: sha256(apkBytes), apk_size_bytes: apkBytes.length,
+    source_head: finalNativeCommand(sourceControl.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+    source_tree_sha256: sourceTreeSha256(root, { gitExecution: sourceControl, expectedGitAttestation: sourceControl.attestation }), apk_sha256: sha256(apkBytes), apk_size_bytes: apkBytes.length,
     signature_sha256: sha256(signatureReport), certificate_sha256: certificate,
     installed_apk_sha256: sha256(installedBytes), device_identity_sha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
     settings_sha256: sha256(`${settings.join("\n")}\n`),
@@ -895,13 +900,120 @@ function readFinalRecoveryJson(root, runPrefix, name) {
   catch { preflightFail("final_recovery_invalid"); }
 }
 
-export function recoverV12FinalPublication(root, runId) {
+function finalRecoveryBytes(root, runPrefix, name) {
+  const published = preflightSafeFile(root, `${runPrefix}/${name}`, { required: false });
+  const staged = published === null ? preflightSafeFile(root, `${runPrefix}/.staging/final/${name}`, { required: false }) : null;
+  const selected = published ?? staged;
+  if (selected === null) preflightFail("final_recovery_invalid");
+  return readFileSync(selected);
+}
+
+function finalPhaseCounts(rows) {
+  const counts = Object.fromEntries(Object.keys(V12_FINAL_PHASE_COUNTS).map(phase => [phase, 0]));
+  for (const row of rows) {
+    if (!Object.hasOwn(counts, String(row?.owning_phase))) preflightFail("final_recovery_invalid");
+    counts[String(row.owning_phase)] += 1;
+  }
+  if (!isDeepStrictEqual(counts, V12_FINAL_PHASE_COUNTS)) preflightFail("final_recovery_invalid");
+  return counts;
+}
+
+function assertFinalRecoveryEnvelope(finalEvidence, matrix, handoff) {
+  if (!Array.isArray(finalEvidence?.rows) || finalEvidence.rows.length !== 172
+    || !Array.isArray(finalEvidence.source_results) || finalEvidence.source_results.length !== 172
+    || !Array.isArray(finalEvidence.evidence_hashes) || finalEvidence.evidence_hashes.length !== 172
+    || !Array.isArray(matrix?.rows) || matrix.rows.length !== 172
+    || !isDeepStrictEqual(matrix.rows, finalEvidence.rows)
+    || !isDeepStrictEqual(matrix.verdict_counts, finalEvidence.verdict_counts)
+    || matrix.readiness !== finalEvidence.readiness) preflightFail("final_recovery_invalid");
+  finalPhaseCounts(finalEvidence.rows);
+  try { validateV12ReadinessHandoff(handoff, { final_evidence: finalEvidence }); }
+  catch { preflightFail("final_recovery_invalid"); }
+}
+
+function deriveExpectedFinalOutputs({ root, runId, manifest, preseal, attended, rollbackEvidence }) {
+  const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence,
+    attended, root, readArtifact: relative => readFileSync(preflightSafeFile(root, relative)) });
+  if (ledger.rows.length !== 172 || !isDeepStrictEqual(ledger.phase_counts, V12_FINAL_PHASE_COUNTS)) preflightFail("final_recovery_invalid");
+  const writes = [];
+  const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: runId, ledger,
+    writeImmutableJson: (relative, value) => writes.push([relative.replace(`artifacts/native/v1.2/${runId}/`, ""), value]) });
+  writes.push(["parity-report.md", generateV12ParityReport({ ledger: finalEvidence })]);
+  const readinessHandoff = buildV12ReadinessHandoff({ final_evidence: finalEvidence, reviewed_policy: finalEvidence.policy,
+    rollback: rollbackEvidence, generated_at: attended.recorded_at });
+  validateV12ReadinessHandoff(readinessHandoff, { final_evidence: finalEvidence });
+  writes.push(["readiness-handoff.md", readinessHandoff]);
+  assertV12ExactArtifactFileSet(writes.map(([relative]) => relative), V12_PREFLIGHT_FINAL_OUTPUTS);
+  return Object.freeze({ ledger, finalEvidence, readinessHandoff, writes: Object.freeze(writes) });
+}
+
+function validateFinalCandidateBytes(root, runId, expected) {
+  const runPrefix = `artifacts/native/v1.2/${runId}`;
+  const stagedManifestFile = preflightSafeFile(root, `${runPrefix}/.staging/final/manifest.json`, { required: false });
+  const publicationManifestFile = preflightSafeFile(root, `${runPrefix}/publication/final.json`, { required: false });
+  const manifestFile = stagedManifestFile ?? publicationManifestFile;
+  if (manifestFile === null) preflightFail("final_recovery_invalid");
+  let publication;
+  try { publication = JSON.parse(readFileSync(manifestFile, "utf8")); } catch { preflightFail("final_recovery_invalid"); }
+  if (!Array.isArray(publication.members)) preflightFail("final_recovery_invalid");
+  assertV12ExactArtifactFileSet(publication.members.map(member => member?.artifact), V12_PREFLIGHT_FINAL_OUTPUTS);
+  const expectedByName = new Map(expected.writes.map(([relative, value]) => [relative,
+    Buffer.isBuffer(value) ? value : Buffer.from(typeof value === "string" ? value : `${JSON.stringify(value)}\n`),
+  ]));
+  for (const member of publication.members) {
+    const bytes = finalRecoveryBytes(root, runPrefix, member.artifact);
+    const expectedBytes = expectedByName.get(member.artifact);
+    if (!Buffer.isBuffer(expectedBytes) || !bytes.equals(expectedBytes) || member.sha256 !== sha256(bytes)
+      || member.size_bytes !== bytes.length) preflightFail("final_recovery_invalid");
+  }
+  const finalEvidence = readFinalRecoveryJson(root, runPrefix, "final-evidence.json");
+  const matrix = readFinalRecoveryJson(root, runPrefix, "ui-state-matrix.json");
+  const handoff = readFinalRecoveryJson(root, runPrefix, "readiness-handoff.md");
+  assertFinalRecoveryEnvelope(finalEvidence, matrix, handoff);
+  return true;
+}
+
+function finalRecoveryAuthorities(root, runId) {
+  const { manifest, build_sha256 } = preflightManifest(root, runId);
+  if (manifest.evidence_origin !== "native") preflightFail("test_origin_forbidden");
+  const gitExecution = readV12RetainedGitExecution({ root, runManifest: manifest });
+  validateV12LiveSourceLineage(manifest, { root, gitExecution });
+  validateV12ProductionPublicationOrigins(root, runId);
+  const rollbackEvidence = verifyV12RollbackEvidence({ root, runId, allowFinalResidue: true });
+  try { verifyV12AtomicShard({ root, runId, shard: "preseal", allowOtherShardResidue: true }); } catch { preflightFail("publication_invalid"); }
+  const artifacts = preflightValidateArtifacts(root, runId, Object.keys(V12_ARTIFACT_REGISTRY), false, true);
+  const contractIdentity = v12ContractSourceDigests(root);
+  validateV12ContractSourceIdentity(manifest, contractIdentity);
+  let preseal; let attended;
+  try {
+    preseal = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/preseal-validation.json`), "utf8"));
+    attended = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/attended-observations.json`), "utf8"));
+  } catch { preflightFail("preseal_invalid"); }
+  const expectedPresealFiles = [`artifacts/native/v1.2/${runId}/build.json`,
+    ...artifacts.publishedFiles.map(item => `artifacts/native/v1.2/${runId}/${item}`),
+    ...V12_ROLLBACK_PUBLICATION_MEMBERS.map(item => `artifacts/native/v1.2/${runId}/${item}`),
+    `artifacts/native/v1.2/${runId}/publication/rollback.json`];
+  if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== runId
+    || preseal.evidence_origin !== "native" || preseal.mode !== "preseal" || preseal.release_authorized !== false
+    || preseal.build_sha256 !== build_sha256 || preseal.git_attestation_sha256 !== gitExecution.retained_sha256
+    || !isDeepStrictEqual(preseal.contract_identity, contractIdentity)
+    || !isDeepStrictEqual(preseal.rollback_evidence, rollbackEvidence) || !Array.isArray(preseal.row_evidence)
+    || preseal.required_artifact_count !== artifacts.required.length || !isDeepStrictEqual(preseal.artifacts, artifacts.hashes)
+    || !Array.isArray(preseal.all_artifact_hashes)) preflightFail("preseal_invalid");
+  assertV12ExactArtifactFileSet(preseal.all_artifact_hashes.map(item => item?.path), expectedPresealFiles);
+  if (preseal.all_artifact_hashes.some(item => preflightHashFile(root, item.path) !== item.sha256)) preflightFail("source_hash_invalid");
+  return deriveExpectedFinalOutputs({ root, runId, manifest, preseal, attended, rollbackEvidence });
+}
+
+function recoverV12FinalPublicationWithExpected(root, runId, expected) {
   const runPrefix = `artifacts/native/v1.2/${runId}`;
   const stagedManifest = preflightSafeFile(root, `${runPrefix}/.staging/final/manifest.json`, { required: false });
   if (stagedManifest === null) return false;
   const finalEvidence = readFinalRecoveryJson(root, runPrefix, "final-evidence.json");
+  const matrix = readFinalRecoveryJson(root, runPrefix, "ui-state-matrix.json");
   const handoff = readFinalRecoveryJson(root, runPrefix, "readiness-handoff.md");
-  validateV12ReadinessHandoff(handoff, { final_evidence: finalEvidence });
+  assertFinalRecoveryEnvelope(finalEvidence, matrix, handoff);
+  validateFinalCandidateBytes(root, runId, expected);
   publishV12AtomicShard({
     root,
     runId,
@@ -911,6 +1023,16 @@ export function recoverV12FinalPublication(root, runId) {
     beforeManifest: () => preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", handoff),
   });
   return true;
+}
+
+export function recoverV12FinalPublication(root, runId) {
+  const runPrefix = `artifacts/native/v1.2/${runId}`;
+  if (preflightSafeFile(root, `${runPrefix}/.staging/final/manifest.json`, { required: false }) === null) return false;
+  const finalEvidence = readFinalRecoveryJson(root, runPrefix, "final-evidence.json");
+  const matrix = readFinalRecoveryJson(root, runPrefix, "ui-state-matrix.json");
+  const handoff = readFinalRecoveryJson(root, runPrefix, "readiness-handoff.md");
+  assertFinalRecoveryEnvelope(finalEvidence, matrix, handoff);
+  return recoverV12FinalPublicationWithExpected(root, runId, finalRecoveryAuthorities(root, runId));
 }
 
 export function parseV12EvidenceCliArgs(args) {
@@ -962,6 +1084,12 @@ function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalen
     if (relative === "calendar-transitions.json") {
       try { validateV12CalendarExecutionOrigin(value.execution_origin, root, allowTestCalendarFixture); } catch { preflightFail("calendar_origin_invalid"); }
     }
+    if (/^mapping\/(?:multi-plan|workout|library-running)\.json$/u.test(relative) && manifest.evidence_origin === "native") {
+      let retainedBuild;
+      try { retainedBuild = JSON.parse(readFileSync(preflightSafeFile(root, "artifacts/native/v1.2-acceptance/build.json"), "utf8")); }
+      catch { preflightFail("git_attestation_invalid"); }
+      if (value.git_attestation_sha256 !== retainedBuild?.v12_evidence_identity?.git_attestation?.sha256) preflightFail("git_attestation_invalid");
+    }
     if (relative === "screenshots/index.json") {
       if (value.schema_version !== 2 || value.producer !== "v12-visual-capture-index/v2" || value.capture_count !== 107 * 64
         || !Array.isArray(value.windows) || value.windows.length < 1 || !Array.isArray(value.records) || value.records.length !== 107 * 64) preflightFail("visual_index_invalid");
@@ -996,10 +1124,10 @@ function assertNonTestEvidenceEnvironment() {
     || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) preflightFail("test_provenance_forbidden");
 }
 
-export function validateV12ProductionPublicationOrigins(root, runId) {
-  const adapterSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-native-adapter.mjs")));
-  const launcherSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-production-native-adapter-launcher.mjs")));
-  for (const shard of V12_ADAPTER_SHARDS) {
+export function validateV12ProductionPublicationOrigins(root, runId, shards = V12_ADAPTER_SHARDS) {
+  if (!Array.isArray(shards) || shards.length === 0 || new Set(shards).size !== shards.length
+    || shards.some(shard => !V12_ADAPTER_SHARDS.includes(shard))) preflightFail("adapter_provenance_invalid");
+  for (const shard of shards) {
     const expected = V12_NATIVE_PROVENANCE_REGISTRY[shard];
     let publication;
     try { publication = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8")); }
@@ -1009,9 +1137,11 @@ export function validateV12ProductionPublicationOrigins(root, runId) {
     catch { preflightFail("adapter_provenance_invalid"); }
     if (origin.kind === "test-fixture" || origin.toolchain_origin !== "production-attested/v1"
       || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
-    const domainSha256 = sha256(readFileSync(preflightSafeFile(root, expected.domain)));
-    if (!expected.actions.includes(origin.action) || origin.adapter_source_sha256 !== adapterSha256
-      || origin.launcher_source_sha256 !== launcherSha256 || origin.domain_source_sha256 !== domainSha256) preflightFail("adapter_provenance_stale");
+    const sourceDigests = Object.fromEntries(["adapter", "launcher", "domain"].map(role => [role,
+      sha256(readFileSync(preflightSafeFile(root, expected[role]))),
+    ]));
+    if (!expected.actions.includes(origin.action) || origin.adapter_source_sha256 !== sourceDigests.adapter
+      || origin.launcher_source_sha256 !== sourceDigests.launcher || origin.domain_source_sha256 !== sourceDigests.domain) preflightFail("adapter_provenance_stale");
   }
   return true;
 }
@@ -1059,12 +1189,20 @@ export function readV12FinalDeviceState(manifest, {
 
 export function validateV12FinalProductionIdentity(manifest, {
   root = ROOT,
-  currentHead = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
-  currentSourceTreeSha256 = () => sourceTreeSha256(root),
+  gitExecution = undefined,
+  currentHead = undefined,
+  currentSourceTreeSha256 = undefined,
   verifyApkSignature = defaultApkSignature,
   readDeviceIdentity = () => readV12FinalDeviceState(manifest),
 } = {}) {
   const validated = validateV12RunManifest(manifest);
+  const sourceControl = gitExecution ?? ((currentHead !== undefined && currentSourceTreeSha256 !== undefined)
+    ? undefined : readV12RetainedGitExecution({ root, runManifest: validated }));
+  const readHead = currentHead ?? (() => execFileSync(sourceControl.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim());
+  const readSourceTree = currentSourceTreeSha256 ?? (() => sourceTreeSha256(root, {
+    gitExecution: sourceControl,
+    expectedGitAttestation: sourceControl.attestation,
+  }));
   const apkPath = preflightSafeFile(root, validated.build.apk.path);
   const apkBytes = readFileSync(apkPath);
   if (apkBytes.length < 4 || !apkBytes.subarray(0, 4).equals(Buffer.from("504b0304", "hex"))) preflightFail("final_identity_invalid");
@@ -1072,8 +1210,8 @@ export function validateV12FinalProductionIdentity(manifest, {
   try {
     signature = verifyApkSignature(apkPath);
     device = readDeviceIdentity();
-    head = currentHead();
-    source = currentSourceTreeSha256();
+    head = readHead();
+    source = readSourceTree();
   }
   catch (error) { if (error instanceof Error && error.message.startsWith("v12_preflight_")) throw error; preflightFail("final_identity_invalid"); }
   if (device?.lease_state !== "clear") preflightFail("final_lease_active");
@@ -1086,13 +1224,13 @@ export function validateV12FinalProductionIdentity(manifest, {
   return true;
 }
 
-function preflightValidateArtifacts(root, runId, shardIds, allowTestCalendarFixture = false) {
+function preflightValidateArtifacts(root, runId, shardIds, allowTestCalendarFixture = false, allowFinalResidue = false) {
   const required = shardIds.flatMap((id) => V12_PREFLIGHT_SHARDS[id]);
   const manifest = preflightManifest(root, runId).manifest;
   const publicationShards = shardIds.flatMap((id) => id === "visual" ? ["visual", "comparison"] : [id]);
   const publishedFiles = [];
   for (const shard of publicationShards) {
-    try { verifyV12AtomicShard({ root, runId, shard }); } catch { preflightFail("publication_invalid"); }
+    try { verifyV12AtomicShard({ root, runId, shard, allowOtherShardResidue: allowFinalResidue }); } catch { preflightFail("publication_invalid"); }
     publishedFiles.push(...validatedPublicationFiles(root, runId, shard));
   }
   const hashes = required.map((relative) => preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalendarFixture));
@@ -1176,6 +1314,10 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     return Object.freeze({ schema_version: 1, producer: "v12-test-resolution/v1", run_id: options.run_id, sealable: false, row_evidence });
   }
   if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
+  const gitExecution = readV12RetainedGitExecution({ root, runManifest: manifest });
+  validateV12LiveSourceLineage(manifest, { root, gitExecution });
+  const rollbackEvidence = verifyV12RollbackEvidence({ root, runId: options.run_id });
+  const rollbackPublishedFiles = [...V12_ROLLBACK_PUBLICATION_MEMBERS, "publication/rollback.json"];
 
   const runPrefix = `artifacts/native/v1.2/${options.run_id}`;
   if (options.mode === "preseal") {
@@ -1184,33 +1326,36 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     for (const output of V12_PREFLIGHT_FINAL_OUTPUTS) if (preflightSafeFile(root, `${runPrefix}/${output}`, { required: false }) !== null) preflightFail("final_output_present");
     const artifacts = preflightValidateArtifacts(root, options.run_id, Object.keys(V12_PREFLIGHT_SHARDS));
     const allFiles = preflightCollectFiles(root, options.run_id);
-    const expectedFiles = [`${runPrefix}/build.json`, ...artifacts.publishedFiles.map(item => `${runPrefix}/${item}`)];
+    const expectedFiles = [`${runPrefix}/build.json`, ...artifacts.publishedFiles.map(item => `${runPrefix}/${item}`),
+      ...rollbackPublishedFiles.map(item => `${runPrefix}/${item}`)];
     assertV12ExactArtifactFileSet(allFiles, expectedFiles);
     const contractIdentity = v12ContractSourceDigests(root);
     validateV12ContractSourceIdentity(manifest, contractIdentity);
-    const report = Object.freeze({ schema_version: 3, producer: "v12-preseal-validation/v3", run_id: options.run_id, evidence_origin: "native", mode: "preseal", release_authorized: false, build_sha256, contract_identity: contractIdentity, required_artifact_count: artifacts.required.length, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
+    const report = Object.freeze({ schema_version: 3, producer: "v12-preseal-validation/v3", run_id: options.run_id, evidence_origin: "native", mode: "preseal", release_authorized: false, build_sha256, git_attestation_sha256: gitExecution.retained_sha256, contract_identity: contractIdentity, rollback_evidence: rollbackEvidence, required_artifact_count: artifacts.required.length, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
     publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report), validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), ["preseal-validation.json"]) });
     return report;
   }
   assertNonTestEvidenceEnvironment();
   validateV12ProductionPublicationOrigins(root, options.run_id);
-  validateV12FinalProductionIdentity(manifest, { root });
-  verifyV12FinalNativeIdentity(manifest, { root });
+  validateV12FinalProductionIdentity(manifest, { root, gitExecution });
+  verifyV12FinalNativeIdentity(manifest, { root, gitExecution });
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
   if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id
-    || !Array.isArray(preseal.row_evidence) || !finalPlainObject(preseal.contract_identity)) preflightFail("preseal_invalid");
-  recoverV12FinalPublication(root, options.run_id);
+    || preseal.evidence_origin !== "native" || preseal.mode !== "preseal" || preseal.release_authorized !== false
+    || preseal.git_attestation_sha256 !== gitExecution.retained_sha256
+    || !Array.isArray(preseal.row_evidence) || !finalPlainObject(preseal.contract_identity)
+    || !isDeepStrictEqual(preseal.rollback_evidence, rollbackEvidence)) preflightFail("preseal_invalid");
   try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }
   // Recheck shard provenance before generic source hashes so a test-origin
   // substitution is rejected explicitly at the final boundary.
-  preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
+  const finalArtifacts = preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
   const contractIdentity = v12ContractSourceDigests(root);
   validateV12ContractSourceIdentity(manifest, contractIdentity);
   if (!isDeepStrictEqual(preseal.contract_identity, contractIdentity)) preflightFail("contract_identity_invalid");
-  if (preseal.build_sha256 !== build_sha256 || !Array.isArray(preseal.all_artifact_hashes)
+  if (preseal.build_sha256 !== build_sha256 || preseal.required_artifact_count !== finalArtifacts.required.length
+    || !isDeepStrictEqual(preseal.artifacts, finalArtifacts.hashes) || !Array.isArray(preseal.all_artifact_hashes)
     || preseal.all_artifact_hashes.some(item => preflightHashFile(root, item.path) !== item.sha256)) preflightFail("source_hash_invalid");
   let attended; try { attended = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/attended-observations.json`), "utf8")); } catch { preflightFail("attended_invalid"); }
-  const beforeFinalFiles = preflightCollectFiles(root, options.run_id);
   const expectedBeforeFinal = [
     ...preseal.all_artifact_hashes.map(item => item.path),
     `${runPrefix}/preseal-validation.json`,
@@ -1219,11 +1364,15 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     ...((Array.isArray(attended?.rows) ? attended.rows : []).map(row => row?.png?.path)),
   ];
   if (expectedBeforeFinal.some(item => typeof item !== "string")) preflightFail("attended_invalid");
+  const expectedFinal = deriveExpectedFinalOutputs({ root, runId: options.run_id, manifest, preseal, attended, rollbackEvidence });
+  recoverV12FinalPublicationWithExpected(root, options.run_id, expectedFinal);
+  const beforeFinalFiles = preflightCollectFiles(root, options.run_id);
   const finalManifest = preflightSafeFile(root, `${runPrefix}/publication/final.json`, { required: false });
   if (finalManifest !== null) {
     try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "final" }); } catch { preflightFail("publication_invalid"); }
     const finalEvidence = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/final-evidence.json`), "utf8"));
     const readinessHandoff = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/readiness-handoff.md`), "utf8"));
+    validateFinalCandidateBytes(root, options.run_id, expectedFinal);
     validateV12ReadinessHandoff(readinessHandoff, { final_evidence: finalEvidence });
     preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff);
     assertV12ExactArtifactFileSet(beforeFinalFiles, [...expectedBeforeFinal, ...V12_PREFLIGHT_FINAL_OUTPUTS.map(output => `${runPrefix}/${output}`), `${runPrefix}/publication/final.json`]);
@@ -1232,24 +1381,14 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   }
   assertV12ExactArtifactFileSet(beforeFinalFiles, expectedBeforeFinal);
   beforeFinalFiles.forEach(item => preflightHashFile(root, item));
-  const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence, attended, root, readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)) });
-  const finalWrites = [];
-  const write = (relative, value) => finalWrites.push([relative, value]);
-  const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: options.run_id, ledger, writeImmutableJson: write });
-  finalWrites.push([`${runPrefix}/parity-report.md`, generateV12ParityReport({ ledger: finalEvidence })]);
-  const readinessHandoff = buildV12ReadinessHandoff({
-    final_evidence: finalEvidence,
-    reviewed_policy: finalEvidence.policy,
-    rollback: Object.freeze({ status: "NOT_VERIFIED", reason_code: "rollback_evidence_missing", recovery_boundary: "compatible_restore_or_forward_fix" }),
-    generated_at: attended.recorded_at,
-  });
-  validateV12ReadinessHandoff(readinessHandoff, { final_evidence: finalEvidence });
-  finalWrites.push([`${runPrefix}/readiness-handoff.md`, readinessHandoff]);
+  const finalWrites = expectedFinal.writes;
+  const finalEvidence = expectedFinal.finalEvidence;
+  const readinessHandoff = expectedFinal.readinessHandoff;
   publishV12AtomicShard({
     root,
     runId: options.run_id,
     shard: "final",
-    produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative.replace(`${runPrefix}/`, ""), value)),
+    produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative, value)),
     validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), V12_PREFLIGHT_FINAL_OUTPUTS),
     beforeManifest: () => preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff),
   });
@@ -1257,7 +1396,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   const afterFinalFiles = preflightCollectFiles(root, options.run_id);
   assertV12ExactArtifactFileSet(afterFinalFiles, [...expectedBeforeFinal, ...V12_PREFLIGHT_FINAL_OUTPUTS.map(output => `${runPrefix}/${output}`), `${runPrefix}/publication/final.json`]);
   afterFinalFiles.forEach(item => preflightHashFile(root, item));
-  return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: ledger.rows.length, readiness: readinessHandoff.readiness, release_authorized: false });
+  return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: expectedFinal.ledger.rows.length, readiness: readinessHandoff.readiness, release_authorized: false });
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {

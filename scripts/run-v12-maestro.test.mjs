@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { runV12MaestroCli } from "./run-v12-maestro.mjs";
+import { executeLiveV12RecoveryMaestro, runV12MaestroCli } from "./run-v12-maestro.mjs";
+import { validateV12ProductionPublicationOrigins } from "./verify-v12-native-evidence.mjs";
 
 const TEST_TIMEOUT_MS = 30_000;
 const runId = "phase20-20261017T000000Z-aaaaaaaaaaaa";
@@ -29,7 +30,7 @@ function manifest() {
 }
 
 function fixture(t, shard) {
-  const root = mkdtempSync(path.join(tmpdir(), `v12-maestro-${shard}-`));
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), `v12-maestro-${shard}-`)));
   t.after(() => rmSync(root, { force: true, recursive: true }));
   const details = {
     "multi-plan": ["phase13-", "src/testing/contracts/multiPlanRunning.contract.ts"],
@@ -46,6 +47,8 @@ function fixture(t, shard) {
   writeFileSync(path.join(root, `artifacts/native/v1.2/${runId}/build.json`), JSON.stringify(build));
   writeFileSync(path.join(root, flow), "appId: com.fchoo.gymtracker.devtest\n---\n- launchApp\n");
   writeFileSync(path.join(root, source), `export const CASES = ["${caseIds.join('\", \"')}"] as const;\n`);
+  mkdirSync(path.join(root, "scripts"), { recursive: true });
+  writeFileSync(path.join(root, "scripts/run-v12-maestro.mjs"), readFileSync(new URL("./run-v12-maestro.mjs", import.meta.url)));
   const tools = {
     execution_origin: "test-controlled/v1",
     adb: path.join(root, "tools/adb"),
@@ -82,6 +85,44 @@ function fixture(t, shard) {
   return { root, build, caseIds, tools, calls, execute, currentIdentity };
 }
 
+test("alternate Recovery Maestro supplies canonical step and nonce variables through absolute tools", { timeout: TEST_TIMEOUT_MS }, (t) => {
+  const value = fixture(t, "multi-plan");
+  const flow = "maestro/v1.2/recovery.yaml";
+  mkdirSync(path.dirname(path.join(value.root, flow)), { recursive: true });
+  writeFileSync(path.join(value.root, flow), "appId: com.fchoo.gymtracker.devtest\n---\n- launchApp\n");
+  const commands = [];
+  const execute = (program, args) => {
+    assert.equal(path.isAbsolute(program), true);
+    if (path.basename(program) === "maestro" && args[0] === "--version") return "2.8.0\n";
+    if (path.basename(program) === "maestro") {
+      commands.push(args);
+      const output = args[args.indexOf("--output") + 1];
+      writeFileSync(output, "<testsuite><testcase name=\"recovery\"/></testsuite>\n");
+      return "";
+    }
+    if (path.basename(program) === "adb" && args.includes("get")) return "0\n";
+    return "";
+  };
+  const result = executeLiveV12RecoveryMaestro(["--run", runId, "--shard", "recovery"], {
+    root: value.root,
+    currentHead: value.build.source.head,
+    sourceDigest: value.build.source.tree_sha256,
+    isAncestor: () => true,
+    currentIdentity: value.currentIdentity,
+    executionTools: value.tools,
+    serial: "physical-device-20",
+    execFileSync: execute,
+  });
+
+  assert.equal(result.executions, 224);
+  assert.equal(commands.length, 224);
+  for (const args of commands) {
+    const variables = args.filter((value) => value.startsWith("V12_")).map(value => value.split("=")[0]);
+    assert.deepEqual(variables, ["V12_DOMAIN_NONCE", "V12_RECOVERY_CASE", "V12_RECOVERY_STEP", "V12_RECOVERY_STAGE", "V12_RECOVERY_PHASE"]);
+    assert.match(args.find(value => value.startsWith("V12_DOMAIN_NONCE=")), /^V12_DOMAIN_NONCE=[a-f0-9]{32}$/u);
+  }
+});
+
 for (const shard of ["multi-plan", "workout", "library-running"]) {
   test(`${shard} publishes action-scoped provenance after absolute-tool execution`, { timeout: TEST_TIMEOUT_MS }, (t) => {
     const value = fixture(t, shard);
@@ -107,6 +148,8 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
     assert.ok(value.calls.length > 0);
     assert.ok(value.calls.every((program) => path.isAbsolute(program)));
     const publication = JSON.parse(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8"));
+    const mapping = JSON.parse(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/mapping/${shard}.json`), "utf8"));
+    assert.match(mapping.git_attestation_sha256, /^[a-f0-9]{64}$/u);
     assert.equal(publication.execution_origin.action, shard);
     assert.equal(publication.execution_origin.kind, "test-fixture");
     assert.equal(publication.execution_origin.toolchain_origin, "test-controlled/v1");
@@ -118,6 +161,13 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
     assert.match(publication.execution_origin.request_attestation_sha256, /^[a-f0-9]{64}$/u);
     assert.equal(publication.execution_origin.adapter_source_sha256, publication.execution_origin.launcher_source_sha256);
     assert.notEqual(publication.execution_origin.domain_source_sha256, publication.execution_origin.launcher_source_sha256);
+    const productionManifest = JSON.parse(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8"));
+    productionManifest.execution_origin.kind = "production-default-launcher";
+    productionManifest.execution_origin.toolchain_origin = "production-attested/v1";
+    productionManifest.execution_origin.default_launcher = true;
+    productionManifest.execution_origin.test_only = false;
+    writeFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), JSON.stringify(productionManifest));
+    assert.equal(validateV12ProductionPublicationOrigins(value.root, runId, [shard]), true);
     assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/.staging`)), false);
   });
 }

@@ -131,6 +131,15 @@ function processAlive(pid) {
   catch (error) { return error?.code === "EPERM"; }
 }
 
+function validateClaimOwner(value, runId, shard) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== 5 || value.schema_version !== 1
+    || value.run_id !== runId || value.shard !== shard
+    || !Number.isSafeInteger(value.pid) || value.pid < 1
+    || typeof value.nonce !== "string" || !/^[a-f0-9]{32}$/u.test(value.nonce)) fail("claim_conflict");
+  return value;
+}
+
 function acquireClaim(runRoot, runId, shard) {
   const claims = ensureDirectory(runRoot, path.join(runRoot, ".claims"));
   const claim = path.join(claims, `${shard}.json`);
@@ -155,7 +164,7 @@ function acquireClaim(runRoot, runId, shard) {
       if (stat === undefined) continue;
       if (stat.isSymbolicLink() || !stat.isFile()) fail("symlink_forbidden");
       let existing;
-      try { existing = JSON.parse(readFileSync(claim, "utf8")); } catch { fail("claim_conflict"); }
+      try { existing = validateClaimOwner(JSON.parse(readFileSync(claim, "utf8")), runId, shard); } catch { fail("claim_conflict"); }
       if (processAlive(existing?.pid)) fail("claim_conflict");
       const stale = path.join(claims, `${shard}.stale-${nonce}-${attempt}.json`);
       try { renameSync(claim, stale); }
@@ -333,7 +342,7 @@ function cleanStage(runRoot, stage) {
   try { rmdirSync(parent); fsyncDirectory(runRoot); } catch { /* another shard may be staged */ }
 }
 
-function completePublication({ runRoot, runId, shard, stage, manifest, beforeManifest }) {
+function completePublication({ runRoot, runId, shard, stage, manifest, beforeManifest, afterManifest }) {
   assertStageHasNoExtras(stage, manifest.members);
   for (const member of manifest.members) {
     const source = path.join(stage, member.artifact);
@@ -351,8 +360,40 @@ function completePublication({ runRoot, runId, shard, stage, manifest, beforeMan
   const manifestMember = { artifact: `publication/${shard}.json`, sha256: sha256(readFileSync(stagedManifest)), size_bytes: lstatSync(stagedManifest).size };
   publishNoClobber(runRoot, stagedManifest, finalManifest, manifestMember);
   fsyncDirectory(finalDirectory);
+  if (typeof afterManifest === "function") afterManifest(Object.freeze({ manifest, manifest_path: finalManifest, run_root: runRoot }));
   cleanStage(runRoot, stage);
   return Object.freeze({ manifest, manifest_path: path.relative(path.dirname(path.dirname(path.dirname(path.dirname(runRoot)))), finalManifest) });
+}
+
+function recoverExistingPublicationResidue(root, runRoot, runId, shard, existing) {
+  const stage = path.join(runRoot, ".staging", shard);
+  const claimPath = path.join(runRoot, ".claims", `${shard}.json`);
+  if (!existsSync(stage) && !existsSync(claimPath)) return existing;
+  const claim = acquireClaim(runRoot, runId, shard);
+  try {
+    const current = existingPublication(root, runRoot, runId, shard);
+    if (current === null || JSON.stringify(current.manifest) !== JSON.stringify(existing.manifest)) fail("manifest_invalid");
+    if (existsSync(stage)) {
+      assertAncestors(runRoot, stage, { targetRequired: true });
+      assertDirectory(stage);
+      const memberByArtifact = new Map(existing.manifest.members.map(member => [member.artifact, member]));
+      for (const artifact of stagedFiles(stage)) {
+        const staged = path.join(stage, artifact);
+        if (artifact === "manifest.json") {
+          const published = path.join(runRoot, "publication", `${shard}.json`);
+          if (!readFileSync(staged).equals(readFileSync(published))) fail("stage_member_invalid");
+          continue;
+        }
+        const member = memberByArtifact.get(artifact);
+        if (member === undefined || !memberBytesValid(staged, member)
+          || !memberBytesValid(path.join(runRoot, artifact), member)) fail("stage_member_invalid");
+      }
+      cleanStage(runRoot, stage);
+    }
+    return current;
+  } finally {
+    claim.release();
+  }
 }
 
 function existingPublication(root, runRoot, runId, shard) {
@@ -370,11 +411,11 @@ function existingPublication(root, runRoot, runId, shard) {
 }
 
 /** Stage members privately, durably promote them without clobbering, then publish the manifest last. */
-export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true, executionOrigin, domainExecutionOrigin, beforeManifest } = {}) {
+export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true, executionOrigin, domainExecutionOrigin, beforeManifest, afterManifest } = {}) {
   if (!SAFE.test(shard ?? "") || typeof produce !== "function") fail("arguments_invalid");
   const runRoot = safeRoot(root, runId);
   const existing = existingPublication(root, runRoot, runId, shard);
-  if (existing !== null) return existing;
+  if (existing !== null) return recoverExistingPublicationResidue(root, runRoot, runId, shard, existing);
   if (existsSync(path.join(runRoot, "failures", `${shard}.json`))) fail("attempt_consumed");
   const claim = acquireClaim(runRoot, runId, shard);
   let release = true;
@@ -394,7 +435,7 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
         try { manifest = validateManifest(JSON.parse(readFileSync(stagedManifest, "utf8")), runId, shard); }
         catch { fail("manifest_invalid"); }
         if (validate(Object.freeze([...manifest.members]), stage) !== true) fail("validation_failed");
-        return completePublication({ runRoot, runId, shard, stage, manifest, beforeManifest });
+        return completePublication({ runRoot, runId, shard, stage, manifest, beforeManifest, afterManifest });
       }
       removeTreeNoLinks(stage);
     }
@@ -430,7 +471,7 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
       assertV12ArtifactPrivacySafe("manifest.json", bytes);
       writeFileSync(stagedManifest, bytes, { flag: "wx", mode: 0o600 }); fsyncFile(stagedManifest);
       assertStageHasNoExtras(stage, members); fsyncDirectory(stage);
-      return completePublication({ runRoot, runId, shard, stage, manifest, beforeManifest });
+      return completePublication({ runRoot, runId, shard, stage, manifest, beforeManifest, afterManifest });
     } catch (error) {
       if (!existsSync(stagedManifest)) {
         removeTreeNoLinks(stage);
@@ -444,11 +485,14 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
   }
 }
 
-export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}) {
+export function verifyV12AtomicShard({ root = process.cwd(), runId, shard, allowOtherShardResidue = false } = {}) {
   if (!SAFE.test(shard ?? "")) fail("arguments_invalid");
   const runRoot = safeRoot(root, runId);
-  if (existsSync(path.join(runRoot, "failures", `${shard}.json`)) || existsSync(path.join(runRoot, ".staging"))
-    || existsSync(path.join(runRoot, ".claims"))) fail("incomplete_attempt");
+  if (typeof allowOtherShardResidue !== "boolean") fail("arguments_invalid");
+  const incomplete = allowOtherShardResidue
+    ? [path.join(runRoot, "failures", `${shard}.json`), path.join(runRoot, ".staging", shard), path.join(runRoot, ".claims", `${shard}.json`)]
+    : [path.join(runRoot, "failures", `${shard}.json`), path.join(runRoot, ".staging"), path.join(runRoot, ".claims")];
+  if (incomplete.some(existsSync)) fail("incomplete_attempt");
   const result = existingPublication(root, runRoot, runId, shard);
   if (result === null) fail("manifest_invalid");
   const expectedIdentity = publicationIdentity(runRoot);

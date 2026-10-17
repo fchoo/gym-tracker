@@ -13,6 +13,11 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
+import {
+  assertV12GitExecutionAttestation,
+  resolveV12GitExecution,
+} from "./v12-native-execution-origin.mjs";
+
 const excludedSourcePath =
   /^\.coverage$|^(?:node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage(?:-[^/.]+)?|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
 
@@ -67,6 +72,14 @@ function fileSha256(root, relative, code) {
   return createHash("sha256").update(readFileSync(safeRegularFile(root, relative, code))).digest("hex");
 }
 
+function sourceGit({ gitExecution = undefined, expectedGitAttestation = undefined, env = process.env } = {}) {
+  const execution = gitExecution ?? resolveV12GitExecution({ env });
+  if (expectedGitAttestation !== undefined) {
+    assertV12GitExecutionAttestation(expectedGitAttestation, { execution });
+  }
+  return execution;
+}
+
 export function v12ContractSourceDigests(root = process.cwd(), { approvedSourceRoot = process.env.V12_APPROVED_SOURCE_ROOT } = {}) {
   const planning = Object.freeze(Object.fromEntries(
     Object.entries(V12_PLANNING_PATHS).map(([key, relative]) => [key, fileSha256(root, relative, "v12_contract_planning_invalid")]),
@@ -112,9 +125,10 @@ function currentFile(root, filePath) {
   };
 }
 
-export function sourceTreeUntrackedPaths(root = process.cwd()) {
+export function sourceTreeUntrackedPaths(root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
   return execFileSync(
-    "git",
+    git.executable,
     ["ls-files", "-z", "--others", "--exclude-standard"],
     { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString("utf8").split("\0")
@@ -125,9 +139,10 @@ export function sourceTreeUntrackedPaths(root = process.cwd()) {
     );
 }
 
-export function sourceTreeSha256(root = process.cwd()) {
+export function sourceTreeSha256(root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
   const files = execFileSync(
-    "git",
+    git.executable,
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString("utf8").split("\0")
@@ -137,9 +152,10 @@ export function sourceTreeSha256(root = process.cwd()) {
   return digestFiles(files);
 }
 
-export function sourceTreeSha256AtHead(head, root = process.cwd()) {
+export function sourceTreeSha256AtHead(head, root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
   const entries = execFileSync(
-    "git",
+    git.executable,
     ["ls-tree", "-rz", "--full-tree", head],
     { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString("utf8").split("\0")
@@ -166,16 +182,17 @@ export function sourceTreeSha256AtHead(head, root = process.cwd()) {
       type: rawMode === "120000" ? "symlink" : "file",
       mode: rawMode === "100755" ? "755" : rawMode === "120000" ? "000" : "644",
       contents: execFileSync(
-        "git",
+        git.executable,
         ["cat-file", "blob", hash],
         { cwd: root, maxBuffer: 64 * 1024 * 1024 },
       ),
     })));
 }
 
-export function assertCleanCommittedTree(head, root = process.cwd()) {
+export function assertCleanCommittedTree(head, root = process.cwd(), options = {}) {
+  const git = sourceGit(options);
   const currentHead = execFileSync(
-    "git",
+    git.executable,
     ["rev-parse", "HEAD"],
     { cwd: root, encoding: "utf8" },
   ).trim();
@@ -183,7 +200,7 @@ export function assertCleanCommittedTree(head, root = process.cwd()) {
     throw new Error("source digest head does not match the checked-out commit.");
   }
   const status = execFileSync(
-    "git",
+    git.executable,
     ["status", "--porcelain", "--untracked-files=all"],
     { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
   ).split(/\r?\n/u).filter(Boolean).map((line) => line.slice(3));
@@ -217,7 +234,15 @@ async function executeMain() {
       throw new Error(`unknown argument: ${argument}`);
     }
   }
-  const untracked = sourceTreeUntrackedPaths();
+  const gitExecution = resolveV12GitExecution();
+  let expectedGitAttestation;
+  if (process.env.V12_GIT_ATTESTATION_PATH !== undefined) {
+    try { expectedGitAttestation = JSON.parse(readFileSync(process.env.V12_GIT_ATTESTATION_PATH, "utf8")); }
+    catch { throw new Error("retained Git attestation is invalid."); }
+    assertV12GitExecutionAttestation(expectedGitAttestation, { execution: gitExecution });
+  }
+  const gitOptions = { gitExecution, expectedGitAttestation };
+  const untracked = sourceTreeUntrackedPaths(process.cwd(), gitOptions);
   if (assertNoUntracked && untracked.length > 0) {
     throw new Error(
       `untracked implementation files prevent an exact source digest: ${untracked.join(", ")}`,
@@ -227,11 +252,11 @@ async function executeMain() {
     if (head === undefined) {
       throw new Error("--assert-clean requires --head.");
     }
-    assertCleanCommittedTree(head);
+    assertCleanCommittedTree(head, process.cwd(), gitOptions);
   }
   process.stdout.write(head === undefined
-    ? sourceTreeSha256()
-    : sourceTreeSha256AtHead(head));
+    ? sourceTreeSha256(process.cwd(), gitOptions)
+    : sourceTreeSha256AtHead(head, process.cwd(), gitOptions));
 }
 
 const isMain = process.argv[1] !== undefined

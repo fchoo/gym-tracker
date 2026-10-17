@@ -5,6 +5,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { assertV12ArtifactPrivacySafe } from "./v12-artifact-privacy.mjs";
+import { verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -12,7 +13,14 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const VERDICTS = Object.freeze(["PASS", "ACCEPTED_EXCEPTION", "NOT_RUN", "FAIL", "REVIEW_REQUIRED", "N_A_REVIEWED"]);
 const REQUIRED_GATES = Object.freeze(["identity", "automated"]);
+const REQUIRED_PHASE_COUNTS = Object.freeze({ "13": 17, "14": 13, "15": 36, "16": 23, "17": 36, "18": 16, "19": 18, "20": 13 });
 const SAFE_RECOVERY_BOUNDARY = "compatible_restore_or_forward_fix";
+export const V12_FINAL_PUBLICATION_MEMBERS = Object.freeze([
+  "ui-state-matrix.json",
+  "final-evidence.json",
+  "parity-report.md",
+  "readiness-handoff.md",
+]);
 const FINAL_KEYS = Object.freeze([
   "accepted_exception_count", "evidence_hashes", "evidence_origin", "exceptions", "gates", "identity",
   "policy", "readiness", "release_authorized", "rows", "run_id", "schema_version", "source_results", "verdict_counts",
@@ -67,9 +75,11 @@ function rollback(value) {
     if (value.reason_code !== "rollback_evidence_missing" || value.recovery_boundary !== SAFE_RECOVERY_BOUNDARY) fail("rollback evidence state is malformed.");
     return value;
   }
-  keys(value, ["compatible_archive_sha256", "last_valid_schema_version", "newer_schema_committed", "prior_apk_signature_sha256", "prior_signed_apk_sha256", "recovery_boundary"], "rollback");
-  for (const field of ["prior_signed_apk_sha256", "prior_apk_signature_sha256", "compatible_archive_sha256"]) hash(value[field], `rollback ${field}`);
+  keys(value, ["compatible_archive_format_version", "compatible_archive_sha256", "current_schema_version", "last_valid_schema_version", "newer_schema_committed", "prior_apk_certificate_sha256", "prior_apk_signature_sha256", "prior_signed_apk_sha256", "recovery_boundary", "rollback_evidence_sha256"], "rollback");
+  for (const field of ["prior_signed_apk_sha256", "prior_apk_signature_sha256", "prior_apk_certificate_sha256", "compatible_archive_sha256", "rollback_evidence_sha256"]) hash(value[field], `rollback ${field}`);
   if (!Number.isSafeInteger(value.last_valid_schema_version) || value.last_valid_schema_version < 1
+    || !Number.isSafeInteger(value.current_schema_version) || value.current_schema_version <= value.last_valid_schema_version
+    || !Number.isSafeInteger(value.compatible_archive_format_version) || value.compatible_archive_format_version < 1
     || value.newer_schema_committed !== true || value.recovery_boundary !== SAFE_RECOVERY_BOUNDARY) {
     fail("rollback boundary must require compatible restore or a forward fix after a newer schema commit.");
   }
@@ -94,15 +104,19 @@ function finalEvidence(value) {
   if (value.schema_version !== 3 || value.evidence_origin !== "native" || value.release_authorized !== false
     || !RUN_ID.test(value.run_id ?? "") || value.identity?.run_id !== value.run_id) fail("final evidence envelope is malformed.");
   identity(value.identity);
-  if (!Array.isArray(value.rows) || value.rows.length < 1) fail("final evidence rows are missing.");
+  if (!Array.isArray(value.rows) || value.rows.length !== 172) fail("final evidence must contain exactly 172 rows.");
   const rowIds = new Set();
+  const phaseCounts = Object.fromEntries(Object.keys(REQUIRED_PHASE_COUNTS).map(phase => [phase, 0]));
   for (const row of value.rows) {
     keys(row, ["coverage_class", "inventory_id", "observations", "owning_phase", "requirement_id", "verdict"], "final evidence row");
     if (typeof row.requirement_id !== "string" || row.requirement_id.length < 1 || rowIds.has(row.requirement_id)
       || typeof row.inventory_id !== "string" || !Number.isSafeInteger(row.owning_phase) || typeof row.coverage_class !== "string"
       || !Array.isArray(row.observations) || !VERDICTS.includes(row.verdict)) fail("final evidence row identifier or verdict is malformed.");
     rowIds.add(row.requirement_id);
+    if (!Object.hasOwn(phaseCounts, String(row.owning_phase))) fail("final evidence phase counts are malformed.");
+    phaseCounts[String(row.owning_phase)] += 1;
   }
+  if (JSON.stringify(phaseCounts) !== JSON.stringify(REQUIRED_PHASE_COUNTS)) fail("final evidence phase counts are malformed.");
   if (!Array.isArray(value.gates) || value.gates.length < REQUIRED_GATES.length) fail("final evidence gates are missing.");
   const gateIds = new Set();
   for (const gate of value.gates) {
@@ -111,8 +125,10 @@ function finalEvidence(value) {
     gateIds.add(gate.id); hash(gate.evidence_sha256, "final evidence gate evidence");
   }
   if (REQUIRED_GATES.some(gate => !gateIds.has(gate))) fail("a required final evidence gate is missing.");
-  if (!Array.isArray(value.evidence_hashes) || value.evidence_hashes.some(item => !SHA256.test(item))) fail("final evidence hashes are malformed.");
-  if (!Array.isArray(value.source_results)) fail("final evidence source results are malformed.");
+  if (!Array.isArray(value.evidence_hashes) || value.evidence_hashes.length !== 172 || value.evidence_hashes.some(item => !SHA256.test(item))) fail("final evidence hashes are malformed.");
+  if (!Array.isArray(value.source_results) || value.source_results.length !== 172
+    || value.source_results.some((item, index) => item?.row_id !== value.rows[index].requirement_id
+      || item.evidence_sha256 !== value.evidence_hashes[index])) fail("final evidence source results are malformed.");
   if (!Array.isArray(value.exceptions)) fail("final evidence exceptions are malformed.");
   const exceptions = value.exceptions.map(exception);
   const exceptionsByRow = new Map(exceptions.map(item => [item.row_id, item]));
@@ -158,6 +174,7 @@ export function validateV12ReadinessHandoff(handoff, { final_evidence: expectedF
     || !RUN_ID.test(handoff.run_id ?? "")) fail("readiness handoff schema is malformed.");
   timestamp(handoff.generated_at, "handoff generated time");
   const evidence = finalEvidence(handoff.final_evidence); rollback(handoff.rollback);
+  if (handoff.rollback.status === "NOT_VERIFIED") fail("final handoff requires verified rollback evidence.");
   if (expectedFinalEvidence !== undefined && JSON.stringify(evidence) !== JSON.stringify(finalEvidence(expectedFinalEvidence))) fail("handoff final evidence does not match retained evidence.");
   if (handoff.run_id !== evidence.run_id || JSON.stringify(handoff.identity) !== JSON.stringify(evidence.identity)
     || JSON.stringify(handoff.verdict_counts) !== JSON.stringify(evidence.verdict_counts)
@@ -192,6 +209,19 @@ function readJson(root, relative) {
 export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { root = process.cwd() } = {}) {
   if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !RUN_ID.test(args[1] ?? "") || args[2] !== "--verify") fail("CLI arguments are malformed.");
   const runId = args[1]; const base = `artifacts/native/v1.2/${runId}`;
+  try { verifyV12AtomicShard({ root, runId, shard: "final" }); }
+  catch { fail("final atomic publication is invalid."); }
+  const publication = readJson(root, `${base}/publication/final.json`);
+  const members = publication?.members;
+  if (!Array.isArray(members) || members.length !== V12_FINAL_PUBLICATION_MEMBERS.length
+    || new Set(members.map(member => member?.artifact)).size !== members.length
+    || [...members.map(member => member?.artifact)].sort().some((member, index) => member !== [...V12_FINAL_PUBLICATION_MEMBERS].sort()[index])) {
+    fail("final atomic publication member set is invalid.");
+  }
+  for (const member of members) {
+    if (!plain(member) || !SHA256.test(member.sha256 ?? "")
+      || digest(readFileSync(safeFile(root, `${base}/${member.artifact}`))) !== member.sha256) fail("final atomic publication member hash is invalid.");
+  }
   const evidence = readJson(root, `${base}/final-evidence.json`);
   const handoff = readJson(root, `${base}/readiness-handoff.md`);
   validateV12ReadinessHandoff(handoff, { final_evidence: evidence });

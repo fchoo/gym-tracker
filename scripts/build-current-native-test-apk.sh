@@ -72,7 +72,12 @@ case "$suite" in
 esac
 
 cd "$project_root"
-[ "$(git rev-parse --show-toplevel)" = "$project_root" ] ||
+git_executable=$(node scripts/v12-native-execution-origin.mjs --git-path)
+git_attestation_source="$temporary_directory/git-execution-origin.json"
+node scripts/v12-native-execution-origin.mjs --git-attestation >"$git_attestation_source"
+V12_GIT_ATTESTATION_PATH="$git_attestation_source"
+export V12_GIT_ATTESTATION_PATH
+[ "$("$git_executable" rev-parse --show-toplevel)" = "$project_root" ] ||
   fail 'script must run from its own Git worktree root.'
 
 if [ "$suite" = 'v1.2-acceptance' ]; then
@@ -100,9 +105,9 @@ for maestro_directory in "$HOME/.maestro/bin" "$HOME/.local/bin"; do
 done
 export JAVA_HOME ANDROID_HOME ANDROID_SDK_ROOT PATH
 
-git check-ignore -q --no-index "$artifact_directory/probe" ||
+"$git_executable" check-ignore -q --no-index "$artifact_directory/probe" ||
   fail "$artifact_directory must be ignored."
-[ -z "$(git ls-files android ios)" ] ||
+[ -z "$("$git_executable" ls-files android ios)" ] ||
   fail 'generated android/ or ios/ files must not be tracked.'
 
 if [ -z "$device_serial" ]; then
@@ -140,7 +145,7 @@ else
   sh scripts/doctor-android.sh
 fi
 
-base_head=$(git rev-parse HEAD)
+base_head=$("$git_executable" rev-parse HEAD)
 source_tree_sha256=$(node scripts/source-tree-digest.mjs \
   --head "$base_head" --assert-clean)
 [ "${#base_head}" -eq 40 ] || fail 'base_head is not a full Git SHA.'
@@ -149,6 +154,13 @@ source_tree_sha256=$(node scripts/source-tree-digest.mjs \
 
 rm -rf "$artifact_directory"
 mkdir -p "$artifact_directory"
+git_attestation_path=''
+git_attestation_sha256=''
+if [ "$suite" = 'v1.2-acceptance' ]; then
+  git_attestation_path="$artifact_directory/git-execution-origin.json"
+  cp "$git_attestation_source" "$git_attestation_path"
+  git_attestation_sha256=$(sh scripts/hash-apk.sh "$git_attestation_path")
+fi
 build_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 rm -rf "$project_root/android" "$project_root/ios"
@@ -272,6 +284,8 @@ BUILD_MANIFEST="$build_manifest" \
   SIGNATURE_SHA256="$signature_sha256" \
   SETTINGS_SHA256="$settings_sha256" \
   RESTORATION_SHA256="$restoration_sha256" \
+  GIT_ATTESTATION_PATH="$git_attestation_path" \
+  GIT_ATTESTATION_SHA256="$git_attestation_sha256" \
   LAUNCH_COMPONENT="$launch_component" \
   BUILD_STARTED_AT="$build_started_at" \
   BUILD_FINISHED_AT="$build_finished_at" \
@@ -339,6 +353,10 @@ const manifest = {
       settings_sha256: process.env.SETTINGS_SHA256,
       restoration_sha256: process.env.RESTORATION_SHA256,
       config_state_sha256: process.env.SETTINGS_SHA256,
+      git_attestation: {
+        path: process.env.GIT_ATTESTATION_PATH,
+        sha256: process.env.GIT_ATTESTATION_SHA256,
+      },
     },
   } : {}),
 };
