@@ -9,6 +9,7 @@ import {
   executeV12EvidenceCli,
   deriveV12Ledger,
   readV12FinalDeviceState,
+  validateV12FinalNativeIdentity,
   validateV12FinalProductionIdentity,
 } from "./verify-v12-native-evidence.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
@@ -20,7 +21,7 @@ const RUN_ID = "phase20-20261014T031137Z-5917481c1fd1";
 const h = (letter) => letter.repeat(64);
 function v12LiveManifest(runId = RUN_ID) {
   return {
-    schema_version: 1, run_id: runId, mode: "live", created_at: "2026-10-14T03:11:37Z",
+    schema_version: 1, run_id: runId, mode: "live", evidence_origin: "native", created_at: "2026-10-14T03:11:37Z",
     source: { head: "5917481c1fd1" + "a".repeat(28), tree_sha256: h("b"), dirty: false, package_json_sha256: h("c"), package_lock_sha256: h("d") },
     planning: { matrix_sha256: h("e"), requirements_sha256: h("f"), source_manifest_sha256: h("1"), owner_brief_sha256: h("2"), ui_spec_sha256: h("3"), deviations_sha256: h("4") },
     prototype: { revision: 18, approval_sha256: h("5"), html_sha256: h("6") }, fixtures: { registry_sha256: h("7") },
@@ -56,6 +57,26 @@ test("unified preflight execution is explicitly source-only and never falls thro
     () => executeV12EvidenceCli(["--run", RUN_ID, "--mode", "preseal", "--no-final-write"], { root: process.cwd() }),
     /v12_preflight_/u,
   );
+});
+
+test("final native identity requires current source, retained APK bytes, signature, installed bytes, settings, and device", () => {
+  const manifest = {
+    run_id: RUN_ID,
+    evidence_origin: "native",
+    source: { head: "a".repeat(40), tree_sha256: h("b") },
+    build: { package: "com.fchoo.gymtracker.devtest", apk: { path: "artifacts/native/v1.2-acceptance/app.apk", sha256: h("c"), size_bytes: 3, signature_sha256: h("d"), certificate_sha256: h("e") } },
+    device: { installed_apk_sha256: h("c"), identity_sha256: h("f"), settings_sha256: h("1"), restoration_sha256: h("1") },
+  };
+  const observed = { source_head: manifest.source.head, source_tree_sha256: manifest.source.tree_sha256,
+    apk_sha256: manifest.build.apk.sha256, apk_size_bytes: 3, signature_sha256: manifest.build.apk.signature_sha256,
+    certificate_sha256: manifest.build.apk.certificate_sha256, installed_apk_sha256: manifest.device.installed_apk_sha256,
+    device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256 };
+  assert.equal(validateV12FinalNativeIdentity(manifest, observed), true);
+  for (const key of ["source_tree_sha256", "apk_sha256", "signature_sha256", "installed_apk_sha256", "device_identity_sha256", "settings_sha256"]) {
+    assert.throws(() => validateV12FinalNativeIdentity(manifest, { ...observed, [key]: h("9") }), /v12_final_native_identity_invalid/u, key);
+  }
+  assert.throws(() => validateV12FinalNativeIdentity({ ...manifest, evidence_origin: "test" }, observed), /v12_final_test_origin_forbidden/u);
+  assert.throws(() => validateV12FinalNativeIdentity({ ...manifest, evidence_origin: undefined }, observed), /v12_final_native_identity_invalid/u);
 });
 
 // Deliberately uses the former PASS-by-hash shape. This must never regain a

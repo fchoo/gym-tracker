@@ -4,7 +4,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
-import { V12_NATIVE_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
+import { V12_NATIVE_ACTION_TIMEOUT_MS } from "./v12-native-adapter.mjs";
+import { V12_NATIVE_ADAPTER_EXIT_MARGIN_MS, V12_NATIVE_COMMAND_GRAPH, V12_QUALITY_ACTION_BUDGETS } from "./v12-native-time-budgets.mjs";
 
 function fixture(t) { const value = createControlledRunner(); t.after(value.cleanup); return value; }
 function bounded(result, code = "command_failed") {
@@ -22,6 +23,26 @@ test("non-test harness exercises the default launcher without the fake adapter",
   assert.equal(output.adapter_override, false);
   assert.equal(output.native_evidence, false);
   assert.deepEqual(output.verified_actions, ["acquire-lease", "snapshot-settings", "restore-settings", "release-lease", "sqlite"]);
+});
+test("default launcher dispatches production quality actions instead of the unavailable fallback", (t) => {
+  const runner = fixture(t);
+  assert.deepEqual(runner.success("performance", { request: "identity" }), {
+    identity: {
+      base_head: runner.build.source.head,
+      source_tree_sha256: runner.build.source.tree_sha256,
+      apk_sha256: runner.build.build.apk.sha256,
+      installed_apk_sha256: runner.build.device.installed_apk_sha256,
+      package: runner.build.build.package,
+      device_identity_sha256: runner.build.device.identity_sha256,
+      fixture_sha256: runner.build.fixtures.registry_sha256,
+    },
+  });
+  bounded(runner.invoke("accessibility"), "quality_instrumentation_missing");
+});
+test("quality adapter subprocesses use the shared command-graph deadlines", () => {
+  for (const action of ["accessibility", "performance"]) {
+    assert.equal(V12_NATIVE_ACTION_TIMEOUT_MS[action], V12_QUALITY_ACTION_BUDGETS[action].max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS);
+  }
 });
 test("wrong lease cannot read, restore or release settings", (t) => {
   const runner = fixture(t);

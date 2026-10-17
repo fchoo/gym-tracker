@@ -152,7 +152,7 @@ test("every adapter action has an explicit bounded timeout and transport budget"
   assert.equal(V12_NATIVE_LEASE_ACTION_BUDGETS["acquire-lease"].max_ms, 220_000);
   assert.equal(V12_VISUAL_COMMAND_GRAPH.device_verification.length, 7);
   assert.equal(V12_VISUAL_CLEANUP_BUDGET.reset_bound_ms, 60_100);
-  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance.length, 75);
+  assert.equal(V12_QUALITY_COMMAND_GRAPH.performance.length, 95);
   assert.equal(V12_QUALITY_COMMAND_GRAPH.accessibility.length, 76);
   for (const action of ["performance", "accessibility"]) {
     const budget = V12_QUALITY_ACTION_BUDGETS[action];

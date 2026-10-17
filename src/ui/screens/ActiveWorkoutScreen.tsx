@@ -115,6 +115,9 @@ import {
   workoutTypeScale,
   useAppTheme,
 } from "../theme";
+import type {
+  V12AcceptanceBenchmarkPort,
+} from "../../bootstrap/v12AcceptanceBenchmark";
 
 export interface ActiveWorkoutCommands {
   addExercise?(input: AddExerciseInput): Promise<import("../../domains/workout").AddExerciseResult>;
@@ -499,6 +502,7 @@ export type ActiveWorkoutScreenProps = Readonly<{
   initialHeaderFocus?: boolean;
   onInitialHeaderFocused?: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
+  acceptanceBenchmark?: V12AcceptanceBenchmarkPort;
   width?: number;
 }>;
 
@@ -523,6 +527,7 @@ export function ActiveWorkoutScreen({
   initialHeaderFocus = false,
   onInitialHeaderFocused,
   loadExerciseHistory,
+  acceptanceBenchmark,
   availableExercises = [],
   availableExercisesState = "ready",
   onRetryAvailableExercises,
@@ -552,6 +557,7 @@ export function ActiveWorkoutScreen({
 
   return (
     <PopulatedWorkoutOverview
+      {...(acceptanceBenchmark === undefined ? {} : { acceptanceBenchmark })}
       commands={commands}
       availableExercises={availableExercises}
       availableExercisesState={availableExercisesState}
@@ -898,6 +904,7 @@ type PopulatedWorkoutOverviewProps = Omit<ActiveWorkoutScreenProps, "view"> & Re
 }>;
 
 function PopulatedWorkoutOverview({
+  acceptanceBenchmark,
   sessionId,
   initialView,
   commands,
@@ -1024,6 +1031,7 @@ function PopulatedWorkoutOverview({
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const completionInFlightRef = useRef(false);
+  const benchmarkDockPendingRef = useRef(false);
   const finishCompletedInputRef = useRef<FinishCompletedInput | null>(null);
   const finishPartialInputRef = useRef<FinishPartialInput | null>(null);
   useEffect(() => {
@@ -1189,7 +1197,9 @@ function PopulatedWorkoutOverview({
     restCommandInFlightRef.current = true;
     setRestBusy(true);
     try {
+      acceptanceBenchmark?.markInputStart("rest-control");
       applyRestResult(await command());
+      requestAnimationFrame(() => acceptanceBenchmark?.markInputVisible("rest-control"));
     } finally {
       restCommandInFlightRef.current = false;
       setRestBusy(false);
@@ -1233,6 +1243,7 @@ function PopulatedWorkoutOverview({
       return;
     }
     completionInFlightRef.current = true;
+    acceptanceBenchmark?.markSetActivation();
     setWorkingBusySetId(requestedSetId);
     setSaveFailedSetId(null);
     try {
@@ -1262,6 +1273,10 @@ function PopulatedWorkoutOverview({
         observation: observationForSet(currentSet),
         completedAtMs,
       });
+      if (result.outcome === "committed") {
+        acceptanceBenchmark?.markAuthoritativeSetCommit();
+        benchmarkDockPendingRef.current = true;
+      }
       applyView(result.view);
       if (result.outcome === "committed") {
         const completedSetId = currentSet.id;
@@ -1310,6 +1325,7 @@ function PopulatedWorkoutOverview({
     observation: SetObservation,
   ) => {
     const save = draftQueue.current.then(async () => {
+      acceptanceBenchmark?.markInputStart("numeric-edit");
       const currentView = viewRef.current;
       const currentSet = resolveSetOwner(currentView, set.id)?.set ?? set;
       const nextView = set.kind === "warmup"
@@ -1331,6 +1347,7 @@ function PopulatedWorkoutOverview({
             updatedAtMs: nowMs(),
           });
       applyView(nextView);
+      requestAnimationFrame(() => acceptanceBenchmark?.markInputVisible("numeric-edit"));
       setSaveFailedSetId(null);
     });
     draftQueue.current = save.catch(() => {
@@ -2099,36 +2116,44 @@ function PopulatedWorkoutOverview({
         dock={(
           view.rest.state === "running" || view.rest.state === "paused"
         ) ? (
-          <RestDock
-            busy={restBusy}
-            exerciseName={activeExercise.name}
-            nextSetIndex={activeIndex + 1}
-            nextTarget={nextTarget}
-            notificationPermission={notificationPermission}
-            restSoundEnabled={restSoundEnabled}
-            countdownCue={countdownCue}
-            nowMs={nowMs}
-            onAdjust={(deltaMs) => {
-              void runRest(() => commands.adjustRest({
-                ...restInput(),
-                deltaMs,
-              }));
+          <View
+            onLayout={() => {
+              if (!benchmarkDockPendingRef.current) return;
+              benchmarkDockPendingRef.current = false;
+              acceptanceBenchmark?.markVisibleDock();
             }}
-            onExpired={() => {
-              void runRest(() => commands.expireRest(restInput()));
-            }}
-            onOpenSettings={onOpenNotificationSettings}
-            onPause={() => {
-              void runRest(() => commands.pauseRest(restInput()));
-            }}
-            onResume={() => {
-              void runRest(() => commands.resumeRest(restInput()));
-            }}
-            onSkip={() => {
-              void runRest(() => commands.skipRest(restInput()));
-            }}
-            state={view.rest}
-          />
+          >
+            <RestDock
+              busy={restBusy}
+              exerciseName={activeExercise.name}
+              nextSetIndex={activeIndex + 1}
+              nextTarget={nextTarget}
+              notificationPermission={notificationPermission}
+              restSoundEnabled={restSoundEnabled}
+              countdownCue={countdownCue}
+              nowMs={nowMs}
+              onAdjust={(deltaMs) => {
+                void runRest(() => commands.adjustRest({
+                  ...restInput(),
+                  deltaMs,
+                }));
+              }}
+              onExpired={() => {
+                void runRest(() => commands.expireRest(restInput()));
+              }}
+              onOpenSettings={onOpenNotificationSettings}
+              onPause={() => {
+                void runRest(() => commands.pauseRest(restInput()));
+              }}
+              onResume={() => {
+                void runRest(() => commands.resumeRest(restInput()));
+              }}
+              onSkip={() => {
+                void runRest(() => commands.skipRest(restInput()));
+              }}
+              state={view.rest}
+            />
+          </View>
         ) : activeSet === undefined ? (
           <PrimaryAction
             busy={outcomeBusy}

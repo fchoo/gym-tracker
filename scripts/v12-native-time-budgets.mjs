@@ -185,7 +185,16 @@ const qualityCommonAfterProducer = concat(
   nativeRestoreSettings,
   nativeReleaseLease,
 );
-const qualityPerformance = concat(qualityCommonBeforeProducer, qualityCommonAfterProducer);
+const qualityColdLaunchProcessCycles = commands(
+  "quality.performance",
+  Array.from({ length: 20 }, (_, index) => `cold-launch-${index + 1}-force-stop`),
+  V12_NATIVE_ADB_CALL_TIMEOUT_MS,
+);
+const qualityPerformance = concat(
+  qualityCommonBeforeProducer,
+  qualityColdLaunchProcessCycles,
+  qualityCommonAfterProducer,
+);
 const qualityAccessibility = concat(
   qualityCommonBeforeProducer,
   commands("quality.accessibility", ["font-scale-put"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),

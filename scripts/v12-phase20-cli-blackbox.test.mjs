@@ -49,7 +49,7 @@ function fixtureRoot() {
 
 function buildManifest(head, sourceTreeSha256) {
   return {
-    schema_version: 1, run_id: run, mode: "live", created_at: "2026-10-14T00:00:00Z",
+    schema_version: 1, run_id: run, mode: "live", evidence_origin: "test", created_at: "2026-10-14T00:00:00Z",
     source: { head, tree_sha256: sourceTreeSha256, dirty: false, package_json_sha256: sha("c"), package_lock_sha256: sha("d") },
     planning: { matrix_sha256: sha("e"), requirements_sha256: sha("f"), source_manifest_sha256: sha("1"), owner_brief_sha256: sha("2"), ui_spec_sha256: sha("3"), deviations_sha256: sha("4") },
     prototype: { revision: 18, approval_sha256: sha("5"), html_sha256: sha("6") }, fixtures: { registry_sha256: sha("7") },
@@ -92,6 +92,7 @@ function completion(root, shard) {
   assert.equal(lstatSync(file).isSymbolicLink(), false, `${shard} manifest must not be a symlink`);
   const manifest = JSON.parse(readFileSync(file, "utf8"));
   assert.equal(manifest.run_id, run); assert.equal(manifest.shard, shard); assert.equal(manifest.completed, true);
+  assert.equal(manifest.identity.evidence_origin, "test");
   assert.ok(Array.isArray(manifest.members) && manifest.members.length > 0);
   if (["sqlite", "recovery", "garmin", "calendar", "visual", "comparison", "accessibility", "performance"].includes(shard)) {
     assert.equal(manifest.execution_origin?.kind, "test-fixture");
@@ -209,7 +210,7 @@ test("Phase 20 fake-device Recovery path proves offline rollback and one retry",
   }
 });
 
-test("Phase 20 fake-device pipeline can exercise failures but cannot publish canonical preseal or final evidence", async (t) => {
+test("Phase 20 fake-device pipeline exercises every CLI but cannot publish preseal or final native evidence", async (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   // Every call below is the documented CLI order. The test intentionally does
   // not call exported production functions or manufacture final evidence.
@@ -227,19 +228,6 @@ test("Phase 20 fake-device pipeline can exercise failures but cannot publish can
   for (const shard of ["sqlite", "recovery", "garmin", "calendar", "multi-plan", "workout", "library-running", "visual", "comparison", "accessibility", "performance"]) completion(root, shard);
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "shards-only", "--ids", "multi-plan,workout,library-running"]);
   completeMultiPlanFixture(root);
-  const preseal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
-  assert.notEqual(preseal.status, 0);
-  assert.match(preseal.stderr, /test_provenance_forbidden/u);
-  const persistedFake = invokeWithoutTestEnvironment(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
-  assert.notEqual(persistedFake.status, 0);
-  assert.match(persistedFake.stderr, /test_provenance_forbidden/u);
-  const base = path.join(root, "artifacts/native/v1.2", run);
-  assert.equal(existsSync(path.join(base, "preseal-validation.json")), false);
-  assert.equal(existsSync(path.join(base, "publication/preseal.json")), false);
-  const final = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
-  assert.notEqual(final.status, 0);
-  assert.equal(existsSync(path.join(base, "final-evidence.json")), false);
-  assert.equal(existsSync(path.join(base, "publication/final.json")), false);
   const resolved = JSON.parse(pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "test-resolve"]).stdout);
   assert.equal(resolved.sealable, false);
   assert.equal(resolved.row_evidence.length, 172);
@@ -253,9 +241,15 @@ test("Phase 20 fake-device pipeline can exercise failures but cannot publish can
   writeFileSync(observations, JSON.stringify(attendedObservations(root)));
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["record", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations), "--output", path.relative(root, record)]);
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["verify", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations)]);
-  const rejectedFinal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
-  assert.notEqual(rejectedFinal.status, 0);
-  assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, "final-evidence.json")), false);
+  const blockedPreseal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+  assert.notEqual(blockedPreseal.status, 0); assert.match(blockedPreseal.stderr, /test_origin_forbidden/u);
+  const persistedFake = invokeWithoutTestEnvironment(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+  assert.notEqual(persistedFake.status, 0); assert.match(persistedFake.stderr, /test_origin_forbidden/u);
+  const blockedFinal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
+  assert.notEqual(blockedFinal.status, 0); assert.match(blockedFinal.stderr, /test_origin_forbidden/u);
+  for (const output of ["preseal-validation.json", "ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md", "publication/preseal.json", "publication/final.json"]) {
+    assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, output)), false, output);
+  }
   await t.test("typed ledger rejects source-result tampering and exceptions cannot erase a blocker", () => {
     // The CLI round-trip above remains the integration oracle. This separate
     // subprocess exercises the public derivation API with the same real fixture.
@@ -263,15 +257,20 @@ test("Phase 20 fake-device pipeline can exercise failures but cannot publish can
       import assert from 'node:assert/strict';
       import { readFileSync } from 'node:fs';
       import path from 'node:path';
-      import { deriveV12Ledger } from ${JSON.stringify(path.join(project, 'scripts/verify-v12-native-evidence.mjs'))};
+      import { deriveV12Ledger, sealV12FinalEvidence } from ${JSON.stringify(path.join(project, 'scripts/verify-v12-native-evidence.mjs'))};
       import { loadV12ContractInputs } from ${JSON.stringify(path.join(project, 'scripts/v12-evidence-contract.mjs'))};
+      import { resolveV12SourceRows } from ${JSON.stringify(path.join(project, 'scripts/v12-blocker-row-resolver.mjs'))};
       const root = process.argv[1], run = process.argv[2], base = path.join(root, 'artifacts/native/v1.2', run);
       const read = file => JSON.parse(readFileSync(path.join(base, file), 'utf8'));
       const manifest = read('build.json'), evidence = JSON.parse(readFileSync(path.join(root,'test-resolution.json'),'utf8')).row_evidence;
       const args = { inputs: loadV12ContractInputs({root}), manifest, evidence, root, readArtifact: file => readFileSync(path.join(root, file)), attended: read('attended-observations.json') };
       const exception = { row_id: 'VER-07', deviation_id: 'DEV-203', owner_decision: 'owner-approved', decided_at: '2026-10-14', scope: 'sqlite review', configurations: [manifest.configuration.id], rationale: 'cannot override a concrete blocker', evidence_hashes: [evidence.find(x => x.row_id === 'VER-07').sha256] };
       const ledger = deriveV12Ledger({ ...args, allowTestCalendarFixture: true, exceptions: [exception], readiness_policy: { policy_id: 'v12-reviewed-policy', reviewed_by: 'owner', reviewed_at: '2026-10-14', permits_accepted_exceptions: true } });
+      assert.equal(ledger.evidence_origin, 'test');
       assert.equal(ledger.readiness, 'NOT_READY');
+      let writes = 0;
+      assert.throws(() => sealV12FinalEvidence({mode:'final', run_id:run, ledger, writeImmutableJson:()=>{writes += 1;}}), /test_origin_forbidden/);
+      assert.equal(writes, 0);
       assert.equal(ledger.rows.find(row => row.requirement_id === 'VER-07').verdict, 'REVIEW_REQUIRED');
       for (const mutate of [row => {row.result = 'FAIL';}, row => {row.selector.id = 'unknown';}, row => {row.bindings[0].sha256 = '0'.repeat(64);}]) {
         const changed = structuredClone(evidence); mutate(changed[0]);
@@ -337,6 +336,7 @@ async function assertSourceMutations(t, root) {
         const selected = report.row_evidence.find(row => row.row_id === rowId);
         assert.equal(selected.result, expected, name);
         assert.equal(selected.selector.resolution.result, selected.result);
+        assert.equal(existsSync(path.join(base, "final-evidence.json")), false);
       } finally { cleanOutputs(); for (const [file, content] of saved) writeFileSync(file, content); }
     });
   }
@@ -353,8 +353,8 @@ async function assertSourceMutations(t, root) {
   for (const state of ["FAIL", "NOT_RUN", "REVIEW_REQUIRED"]) {
     await mutation(`Calendar stage retains ${state}`, "CAL-07", state, ["calendar"], edit => edit("calendar-transitions.json", value => { value.stages[0].status = state; value.junit_cases[0].status = state; return value; }));
     await mutation(`Garmin group retains ${state}`, "GAR-04", state, ["garmin"], edit => edit("garmin/packaging-auth.json", value => { value.observation.status = state; return value; }));
-    await mutation(`accessibility observation derives ${state}`, "VER-04", state, ["accessibility"], edit => edit("semantics/accessibility.json", value => { const observation = value.observations[0]; if (state === "FAIL") observation.targets[0].non_color_cue = false; if (state === "NOT_RUN") observation.native_execution = "NOT_RUN"; if (state === "REVIEW_REQUIRED") delete observation.restored_settings; return value; }));
-    await mutation(`performance warm launch derives ${state}`, "PRO-01", state, ["performance"], edit => edit("performance.json", value => { const samples = state === "FAIL" ? Array(20).fill(1001) : state === "NOT_RUN" ? [] : [100]; value.observation.raw_samples.warm_launch_to_interactive_ms = samples; value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: samples.length ? Math.max(...samples) : 0 }; return value; }));
+    await mutation(`accessibility observation rejects non-producer ${state}`, "VER-04", state, ["accessibility"], edit => edit("semantics/accessibility.json", value => { const observation = value.observations[0]; if (state === "FAIL") observation.targets[0].non_color_cue = false; if (state === "NOT_RUN") observation.native_execution = "NOT_RUN"; if (state === "REVIEW_REQUIRED") delete observation.restored_settings; return value; }), { invalid: true });
+    await mutation(`performance warm launch derives ${state}`, "PRO-01", state, ["performance"], edit => edit("performance.json", value => { const samples = state === "FAIL" ? Array(20).fill(1001) : state === "NOT_RUN" ? [] : [100]; value.observation.raw_samples.warm_launch_to_interactive_ms = samples; value.observation.raw_samples.native_receipts.timings.warm_launch_to_interactive_ms.spans = samples.map((duration, index) => ({ start_ms: index * 2000, end_ms: index * 2000 + duration })); value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: samples.length ? Math.max(...samples) : 0 }; return value; }), { invalid: state !== "FAIL" });
     await mutation(`Recovery cut retains ${state}`, "VER-08", state, ["recovery"], edit => {
       let report;
       edit("maestro/recovery.xml", xml => { report = xml.replace('</properties>', `</properties>${state === 'FAIL' ? '<error/>' : '<skipped/>'}`); return report; }, true);

@@ -18,6 +18,7 @@ import {
   V12_CALENDAR_REQUIREMENT_DEFINITIONS,
   V12_CALENDAR_REQUIREMENT_PROBE_COUNT,
 } from './v12-calendar-requirement-map.mjs';
+import { validateV12AccessibilityProducer, validateV12PerformanceProducer } from './v12-quality-evidence-contract.mjs';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
@@ -172,7 +173,7 @@ export function resolveV12PerformanceGates(observation) {
   for (const [id, budget] of Object.entries(V12_PERFORMANCE_BUDGETS)) {
     if (id === 'garmin_sync_normalization') {
       const value = raw[id];
-      gates[id] = { result: value?.state === 'REVIEW_REQUIRED' && value.limit_source === budget.limit_source && HASH.test(value.fixture_sha256 ?? '') ? 'REVIEW_REQUIRED' : value === undefined ? 'NOT_RUN' : 'FAIL', reason: 'Source budget requires the reviewed Phase 18 baseline.' };
+      gates[id] = { result: value?.state === 'REVIEW_REQUIRED' && value.limit_source === budget.limit_source && HASH.test(value.fixture_sha256 ?? '') ? 'REVIEW_REQUIRED' : value === undefined ? 'NOT_RUN' : 'FAIL', reason: 'Source budget requires the fresh exact-source Phase 20 baseline.' };
     } else if (id === 'root_switch_to_useful' || id === 'input_response') {
       const grouped = raw[`${id}_ms`];
       const keys = id === 'root_switch_to_useful' ? ['workout', 'calendar', 'library', 'progress'] : Object.keys(grouped ?? {});
@@ -518,26 +519,30 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   }
   function resolveAccessibility() {
     const semantics = json('semantics/accessibility.json'); const geometry = json('geometry/hit-targets.json');
-    ensure(semantics.run_id === manifest.run_id && semantics.producer === 'v12-accessibility-native-observation/v1' && geometry.run_id === manifest.run_id && geometry.producer === 'v12-accessibility-geometry/v1' && Array.isArray(semantics.observations) && semantics.observations.length > 0, 'accessibility_schema_invalid');
+    ensure(semantics.run_id === manifest.run_id && semantics.producer === 'v12-accessibility-native-observation/v1' && geometry.run_id === manifest.run_id && geometry.producer === 'v12-accessibility-geometry/v1' && Array.isArray(semantics.observations), 'accessibility_schema_invalid');
+    validateV12AccessibilityProducer(semantics.observations, { source_tree_sha256: manifest.source.tree_sha256, fixture_sha256: manifest.fixtures.registry_sha256 }, code => fail(code));
     const configKeys = new Set(); const gates = { targets: [], 'input-focus': [], motion: [] };
     const targetGeometry = [];
     semantics.observations.forEach((observation, ordinal) => {
-      const configKey = jsonHash(observation.configuration); ensure(!configKeys.has(configKey), 'accessibility_configuration_duplicate'); configKeys.add(configKey);
+      const configKey = observation.native_receipts.configuration_sha256; ensure(!configKeys.has(configKey), 'accessibility_configuration_duplicate'); configKeys.add(configKey);
       const configuration = observation.configuration;
       ensure(configuration?.font_scale === 2 && Number.isFinite(configuration.density) && configuration.density > 0
         && Number.isFinite(configuration.content_bounds?.width) && configuration.content_bounds.width > 0 && Number.isFinite(configuration.content_bounds?.height) && configuration.content_bounds.height > 0
         && [configuration.insets?.top, configuration.insets?.bottom, configuration.ime_bounds?.top, configuration.ime_bounds?.bottom].every(Number.isFinite)
-        && observation.fixture_id === 'v12-synthetic-fixtures-r18', 'accessibility_configuration_invalid');
+        && configuration.root === observation.root && configuration.motion_mode === observation.motion_mode
+        && configuration.operation === observation.operation && configuration.fixture_id === observation.fixture_id
+        && configuration.state_id === observation.state_id, 'accessibility_configuration_invalid');
       const base = observation.native_execution !== 'EXECUTED' ? 'NOT_RUN' : observation.restored_settings === undefined ? 'REVIEW_REQUIRED' : observation.restored_settings !== true ? 'FAIL' : 'PASS';
       const targets = observation.targets;
       ensure(Array.isArray(targets) && targets.length > 0 && targets.every(t => typeof t.id === 'string' && t.id.length > 0) && new Set(targets.map(t => t.id)).size === targets.length, 'accessibility_selector_invalid');
-      targets.forEach(target => targetGeometry.push({ configuration: observation.configuration, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap }));
+      targets.forEach(target => targetGeometry.push({ root: observation.root, state_id: observation.state_id, configuration_id: observation.configuration.id, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap }));
       const targetPass = targets.every(t => typeof t.name === 'string' && t.name.length && typeof t.role === 'string' && t.role.length && typeof t.state === 'string' && t.non_color_cue === true && Number.isFinite(t.bounds_dp?.width) && t.bounds_dp.width >= 48 && Number.isFinite(t.bounds_dp?.height) && t.bounds_dp.height >= 48 && (t.overlap === false || t.bounds_dp.overlap === false));
       const interactions = observation.interactions;
       exactIds(interactions?.map(x => x.input), ['touch', 'software-keyboard', 'hardware-keyboard', 'dpad'], 'accessibility_input_selectors_invalid');
       const modal = observation.modal;
-      const inputPass = interactions.every(x => typeof x.focus_before === 'string' && typeof x.focus_after === 'string' && x.action === 'activate' && x.command_count === 1 && HASH.test(x.image_hash ?? '')) && modal?.focus_ring_dp === 3 && modal.focus_offset_dp === 3 && modal.back === 'closes-modal' && modal.escape === 'closes-modal' && modal.restores_invoker === true;
-      const motion = observation.motion; const motionPass = motion?.normal && motion?.reduced && ['destination', 'callbacks', 'source_facts'].every(key => motion.normal[key] !== undefined && motion.normal[key] === motion.reduced[key]);
+      const inputPass = interactions.every(x => typeof x.focus_before === 'string' && typeof x.focus_after === 'string' && x.focus_before !== x.focus_after && x.action === 'activate' && x.command_count === x.callback_count && x.command_count > 0 && HASH.test(x.callback_receipt_sha256 ?? '') && HASH.test(x.event_receipt_sha256 ?? '') && HASH.test(x.image_hash ?? ''))
+        && modal?.focus_ring_dp === 3 && modal.focus_offset_dp === 3 && modal.background_isolated === true && modal.restores_invoker === true;
+      const motion = observation.motion; const motionPass = motion?.mode === observation.motion_mode && motion.destination === observation.state_id && motion.callback_count > 0 && motion.frame_callback_count > 0 && HASH.test(motion.source_facts_sha256 ?? '') && HASH.test(motion.behavior_receipt_sha256 ?? '');
       for (const [gate, passed] of Object.entries({ targets: targetPass, 'input-focus': inputPass, motion: motionPass })) gates[gate].push({ ordinal, configuration_sha256: configKey, result: base === 'PASS' ? passed ? 'PASS' : 'FAIL' : base });
     });
     ensure(same(geometry.targets, targetGeometry), 'accessibility_geometry_binding_invalid');
@@ -549,6 +554,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
       && observation?.producer === 'v12-performance-observation-shard/v1' && observation.observation_state === 'REVIEW_REQUIRED' && same(observation.budgets, V12_PERFORMANCE_BUDGETS) && same(observation.workload, V12_PERFORMANCE_WORKLOAD), 'performance_schema_invalid');
     bindIdentity(observation.identity, 'sha');
     ensure(observation.identity.base_head === manifest.source.head && observation.identity.package === manifest.build.package && observation.identity.fixture_sha256 === manifest.fixtures.registry_sha256, 'performance_identity_invalid');
+    validateV12PerformanceProducer({ schema_version: 1, suite: 'v1.2-performance', producer: 'v12-release-performance-collector/v1', native_execution: 'EXECUTED', sample_origin: 'release-native-source-backed', workload: observation.workload, identity: observation.identity, budgets: observation.budgets, samples: observation.raw_samples }, observation.identity, V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD, code => fail(code));
     const gates = resolveV12PerformanceGates(observation);
     const fixture = observation.raw_samples.phase12_merge_fixture;
     ensure(fixture?.snapshot_bytes === V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.required_snapshot_bytes && fixture.rows === V12_PERFORMANCE_BUDGETS.phase12_merge_preflight.required_rows && fixture.writer_commits === 5 && fixture.sqlite_max_variable_number >= 4000, 'performance_fixture_invalid');

@@ -12,6 +12,7 @@ import threading
 from typing import Any, Callable
 
 _RUNTIME_INFO_OPERATION = "runtimeInfo"
+_BENCHMARK_NORMALIZE_OPERATION = "benchmarkDeterministicJson"
 _RUNTIME_INFO = {
     "schemaVersion": 1,
     "pythonVersion": "3.13",
@@ -731,6 +732,23 @@ def dispatch(operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(arguments, dict) or arguments:
             raise ValueError("garmin_bridge_arguments_rejected")
         return dict(_RUNTIME_INFO)
+    if operation == _BENCHMARK_NORMALIZE_OPERATION:
+        try:
+            values = _exact_arguments(arguments, {"payloadJson"})
+            payload_json = values.get("payloadJson")
+            if not isinstance(payload_json, str) or not payload_json or len(payload_json) > 1_000_000:
+                raise _BridgeInputError("arguments_rejected")
+            normalized = _bounded_json(json.loads(payload_json))
+        except (TypeError, json.JSONDecodeError, _BridgeInputError) as error:
+            raise ValueError("garmin_bridge_arguments_rejected") from error
+        normalized_json = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        return {
+            "schemaVersion": 1,
+            "transport": "chaquopy-python-garminconnect-0.3.17",
+            "payloadSha256": hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+            "normalizedJson": normalized_json,
+            "outputSha256": hashlib.sha256(normalized_json.encode("utf-8")).hexdigest(),
+        }
     result = _BRIDGE.dispatch(operation, arguments)
     if result.get("status") == "error" and result.get("error", {}).get("code") in {
         "operation_rejected",

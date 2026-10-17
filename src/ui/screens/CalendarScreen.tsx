@@ -83,11 +83,19 @@ type CalendarScreenProps = Readonly<{
   settingsActionNativeID?: string;
   onRequestRootBack?(): void;
   returnFocusGeneration?: number;
+  onUsefulContent?: () => void;
 }>;
 
 export type Phase16CalendarDiagnosticsRuntime = Readonly<{
   producer: Phase16CalendarDiagnosticsProducer;
   request: Phase16CalendarDiagnosticsRequest;
+  onInteractionStart?: () => void;
+  onInteractionReady?: (sample: Readonly<{
+    frameWorkMs: readonly number[];
+    missedFrames: number;
+    refreshRateHz: number;
+    profilerOverheadMs: number;
+  }>) => void;
 }>;
 
 function monthLabel(value: LocalDate): string {
@@ -136,6 +144,7 @@ export function CalendarScreen({
   settingsActionRef,
   onRequestRootBack = NOOP,
   returnFocusGeneration = 0,
+  onUsefulContent,
 }: CalendarScreenProps) {
   const { colorScheme, colors, reduceMotion } = useAppTheme();
   const { fontScale, height: safeHeight, width: safeWidth } = useWindowDimensions();
@@ -214,6 +223,12 @@ export function CalendarScreen({
     };
   }, [grid, month]);
 
+  useEffect(() => {
+    if (isLoading || range === null || calendarTransition.phase !== "idle") return;
+    const frame = requestAnimationFrame(() => onUsefulContent?.());
+    return () => cancelAnimationFrame(frame);
+  }, [calendarTransition.phase, isLoading, onUsefulContent, range]);
+
   const currentDiagnosticState = useCallback(() => {
     if (diagnostics === undefined) return null;
     if (diagnosticState.current.producer !== diagnostics.producer) {
@@ -265,6 +280,7 @@ export function CalendarScreen({
   const startDiagnosticInteraction = useCallback(() => {
     if (diagnostics === undefined) return;
     cancelDiagnosticInteraction();
+    diagnostics.onInteractionStart?.();
     const probe = {
       frameIntervals: [] as number[],
       frameWorkMs: [] as number[],
@@ -288,13 +304,15 @@ export function CalendarScreen({
     const missedFrames = probe.frameIntervals.reduce((total, duration) => (
       total + Math.max(0, Math.round(duration / Math.max(medianInterval, 1)) - 1)
     ), 0);
-    recordDiagnosticInteraction({
+    const sample = {
       frameWorkMs: Object.freeze([...probe.frameWorkMs]),
       missedFrames,
       refreshRateHz,
       profilerOverheadMs: probe.maxProfilerOverheadMs,
-    });
-  }, [recordDiagnosticInteraction]);
+    };
+    recordDiagnosticInteraction(sample);
+    diagnostics?.onInteractionReady?.(sample);
+  }, [diagnostics, recordDiagnosticInteraction]);
 
   const recordDiagnosticRender = useCallback((
     _id: string,

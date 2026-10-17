@@ -40,6 +40,8 @@ function validateAttestation(request, action) {
   return value;
 }
 async function execute(action, payload, attestation) {
+  const quality = await executeProductionQualityAction(action, payload, attestation);
+  if (quality !== undefined) return quality;
   const runtime = createProductionNativeRuntime(attestation, { cleanup: ["restore-settings", "release-lease"].includes(action) });
   if (action === "acquire-lease") return runtime.acquireLease();
   if (action === "release-lease") return runtime.releaseLease(payload.lease);
@@ -50,7 +52,6 @@ async function execute(action, payload, attestation) {
     () => action.startsWith("visual-")
       ? runtime.withLease(payload, () => executeProductionVisualAction({ action, payload, attestation }))
       : undefined,
-    () => executeProductionQualityAction(action, payload, attestation),
     () => executeProductionDomainAction(action, payload, attestation),
   ];
   for (const handler of handlers) {

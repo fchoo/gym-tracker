@@ -58,6 +58,8 @@ export type ProgressScreenProps = Readonly<{
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
+  onUsefulContent?: (state: "current" | "updating") => void;
+  onReviewVisible?: () => void;
 }>;
 
 const SPORTS: readonly Readonly<{ value: ProgressSport; label: ProgressSport }>[] = [
@@ -515,7 +517,7 @@ function DashboardContent({ dashboard, exerciseActionRefs, historyActionRefs, on
   </View>;
 }
 
-export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSession, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, progressRecommendationRuntime, progressBodyweightRuntime, returnFocusToken, returnFocusVersion = 0, width, fontScale, initialPeriod = "4_weeks", initialSport = "All", headingRef, settingsActionRef, settingsActionNativeID }: ProgressScreenProps) {
+export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loadProgress, onOpenExercise, onOpenSession, onOpenRunningSource, onOpenSettings = () => undefined, runningTargetRuntime, progressRecommendationRuntime, progressBodyweightRuntime, returnFocusToken, returnFocusVersion = 0, width, fontScale, initialPeriod = "4_weeks", initialSport = "All", headingRef, settingsActionRef, settingsActionNativeID, onUsefulContent, onReviewVisible }: ProgressScreenProps) {
   const { colors } = useAppTheme();
   const windowDimensions = useWindowDimensions();
   const [sport, setSport] = useState<ProgressSport>(initialSport);
@@ -579,6 +581,21 @@ export function ProgressScreen({ nowLocalDate, workoutRefreshGeneration = 0, loa
       requestRef.current += 1;
     };
   }, [readProgress, retry, workoutRefreshGeneration]);
+
+  useEffect(() => {
+    if (snapshot === null || snapshot.freshness === "unavailable") return;
+    const state = snapshot.freshness === "current" && snapshot.dashboard !== null
+      && snapshot.dashboard !== undefined ? "current" : "updating";
+    const frame = requestAnimationFrame(() => onUsefulContent?.(state));
+    return () => cancelAnimationFrame(frame);
+  }, [onUsefulContent, snapshot]);
+
+  useEffect(() => {
+    if (historyGoal === null && targetDistanceMeters === null
+      && !progressSettingsVisible && !bodyweightVisible && staleRecommendation === null) return;
+    const frame = requestAnimationFrame(() => onReviewVisible?.());
+    return () => cancelAnimationFrame(frame);
+  }, [bodyweightVisible, historyGoal, onReviewVisible, progressSettingsVisible, staleRecommendation, targetDistanceMeters]);
 
   useEffect(() => {
     if (snapshot?.freshness !== "updating" || snapshot.refresh === undefined) return;

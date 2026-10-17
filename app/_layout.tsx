@@ -270,6 +270,17 @@ function Phase20VisualNavigator() {
   );
 }
 
+function Phase20QualityNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase20-quality-probe"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__phase20-quality-probe" />
+    </Stack>
+  );
+}
+
 function PreRuntimeFailure({
   category,
   onRetry,
@@ -365,6 +376,9 @@ function RootLayoutAttempt({
   const v12NativeContractsEnabled = nativeContractsEnabled
     && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__native-contracts";
+  const phase20QualityEnabled = nativeContractsEnabled
+    && nativeContractSuite === "v1.2-acceptance"
+    && pathname === "/__phase20-quality-probe";
 
   const isolatedNativeRoute = attendedPreviewEnabled
     || phase6GestureSmokeEnabled
@@ -373,7 +387,8 @@ function RootLayoutAttempt({
     || phase18GarminProofEnabled
     || phase18GarminAdversarialEnabled
     || v12NativeContractsEnabled
-    || phase20VisualPath;
+    || phase20VisualPath
+    || phase20QualityEnabled;
   const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
     ? productionAppearanceStore.read()
     : null;
@@ -512,6 +527,18 @@ function RootLayoutAttempt({
                 </ProductionToastBoundary>
               </WorkoutAppRuntimeProvider>
             )}
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase20QualityEnabled) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+            <Phase20QualityNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

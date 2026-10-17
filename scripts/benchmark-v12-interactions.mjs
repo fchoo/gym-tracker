@@ -339,7 +339,7 @@ export const V12_PERFORMANCE_BUDGETS = Object.freeze({
   phase12_writer_occupancy: Object.freeze({ minimum_samples: 20, maximum_p95_ms: 1_000 }),
   phase12_merge_preflight: Object.freeze({ minimum_samples: 10, maximum_p95_ms: 10_000, maximum_peak_growth_bytes: 192 * 1024 * 1024, required_snapshot_bytes: 24 * 1024 * 1024, required_rows: 100_000 }),
   phase12_merge_materialization: Object.freeze({ minimum_samples: 5, maximum_p95_ms: 30_000 }),
-  garmin_sync_normalization: Object.freeze({ status: "REVIEW_REQUIRED", limit_source: "phase18-exact-artifact-baseline", fixture: "maximum-reviewed-garmin-json" }),
+  garmin_sync_normalization: Object.freeze({ status: "REVIEW_REQUIRED", limit_source: "phase20-current-source-baseline/v1", fixture: "maximum-reviewed-garmin-json" }),
 });
 
 export const V12_PERFORMANCE_WORKLOAD = Object.freeze({
