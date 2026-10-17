@@ -6,7 +6,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  assertV12GitExecutionAttestation,
   createV12NativeExecutionOriginAttestation,
+  readV12RetainedGitExecution,
+  resolveV12GitExecution,
   resolveV12NativeExecutionTools,
   V12_TEST_EXECUTION_ORIGIN,
 } from "./v12-native-execution-origin.mjs";
@@ -75,4 +78,70 @@ test("tool requirements reject unknown names instead of consulting PATH", () => 
     requiredTools: ["adb", "shell-from-path"],
     env: { PATH: "/private/untrusted" },
   }), /v12_production_native_launcher_tool_requirement_invalid/u);
+});
+
+test("Git resolution ignores poisoned PATH and records realpath, bytes, and live version", () => {
+  const poison = mkdtempSync(path.join(tmpdir(), "v12-git-poison-"));
+  const poisonedGit = executable(poison, "git");
+  const execution = resolveV12GitExecution({ env: { PATH: poison } });
+
+  assert.notEqual(execution.executable, realpathSync(poisonedGit));
+  assert.equal(execution.attestation.action, "source-control");
+  assert.equal(execution.attestation.execution_origin, "production-attested/v1");
+  assert.equal(execution.attestation.test_only, false);
+  assert.deepEqual(execution.attestation.tools.map(({ name }) => name), ["git"]);
+  assert.match(execution.attestation.tools[0].executable_realpath_sha256, /^[a-f0-9]{64}$/u);
+  assert.match(execution.attestation.tools[0].executable_sha256, /^[a-f0-9]{64}$/u);
+  assert.match(execution.attestation.tools[0].version, /^git version /u);
+  assert.equal(assertV12GitExecutionAttestation(execution.attestation, { execution }), true);
+});
+
+test("controlled Git requires explicit test origin and still records its live version", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-git-controlled-"));
+  const controlledGit = path.join(root, "git");
+  writeFileSync(controlledGit, "#!/bin/sh\nprintf 'git version controlled-1.0\\n'\n", { mode: 0o755 });
+  const env = { PATH: root, V12_EXECUTION_ORIGIN: V12_TEST_EXECUTION_ORIGIN, V12_GIT_PATH: controlledGit };
+  const execution = resolveV12GitExecution({ env });
+
+  assert.equal(execution.executable, realpathSync(controlledGit));
+  assert.equal(execution.attestation.execution_origin, V12_TEST_EXECUTION_ORIGIN);
+  assert.equal(execution.attestation.test_only, true);
+  assert.equal(execution.attestation.tools[0].version, "git version controlled-1.0");
+  assert.throws(
+    () => resolveV12GitExecution({ env: { PATH: root, V12_GIT_PATH: controlledGit } }),
+    /v12_production_native_launcher_execution_origin_invalid/u,
+  );
+  assert.throws(
+    () => assertV12GitExecutionAttestation({ ...execution.attestation, tools: [{ ...execution.attestation.tools[0], executable_sha256: "0".repeat(64) }] }, { execution }),
+    /v12_production_native_launcher_git_attestation_invalid/u,
+  );
+});
+
+test("retained Git execution is hash-bound to the build and run identities", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-git-retained-"));
+  const tools = path.join(root, "tools");
+  mkdirSync(tools, { recursive: true });
+  const controlledGit = path.join(tools, "git");
+  writeFileSync(controlledGit, "#!/bin/sh\nprintf 'git version retained-1.0\\n'\n", { mode: 0o755 });
+  const env = { V12_EXECUTION_ORIGIN: V12_TEST_EXECUTION_ORIGIN, V12_GIT_PATH: controlledGit };
+  const execution = resolveV12GitExecution({ env });
+  const relative = "artifacts/native/v1.2-acceptance/git-execution-origin.json";
+  const bytes = Buffer.from(`${JSON.stringify(execution.attestation)}\n`);
+  mkdirSync(path.join(root, "artifacts/native/v1.2-acceptance"), { recursive: true });
+  writeFileSync(path.join(root, relative), bytes);
+  const runManifest = { source: { head: "a".repeat(40), tree_sha256: "b".repeat(64) }, build: { apk: { sha256: "c".repeat(64) } } };
+  writeFileSync(path.join(root, "artifacts/native/v1.2-acceptance/build.json"), JSON.stringify({
+    base_head: runManifest.source.head,
+    source_tree_sha256: runManifest.source.tree_sha256,
+    apk: { sha256: runManifest.build.apk.sha256 },
+    v12_evidence_identity: { git_attestation: { path: relative, sha256: createHash("sha256").update(bytes).digest("hex") } },
+  }));
+
+  const retained = readV12RetainedGitExecution({ root, runManifest, env });
+  assert.deepEqual(retained.attestation, execution.attestation);
+  assert.equal(retained.executable, execution.executable);
+  assert.throws(
+    () => readV12RetainedGitExecution({ root, runManifest: { ...runManifest, source: { ...runManifest.source, head: "d".repeat(40) } }, env }),
+    /git_attestation_invalid/u,
+  );
 });

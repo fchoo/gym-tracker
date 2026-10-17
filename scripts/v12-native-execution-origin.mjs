@@ -1,11 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { accessSync, constants, readFileSync, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 export const V12_PRODUCTION_EXECUTION_ORIGIN = "production-attested/v1";
 export const V12_TEST_EXECUTION_ORIGIN = "test-controlled/v1";
+export const V12_RETAINED_GIT_ATTESTATION_PATH = "artifacts/native/v1.2-acceptance/git-execution-origin.json";
 
 const TEST_PATHS = Object.freeze({
   adb: "V12_ADB_PATH",
@@ -13,6 +16,7 @@ const TEST_PATHS = Object.freeze({
   java: "V12_JAVA_PATH",
   unzip: "V12_UNZIP_PATH",
   apksigner: "V12_APKSIGNER_PATH",
+  git: "V12_GIT_PATH",
 });
 const TOOL_NAMES = Object.freeze(Object.keys(TEST_PATHS));
 const VERSION_COMMANDS = Object.freeze({
@@ -21,6 +25,7 @@ const VERSION_COMMANDS = Object.freeze({
   java: Object.freeze(["-version"]),
   unzip: Object.freeze(["-v"]),
   apksigner: Object.freeze(["version"]),
+  git: Object.freeze(["--version"]),
 });
 export const V12_NATIVE_ACTION_TOOL_REQUIREMENTS = Object.freeze({
   "acquire-lease": Object.freeze(["adb"]),
@@ -36,6 +41,7 @@ export const V12_NATIVE_ACTION_TOOL_REQUIREMENTS = Object.freeze({
   recovery: Object.freeze(["adb", "maestro", "unzip"]),
   garmin: Object.freeze(["adb", "maestro", "unzip"]),
   calendar: Object.freeze(["adb", "maestro", "unzip"]),
+  "source-control": Object.freeze(["git"]),
 });
 
 function fail(code) {
@@ -91,6 +97,10 @@ function productionJava(env) {
   return executable(candidate, "java_missing");
 }
 
+function productionGit() {
+  return executable("/usr/bin/git", "git_missing");
+}
+
 function required(requiredTools, domain) {
   const names = requiredTools ?? (domain ? ["adb", "maestro", "unzip"] : ["adb"]);
   if (!Array.isArray(names) || names.length === 0 || new Set(names).size !== names.length
@@ -128,6 +138,7 @@ export function resolveV12NativeExecutionTools({ domain = false, requiredTools, 
     java: () => productionJava(env),
     unzip: () => executable("/usr/bin/unzip", "unzip_missing"),
     apksigner: () => executable(path.join(androidRoot, "build-tools", "36.0.0", "apksigner"), "apksigner_missing"),
+    git: () => productionGit(),
   };
   return Object.freeze(Object.fromEntries([
     ["execution_origin", V12_PRODUCTION_EXECUTION_ORIGIN],
@@ -164,7 +175,7 @@ export function createV12NativeExecutionOriginAttestation({ action, executionToo
       name,
       executable_realpath_sha256: sha256(resolved),
       executable_sha256: sha256(readFileSync(resolved)),
-      version: executionTools.test_only ? "test-controlled" : productionVersion(name, resolved, runCommand),
+      version: executionTools.test_only && name !== "git" ? "test-controlled" : productionVersion(name, resolved, runCommand),
     });
   });
   return Object.freeze({
@@ -174,4 +185,76 @@ export function createV12NativeExecutionOriginAttestation({ action, executionToo
     test_only: executionTools.test_only,
     tools: Object.freeze(tools),
   });
+}
+
+export function resolveV12GitExecution({ env = process.env, runCommand = spawnSync } = {}) {
+  const executionTools = resolveV12NativeExecutionTools({ requiredTools: ["git"], env });
+  const attestation = createV12NativeExecutionOriginAttestation({
+    action: "source-control",
+    executionTools,
+    runCommand,
+  });
+  return Object.freeze({ executable: executionTools.git, attestation });
+}
+
+export function assertV12GitExecutionAttestation(value, {
+  execution = undefined,
+  env = process.env,
+  runCommand = spawnSync,
+} = {}) {
+  const current = execution ?? resolveV12GitExecution({ env, runCommand });
+  if (JSON.stringify(value) !== JSON.stringify(current.attestation)) fail("git_attestation_invalid");
+  return true;
+}
+
+function retainedFile(root, relative) {
+  const base = realpathSync(root);
+  let cursor = base;
+  for (const part of relative.split("/")) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat === undefined || stat.isSymbolicLink()) fail("git_attestation_invalid");
+  }
+  if (!lstatSync(cursor).isFile()) fail("git_attestation_invalid");
+  return cursor;
+}
+
+export function readV12RetainedGitExecution({
+  root = process.cwd(),
+  runManifest = undefined,
+  env = process.env,
+  runCommand = spawnSync,
+} = {}) {
+  let build; let attestation; let bytes;
+  try {
+    build = JSON.parse(readFileSync(retainedFile(root, "artifacts/native/v1.2-acceptance/build.json"), "utf8"));
+    const descriptor = build?.v12_evidence_identity?.git_attestation;
+    if (descriptor?.path !== V12_RETAINED_GIT_ATTESTATION_PATH || typeof descriptor.sha256 !== "string") fail("git_attestation_invalid");
+    bytes = readFileSync(retainedFile(root, descriptor.path));
+    if (createHash("sha256").update(bytes).digest("hex") !== descriptor.sha256) fail("git_attestation_invalid");
+    attestation = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    if (error instanceof Error && error.message === "v12_production_native_launcher_git_attestation_invalid") throw error;
+    fail("git_attestation_invalid");
+  }
+  if (runManifest !== undefined && (build.base_head !== runManifest.source?.head
+    || build.source_tree_sha256 !== runManifest.source?.tree_sha256
+    || build.apk?.sha256 !== runManifest.build?.apk?.sha256)) fail("git_attestation_invalid");
+  const execution = resolveV12GitExecution({ env, runCommand });
+  assertV12GitExecutionAttestation(attestation, { execution });
+  return Object.freeze({ ...execution, retained_sha256: createHash("sha256").update(bytes).digest("hex") });
+}
+
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  try {
+    const execution = resolveV12GitExecution();
+    if (process.argv.length !== 3 || !["--git-path", "--git-attestation"].includes(process.argv[2])) fail("arguments_invalid");
+    process.stdout.write(process.argv[2] === "--git-path"
+      ? `${execution.executable}\n`
+      : `${JSON.stringify(execution.attestation)}\n`);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : "v12_production_native_launcher_failed"}\n`);
+    process.exitCode = 1;
+  }
 }

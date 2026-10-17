@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -13,6 +13,7 @@ import {
   sourceTreeSha256AtHead,
   v12ContractSourceDigests,
 } from "./source-tree-digest.mjs";
+import { resolveV12GitExecution, V12_TEST_EXECUTION_ORIGIN } from "./v12-native-execution-origin.mjs";
 
 function git(root, ...args) {
   return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -163,5 +164,36 @@ test("recomputes planning, prototype, and fixture authority outside the implemen
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(approved, { recursive: true, force: true });
+  }
+});
+
+test("source operations use one explicitly attested absolute Git executable", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "gym-source-tree-git-origin-"));
+  const tools = mkdtempSync(path.join(tmpdir(), "gym-source-tree-git-tools-"));
+  try {
+    const systemGit = realpathSync("/usr/bin/git");
+    const controlledGit = path.join(tools, "git");
+    writeFileSync(controlledGit, `#!/bin/sh\nexec ${JSON.stringify(systemGit)} "$@"\n`, { mode: 0o755 });
+    const gitExecution = resolveV12GitExecution({
+      env: { V12_EXECUTION_ORIGIN: V12_TEST_EXECUTION_ORIGIN, V12_GIT_PATH: controlledGit },
+    });
+    git(root, "init", "--quiet");
+    git(root, "config", "user.email", "test@example.invalid");
+    git(root, "config", "user.name", "Source Digest Test");
+    writeFileSync(path.join(root, "app.ts"), "export const source = 1;\n");
+    git(root, "add", "app.ts");
+    git(root, "commit", "--quiet", "-m", "initial");
+    const head = git(root, "rev-parse", "HEAD");
+
+    const digest = sourceTreeSha256AtHead(head, root, { gitExecution, expectedGitAttestation: gitExecution.attestation });
+    assert.match(digest, /^[a-f0-9]{64}$/u);
+    assert.doesNotThrow(() => assertCleanCommittedTree(head, root, { gitExecution, expectedGitAttestation: gitExecution.attestation }));
+    assert.throws(
+      () => sourceTreeSha256(root, { gitExecution, expectedGitAttestation: { ...gitExecution.attestation, action: "tampered" } }),
+      /git_attestation_invalid/u,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(tools, { recursive: true, force: true });
   }
 });

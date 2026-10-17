@@ -13,7 +13,7 @@ import {
   validateV12CalendarComparison,
 } from "./compare-v12-calendar.mjs";
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
-import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
+import { V12_MAESTRO_SOURCE_PATHS, validateV12CalendarManifest, validateV12LiveSourceLineage } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256, v12ContractSourceDigests } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
@@ -43,6 +43,7 @@ import {
   digestV12CanonicalRestorationSnapshot,
   readV12CanonicalRestorationSnapshot,
 } from "./v12-device-settings-contract.mjs";
+import { readV12RetainedGitExecution, resolveV12GitExecution } from "./v12-native-execution-origin.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -396,8 +397,9 @@ export function executeV12CalendarEvidenceVerifier({ args = process.argv.slice(2
     fail("manifest_missing");
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const head = currentIdentity?.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-  const source = currentIdentity?.source ?? sourceTreeSha256(root);
+  const gitExecution = resolveV12GitExecution();
+  const head = currentIdentity?.head ?? execFileSync(gitExecution.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const source = currentIdentity?.source ?? sourceTreeSha256(root, { gitExecution, expectedGitAttestation: gitExecution.attestation });
   validateV12CalendarManifest(manifest, { head, source });
   const evidencePath = path.join(path.dirname(manifestPath), "evidence", "calendar-evidence.json");
   let safeEvidencePath;
@@ -695,17 +697,17 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
 const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
 export const V12_NATIVE_PROVENANCE_REGISTRY = Object.freeze({
-  sqlite: Object.freeze({ actions: Object.freeze(["sqlite"]), domain: "scripts/v12-production-native-runtime.mjs" }),
-  recovery: Object.freeze({ actions: Object.freeze(["recovery"]), domain: "scripts/v12-production-native-domain-actions.mjs" }),
-  garmin: Object.freeze({ actions: Object.freeze(["garmin"]), domain: "scripts/v12-production-native-domain-actions.mjs" }),
-  calendar: Object.freeze({ actions: Object.freeze(["calendar"]), domain: "scripts/v12-production-native-calendar-action.mjs" }),
-  "multi-plan": Object.freeze({ actions: Object.freeze(["multi-plan"]), domain: "scripts/run-v12-maestro.mjs" }),
-  workout: Object.freeze({ actions: Object.freeze(["workout"]), domain: "scripts/run-v12-maestro.mjs" }),
-  "library-running": Object.freeze({ actions: Object.freeze(["library-running"]), domain: "scripts/run-v12-maestro.mjs" }),
-  visual: Object.freeze({ actions: Object.freeze(["visual-capture", "visual-capture-batch"]), domain: "scripts/v12-production-native-visual-actions.mjs" }),
-  comparison: Object.freeze({ actions: Object.freeze(["visual-compare"]), domain: "scripts/v12-production-native-visual-actions.mjs" }),
-  accessibility: Object.freeze({ actions: Object.freeze(["accessibility"]), domain: "scripts/v12-production-native-quality-actions.mjs" }),
-  performance: Object.freeze({ actions: Object.freeze(["performance"]), domain: "scripts/v12-production-native-quality-actions.mjs" }),
+  sqlite: Object.freeze({ actions: Object.freeze(["sqlite"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-runtime.mjs" }),
+  recovery: Object.freeze({ actions: Object.freeze(["recovery"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  garmin: Object.freeze({ actions: Object.freeze(["garmin"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  calendar: Object.freeze({ actions: Object.freeze(["calendar"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-calendar-action.mjs" }),
+  "multi-plan": Object.freeze({ actions: Object.freeze(["multi-plan"]), ...V12_MAESTRO_SOURCE_PATHS["multi-plan"] }),
+  workout: Object.freeze({ actions: Object.freeze(["workout"]), ...V12_MAESTRO_SOURCE_PATHS.workout }),
+  "library-running": Object.freeze({ actions: Object.freeze(["library-running"]), ...V12_MAESTRO_SOURCE_PATHS["library-running"] }),
+  visual: Object.freeze({ actions: Object.freeze(["visual-capture", "visual-capture-batch"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  comparison: Object.freeze({ actions: Object.freeze(["visual-compare"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  accessibility: Object.freeze({ actions: Object.freeze(["accessibility"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-quality-actions.mjs" }),
+  performance: Object.freeze({ actions: Object.freeze(["performance"]), adapter: "scripts/v12-native-adapter.mjs", launcher: "scripts/v12-production-native-adapter-launcher.mjs", domain: "scripts/v12-production-native-quality-actions.mjs" }),
 });
 const V12_ADAPTER_SHARDS = Object.freeze(Object.keys(V12_NATIVE_PROVENANCE_REGISTRY));
 
@@ -794,11 +796,12 @@ function finalAndroidTool(name) {
   return file;
 }
 
-export function verifyV12FinalNativeIdentity(manifest, { root = ROOT } = {}) {
+export function verifyV12FinalNativeIdentity(manifest, { root = ROOT, gitExecution = undefined } = {}) {
   if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
   if (manifest.evidence_origin !== "native") preflightFail("native_origin_required");
   const apkFile = preflightSafeFile(root, manifest.build?.apk?.path);
   const apkBytes = readFileSync(apkFile);
+  const sourceControl = gitExecution ?? readV12RetainedGitExecution({ root, runManifest: manifest });
   const apksigner = finalAndroidTool("apksigner"); const adb = finalAndroidTool("adb");
   const signatureReport = finalNativeCommand(apksigner, ["verify", "--verbose", "--print-certs", apkFile]);
   const certificate = /certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u.exec(signatureReport.toString("utf8"))?.[1]?.replaceAll(":", "").toLowerCase();
@@ -815,8 +818,8 @@ export function verifyV12FinalNativeIdentity(manifest, { root = ROOT } = {}) {
   const installedBytes = finalNativeCommand(adb, ["-s", serial, "exec-out", "cat", installedPaths[0].slice("package:".length)]);
   const settings = [adbText("shell", "settings", "get", "system", "font_scale"), adbText("shell", "settings", "get", "secure", "ui_night_mode"), adbText("shell", "settings", "get", "global", "animator_duration_scale")];
   validateV12FinalNativeIdentity(manifest, {
-    source_head: finalNativeCommand("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
-    source_tree_sha256: sourceTreeSha256(root), apk_sha256: sha256(apkBytes), apk_size_bytes: apkBytes.length,
+    source_head: finalNativeCommand(sourceControl.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
+    source_tree_sha256: sourceTreeSha256(root, { gitExecution: sourceControl, expectedGitAttestation: sourceControl.attestation }), apk_sha256: sha256(apkBytes), apk_size_bytes: apkBytes.length,
     signature_sha256: sha256(signatureReport), certificate_sha256: certificate,
     installed_apk_sha256: sha256(installedBytes), device_identity_sha256: phase18DeviceIdentitySha256({ serial, abi, apiLevel, model }),
     settings_sha256: sha256(`${settings.join("\n")}\n`),
@@ -996,10 +999,10 @@ function assertNonTestEvidenceEnvironment() {
     || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) preflightFail("test_provenance_forbidden");
 }
 
-export function validateV12ProductionPublicationOrigins(root, runId) {
-  const adapterSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-native-adapter.mjs")));
-  const launcherSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-production-native-adapter-launcher.mjs")));
-  for (const shard of V12_ADAPTER_SHARDS) {
+export function validateV12ProductionPublicationOrigins(root, runId, shards = V12_ADAPTER_SHARDS) {
+  if (!Array.isArray(shards) || shards.length === 0 || new Set(shards).size !== shards.length
+    || shards.some(shard => !V12_ADAPTER_SHARDS.includes(shard))) preflightFail("adapter_provenance_invalid");
+  for (const shard of shards) {
     const expected = V12_NATIVE_PROVENANCE_REGISTRY[shard];
     let publication;
     try { publication = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8")); }
@@ -1009,9 +1012,11 @@ export function validateV12ProductionPublicationOrigins(root, runId) {
     catch { preflightFail("adapter_provenance_invalid"); }
     if (origin.kind === "test-fixture" || origin.toolchain_origin !== "production-attested/v1"
       || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
-    const domainSha256 = sha256(readFileSync(preflightSafeFile(root, expected.domain)));
-    if (!expected.actions.includes(origin.action) || origin.adapter_source_sha256 !== adapterSha256
-      || origin.launcher_source_sha256 !== launcherSha256 || origin.domain_source_sha256 !== domainSha256) preflightFail("adapter_provenance_stale");
+    const sourceDigests = Object.fromEntries(["adapter", "launcher", "domain"].map(role => [role,
+      sha256(readFileSync(preflightSafeFile(root, expected[role]))),
+    ]));
+    if (!expected.actions.includes(origin.action) || origin.adapter_source_sha256 !== sourceDigests.adapter
+      || origin.launcher_source_sha256 !== sourceDigests.launcher || origin.domain_source_sha256 !== sourceDigests.domain) preflightFail("adapter_provenance_stale");
   }
   return true;
 }
@@ -1059,12 +1064,20 @@ export function readV12FinalDeviceState(manifest, {
 
 export function validateV12FinalProductionIdentity(manifest, {
   root = ROOT,
-  currentHead = () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
-  currentSourceTreeSha256 = () => sourceTreeSha256(root),
+  gitExecution = undefined,
+  currentHead = undefined,
+  currentSourceTreeSha256 = undefined,
   verifyApkSignature = defaultApkSignature,
   readDeviceIdentity = () => readV12FinalDeviceState(manifest),
 } = {}) {
   const validated = validateV12RunManifest(manifest);
+  const sourceControl = gitExecution ?? ((currentHead !== undefined && currentSourceTreeSha256 !== undefined)
+    ? undefined : readV12RetainedGitExecution({ root, runManifest: validated }));
+  const readHead = currentHead ?? (() => execFileSync(sourceControl.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim());
+  const readSourceTree = currentSourceTreeSha256 ?? (() => sourceTreeSha256(root, {
+    gitExecution: sourceControl,
+    expectedGitAttestation: sourceControl.attestation,
+  }));
   const apkPath = preflightSafeFile(root, validated.build.apk.path);
   const apkBytes = readFileSync(apkPath);
   if (apkBytes.length < 4 || !apkBytes.subarray(0, 4).equals(Buffer.from("504b0304", "hex"))) preflightFail("final_identity_invalid");
@@ -1072,8 +1085,8 @@ export function validateV12FinalProductionIdentity(manifest, {
   try {
     signature = verifyApkSignature(apkPath);
     device = readDeviceIdentity();
-    head = currentHead();
-    source = currentSourceTreeSha256();
+    head = readHead();
+    source = readSourceTree();
   }
   catch (error) { if (error instanceof Error && error.message.startsWith("v12_preflight_")) throw error; preflightFail("final_identity_invalid"); }
   if (device?.lease_state !== "clear") preflightFail("final_lease_active");
@@ -1176,6 +1189,8 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     return Object.freeze({ schema_version: 1, producer: "v12-test-resolution/v1", run_id: options.run_id, sealable: false, row_evidence });
   }
   if (manifest.evidence_origin === "test") preflightFail("test_origin_forbidden");
+  const gitExecution = readV12RetainedGitExecution({ root, runManifest: manifest });
+  validateV12LiveSourceLineage(manifest, { root, gitExecution });
 
   const runPrefix = `artifacts/native/v1.2/${options.run_id}`;
   if (options.mode === "preseal") {
@@ -1194,8 +1209,8 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   }
   assertNonTestEvidenceEnvironment();
   validateV12ProductionPublicationOrigins(root, options.run_id);
-  validateV12FinalProductionIdentity(manifest, { root });
-  verifyV12FinalNativeIdentity(manifest, { root });
+  validateV12FinalProductionIdentity(manifest, { root, gitExecution });
+  verifyV12FinalNativeIdentity(manifest, { root, gitExecution });
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
   if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id
     || !Array.isArray(preseal.row_evidence) || !finalPlainObject(preseal.contract_identity)) preflightFail("preseal_invalid");

@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { validateV12RunManifest as validateGenericV12RunManifest } from "./create-v12-run-manifest.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
@@ -14,10 +13,13 @@ import {
 } from "./v12-calendar-artifacts.mjs";
 import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
 import {
+  readV12RetainedGitExecution,
+  resolveV12GitExecution,
   resolveV12NativeExecutionTools,
   V12_PRODUCTION_EXECUTION_ORIGIN,
   V12_TEST_EXECUTION_ORIGIN,
 } from "./v12-native-execution-origin.mjs";
+import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_STEPS } from "./v12-recovery-shard.mjs";
 import {
   V12_CALENDAR_FLOW_REVISION,
   V12_CALENDAR_CHUNK_MARKER,
@@ -31,7 +33,6 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_HEAD = /^[a-f0-9]{40}$/u;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const RUNNER_SOURCE = fileURLToPath(import.meta.url);
 const LIVE_GENERIC_SHARDS = Object.freeze(["multi-plan", "workout", "library-running"]);
 const sourceSha256 = (file) => {
   try { return sha256(readFileSync(file)); }
@@ -51,6 +52,14 @@ export const V12_MAESTRO_FLOW_CONTRACTS = Object.freeze({
   "library-running": Object.freeze({ flow: "maestro/v1.2/library-running.yaml", sources: Object.freeze(["src/testing/contracts/phase17LibraryRunning.contract.ts"]), prefix: "library." }),
   accessibility: Object.freeze({ flow: "maestro/v1.2/accessibility.yaml", sources: Object.freeze(["scripts/v12-accessibility-shard.mjs"]) }),
 });
+
+export const V12_MAESTRO_SOURCE_PATHS = Object.freeze(Object.fromEntries(
+  LIVE_GENERIC_SHARDS.map((shard) => [shard, Object.freeze({
+    adapter: "scripts/run-v12-maestro.mjs",
+    launcher: "scripts/run-v12-maestro.mjs",
+    domain: V12_MAESTRO_FLOW_CONTRACTS[shard].sources[0],
+  })]),
+));
 
 function genericFail(code) {
   throw new Error(`v12_maestro_${code}`);
@@ -136,8 +145,10 @@ function resolvedExecutionTools(value) {
   return Object.freeze(resolved);
 }
 
-function executionOrigin({ runId, shard, manifest, snapshot, tools, sourceFile }) {
+function executionOrigin({ root, runId, shard, manifest, snapshot, tools }) {
   const production = tools.execution_origin === V12_PRODUCTION_EXECUTION_ORIGIN;
+  const sources = V12_MAESTRO_SOURCE_PATHS[shard];
+  if (sources === undefined) genericFail("toolchain_invalid");
   return Object.freeze({
     schema_version: 1,
     action: shard,
@@ -145,9 +156,9 @@ function executionOrigin({ runId, shard, manifest, snapshot, tools, sourceFile }
     toolchain_origin: tools.execution_origin,
     default_launcher: production,
     test_only: !production,
-    adapter_source_sha256: sourceSha256(RUNNER_SOURCE),
-    launcher_source_sha256: sourceSha256(RUNNER_SOURCE),
-    domain_source_sha256: snapshot.source_sha256[sourceFile],
+    adapter_source_sha256: sourceSha256(path.join(root, sources.adapter)),
+    launcher_source_sha256: sourceSha256(path.join(root, sources.launcher)),
+    domain_source_sha256: snapshot.source_sha256[sources.domain],
     request_attestation_sha256: sha256(JSON.stringify({
       schema_version: 1,
       action: shard,
@@ -245,7 +256,10 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
   const manifest = readJson(`artifacts/native/v1.2/${runId}/build.json`);
   try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
   if (manifest.run_id !== runId || manifest.mode !== "live" || manifest.build.package !== V12_PACKAGE) genericFail("manifest_invalid");
-  const sourceIdentity = validateV12LiveSourceLineage(manifest, dependencies);
+  const gitExecution = dependencies.gitExecution ?? ((dependencies.currentHead !== undefined
+    && dependencies.sourceDigest !== undefined && dependencies.isAncestor !== undefined)
+    ? undefined : readV12RetainedGitExecution({ root, runManifest: manifest, env: dependencies.environment ?? process.env }));
+  const sourceIdentity = validateV12LiveSourceLineage(manifest, { ...dependencies, gitExecution });
   genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root, sourceIdentity));
   const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
   const flowPath = path.join(root, contract.flow);
@@ -292,7 +306,7 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
     const flowSha256 = sha256(readFileSync(flowPath));
     const observations = caseIds.map((caseId, index) => Object.freeze({ case_id: caseId, ordinal: index + 1, fixture_id: "v12-synthetic-fixtures-r18", report_sha256: sha256(reports[index]) }));
     const sourceSnapshot = Object.freeze({ flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }) });
-    const provenance = executionOrigin({ runId, shard, manifest, snapshot: sourceSnapshot, tools, sourceFile: contract.sources[0] });
+    const provenance = executionOrigin({ root, runId, shard, manifest, snapshot: sourceSnapshot, tools });
     const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), execution_origin: provenance, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
     validateSourceOrderedObservations(observations, caseIds, shard);
     const writeReport = dependencies.writeReport ?? ((file, value) => {
@@ -319,12 +333,18 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
 
 export function validateV12LiveSourceLineage(manifest, dependencies = {}) {
   const root = dependencies.root ?? ROOT;
+  const gitExecution = dependencies.gitExecution ?? ((dependencies.currentHead !== undefined
+    && dependencies.sourceDigest !== undefined && dependencies.isAncestor !== undefined)
+    ? undefined : resolveV12GitExecution({ env: dependencies.environment ?? process.env }));
   const currentHead = dependencies.currentHead
-    ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-  const sourceDigest = dependencies.sourceDigest ?? sourceTreeSha256(root);
+    ?? execFileSync(gitExecution.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const sourceDigest = dependencies.sourceDigest ?? sourceTreeSha256(root, {
+    gitExecution,
+    expectedGitAttestation: gitExecution.attestation,
+  });
   const isAncestor = dependencies.isAncestor ?? ((ancestor, descendant) => {
     try {
-      execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: root, stdio: "ignore" });
+      execFileSync(gitExecution.executable, ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: root, stdio: "ignore" });
       return true;
     } catch {
       return false;
@@ -369,17 +389,23 @@ export function executeLiveV12RecoveryMaestro(args = process.argv.slice(2), depe
   const manifest = (dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8"))))(`artifacts/native/v1.2/${runId}/build.json`);
   try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
   if (manifest.run_id !== runId || manifest.mode !== "live") genericFail("manifest_invalid");
+  const gitExecution = dependencies.gitExecution ?? ((dependencies.currentHead !== undefined
+    && dependencies.sourceDigest !== undefined && dependencies.isAncestor !== undefined)
+    ? undefined : readV12RetainedGitExecution({ root, runManifest: manifest, env: dependencies.environment ?? process.env }));
   const sourceIdentity = validateV12LiveSourceLineage(manifest, {
     root,
     currentHead: dependencies.currentHead,
     sourceDigest: dependencies.sourceDigest,
     isAncestor: dependencies.isAncestor,
+    gitExecution,
   });
   genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root, sourceIdentity));
   const flow = V12_MAESTRO_FLOW_CONTRACTS.recovery.flow;
   if (!(dependencies.exists ?? ((file) => existsSync(path.join(root, file))))(flow)) genericFail("artifact_missing");
   const execute = dependencies.execFileSync ?? execFileSync;
-  assertMaestroVersion(execute);
+  const tools = resolvedExecutionTools(dependencies.executionTools
+    ?? resolveV12NativeExecutionTools({ domain: true, env: dependencies.environment ?? process.env }));
+  assertMaestroVersion(execute, tools.maestro);
   const output = path.join(root, `artifacts/native/v1.2/${runId}/maestro/recovery.xml`);
   const writeReport = dependencies.writeReport ?? ((file, content) => {
     if (existsSync(file)) genericFail("immutable_output_invalid");
@@ -387,17 +413,28 @@ export function executeLiveV12RecoveryMaestro(args = process.argv.slice(2), depe
     writeFileSync(file, content, { flag: "wx" });
   });
   const serial = dependencies.serial ?? "emulator-5554";
-  const adb = dependencies.adb ?? ((...command) => execute("adb", ["-s", serial, ...command], { encoding: "utf8" }).trim());
+  const adb = dependencies.adb ?? ((...command) => execute(tools.adb, ["-s", serial, ...command], { encoding: "utf8" }).trim());
   const priorAirplane = adb("shell", "settings", "get", "global", "airplane_mode_on");
   const reports = [];
   let restored = false;
   try {
-    for (const caseId of ["legacy-playback", "foreground-reconciliation", "queued-callback", "relaunch", "restore", "merge", "zero-cue", "between-set-rest-pointer"]) {
-      for (const cut of ["pre-transaction", "in-transaction", "post-commit-before-ack", "post-acknowledgement", "relaunch", "retry", "offline", "recovery"]) {
-        const temporary = path.join(root, `artifacts/native/v1.2/${runId}/maestro/.${caseId}-${cut}.xml`);
-        execute("maestro", ["test", "--device", serial, "-e", `V12_RECOVERY_CASE=${caseId}`, "-e", `V12_RECOVERY_STAGE=${cut}`, "--format", "junit", "--output", temporary, path.join(root, flow)], { stdio: "inherit" });
-        if (!existsSync(temporary)) genericFail("report_missing");
-        reports.push(readFileSync(temporary, "utf8"));
+    for (const step of V12_RECOVERY_STEPS) {
+      for (const cut of V12_RECOVERY_CUT_IDS) {
+        const nonce = randomBytes(16).toString("hex");
+        for (const phase of ["arm", "recover"]) {
+          const temporary = path.join(root, `artifacts/native/v1.2/${runId}/maestro/.${step.case_id}-${step.id}-${cut}-${phase}.xml`);
+          mkdirSync(path.dirname(temporary), { recursive: true });
+          execute(tools.maestro, ["test", "--device", serial,
+            "-e", `V12_DOMAIN_NONCE=${nonce}`,
+            "-e", `V12_RECOVERY_CASE=${step.case_id}`,
+            "-e", `V12_RECOVERY_STEP=${step.id}`,
+            "-e", `V12_RECOVERY_STAGE=${cut}`,
+            "-e", `V12_RECOVERY_PHASE=${phase}`,
+            "--format", "junit", "--output", temporary, path.join(root, flow)], { stdio: "inherit" });
+          if (!existsSync(temporary)) genericFail("report_missing");
+          reports.push(readFileSync(temporary, "utf8"));
+          unlinkSync(temporary);
+        }
       }
     }
     writeReport(output, `<testsuites>${reports.join("")}</testsuites>\n`);
@@ -406,7 +443,8 @@ export function executeLiveV12RecoveryMaestro(args = process.argv.slice(2), depe
     restored = adb("shell", "settings", "get", "global", "airplane_mode_on") === priorAirplane;
   }
   if (!restored) genericFail("settings_restore_failed");
-  return Object.freeze({ ok: true, run_id: runId, shard, report: path.relative(root, output), cases: 8, cuts: 64 });
+  return Object.freeze({ ok: true, run_id: runId, shard, report: path.relative(root, output), cases: V12_RECOVERY_CASE_IDS.length,
+    steps: V12_RECOVERY_STEPS.length, cuts: V12_RECOVERY_STEPS.length * V12_RECOVERY_CUT_IDS.length, executions: reports.length });
 }
 export const V12_CALENDAR_DIAGNOSTIC_STAGES = V12_CALENDAR_STAGE_IDS;
 
@@ -504,8 +542,9 @@ export function executeV12Maestro(args = process.argv.slice(2), dependencies = {
   if (!fileExists(manifestPath)) throw new Error("v12_calendar_manifest_missing");
   const readText = dependencies.readText ?? ((file) => readFileSync(file, "utf8"));
   const manifest = JSON.parse(readText(manifestPath));
-  const head = dependencies.head ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-  const source = dependencies.source ?? sourceTreeSha256(root);
+  const gitExecution = dependencies.gitExecution ?? resolveV12GitExecution({ env: dependencies.environment ?? process.env });
+  const head = dependencies.head ?? execFileSync(gitExecution.executable, ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const source = dependencies.source ?? sourceTreeSha256(root, { gitExecution, expectedGitAttestation: gitExecution.attestation });
   validateV12CalendarManifest(manifest, { head, source });
   validateV12CalendarFlow(readText(path.join(root, FLOW)));
   throw new Error("v12_calendar_native_execution_phase20_only");

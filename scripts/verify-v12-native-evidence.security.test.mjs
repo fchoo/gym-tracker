@@ -21,6 +21,15 @@ test("native artifact and provenance coverage includes every declared Maestro sh
   ]);
 });
 
+test("preseal and final verification share the retained absolute Git attestation", () => {
+  const source = readFileSync(new URL("./verify-v12-native-evidence.mjs", import.meta.url), "utf8");
+  assert.match(source, /const gitExecution = readV12RetainedGitExecution\(\{ root, runManifest: manifest \}\);/u);
+  assert.match(source, /validateV12LiveSourceLineage\(manifest, \{ root, gitExecution \}\)/u);
+  assert.match(source, /validateV12FinalProductionIdentity\(manifest, \{ root, gitExecution \}\)/u);
+  assert.match(source, /verifyV12FinalNativeIdentity\(manifest, \{ root, gitExecution \}\)/u);
+  assert.doesNotMatch(source, /execFileSync\(["']git["']/u);
+});
+
 test("exact retained file-set validation rejects arbitrary extras", () => {
   const expected = ["build.json", "publication/sqlite.json", "sqlite/history.json"];
   assert.equal(assertV12ExactArtifactFileSet(expected, expected), true);
