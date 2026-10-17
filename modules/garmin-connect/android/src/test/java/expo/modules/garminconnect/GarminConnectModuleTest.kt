@@ -4,6 +4,10 @@ import java.io.File
 import java.io.OutputStreamWriter
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -75,7 +79,12 @@ class GarminConnectModuleTest {
       val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
       store.recordFileForTest().parentFile!!.mkdirs()
       store.recordFileForTest().writeText(controllerArm(expected, now + 60_000))
-      val controller = GarminEvidenceAuthorizationController(store) { mapOf("result" to "ran") }
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = { mapOf("result" to "ran") },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
 
       val consumed = controller.consume(
         packageName = "com.fchoo.gymtracker.devtest",
@@ -99,6 +108,7 @@ class GarminConnectModuleTest {
       }.message)
       assertTrue(store.recordFileForTest().isFile)
 
+      assertEquals(mapOf("result" to "ran"), controller.runStoredSessionLifecycle())
       val completed = controller.complete()
       assertEquals(1, completed["schema_version"])
       assertEquals("arm-cleared", completed["code"])
@@ -119,10 +129,15 @@ class GarminConnectModuleTest {
       val now = 2_000_000L
       val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
       var sessionRuns = 0
-      val controller = GarminEvidenceAuthorizationController(store) {
-        sessionRuns += 1
-        mapOf("result" to "ran")
-      }
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = {
+          sessionRuns += 1
+          mapOf("result" to "ran")
+        },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
 
       assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
         controller.runStoredSessionLifecycle()
@@ -168,7 +183,12 @@ class GarminConnectModuleTest {
       val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
       store.recordFileForTest().parentFile!!.mkdirs()
       store.recordFileForTest().writeText(controllerArm(expected, now + 60_000))
-      val controller = GarminEvidenceAuthorizationController(store) { mapOf("result" to "ran") }
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = { mapOf("result" to "ran") },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
 
       assertEquals("garmin_operation_rejected", assertThrows(IllegalArgumentException::class.java) {
         controller.consume(
@@ -200,7 +220,344 @@ class GarminConnectModuleTest {
         host = "__v12-production-garmin",
         expected = expected,
       )
+      controller.runStoredSessionLifecycle()
       controller.complete()
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `authorization controller consumes lifecycle authorization after one execution`() {
+    val root = Files.createTempDirectory("garmin-authorization-replay-").toFile()
+    try {
+      val now = 2_000_000L
+      val expected = controllerExpectation("execute")
+      val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
+      store.recordFileForTest().parentFile!!.mkdirs()
+      store.recordFileForTest().writeText(controllerArm(expected, now + 60_000))
+      var sessionRuns = 0
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = {
+          sessionRuns += 1
+          mapOf("result" to "ran")
+        },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
+      controller.consume(
+        packageName = "com.fchoo.gymtracker.devtest",
+        scheme = "gymtracker-devtest",
+        host = "__v12-production-garmin",
+        expected = expected,
+      )
+
+      assertEquals(mapOf("result" to "ran"), controller.runStoredSessionLifecycle())
+      assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+        controller.runStoredSessionLifecycle()
+      }.message)
+      assertEquals(1, sessionRuns)
+      controller.complete()
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `authorization controller rejects a concurrent lifecycle execution`() {
+    val root = Files.createTempDirectory("garmin-authorization-concurrent-").toFile()
+    val releaseRun = CountDownLatch(1)
+    val firstRunStarted = CountDownLatch(1)
+    val firstFailure = AtomicReference<Throwable?>()
+    try {
+      val now = 2_000_000L
+      val expected = controllerExpectation("execute")
+      val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
+      store.recordFileForTest().parentFile!!.mkdirs()
+      store.recordFileForTest().writeText(controllerArm(expected, now + 60_000))
+      val sessionRuns = AtomicInteger(0)
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = {
+          if (sessionRuns.incrementAndGet() == 1) {
+            firstRunStarted.countDown()
+            check(releaseRun.await(5, TimeUnit.SECONDS)) { "test_run_release_timeout" }
+          }
+          mapOf("result" to "ran")
+        },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
+      controller.consume(
+        packageName = "com.fchoo.gymtracker.devtest",
+        scheme = "gymtracker-devtest",
+        host = "__v12-production-garmin",
+        expected = expected,
+      )
+      val first = Thread {
+        try {
+          controller.runStoredSessionLifecycle()
+        } catch (error: Throwable) {
+          firstFailure.set(error)
+        }
+      }
+      first.start()
+      assertTrue(firstRunStarted.await(5, TimeUnit.SECONDS))
+
+      try {
+        assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+          controller.runStoredSessionLifecycle()
+        }.message)
+      } finally {
+        releaseRun.countDown()
+        first.join(5_000)
+      }
+      assertFalse(first.isAlive)
+      assertEquals(null, firstFailure.get())
+      assertEquals(1, sessionRuns.get())
+      controller.complete()
+    } finally {
+      releaseRun.countDown()
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `authorization controller rejects completion while lifecycle is running`() {
+    val root = Files.createTempDirectory("garmin-authorization-running-").toFile()
+    val releaseRun = CountDownLatch(1)
+    val firstRunStarted = CountDownLatch(1)
+    val firstFailure = AtomicReference<Throwable?>()
+    try {
+      val now = 2_000_000L
+      val expected = controllerExpectation("execute")
+      val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
+      store.recordFileForTest().parentFile!!.mkdirs()
+      store.recordFileForTest().writeText(controllerArm(expected, now + 60_000))
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = {
+          firstRunStarted.countDown()
+          check(releaseRun.await(5, TimeUnit.SECONDS)) { "test_run_release_timeout" }
+          mapOf("result" to "ran")
+        },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
+      controller.consume(
+        packageName = "com.fchoo.gymtracker.devtest",
+        scheme = "gymtracker-devtest",
+        host = "__v12-production-garmin",
+        expected = expected,
+      )
+      val first = Thread {
+        try {
+          controller.runStoredSessionLifecycle()
+        } catch (error: Throwable) {
+          firstFailure.set(error)
+        }
+      }
+      first.start()
+      assertTrue(firstRunStarted.await(5, TimeUnit.SECONDS))
+
+      try {
+        assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+          controller.complete()
+        }.message)
+      } finally {
+        releaseRun.countDown()
+        first.join(5_000)
+      }
+      assertFalse(first.isAlive)
+      assertEquals(null, firstFailure.get())
+      controller.complete()
+    } finally {
+      releaseRun.countDown()
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `authorization controller consumes a failed lifecycle without allowing retry`() {
+    val root = Files.createTempDirectory("garmin-authorization-failed-run-").toFile()
+    try {
+      val now = 2_000_000L
+      val expected = controllerExpectation("execute")
+      val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
+      store.recordFileForTest().parentFile!!.mkdirs()
+      store.recordFileForTest().writeText(controllerArm(expected, now + 60_000))
+      var sessionRuns = 0
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = {
+          sessionRuns += 1
+          throw IllegalStateException("test_lifecycle_failure")
+        },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
+      controller.consume(
+        packageName = "com.fchoo.gymtracker.devtest",
+        scheme = "gymtracker-devtest",
+        host = "__v12-production-garmin",
+        expected = expected,
+      )
+
+      assertEquals("test_lifecycle_failure", assertThrows(IllegalStateException::class.java) {
+        controller.runStoredSessionLifecycle()
+      }.message)
+      assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+        controller.runStoredSessionLifecycle()
+      }.message)
+      assertEquals(1, sessionRuns)
+      controller.complete()
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `authorization controller completes preflight without lifecycle but rejects unrun execute`() {
+    val root = Files.createTempDirectory("garmin-authorization-completion-phase-").toFile()
+    try {
+      val now = 2_000_000L
+      val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = { mapOf("result" to "ran") },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
+      val preflight = controllerExpectation("preflight")
+      store.recordFileForTest().parentFile!!.mkdirs()
+      store.recordFileForTest().writeText(controllerArm(preflight, now + 60_000))
+      controller.consume(
+        packageName = "com.fchoo.gymtracker.devtest",
+        scheme = "gymtracker-devtest",
+        host = "__v12-production-garmin",
+        expected = preflight,
+      )
+      assertEquals("arm-cleared", controller.complete()["code"])
+
+      val execute = controllerExpectation("execute")
+      store.recordFileForTest().writeText(controllerArm(execute, now + 60_000))
+      controller.consume(
+        packageName = "com.fchoo.gymtracker.devtest",
+        scheme = "gymtracker-devtest",
+        host = "__v12-production-garmin",
+        expected = execute,
+      )
+      assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+        controller.complete()
+      }.message)
+      controller.runStoredSessionLifecycle()
+      controller.complete()
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `authorization controller binds current route run device lease and deadline at execution`() {
+    val root = Files.createTempDirectory("garmin-authorization-execution-identity-").toFile()
+    try {
+      var now = 2_000_000L
+      val expected = controllerExpectation("execute")
+      val valid = controllerExecutionIdentity()
+      var currentIdentity = valid
+      var sessionRuns = 0
+      val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = {
+          sessionRuns += 1
+          mapOf("result" to "ran")
+        },
+        executionIdentity = { currentIdentity },
+        nowMs = { now },
+      )
+      val mismatches = listOf(
+        GarminEvidenceExecutionIdentity("com.fchoo.gymtracker", valid.scheme, valid.host, valid.runIdSha256, valid.deviceIdentitySha256, valid.leaseIdSha256),
+        GarminEvidenceExecutionIdentity(valid.packageName, "wrong", valid.host, valid.runIdSha256, valid.deviceIdentitySha256, valid.leaseIdSha256),
+        GarminEvidenceExecutionIdentity(valid.packageName, valid.scheme, "wrong", valid.runIdSha256, valid.deviceIdentitySha256, valid.leaseIdSha256),
+        GarminEvidenceExecutionIdentity(valid.packageName, valid.scheme, valid.host, "e".repeat(64), valid.deviceIdentitySha256, valid.leaseIdSha256),
+        GarminEvidenceExecutionIdentity(valid.packageName, valid.scheme, valid.host, valid.runIdSha256, "e".repeat(64), valid.leaseIdSha256),
+        GarminEvidenceExecutionIdentity(valid.packageName, valid.scheme, valid.host, valid.runIdSha256, valid.deviceIdentitySha256, "e".repeat(64)),
+      )
+
+      for (mismatch in mismatches) {
+        store.recordFileForTest().parentFile!!.mkdirs()
+        store.recordFileForTest().writeText(controllerArm(expected, now + 60_000))
+        controller.consume(
+          packageName = valid.packageName,
+          scheme = valid.scheme,
+          host = valid.host,
+          expected = expected,
+        )
+        currentIdentity = mismatch
+        assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+          controller.runStoredSessionLifecycle()
+        }.message)
+        currentIdentity = valid
+        assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+          controller.runStoredSessionLifecycle()
+        }.message)
+        controller.complete()
+      }
+      assertEquals(0, sessionRuns)
+
+      store.recordFileForTest().writeText(controllerArm(expected, now + 1))
+      controller.consume(
+        packageName = valid.packageName,
+        scheme = valid.scheme,
+        host = valid.host,
+        expected = expected,
+      )
+      now += 2
+      assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+        controller.runStoredSessionLifecycle()
+      }.message)
+      assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+        controller.runStoredSessionLifecycle()
+      }.message)
+      assertEquals(0, sessionRuns)
+      controller.complete()
+    } finally {
+      root.deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `authorization controller expires preflight without lifecycle completion receipt`() {
+    val root = Files.createTempDirectory("garmin-authorization-preflight-expiry-").toFile()
+    try {
+      var now = 2_000_000L
+      val preflight = controllerExpectation("preflight")
+      val store = GarminEvidenceArmStore(root, ControllerArmWriter(), nowMs = { now })
+      store.recordFileForTest().parentFile!!.mkdirs()
+      store.recordFileForTest().writeText(controllerArm(preflight, now + 1))
+      val controller = GarminEvidenceAuthorizationController(
+        store,
+        sessionRunner = { mapOf("result" to "ran") },
+        executionIdentity = ::controllerExecutionIdentity,
+        nowMs = { now },
+      )
+      controller.consume(
+        packageName = "com.fchoo.gymtracker.devtest",
+        scheme = "gymtracker-devtest",
+        host = "__v12-production-garmin",
+        expected = preflight,
+      )
+      now += 2
+
+      assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+        controller.complete()
+      }.message)
+      assertFalse(store.recordFileForTest().exists())
+      assertEquals("garmin_operation_rejected", assertThrows(IllegalStateException::class.java) {
+        controller.complete()
+      }.message)
     } finally {
       root.deleteRecursively()
     }
@@ -224,6 +581,15 @@ class GarminConnectModuleTest {
   private fun controllerExpectation(phase: String) = GarminEvidenceArmExpectation(
     phase = phase,
     nonce = "a".repeat(32),
+    runIdSha256 = "b".repeat(64),
+    deviceIdentitySha256 = "c".repeat(64),
+    leaseIdSha256 = "d".repeat(64),
+  )
+
+  private fun controllerExecutionIdentity() = GarminEvidenceExecutionIdentity(
+    packageName = "com.fchoo.gymtracker.devtest",
+    scheme = "gymtracker-devtest",
+    host = "__v12-production-garmin",
     runIdSha256 = "b".repeat(64),
     deviceIdentitySha256 = "c".repeat(64),
     leaseIdSha256 = "d".repeat(64),

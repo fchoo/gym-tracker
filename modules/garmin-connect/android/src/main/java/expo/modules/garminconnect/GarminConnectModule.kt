@@ -110,12 +110,31 @@ internal fun requireGarminEvidenceRoute(
   }
 }
 
+internal class GarminEvidenceExecutionIdentity(
+  val packageName: String?,
+  val scheme: String?,
+  val host: String?,
+  val runIdSha256: String,
+  val deviceIdentitySha256: String,
+  val leaseIdSha256: String,
+)
+
 internal class GarminEvidenceAuthorizationController(
   private val armStore: GarminEvidenceArmStore,
   private val sessionRunner: () -> Map<String, Any?>,
+  private val executionIdentity: () -> GarminEvidenceExecutionIdentity,
+  private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
+  private sealed interface State
+
+  private object Empty : State
+  private object Completed : State
+  private class Authorized(val authorization: GarminEvidenceAuthorization) : State
+  private class Running(val authorization: GarminEvidenceAuthorization) : State
+  private class Consumed(val authorization: GarminEvidenceAuthorization) : State
+
   private val authorizationLock = Any()
-  private var authorization: GarminEvidenceAuthorization? = null
+  private var state: State = Empty
 
   fun consume(
     packageName: String?,
@@ -125,8 +144,8 @@ internal class GarminEvidenceAuthorizationController(
   ): Map<String, Any?> {
     requireGarminEvidenceRoute(packageName, scheme, host)
     val consumed = synchronized(authorizationLock) {
-      require(authorization == null) { "garmin_operation_rejected" }
-      armStore.consume(expected).also { authorization = it }
+      require(state === Empty || state === Completed) { "garmin_operation_rejected" }
+      armStore.consume(expected).also { state = Authorized(it) }
     }
     return mapOf(
       "schema_version" to 1,
@@ -136,20 +155,61 @@ internal class GarminEvidenceAuthorizationController(
   }
 
   fun runStoredSessionLifecycle(): Map<String, Any?> {
-    val current = synchronized(authorizationLock) { authorization }
-      ?: throw IllegalStateException("garmin_operation_rejected")
-    require(current.phase == "execute") { "garmin_operation_rejected" }
-    return sessionRunner()
+    val current = synchronized(authorizationLock) {
+      val authorized = state as? Authorized ?: throw rejection()
+      val value = authorized.authorization
+      require(value.phase == "execute") { "garmin_operation_rejected" }
+      val identity = try {
+        executionIdentity()
+      } catch (_: Throwable) {
+        state = Consumed(value)
+        throw rejection()
+      }
+      try {
+        requireGarminEvidenceRoute(identity.packageName, identity.scheme, identity.host)
+        require(
+          identity.runIdSha256 == value.runIdSha256
+            && identity.deviceIdentitySha256 == value.deviceIdentitySha256
+            && identity.leaseIdSha256 == value.leaseIdSha256
+            && nowMs() <= value.expiresAtMs
+        ) { "garmin_operation_rejected" }
+      } catch (_: Throwable) {
+        state = Consumed(value)
+        throw rejection()
+      }
+      state = Running(value)
+      value
+    }
+    return try {
+      sessionRunner()
+    } finally {
+      synchronized(authorizationLock) {
+        val running = state as? Running ?: throw rejection()
+        if (running.authorization !== current) throw rejection()
+        state = Consumed(current)
+      }
+    }
   }
 
   fun complete(): Map<String, Any?> {
     val current = synchronized(authorizationLock) {
-      val value = authorization
-        ?: throw IllegalStateException("garmin_operation_rejected")
-      authorization = null
+      val value = when (val currentState = state) {
+        is Authorized -> {
+          if (currentState.authorization.phase != "preflight") throw rejection()
+          if (nowMs() > currentState.authorization.expiresAtMs) {
+            armStore.clear()
+            state = Completed
+            throw rejection()
+          }
+          currentState.authorization
+        }
+        is Consumed -> currentState.authorization
+        else -> throw rejection()
+      }
+      armStore.clear()
+      state = Completed
       value
     }
-    armStore.clear()
     val receipt = MessageDigest.getInstance("SHA-256")
       .digest("${current.receiptSha256}:cleared".toByteArray(Charsets.UTF_8))
       .joinToString("") { byte -> "%02x".format(byte) }
@@ -159,6 +219,8 @@ internal class GarminEvidenceAuthorizationController(
       "receipt_sha256" to receipt,
     )
   }
+
+  private fun rejection(): IllegalStateException = IllegalStateException("garmin_operation_rejected")
 }
 
 private class GarminAdversarialRotationGate {
@@ -261,6 +323,7 @@ class GarminConnectModule : Module() {
       sessionRunner = {
         GarminStoredSessionEvidenceRunner(worker(), dispatcher(), sessionStore()).run()
       },
+      executionIdentity = ::currentEvidenceExecutionIdentity,
     )
   }
 
@@ -417,6 +480,21 @@ class GarminConnectModule : Module() {
         deviceIdentitySha256 = intent.getStringExtra("v12DeviceIdentitySha256") ?: "",
         leaseIdSha256 = intent.getStringExtra("v12LeaseIdSha256") ?: "",
       ),
+    )
+  }
+
+  private fun currentEvidenceExecutionIdentity(): GarminEvidenceExecutionIdentity {
+    val context = appContext.reactContext?.applicationContext
+      ?: throw IllegalStateException("garmin_runtime_unavailable")
+    val intent = appContext.currentActivity?.intent
+      ?: throw IllegalStateException("garmin_operation_rejected")
+    return GarminEvidenceExecutionIdentity(
+      packageName = context.packageName,
+      scheme = intent.data?.scheme,
+      host = intent.data?.host,
+      runIdSha256 = intent.getStringExtra("v12RunIdSha256") ?: "",
+      deviceIdentitySha256 = intent.getStringExtra("v12DeviceIdentitySha256") ?: "",
+      leaseIdSha256 = intent.getStringExtra("v12LeaseIdSha256") ?: "",
     )
   }
 
