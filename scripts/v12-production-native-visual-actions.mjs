@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
+import { closeSync, lstatSync, openSync, readFileSync, readSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { PNG } from "pngjs";
@@ -9,6 +9,7 @@ import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { selectV12VisualReference } from "./v12-visual-authority.mjs";
 import { V12_NATIVE_LEASE_PATH, V12_VISUAL_LEASE_PATH, V12_VISUAL_SYSTEM_SETTINGS } from "./v12-device-settings-contract.mjs";
 import { resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
+import { iterateV12VisualJsonArray, readV12VisualJsonHeader } from "./v12-visual-streaming.mjs";
 import {
   V12_VISUAL_ACTION_WINDOW,
   V12_VISUAL_ADB_CALL_TIMEOUT_MS,
@@ -45,7 +46,7 @@ const keys = (v, required, optional = []) => object(v) && required.every((k) => 
   && Object.keys(v).every((k) => required.includes(k) || optional.includes(k));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-function file(root, relative, code) {
+function filePath(root, relative, code, maxBytes = 32 * 1024 * 1024) {
   try {
     if (typeof relative !== "string" || path.isAbsolute(relative) || relative.includes("\\")
       || relative.split("/").some((p) => !p || p === "." || p === "..")) fail(code);
@@ -54,10 +55,11 @@ function file(root, relative, code) {
       cursor = path.join(cursor, part);
       if (lstatSync(cursor).isSymbolicLink()) fail(code);
     }
-    if (!lstatSync(cursor).isFile() || lstatSync(cursor).size > 32 * 1024 * 1024) fail(code);
-    return readFileSync(cursor);
+    if (!lstatSync(cursor).isFile() || lstatSync(cursor).size > maxBytes) fail(code);
+    return cursor;
   } catch { fail(code); }
 }
+function file(root, relative, code) { return readFileSync(filePath(root, relative, code)); }
 function json(root, relative, code) {
   try { return JSON.parse(file(root, relative, code)); } catch { fail(code); }
 }
@@ -109,14 +111,18 @@ function visualRegistry(root) {
   return entries;
 }
 function item(root, value, runId) {
-  if (!keys(value, ["state_id", "configuration_id"], ["run_id", "fixture_id", "screenshot_id", "flow_id", "lease"])
+  if (!keys(value, ["state_id", "configuration_id"], ["run_id", "fixture_id", "screenshot_id", "flow_id", "lease", "capture_index_offset", "capture_index_size"])
     || value.run_id !== undefined && value.run_id !== runId
-    || value.fixture_id !== undefined && value.fixture_id !== FIXTURE) fail("payload_invalid");
+    || value.fixture_id !== undefined && value.fixture_id !== FIXTURE
+    || (value.capture_index_offset === undefined) !== (value.capture_index_size === undefined)
+    || value.capture_index_offset !== undefined && (!Number.isSafeInteger(value.capture_index_offset) || value.capture_index_offset < 0
+      || !Number.isSafeInteger(value.capture_index_size) || value.capture_index_size < 1 || value.capture_index_size > 16 * 1024 * 1024)) fail("payload_invalid");
   const state = visualRegistry(root).find((entry) => entry.id === value.state_id);
   if (!state) fail("state_route_missing");
   const config = resolveV12ProductionVisualConfiguration(value.configuration_id);
   if (value.screenshot_id !== undefined && value.screenshot_id !== `v12/${value.state_id}/${config.id}.png`) fail("payload_invalid");
-  return { state_id: value.state_id, config, state };
+  return { state_id: value.state_id, config, state,
+    ...(value.capture_index_offset === undefined ? {} : { capture_index_offset: value.capture_index_offset, capture_index_size: value.capture_index_size }) };
 }
 function attest(root, action, payload, value) {
   const expected = ["schema_version", "action", "launcher_source_sha256", "run_id", "build_profile", "suite", "source_tree_sha256", "apk_sha256", "installed_apk_sha256", "apk_signature_sha256", "device_identity_sha256", "package"];
@@ -460,13 +466,36 @@ function reference(root, selected) {
 }
 function retained(root, attestation, requested) {
   const base = `artifacts/native/v1.2/${attestation.run_id}/screenshots`;
-  const index = json(root, `${base}/index.json`, "capture_invalid");
-  if (!keys(index, ["schema_version", "producer", "run_id", "capture_count", "windows", "records"], ["source_hashes"])
-    || index.schema_version !== 2 || index.producer !== "v12-visual-capture-index/v2" || index.run_id !== attestation.run_id
-    || !Array.isArray(index.records) || !index.records.length || index.records.length > 107 * 64) fail("capture_invalid");
-  const requestedKeys = new Set(requested.map((entry) => `${entry.state_id}/${entry.config.id}`));
+  const indexFile = filePath(root, `${base}/index.json`, "capture_invalid", 512 * 1024 * 1024);
+  let index;
+  try { index = readV12VisualJsonHeader({ file: indexFile, firstArrayKey: "windows" }); } catch { fail("capture_invalid"); }
+  if (index.schema_version !== 2 || index.producer !== "v12-visual-capture-index/v2" || index.run_id !== attestation.run_id
+    || !Number.isSafeInteger(index.capture_count) || index.capture_count < 1 || index.capture_count > 107 * 64) fail("capture_invalid");
+  const requestedKeys = new Map(requested.map((entry, index) => [`${entry.state_id}/${entry.config.id}`, index]));
+  const records = Array(requested.length);
+  if (requested.every((entry) => entry.capture_index_offset !== undefined)) {
+    const descriptor = openSync(indexFile, "r");
+    try {
+      for (const [indexInWindow, entry] of requested.entries()) {
+        const bytes = Buffer.allocUnsafe(entry.capture_index_size);
+        if (readSync(descriptor, bytes, 0, bytes.length, entry.capture_index_offset) !== bytes.length) fail("capture_invalid");
+        try { records[indexInWindow] = JSON.parse(bytes); } catch { fail("capture_invalid"); }
+      }
+    } finally { closeSync(descriptor); }
+  } else {
+    try {
+      for (const { value } of iterateV12VisualJsonArray({ file: indexFile, arrayKey: "records" })) {
+        const selectedIndex = requestedKeys.get(`${value?.state_id}/${value?.configuration_id}`);
+        if (selectedIndex !== undefined) {
+          if (records[selectedIndex] !== undefined) fail("capture_invalid");
+          records[selectedIndex] = value;
+        }
+      }
+    } catch { fail("capture_invalid"); }
+  }
   const seen = new Set();
-  const retainedRecords = index.records.filter((entry) => requestedKeys.has(`${entry.state_id}/${entry.configuration_id}`)).map((entry) => {
+  const retainedRecords = records.map((entry) => {
+    if (!entry) fail("capture_invalid");
     const selected = item(root, { state_id: entry.state_id, configuration_id: entry.configuration_id }, attestation.run_id);
     const key = `${selected.state_id}/${selected.config.id}`;
     if (seen.has(key)) fail("capture_invalid"); seen.add(key);
