@@ -7,7 +7,10 @@ import {
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
-import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
+import {
+  publishV12AtomicShard,
+  verifyV12AtomicShard,
+} from "./v12-atomic-shard-publication.mjs";
 import { validateV12PerformanceProducer } from "./v12-quality-evidence-contract.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
@@ -233,9 +236,15 @@ export function runV12PerformanceCli(args = process.argv.slice(2), io = process,
   try {
     if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
     if (args[2] === "--execute") {
-      const adapter = createAdapter();
-      const identity = adapter.collectPerformance({ run_id: args[1], request: "identity" }).identity;
-      publishV12AtomicShard({ runId: args[1], shard: "performance", executionOrigin: () => adapter.executionOrigin("performance"), produce: ({ write }) => writeV12PerformanceObservation({ runId: args[1], identity, collect: adapter.collectPerformance, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+      const publication = path.join(root, "artifacts/native/v1.2", args[1], "publication/performance.json");
+      if (existsSync(publication)) {
+        verifyV12AtomicShard({ root, runId: args[1], shard: "performance" });
+        verifyV12PerformanceObservation({ runId: args[1], root });
+      } else {
+        const adapter = createAdapter();
+        const identity = adapter.collectPerformance({ run_id: args[1], request: "identity" }).identity;
+        publishV12AtomicShard({ root, runId: args[1], shard: "performance", executionOrigin: () => adapter.executionOrigin("performance"), produce: ({ write }) => writeV12PerformanceObservation({ runId: args[1], identity, collect: adapter.collectPerformance, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+      }
     } else verifyV12PerformanceObservation({ runId: args[1], root });
     io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
     return 0;
