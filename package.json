@@ -117,7 +117,7 @@
     ,"test:evidence:v12:shell": "node --test scripts/phase14-evidence-scripts.test.mjs"
     ,"pretest:evidence:v12": "npm run test:evidence:v12:all"
     ,"test:evidence:v12": "node --test scripts/v12-evidence-scripts.test.mjs scripts/generate-v12-attended-checklist.test.mjs scripts/create-v12-readiness-handoff.test.mjs"
-    ,"test:evidence:v12:all": "node --test --test-concurrency=2 --test-timeout=600000 scripts/build-current-native-test-apk.test.mjs scripts/doctor-android.test.mjs scripts/native-device-selection.test.mjs scripts/run-coverage-gate.test.mjs scripts/run-v12-maestro.test.mjs scripts/validate-v12-prebuild-predecessors.test.mjs scripts/v12-*.test.mjs"
+    ,"test:evidence:v12:all": "node scripts/run-coverage-gate.mjs --all-evidence-only"
     ,"test:evidence:phase14": "node --test scripts/phase14-font-proof.test.mjs scripts/phase14-evidence-scripts.test.mjs scripts/phase14-native-matrix.test.mjs"
     ,"test:maestro:phase15": "node scripts/run-phase15-maestro.mjs"
     ,"benchmark:phase15:host": "node scripts/benchmark-phase15-workout.mjs --host"
@@ -190,9 +190,11 @@
     "@testing-library/react-native": "14.0.1",
     "@types/jest": "29.5.14",
     "@types/react": "~19.2.2",
+    "istanbul-lib-coverage": "3.2.2",
     "jest": "29.7.0",
     "jest-expo": "~57.0.5",
     "pngjs": "7.0.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "v8-to-istanbul": "9.3.0"
   }
 }

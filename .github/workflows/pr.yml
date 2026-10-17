@@ -106,6 +106,7 @@ jobs:
             'test:sqlite:host',
             'test:integration',
             'test:coverage',
+            'test:coverage:phase18',
             'test:sqlite:device',
             'test:maestro:phase1',
             'test:maestro:phase12',
@@ -171,7 +172,54 @@ jobs:
         run: npm run test:integration -- --runInBand
 
       - name: Coverage
-        run: npm run test:coverage -- --runInBand
+        run: npm run test:coverage -- --skip-phase20-evidence --runInBand
+
+      - name: Execute complete Phase 20 and Phase 18 evidence suites
+        run: npm run test:evidence:v12:all
+
+  phase18-aggregate-coverage:
+    name: Phase 18 Python, Kotlin JaCoCo, Node, and Jest coverage
+    needs: host-gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Install pinned coverage prerequisites
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          npm ci
+          sh scripts/install-pinned-android-sdk.sh
+          npm run bootstrap:coverage:phase18
+
+      - name: Generate the Android JaCoCo test project
+        run: npm run prebuild:android
+
+      - name: Enforce aggregate Phase 18 coverage
+        run: npm run test:coverage:phase18
 
   generated-native:
     name: Clean generated Android contract
@@ -209,7 +257,7 @@ jobs:
 
   native-and-smoke:
     name: Build Phase 12 once, native SQLite, Maestro, benchmark
-    needs: generated-native
+    needs: [generated-native, phase18-aggregate-coverage]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
