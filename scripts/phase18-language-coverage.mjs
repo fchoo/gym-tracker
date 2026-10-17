@@ -31,6 +31,7 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "test_session_state_and_auth_validation_fail_closed",
       "test_activity_refresh_and_adversarial_branches_are_bounded",
       "test_module_entrypoints_and_retry_headers_fail_closed",
+      "test_phase20_recovery_extension_control_flow_covers_restore_rejection_and_complete_reads",
     ]),
   }),
   kotlin: Object.freeze({
@@ -39,12 +40,27 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
     reportPath: "coverage/phase18/kotlin-coverage.json",
     sourcePaths: Object.freeze([
       "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminClientWorker.kt",
+      "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminAdversarialSuiteRunner.kt",
       "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminTokenStore.kt",
+      "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminEvidenceArmStore.kt",
+      "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminStoredSessionEvidenceRunner.kt",
+      "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectModule.kt",
     ]),
-    testPath: "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminTokenStoreTest.kt",
-    // JaCoCo reports LINE and BRANCH counters, so Kotlin carries a true branch
-    // coverage oracle in addition to line coverage.
-    metrics: Object.freeze(["lines", "branches"]),
+    testPaths: Object.freeze([
+      "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminTokenStoreTest.kt",
+      "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminEvidenceArmStoreTest.kt",
+      "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminConnectModuleTest.kt",
+    ]),
+    requiredClasses: Object.freeze([
+      "expo/modules/garminconnect/GarminClientWorker",
+      "expo/modules/garminconnect/GarminAdversarialSuiteRunner",
+      "expo/modules/garminconnect/GarminTokenStore",
+      "expo/modules/garminconnect/GarminEvidenceArmStore",
+      "expo/modules/garminconnect/GarminStoredSessionEvidenceRunner",
+      "expo/modules/garminconnect/GarminConnectModuleKt",
+    ]),
+    // INSTRUCTION and METHOD are JaCoCo's statement and function counters.
+    metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
     requiredCases: Object.freeze([
       "encrypted record round trips without plaintext and declares Android Keystore",
       "corrupt and unsupported records fail closed without exposing record bytes",
@@ -59,6 +75,15 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "worker validates MFA restore read and argument boundaries",
       "worker rejects stale generations and sanitizes every result shape",
       "worker wipes pending tokens after persistence failures and tolerates logout errors",
+      "app private arm is exact one time bounded and contains no credential material",
+      "invalid or expired arm is consumed without authorizing a retry",
+      "arm rejects every malformed schema boundary and deletion failure",
+      "arm clear and default construction leave no authorization state",
+      "stored session lifecycle rotates logs out restores and returns hashes only",
+      "stored session lifecycle rejects malformed bridge outcomes and restores bytes",
+      "Kotlin device identity equals the source-owned JavaScript canonical vectors",
+      "Kotlin device identity rejects malformed facts and covers every JSON escape",
+      "Garmin evidence route requires the exact devtest package scheme and host",
     ]),
   }),
 });
@@ -87,6 +112,7 @@ function validCounter(counter) {
 }
 
 export function validatePhase18LanguageCoverageReport(report, spec, readBytes = readFileSync) {
+  const expectedTestPaths = spec.testPaths ?? [spec.testPath];
   if (report === null || typeof report !== "object" || Array.isArray(report)
     || report.schema_version !== 1
     || report.suite !== spec.suite
@@ -108,17 +134,22 @@ export function validatePhase18LanguageCoverageReport(report, spec, readBytes = 
     || spec.requiredCases.some((caseName) => !report.executed_cases.includes(caseName))
     || !Array.isArray(spec.metrics)
     || spec.metrics.length < 1
-    || spec.metrics.some((metric) => !validCounter(report.coverage?.[metric]))) {
+    || spec.metrics.some((metric) => !validCounter(report.coverage?.[metric]))
+    || (spec.requiredClasses !== undefined
+      && !isDeepStrictEqual(report.covered_classes, [...spec.requiredClasses]))) {
     fail(spec.language);
   }
   const expectedSources = spec.sourcePaths.map((sourcePath) => ({
     path: sourcePath,
     sha256: digest(readBytes(sourcePath)),
   }));
+  const expectedTests = expectedTestPaths.map((testPath) => ({
+    path: testPath,
+    sha256: digest(readBytes(testPath)),
+  }));
+  const actualTests = report.tests ?? (report.test === undefined ? undefined : [report.test]);
   if (!isDeepStrictEqual(report.sources, expectedSources)
-    || report.test?.path !== spec.testPath
-    || !HASH.test(report.test?.sha256 ?? "")
-    || report.test.sha256 !== digest(readBytes(spec.testPath))) {
+    || !isDeepStrictEqual(actualTests, expectedTests)) {
     fail(`${spec.language}:identity`);
   }
   return true;

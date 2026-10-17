@@ -95,6 +95,17 @@ internal fun phase18DeviceIdentitySha256(
     .joinToString("") { byte -> "%02x".format(byte) }
 }
 
+internal fun requireGarminEvidenceRoute(
+  packageName: String?,
+  scheme: String?,
+  host: String?,
+) {
+  require(packageName == "com.fchoo.gymtracker.devtest") { "garmin_operation_rejected" }
+  require(scheme == "gymtracker-devtest" && host == "__v12-production-garmin") {
+    "garmin_operation_rejected"
+  }
+}
+
 private class GarminAdversarialRotationGate {
   @Volatile
   private var armed = false
@@ -326,11 +337,9 @@ class GarminConnectModule : Module() {
   private fun consumeV12EvidenceArm(input: GarminV12EvidenceArmInput): Map<String, Any?> {
     val context = appContext.reactContext?.applicationContext
       ?: throw IllegalStateException("garmin_runtime_unavailable")
-    require(context.packageName == "com.fchoo.gymtracker.devtest") { "garmin_operation_rejected" }
     val intent = appContext.currentActivity?.intent
       ?: throw IllegalStateException("garmin_operation_rejected")
-    require(intent.data?.scheme == "gymtracker-devtest"
-      && intent.data?.host == "__v12-production-garmin") { "garmin_operation_rejected" }
+    requireGarminEvidenceRoute(context.packageName, intent.data?.scheme, intent.data?.host)
     val authorization = synchronized(evidenceAuthorizationLock) {
       require(evidenceAuthorization == null) { "garmin_operation_rejected" }
       armStore().consume(GarminEvidenceArmExpectation(

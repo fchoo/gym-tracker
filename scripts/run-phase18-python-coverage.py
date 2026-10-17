@@ -32,6 +32,7 @@ REQUIRED_CASES = (
     "test_session_state_and_auth_validation_fail_closed",
     "test_activity_refresh_and_adversarial_branches_are_bounded",
     "test_module_entrypoints_and_retry_headers_fail_closed",
+    "test_phase20_recovery_extension_control_flow_covers_restore_rejection_and_complete_reads",
 )
 def _load_coverage_module():
     original_path = list(sys.path)

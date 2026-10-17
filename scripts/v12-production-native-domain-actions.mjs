@@ -8,6 +8,7 @@ import { createProductionNativeRuntime } from './v12-production-native-runtime.m
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_RECOVERY_CASE_IDS, V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_CUT_IDS, V12_RECOVERY_SCENARIOS as RECOVERY_SCENARIO_DEFINITIONS, V12_RECOVERY_UNCOMMITTED_CUT_IDS } from './v12-recovery-shard.mjs';
 import { calendarStage, exact, fail, garminCases, hash, HASH, junitOutcome, worse } from './v12-production-domain-receipts.mjs';
+import { resolveV12NativeExecutionTools } from './v12-native-execution-origin.mjs';
 
 const PACKAGE = 'com.fchoo.gymtracker.devtest';
 const RESULT = 'GYM_TRACKER_V12_DOMAIN_RESULT:';
@@ -39,7 +40,7 @@ function validate(action, payload, a, root) {
   if (process.env.NODE_ENV === 'test' || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.V12_NATIVE_ADAPTER_COMMAND !== undefined) fail('test_environment_forbidden');
 }
 
-function session(root, a, action) {
+function session(root, a, action, executionTools) {
   const serial = process.env.V12_DEVICE_SERIAL;
   let nonce = randomBytes(16).toString('hex');
   // Recovery owns 224 bounded arm/recover flows. Garmin has a real cold restart,
@@ -52,9 +53,9 @@ function session(root, a, action) {
     if (result.error || result.signal || (!acceptFailure && result.status !== 0)) fail('native_prerequisite_failed');
     return result;
   };
-  const adb = (...args) => command('adb', ['-s', serial, ...args]).stdout.trim();
+  const adb = (...args) => command(executionTools.adb, ['-s', serial, ...args]).stdout.trim();
   const shell = (...args) => adb('shell', args.map(quote).join(' '));
-  const cleanupShell = (...args) => command('adb', ['-s', serial, 'shell', args.map(quote).join(' ')], { cleanup: true }).stdout.trim();
+  const cleanupShell = (...args) => command(executionTools.adb, ['-s', serial, 'shell', args.map(quote).join(' ')], { cleanup: true }).stdout.trim();
   let directory;
   const retained = () => {
     if (!directory) {
@@ -122,7 +123,7 @@ function session(root, a, action) {
   function maestro(flow, variables, index) {
     nonce = randomBytes(16).toString('hex');
     const report = path.join(retained(), `${index}.xml`);
-    const result = command('maestro', ['test', '--device', serial, ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]), '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
+    const result = command(executionTools.maestro, ['test', '--device', serial, ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]), '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
     let xml; try { xml = readFileSync(report, 'utf8'); chmodSync(report, 0o600); } catch { fail('junit_missing'); }
     return junitOutcome(xml, result.status);
   }
@@ -131,7 +132,7 @@ function session(root, a, action) {
     chmodSync(quarantine, 0o700);
     const report = path.join(quarantine, 'raw.xml');
     try {
-      const result = command('maestro', ['test', '--device', serial,
+      const result = command(executionTools.maestro, ['test', '--device', serial,
         ...Object.entries({ V12_DOMAIN_NONCE: nonce, ...variables }).flatMap(([key, value]) => ['-e', `${key}=${value}`]),
         '--format', 'junit', '--output', report, path.join(root, flow)], { timeout: 180_000, acceptFailure: true });
       let xml; try { xml = readFileSync(report, 'utf8'); } catch { fail('junit_missing'); }
@@ -140,14 +141,14 @@ function session(root, a, action) {
       rmSync(quarantine, { recursive: true, force: true });
     }
   }
-  function version() { if (command('maestro', ['--version']).stdout.trim() !== '2.8.0') fail('maestro_version_invalid'); }
+  function version() { if (command(executionTools.maestro, ['--version']).stdout.trim() !== '2.8.0') fail('maestro_version_invalid'); }
   function standalone() {
     // withLease has already checked this manifest path and the retained APK hash.
     const manifest = JSON.parse(readFileSync(path.join(root, 'artifacts/native/v1.2', a.run_id, 'build.json'), 'utf8'));
     const apk = path.join(root, manifest.build.apk.path);
-    const entries = command('unzip', ['-Z1', apk]).stdout.split(/\r?\n/u);
+    const entries = command(executionTools.unzip, ['-Z1', apk]).stdout.split(/\r?\n/u);
     if (['assets/index.android.bundle', 'assets/app.config'].some((name) => entries.filter((entry) => entry === name).length !== 1)) fail('standalone_required');
-    let config; try { config = JSON.parse(command('unzip', ['-p', apk, 'assets/app.config']).stdout); } catch { fail('standalone_required'); }
+    let config; try { config = JSON.parse(command(executionTools.unzip, ['-p', apk, 'assets/app.config']).stdout); } catch { fail('standalone_required'); }
     if (config?.android?.package !== PACKAGE || config?.scheme !== 'gymtracker-devtest'
       || config?.extra?.buildProfile !== 'development-test' || config?.extra?.nativeContractsEnabled !== true
       || config?.extra?.nativeContractSuite !== 'v1.2-acceptance') fail('standalone_required');
@@ -220,8 +221,9 @@ function session(root, a, action) {
   return { get nonce() { return nonce; }, renewNonce: () => { nonce = randomBytes(16).toString('hex'); return nonce; },
     shell, marker, maestro, recoveryMaestro, version, standalone, restoreAround, retained,
     garminArm, launchGarmin, garminCleanup, garminPrivacy,
+    executionOrigin: executionTools.execution_origin,
     stop: () => cleanupShell('am', 'force-stop', PACKAGE),
-    screenshot: () => command('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], { binary: true }).stdout };
+    screenshot: () => command(executionTools.adb, ['-s', serial, 'exec-out', 'screencap', '-p'], { binary: true }).stdout };
 }
 
 async function garmin(io, payload) {
@@ -248,8 +250,9 @@ async function garmin(io, payload) {
     const privacy = io.garminPrivacy([firstPid, secondPid]);
     const privacyReceipt = Object.freeze({ id: 'privacy', order: 17, code: 'privacy-observed', count: 6,
       receipt_sha256: hash(JSON.stringify({ ...privacy, preflight: preflight.session_sha256, firstPidChanged: firstPid !== secondPid })) });
-    return garminCases({ receipts: value.receipts, host_observations: { ...value.host_observations,
-      restart: { process_changed: firstPid !== secondPid, session_consistent: value.host_observations?.lifecycle?.before_sha256 === preflight.session_sha256 } } }, privacyReceipt);
+    return Object.freeze({ ...garminCases({ receipts: value.receipts, host_observations: { ...value.host_observations,
+      restart: { process_changed: firstPid !== secondPid, session_consistent: value.host_observations?.lifecycle?.before_sha256 === preflight.session_sha256 } } }, privacyReceipt),
+    execution_origin: io.executionOrigin });
   } finally {
     try { io.stop(); } finally { for (const runNonce of nonces) io.garminCleanup(runNonce, false); }
   }
@@ -448,7 +451,8 @@ export async function executeProductionDomainAction(action, payload, attestation
   if (!['garmin', 'calendar', 'recovery'].includes(action)) return undefined;
   try {
     const root = process.cwd(); validate(action, payload, attestation, root);
-    const runtime = createProductionNativeRuntime(attestation, { root });
+    const executionTools = resolveV12NativeExecutionTools({ domain: true });
+    const runtime = createProductionNativeRuntime(attestation, { root, executionTools });
     const owned = payload.lease === undefined;
     const lease = owned ? runtime.acquireLease() : payload.lease;
     let settings; let restoreFailed = false;
@@ -456,7 +460,7 @@ export async function executeProductionDomainAction(action, payload, attestation
       if (owned) settings = runtime.snapshotSettings(lease);
       const leasedPayload = { ...payload, lease };
       return await runtime.withLease(leasedPayload, async () => {
-        const io = session(root, attestation, action);
+        const io = session(root, attestation, action, executionTools);
         io.standalone();
         try {
           return await io.restoreAround(() => action === 'garmin' ? garmin(io, leasedPayload) : action === 'calendar' ? calendar(io, root, payload) : recovery(io));

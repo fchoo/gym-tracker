@@ -39,6 +39,7 @@ test("Garmin shard rejects digest-only records, missing cases, identity drift, a
       id, order, status: "PASS", code: `${id}-observed`, count: id === "match-one" ? 1 : 0,
       receipt_sha256: String(order).padStart(64, "a").slice(-64),
     })),
+    execution_origin: "production-attested/v1",
   };
   const writes = new Map();
   const execute = await executeV12GarminShardCli(["--run", runId, "--execute"], {
@@ -58,6 +59,17 @@ test("Garmin shard rejects digest-only records, missing cases, identity drift, a
   assert.equal(execute.ok, true);
   assert.equal(writes.size, 5);
   assert.doesNotMatch(JSON.stringify([...writes.values()]), /serial|token|credential|payload|verdict|readiness|seal/i);
+  await assert.rejects(
+    executeV12GarminShardCli(["--run", runId, "--execute"], {
+      root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
+      isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true,
+      snapshotSettings: () => ({}), restoreSettings: () => true,
+      executeNative: () => ({ ...validResult, execution_origin: "test-controlled/v1" }),
+      writeImmutable: () => assert.fail("test provenance must not write shard members"),
+      writeFailureReceipt: () => undefined, outputExists: () => false,
+    }),
+    /garmin_execution_origin_invalid/,
+  );
   await assert.rejects(
     executeV12GarminShardCli(["--run", runId, "--execute"], {
       root: "/synthetic-root", readBuild: () => manifest, sourceDigest: "a".repeat(64), currentHead: manifest.source.head,
@@ -110,7 +122,7 @@ test("Garmin verify requires the atomic completion manifest, exact four JSON sch
     [`artifacts/native/v1.2/${runId}/maestro/garmin-progress.xml`, `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-garmin" tests="18" failures="0" errors="0" skipped="0" source_digest="${identity.source_digest}">${cases.map(({ id }) => `<testcase classname="v12.garmin" name="${id}"></testcase>`).join("")}</testsuite>\n`],
   ]);
   const publication = {
-    schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard: "garmin", identity: {}, completed: true,
+    schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard: "garmin", execution_origin: "production-attested/v1", identity: {}, completed: true,
     members: [...artifacts].map(([file, value]) => ({ artifact: file.split(`${runId}/`)[1], sha256: createHash("sha256").update(value).digest("hex"), size_bytes: Buffer.byteLength(value) })),
   };
   assert.deepEqual(await executeV12GarminShardCli(["--run", runId, "--verify"], {
@@ -118,6 +130,13 @@ test("Garmin verify requires the atomic completion manifest, exact four JSON sch
     isAncestor: () => true, outputExists: (file) => artifacts.has(file), readArtifact: (file) => artifacts.get(file),
     readPublication: () => publication, verifyAtomic: () => true,
   }), { ok: true, mode: "verify", run_id: runId });
+  publication.execution_origin = "test-controlled/v1";
+  await assert.rejects(executeV12GarminShardCli(["--run", runId, "--verify"], {
+    root: "/synthetic-root", readBuild: () => manifest, sourceDigest: identity.source_digest, currentHead: manifest.source.head,
+    isAncestor: () => true, outputExists: (file) => artifacts.has(file), readArtifact: (file) => artifacts.get(file),
+    readPublication: () => publication, verifyAtomic: () => true,
+  }), /garmin_publication_invalid/u);
+  publication.execution_origin = "production-attested/v1";
   publication.members.pop();
   await assert.rejects(executeV12GarminShardCli(["--run", runId, "--verify"], {
     root: "/synthetic-root", readBuild: () => manifest, sourceDigest: identity.source_digest, currentHead: manifest.source.head,

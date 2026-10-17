@@ -34,25 +34,25 @@ internal class GarminEvidenceArmStore(
   root: File,
   private val atomicWriter: GarminAtomicWriter = AndroidGarminAtomicWriter(),
   private val nowMs: () -> Long = System::currentTimeMillis,
+  private val readRecord: (File) -> ByteArray = File::readBytes,
 ) {
   private val recordFile = File(root, "garmin-arm.properties")
 
   @Synchronized
   fun consume(expected: GarminEvidenceArmExpectation): GarminEvidenceAuthorization {
-    val bytes = try {
-      if (!recordFile.isFile || recordFile.length() !in 1..ARM_MAX_BYTES.toLong()) fail()
-      recordFile.readBytes()
-    } catch (_: Throwable) {
-      runCatching { atomicWriter.remove(recordFile) }
-      fail()
+    if (!recordFile.isFile || recordFile.length() !in 1..ARM_MAX_BYTES.toLong()) {
+      discardRecord()
+      throw rejection()
     }
+    val bytes = try { readRecord(recordFile) }
+    catch (_: Throwable) { discardRecord(); throw rejection() }
     try {
       // Consumption happens before validation so a malformed or replayed route
       // cannot probe the record more than once.
       atomicWriter.remove(recordFile)
       val text = bytes.toString(Charsets.UTF_8)
       val values = parse(text)
-      val expiresAtMs = values["expires_at_ms"]?.toLongOrNull() ?: fail()
+      val expiresAtMs = values["expires_at_ms"]?.toLongOrNull() ?: throw rejection()
       if (values.keys != setOf(
           "schema_version", "route_id", "phase", "nonce", "run_id_sha256",
           "device_identity_sha256", "lease_id_sha256", "expires_at_ms",
@@ -69,7 +69,7 @@ internal class GarminEvidenceArmStore(
         || !listOf(expected.runIdSha256, expected.deviceIdentitySha256, expected.leaseIdSha256).all(ARM_HASH::matches)
         || expiresAtMs < nowMs()
         || expiresAtMs > nowMs() + 10 * 60_000L
-      ) fail()
+      ) throw rejection()
       return GarminEvidenceAuthorization(
         phase = expected.phase,
         nonce = expected.nonce,
@@ -81,7 +81,7 @@ internal class GarminEvidenceArmStore(
     } catch (error: GarminWorkerException) {
       throw error
     } catch (_: Throwable) {
-      fail()
+      throw rejection()
     } finally {
       bytes.fill(0)
     }
@@ -96,14 +96,14 @@ internal class GarminEvidenceArmStore(
   private fun parse(value: String): Map<String, String> {
     val result = linkedMapOf<String, String>()
     val lines = value.split('\n').filter(String::isNotEmpty)
-    if (lines.size != 8) fail()
+    if (lines.size != 8) throw rejection()
     for (line in lines) {
-      if (line.length > 256 || line.any { it == '\r' || it == '\u0000' }) fail()
+      if (line.length > 256 || line.any { it == '\r' || it == '\u0000' }) throw rejection()
       val separator = line.indexOf('=')
-      if (separator <= 0 || separator == line.lastIndex || line.indexOf('=', separator + 1) >= 0) fail()
+      if (separator <= 0 || separator == line.lastIndex || line.indexOf('=', separator + 1) >= 0) throw rejection()
       val key = line.substring(0, separator)
       val child = line.substring(separator + 1)
-      if (result.put(key, child) != null) fail()
+      if (result.put(key, child) != null) throw rejection()
     }
     return result
   }
@@ -112,5 +112,9 @@ internal class GarminEvidenceArmStore(
     .digest(value.toByteArray(Charsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }
 
-  private fun fail(): Nothing = throw GarminWorkerException("operation_rejected")
+  private fun discardRecord() {
+    try { atomicWriter.remove(recordFile) } catch (_: Throwable) { /* fail closed below */ }
+  }
+
+  private fun rejection(): GarminWorkerException = GarminWorkerException("operation_rejected")
 }

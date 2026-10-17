@@ -99,6 +99,27 @@ const MAESTRO_JUNIT = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro/garmin
 const MAESTRO_OBSERVATIONS = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro/observations.json`;
 const RUN_ID = "phase18-20261012-abcdef0";
 
+function kotlinJacocoXml(spec, { missedLines = 0, coveredLines = 10 } = {}) {
+  const counters = `<counter type="INSTRUCTION" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/><counter type="METHOD" missed="0" covered="10"/><counter type="LINE" missed="${missedLines}" covered="${coveredLines}"/>`;
+  return `<report>${spec.requiredClasses.map((name) => `<class name="${name}">${counters}</class>`).join("")}${counters}</report>`;
+}
+
+function kotlinJunitXmls(spec, { failures = 0, errors = 0, skipped = 0 } = {}) {
+  return spec.testPaths.map((_, index) => index === 0
+    ? `<testsuite tests="${spec.requiredCases.length}" skipped="${skipped}" failures="${failures}" errors="${errors}">${spec.requiredCases.map((name) => `<testcase name="${name}"/>`).join("")}</testsuite>`
+    : '<testsuite tests="0" skipped="0" failures="0" errors="0"></testsuite>');
+}
+
+function writeKotlinJunitFixtures(projectRoot, spec, suites) {
+  for (const [index, testPath] of spec.testPaths.entries()) {
+    const className = path.basename(testPath, ".kt");
+    const relative = `modules/garmin-connect/android/build/test-results/testDebugUnitTest/TEST-expo.modules.garminconnect.${className}.xml`;
+    const output = path.join(projectRoot, relative);
+    mkdirSync(path.dirname(output), { recursive: true });
+    writeFileSync(output, suites[index]);
+  }
+}
+
 function captureCli(fn, argv, dependencies) {
   const originalArgv = process.argv;
   const originalStdoutWrite = process.stdout.write.bind(process.stdout);
@@ -601,19 +622,18 @@ test("helper utilities cover defined and missing value branches", () => {
 test("Kotlin helper default execution path writes the report from on-disk XML fixtures", () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), "phase18-kotlin-helper-"));
   const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
-  const suiteXml = `<testsuite tests="${spec.requiredCases.length}" skipped="0" failures="0" errors="0">${spec.requiredCases.map((name) => `<testcase name="${name}"/>`).join("")}</testsuite>`;
-  const jacocoXml = '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>';
+  const suites = kotlinJunitXmls(spec);
+  const jacocoXml = kotlinJacocoXml(spec);
   const calls = [];
   try {
-    for (const sourcePath of [...spec.sourcePaths, spec.testPath]) {
+    for (const sourcePath of [...spec.sourcePaths, ...(spec.testPaths ?? [spec.testPath])]) {
       const absolutePath = path.join(projectRoot, sourcePath);
       mkdirSync(path.dirname(absolutePath), { recursive: true });
       writeFileSync(absolutePath, `${sourcePath}\n`);
     }
     mkdirSync(path.join(projectRoot, path.dirname("modules/garmin-connect/android/build/reports/jacoco/phase18-garmin-kotlin.xml")), { recursive: true });
-    mkdirSync(path.join(projectRoot, path.dirname("modules/garmin-connect/android/build/test-results/testDebugUnitTest/TEST-expo.modules.garminconnect.GarminTokenStoreTest.xml")), { recursive: true });
     writeFileSync(path.join(projectRoot, "modules/garmin-connect/android/build/reports/jacoco/phase18-garmin-kotlin.xml"), jacocoXml);
-    writeFileSync(path.join(projectRoot, "modules/garmin-connect/android/build/test-results/testDebugUnitTest/TEST-expo.modules.garminconnect.GarminTokenStoreTest.xml"), suiteXml);
+    writeKotlinJunitFixtures(projectRoot, spec, suites);
     const report = executePhase18KotlinCoverage({
       projectRoot,
       execFileSync: (...args) => {
@@ -638,7 +658,7 @@ test("Kotlin helper writes no report when the local Gradle wrapper is unavailabl
   const projectRoot = mkdtempSync(path.join(tmpdir(), "phase18-kotlin-fallback-"));
   const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
   try {
-    for (const sourcePath of [...spec.sourcePaths, spec.testPath]) {
+    for (const sourcePath of [...spec.sourcePaths, ...(spec.testPaths ?? [spec.testPath])]) {
       const absolutePath = path.join(projectRoot, sourcePath);
       mkdirSync(path.dirname(absolutePath), { recursive: true });
       writeFileSync(absolutePath, `${sourcePath}\n`);
@@ -656,8 +676,8 @@ test("Kotlin helper writes no report when the local Gradle wrapper is unavailabl
 test("Kotlin helper fails closed for missing cases and CLI errors", () => {
   const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
   const report = createPhase18KotlinCoverageReport({
-    jacocoXml: '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>',
-    junitXml: `<testsuite tests="${spec.requiredCases.length}" skipped="1" failures="0" errors="0"><testcase name="${spec.requiredCases[0]}"/></testsuite>`,
+    jacocoXml: kotlinJacocoXml(spec),
+    junitXmls: kotlinJunitXmls(spec, { skipped: 1 }),
     readBytes: () => Buffer.from("x"),
   });
   assert.equal(report.status, "failed");
@@ -668,7 +688,7 @@ test("Kotlin helper fails closed for missing cases and CLI errors", () => {
   ], {
     runGradle: () => {},
     readText: (relativePath) => relativePath.includes("jacoco")
-      ? '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>'
+      ? kotlinJacocoXml(spec)
       : `<testsuite tests="${spec.requiredCases.length}" skipped="0" failures="0" errors="0">${spec.requiredCases.map((name) => `<testcase name="${name}"/>`).join("")}</testsuite>`,
     readBytes: (relativePath) => Buffer.from(relativePath),
     writeReport: () => {},
@@ -1891,38 +1911,37 @@ test("helper CLIs expose bounded fallback error paths", () => {
 });
 
 test("Kotlin helper covers invalid XML, empty counters, and default CLI error messaging", () => {
+  const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
   assert.throws(
     () => createPhase18KotlinCoverageReport({
-      jacocoXml: '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>',
-      junitXml: "<not-a-testsuite />",
+      jacocoXml: kotlinJacocoXml(spec),
+      junitXmls: ["<not-a-testsuite />", ...kotlinJunitXmls(spec).slice(1)],
       readBytes: () => Buffer.from("x"),
     }),
     /phase18_kotlin_coverage_xml_invalid/u,
   );
   assert.throws(
     () => createPhase18KotlinCoverageReport({
-      jacocoXml: '<report><counter type="LINE" missed="1" covered="0"/><counter type="BRANCH" missed="0" covered="10"/></report>',
-      junitXml: '<testsuite tests="1" skipped="0" failures="0" errors="0"><testcase name="stores Garmin tokens in encrypted shared preferences"/></testsuite>',
+      jacocoXml: kotlinJacocoXml(spec).replace('<counter type="INSTRUCTION" missed="0" covered="10"/>', '<counter type="INSTRUCTION" missed="0" covered="0"/>'),
+      junitXmls: kotlinJunitXmls(spec),
       readBytes: () => Buffer.from("x"),
     }),
     /phase18_kotlin_coverage_empty/u,
   );
 
   const projectRoot = mkdtempSync(path.join(tmpdir(), "phase18-kotlin-default-cli-"));
-  const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
   try {
     mkdirSync(path.join(projectRoot, "android"), { recursive: true });
     writeFileSync(path.join(projectRoot, "android/gradlew"), "#!/bin/sh\nexit 0\n");
     chmodSync(path.join(projectRoot, "android/gradlew"), 0o755);
-    for (const sourcePath of [...spec.sourcePaths, spec.testPath]) {
+    for (const sourcePath of [...spec.sourcePaths, ...(spec.testPaths ?? [spec.testPath])]) {
       const absolutePath = path.join(projectRoot, sourcePath);
       mkdirSync(path.dirname(absolutePath), { recursive: true });
       writeFileSync(absolutePath, sourcePath);
     }
     mkdirSync(path.join(projectRoot, path.dirname("modules/garmin-connect/android/build/reports/jacoco/phase18-garmin-kotlin.xml")), { recursive: true });
-    mkdirSync(path.join(projectRoot, path.dirname("modules/garmin-connect/android/build/test-results/testDebugUnitTest/TEST-expo.modules.garminconnect.GarminTokenStoreTest.xml")), { recursive: true });
-    writeFileSync(path.join(projectRoot, "modules/garmin-connect/android/build/reports/jacoco/phase18-garmin-kotlin.xml"), '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>');
-    writeFileSync(path.join(projectRoot, "modules/garmin-connect/android/build/test-results/testDebugUnitTest/TEST-expo.modules.garminconnect.GarminTokenStoreTest.xml"), `<testsuite tests="${spec.requiredCases.length}" skipped="0" failures="0" errors="0">${spec.requiredCases.map((name) => `<testcase name="${name}"/>`).join("")}</testsuite>`);
+    writeFileSync(path.join(projectRoot, "modules/garmin-connect/android/build/reports/jacoco/phase18-garmin-kotlin.xml"), kotlinJacocoXml(spec));
+    writeKotlinJunitFixtures(projectRoot, spec, kotlinJunitXmls(spec));
     assert.equal(executePhase18KotlinCoverage({ projectRoot }).status, "passed");
   } finally {
     rmSync(projectRoot, { recursive: true, force: true });
@@ -1939,16 +1958,16 @@ test("Kotlin helper covers invalid XML, empty counters, and default CLI error me
   assert.match(failure.stderr, /bounded-error/u);
   assert.throws(
     () => createPhase18KotlinCoverageReport({
-      jacocoXml: '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>',
-      junitXml: '<testsuite tests="x" skipped="0" failures="0" errors="0"><testcase name="stores Garmin tokens in encrypted shared preferences"/></testsuite>',
+      jacocoXml: kotlinJacocoXml(spec),
+      junitXmls: ['<testsuite tests="x" skipped="0" failures="0" errors="0"><testcase name="invalid"/></testsuite>', ...kotlinJunitXmls(spec).slice(1)],
       readBytes: () => Buffer.from("x"),
     }),
     /phase18_kotlin_coverage_xml_invalid/u,
   );
   assert.throws(
     () => createPhase18KotlinCoverageReport({
-      jacocoXml: '<report><counter type="LINE" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/></report>',
-      junitXml: '<testsuite tests="1" skipped="0" failures="0" errors="0"><testcase /></testsuite>',
+      jacocoXml: kotlinJacocoXml(spec),
+      junitXmls: ['<testsuite tests="1" skipped="0" failures="0" errors="0"><testcase /></testsuite>', ...kotlinJunitXmls(spec).slice(1)],
       readBytes: () => Buffer.from("x"),
     }),
     /phase18_kotlin_coverage_xml_invalid/u,
@@ -1957,8 +1976,8 @@ test("Kotlin helper covers invalid XML, empty counters, and default CLI error me
     () => executePhase18KotlinCoverage({
       runGradle: () => {},
       readText: (relativePath) => relativePath.includes("jacoco")
-        ? '<report><counter type="LINE" missed="1" covered="9"/><counter type="BRANCH" missed="0" covered="10"/></report>'
-        : '<testsuite tests="1" skipped="0" failures="0" errors="0"><testcase name="stores Garmin tokens in encrypted shared preferences"/></testsuite>',
+        ? kotlinJacocoXml(spec)
+        : '<testsuite tests="1" skipped="1" failures="0" errors="0"><testcase name="incomplete"/></testsuite>',
       readBytes: () => Buffer.from("x"),
       writeReport: () => {
         throw new Error("should not write");

@@ -54,6 +54,9 @@ tasks.register('phase18GarminKotlinCoverageReport', JacocoReport) {
     include 'expo/modules/garminconnect/GarminClientWorker.class'
     include 'expo/modules/garminconnect/GarminAdversarialSuiteRunner*.class'
     include 'expo/modules/garminconnect/GarminTokenStore.class'
+    include 'expo/modules/garminconnect/GarminEvidenceArmStore.class'
+    include 'expo/modules/garminconnect/GarminStoredSessionEvidenceRunner.class'
+    include 'expo/modules/garminconnect/GarminConnectModuleKt.class'
   }))
   reports {
     xml.required = true

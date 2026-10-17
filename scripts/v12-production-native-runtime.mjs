@@ -7,6 +7,7 @@ import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { parseNativeContractLogOutput, parseNativeContractLogFailure, parseNativeContractLogProgress } from "./native-contract-log-transport.mjs";
 import { assertV12AcceptanceNativeContractResult } from "./v12-sqlite-producer-contract.mjs";
+import { resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
 const LEASE_ID = /^[a-f0-9]{48}$/u;
@@ -49,7 +50,11 @@ function command(executable, args, { input, timeout = 20_000, maxBuffer = 8 * 10
   return result.stdout.trim();
 }
 
-export function createProductionNativeRuntime(attestation, { root = process.cwd(), cleanup = false } = {}) {
+export function createProductionNativeRuntime(attestation, {
+  root = process.cwd(),
+  cleanup = false,
+  executionTools = resolveV12NativeExecutionTools(),
+} = {}) {
   if (!RUN_ID.test(attestation.run_id ?? "")) nativeFailure("attestation_invalid");
   const manifest = JSON.parse(readFileSync(safeFile(root, `artifacts/native/v1.2/${attestation.run_id}/build.json`), "utf8"));
   const build = manifest.build; const device = manifest.device;
@@ -63,7 +68,7 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
 
   const serial = process.env.V12_DEVICE_SERIAL;
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]{1,200}$/u.test(serial)) nativeFailure("device_binding_unavailable");
-  const adb = (...args) => command("adb", ["-s", serial, ...args]);
+  const adb = (...args) => command(executionTools.adb, ["-s", serial, ...args]);
   const shell = (...args) => adb("shell", args.map(quote).join(" "));
   if (adb("get-state") !== "device") nativeFailure("device_unavailable");
   const identity = phase18DeviceIdentitySha256({ serial,
@@ -93,7 +98,7 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
   }
   function writeLeaseState(state) {
     // stdin avoids any quoting or shell expansion of protocol material.
-    command("adb", ["-s", serial, "shell", `cat > ${quote(`${LOCK}/owner.json`)}`], { input: JSON.stringify(state) });
+    command(executionTools.adb, ["-s", serial, "shell", `cat > ${quote(`${LOCK}/owner.json`)}`], { input: JSON.stringify(state) });
   }
   function acquireLease() {
     try { shell("mkdir", LOCK); } catch { nativeFailure("lease_busy"); }
@@ -193,5 +198,8 @@ export function createProductionNativeRuntime(attestation, { root = process.cwd(
     }
     nativeFailure("marker_timeout");
   }
-  return Object.freeze({ acquireLease, releaseLease, snapshotSettings, restoreSettings, withLease, sqlite });
+  return Object.freeze({
+    acquireLease, releaseLease, snapshotSettings, restoreSettings, withLease, sqlite,
+    executionOrigin: executionTools.execution_origin,
+  });
 }

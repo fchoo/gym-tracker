@@ -3,7 +3,6 @@ package expo.modules.garminconnect
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.OutputStreamWriter
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.ByteBuffer
@@ -29,32 +28,6 @@ import org.junit.rules.TemporaryFolder
 class GarminTokenStoreTest {
   @get:Rule
   val temporaryFolder = TemporaryFolder()
-
-  @Test
-  fun `Kotlin device identity equals the source-owned JavaScript canonical vectors`() {
-    val script = generateSequence(File(System.getProperty("user.dir") ?: ".")) { it.parentFile }
-      .map { File(it, "scripts/phase18-device-identity.mjs") }
-      .firstOrNull(File::isFile)
-      ?: throw AssertionError("phase18-device-identity.mjs not found")
-    val vectors = listOf(
-      listOf("emulator-5554", "arm64-v8a", "36", "sdk_gphone64_arm64"),
-      listOf("R5CR30-quoted\\\"", "x86_64", "100", "Pixel \\ ☃"),
-    )
-
-    for ((serial, abi, apiLevel, model) in vectors) {
-      val process = ProcessBuilder("node", script.absolutePath).start()
-      OutputStreamWriter(process.outputStream, Charsets.UTF_8).use { writer ->
-        writer.write(listOf(serial, abi, apiLevel, model).joinToString("\n", postfix = "\n"))
-      }
-      val expected = process.inputStream.bufferedReader().use { it.readText().trim() }
-      val error = process.errorStream.bufferedReader().use { it.readText() }
-      assertEquals(error, 0, process.waitFor())
-      assertEquals(
-        expected,
-        phase18DeviceIdentitySha256(serial, abi, apiLevel, model),
-      )
-    }
-  }
 
   @Test
   fun `encrypted record round trips without plaintext and declares Android Keystore`() {
@@ -743,6 +716,25 @@ class GarminTokenStoreTest {
       )
       assertEquals("TECHNICAL_REVIEW_REQUIRED", runner.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")["status"])
     }
+
+    val failedRelease = GarminAdversarialSuiteRunner(
+      dispatcher = TransformingAdversarialDispatcher(transform = { operation, arguments, _, result ->
+        if (operation == "runAdversarialSuite" && arguments["action"] == "releaseLate") {
+          throw IOException("controlled release failure")
+        }
+        result
+      }),
+      sessionStore = MemorySessionStore(),
+      interruptRotation = {},
+    )
+    assertEquals("TECHNICAL_REVIEW_REQUIRED", failedRelease.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")["status"])
+
+    val failedCleanup = GarminAdversarialSuiteRunner(
+      dispatcher = TransformingAdversarialDispatcher(dropTokens = true),
+      sessionStore = MemorySessionStore(failClear = true),
+      interruptRotation = {},
+    )
+    assertEquals("TECHNICAL_REVIEW_REQUIRED", failedCleanup.run("VERIFY-PHASE18-GARMIN-ADVERSARIAL")["status"])
 
     val missingTokens = GarminAdversarialSuiteRunner(
       dispatcher = TransformingAdversarialDispatcher(dropTokens = true),

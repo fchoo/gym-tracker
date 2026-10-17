@@ -13,8 +13,9 @@ function bounded(result, code) { assert.notEqual(result.status, 0); assert.equal
 test('unowned actions return undefined without native work', (t) => { const r = fixture(t); assert.equal(success(r.invoke('visual-capture')), null); });
 test('Garmin returns exactly 18 ordered privacy-safe native aggregates', (t) => {
   const r = fixture(t); const result = success(r.invoke('garmin'));
-  assert.deepEqual(Object.keys(result), ['producer', 'cases']);
+  assert.deepEqual(Object.keys(result), ['producer', 'cases', 'execution_origin']);
   assert.equal(result.producer, 'v12-production-garmin-host/v1');
+  assert.equal(result.execution_origin, 'test-controlled/v1');
   assert.deepEqual(result.cases.map((c) => c.id), V12_GARMIN_SHARD_CASE_IDS);
   assert.ok(result.cases.every((entry) => entry.status === 'PASS' && /^[a-f0-9]{64}$/u.test(entry.receipt_sha256)));
   assert.ok(result.cases.every((entry) => Object.keys(entry).sort().join(',') === 'code,count,id,order,receipt_sha256,status'));
@@ -23,6 +24,7 @@ test('Garmin returns exactly 18 ordered privacy-safe native aggregates', (t) => 
 test('Garmin is reachable through the production adapter and checked-in default launcher subprocess', (t) => {
   const r = fixture(t); const result = success(r.invokeDefault('garmin'));
   assert.equal(result.producer, 'v12-production-garmin-host/v1');
+  assert.equal(result.execution_origin, 'test-controlled/v1');
   assert.equal(result.cases.length, 18);
   assert.ok(result.cases.every(({ status }) => status === 'PASS'));
 });

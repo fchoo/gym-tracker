@@ -29,16 +29,16 @@ function validateAttestation(request, action) {
   return value;
 }
 async function execute(action, payload, attestation) {
+  if (["recovery", "garmin"].includes(action)) {
+    const domainResult = await executeProductionDomainAction(action, payload, attestation);
+    if (domainResult !== undefined) return domainResult;
+  }
   const runtime = createProductionNativeRuntime(attestation, { cleanup: ["restore-settings", "release-lease"].includes(action) });
   if (action === "acquire-lease") return runtime.acquireLease();
   if (action === "release-lease") return runtime.releaseLease(payload.lease);
   if (action === "snapshot-settings") return runtime.snapshotSettings(payload.lease);
   if (action === "restore-settings") return runtime.restoreSettings(payload.settings, payload.lease);
   if (action === "sqlite") return runtime.withLease(payload, runtime.sqlite);
-  if (["recovery", "garmin"].includes(action)) {
-    const domainResult = await executeProductionDomainAction(action, payload, attestation);
-    if (domainResult !== undefined) return domainResult;
-  }
   // These producers do not exist in the source tree yet. Never convert a
   // screenshot of an arbitrary screen or a successful Maestro process into
   // a state/observation receipt. Keep the unsupported actions explicitly closed.

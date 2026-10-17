@@ -355,29 +355,7 @@ export async function collectV12ProductionGarminDomain(
       const reconnected = await source.restoreSession();
       if (reconnected.kind !== "connected") throw new V12GarminDomainError("account_lifecycle_failed");
       namespace = reconnected.account_namespace;
-      const adversarial = parseAdversarial(await native.runAdversarialSuite({
-        confirmation: "VERIFY-PHASE18-GARMIN-ADVERSARIAL",
-        deviceIdentitySha256: sessionSha256,
-      }), lifecycle.recovery_extensions);
       const lifecycleCodes = lifecycle.codes as Readonly<Record<string, unknown>>;
-      hostObservations = Object.freeze({
-        bridge: Object.freeze({
-          evidence_source: lifecycle.evidence_source,
-          operations: lifecycle.bridge_operations,
-          operation_rejection: lifecycleCodes.operation_rejection,
-          arguments_rejection: lifecycleCodes.arguments_rejection,
-        }),
-        lifecycle: Object.freeze({
-          restore: lifecycleCodes.restore, refresh: lifecycleCodes.refresh,
-          cold_restore: lifecycleCodes.cold_restore, logout: lifecycleCodes.logout,
-          restored: lifecycleCodes.restored, rotation: lifecycleCodes.rotation,
-          restart: lifecycleCodes.restart, storage: lifecycleCodes.storage,
-          before_sha256: lifecycle.before_sha256, refreshed_sha256: lifecycle.refreshed_sha256,
-          restored_sha256: lifecycle.restored_sha256,
-        }),
-        recovery: adversarial.cases,
-      });
-      await observe("recovery", async () => ({ count: ADVERSARIAL_CASES.length, evidence: { cases: adversarial.cases } }));
 
       const primaryName = `v12-production-garmin-${nonce}.db`;
       const restoreName = `v12-production-garmin-${nonce}-restore.db`;
@@ -447,6 +425,30 @@ export async function collectV12ProductionGarminDomain(
       });
       if (!importedId || !importedDate) throw new V12GarminDomainError("sync_read_failed");
       await collectMatches(primary, importedId, importedDate, observe);
+      // runAdversarialSuite clears the Chaquopy module-level bridge client. It
+      // must run only after every real account read, sync, dedupe and match.
+      const adversarial = parseAdversarial(await native.runAdversarialSuite({
+        confirmation: "VERIFY-PHASE18-GARMIN-ADVERSARIAL",
+        deviceIdentitySha256: sessionSha256,
+      }), lifecycle.recovery_extensions);
+      hostObservations = Object.freeze({
+        bridge: Object.freeze({
+          evidence_source: lifecycle.evidence_source,
+          operations: lifecycle.bridge_operations,
+          operation_rejection: lifecycleCodes.operation_rejection,
+          arguments_rejection: lifecycleCodes.arguments_rejection,
+        }),
+        lifecycle: Object.freeze({
+          restore: lifecycleCodes.restore, refresh: lifecycleCodes.refresh,
+          cold_restore: lifecycleCodes.cold_restore, logout: lifecycleCodes.logout,
+          restored: lifecycleCodes.restored, rotation: lifecycleCodes.rotation,
+          restart: lifecycleCodes.restart, storage: lifecycleCodes.storage,
+          before_sha256: lifecycle.before_sha256, refreshed_sha256: lifecycle.refreshed_sha256,
+          restored_sha256: lifecycle.restored_sha256,
+        }),
+        recovery: adversarial.cases,
+      });
+      await observe("recovery", async () => ({ count: ADVERSARIAL_CASES.length, evidence: { cases: adversarial.cases } }));
       const ordered = CASE_IDS.map((id) => receipts.get(id));
       if (ordered.some((entry) => entry === undefined)) throw new V12GarminDomainError("receipt_set_failed");
       terminal = {

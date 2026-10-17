@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  V12_PRODUCTION_EXECUTION_ORIGIN,
+  V12_TEST_EXECUTION_ORIGIN,
+} from "./v12-native-execution-origin.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -31,12 +35,12 @@ function testInjectionEnabled() {
 function commandFor(root, command) {
   const testMode = testInjectionEnabled();
   const injected = command ?? process.env.V12_NATIVE_ADAPTER_COMMAND;
-  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER });
+  if (!injected) return Object.freeze({ executable: process.execPath, args: [LAUNCHER], source: LAUNCHER, testAdapter: false });
   if (!testMode) fail("command_override_forbidden");
   const resolved = realpathSync(path.resolve(root, injected));
   const fixtureFake = realpathSync(path.resolve(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"));
   if (resolved !== fixtureFake && resolved !== realpathSync(CHECKED_IN_TEST_FAKE)) fail("test_command_invalid");
-  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved });
+  return Object.freeze({ executable: process.execPath, args: [resolved], source: resolved, testAdapter: true });
 }
 
 function readBuildIdentity(root, runId) {
@@ -106,6 +110,10 @@ export function invokeV12NativeAdapter(action, payload, {
   try { response = JSON.parse(result.stdout); } catch { fail("response_invalid"); }
   if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)) fail("response_invalid");
   if (!sameAttestation(attestation, response.attestation)) fail("attestation_invalid");
+  if (action !== "garmin") return response.result;
+  if (response.result === null || typeof response.result !== "object" || Array.isArray(response.result)) fail("response_invalid");
+  if (target.testAdapter) return Object.freeze({ ...response.result, execution_origin: V12_TEST_EXECUTION_ORIGIN });
+  if (![V12_PRODUCTION_EXECUTION_ORIGIN, V12_TEST_EXECUTION_ORIGIN].includes(response.result.execution_origin)) fail("execution_origin_invalid");
   return response.result;
 }
 

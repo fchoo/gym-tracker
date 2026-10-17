@@ -119,6 +119,12 @@ function rewriteFixturePublication(root, shard) {
   }
   writeFileSync(file, JSON.stringify(publication));
 }
+function setGarminExecutionOrigin(root, executionOrigin) {
+  const file = path.join(root, "artifacts/native/v1.2", run, "publication/garmin.json");
+  const publication = JSON.parse(readFileSync(file, "utf8"));
+  publication.execution_origin = executionOrigin;
+  writeFileSync(file, JSON.stringify(publication));
+}
 function recoveryIdentity(build, cases, report) {
   const digest = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
   const retryFacts = selector => cases.flatMap(({ cuts }) => cuts.map(({ snapshots }) => snapshots.after_retry[selector]));
@@ -182,7 +188,7 @@ function completeBlockedGarminFixture(root) {
     const target = path.join(base, relative); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, bytes);
     members.push({ artifact: relative, sha256: createHash("sha256").update(bytes).digest("hex"), size_bytes: bytes.length });
   }
-  const publication = { schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: run, shard: "garmin", identity: {
+  const publication = { schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: run, shard: "garmin", execution_origin: "production-attested/v1", identity: {
     source_tree_sha256: build.source.tree_sha256, apk_sha256: build.build.apk.sha256,
     installed_apk_sha256: build.device.installed_apk_sha256, device_identity_sha256: build.device.identity_sha256,
     fixture_sha256: build.fixtures.registry_sha256, configuration_id: build.configuration.id,
@@ -236,7 +242,7 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
   try {
     const blocked = invoke(blockedRoot, "scripts/v12-garmin-shard.mjs", ["--run", run, "--execute"]);
     assert.notEqual(blocked.status, 0);
-    assert.match(blocked.stderr, /garmin_native_cases_invalid/u);
+    assert.match(blocked.stderr, /garmin_execution_origin_invalid/u);
     assert.equal(existsSync(path.join(blockedRoot, "artifacts/native/v1.2", run, "publication/garmin.json")), false);
     assert.equal(existsSync(path.join(blockedRoot, "artifacts/native/v1.2", run, "garmin/packaging-auth.json")), false);
     assert.ok(existsSync(path.join(blockedRoot, "artifacts/native/v1.2", run, "failures/garmin.json")));
@@ -268,6 +274,12 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
     completion(root, shard); pass(root, script, ["--run", run, "--verify"]);
   }
   for (const shard of ["sqlite", "recovery", "garmin", "calendar", "multi-plan", "workout", "library-running", "visual", "comparison", "accessibility", "performance"]) completion(root, shard);
+  setGarminExecutionOrigin(root, "test-controlled/v1");
+  const testPreseal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
+  assert.notEqual(testPreseal.status, 0);
+  assert.match(testPreseal.stderr, /v12_preflight_publication_invalid/u);
+  assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, "preseal-validation.json")), false);
+  setGarminExecutionOrigin(root, "production-attested/v1");
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "shards-only", "--ids", "multi-plan,workout,library-running"]);
   const incomplete = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "preseal", "--no-final-write"]);
   if (reusedRoot) {
@@ -292,6 +304,12 @@ test("Phase 20 fake-device pipeline resolves 172 rows and refuses false READY fr
   writeFileSync(observations, JSON.stringify(attendedObservations(root)));
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["record", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations), "--output", path.relative(root, record)]);
   pass(root, "scripts/generate-v12-attended-checklist.mjs", ["verify", "--checklist", path.relative(root, checklist), "--observations", path.relative(root, observations)]);
+  setGarminExecutionOrigin(root, "test-controlled/v1");
+  const testFinal = invoke(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
+  assert.notEqual(testFinal.status, 0);
+  assert.match(testFinal.stderr, /v12_preflight_publication_invalid/u);
+  assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, "final-evidence.json")), false);
+  setGarminExecutionOrigin(root, "production-attested/v1");
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "final"]);
   const finalEvidence = JSON.parse(readFileSync(path.join(root, "artifacts/native/v1.2", run, "final-evidence.json"), "utf8"));
   assert.equal(finalEvidence.rows.length, 172); assert.equal(finalEvidence.release_authorized, false);

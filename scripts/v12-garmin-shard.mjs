@@ -5,6 +5,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
 import { publishV12AtomicShard, recordV12AtomicFailure, verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
+import { V12_PRODUCTION_EXECUTION_ORIGIN } from "./v12-native-execution-origin.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const HEAD = /^[a-f0-9]{40}$/u;
@@ -65,7 +66,8 @@ function exactCases(value, expected) {
 }
 
 function observations(result, id) {
-  if (!exactKeys(result, ["producer", "cases"]) || result.producer !== "v12-production-garmin-host/v1") fail("native_cases_invalid");
+  if (!exactKeys(result, ["producer", "cases", "execution_origin"]) || result.producer !== "v12-production-garmin-host/v1") fail("native_cases_invalid");
+  if (result.execution_origin !== V12_PRODUCTION_EXECUTION_ORIGIN) fail("execution_origin_invalid");
   exactCases(result.cases, V12_GARMIN_SHARD_CASE_IDS);
   const { run_id, ...artifactIdentity } = id;
   const byId = Object.fromEntries(result.cases.map((entry) => [entry.id, entry]));
@@ -87,9 +89,9 @@ function xml(result, id) {
 }
 
 function verifyPublication(manifest, runId, read) {
-  if (!exactKeys(manifest, ["schema_version", "producer", "run_id", "shard", "identity", "members", "completed"])
+  if (!exactKeys(manifest, ["schema_version", "producer", "run_id", "shard", "execution_origin", "identity", "members", "completed"])
     || manifest.schema_version !== 1 || manifest.producer !== "v12-atomic-shard-publication/v1"
-    || manifest.run_id !== runId || manifest.shard !== "garmin" || manifest.completed !== true
+    || manifest.run_id !== runId || manifest.shard !== "garmin" || manifest.execution_origin !== V12_PRODUCTION_EXECUTION_ORIGIN || manifest.completed !== true
     || !Array.isArray(manifest.members) || manifest.members.length !== ARTIFACTS.length) fail("publication_invalid");
   manifest.members.forEach((member, order) => {
     if (!exactKeys(member, ["artifact", "sha256", "size_bytes"]) || member.artifact !== ARTIFACTS[order]
@@ -149,7 +151,7 @@ export async function executeV12GarminShardCli(args = process.argv.slice(2), dep
     const result = await executeNative(lease, settings); const produced = observations(result, { ...id, run_id: runId });
     for (const [artifact, value] of Object.entries(produced)) { noPrivate(value); await write(outputPath(runId, artifact), value); }
     await write(outputPath(runId, "maestro/garmin-progress.xml"), xml(result, id));
-    return Object.freeze({ ok: true, mode, run_id: runId });
+    return Object.freeze({ ok: true, mode, run_id: runId, execution_origin: result.execution_origin });
   } catch (error) {
     const failureCode = error instanceof Error && /(?:^|:)auth_required$/u.test(error.message) ? "auth_required" : "execution_failed";
     const receipt = { schema_version: 1, producer: "v12-garmin-shard/v3", run_id: runId, identity: id, failure_stage: settings === undefined ? "lease" : "native", failure_code: failureCode, failure_digest: sha({ runId, source: id.source_digest, code: failureCode }) };
@@ -174,6 +176,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (args[2] === "--execute") publishV12AtomicShard({
       runId,
       shard: "garmin",
+      executionOrigin: value.execution_origin,
       produce: ({ write }) => writes.forEach(([file, content]) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), content)),
       validate: (members) => members.length === ARTIFACTS.length && members.every((member, order) => member.artifact === ARTIFACTS[order]),
     });

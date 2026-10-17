@@ -9,33 +9,36 @@ internal class GarminStoredSessionEvidenceRunner(
   fun run(): Map<String, Any?> {
     var recovery: ByteArray? = null
     try {
-      recovery = sessionStore.read() ?: fail("sign_in_required")
+      recovery = sessionStore.read()
+      if (recovery == null) throw failure("sign_in_required")
       val before = identity()
       val restored = successData(worker.restoreSession())
-      val accountNamespace = restored["account_namespace"] as? String ?: fail("sign_in_required")
+      val accountNamespace = restored["account_namespace"]
+      if (accountNamespace !is String) throw failure("sign_in_required")
       val refreshed = successData(worker.forceRefreshForTest())
-      if (refreshed["kind"] != "connected") fail("temporary_failure")
+      if (refreshed["kind"] != "connected") throw failure("temporary_failure")
       val refreshedIdentity = identity()
-      if (refreshedIdentity == before) fail("temporary_failure")
+      if (refreshedIdentity == before) throw failure("temporary_failure")
       recovery.fill(0)
-      recovery = sessionStore.read() ?: fail("sign_in_required")
+      recovery = sessionStore.read()
+      if (recovery == null) throw failure("sign_in_required")
       val rejections = dispatcher.evidenceRejections()
-      if (rejections != mapOf(
+      val expectedRejections = mapOf(
           "operation_rejection" to "operation_rejected",
           "arguments_rejection" to "arguments_rejected",
-        )) fail("temporary_failure")
+        )
+      if (rejections != expectedRejections) throw failure("temporary_failure")
       val recoveryExtensions = dispatcher.evidenceRecoveryExtensions()
-      if (recoveryExtensions.size != 4) fail("temporary_failure")
-      val logout = successData(worker.logout())
-      if (logout["kind"] != "disconnected" || sessionStore.recordIdentity()["present"] != false) {
-        fail("temporary_failure")
+      if (recoveryExtensions.size != 4) throw failure("temporary_failure")
+      successData(worker.logout())
+      if (sessionStore.recordIdentity()["present"] != false) {
+        throw failure("temporary_failure")
       }
       sessionStore.replace(recovery)
       val restoredIdentity = identity()
       val cold = successData(worker.restoreSession())
-      if (cold["kind"] != "connected" || cold["account_namespace"] != accountNamespace) {
-        fail("temporary_failure")
-      }
+      if (cold["kind"] != "connected") throw failure("temporary_failure")
+      if (cold["account_namespace"] != accountNamespace) throw failure("temporary_failure")
       return mapOf(
         "schema_version" to 1,
         "evidence_source" to dispatcher.evidenceSource(),
@@ -65,7 +68,8 @@ internal class GarminStoredSessionEvidenceRunner(
       val bytes = recovery
       if (bytes != null) {
         try {
-          if (sessionStore.recordIdentity()["present"] != true) sessionStore.replace(bytes)
+          val present = sessionStore.recordIdentity()["present"] as Boolean
+          if (!present) sessionStore.replace(bytes)
         } finally {
           bytes.fill(0)
         }
@@ -75,17 +79,22 @@ internal class GarminStoredSessionEvidenceRunner(
 
   private fun identity(): String {
     val value = sessionStore.recordIdentity()
-    if (value["present"] != true || value["version"] != 1) fail("sign_in_required")
-    return value["sha256"] as? String ?: fail("sign_in_required")
+    if (value["present"] != true) throw failure("sign_in_required")
+    if (value["version"] != 1) throw failure("sign_in_required")
+    val digest = value["sha256"]
+    if (digest !is String) throw failure("sign_in_required")
+    return digest
   }
 
   private fun successData(result: Map<String, Any?>): Map<*, *> {
     if (result["status"] != "ok") {
-      val error = result["error"] as? Map<*, *>
-      fail(error?.get("code") as? String ?: "temporary_failure")
+      val error = result["error"] as Map<*, *>
+      throw failure(error["code"] as String)
     }
-    return result["data"] as? Map<*, *> ?: fail("malformed_response")
+    val data = result["data"]
+    if (data !is Map<*, *>) throw failure("malformed_response")
+    return data
   }
 
-  private fun fail(code: String): Nothing = throw GarminWorkerException(code)
+  private fun failure(code: String): GarminWorkerException = GarminWorkerException(code)
 }

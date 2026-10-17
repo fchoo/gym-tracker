@@ -759,6 +759,31 @@ class GarminBridgeTests(unittest.TestCase):
         self.assertEqual([row["call_count"] for row in rows], [2, 2, 4, 5])
         self.assertTrue(all(row["automatic_retry_count"] == 0 for row in rows))
 
+    def test_phase20_recovery_extension_control_flow_covers_restore_rejection_and_complete_reads(self):
+        original_bridge = garmin_bridge.GarminBridge
+
+        class CoverageBridge:
+            def __init__(self):
+                self._adversarial = None
+
+            def dispatch(self, operation, _arguments):
+                mode = self._adversarial.mode
+                if operation == "restoreSession" and mode == "PH18-ADV-EXPIRED":
+                    return {"status": "error", "error": {"code": "sign_in_required"}}
+                if operation == "getActivities":
+                    return {"status": "ok", "data": {"items": [{"activityId": 42}]}}
+                return {"status": "ok", "data": {}}
+
+            def _clear_client(self):
+                return None
+
+        try:
+            garmin_bridge.GarminBridge = CoverageBridge
+            rows = garmin_bridge.evidence_recovery_extensions()
+        finally:
+            garmin_bridge.GarminBridge = original_bridge
+        self.assertEqual(len(rows), 4)
+
 
 if __name__ == "__main__":
     unittest.main()

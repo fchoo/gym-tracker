@@ -139,7 +139,12 @@ const response = (() => {
   };
   if (action === "recovery") return recoveryReport();
   if (action === "garmin") return {
-    cases: garminCaseIds.map((id, order) => ({ id, order, status: "PASS", code: "native-passed", count: id === "match-one" ? 1 : 0 })),
+    producer: "v12-production-garmin-host/v1",
+    cases: garminCaseIds.map((id, order) => ({
+      id, order, status: "PASS", code: `${id}-observed`, count: id === "match-one" ? 1 : 0,
+      receipt_sha256: sha(`fake-garmin:${id}`),
+    })),
+    execution_origin: "test-controlled/v1",
   };
   if (action === "calendar") {
     const ids = ["drag-forward-10", "drag-forward-24_9", "drag-forward-25", "drag-forward-25_1", "drag-forward-release-below", "drag-forward-release-exact", "drag-forward-release-above", "drag-backward-10", "drag-backward-24_9", "drag-backward-25", "drag-backward-25_1", "drag-backward-release-below", "drag-backward-release-exact", "drag-backward-release-above", "drag-fast-subthreshold", "drag-retreat", "drag-cancel", "drag-vertical", "drag-diagonal", "second-input-interrupt", "week-expand-first-row", "week-expand-middle-row", "week-expand-last-row", "adjacent-week", "month-year-boundary", "leap-february", "four-row-month", "five-row-month", "six-row-month", "rapid-reverse-input", "rotation-during-transition", "background-during-transition", "reduced-motion", "dev-01-padding", "dev-02-light-title"];
