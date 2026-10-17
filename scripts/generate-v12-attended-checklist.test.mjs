@@ -20,7 +20,8 @@ function fixture(t) {
   const rows = V12_ATTENDED_ROWS.map((row, index) => {
     const bytes = image(index + 1); const relative = `artifacts/native/v1.2/${runId}/attended/${row.id}.png`; const absolute = path.join(root, relative);
     mkdirSync(path.dirname(absolute), { recursive: true }); writeFileSync(absolute, bytes);
-    return { id: row.id, status: index === 0 ? "failed" : "passed", png: { path: relative, sha256: sha256(bytes), size_bytes: bytes.length, width: 1, height: 1 } };
+    const png = { path: relative, sha256: sha256(bytes), size_bytes: bytes.length, width: 1, height: 1 };
+    return { id: row.id, status: index === 0 ? "failed" : "passed", png, attestation: { schema_version: 1, kind: "trusted-synthetic-state-content-review", fixture_id: "v12-synthetic-fixtures-r18", synthetic_state: true, content_reviewed: true, png_sha256: png.sha256 } };
   });
   return { root, rows };
 }
@@ -40,7 +41,21 @@ test("attended validation rejects missing, tampered, duplicate, stale, and unsaf
   assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 1 ? { ...row, png: { ...row.png, path: `${row.png.path}.missing` } } : row)), { identity, root }), /PNG|missing|path/u);
   assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 1 ? { ...row, png: { ...row.png, sha256: digest("f") } } : row)), { identity, root }), /PNG|digest|hash/u);
   writeFileSync(path.join(root, rows[1].png.path), readFileSync(path.join(root, rows[0].png.path)));
-  assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 1 ? { ...row, png: { ...row.png, sha256: rows[0].png.sha256 } } : row)), { identity, root }), /unique|duplicate/u);
+  assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 1 ? { ...row, png: { ...row.png, sha256: rows[0].png.sha256 }, attestation: { ...row.attestation, png_sha256: rows[0].png.sha256 } } : row)), { identity, root }), /unique|duplicate/u);
   assert.throws(() => validateV12AttendedObservations(observations(rows), { identity: { ...identity, config_sha256: digest("f") }, root }), /identity/u);
   assert.throws(() => validateV12AttendedObservations(observations(rows.map((row, index) => index === 0 ? { ...row, png: { ...row.png, path: "../private.png" } } : row)), { identity, root }), /path|unsafe/u);
+});
+
+test("attended PNGs require an exact trusted synthetic-state and content-review attestation", (t) => {
+  const { root, rows } = fixture(t);
+  for (const mutation of [
+    row => { delete row.attestation; },
+    row => { row.attestation.synthetic_state = false; },
+    row => { row.attestation.content_reviewed = false; },
+    row => { row.attestation.fixture_id = "personal-state"; },
+    row => { row.attestation.png_sha256 = digest("f"); },
+  ]) {
+    const changed = structuredClone(rows); mutation(changed[0]);
+    assert.throws(() => validateV12AttendedObservations(observations(changed), { identity, root }), /attestation|synthetic|review|PNG/u);
+  }
 });

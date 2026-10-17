@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,6 +11,7 @@ import {
   sourceTreeSha256,
   sourceTreeUntrackedPaths,
   sourceTreeSha256AtHead,
+  v12ContractSourceDigests,
 } from "./source-tree-digest.mjs";
 
 function git(root, ...args) {
@@ -117,5 +119,49 @@ test("ignores only the generated root .coverage database while retaining similar
     assert.throws(() => assertCleanCommittedTree(head, root), /coverage-source\.ts|coverage-example\.ts/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("recomputes planning, prototype, and fixture authority outside the implementation-tree exclusion", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "gym-v12-contract-digest-"));
+  const approved = mkdtempSync(path.join(tmpdir(), "gym-v12-approved-"));
+  try {
+    const files = {
+      ".planning/design/v1.2-prototype-parity-matrix.json": "{}\n",
+      ".planning/REQUIREMENTS.md": "# Requirements\n",
+      ".planning/v1.2-OWNER-BRIEF.md": "# Owner\n",
+      ".planning/phases/20-native-acceptance/20-UI-SPEC.md": "# UI\n",
+      ".planning/design/v1.2-DEVIATIONS.md": "# Deviations\n",
+      ".planning/design/v1.2-browser-evidence/serial-walk.json": "[]\n",
+    };
+    writeFileSync(path.join(root, "app.ts"), "export const source = 1;\n");
+    for (const [relative, bytes] of Object.entries(files)) {
+      mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
+      writeFileSync(path.join(root, relative), bytes);
+    }
+    writeFileSync(path.join(approved, "approved.json"), "{\"revision\":18}\n");
+    writeFileSync(path.join(approved, "approved-hybrid.html"), "<main>approved</main>\n");
+    const sourceManifest = {
+      schema_version: 2,
+      revision: 18,
+      sources: [
+        { id: "approved-json", filename: "approved.json", sha256: createHash("sha256").update(readFileSync(path.join(approved, "approved.json"))).digest("hex") },
+        { id: "approved-hybrid-html", filename: "approved-hybrid.html", sha256: createHash("sha256").update(readFileSync(path.join(approved, "approved-hybrid.html"))).digest("hex") },
+      ],
+    };
+    writeFileSync(path.join(root, ".planning/design/v1.2-browser-evidence/source-manifest.json"), JSON.stringify(sourceManifest));
+    git(root, "init", "--quiet"); git(root, "config", "user.email", "test@example.invalid"); git(root, "config", "user.name", "Source Digest Test");
+    git(root, "add", "."); git(root, "commit", "--quiet", "-m", "initial");
+    const implementation = sourceTreeSha256(root);
+    const first = v12ContractSourceDigests(root, { approvedSourceRoot: approved });
+    writeFileSync(path.join(root, ".planning/REQUIREMENTS.md"), "# Changed requirements\n");
+    const second = v12ContractSourceDigests(root, { approvedSourceRoot: approved });
+    assert.equal(sourceTreeSha256(root), implementation, ".planning remains excluded from the implementation digest");
+    assert.notEqual(second.planning.requirements_sha256, first.planning.requirements_sha256);
+    writeFileSync(path.join(approved, "approved.json"), "{\"revision\":19}\n");
+    assert.throws(() => v12ContractSourceDigests(root, { approvedSourceRoot: approved }), /prototype|approved/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(approved, { recursive: true, force: true });
   }
 });

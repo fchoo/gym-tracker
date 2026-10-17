@@ -16,6 +16,16 @@ import { pathToFileURL } from "node:url";
 const excludedSourcePath =
   /^\.coverage$|^(?:node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage(?:-[^/.]+)?|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
 
+const V12_PLANNING_PATHS = Object.freeze({
+  matrix_sha256: ".planning/design/v1.2-prototype-parity-matrix.json",
+  requirements_sha256: ".planning/REQUIREMENTS.md",
+  source_manifest_sha256: ".planning/design/v1.2-browser-evidence/source-manifest.json",
+  owner_brief_sha256: ".planning/v1.2-OWNER-BRIEF.md",
+  ui_spec_sha256: ".planning/phases/20-native-acceptance/20-UI-SPEC.md",
+  deviations_sha256: ".planning/design/v1.2-DEVIATIONS.md",
+});
+const V12_FIXTURE_REGISTRY = ".planning/design/v1.2-browser-evidence/serial-walk.json";
+
 function normalizedFileMode(mode) {
   return (mode & 0o111) === 0 ? "644" : "755";
 }
@@ -36,6 +46,50 @@ function digestFiles(files) {
     hash.update(Buffer.from("\0"));
   }
   return hash.digest("hex");
+}
+
+function safeRegularFile(root, relative, code) {
+  if (typeof relative !== "string" || relative.length === 0 || path.isAbsolute(relative)
+    || relative.includes("\\") || path.posix.normalize(relative) !== relative
+    || relative.split("/").some(part => !part || part === "." || part === "..")) throw new Error(code);
+  const base = path.resolve(root); let cursor = base;
+  if (lstatSync(base).isSymbolicLink() || !lstatSync(base).isDirectory()) throw new Error(code);
+  for (const part of relative.split("/")) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat === undefined || stat.isSymbolicLink()) throw new Error(code);
+  }
+  if (!lstatSync(cursor).isFile()) throw new Error(code);
+  return cursor;
+}
+
+function fileSha256(root, relative, code) {
+  return createHash("sha256").update(readFileSync(safeRegularFile(root, relative, code))).digest("hex");
+}
+
+export function v12ContractSourceDigests(root = process.cwd(), { approvedSourceRoot = process.env.V12_APPROVED_SOURCE_ROOT } = {}) {
+  const planning = Object.freeze(Object.fromEntries(
+    Object.entries(V12_PLANNING_PATHS).map(([key, relative]) => [key, fileSha256(root, relative, "v12_contract_planning_invalid")]),
+  ));
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(safeRegularFile(root, V12_PLANNING_PATHS.source_manifest_sha256, "v12_contract_prototype_invalid"), "utf8")); }
+  catch (error) { if (error instanceof Error && error.message.startsWith("v12_contract_")) throw error; throw new Error("v12_contract_prototype_invalid"); }
+  if (manifest?.schema_version !== 2 || manifest.revision !== 18 || !Array.isArray(manifest.sources)
+    || manifest.sources.length < 2 || typeof approvedSourceRoot !== "string" || approvedSourceRoot.length === 0) {
+    throw new Error("v12_contract_prototype_invalid");
+  }
+  const sourceById = new Map(manifest.sources.map(source => [source.id, source]));
+  const approvedJson = sourceById.get("approved-json"); const approvedHtml = sourceById.get("approved-hybrid-html");
+  if (!approvedJson || !approvedHtml) throw new Error("v12_contract_prototype_invalid");
+  const approvedRoot = path.resolve(approvedSourceRoot);
+  const approvalSha256 = fileSha256(approvedRoot, approvedJson.filename, "v12_contract_prototype_invalid");
+  const htmlSha256 = fileSha256(approvedRoot, approvedHtml.filename, "v12_contract_prototype_invalid");
+  if (approvalSha256 !== approvedJson.sha256 || htmlSha256 !== approvedHtml.sha256) throw new Error("v12_contract_prototype_invalid");
+  return Object.freeze({
+    planning,
+    prototype: Object.freeze({ revision: 18, approval_sha256: approvalSha256, html_sha256: htmlSha256 }),
+    fixtures: Object.freeze({ registry_sha256: fileSha256(root, V12_FIXTURE_REGISTRY, "v12_contract_fixtures_invalid") }),
+  });
 }
 
 function currentFile(root, filePath) {

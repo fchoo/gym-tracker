@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -14,7 +14,7 @@ import {
 } from "./compare-v12-calendar.mjs";
 import { validateV12CalendarDiagnostics } from "./benchmark-v12-interactions.mjs";
 import { validateV12CalendarManifest } from "./run-v12-maestro.mjs";
-import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { sourceTreeSha256, v12ContractSourceDigests } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_CALENDAR_REQUIRED_CASES,
@@ -36,6 +36,8 @@ import {
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
 import { resolveV12SourceRows, combineV12SourceResults, validateV12CalendarExecutionOrigin } from "./v12-blocker-row-resolver.mjs";
 import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
+import { buildV12ReadinessHandoff, validateV12ReadinessHandoff } from "./create-v12-readiness-handoff.mjs";
+import { assertV12ArtifactPrivacySafe, assertV12PrivacySafeValue } from "./v12-artifact-privacy.mjs";
 import {
   V12_DEVICE_LEASE_PATHS,
   digestV12CanonicalRestorationSnapshot,
@@ -522,6 +524,7 @@ function finalEvidenceIndex(inputs, manifest, evidence, readArtifact) {
     try { artifactBytes = readArtifact(item.artifact); }
     catch { finalFail("artifact_read_failed"); }
     if (!Buffer.isBuffer(artifactBytes) || artifactBytes.length === 0 || sha256(artifactBytes) !== item.sha256) finalFail("artifact_hash_invalid");
+    try { assertV12ArtifactPrivacySafe(item.artifact, artifactBytes); } catch { finalFail("privacy_invalid"); }
     if (item.result === "N_A_REVIEWED") {
       if (!finalExact(item.na, ["reason", "reviewer", "reviewed_at"])) finalFail("na_metadata_invalid");
     }
@@ -565,7 +568,7 @@ function validateV12AttendedBinding(attended, manifest, root) {
     || identity.apk_sha256 !== manifest.build.apk.sha256 || identity.apk_signature_sha256 !== manifest.build.apk.signature_sha256
     || identity.installed_apk_sha256 !== manifest.device.installed_apk_sha256 || identity.config_sha256 !== sha256(manifest.configuration.id)
     || identity.device?.device_sha256 !== manifest.device.identity_sha256) finalFail("attended_identity_invalid");
-  try { validateV12AttendedObservations({ schema_version: 2, suite: "v12-samsung-attended-observations", identity, settings_restored: true, rows: attended.rows.map(({ id, status, png }) => ({ id, status, png })) }, { identity, root }); }
+  try { validateV12AttendedObservations({ schema_version: 2, suite: "v12-samsung-attended-observations", identity, settings_restored: true, rows: attended.rows.map(({ id, status, png, attestation }) => ({ id, status, png, attestation })) }, { identity, root }); }
   catch { finalFail("attended_row_invalid"); }
   if (attended.status !== (attended.rows.every(({ status }) => status === "passed") ? "passed" : "failed")) finalFail("attended_status_invalid");
   return attended;
@@ -574,6 +577,7 @@ function validateV12AttendedBinding(attended, manifest, root) {
 export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], readiness_policy = undefined, readArtifact, attended = undefined, root = ROOT, allowTestCalendarFixture = false } = {}) {
   const validatedManifest = validateV12RunManifest(manifest);
   if (finalHasPrivateValue(evidence) || finalHasPrivateValue(exceptions)) finalFail("privacy_invalid");
+  try { assertV12PrivacySafeValue(evidence); assertV12PrivacySafeValue(exceptions); } catch { finalFail("privacy_invalid"); }
   if (typeof readArtifact !== "function") finalFail("artifact_reader_required");
   // One immutable byte snapshot per derivation: the attended overlay reuses
   // these validated bytes, never a cache from an earlier preseal/final call.
@@ -635,6 +639,7 @@ export function deriveV12Ledger({ inputs, manifest, evidence, exceptions = [], r
     readiness,
     accepted_exception_count: counts.ACCEPTED_EXCEPTION,
     policy: policy ?? null,
+    exceptions: Object.freeze([...exceptionsByRow.values()].map(item => Object.freeze({ ...item }))),
   });
 }
 
@@ -662,6 +667,7 @@ export function sealV12FinalEvidence({ mode, run_id, ledger, writeImmutableJson 
     accepted_exception_count: ledger.accepted_exception_count,
     release_authorized: false,
     policy: ledger.policy,
+    exceptions: ledger.exceptions ?? [],
   });
   writeImmutableJson(`${base}/ui-state-matrix.json`, matrix);
   writeImmutableJson(`${base}/final-evidence.json`, finalEvidence);
@@ -688,19 +694,38 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
 });
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
 const V12_PREFLIGHT_FINAL_OUTPUTS = Object.freeze(["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]);
-const V12_ADAPTER_SHARDS = Object.freeze(["sqlite", "recovery", "garmin", "calendar", "visual", "comparison", "accessibility", "performance"]);
-const V12_ADAPTER_SHARD_ORIGINS = Object.freeze({
-  sqlite: Object.freeze({ action: "sqlite", domain: "scripts/v12-production-native-runtime.mjs" }),
-  recovery: Object.freeze({ action: "recovery", domain: "scripts/v12-production-native-domain-actions.mjs" }),
-  garmin: Object.freeze({ action: "garmin", domain: "scripts/v12-production-native-domain-actions.mjs" }),
-  calendar: Object.freeze({ action: "calendar", domain: "scripts/v12-production-native-calendar-action.mjs" }),
-  visual: Object.freeze({ action: "visual-capture", domain: "scripts/v12-production-native-visual-actions.mjs" }),
-  comparison: Object.freeze({ action: "visual-compare", domain: "scripts/v12-production-native-visual-actions.mjs" }),
-  accessibility: Object.freeze({ action: "accessibility", domain: "scripts/v12-production-native-quality-actions.mjs" }),
-  performance: Object.freeze({ action: "performance", domain: "scripts/v12-production-native-quality-actions.mjs" }),
+export const V12_NATIVE_PROVENANCE_REGISTRY = Object.freeze({
+  sqlite: Object.freeze({ actions: Object.freeze(["sqlite"]), domain: "scripts/v12-production-native-runtime.mjs" }),
+  recovery: Object.freeze({ actions: Object.freeze(["recovery"]), domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  garmin: Object.freeze({ actions: Object.freeze(["garmin"]), domain: "scripts/v12-production-native-domain-actions.mjs" }),
+  calendar: Object.freeze({ actions: Object.freeze(["calendar"]), domain: "scripts/v12-production-native-calendar-action.mjs" }),
+  "multi-plan": Object.freeze({ actions: Object.freeze(["multi-plan"]), domain: "scripts/run-v12-maestro.mjs" }),
+  workout: Object.freeze({ actions: Object.freeze(["workout"]), domain: "scripts/run-v12-maestro.mjs" }),
+  "library-running": Object.freeze({ actions: Object.freeze(["library-running"]), domain: "scripts/run-v12-maestro.mjs" }),
+  visual: Object.freeze({ actions: Object.freeze(["visual-capture", "visual-capture-batch"]), domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  comparison: Object.freeze({ actions: Object.freeze(["visual-compare"]), domain: "scripts/v12-production-native-visual-actions.mjs" }),
+  accessibility: Object.freeze({ actions: Object.freeze(["accessibility"]), domain: "scripts/v12-production-native-quality-actions.mjs" }),
+  performance: Object.freeze({ actions: Object.freeze(["performance"]), domain: "scripts/v12-production-native-quality-actions.mjs" }),
 });
+const V12_ADAPTER_SHARDS = Object.freeze(Object.keys(V12_NATIVE_PROVENANCE_REGISTRY));
 
 function preflightFail(code) { throw new Error(`v12_preflight_${code}`); }
+
+export function assertV12ExactArtifactFileSet(actual, expected) {
+  if (!Array.isArray(actual) || !Array.isArray(expected)) preflightFail("artifact_set_invalid");
+  const left = [...actual].sort(); const right = [...expected].sort();
+  if (left.length !== new Set(left).size || right.length !== new Set(right).size
+    || left.length !== right.length || left.some((item, index) => item !== right[index])) preflightFail("artifact_set_invalid");
+  return true;
+}
+
+export function validateV12ContractSourceIdentity(manifest, current) {
+  if (!finalPlainObject(manifest) || !finalPlainObject(current)
+    || !isDeepStrictEqual(manifest.planning, current.planning)
+    || !isDeepStrictEqual(manifest.prototype, current.prototype)
+    || !isDeepStrictEqual(manifest.fixtures, current.fixtures)) preflightFail("contract_identity_invalid");
+  return true;
+}
 
 function preflightRunId(value) {
   if (!V12_FINAL_RUN.test(value ?? "")) preflightFail("run_id_invalid");
@@ -732,7 +757,9 @@ function preflightSafeFile(root, relative, { required = true } = {}) {
 function preflightHashFile(root, relative, options) {
   const file = preflightSafeFile(root, relative, options);
   if (file === null) return null;
-  return sha256(readFileSync(file));
+  const bytes = readFileSync(file);
+  try { assertV12ArtifactPrivacySafe(relative, bytes); } catch { preflightFail("privacy_invalid"); }
+  return sha256(bytes);
 }
 
 export function validateV12FinalNativeIdentity(manifest, observed) {
@@ -806,7 +833,10 @@ function preflightCollectFiles(root, runId) {
       const childRelative = `${relative}/${entry.name}`;
       const childAbsolute = path.join(absolute, entry.name);
       if (entry.isSymbolicLink()) preflightFail("symlink_forbidden");
-      if (entry.isDirectory()) walk(childAbsolute, childRelative);
+      if (entry.isDirectory()) {
+        if ([".claims", ".staging", ".leases", "failures"].includes(entry.name)) preflightFail("artifact_set_invalid");
+        walk(childAbsolute, childRelative);
+      }
       else if (entry.isFile()) result.push(childRelative);
       else preflightFail("artifact_invalid");
     }
@@ -819,18 +849,68 @@ function preflightWriteOnce(root, relative, value) {
   const target = path.resolve(root, preflightSafeRelative(relative));
   const projectRoot = path.resolve(root);
   if (!target.startsWith(`${projectRoot}${path.sep}`)) preflightFail("path_invalid");
-  if (existsSync(target)) preflightFail("output_exists");
+  const rootStat = lstatSync(projectRoot, { throwIfNoEntry: false });
+  if (!rootStat?.isDirectory() || rootStat.isSymbolicLink()) preflightFail("symlink_forbidden");
+  let cursor = projectRoot;
+  for (const part of path.relative(projectRoot, path.dirname(target)).split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat === undefined) mkdirSync(cursor, { mode: 0o700 });
+    const current = lstatSync(cursor);
+    if (current.isSymbolicLink() || !current.isDirectory()) preflightFail("symlink_forbidden");
+  }
+  const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
+  try { assertV12ArtifactPrivacySafe(relative, bytes); } catch { preflightFail("privacy_invalid"); }
+  const existing = lstatSync(target, { throwIfNoEntry: false });
+  if (existing !== undefined) {
+    if (existing.isSymbolicLink() || !existing.isFile()) preflightFail("symlink_forbidden");
+    if (!readFileSync(target).equals(bytes)) preflightFail("output_exists");
+    return true;
+  }
   const directory = path.dirname(target);
-  mkdirSync(directory, { recursive: true });
   const temporary = `${target}.partial-${process.pid}-${Date.now()}`;
   try {
-    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
-    if (existsSync(target)) preflightFail("output_exists");
-    renameSync(temporary, target);
+    writeFileSync(temporary, bytes, { flag: "wx", mode: 0o600 });
+    const fileDescriptor = openSync(temporary, "r"); try { fsyncSync(fileDescriptor); } finally { closeSync(fileDescriptor); }
+    try { linkSync(temporary, target); }
+    catch (error) {
+      if (error?.code !== "EEXIST" || !lstatSync(target).isFile() || !readFileSync(target).equals(bytes)) preflightFail("output_exists");
+    }
+    const directoryDescriptor = openSync(directory, "r"); try { fsyncSync(directoryDescriptor); } finally { closeSync(directoryDescriptor); }
+    unlinkSync(temporary);
   } catch (error) {
     if (existsSync(temporary)) unlinkSync(temporary);
     throw error;
   }
+  return true;
+}
+
+function readFinalRecoveryJson(root, runPrefix, name) {
+  const published = preflightSafeFile(root, `${runPrefix}/${name}`, { required: false });
+  const staged = published === null ? preflightSafeFile(root, `${runPrefix}/.staging/final/${name}`, { required: false }) : null;
+  const selected = published ?? staged;
+  if (selected === null) preflightFail("final_recovery_invalid");
+  const bytes = readFileSync(selected);
+  try { assertV12ArtifactPrivacySafe(name, bytes); return JSON.parse(bytes.toString("utf8")); }
+  catch { preflightFail("final_recovery_invalid"); }
+}
+
+export function recoverV12FinalPublication(root, runId) {
+  const runPrefix = `artifacts/native/v1.2/${runId}`;
+  const stagedManifest = preflightSafeFile(root, `${runPrefix}/.staging/final/manifest.json`, { required: false });
+  if (stagedManifest === null) return false;
+  const finalEvidence = readFinalRecoveryJson(root, runPrefix, "final-evidence.json");
+  const handoff = readFinalRecoveryJson(root, runPrefix, "readiness-handoff.md");
+  validateV12ReadinessHandoff(handoff, { final_evidence: finalEvidence });
+  publishV12AtomicShard({
+    root,
+    runId,
+    shard: "final",
+    produce: () => { preflightFail("final_recovery_invalid"); },
+    validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), V12_PREFLIGHT_FINAL_OUTPUTS),
+    beforeManifest: () => preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", handoff),
+  });
+  return true;
 }
 
 export function parseV12EvidenceCliArgs(args) {
@@ -872,6 +952,7 @@ function preflightIdentityText(text, manifest) {
 function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalendarFixture = false) {
   const full = `artifacts/native/v1.2/${runId}/${relative}`;
   const file = preflightSafeFile(root, full); const bytes = readFileSync(file);
+  try { assertV12ArtifactPrivacySafe(relative, bytes); } catch { preflightFail("privacy_invalid"); }
   if (relative.endsWith(".xml")) {
     const text = bytes.toString("utf8");
     if (!/<testsuite[ >]/u.test(text) || !/<testcase[ >]/u.test(text)) preflightFail("xml_schema_invalid");
@@ -919,7 +1000,7 @@ export function validateV12ProductionPublicationOrigins(root, runId) {
   const adapterSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-native-adapter.mjs")));
   const launcherSha256 = sha256(readFileSync(preflightSafeFile(root, "scripts/v12-production-native-adapter-launcher.mjs")));
   for (const shard of V12_ADAPTER_SHARDS) {
-    const expected = V12_ADAPTER_SHARD_ORIGINS[shard];
+    const expected = V12_NATIVE_PROVENANCE_REGISTRY[shard];
     let publication;
     try { publication = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8")); }
     catch { preflightFail("adapter_provenance_missing"); }
@@ -929,7 +1010,7 @@ export function validateV12ProductionPublicationOrigins(root, runId) {
     if (origin.kind === "test-fixture" || origin.toolchain_origin !== "production-attested/v1"
       || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
     const domainSha256 = sha256(readFileSync(preflightSafeFile(root, expected.domain)));
-    if (origin.action !== expected.action || origin.adapter_source_sha256 !== adapterSha256
+    if (!expected.actions.includes(origin.action) || origin.adapter_source_sha256 !== adapterSha256
       || origin.launcher_source_sha256 !== launcherSha256 || origin.domain_source_sha256 !== domainSha256) preflightFail("adapter_provenance_stale");
   }
   return true;
@@ -1009,16 +1090,75 @@ function preflightValidateArtifacts(root, runId, shardIds, allowTestCalendarFixt
   const required = shardIds.flatMap((id) => V12_PREFLIGHT_SHARDS[id]);
   const manifest = preflightManifest(root, runId).manifest;
   const publicationShards = shardIds.flatMap((id) => id === "visual" ? ["visual", "comparison"] : [id]);
+  const publishedFiles = [];
   for (const shard of publicationShards) {
     try { verifyV12AtomicShard({ root, runId, shard }); } catch { preflightFail("publication_invalid"); }
+    publishedFiles.push(...validatedPublicationFiles(root, runId, shard));
   }
   const hashes = required.map((relative) => preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalendarFixture));
-  return { required, hashes };
+  return { required, hashes, publishedFiles };
 }
 
 function preflightRowEvidence(root, runId) {
   return resolveV12SourceRows({ inputs: loadV12ContractInputs({ root }), manifest: preflightManifest(root, runId).manifest,
     root, readArtifact: relative => readFileSync(preflightSafeFile(root, relative)) });
+}
+
+const V12_PUBLICATION_ARTIFACTS = Object.freeze({
+  ...V12_ARTIFACT_REGISTRY,
+  visual: Object.freeze(["screenshots/index.json"]),
+  comparison: Object.freeze(["comparison/index.json"]),
+});
+
+function publicationPathToMember(value, runId) {
+  const prefix = `artifacts/native/v1.2/${runId}/`;
+  if (typeof value !== "string" || !value.startsWith(prefix)) preflightFail("artifact_set_invalid");
+  return preflightSafeRelative(value.slice(prefix.length));
+}
+
+function expectedPublicationMembers(root, runId, shard) {
+  if (shard === "calendar") {
+    let registry;
+    try { registry = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/calendar/artifact-registry.json`), "utf8")); }
+    catch { preflightFail("artifact_set_invalid"); }
+    if (!Array.isArray(registry?.members)) preflightFail("artifact_set_invalid");
+    return [...V12_PUBLICATION_ARTIFACTS.calendar, ...registry.members.map(member => preflightSafeRelative(member?.path))];
+  }
+  if (shard === "visual") {
+    let index;
+    try { index = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/screenshots/index.json`), "utf8")); }
+    catch { preflightFail("artifact_set_invalid"); }
+    if (!Array.isArray(index?.records)) preflightFail("artifact_set_invalid");
+    return ["screenshots/index.json", ...index.records.map(record => publicationPathToMember(record?.native_png?.path, runId))];
+  }
+  if (shard === "comparison") {
+    let index;
+    try { index = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/comparison/index.json`), "utf8")); }
+    catch { preflightFail("artifact_set_invalid"); }
+    if (!Array.isArray(index?.results)) preflightFail("artifact_set_invalid");
+    const dynamic = [];
+    for (const result of index.results) {
+      const paths = [result?.observation?.path, ...Object.values(result?.artifacts ?? {}).map(item => item?.path)].filter(Boolean);
+      for (const artifactPath of paths) {
+        const member = publicationPathToMember(artifactPath, runId);
+        if (member.startsWith("comparison/")) dynamic.push(member);
+      }
+    }
+    return ["comparison/index.json", ...dynamic];
+  }
+  const expected = V12_PUBLICATION_ARTIFACTS[shard];
+  if (!Array.isArray(expected)) preflightFail("artifact_set_invalid");
+  return [...expected];
+}
+
+function validatedPublicationFiles(root, runId, shard) {
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(preflightSafeFile(root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8")); }
+  catch { preflightFail("publication_invalid"); }
+  if (!Array.isArray(manifest?.members)) preflightFail("publication_invalid");
+  try { assertV12ExactArtifactFileSet(manifest.members.map(member => member?.artifact), expectedPublicationMembers(root, runId, shard)); }
+  catch { preflightFail(`artifact_set_invalid_${shard.replaceAll("-", "_")}`); }
+  return [...manifest.members.map(member => member.artifact), `publication/${shard}.json`];
 }
 
 export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
@@ -1044,11 +1184,12 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     for (const output of V12_PREFLIGHT_FINAL_OUTPUTS) if (preflightSafeFile(root, `${runPrefix}/${output}`, { required: false }) !== null) preflightFail("final_output_present");
     const artifacts = preflightValidateArtifacts(root, options.run_id, Object.keys(V12_PREFLIGHT_SHARDS));
     const allFiles = preflightCollectFiles(root, options.run_id);
-    const requiredPaths = new Set([`${runPrefix}/build.json`, ...artifacts.required.map((item) => `${runPrefix}/${item}`)]);
-    const shadow = allFiles.filter((item) => V12_PREFLIGHT_FINAL_OUTPUTS.some((output) => item === `${runPrefix}/${output}`) || item.endsWith(".partial") || item.includes("/.staging/") || item.includes("/failures/"));
-    if (shadow.length > 0) preflightFail("shadow_or_partial_artifact");
-    const report = Object.freeze({ schema_version: 3, producer: "v12-preseal-validation/v3", run_id: options.run_id, evidence_origin: "native", mode: "preseal", release_authorized: false, build_sha256, required_artifact_count: requiredPaths.size - 1, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
-    publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report) });
+    const expectedFiles = [`${runPrefix}/build.json`, ...artifacts.publishedFiles.map(item => `${runPrefix}/${item}`)];
+    assertV12ExactArtifactFileSet(allFiles, expectedFiles);
+    const contractIdentity = v12ContractSourceDigests(root);
+    validateV12ContractSourceIdentity(manifest, contractIdentity);
+    const report = Object.freeze({ schema_version: 3, producer: "v12-preseal-validation/v3", run_id: options.run_id, evidence_origin: "native", mode: "preseal", release_authorized: false, build_sha256, contract_identity: contractIdentity, required_artifact_count: artifacts.required.length, artifacts: artifacts.hashes, row_evidence: preflightRowEvidence(root, options.run_id), all_artifact_hashes: allFiles.map((item) => ({ path: item, sha256: preflightHashFile(root, item) })) });
+    publishV12AtomicShard({ root, runId: options.run_id, shard: "preseal", produce: ({ write }) => write("preseal-validation.json", report), validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), ["preseal-validation.json"]) });
     return report;
   }
   assertNonTestEvidenceEnvironment();
@@ -1056,25 +1197,67 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   validateV12FinalProductionIdentity(manifest, { root });
   verifyV12FinalNativeIdentity(manifest, { root });
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
-  if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
+  if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id
+    || !Array.isArray(preseal.row_evidence) || !finalPlainObject(preseal.contract_identity)) preflightFail("preseal_invalid");
+  recoverV12FinalPublication(root, options.run_id);
   try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }
   // Recheck shard provenance before generic source hashes so a test-origin
   // substitution is rejected explicitly at the final boundary.
   preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
+  const contractIdentity = v12ContractSourceDigests(root);
+  validateV12ContractSourceIdentity(manifest, contractIdentity);
+  if (!isDeepStrictEqual(preseal.contract_identity, contractIdentity)) preflightFail("contract_identity_invalid");
   if (preseal.build_sha256 !== build_sha256 || !Array.isArray(preseal.all_artifact_hashes)
     || preseal.all_artifact_hashes.some(item => preflightHashFile(root, item.path) !== item.sha256)) preflightFail("source_hash_invalid");
   let attended; try { attended = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/attended-observations.json`), "utf8")); } catch { preflightFail("attended_invalid"); }
+  const beforeFinalFiles = preflightCollectFiles(root, options.run_id);
+  const expectedBeforeFinal = [
+    ...preseal.all_artifact_hashes.map(item => item.path),
+    `${runPrefix}/preseal-validation.json`,
+    `${runPrefix}/publication/preseal.json`,
+    `${runPrefix}/attended-observations.json`,
+    ...((Array.isArray(attended?.rows) ? attended.rows : []).map(row => row?.png?.path)),
+  ];
+  if (expectedBeforeFinal.some(item => typeof item !== "string")) preflightFail("attended_invalid");
+  const finalManifest = preflightSafeFile(root, `${runPrefix}/publication/final.json`, { required: false });
+  if (finalManifest !== null) {
+    try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "final" }); } catch { preflightFail("publication_invalid"); }
+    const finalEvidence = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/final-evidence.json`), "utf8"));
+    const readinessHandoff = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/readiness-handoff.md`), "utf8"));
+    validateV12ReadinessHandoff(readinessHandoff, { final_evidence: finalEvidence });
+    preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff);
+    assertV12ExactArtifactFileSet(beforeFinalFiles, [...expectedBeforeFinal, ...V12_PREFLIGHT_FINAL_OUTPUTS.map(output => `${runPrefix}/${output}`), `${runPrefix}/publication/final.json`]);
+    beforeFinalFiles.forEach(item => preflightHashFile(root, item));
+    return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: finalEvidence.rows.length, readiness: readinessHandoff.readiness, release_authorized: false, recovered: true });
+  }
+  assertV12ExactArtifactFileSet(beforeFinalFiles, expectedBeforeFinal);
+  beforeFinalFiles.forEach(item => preflightHashFile(root, item));
   const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence, attended, root, readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)) });
   const finalWrites = [];
   const write = (relative, value) => finalWrites.push([relative, value]);
   const finalEvidence = sealV12FinalEvidence({ mode: "final", run_id: options.run_id, ledger, writeImmutableJson: write });
   finalWrites.push([`${runPrefix}/parity-report.md`, generateV12ParityReport({ ledger: finalEvidence })]);
-  const readinessHandoff = Object.freeze({ schema_version: 2, producer: "v12-readiness-handoff/v2", run_id: options.run_id, readiness: finalEvidence.readiness, release_authorized: false, final_evidence_sha256: sha256(JSON.stringify(finalEvidence)) });
+  const readinessHandoff = buildV12ReadinessHandoff({
+    final_evidence: finalEvidence,
+    reviewed_policy: finalEvidence.policy,
+    rollback: Object.freeze({ status: "NOT_VERIFIED", reason_code: "rollback_evidence_missing", recovery_boundary: "compatible_restore_or_forward_fix" }),
+    generated_at: attended.recorded_at,
+  });
+  validateV12ReadinessHandoff(readinessHandoff, { final_evidence: finalEvidence });
   finalWrites.push([`${runPrefix}/readiness-handoff.md`, readinessHandoff]);
-  publishV12AtomicShard({ root, runId: options.run_id, shard: "final", produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative.replace(`${runPrefix}/`, ""), value)) });
-  preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff);
+  publishV12AtomicShard({
+    root,
+    runId: options.run_id,
+    shard: "final",
+    produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative.replace(`${runPrefix}/`, ""), value)),
+    validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), V12_PREFLIGHT_FINAL_OUTPUTS),
+    beforeManifest: () => preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff),
+  });
   for (const output of ["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]) preflightSafeFile(root, `${runPrefix}/${output}`);
-  return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: ledger.rows.length, readiness: ledger.readiness, release_authorized: false });
+  const afterFinalFiles = preflightCollectFiles(root, options.run_id);
+  assertV12ExactArtifactFileSet(afterFinalFiles, [...expectedBeforeFinal, ...V12_PREFLIGHT_FINAL_OUTPUTS.map(output => `${runPrefix}/${output}`), `${runPrefix}/publication/final.json`]);
+  afterFinalFiles.forEach(item => preflightHashFile(root, item));
+  return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: ledger.rows.length, readiness: readinessHandoff.readiness, release_authorized: false });
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
