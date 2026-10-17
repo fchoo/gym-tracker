@@ -3,17 +3,21 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { createRequire } from "node:module";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
-import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "./v12-evidence-contract.mjs";
-import { V12_VISUAL_BATCH_WINDOW } from "./capture-v12-visual.mjs";
 import { selectV12VisualReference, validateV12VisualSourceBinding } from "./v12-visual-authority.mjs";
+import {
+  V12_VISUAL_BATCH_WINDOW,
+  executeV12VisualStreamingShard,
+  iterateV12VisualJsonArray,
+  readV12VisualJsonHeader,
+} from "./v12-visual-streaming.mjs";
 
 const require = createRequire(import.meta.url);
 const SHA256 = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{32}$/u;
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const registryCache = new Map();
-const captureIndexCache = new Map();
+const captureCursorCache = new Map();
 const fail = (code) => { throw new Error(`v12_visual_compare_${code}`); };
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -99,22 +103,58 @@ function validateStateReceipt(receipt, observation, state, runId, configurationI
     || !same(receipt.system_transition.after.native_focus, observation.native_focus))) fail("system_transition_invalid");
   return receipt;
 }
-function capture(root, runId, id, configurationId, { trustPublishedNative = false } = {}) {
-  const relative = `artifacts/native/v1.2/${runId}/screenshots/index.json`;
-  let cached = captureIndexCache.get(path.resolve(root));
-  try {
-    if (cached === undefined) {
-      const index = JSON.parse(readFileSync(safeFile(root, relative), "utf8"));
-      cached = { index, records: new Map(index.records?.map((entry) => [`${entry.state_id}/${entry.configuration_id}`, entry])) };
-      captureIndexCache.set(path.resolve(root), cached);
+function captureOrdinal(id, configurationId) {
+  const stateIndex = V12_BROWSER_WALK_STATE_IDS.indexOf(id);
+  const configurationIndex = V12_CONFIG_IDS.indexOf(configurationId);
+  if (stateIndex < 0 || configurationIndex < 0) fail("capture_invalid");
+  return stateIndex * V12_CONFIG_IDS.length + configurationIndex;
+}
+function streamedCaptureRecord(indexFile, runId, id, configurationId) {
+  const stat = lstatSync(indexFile);
+  let cursor = captureCursorCache.get(indexFile);
+  const target = captureOrdinal(id, configurationId);
+  if (!cursor || cursor.size !== stat.size || cursor.mtimeMs !== stat.mtimeMs || cursor.ordinal > target) {
+    cursor?.iterator.return?.();
+    const header = readV12VisualJsonHeader({ file: indexFile, firstArrayKey: "windows" });
+    if (header.schema_version !== 2 || header.producer !== "v12-visual-capture-index/v2" || header.run_id !== runId
+      || !Number.isSafeInteger(header.capture_count) || header.capture_count < 1 || header.capture_count > V12_BROWSER_WALK_STATE_IDS.length * V12_CONFIG_IDS.length) fail("capture_invalid");
+    if (header.capture_count < V12_BROWSER_WALK_STATE_IDS.length * V12_CONFIG_IDS.length) {
+      let found;
+      for (const entry of iterateV12VisualJsonArray({ file: indexFile, arrayKey: "records" })) {
+        if (entry.value?.state_id === id && entry.value?.configuration_id === configurationId) {
+          if (found !== undefined) fail("capture_invalid");
+          found = entry.value;
+        }
+      }
+      if (found === undefined) fail("capture_invalid");
+      return found;
     }
-  } catch { fail("capture_invalid"); }
-  const record = cached?.records?.get(`${id}/${configurationId}`);
+    cursor = { iterator: iterateV12VisualJsonArray({ file: indexFile, arrayKey: "records" }), ordinal: -1, record: undefined, size: stat.size, mtimeMs: stat.mtimeMs };
+    captureCursorCache.set(indexFile, cursor);
+    if (captureCursorCache.size > 8) {
+      const oldest = captureCursorCache.keys().next().value;
+      if (oldest !== indexFile) { captureCursorCache.get(oldest)?.iterator.return?.(); captureCursorCache.delete(oldest); }
+    }
+  }
+  while (cursor.ordinal < target) {
+    const next = cursor.iterator.next(); if (next.done) fail("capture_invalid");
+    cursor.ordinal += 1; cursor.record = next.value.value;
+  }
+  if (cursor.record?.state_id !== id || cursor.record?.configuration_id !== configurationId) fail("capture_invalid");
+  return cursor.record;
+}
+function capture(root, artifactRoot, runId, id, configurationId, { trustPublishedNative = false, record: suppliedRecord } = {}) {
+  const relative = `artifacts/native/v1.2/${runId}/screenshots/index.json`;
+  let record = suppliedRecord;
+  if (record === undefined) {
+    const indexFile = safeFile(artifactRoot, relative);
+    try { record = streamedCaptureRecord(indexFile, runId, id, configurationId); } catch { fail("capture_invalid"); }
+  }
   if (record?.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || record.run_id !== runId || record.state_id !== id || record.configuration_id !== configurationId || record.fixture_id !== "v12-synthetic-fixtures-r18" || record.native_execution !== "EXECUTED" || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only") fail("capture_invalid");
   const expectedPath = `artifacts/native/v1.2/${runId}/screenshots/${id}/${configurationId}/native.png`;
   if (record.native_png?.path !== expectedPath || !SHA256.test(record.native_png?.sha256 ?? "") || !Number.isSafeInteger(record.native_png?.size_bytes)
     || !Number.isSafeInteger(record.native_png?.width) || !Number.isSafeInteger(record.native_png?.height)) fail("capture_invalid");
-  const native = trustPublishedNative ? Object.freeze({ descriptor: record.native_png }) : readPng(root, record.native_png, { expectedPath });
+  const native = trustPublishedNative ? Object.freeze({ descriptor: record.native_png }) : readPng(artifactRoot, record.native_png, { expectedPath });
   const state = registry(root).find((entry) => entry.id === id); if (!state) fail("registry_invalid");
   validateStateReceipt(record.settings.state_receipt, record.settings.observation, state, runId, configurationId, native.descriptor.sha256);
   return Object.freeze({ record_path: relative, record, native, state });
@@ -197,13 +237,13 @@ export function deriveV12PixelComparison(reference, native, exclusionMask) {
 function writeExclusive(root, relative, bytes, write) { safeRelative(relative); if (write) return write(relative, bytes); const target = path.resolve(root, relative); if (!target.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(target)) fail("immutable_output_invalid"); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, bytes, { flag: "wx" }); }
 function classFor(execution, semanticPassed, metrics) { if (execution !== "EXECUTED") return "NOT_RUN"; if (!semanticPassed) return "FAIL"; if (metrics.kind === "source_semantic") return "PASS"; if (metrics.pixel_percent > 2) return "FAIL"; return metrics.pixel_percent <= 0.5 ? "PASS" : "REVIEW_REQUIRED"; }
 
-export function produceV12ComparisonRecord({ runId, root = process.cwd(), input, write } = {}) {
+export function produceV12ComparisonRecord({ runId, root = process.cwd(), artifactRoot = root, input, captureRecord, write } = {}) {
   if (!V12_RUN_ID.test(runId ?? "") || !input || !/^BW-\d{3}$/u.test(input.id ?? "") || typeof input.configuration_id !== "string" || Object.hasOwn(input, "approved_reference_png_base64")) fail("input_invalid");
   const state = registry(root).find((entry) => entry.id === input.id); if (!state) fail("input_invalid");
   const config = configuration(input.configuration_id); const expectedBinding = selectV12VisualReference(state, config);
   if (!same(input.reference_binding, expectedBinding)) fail("reference_invalid");
   validateV12VisualSourceBinding(expectedBinding.kind === "retained_png" ? expectedBinding.source : expectedBinding, { root, stateId: state.id, stateName: state.name });
-  const nativeCapture = capture(root, runId, input.id, input.configuration_id);
+  const nativeCapture = capture(root, artifactRoot, runId, input.id, input.configuration_id, { record: captureRecord });
   validateStateReceipt(input.capture_state_receipt, nativeCapture.record.settings.observation, state, runId, input.configuration_id, nativeCapture.native.descriptor.sha256);
   validateStateReceipt(input.state_receipt, input.observation, state, runId, input.configuration_id, nativeCapture.native.descriptor.sha256);
   if (input.state_receipt.nonce === input.capture_state_receipt.nonce || input.observation.capture_nonce !== input.capture_state_receipt.nonce || input.observation.observation_nonce !== input.state_receipt.nonce || input.observation.capture_png_sha256 !== nativeCapture.native.descriptor.sha256) fail("state_receipt_invalid");
@@ -213,13 +253,13 @@ export function produceV12ComparisonRecord({ runId, root = process.cwd(), input,
   const artifacts = { native: nativeCapture.native.descriptor };
   let metrics; let observationDescriptor;
   if (expectedBinding.kind === "retained_png") {
-    writeExclusive(root, observationPath, observationBytes, write);
+    writeExclusive(artifactRoot, observationPath, observationBytes, write);
     observationDescriptor = Object.freeze({ path: observationPath, sha256: sha256(observationBytes), size_bytes: observationBytes.length });
     const referenceBytes = readFileSync(safeFile(root, expectedBinding.path));
     if (sha256(referenceBytes) !== expectedBinding.sha256) fail("reference_invalid");
     const compared = deriveV12PixelComparison(decodeV12ComparisonPng(referenceBytes), nativeCapture.native.image);
-    const referencePath = `${base}/reference.png`; writeExclusive(root, referencePath, referenceBytes, write); artifacts.reference = pngDescriptor(referencePath, referenceBytes);
-    for (const [kind, bytes] of Object.entries(compared.bytes)) { const relative = `${base}/${kind}.png`; writeExclusive(root, relative, bytes, write); artifacts[kind] = pngDescriptor(relative, bytes); }
+    const referencePath = `${base}/reference.png`; writeExclusive(artifactRoot, referencePath, referenceBytes, write); artifacts.reference = pngDescriptor(referencePath, referenceBytes);
+    for (const [kind, bytes] of Object.entries(compared.bytes)) { const relative = `${base}/${kind}.png`; writeExclusive(artifactRoot, relative, bytes, write); artifacts[kind] = pngDescriptor(relative, bytes); }
     metrics = compared.metrics;
   } else {
     observationDescriptor = Object.freeze({ inline: input.observation, sha256: sha256(observationBytes), size_bytes: observationBytes.length });
@@ -229,13 +269,13 @@ export function produceV12ComparisonRecord({ runId, root = process.cwd(), input,
   return Object.freeze({ schema_version: 3, id: input.id, configuration_id: input.configuration_id, comparison_mode: expectedBinding.kind, classification, counts_as_pass: classification === "PASS", capture_record_path: nativeCapture.record_path, reference_binding: expectedBinding, capture_state_receipt: input.capture_state_receipt, state_receipt: input.state_receipt, observation: observationDescriptor, artifacts: Object.freeze(artifacts), metrics });
 }
 
-export function verifyV12ComparisonRecord({ runId, root = process.cwd(), result, trustPublishedNative = false } = {}) {
+export function verifyV12ComparisonRecord({ runId, root = process.cwd(), artifactRoot = root, result, captureRecord, trustPublishedNative = false } = {}) {
   if (!V12_RUN_ID.test(runId ?? "") || !result || result.schema_version !== 3 || !/^BW-\d{3}$/u.test(result.id ?? "") || typeof result.configuration_id !== "string" || !["retained_png", "approved_source"].includes(result.comparison_mode) || !["PASS", "FAIL", "REVIEW_REQUIRED", "NOT_RUN"].includes(result.classification) || result.counts_as_pass !== (result.classification === "PASS")) fail("result_invalid");
   const state = registry(root).find((entry) => entry.id === result.id); if (!state) fail("registry_invalid");
   const expectedBinding = selectV12VisualReference(state, configuration(result.configuration_id));
   if (!same(result.reference_binding, expectedBinding) || result.comparison_mode !== expectedBinding.kind) fail("reference_invalid");
   validateV12VisualSourceBinding(expectedBinding.kind === "retained_png" ? expectedBinding.source : expectedBinding, { root, stateId: state.id, stateName: state.name });
-  const nativeCapture = capture(root, runId, result.id, result.configuration_id, { trustPublishedNative: trustPublishedNative && result.comparison_mode === "approved_source" });
+  const nativeCapture = capture(root, artifactRoot, runId, result.id, result.configuration_id, { record: captureRecord, trustPublishedNative: trustPublishedNative && result.comparison_mode === "approved_source" });
   if (result.capture_record_path !== nativeCapture.record_path || !same(result.artifacts?.native, nativeCapture.native.descriptor)) fail("capture_invalid");
   let observationBytes;
   if (result.comparison_mode === "approved_source") {
@@ -243,7 +283,7 @@ export function verifyV12ComparisonRecord({ runId, root = process.cwd(), result,
     observationBytes = Buffer.from(`${JSON.stringify(result.observation.inline)}\n`);
   } else {
     if (typeof result.observation?.path !== "string" || Object.hasOwn(result.observation, "inline")) fail("observation_invalid");
-    observationBytes = readFileSync(safeFile(root, result.observation.path));
+    observationBytes = readFileSync(safeFile(artifactRoot, result.observation.path));
   }
   if (sha256(observationBytes) !== result.observation.sha256 || observationBytes.length !== result.observation.size_bytes) fail("observation_invalid");
   let observation; try { observation = result.observation.inline ?? JSON.parse(observationBytes); } catch { fail("observation_invalid"); }
@@ -253,9 +293,9 @@ export function verifyV12ComparisonRecord({ runId, root = process.cwd(), result,
   let metrics;
   if (expectedBinding.kind === "retained_png") {
     const approved = readFileSync(safeFile(root, expectedBinding.path)); if (sha256(approved) !== expectedBinding.sha256) fail("reference_invalid");
-    const reference = readPng(root, result.artifacts?.reference); if (!reference.bytes.equals(approved)) fail("artifact_invalid");
+    const reference = readPng(artifactRoot, result.artifacts?.reference); if (!reference.bytes.equals(approved)) fail("artifact_invalid");
     const generated = deriveV12PixelComparison(reference.image, nativeCapture.native.image); metrics = generated.metrics;
-    for (const [kind, bytes] of Object.entries(generated.bytes)) { const artifact = readPng(root, result.artifacts?.[kind]); if (artifact.descriptor.sha256 !== sha256(bytes) || !artifact.bytes.equals(bytes)) fail("artifact_invalid"); }
+    for (const [kind, bytes] of Object.entries(generated.bytes)) { const artifact = readPng(artifactRoot, result.artifacts?.[kind]); if (artifact.descriptor.sha256 !== sha256(bytes) || !artifact.bytes.equals(bytes)) fail("artifact_invalid"); }
   } else {
     if (!same(Object.keys(result.artifacts ?? {}).sort(), ["native"])) fail("artifact_invalid");
     metrics = { kind: "source_semantic", renderer_digest: expectedBinding.renderer_digest, semantic_digest: expectedBinding.semantic_digest, layout_digest: expectedBinding.layout_digest };
@@ -264,41 +304,146 @@ export function verifyV12ComparisonRecord({ runId, root = process.cwd(), result,
   return true;
 }
 
-export function validateV12ComparisonShard(shard, { root = process.cwd(), runId } = {}) {
+export function validateV12ComparisonShard(shard, { root = process.cwd(), artifactRoot = root, runId } = {}) {
   if (!shard || shard.schema_version !== 3 || !Array.isArray(shard.results) || shard.results.length === 0) fail("shard_invalid");
-  const seen = new Set(); for (const result of shard.results) { const key = `${result?.id}\u0000${result?.configuration_id}`; if (seen.has(key)) fail("duplicate_invalid"); verifyV12ComparisonRecord({ runId, root, result }); seen.add(key); } return true;
+  const seen = new Set(); for (const result of shard.results) { const key = `${result?.id}\u0000${result?.configuration_id}`; if (seen.has(key)) fail("duplicate_invalid"); verifyV12ComparisonRecord({ runId, root, artifactRoot, result }); seen.add(key); } return true;
 }
 function parseCli(args) { if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--all", "--verify"].includes(args[2])) fail("arguments_invalid"); return { runId: args[1], command: args[2] }; }
-export function executeV12VisualComparison({ runId, root = process.cwd(), comparisons, windows = [], write } = {}) {
-  if (!V12_RUN_ID.test(runId ?? "") || !Array.isArray(comparisons) || comparisons.length !== 107 * 64) fail("input_invalid");
-  const expected = V12_BROWSER_WALK_STATE_IDS.flatMap((id) => V12_CONFIG_IDS.map((configurationId) => `${id}/${configurationId}`));
-  if (!same(comparisons.map(({ id, configuration_id: configurationId }) => `${id}/${configurationId}`), expected)) fail("input_order_invalid");
-  const results = comparisons.map((input) => {
-    try { return produceV12ComparisonRecord({ runId, root, input, write }); }
-    catch (error) { throw new Error(`${error instanceof Error ? error.message : "v12_visual_compare_failed"}:${input?.id ?? "unknown"}:${input?.configuration_id ?? "unknown"}`); }
-  });
-  const index = Object.freeze({ schema_version: 3, producer: "v12-visual-comparison-index/v3", run_id: runId, comparison_count: results.length, windows: Object.freeze(windows), results: Object.freeze(results) });
-  writeExclusive(root, `artifacts/native/v1.2/${runId}/comparison/index.json`, Buffer.from(`${JSON.stringify(index)}\n`), write); return index;
+const comparisonCount = V12_BROWSER_WALK_STATE_IDS.length * V12_CONFIG_IDS.length;
+function comparisonIdentity(index) {
+  const stateId = V12_BROWSER_WALK_STATE_IDS[Math.floor(index / V12_CONFIG_IDS.length)];
+  const configurationId = V12_CONFIG_IDS[index % V12_CONFIG_IDS.length];
+  if (stateId === undefined || configurationId === undefined) fail("input_order_invalid");
+  return Object.freeze({ state_id: stateId, configuration_id: configurationId });
 }
-export function verifyV12VisualComparison({ runId, root = process.cwd(), readJson } = {}) {
+function testBatchWindow() {
+  return process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_MODE === "phase20-native-adapter-subprocess"
+    && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" && typeof process.env.V12_NATIVE_ADAPTER_COMMAND === "string";
+}
+
+export function executeV12VisualComparison({
+  runId,
+  root = process.cwd(),
+  artifactRoot = root,
+  compare,
+  batchWindow = V12_VISUAL_BATCH_WINDOW,
+  executionOrigin,
+  produceRecord = produceV12ComparisonRecord,
+  onWindowCommitted,
+} = {}) {
+  if (!V12_RUN_ID.test(runId ?? "") || typeof compare !== "function" || typeof produceRecord !== "function"
+    || !Number.isSafeInteger(batchWindow) || batchWindow < 1 || batchWindow > 512
+    || (batchWindow !== V12_VISUAL_BATCH_WINDOW && !testBatchWindow())) fail("input_invalid");
+  const captureIndex = safeFile(artifactRoot, `artifacts/native/v1.2/${runId}/screenshots/index.json`);
+  const captureHeader = readV12VisualJsonHeader({ file: captureIndex, firstArrayKey: "windows" });
+  if (captureHeader.schema_version !== 2 || captureHeader.producer !== "v12-visual-capture-index/v2"
+    || captureHeader.run_id !== runId || captureHeader.capture_count !== comparisonCount) fail("capture_invalid");
+  const captures = iterateV12VisualJsonArray({ file: captureIndex, arrayKey: "records" });
+  let captureOffset = 0;
+  const takeCaptureWindow = (offset, count) => {
+    if (offset !== captureOffset) fail("input_order_invalid");
+    const items = [];
+    for (let index = 0; index < count; index += 1) {
+      const next = captures.next(); if (next.done) fail("input_order_invalid");
+      const expected = comparisonIdentity(offset + index); const record = next.value.value;
+      if (record?.state_id !== expected.state_id || record?.configuration_id !== expected.configuration_id) fail("input_order_invalid");
+      items.push(Object.freeze({ ...expected, capture_record: record, capture_index_offset: next.value.offset, capture_index_size: next.value.size }));
+    }
+    captureOffset += count;
+    return Object.freeze(items);
+  };
+  // The streamed publisher preserves the v12-atomic-shard-publication/v1
+  // manifest while avoiding capture, adapter-result, and comparison arrays.
+  return executeV12VisualStreamingShard({
+    root: artifactRoot,
+    runId,
+    shard: "comparison",
+    totalCount: comparisonCount,
+    batchWindow,
+    indexRelative: "comparison/index.json",
+    indexHeader: Object.freeze({ schema_version: 3, producer: "v12-visual-comparison-index/v3", run_id: runId, comparison_count: comparisonCount }),
+    resultKey: "results",
+    expectedWindow: takeCaptureWindow,
+    cleanupPending: ({ items, remove }) => {
+      for (const item of items) remove(`comparison/${item.state_id}/${item.configuration_id}`, { recursive: true });
+    },
+    processWindow: ({ items, offset, ordinal, write }) => {
+      const requested = items.map(({ state_id, configuration_id, capture_index_offset, capture_index_size }) => ({ state_id, configuration_id, capture_index_offset, capture_index_size }));
+      const identities = requested.map(({ state_id, configuration_id }) => ({ state_id, configuration_id }));
+      const compared = compare(Object.freeze({ run_id: runId, captures: Object.freeze(requested) }));
+      if (!Array.isArray(compared) || compared.length !== requested.length
+        || compared.some((entry, index) => entry?.id !== requested[index].state_id || entry?.configuration_id !== requested[index].configuration_id)) fail("window_invalid");
+      const requestBytes = Buffer.byteLength(JSON.stringify({ run_id: runId, captures: requested }));
+      const responseBytes = Buffer.byteLength(JSON.stringify(compared));
+      if (requestBytes > 1024 * 1024 || responseBytes > 32 * 1024 * 1024) fail("window_transport_limit_invalid");
+      const results = compared.map((input, index) => {
+        try {
+          return produceRecord({ runId, root, artifactRoot, input, captureRecord: items[index].capture_record,
+            write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
+        } catch (error) {
+          throw new Error(`${error instanceof Error ? error.message : "v12_visual_compare_failed"}:${input?.id ?? "unknown"}:${input?.configuration_id ?? "unknown"}`);
+        }
+      });
+      return Object.freeze({
+        records: results,
+        window: Object.freeze({ ordinal, offset, count: results.length,
+          first: `${results[0].id}/${results[0].configuration_id}`,
+          last: `${results.at(-1).id}/${results.at(-1).configuration_id}`,
+          request_bytes: requestBytes,
+          response_bytes: responseBytes,
+          request_sha256: sha256(JSON.stringify(identities)),
+          result_sha256: sha256(JSON.stringify(results.map(({ state_receipt }) => state_receipt))) }),
+        execution_origin: typeof executionOrigin === "function" ? executionOrigin() : executionOrigin,
+      });
+    },
+    validateBatch: (entry, offset) => {
+      const items = takeCaptureWindow(offset, entry.count);
+      const identities = items.map(({ state_id, configuration_id }) => ({ state_id, configuration_id }));
+      return entry.records.every((result, index) => result?.id === identities[index].state_id && result?.configuration_id === identities[index].configuration_id)
+        && entry.window.request_sha256 === sha256(JSON.stringify(identities))
+        && entry.window.result_sha256 === sha256(JSON.stringify(entry.records.map(({ state_receipt }) => state_receipt)));
+    },
+    validateComplete: () => captureOffset === comparisonCount && captures.next().done,
+    onWindowCommitted,
+  });
+}
+
+export function verifyV12VisualComparison({ runId, root = process.cwd(), artifactRoot = root } = {}) {
   if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
-  const index = readJson ? readJson(`artifacts/native/v1.2/${runId}/comparison/index.json`) : JSON.parse(readFileSync(safeFile(root, `artifacts/native/v1.2/${runId}/comparison/index.json`), "utf8"));
-  if (!index || index.schema_version !== 3 || index.producer !== "v12-visual-comparison-index/v3" || index.run_id !== runId || index.comparison_count !== 107 * 64 || !Array.isArray(index.results) || index.results.length !== 107 * 64) fail("index_invalid");
-  const expected = V12_BROWSER_WALK_STATE_IDS.flatMap((id) => V12_CONFIG_IDS.map((configurationId) => `${id}/${configurationId}`));
-  if (!same(index.results.map(({ id, configuration_id: configurationId }) => `${id}/${configurationId}`), expected)) fail("input_order_invalid");
+  const indexFile = safeFile(artifactRoot, `artifacts/native/v1.2/${runId}/comparison/index.json`);
+  const captureFile = safeFile(artifactRoot, `artifacts/native/v1.2/${runId}/screenshots/index.json`);
+  const index = readV12VisualJsonHeader({ file: indexFile, firstArrayKey: "windows" });
+  const captureIndex = readV12VisualJsonHeader({ file: captureFile, firstArrayKey: "windows" });
+  if (index.schema_version !== 3 || index.producer !== "v12-visual-comparison-index/v3" || index.run_id !== runId || index.comparison_count !== comparisonCount
+    || captureIndex.schema_version !== 2 || captureIndex.producer !== "v12-visual-capture-index/v2" || captureIndex.run_id !== runId || captureIndex.capture_count !== comparisonCount) fail("index_invalid");
+  const windows = iterateV12VisualJsonArray({ file: indexFile, arrayKey: "windows" });
+  const results = iterateV12VisualJsonArray({ file: indexFile, arrayKey: "results" });
+  const captures = iterateV12VisualJsonArray({ file: captureFile, arrayKey: "records" });
   let offset = 0;
-  if (!Array.isArray(index.windows) || index.windows.length < 1) fail("window_invalid");
-  for (const [ordinal, window] of index.windows.entries()) {
+  let ordinal = 0;
+  for (const { value: window } of windows) {
     if (window.ordinal !== ordinal || window.offset !== offset || !Number.isSafeInteger(window.count) || window.count < 1 || window.count > 512
-      || window.first !== expected[offset] || window.last !== expected[offset + window.count - 1]
       || !Number.isSafeInteger(window.request_bytes) || window.request_bytes > 1024 * 1024
-      || !Number.isSafeInteger(window.response_bytes) || window.response_bytes > 32 * 1024 * 1024
-      || window.request_sha256 !== sha256(JSON.stringify(index.results.slice(offset, offset + window.count).map(({ id, configuration_id }) => ({ state_id: id, configuration_id }))))
-      || window.result_sha256 !== sha256(JSON.stringify(index.results.slice(offset, offset + window.count).map(({ state_receipt }) => state_receipt)))) fail("window_invalid");
-    offset += window.count;
+      || !Number.isSafeInteger(window.response_bytes) || window.response_bytes > 32 * 1024 * 1024) fail("window_invalid");
+    const identities = []; const receipts = [];
+    for (let indexInWindow = 0; indexInWindow < window.count; indexInWindow += 1) {
+      const expected = comparisonIdentity(offset + indexInWindow);
+      const resultNext = results.next(); const captureNext = captures.next();
+      if (resultNext.done || captureNext.done) fail("index_invalid");
+      const result = resultNext.value.value; const captureRecord = captureNext.value.value;
+      if (result?.id !== expected.state_id || result?.configuration_id !== expected.configuration_id
+        || captureRecord?.state_id !== expected.state_id || captureRecord?.configuration_id !== expected.configuration_id) fail("input_order_invalid");
+      verifyV12ComparisonRecord({ runId, root, artifactRoot, result, captureRecord });
+      identities.push(expected); receipts.push(result.state_receipt);
+    }
+    if (window.first !== `${identities[0].state_id}/${identities[0].configuration_id}`
+      || window.last !== `${identities.at(-1).state_id}/${identities.at(-1).configuration_id}`
+      || window.request_sha256 !== sha256(JSON.stringify(identities))
+      || window.result_sha256 !== sha256(JSON.stringify(receipts))) fail("window_invalid");
+    offset += window.count; ordinal += 1;
   }
-  if (offset !== expected.length) fail("window_invalid");
-  return validateV12ComparisonShard(index, { runId, root });
+  if (offset !== comparisonCount || ordinal < 1 || !results.next().done || !captures.next().done) fail("window_invalid");
+  return true;
 }
 export function runV12VisualComparisonCli(args = process.argv.slice(2), io = process) {
   try {
@@ -306,21 +451,8 @@ export function runV12VisualComparisonCli(args = process.argv.slice(2), io = pro
     if (command === "--verify") verifyV12VisualComparison({ runId });
     else {
       const adapter = createV12NativeAdapter();
-      publishV12AtomicShard({ runId, shard: "comparison", executionOrigin: () => adapter.executionOrigin("visual-compare"), produce: ({ write }) => {
-      const captures = JSON.parse(readFileSync(`artifacts/native/v1.2/${runId}/screenshots/index.json`, "utf8")).records;
-      const windowSize = process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" ? 512 : V12_VISUAL_BATCH_WINDOW;
-      const comparisons = []; const windows = [];
-      for (let offset = 0; offset < captures.length; offset += windowSize) {
-        const requested = captures.slice(offset, offset + windowSize).map(({ state_id, configuration_id }) => ({ state_id, configuration_id }));
-        const result = adapter.compare({ run_id: runId, captures: requested });
-        if (!Array.isArray(result) || result.length !== requested.length) fail("window_invalid");
-        const requestBytes = Buffer.byteLength(JSON.stringify({ run_id: runId, captures: requested })); const responseBytes = Buffer.byteLength(JSON.stringify(result));
-        if (requestBytes > 1024 * 1024 || responseBytes > 32 * 1024 * 1024) fail("window_transport_limit_invalid");
-        comparisons.push(...result); windows.push({ ordinal: windows.length, offset, count: result.length, first: `${result[0].id}/${result[0].configuration_id}`, last: `${result.at(-1).id}/${result.at(-1).configuration_id}`, request_bytes: requestBytes, response_bytes: responseBytes,
-          request_sha256: sha256(JSON.stringify(requested)), result_sha256: sha256(JSON.stringify(result.map(({ state_receipt }) => state_receipt))) });
-      }
-      return executeV12VisualComparison({ runId, comparisons, windows, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
-      } });
+      const batchWindow = testBatchWindow() ? 512 : V12_VISUAL_BATCH_WINDOW;
+      executeV12VisualComparison({ runId, compare: adapter.compare, batchWindow, executionOrigin: () => adapter.executionOrigin("visual-compare") });
     }
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`); return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

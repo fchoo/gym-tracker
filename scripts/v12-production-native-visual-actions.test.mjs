@@ -11,6 +11,7 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { executeProductionVisualAction, resolveV12ProductionVisualConfiguration } from "./v12-production-native-visual-actions.mjs";
 import { createV12NativeExecutionOriginAttestation, resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
+import { iterateV12VisualJsonArray } from "./v12-visual-streaming.mjs";
 import { V12_VISUAL_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 
 const project = fileURLToPath(new URL("../", import.meta.url));
@@ -316,11 +317,14 @@ function retain(f, result) {
   const base = path.join(f.runDir, "screenshots/BW-054", config); mkdirSync(base, { recursive: true });
   const bytes = Buffer.from(result.png_base64, "base64"); writeFileSync(path.join(base, "native.png"), bytes);
   writeFileSync(path.join(base, "capture.json"), JSON.stringify({ schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: "BW-054", configuration_id: config, fixture_id: fixtureId, native_execution: "EXECUTED", settings: result.settings, native_png: { path: `artifacts/native/v1.2/${runId}/screenshots/BW-054/${config}/native.png`, sha256: hash(bytes), size_bytes: bytes.length, width: 390, height: 844 } }));
-  writeFileSync(path.join(f.runDir, "screenshots/index.json"), JSON.stringify({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, capture_count: 1, windows: [{ ordinal: 0, offset: 0, count: 1, first: `BW-054/${config}`, last: `BW-054/${config}` }], records: [JSON.parse(readFileSync(path.join(base, "capture.json")))] }));
+  const indexPath = path.join(f.runDir, "screenshots/index.json");
+  writeFileSync(indexPath, JSON.stringify({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, capture_count: 1, windows: [{ ordinal: 0, offset: 0, count: 1, first: `BW-054/${config}`, last: `BW-054/${config}` }], records: [JSON.parse(readFileSync(path.join(base, "capture.json")))] }));
+  const located = iterateV12VisualJsonArray({ file: indexPath, arrayKey: "records" }).next().value;
+  return { capture_index_offset: located.offset, capture_index_size: located.size };
 }
 test("comparison reads pinned approved PNG and recaptures instrumented state; never accepts caller metrics", async (t) => {
-  const f = fixture(t); retain(f, await f.call());
-  const comparePayload = { run_id: runId, captures: [{ state_id: "BW-054", configuration_id: config }] };
+  const f = fixture(t); const location = retain(f, await f.call());
+  const comparePayload = { run_id: runId, captures: [{ state_id: "BW-054", configuration_id: config, ...location }] };
   const [result] = await f.call("visual-compare", comparePayload);
   const approved = readFileSync(path.join(f.root, ".planning/design/v1.2-browser-evidence/light-plan-type-chooser.png"));
   assert.equal(result.reference_binding.path, ".planning/design/v1.2-browser-evidence/light-plan-type-chooser.png");

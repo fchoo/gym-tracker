@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { createV12NativeAdapter } from "./v12-native-adapter.mjs";
-import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
+import {
+  V12_VISUAL_BATCH_WINDOW,
+  executeV12VisualStreamingShard,
+  iterateV12VisualJsonArray,
+  readV12VisualJsonHeader,
+} from "./v12-visual-streaming.mjs";
 
 import {
   V12_BROWSER_WALK_STATE_IDS,
@@ -12,9 +17,8 @@ import {
 } from "./v12-evidence-contract.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
-const require = createRequire(import.meta.url);
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
-export const V12_VISUAL_BATCH_WINDOW = 4;
+export { V12_VISUAL_BATCH_WINDOW };
 const registryCache = new Map();
 const FLOW_SOURCES = Object.freeze([
   Object.freeze({ id: "multi-plan", sourcePath: "maestro/v1.2/multi-plan.yaml", contractPath: "src/testing/contracts/multiPlanRunning.contract.ts", prefix: "phase13-" }),
@@ -31,10 +35,30 @@ function hash(bytes) {
 }
 
 function decodeNativePng(bytes) {
-  let image;
-  try { image = require("pngjs").PNG.sync.read(bytes); } catch { fail("png_invalid"); }
-  if (!Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height) || image.width < 1 || image.height < 1) fail("png_invalid");
-  return Object.freeze({ width: image.width, height: image.height });
+  const signature = Buffer.from("89504e470d0a1a0a", "hex");
+  if (!Buffer.isBuffer(bytes) || bytes.length < 45 || !bytes.subarray(0, 8).equals(signature)) fail("png_invalid");
+  let cursor = 8;
+  let dimensions;
+  let sawImageData = false;
+  while (cursor + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(cursor);
+    const end = cursor + 12 + length;
+    if (!Number.isSafeInteger(end) || end > bytes.length) fail("png_invalid");
+    const type = bytes.toString("ascii", cursor + 4, cursor + 8);
+    if (cursor === 8) {
+      if (type !== "IHDR" || length !== 13) fail("png_invalid");
+      const width = bytes.readUInt32BE(cursor + 8); const height = bytes.readUInt32BE(cursor + 12);
+      if (width < 1 || height < 1 || width * height > 8_000_000) fail("png_invalid");
+      dimensions = Object.freeze({ width, height });
+    }
+    if (type === "IDAT") sawImageData = true;
+    if (type === "IEND") {
+      if (length !== 0 || end !== bytes.length || !dimensions || !sawImageData) fail("png_invalid");
+      return dimensions;
+    }
+    cursor = end;
+  }
+  fail("png_invalid");
 }
 
 function visualState(root, stateId) {
@@ -165,18 +189,35 @@ export function validateV12VisualCapture(plan) {
   return true;
 }
 
-function immutableJson(root, relativePath, value, write = undefined) {
-  if (typeof write === "function") return write(relativePath, value);
-  const absolute = path.resolve(root, relativePath);
-  if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) fail("immutable_output_invalid");
-  mkdirSync(path.dirname(absolute), { recursive: true });
-  writeFileSync(absolute, `${JSON.stringify(value)}\n`, { encoding: "utf8", flag: "wx" });
+export function parseV12VisualCaptureCli(args) {
+  const diagnosticSingle = args?.[3] === "--diagnostic-single";
+  if (!Array.isArray(args) || ![3, 4].includes(args.length) || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "")
+    || !["--all", "--verify"].includes(args[2]) || args.length === 4 && (!diagnosticSingle || args[2] !== "--all")) fail("arguments_invalid");
+  return Object.freeze({ runId: args[1], command: args[2], diagnosticSingle });
 }
 
-function parseVisualCli(args) {
-  if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "")
-    || !["--all", "--verify"].includes(args[2])) fail("arguments_invalid");
-  return Object.freeze({ runId: args[1], command: args[2] });
+const captureCount = V12_BROWSER_WALK_STATE_IDS.length * V12_CONFIG_IDS.length;
+function captureAt(index) {
+  const stateIndex = Math.floor(index / V12_CONFIG_IDS.length);
+  const stateId = V12_BROWSER_WALK_STATE_IDS[stateIndex];
+  const configurationId = V12_CONFIG_IDS[index % V12_CONFIG_IDS.length];
+  if (stateId === undefined || configurationId === undefined) fail("capture_mapping_invalid");
+  return Object.freeze({
+    state_id: stateId,
+    configuration_id: configurationId,
+    screenshot_id: `v12/${stateId}/${configurationId}.png`,
+    flow_id: FLOW_SOURCES[stateIndex % FLOW_SOURCES.length].id,
+    fixture_id: "v12-synthetic-fixtures-r18",
+  });
+}
+
+function captureWindow(offset, count) {
+  return Object.freeze(Array.from({ length: Math.min(count, captureCount - offset) }, (_, index) => captureAt(offset + index)));
+}
+
+function testBatchWindow() {
+  return process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_MODE === "phase20-native-adapter-subprocess"
+    && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" && typeof process.env.V12_NATIVE_ADAPTER_COMMAND === "string";
 }
 
 /**
@@ -184,13 +225,23 @@ function parseVisualCli(args) {
  * The adapter must return retained PNG bytes and measured settings; fixture-only
  * rows are refused so this path can never manufacture native evidence on host.
  */
-export function executeLiveV12VisualCapture({ runId, root = process.cwd(), capture, captureAll, batchWindow = V12_VISUAL_BATCH_WINDOW, write } = {}) {
-  if (!V12_RUN_ID.test(runId ?? "") || typeof capture !== "function") fail("adapter_invalid");
-  const plan = executeV12VisualCapture({ root, mode: "plan" });
-  if (!Number.isSafeInteger(batchWindow) || batchWindow < 1 || batchWindow > 512) fail("adapter_invalid");
-  const records = [];
-  const windows = [];
-  const reduceCapture = (item, rawMeasured) => {
+export function executeLiveV12VisualCapture({
+  runId,
+  root = process.cwd(),
+  artifactRoot = root,
+  capture,
+  captureAll,
+  diagnosticSingle = false,
+  batchWindow = V12_VISUAL_BATCH_WINDOW,
+  executionOrigin,
+  onWindowCommitted,
+} = {}) {
+  if (!V12_RUN_ID.test(runId ?? "") || typeof capture !== "function" || (!diagnosticSingle && typeof captureAll !== "function")
+    || typeof diagnosticSingle !== "boolean" || !Number.isSafeInteger(batchWindow) || batchWindow < 1 || batchWindow > 512
+    || (batchWindow !== V12_VISUAL_BATCH_WINDOW && !testBatchWindow())) fail("adapter_invalid");
+  const inputs = loadV12ContractInputs({ root });
+  const sourceHashes = Object.freeze({ browser_walk: inputs.source_hashes.browser_walk, source_manifest: inputs.source_hashes.source_manifest });
+  const reduceCapture = (item, rawMeasured, write) => {
     const measured = rawMeasured && typeof rawMeasured === "object" && Object.hasOwn(rawMeasured, "png_base64")
       ? (({ png_base64: _discarded, ...retained }) => retained)(rawMeasured)
       : rawMeasured;
@@ -200,99 +251,119 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
     const dimensions = decodeNativePng(measured.png);
     const pngSha256 = hash(measured.png);
     const pngPath = `artifacts/native/v1.2/${runId}/screenshots/${item.state_id}/${item.configuration_id}/native.png`;
-    if (typeof write === "function") write(pngPath, measured.png);
-    else {
-      const absolute = path.resolve(root, pngPath);
-      if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`) || existsSync(absolute)) fail("immutable_output_invalid");
-      mkdirSync(path.dirname(absolute), { recursive: true });
-      writeFileSync(absolute, measured.png, { flag: "wx" });
-    }
+    write(pngPath.replace(`artifacts/native/v1.2/${runId}/`, ""), measured.png);
     const receipt = validateStateReceipt(root, runId, item, measured, pngSha256);
-    records.push(Object.freeze({ schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) }));
-    return receipt;
+    return Object.freeze({
+      record: Object.freeze({ schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) }),
+      receipt,
+    });
   };
-  if (typeof captureAll === "function") {
-    for (let offset = 0; offset < plan.captures.length; offset += batchWindow) {
-      const requested = plan.captures.slice(offset, offset + batchWindow);
-      const batch = captureAll(Object.freeze({ run_id: runId, captures: requested }));
-      if (!Array.isArray(batch) || batch.length !== requested.length) fail("capture_invalid");
-      const requestBytes = Buffer.byteLength(JSON.stringify({ run_id: runId, captures: requested }));
-      const responseBytes = Buffer.byteLength(JSON.stringify(batch.map(({ png, ...entry }) => ({ ...entry, png_base64: entry.png_base64 ?? png?.toString("base64") }))));
+  // This writer preserves the v12-atomic-shard-publication/v1 artifact contract
+  // while retaining only one fixed four-observation window in process memory.
+  return executeV12VisualStreamingShard({
+    root: artifactRoot,
+    runId,
+    shard: "visual",
+    totalCount: captureCount,
+    batchWindow,
+    indexRelative: "screenshots/index.json",
+    indexHeader: Object.freeze({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, source_hashes: sourceHashes, capture_count: captureCount }),
+    resultKey: "records",
+    expectedWindow: captureWindow,
+    cleanupPending: ({ items, remove }) => {
+      for (const item of items) remove(`screenshots/${item.state_id}/${item.configuration_id}/native.png`);
+    },
+    processWindow: ({ items, offset, ordinal, write }) => {
+      const measured = diagnosticSingle
+        ? items.map((item) => capture(Object.freeze({ ...item, run_id: runId })))
+        : captureAll(Object.freeze({ run_id: runId, captures: items }));
+      if (!Array.isArray(measured) || measured.length !== items.length) fail("capture_invalid");
+      const requestBytes = Buffer.byteLength(JSON.stringify({ run_id: runId, captures: items }));
+      const responseBytes = Buffer.byteLength(JSON.stringify(measured.map(({ png, ...entry }) => ({ ...entry, png_base64: entry.png_base64 ?? png?.toString("base64") }))));
       if (requestBytes > 1024 * 1024 || responseBytes > 32 * 1024 * 1024) fail("batch_transport_limit_invalid");
-      const receipts = batch.map((measured, index) => reduceCapture(requested[index], measured));
-      windows.push(Object.freeze({ ordinal: windows.length, offset, count: requested.length,
-        first: `${requested[0].state_id}/${requested[0].configuration_id}`,
-        last: `${requested.at(-1).state_id}/${requested.at(-1).configuration_id}`,
-        request_bytes: requestBytes, response_bytes: responseBytes,
-        request_sha256: hash(JSON.stringify(requested)),
-        result_sha256: hash(JSON.stringify(receipts)) }));
-    }
-  } else {
-    for (const item of plan.captures) reduceCapture(item, capture(Object.freeze({ ...item, run_id: runId })));
-  }
-  if (new Set(records.map(({ settings }) => settings.state_receipt.nonce)).size !== records.length) fail("state_receipt_duplicate");
-  const effectiveWindows = windows.length > 0 ? windows : plan.captures.map((item, offset) => Object.freeze({ ordinal: offset, offset, count: 1, first: `${item.state_id}/${item.configuration_id}`, last: `${item.state_id}/${item.configuration_id}`,
-    request_bytes: Buffer.byteLength(JSON.stringify({ run_id: runId, captures: [item] })), response_bytes: 0,
-    request_sha256: hash(JSON.stringify([item])), result_sha256: hash(JSON.stringify([records[offset].settings.state_receipt])) }));
-  const index = Object.freeze({ schema_version: 2, producer: "v12-visual-capture-index/v2", run_id: runId, source_hashes: plan.source_hashes, capture_count: records.length, windows: Object.freeze(effectiveWindows), records: Object.freeze(records) });
-  immutableJson(root, `artifacts/native/v1.2/${runId}/screenshots/index.json`, index, write);
-  return index;
+      const reduced = measured.map((entry, index) => reduceCapture(items[index], entry, write));
+      return Object.freeze({
+        records: reduced.map(({ record }) => record),
+        window: Object.freeze({ ordinal, offset, count: items.length,
+          first: `${items[0].state_id}/${items[0].configuration_id}`,
+          last: `${items.at(-1).state_id}/${items.at(-1).configuration_id}`,
+          request_bytes: requestBytes,
+          response_bytes: responseBytes,
+          request_sha256: hash(JSON.stringify(items)),
+          result_sha256: hash(JSON.stringify(reduced.map(({ receipt }) => receipt))) }),
+        execution_origin: typeof executionOrigin === "function" ? executionOrigin() : executionOrigin,
+      });
+    },
+    validateBatch: (entry, offset) => {
+      const expected = captureWindow(offset, entry.count);
+      return JSON.stringify(entry.records.map((record) => `${record?.state_id}/${record?.configuration_id}`))
+          === JSON.stringify(expected.map((item) => `${item.state_id}/${item.configuration_id}`))
+        && entry.window.request_sha256 === hash(JSON.stringify(expected))
+        && entry.window.result_sha256 === hash(JSON.stringify(entry.records.map(({ settings }) => settings.state_receipt)));
+    },
+    uniqueKey: (record) => record?.settings?.state_receipt?.nonce,
+    onWindowCommitted,
+  });
 }
 
-export function verifyV12VisualCapture({ runId, root = process.cwd(), readJson, readBytes } = {}) {
+export function verifyV12VisualCapture({ runId, root = process.cwd(), artifactRoot = root, readBytes } = {}) {
   if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
-  const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
-  const index = read(`artifacts/native/v1.2/${runId}/screenshots/index.json`);
-  if (!index || index.schema_version !== 2 || index.producer !== "v12-visual-capture-index/v2" || index.run_id !== runId || index.capture_count !== 107 * 64 || !Array.isArray(index.records) || index.records.length !== 107 * 64 || !Array.isArray(index.windows) || index.windows.length < 1) fail("index_invalid");
-  const seen = new Set();
-  const receiptNonces = new Set();
-  const readPng = readBytes ?? ((file) => readFileSync(path.join(root, file)));
-  for (const record of index.records) {
-    const key = `${record?.state_id}\u0000${record?.configuration_id}`;
-    const receipt = record?.settings?.state_receipt;
-    if (!V12_BROWSER_WALK_STATE_IDS.includes(record?.state_id) || !V12_CONFIG_IDS.includes(record?.configuration_id)
-      || seen.has(key) || record.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || record.native_execution !== "EXECUTED" || record.fixture_id !== "v12-synthetic-fixtures-r18"
-      || !SHA256.test(record.native_png?.sha256 ?? "") || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only"
-      || record.native_png.path !== `artifacts/native/v1.2/${runId}/screenshots/${record.state_id}/${record.configuration_id}/native.png`) fail("record_invalid");
-    let png; try { png = readPng(record.native_png.path); } catch { fail("png_missing"); }
-    const dimensions = decodeNativePng(png);
-    validateStateReceipt(root, runId, record, { settings: record.settings }, record.native_png.sha256);
-    if (receiptNonces.has(receipt.nonce)) fail("state_receipt_duplicate");
-    receiptNonces.add(receipt.nonce);
-    if (hash(png) !== record.native_png.sha256 || png.length !== record.native_png.size_bytes
-      || receipt.png_sha256 !== record.native_png.sha256 || dimensions.width !== record.native_png.width || dimensions.height !== record.native_png.height) fail("png_lineage_invalid");
-    seen.add(key);
-  }
-  const ordered = index.records.map((record) => `${record.state_id}/${record.configuration_id}`);
-  const expected = V12_BROWSER_WALK_STATE_IDS.flatMap((state) => V12_CONFIG_IDS.map((configuration) => `${state}/${configuration}`));
-  if (JSON.stringify(ordered) !== JSON.stringify(expected)) fail("capture_order_invalid");
-  const plan = executeV12VisualCapture({ root, mode: "plan" });
+  const indexFile = path.join(artifactRoot, `artifacts/native/v1.2/${runId}/screenshots/index.json`);
+  const index = readV12VisualJsonHeader({ file: indexFile, firstArrayKey: "windows" });
+  const inputs = loadV12ContractInputs({ root });
+  if (index.schema_version !== 2 || index.producer !== "v12-visual-capture-index/v2" || index.run_id !== runId
+    || index.capture_count !== captureCount || JSON.stringify(index.source_hashes) !== JSON.stringify({ browser_walk: inputs.source_hashes.browser_walk, source_manifest: inputs.source_hashes.source_manifest })) fail("index_invalid");
+  const windows = iterateV12VisualJsonArray({ file: indexFile, arrayKey: "windows" });
+  const records = iterateV12VisualJsonArray({ file: indexFile, arrayKey: "records" });
+  const nonceRoot = mkdtempSync(path.join(tmpdir(), "v12-visual-nonces-"));
+  const readPng = readBytes ?? ((file) => readFileSync(path.join(artifactRoot, file)));
   let offset = 0;
-  for (const [ordinal, window] of index.windows.entries()) {
-    if (window.ordinal !== ordinal || window.offset !== offset || !Number.isSafeInteger(window.count) || window.count < 1 || window.count > 512
-      || window.first !== ordered[offset] || window.last !== ordered[offset + window.count - 1]) fail("window_manifest_invalid");
-    if (window.request_bytes !== undefined && (!Number.isSafeInteger(window.request_bytes) || window.request_bytes > 1024 * 1024
-      || !Number.isSafeInteger(window.response_bytes) || window.response_bytes > 32 * 1024 * 1024)) fail("window_manifest_invalid");
-    const planSlice = plan.captures.slice(window.offset, window.offset + window.count);
-    const recordSlice = index.records.slice(window.offset, window.offset + window.count);
-    if (window.request_sha256 !== hash(JSON.stringify(planSlice)) || window.result_sha256 !== hash(JSON.stringify(recordSlice.map(({ settings }) => settings.state_receipt)))) fail("window_manifest_invalid");
-    offset += window.count;
-  }
-  if (offset !== expected.length) fail("window_manifest_invalid");
+  let ordinal = 0;
+  try {
+    for (const { value: window } of windows) {
+      if (window.ordinal !== ordinal || window.offset !== offset || !Number.isSafeInteger(window.count)
+        || window.count < 1 || window.count > 512) fail("window_manifest_invalid");
+      const expected = captureWindow(offset, window.count);
+      const receipts = [];
+      for (const item of expected) {
+        const next = records.next(); if (next.done) fail("index_invalid");
+        const record = next.value.value; const receipt = record?.settings?.state_receipt;
+        if (record?.state_id !== item.state_id || record?.configuration_id !== item.configuration_id
+          || record.schema_version !== 3 || record.producer !== "v12-visual-capture/v3" || record.native_execution !== "EXECUTED" || record.fixture_id !== "v12-synthetic-fixtures-r18"
+          || !SHA256.test(record.native_png?.sha256 ?? "") || record.settings?.restored !== true || record.settings?.privacy !== "synthetic-only"
+          || record.native_png.path !== `artifacts/native/v1.2/${runId}/screenshots/${record.state_id}/${record.configuration_id}/native.png`) fail("record_invalid");
+        let png; try { png = readPng(record.native_png.path); } catch { fail("png_missing"); }
+        const dimensions = decodeNativePng(png);
+        validateStateReceipt(root, runId, record, { settings: record.settings }, record.native_png.sha256);
+        const bucket = path.join(nonceRoot, receipt.nonce.slice(0, 2)); mkdirSync(bucket, { recursive: true });
+        try { writeFileSync(path.join(bucket, receipt.nonce), "", { flag: "wx" }); }
+        catch (error) { if (error?.code === "EEXIST") fail("state_receipt_duplicate"); throw error; }
+        if (hash(png) !== record.native_png.sha256 || png.length !== record.native_png.size_bytes
+          || receipt.png_sha256 !== record.native_png.sha256 || dimensions.width !== record.native_png.width || dimensions.height !== record.native_png.height) fail("png_lineage_invalid");
+        receipts.push(receipt);
+      }
+      if (window.first !== `${expected[0].state_id}/${expected[0].configuration_id}`
+        || window.last !== `${expected.at(-1).state_id}/${expected.at(-1).configuration_id}`
+        || !Number.isSafeInteger(window.request_bytes) || window.request_bytes > 1024 * 1024
+        || !Number.isSafeInteger(window.response_bytes) || window.response_bytes > 32 * 1024 * 1024
+        || window.request_sha256 !== hash(JSON.stringify(expected)) || window.result_sha256 !== hash(JSON.stringify(receipts))) fail("window_manifest_invalid");
+      offset += window.count; ordinal += 1;
+    }
+    if (offset !== captureCount || ordinal < 1 || !records.next().done) fail("window_manifest_invalid");
+  } finally { rmSync(nonceRoot, { recursive: true, force: true }); }
   return true;
 }
 
 export function runV12VisualCaptureCli(args = process.argv.slice(2), io = process) {
   try {
-    const { runId, command } = parseVisualCli(args);
+    const { runId, command, diagnosticSingle } = parseV12VisualCaptureCli(args);
     if (command === "--verify") verifyV12VisualCapture({ runId });
     else {
       const adapter = createV12NativeAdapter();
-      const visualAction = process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? "visual-capture-batch" : "visual-capture";
-      publishV12AtomicShard({ runId, shard: "visual", executionOrigin: () => adapter.executionOrigin(visualAction), produce: ({ write }) => {
-      const testWindow = process.env.NODE_ENV === "test" && process.env.V12_NATIVE_ADAPTER_TEST_PROCESS === "1" ? 512 : V12_VISUAL_BATCH_WINDOW;
-      return executeLiveV12VisualCapture({ runId, capture: adapter.capture, ...(process.env.V12_NATIVE_ADAPTER_BATCH === "1" ? { captureAll: adapter.captureBatch, batchWindow: testWindow } : {}), write: (file, value) => write(file.replace(`artifacts/native/v1.2/${runId}/`, ""), value) });
-      } });
+      const visualAction = diagnosticSingle ? "visual-capture" : "visual-capture-batch";
+      const batchWindow = testBatchWindow() ? 512 : V12_VISUAL_BATCH_WINDOW;
+      executeLiveV12VisualCapture({ runId, capture: adapter.capture, captureAll: adapter.captureBatch, diagnosticSingle,
+        batchWindow, executionOrigin: () => adapter.executionOrigin(visualAction) });
     }
     io.stdout.write(`${JSON.stringify({ run_id: runId, command, ok: true })}\n`);
     return 0;
