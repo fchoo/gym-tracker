@@ -49,6 +49,7 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminTokenStore.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminEvidenceArmStore.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminStoredSessionEvidenceRunner.kt",
+    "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectPlatformBindings.kt",
     "modules/garmin-connect/android/src/main/java/expo/modules/garminconnect/GarminConnectModule.kt",
   ]);
   assert.deepEqual(spec.testPaths, [
@@ -57,27 +58,46 @@ test("Kotlin coverage explicitly enumerates every security-critical Garmin sourc
     "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminConnectModuleTest.kt",
   ]);
   assert.deepEqual(spec.requiredClasses, [
+    "expo/modules/garminconnect/GarminConnectModule",
+    "expo/modules/garminconnect/GarminConnectModuleKt",
+    "expo/modules/garminconnect/GarminConnectPlatformBindings",
+    "expo/modules/garminconnect/GarminEvidenceAuthorizationController",
+    "expo/modules/garminconnect/GarminEvidenceExecutionIdentity",
     "expo/modules/garminconnect/GarminClientWorker",
+    "expo/modules/garminconnect/ChaquopyGarminPythonDispatcher",
     "expo/modules/garminconnect/GarminAdversarialSuiteRunner",
     "expo/modules/garminconnect/GarminTokenStore",
+    "expo/modules/garminconnect/AndroidGarminAtomicWriter",
+    "expo/modules/garminconnect/AndroidKeystoreGarminTokenCipher",
     "expo/modules/garminconnect/GarminEvidenceArmStore",
     "expo/modules/garminconnect/GarminStoredSessionEvidenceRunner",
-    "expo/modules/garminconnect/GarminEvidenceAuthorizationController",
-    "expo/modules/garminconnect/GarminConnectModuleKt",
+    "expo/modules/garminconnect/GarminAdversarialRotationGate",
+    "expo/modules/garminconnect/GarminRuntimeInfo",
+    "expo/modules/garminconnect/GarminBenchmarkRuntimeInfo",
+  ]);
+  assert.deepEqual(spec.branchlessClasses, [
+    "expo/modules/garminconnect/GarminConnectModule",
+    "expo/modules/garminconnect/GarminConnectPlatformBindings",
+    "expo/modules/garminconnect/GarminEvidenceExecutionIdentity",
+    "expo/modules/garminconnect/ChaquopyGarminPythonDispatcher",
+    "expo/modules/garminconnect/AndroidKeystoreGarminTokenCipher",
+    "expo/modules/garminconnect/GarminRuntimeInfo",
   ]);
   const gradle = readFileSync("modules/garmin-connect/android/build.gradle", "utf8");
   for (const className of spec.requiredClasses) {
-    assert.match(gradle, new RegExp(`include '${className.replaceAll("/", "\\/")}\\*?\\.class'`, "u"));
+    const escaped = className.replaceAll("/", "\\/").replaceAll("$", "\\$");
+    assert.match(gradle, new RegExp(`include '${escaped}\\*?\\.class'`, "u"));
   }
+  assert.doesNotMatch(gradle, /exclude\s/u);
 });
 
-test("Kotlin coverage rejects a 100 percent aggregate XML that omits the authorization controller", () => {
+test("Kotlin coverage rejects a 100 percent aggregate XML that omits the actual Garmin module", () => {
   const spec = PHASE18_LANGUAGE_COVERAGE_SPECS.kotlin;
-  const controller = "expo/modules/garminconnect/GarminEvidenceAuthorizationController";
+  const actualModule = "expo/modules/garminconnect/GarminConnectModule";
   const counters = '<counter type="INSTRUCTION" missed="0" covered="10"/><counter type="BRANCH" missed="0" covered="10"/><counter type="METHOD" missed="0" covered="10"/><counter type="LINE" missed="0" covered="10"/>';
-  const classes = [...new Set([...spec.requiredClasses, controller])];
+  const classes = [...new Set([...spec.requiredClasses, actualModule])];
   const completeXml = `<report>${classes.map((name) => `<class name="${name}">${counters}</class>`).join("")}${counters}</report>`;
-  const omittedXml = completeXml.replace(`<class name="${controller}">${counters}</class>`, "");
+  const omittedXml = completeXml.replace(`<class name="${actualModule}">${counters}</class>`, "");
   const suite = `<testsuite tests="${spec.requiredCases.length}" skipped="0" failures="0" errors="0">${spec.requiredCases.map((name) => `<testcase name="${name}"/>`).join("")}</testsuite>`;
 
   assert.match(omittedXml, /<counter type="BRANCH" missed="0" covered="10"\/>/u);

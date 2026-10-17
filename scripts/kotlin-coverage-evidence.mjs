@@ -44,15 +44,23 @@ function integerAttribute(source, name) {
   return value;
 }
 
-function counter(jacocoXml, type) {
+function counter(jacocoXml, type, { allowEmpty = false } = {}) {
   const matches = [...jacocoXml.matchAll(/<counter type="([A-Z]+)" missed="([0-9]+)" covered="([0-9]+)"\/>/gu)]
     .filter((match) => match[1] === type);
   const match = matches.at(-1);
-  if (match === undefined) throw new Error("phase18_kotlin_coverage_xml_invalid");
+  if (match === undefined) {
+    if (allowEmpty) return Object.freeze({ covered: 0, missed: 0, total: 0, percent: 100 });
+    throw new Error("phase18_kotlin_coverage_xml_invalid");
+  }
   const missed = Number(match[2]);
   const covered = Number(match[3]);
   const total = covered + missed;
-  if (covered < 1 || total < 1) throw new Error("phase18_kotlin_coverage_empty");
+  if (covered < 1 || total < 1) {
+    if (allowEmpty && missed === 0 && total === 0) {
+      return Object.freeze({ covered: 0, missed: 0, total: 0, percent: 100 });
+    }
+    throw new Error("phase18_kotlin_coverage_empty");
+  }
   return Object.freeze({
     covered,
     missed,
@@ -92,13 +100,16 @@ export function createPhase18KotlinCoverageReport(input) {
     functions: counter(input.jacocoXml, "METHOD"),
     lines: counter(input.jacocoXml, "LINE"),
   });
-  const classes = new Map([...input.jacocoXml.matchAll(/<class name="([^"]+)"[^>]*>([\s\S]*?)<\/class>/gu)]
-    .map((match) => [match[1], match[2]]));
+  const classes = new Map([
+    ...input.jacocoXml.matchAll(/<class name="([^"]+)"[^>]*?(?:\/>|>([\s\S]*?)<\/class>)/gu),
+  ].map((match) => [match[1], match[2] ?? ""]));
   for (const className of spec.requiredClasses) {
     const classXml = classes.get(className);
     if (classXml === undefined) throw new Error("phase18_kotlin_coverage_class_missing");
     for (const type of ["INSTRUCTION", "BRANCH", "METHOD", "LINE"]) {
-      const classCounter = counter(classXml, type);
+      const classCounter = counter(classXml, type, {
+        allowEmpty: type === "BRANCH" && spec.branchlessClasses.includes(className),
+      });
       if (classCounter.missed !== 0 || classCounter.percent !== 100) {
         throw new Error("phase18_kotlin_coverage_class_incomplete");
       }

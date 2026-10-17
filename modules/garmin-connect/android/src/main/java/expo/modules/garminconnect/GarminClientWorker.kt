@@ -47,54 +47,77 @@ internal interface GarminPythonDispatcher {
   )
 }
 
+internal fun productionGarminPythonDispatcher(context: Context): ChaquopyGarminPythonDispatcher =
+  ChaquopyGarminPythonDispatcher(
+    ensurePythonStarted = {
+      synchronized(Python::class.java) {
+        if (!Python.isStarted()) {
+          Python.start(AndroidPlatform(context.applicationContext))
+        }
+      }
+    },
+    dispatchBridge = { operation, arguments ->
+      @Suppress("UNCHECKED_CAST")
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("dispatch", operation, arguments)
+        .toJava(Map::class.java) as Map<String, Any?>
+    },
+    takeTokens = {
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("take_persistable_tokens").toJava(ByteArray::class.java)
+    },
+    rejectionEvidence = {
+      @Suppress("UNCHECKED_CAST")
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("evidence_rejections")
+        .toJava(Map::class.java) as Map<String, String>
+    },
+    recoveryEvidence = {
+      @Suppress("UNCHECKED_CAST")
+      Python.getInstance().getModule("garmin_bridge")
+        .callAttr("evidence_recovery_extensions")
+        .toJava(List::class.java) as List<Map<String, Any?>>
+    },
+  )
+
 internal class ChaquopyGarminPythonDispatcher(
-  private val context: Context
+  private val ensurePythonStarted: () -> Unit,
+  private val dispatchBridge: (String, MutableMap<String, Any>) -> Map<String, Any?>,
+  private val takeTokens: () -> ByteArray?,
+  private val rejectionEvidence: () -> Map<String, String>,
+  private val recoveryEvidence: () -> List<Map<String, Any?>>,
 ) : GarminPythonDispatcher {
   override fun evidenceSource(): String = "installed-chaquopy"
   override fun dispatch(
     operation: String,
     arguments: MutableMap<String, Any>
   ): Map<String, Any?> {
-    synchronized(Python::class.java) {
-      if (!Python.isStarted()) {
-        Python.start(AndroidPlatform(context.applicationContext))
-      }
-    }
     return try {
-      @Suppress("UNCHECKED_CAST")
-      module()
-        .callAttr("dispatch", operation, arguments)
-        .toJava(Map::class.java) as Map<String, Any?>
+      ensurePythonStarted()
+      dispatchBridge(operation, arguments)
     } catch (_: Throwable) {
       throw GarminWorkerException("temporary_failure")
     }
   }
 
   override fun takePersistableTokens(): ByteArray? = try {
-    module().callAttr("take_persistable_tokens").toJava(ByteArray::class.java)
+    takeTokens()
   } catch (_: Throwable) {
     throw GarminWorkerException("temporary_failure")
   }
 
   override fun evidenceRejections(): Map<String, String> = try {
-    @Suppress("UNCHECKED_CAST")
-    Python.getInstance().getModule("garmin_bridge")
-      .callAttr("evidence_rejections")
-      .toJava(Map::class.java) as Map<String, String>
+    rejectionEvidence()
   } catch (_: Throwable) {
     throw GarminWorkerException("temporary_failure")
   }
 
   override fun evidenceRecoveryExtensions(): List<Map<String, Any?>> = try {
-    @Suppress("UNCHECKED_CAST")
-    Python.getInstance().getModule("garmin_bridge")
-      .callAttr("evidence_recovery_extensions")
-      .toJava(List::class.java) as List<Map<String, Any?>>
+    recoveryEvidence()
   } catch (_: Throwable) {
     throw GarminWorkerException("temporary_failure")
   }
 
-  private fun module() = Python.getInstance().getModule("garmin_bridge")
 }
 
 internal class GarminClientWorker(

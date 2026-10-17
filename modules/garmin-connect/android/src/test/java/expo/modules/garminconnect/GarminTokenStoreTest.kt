@@ -44,6 +44,191 @@ class GarminTokenStoreTest {
   }
 
   @Test
+  fun `Chaquopy dispatcher exposes injected installed bridge results and sanitizes every failure`() {
+    var failure: String? = null
+    val dispatcher = ChaquopyGarminPythonDispatcher(
+      ensurePythonStarted = { if (failure == "start") throw IllegalStateException("unsafe") },
+      dispatchBridge = { operation, arguments ->
+        if (failure == "dispatch") throw IllegalStateException("unsafe")
+        mapOf("operation" to operation, "arguments" to arguments.toMap())
+      },
+      takeTokens = {
+        if (failure == "tokens") throw IllegalStateException("unsafe")
+        "opaque".toByteArray()
+      },
+      rejectionEvidence = {
+        if (failure == "rejections") throw IllegalStateException("unsafe")
+        mapOf("operation_rejection" to "operation_rejected")
+      },
+      recoveryEvidence = {
+        if (failure == "recovery") throw IllegalStateException("unsafe")
+        listOf(mapOf("id" to "fixture"))
+      },
+    )
+
+    assertEquals("installed-chaquopy", dispatcher.evidenceSource())
+    assertEquals(
+      mapOf("operation" to "fixture", "arguments" to mapOf("value" to 1)),
+      dispatcher.dispatch("fixture", mutableMapOf("value" to 1)),
+    )
+    assertArrayEquals("opaque".toByteArray(), dispatcher.takePersistableTokens())
+    assertEquals(mapOf("operation_rejection" to "operation_rejected"), dispatcher.evidenceRejections())
+    assertEquals(listOf(mapOf("id" to "fixture")), dispatcher.evidenceRecoveryExtensions())
+
+    for (edge in listOf("start", "dispatch", "tokens", "rejections", "recovery")) {
+      failure = edge
+      val error = assertThrows(GarminWorkerException::class.java) {
+        when (edge) {
+          "start", "dispatch" -> dispatcher.dispatch("fixture", mutableMapOf())
+          "tokens" -> dispatcher.takePersistableTokens()
+          "rejections" -> dispatcher.evidenceRejections()
+          else -> dispatcher.evidenceRecoveryExtensions()
+        }
+      }
+      assertEquals("temporary_failure", error.code)
+      assertEquals("temporary_failure", error.message)
+    }
+
+  }
+
+  @Test
+  fun `Android keystore cipher binding is injectable and maps encryption failures safely`() {
+    val key = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+    val cipher = AndroidKeystoreGarminTokenCipher(
+      cipherFactory = { Cipher.getInstance(GARMIN_TOKEN_TRANSFORMATION) },
+      keyProvider = { key },
+    )
+    val plaintext = "opaque-session".toByteArray()
+    val associatedData = "bound-aad".toByteArray()
+    val encrypted = cipher.encrypt(plaintext, associatedData)
+
+    assertArrayEquals(plaintext, cipher.decrypt(encrypted.nonce, encrypted.ciphertext, associatedData))
+    assertEquals("garmin_token_encrypt_failed", assertThrows(GarminTokenStoreException::class.java) {
+      AndroidKeystoreGarminTokenCipher(
+        cipherFactory = { throw IllegalStateException("unsafe") },
+        keyProvider = { key },
+      ).encrypt(plaintext, associatedData)
+    }.code)
+    assertEquals("sign_in_required", assertThrows(GarminTokenStoreException::class.java) {
+      cipher.decrypt(encrypted.nonce, encrypted.ciphertext, "wrong-aad".toByteArray())
+    }.code)
+  }
+
+  @Test
+  fun `Android atomic writer covers durable replace remove and bounded failure paths`() {
+    val root = temporaryFolder.newFolder("android-atomic-writer")
+    val target = File(root, "record.bin")
+    val synced = mutableListOf<File>()
+    val writer = AndroidGarminAtomicWriter(
+      renameFile = { source, destination ->
+        Files.move(
+          source.toPath(),
+          destination.toPath(),
+          StandardCopyOption.ATOMIC_MOVE,
+          StandardCopyOption.REPLACE_EXISTING,
+        )
+      },
+      deleteFile = { Files.deleteIfExists(it.toPath()) },
+      syncDirectory = { synced += it },
+    )
+    val bytes = "durable-record".toByteArray()
+
+    writer.replace(target, bytes) { candidate -> assertArrayEquals(bytes, candidate.readBytes()) }
+    assertArrayEquals(bytes, target.readBytes())
+    assertEquals(listOf(root), synced)
+    writer.remove(target)
+    assertFalse(target.exists())
+    assertEquals(listOf(root, root, root), synced)
+    writer.remove(target)
+
+    val noParent = File("record-without-parent")
+    assertEquals("garmin_token_write_failed", assertThrows(GarminTokenStoreException::class.java) {
+      writer.replace(noParent, bytes) {}
+    }.code)
+    assertEquals("garmin_token_clear_failed", assertThrows(GarminTokenStoreException::class.java) {
+      writer.remove(noParent)
+    }.code)
+
+    val parentIsFile = File(root, "not-a-directory").apply { writeText("x") }
+    assertEquals("garmin_token_write_failed", assertThrows(GarminTokenStoreException::class.java) {
+      writer.replace(File(parentIsFile, "record"), bytes) {}
+    }.code)
+    assertEquals("garmin_token_write_failed", assertThrows(GarminTokenStoreException::class.java) {
+      writer.replace(File(File(parentIsFile, "missing-parent"), "record"), bytes) {}
+    }.code)
+    val createdParentTarget = File(File(root, "created-parent"), "record")
+    writer.replace(createdParentTarget, bytes) {}
+    assertArrayEquals(bytes, createdParentTarget.readBytes())
+
+    val verificationFailure = File(root, "verification.bin")
+    assertEquals("garmin_token_write_failed", assertThrows(GarminTokenStoreException::class.java) {
+      writer.replace(verificationFailure, bytes) {
+        throw GarminTokenStoreException("garmin_token_write_failed")
+      }
+    }.code)
+    assertFalse(verificationFailure.exists())
+
+    val renameFailure = AndroidGarminAtomicWriter(
+      renameFile = { _, _ -> throw IOException("synthetic") },
+      deleteFile = { true },
+      syncDirectory = {},
+    )
+    assertEquals("garmin_token_write_failed", assertThrows(GarminTokenStoreException::class.java) {
+      renameFailure.replace(File(root, "rename.bin"), bytes) {}
+    }.code)
+    File(root, "remove-rename.bin").writeBytes(bytes)
+    assertEquals("garmin_token_clear_failed", assertThrows(GarminTokenStoreException::class.java) {
+      renameFailure.remove(File(root, "remove-rename.bin"))
+    }.code)
+
+    val retainedTombstone = File(root, ".retained.bin.deleted").apply { writeBytes(bytes) }
+    val retainedWriter = AndroidGarminAtomicWriter(
+      renameFile = { _, _ -> throw AssertionError("not reached") },
+      deleteFile = { true },
+      syncDirectory = {},
+    )
+    assertEquals("garmin_token_clear_failed", assertThrows(GarminTokenStoreException::class.java) {
+      retainedWriter.remove(File(root, "retained.bin"))
+    }.code)
+    assertTrue(retainedTombstone.exists())
+
+    val recreated = File(root, "recreated.bin").apply { writeBytes(bytes) }
+    var syncCount = 0
+    val recreatingWriter = AndroidGarminAtomicWriter(
+      renameFile = { source, destination ->
+        Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+      },
+      deleteFile = { Files.deleteIfExists(it.toPath()) },
+      syncDirectory = {
+        syncCount += 1
+        if (syncCount == 2) recreated.writeBytes(bytes)
+      },
+    )
+    assertEquals("garmin_token_clear_failed", assertThrows(GarminTokenStoreException::class.java) {
+      recreatingWriter.remove(recreated)
+    }.code)
+    assertTrue(recreated.exists())
+
+    val tombstoneRaceTarget = File(root, "tombstone-race.bin").apply { writeBytes(bytes) }
+    val tombstoneRace = File(root, ".tombstone-race.bin.deleted")
+    syncCount = 0
+    val tombstoneRecreatingWriter = AndroidGarminAtomicWriter(
+      renameFile = { source, destination ->
+        Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+      },
+      deleteFile = { Files.deleteIfExists(it.toPath()) },
+      syncDirectory = {
+        syncCount += 1
+        if (syncCount == 2) tombstoneRace.writeBytes(bytes)
+      },
+    )
+    assertEquals("garmin_token_clear_failed", assertThrows(GarminTokenStoreException::class.java) {
+      tombstoneRecreatingWriter.remove(tombstoneRaceTarget)
+    }.code)
+    assertTrue(tombstoneRace.exists())
+  }
+
+  @Test
   fun `corrupt and unsupported records fail closed without exposing record bytes`() {
     val root = temporaryFolder.newFolder("corrupt")
     val store = GarminTokenStore(root, JvmAesGcmCipher(), JvmAtomicWriter())

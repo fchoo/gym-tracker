@@ -28,6 +28,25 @@ test("Kotlin coverage collector binds JaCoCo counters, executed cases, and sourc
   });
   assert.deepEqual(report.executed_cases, [...spec.requiredCases].sort());
   assert.deepEqual(report.covered_classes, [...spec.requiredClasses]);
+
+  const withEmptyCompilerClass = createPhase18KotlinCoverageReport({
+    jacocoXml: jacoco.replace("<report>", '<report><class name="compiler/generated/Empty"/>'),
+    junitXmls: junitXmls(),
+    readBytes: (path) => Buffer.from(path),
+  });
+  assert.equal(withEmptyCompilerClass.status, "passed");
+
+  const branchlessClass = spec.branchlessClasses[0];
+  const branchlessBlock = `<class name="${branchlessClass}">${counters}</class>`;
+  const withoutVacuousBranchCounter = jacoco.replace(
+    branchlessBlock,
+    branchlessBlock.replace('<counter type="BRANCH" missed="0" covered="10"/>', ""),
+  );
+  assert.equal(createPhase18KotlinCoverageReport({
+    jacocoXml: withoutVacuousBranchCounter,
+    junitXmls: junitXmls(),
+    readBytes: (path) => Buffer.from(path),
+  }).status, "passed");
 });
 
 test("Kotlin coverage collector fails closed for missing counters or test failures", () => {
@@ -63,6 +82,16 @@ test("Kotlin coverage collector fails closed for missing counters or test failur
     junitXmls: junitXmls(),
     readBytes: () => Buffer.from("x"),
   }), /phase18_kotlin_coverage_class_missing/u);
+  const branchingClass = spec.requiredClasses.find((name) => !spec.branchlessClasses.includes(name));
+  const branchingBlock = `<class name="${branchingClass}">${counters}</class>`;
+  assert.throws(() => createPhase18KotlinCoverageReport({
+    jacocoXml: jacoco.replace(
+      branchingBlock,
+      branchingBlock.replace('<counter type="BRANCH" missed="0" covered="10"/>', ""),
+    ),
+    junitXmls: junitXmls(),
+    readBytes: () => Buffer.from("x"),
+  }), /phase18_kotlin_coverage_xml_invalid/u);
 });
 
 test("Kotlin coverage execution writes only after the focused Gradle task succeeds", () => {

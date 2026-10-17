@@ -22,6 +22,7 @@ internal data class GarminEvidenceAuthorization(
   val runIdSha256: String,
   val deviceIdentitySha256: String,
   val leaseIdSha256: String,
+  val expiresAtMs: Long,
   val receiptSha256: String,
 )
 
@@ -53,6 +54,7 @@ internal class GarminEvidenceArmStore(
       val text = bytes.toString(Charsets.UTF_8)
       val values = parse(text)
       val expiresAtMs = values["expires_at_ms"]?.toLongOrNull() ?: throw rejection()
+      val observedNowMs = nowMs()
       if (values.keys != setOf(
           "schema_version", "route_id", "phase", "nonce", "run_id_sha256",
           "device_identity_sha256", "lease_id_sha256", "expires_at_ms",
@@ -67,8 +69,8 @@ internal class GarminEvidenceArmStore(
         || expected.phase !in setOf("preflight", "execute")
         || !ARM_NONCE.matches(expected.nonce)
         || !listOf(expected.runIdSha256, expected.deviceIdentitySha256, expected.leaseIdSha256).all(ARM_HASH::matches)
-        || expiresAtMs < nowMs()
-        || expiresAtMs > nowMs() + 10 * 60_000L
+        || expiresAtMs < observedNowMs
+        || expiresAtMs > observedNowMs + 10 * 60_000L
       ) throw rejection()
       return GarminEvidenceAuthorization(
         phase = expected.phase,
@@ -76,6 +78,7 @@ internal class GarminEvidenceArmStore(
         runIdSha256 = expected.runIdSha256,
         deviceIdentitySha256 = expected.deviceIdentitySha256,
         leaseIdSha256 = expected.leaseIdSha256,
+        expiresAtMs = expiresAtMs,
         receiptSha256 = sha256(text),
       )
     } catch (error: GarminWorkerException) {
