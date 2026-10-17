@@ -53,6 +53,10 @@ import {
   phase20CalendarEvidencePathRequested,
   resolvePhase20CalendarIsolatedRuntime,
 } from "../src/testing/phase20CalendarRuntime";
+import {
+  createStrictIsolatedWorkoutRuntimeDependencies,
+  resolveV12RecoveryIsolatedRuntime,
+} from "../src/testing/isolatedWorkoutRuntime";
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
@@ -297,6 +301,17 @@ function Phase20QualityNavigator() {
   );
 }
 
+function V12ProductionRecoveryNavigator() {
+  return (
+    <Stack
+      initialRouteName="__v12-production-recovery"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__v12-production-recovery" />
+    </Stack>
+  );
+}
+
 function PreRuntimeFailure({
   category,
   onRetry,
@@ -360,6 +375,7 @@ function RootLayoutAttempt({
   const phase18GarminProofPath = pathname === "/__phase18-garmin-proof";
   const phase18GarminAdversarialPath = pathname === "/__phase18-garmin-adversarial";
   const v12ProductionGarminPath = pathname === "/__v12-production-garmin";
+  const v12ProductionRecoveryPath = pathname === "/__v12-production-recovery";
   const v12NativeContractsPath = pathname === "/__native-contracts";
   const phase20QualityPath = pathname === "/__phase20-quality-probe";
   const phase20CalendarEvidencePath = phase20CalendarEvidencePathRequested(searchParams);
@@ -378,6 +394,19 @@ function RootLayoutAttempt({
       ? null
       : createPhase20CalendarRuntimeDependencies(phase20CalendarRuntime.databaseName),
     [phase20CalendarRuntime?.databaseName],
+  );
+  const v12ProductionRecoveryRuntime = resolveV12RecoveryIsolatedRuntime({
+    ...nativeIdentity,
+    nonce: searchParams.nonce,
+    caseId: searchParams.caseId,
+    stepId: searchParams.stepId,
+    cutId: searchParams.cutId,
+  }, searchParams.phase);
+  const v12ProductionRecoveryDependencies = React.useMemo(
+    () => v12ProductionRecoveryRuntime === null
+      ? null
+      : createStrictIsolatedWorkoutRuntimeDependencies(v12ProductionRecoveryRuntime),
+    [v12ProductionRecoveryRuntime?.databaseName],
   );
   const phase20VisualRequest = phase20VisualGate({
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
@@ -412,10 +441,12 @@ function RootLayoutAttempt({
     || phase20VisualPath
     || phase20QualityPath
     || v12ProductionGarminPath
+    || v12ProductionRecoveryPath
     || phase20CalendarEvidencePath;
   const failClosedFontRoute = phase20VisualPath
     || phase20QualityPath
     || v12ProductionGarminPath
+    || v12ProductionRecoveryPath
     || phase20CalendarEvidencePath;
   const fontLoadingAppearanceStore = attendedPreviewEnabled
     ? attendedPreviewAppearanceStore
@@ -578,6 +609,24 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase20QualityNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12ProductionRecoveryPath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            {v12ProductionRecoveryDependencies === null ? (
+              <Redirect href="/" />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={v12ProductionRecoveryDependencies}>
+                <V12ProductionRecoveryNavigator />
+              </WorkoutAppRuntimeProvider>
+            )}
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

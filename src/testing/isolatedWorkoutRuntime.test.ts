@@ -42,7 +42,10 @@ jest.mock("expo-sqlite", () => ({
   deleteDatabaseAsync: (databaseName: string) => mockDeleteDatabaseAsync(databaseName),
 }));
 
-import { createStrictIsolatedWorkoutRuntimeDependencies } from "./isolatedWorkoutRuntime";
+import {
+  createStrictIsolatedWorkoutRuntimeDependencies,
+  resolveV12RecoveryIsolatedRuntime,
+} from "./isolatedWorkoutRuntime";
 
 describe("strict isolated workout runtime", () => {
   beforeEach(() => {
@@ -100,5 +103,31 @@ describe("strict isolated workout runtime", () => {
     await dependencies.disposeRuntime?.();
     expect(mockDeleteDatabaseAsync).toHaveBeenCalledTimes(2);
     expect(disposed).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads only an exact Recovery v2 request into a nonce-scoped disposable database", () => {
+    const identity = {
+      packageName: "com.fchoo.gymtracker.devtest",
+      buildProfile: "development-test",
+      nativeContractsEnabled: true,
+      suite: "v1.2-acceptance",
+      nonce: "a".repeat(32),
+      caseId: "queued-callback",
+      stepId: "queued-set-commit",
+      cutId: "post-commit-before-ack",
+    } as const;
+
+    expect(resolveV12RecoveryIsolatedRuntime(identity, "arm")).toEqual({
+      databaseName: `gym-tracker-phase20-recovery-shell-${"a".repeat(32)}.db`,
+    });
+    expect(resolveV12RecoveryIsolatedRuntime(identity, "recover")).toEqual({
+      databaseName: `gym-tracker-phase20-recovery-shell-${"a".repeat(32)}.db`,
+    });
+    expect(resolveV12RecoveryIsolatedRuntime({ ...identity, nonce: "malformed" }, "arm"))
+      .toBeNull();
+    expect(resolveV12RecoveryIsolatedRuntime({ ...identity, nativeContractsEnabled: false }, "arm"))
+      .toBeNull();
+    expect(resolveV12RecoveryIsolatedRuntime(identity, "unknown"))
+      .toBeNull();
   });
 });
