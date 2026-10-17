@@ -154,9 +154,13 @@ source_tree_sha256=$(node scripts/source-tree-digest.mjs \
 
 rm -rf "$artifact_directory"
 mkdir -p "$artifact_directory"
-git_attestation_path="$artifact_directory/git-execution-origin.json"
-cp "$git_attestation_source" "$git_attestation_path"
-git_attestation_sha256=$(sh scripts/hash-apk.sh "$git_attestation_path")
+git_attestation_path=''
+git_attestation_sha256=''
+if [ "$suite" = 'v1.2-acceptance' ]; then
+  git_attestation_path="$artifact_directory/git-execution-origin.json"
+  cp "$git_attestation_source" "$git_attestation_path"
+  git_attestation_sha256=$(sh scripts/hash-apk.sh "$git_attestation_path")
+fi
 build_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 rm -rf "$project_root/android" "$project_root/ios"
