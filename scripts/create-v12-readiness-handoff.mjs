@@ -5,6 +5,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { assertV12ArtifactPrivacySafe } from "./v12-artifact-privacy.mjs";
+import { verifyV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -13,6 +14,12 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const VERDICTS = Object.freeze(["PASS", "ACCEPTED_EXCEPTION", "NOT_RUN", "FAIL", "REVIEW_REQUIRED", "N_A_REVIEWED"]);
 const REQUIRED_GATES = Object.freeze(["identity", "automated"]);
 const SAFE_RECOVERY_BOUNDARY = "compatible_restore_or_forward_fix";
+export const V12_FINAL_PUBLICATION_MEMBERS = Object.freeze([
+  "ui-state-matrix.json",
+  "final-evidence.json",
+  "parity-report.md",
+  "readiness-handoff.md",
+]);
 const FINAL_KEYS = Object.freeze([
   "accepted_exception_count", "evidence_hashes", "evidence_origin", "exceptions", "gates", "identity",
   "policy", "readiness", "release_authorized", "rows", "run_id", "schema_version", "source_results", "verdict_counts",
@@ -192,6 +199,19 @@ function readJson(root, relative) {
 export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { root = process.cwd() } = {}) {
   if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !RUN_ID.test(args[1] ?? "") || args[2] !== "--verify") fail("CLI arguments are malformed.");
   const runId = args[1]; const base = `artifacts/native/v1.2/${runId}`;
+  try { verifyV12AtomicShard({ root, runId, shard: "final" }); }
+  catch { fail("final atomic publication is invalid."); }
+  const publication = readJson(root, `${base}/publication/final.json`);
+  const members = publication?.members;
+  if (!Array.isArray(members) || members.length !== V12_FINAL_PUBLICATION_MEMBERS.length
+    || new Set(members.map(member => member?.artifact)).size !== members.length
+    || [...members.map(member => member?.artifact)].sort().some((member, index) => member !== [...V12_FINAL_PUBLICATION_MEMBERS].sort()[index])) {
+    fail("final atomic publication member set is invalid.");
+  }
+  for (const member of members) {
+    if (!plain(member) || !SHA256.test(member.sha256 ?? "")
+      || digest(readFileSync(safeFile(root, `${base}/${member.artifact}`))) !== member.sha256) fail("final atomic publication member hash is invalid.");
+  }
   const evidence = readJson(root, `${base}/final-evidence.json`);
   const handoff = readJson(root, `${base}/readiness-handoff.md`);
   validateV12ReadinessHandoff(handoff, { final_evidence: evidence });

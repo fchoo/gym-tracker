@@ -9,6 +9,7 @@ import {
   buildV12ReadinessHandoff,
   validateV12ReadinessHandoff,
 } from "./create-v12-readiness-handoff.mjs";
+import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 
 const digest = (character) => character.repeat(64);
 const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
@@ -177,7 +178,7 @@ test("the validator rejects authorization and generated release commands even wh
   );
 });
 
-test("the real --verify CLI exits nonzero for a tampered or incomplete handoff", (t) => {
+test("the real --verify CLI requires the exact atomic four-member final publication", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-readiness-cli-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const base = path.join(root, "artifacts/native/v1.2", runId);
@@ -187,9 +188,48 @@ test("the real --verify CLI exits nonzero for a tampered or incomplete handoff",
   writeFileSync(path.join(base, "final-evidence.json"), `${JSON.stringify(evidence)}\n`);
   writeFileSync(path.join(base, "readiness-handoff.md"), `${JSON.stringify(handoff)}\n`);
   const script = new URL("./create-v12-readiness-handoff.mjs", import.meta.url);
+  const loose = spawnSync(process.execPath, [script.pathname, "--run", runId, "--verify"], { cwd: root, encoding: "utf8" });
+  assert.notEqual(loose.status, 0);
+  rmSync(path.join(base, "final-evidence.json"));
+  rmSync(path.join(base, "readiness-handoff.md"));
+  publishV12AtomicShard({
+    root,
+    runId,
+    shard: "final",
+    produce: ({ write }) => {
+      write("ui-state-matrix.json", { schema_version: 3, run_id: runId });
+      write("final-evidence.json", evidence);
+      write("parity-report.md", "Phase 20 parity report\n");
+      write("readiness-handoff.md", handoff);
+    },
+  });
   const valid = spawnSync(process.execPath, [script.pathname, "--run", runId, "--verify"], { cwd: root, encoding: "utf8" });
   assert.equal(valid.status, 0, valid.stderr);
   writeFileSync(path.join(base, "readiness-handoff.md"), `${JSON.stringify({ ...handoff, final_evidence_sha256: digest("0") })}\n`);
+  const invalid = spawnSync(process.execPath, [script.pathname, "--run", runId, "--verify"], { cwd: root, encoding: "utf8" });
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /v12_(?:readiness_invalid|atomic_publish_member_invalid)/u);
+});
+
+test("the real --verify CLI rejects a final publication with a missing or extra member", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-readiness-member-set-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const base = path.join(root, "artifacts/native/v1.2", runId);
+  mkdirSync(base, { recursive: true });
+  const evidence = finalEvidence();
+  const handoff = buildV12ReadinessHandoff({ final_evidence: evidence, reviewed_policy: reviewedPolicy, rollback, generated_at: "2026-10-14T01:00:00.000Z" });
+  publishV12AtomicShard({
+    root,
+    runId,
+    shard: "final",
+    produce: ({ write }) => {
+      write("final-evidence.json", evidence);
+      write("parity-report.md", "Phase 20 parity report\n");
+      write("readiness-handoff.md", handoff);
+      write("unexpected.json", { unexpected: true });
+    },
+  });
+  const script = new URL("./create-v12-readiness-handoff.mjs", import.meta.url);
   const invalid = spawnSync(process.execPath, [script.pathname, "--run", runId, "--verify"], { cwd: root, encoding: "utf8" });
   assert.notEqual(invalid.status, 0);
   assert.match(invalid.stderr, /v12_readiness_invalid/u);
