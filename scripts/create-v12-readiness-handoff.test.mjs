@@ -75,11 +75,14 @@ const reviewedPolicy = Object.freeze({
 });
 
 const rollback = Object.freeze({
+  prior_release_manifest_sha256: digest("4"),
   prior_signed_apk_sha256: digest("5"),
   prior_apk_signature_sha256: digest("6"),
   prior_apk_certificate_sha256: digest("a"),
   compatible_archive_sha256: digest("7"),
   compatible_archive_format_version: 9,
+  clean_restore_receipt_sha256: digest("8"),
+  post_restore_facts_sha256: digest("9"),
   last_valid_schema_version: 44,
   current_schema_version: 45,
   newer_schema_committed: true,

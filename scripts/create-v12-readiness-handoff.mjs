@@ -75,8 +75,8 @@ function rollback(value) {
     if (value.reason_code !== "rollback_evidence_missing" || value.recovery_boundary !== SAFE_RECOVERY_BOUNDARY) fail("rollback evidence state is malformed.");
     return value;
   }
-  keys(value, ["compatible_archive_format_version", "compatible_archive_sha256", "current_schema_version", "last_valid_schema_version", "newer_schema_committed", "prior_apk_certificate_sha256", "prior_apk_signature_sha256", "prior_signed_apk_sha256", "recovery_boundary", "rollback_evidence_sha256"], "rollback");
-  for (const field of ["prior_signed_apk_sha256", "prior_apk_signature_sha256", "prior_apk_certificate_sha256", "compatible_archive_sha256", "rollback_evidence_sha256"]) hash(value[field], `rollback ${field}`);
+  keys(value, ["clean_restore_receipt_sha256", "compatible_archive_format_version", "compatible_archive_sha256", "current_schema_version", "last_valid_schema_version", "newer_schema_committed", "post_restore_facts_sha256", "prior_apk_certificate_sha256", "prior_apk_signature_sha256", "prior_release_manifest_sha256", "prior_signed_apk_sha256", "recovery_boundary", "rollback_evidence_sha256"], "rollback");
+  for (const field of ["prior_release_manifest_sha256", "prior_signed_apk_sha256", "prior_apk_signature_sha256", "prior_apk_certificate_sha256", "compatible_archive_sha256", "clean_restore_receipt_sha256", "post_restore_facts_sha256", "rollback_evidence_sha256"]) hash(value[field], `rollback ${field}`);
   if (!Number.isSafeInteger(value.last_valid_schema_version) || value.last_valid_schema_version < 1
     || !Number.isSafeInteger(value.current_schema_version) || value.current_schema_version <= value.last_valid_schema_version
     || !Number.isSafeInteger(value.compatible_archive_format_version) || value.compatible_archive_format_version < 1

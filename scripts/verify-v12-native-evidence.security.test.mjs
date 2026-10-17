@@ -26,7 +26,40 @@ function rollbackArchive(formatVersion, schemaVersion) {
   Buffer.from("GTBK").copy(prefix);
   prefix[4] = formatVersion;
   prefix.writeUInt32BE(header.length, 5);
-  return Buffer.concat([prefix, header, Buffer.alloc(16, 1)]);
+  return Buffer.concat([prefix, header, Buffer.from("authenticated-ciphertext"), Buffer.alloc(16, 1)]);
+}
+
+function cleanRestoreInspection(archiveBytes, formatVersion = 9, schemaVersion = 44) {
+  const archiveSha256 = sha256(archiveBytes);
+  const canonicalPostRestoreFacts = Object.freeze({
+    schema_version: 1,
+    producer: "v12-canonical-post-restore-facts/v1",
+    archive_sha256: archiveSha256,
+    source_schema_version: schemaVersion,
+    table_count: 12,
+    row_count: 34,
+    source_facts_sha256: digest("c"),
+    reopened_facts_sha256: digest("c"),
+    integrity_check: "ok",
+    foreign_key_violations: 0,
+  });
+  return Object.freeze({
+    format_version: formatVersion,
+    schema_version: schemaVersion,
+    clean_restore_receipt: Object.freeze({
+      schema_version: 1,
+      producer: "v12-production-clean-restore-receipt/v1",
+      parser: "src/domains/portability/restoreCommands.ts#createRestoreCommands",
+      outcome: "restored",
+      clean_target: true,
+      archive_sha256: archiveSha256,
+      archive_format_version: formatVersion,
+      archive_schema_version: schemaVersion,
+      post_restore_facts_sha256: sha256(`${JSON.stringify(canonicalPostRestoreFacts)}\n`),
+      reopened_post_restore_facts_sha256: sha256(`${JSON.stringify(canonicalPostRestoreFacts)}\n`),
+    }),
+    canonical_post_restore_facts: canonicalPostRestoreFacts,
+  });
 }
 
 function rollbackFixture(t) {
@@ -38,20 +71,40 @@ function rollbackFixture(t) {
   writeFileSync(path.join(root, "src/platform/sqlite/migrations/0045_current.ts"), "export const version = 45;\n");
   const priorApk = path.join(root, "inputs/prior.apk");
   const compatibleArchive = path.join(root, "inputs/prior.gtbk");
+  const priorReleaseManifest = path.join(root, "inputs/prior-release.json");
   mkdirSync(path.dirname(priorApk), { recursive: true });
-  writeFileSync(priorApk, Buffer.from("504b0304aabbccdd", "hex"));
+  const apkBytes = Buffer.from("504b0304aabbccdd", "hex");
+  writeFileSync(priorApk, apkBytes);
   writeFileSync(compatibleArchive, rollbackArchive(9, 44));
   const signatureReport = Buffer.from(`Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: ${"ab".repeat(32)}\n`);
+  writeFileSync(priorReleaseManifest, `${JSON.stringify({
+    schema_version: 1,
+    producer: "v12-retained-prior-release/v1",
+    package: "com.fchoo.gymtracker",
+    apk: {
+      sha256: sha256(apkBytes),
+      size_bytes: apkBytes.length,
+      signature_sha256: sha256(signatureReport),
+      certificate_sha256: "ab".repeat(32),
+    },
+  })}\n`);
   const verifyApkSignature = () => ({ report: signatureReport, certificate_sha256: "ab".repeat(32) });
-  return { root, runId, priorApk, compatibleArchive, signatureReport, verifyApkSignature };
+  const authenticateAndRestoreArchive = ({ archive_bytes: archiveBytes }) => {
+    assert.equal(archiveBytes.includes(Buffer.from("authenticated-ciphertext")), true);
+    return cleanRestoreInspection(archiveBytes);
+  };
+  return { root, runId, priorApk, priorReleaseManifest, compatibleArchive, signatureReport,
+    verifyApkSignature, authenticateAndRestoreArchive };
 }
 
 test("publishes and verifies immutable rollback evidence for a prior signed APK and compatible archive", (t) => {
   const value = rollbackFixture(t);
   const published = publishV12RollbackEvidence({
     root: value.root, runId: value.runId, priorApkPath: value.priorApk,
+    priorReleaseManifestPath: value.priorReleaseManifest,
     compatibleArchivePath: value.compatibleArchive, lastValidSchemaVersion: 44,
     verifyApkSignature: value.verifyApkSignature,
+    authenticateAndRestoreArchive: value.authenticateAndRestoreArchive,
   });
   assert.deepEqual(published.manifest.members.map(member => member.artifact).sort(), [...V12_ROLLBACK_PUBLICATION_MEMBERS].sort());
   const verified = verifyV12RollbackEvidence({ root: value.root, runId: value.runId, verifyApkSignature: value.verifyApkSignature });
@@ -59,30 +112,78 @@ test("publishes and verifies immutable rollback evidence for a prior signed APK 
   assert.equal(verified.prior_apk_signature_sha256, sha256(value.signatureReport));
   assert.equal(verified.prior_apk_certificate_sha256, "ab".repeat(32));
   assert.equal(verified.compatible_archive_sha256, sha256(readFileSync(value.compatibleArchive)));
+  assert.equal(verified.prior_release_manifest_sha256, sha256(readFileSync(value.priorReleaseManifest)));
+  assert.equal(verified.clean_restore_receipt_sha256, sha256(readFileSync(path.join(value.root,
+    `artifacts/native/v1.2/${value.runId}/rollback/clean-restore-receipt.json`))));
+  assert.equal(verified.post_restore_facts_sha256, sha256(readFileSync(path.join(value.root,
+    `artifacts/native/v1.2/${value.runId}/rollback/canonical-post-restore-facts.json`))));
   assert.equal(verified.last_valid_schema_version, 44);
   assert.equal(verified.current_schema_version, 45);
   assert.equal(verified.newer_schema_committed, true);
   assert.match(verified.rollback_evidence_sha256, /^[a-f0-9]{64}$/u);
   assert.deepEqual(publishV12RollbackEvidence({
     root: value.root, runId: value.runId, priorApkPath: value.priorApk,
+    priorReleaseManifestPath: value.priorReleaseManifest,
     compatibleArchivePath: value.compatibleArchive, lastValidSchemaVersion: 44,
     verifyApkSignature: value.verifyApkSignature,
+    authenticateAndRestoreArchive: value.authenticateAndRestoreArchive,
   }), published);
+});
+
+test("rollback publication rejects an unrelated signed APK and a header-only archive", (t) => {
+  const unrelated = rollbackFixture(t);
+  writeFileSync(unrelated.priorApk, Buffer.from("504b0304deadbeef", "hex"));
+  assert.throws(() => publishV12RollbackEvidence({
+    root: unrelated.root, runId: unrelated.runId, priorApkPath: unrelated.priorApk,
+    priorReleaseManifestPath: unrelated.priorReleaseManifest,
+    compatibleArchivePath: unrelated.compatibleArchive, lastValidSchemaVersion: 44,
+    verifyApkSignature: unrelated.verifyApkSignature,
+    authenticateAndRestoreArchive: unrelated.authenticateAndRestoreArchive,
+  }), /v12_rollback_release_manifest_invalid/u);
+
+  const headerOnly = rollbackFixture(t);
+  writeFileSync(headerOnly.compatibleArchive, (() => {
+    const header = Buffer.from(JSON.stringify({ version: 9, schemaVersion: 44 }));
+    const prefix = Buffer.alloc(9); Buffer.from("GTBK").copy(prefix); prefix[4] = 9; prefix.writeUInt32BE(header.length, 5);
+    return Buffer.concat([prefix, header, Buffer.alloc(16, 1)]);
+  })());
+  assert.throws(() => publishV12RollbackEvidence({
+    root: headerOnly.root, runId: headerOnly.runId, priorApkPath: headerOnly.priorApk,
+    priorReleaseManifestPath: headerOnly.priorReleaseManifest,
+    compatibleArchivePath: headerOnly.compatibleArchive, lastValidSchemaVersion: 44,
+    verifyApkSignature: headerOnly.verifyApkSignature,
+    authenticateAndRestoreArchive: headerOnly.authenticateAndRestoreArchive,
+  }));
+});
+
+test("rollback publication binds the declared schema to the authenticated embedded schema", (t) => {
+  const value = rollbackFixture(t);
+  assert.throws(() => publishV12RollbackEvidence({
+    root: value.root, runId: value.runId, priorApkPath: value.priorApk,
+    priorReleaseManifestPath: value.priorReleaseManifest,
+    compatibleArchivePath: value.compatibleArchive, lastValidSchemaVersion: 44,
+    verifyApkSignature: value.verifyApkSignature,
+    authenticateAndRestoreArchive: ({ archive_bytes: archiveBytes }) => cleanRestoreInspection(archiveBytes, 9, 43),
+  }), /v12_rollback_schema_boundary_invalid/u);
 });
 
 test("rollback verification rejects tampered bytes and incompatible schema boundaries", (t) => {
   const invalid = rollbackFixture(t);
   assert.throws(() => publishV12RollbackEvidence({
     root: invalid.root, runId: invalid.runId, priorApkPath: invalid.priorApk,
+    priorReleaseManifestPath: invalid.priorReleaseManifest,
     compatibleArchivePath: invalid.compatibleArchive, lastValidSchemaVersion: 45,
     verifyApkSignature: invalid.verifyApkSignature,
+    authenticateAndRestoreArchive: invalid.authenticateAndRestoreArchive,
   }), /v12_rollback_schema_boundary_invalid/u);
 
   const value = rollbackFixture(t);
   publishV12RollbackEvidence({
     root: value.root, runId: value.runId, priorApkPath: value.priorApk,
+    priorReleaseManifestPath: value.priorReleaseManifest,
     compatibleArchivePath: value.compatibleArchive, lastValidSchemaVersion: 44,
     verifyApkSignature: value.verifyApkSignature,
+    authenticateAndRestoreArchive: value.authenticateAndRestoreArchive,
   });
   writeFileSync(path.join(value.root, `artifacts/native/v1.2/${value.runId}/rollback/prior-signed.apk`), Buffer.from("504b030400", "hex"));
   assert.throws(
@@ -161,8 +262,9 @@ test("interrupted final recovery rejects a staged one-row seal before publicatio
     accepted_exception_count: 0, release_authorized: false, policy: null, exceptions: [],
   };
   const rollback = {
-      prior_signed_apk_sha256: digest("8"), prior_apk_signature_sha256: digest("9"), prior_apk_certificate_sha256: digest("a"),
+      prior_release_manifest_sha256: digest("7"), prior_signed_apk_sha256: digest("8"), prior_apk_signature_sha256: digest("9"), prior_apk_certificate_sha256: digest("a"),
       compatible_archive_sha256: digest("b"), compatible_archive_format_version: 9, last_valid_schema_version: 44,
+      clean_restore_receipt_sha256: digest("d"), post_restore_facts_sha256: digest("e"),
       current_schema_version: 45, newer_schema_committed: true, recovery_boundary: "compatible_restore_or_forward_fix",
       rollback_evidence_sha256: digest("c"),
   };
