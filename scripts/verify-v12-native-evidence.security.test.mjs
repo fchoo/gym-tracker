@@ -223,6 +223,16 @@ test("interrupted final recovery revalidates preseal authorities and rederives t
   assert.match(source, /validateFinalCandidateBytes[\s\S]*member\.sha256 !== sha256\(bytes\)[\s\S]*member\.size_bytes !== bytes\.length/u);
 });
 
+test("final publication is verified before the planning readiness mirror is refreshed", () => {
+  const source = readFileSync(new URL("./verify-v12-native-evidence.mjs", import.meta.url), "utf8");
+  const finalPublish = source.lastIndexOf("publishV12AtomicShard({");
+  const finalVerify = source.indexOf('verifyV12AtomicShard({ root, runId: options.run_id, shard: "final" })', finalPublish);
+  const finalCandidateValidation = source.indexOf("validateFinalCandidateBytes(root, options.run_id, expectedFinal)", finalVerify);
+  const planningMirror = source.indexOf("writeV12VerifiedReadinessMirror({ root, runId: options.run_id })", finalCandidateValidation);
+  assert.ok(finalPublish >= 0 && finalVerify > finalPublish && finalCandidateValidation > finalVerify && planningMirror > finalCandidateValidation);
+  assert.doesNotMatch(source, /beforeManifest:[^\n]*20-READINESS-HANDOFF/u);
+});
+
 test("exact retained file-set validation rejects arbitrary extras", () => {
   const expected = ["build.json", "publication/sqlite.json", "sqlite/history.json"];
   assert.equal(assertV12ExactArtifactFileSet(expected, expected), true);

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -206,9 +206,8 @@ function readJson(root, relative) {
   try { return JSON.parse(bytes.toString("utf8")); } catch { fail("artifact is not valid JSON."); }
 }
 
-export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { root = process.cwd() } = {}) {
-  if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !RUN_ID.test(args[1] ?? "") || args[2] !== "--verify") fail("CLI arguments are malformed.");
-  const runId = args[1]; const base = `artifacts/native/v1.2/${runId}`;
+function verifiedFinalPublication(root, runId) {
+  const base = `artifacts/native/v1.2/${runId}`;
   try { verifyV12AtomicShard({ root, runId, shard: "final" }); }
   catch { fail("final atomic publication is invalid."); }
   const publication = readJson(root, `${base}/publication/final.json`);
@@ -223,8 +222,49 @@ export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { ro
       || digest(readFileSync(safeFile(root, `${base}/${member.artifact}`))) !== member.sha256) fail("final atomic publication member hash is invalid.");
   }
   const evidence = readJson(root, `${base}/final-evidence.json`);
-  const handoff = readJson(root, `${base}/readiness-handoff.md`);
+  const handoffFile = safeFile(root, `${base}/readiness-handoff.md`);
+  const handoffBytes = readFileSync(handoffFile);
+  let handoff; try { handoff = JSON.parse(handoffBytes.toString("utf8")); } catch { fail("artifact is not valid JSON."); }
   validateV12ReadinessHandoff(handoff, { final_evidence: evidence });
+  return Object.freeze({ evidence, handoff, handoffBytes });
+}
+
+export function writeV12VerifiedReadinessMirror({ root = process.cwd(), runId } = {}) {
+  if (!RUN_ID.test(runId ?? "")) fail("CLI arguments are malformed.");
+  const verified = verifiedFinalPublication(root, runId);
+  const directory = path.resolve(root, ".planning/phases/20-native-acceptance");
+  const base = path.resolve(root);
+  if (!directory.startsWith(`${base}${path.sep}`)) fail("path is unsafe.");
+  let cursor = base;
+  for (const part of path.relative(base, directory).split(path.sep)) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat === undefined || stat.isSymbolicLink() || !stat.isDirectory()) fail("path is unsafe.");
+  }
+  const target = path.join(directory, "20-READINESS-HANDOFF.md");
+  const current = lstatSync(target, { throwIfNoEntry: false });
+  if (current?.isSymbolicLink() || (current !== undefined && !current.isFile())) fail("path is unsafe.");
+  if (current !== undefined && readFileSync(target).equals(verified.handoffBytes)) {
+    return Object.freeze({ mirror_path: path.relative(base, target), refreshed: false });
+  }
+  const temporary = path.join(directory, `.20-READINESS-HANDOFF-${process.pid}-${Date.now()}.tmp`);
+  try {
+    writeFileSync(temporary, verified.handoffBytes, { flag: "wx", mode: 0o600 });
+    const fileDescriptor = openSync(temporary, "r"); try { fsyncSync(fileDescriptor); } finally { closeSync(fileDescriptor); }
+    const beforeRename = lstatSync(target, { throwIfNoEntry: false });
+    if (beforeRename?.isSymbolicLink() || (beforeRename !== undefined && !beforeRename.isFile())) fail("path is unsafe.");
+    renameSync(temporary, target);
+    const directoryDescriptor = openSync(directory, "r"); try { fsyncSync(directoryDescriptor); } finally { closeSync(directoryDescriptor); }
+  } catch (error) {
+    if (existsSync(temporary)) unlinkSync(temporary);
+    throw error;
+  }
+  return Object.freeze({ mirror_path: path.relative(base, target), refreshed: true });
+}
+
+export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { root = process.cwd() } = {}) {
+  if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !RUN_ID.test(args[1] ?? "") || args[2] !== "--verify") fail("CLI arguments are malformed.");
+  const runId = args[1]; const { handoff } = verifiedFinalPublication(root, runId);
   return Object.freeze({ ok: true, run_id: runId, readiness: handoff.readiness, release_authorized: false });
 }
 
