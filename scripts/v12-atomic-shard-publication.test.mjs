@@ -206,6 +206,56 @@ test("crash after member promotion recovers idempotently and publishes the manif
   assert.deepEqual(publishV12AtomicShard({ root, runId, shard: "performance", produce: () => { throw new Error("must stay idempotent"); } }), recovered);
 });
 
+test("crash immediately after the manifest link cleans validated dead claim and stage residue idempotently", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-post-manifest-recovery-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(path.join(root, "artifacts/native/v1.2", runId), { recursive: true });
+  const code = `
+    import { publishV12AtomicShard } from ${JSON.stringify(moduleUrl)};
+    const [root, runId] = process.argv.slice(1);
+    publishV12AtomicShard({root, runId, shard:'performance', produce:({write}) =>
+      write('performance.json', {schema_version:1, producer:'test', run_id:runId}),
+      afterManifest: () => process.exit(92),
+    });
+  `;
+  const crashed = spawnSync(process.execPath, ["--input-type=module", "-e", code, root, runId], { encoding: "utf8" });
+  assert.equal(crashed.status, 92);
+  const base = path.join(root, "artifacts/native/v1.2", runId);
+  assert.equal(existsSync(path.join(base, "publication/performance.json")), true);
+  assert.equal(existsSync(path.join(base, ".claims/performance.json")), true);
+  assert.equal(existsSync(path.join(base, ".staging/performance")), true);
+
+  let produced = false;
+  const recovered = publishV12AtomicShard({ root, runId, shard: "performance", produce: () => { produced = true; } });
+  assert.equal(produced, false);
+  assert.equal(existsSync(path.join(base, ".claims")), false);
+  assert.equal(existsSync(path.join(base, ".staging")), false);
+  assert.equal(verifyV12AtomicShard({ root, runId, shard: "performance" }), true);
+  assert.deepEqual(publishV12AtomicShard({ root, runId, shard: "performance", produce: () => { throw new Error("must stay idempotent"); } }), recovered);
+});
+
+test("existing publication recovery rejects unvalidated staged residue", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-publish-post-manifest-tamper-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(path.join(root, "artifacts/native/v1.2", runId), { recursive: true });
+  const code = `
+    import { publishV12AtomicShard } from ${JSON.stringify(moduleUrl)};
+    const [root, runId] = process.argv.slice(1);
+    publishV12AtomicShard({root, runId, shard:'performance', produce:({write}) =>
+      write('performance.json', {schema_version:1, producer:'test', run_id:runId}),
+      afterManifest: () => process.exit(93),
+    });
+  `;
+  const crashed = spawnSync(process.execPath, ["--input-type=module", "-e", code, root, runId], { encoding: "utf8" });
+  assert.equal(crashed.status, 93);
+  const stage = path.join(root, "artifacts/native/v1.2", runId, ".staging/performance");
+  writeFileSync(path.join(stage, "unexpected.json"), "{}\n");
+  assert.throws(
+    () => publishV12AtomicShard({ root, runId, shard: "performance", produce: () => {} }),
+    /stage_member_invalid/u,
+  );
+});
+
 test("failure receipts use a bounded code and only a digest of the raw error", (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-publish-safe-failure-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
