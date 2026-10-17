@@ -485,11 +485,14 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
   }
 }
 
-export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}) {
+export function verifyV12AtomicShard({ root = process.cwd(), runId, shard, allowOtherShardResidue = false } = {}) {
   if (!SAFE.test(shard ?? "")) fail("arguments_invalid");
   const runRoot = safeRoot(root, runId);
-  if (existsSync(path.join(runRoot, "failures", `${shard}.json`)) || existsSync(path.join(runRoot, ".staging"))
-    || existsSync(path.join(runRoot, ".claims"))) fail("incomplete_attempt");
+  if (typeof allowOtherShardResidue !== "boolean") fail("arguments_invalid");
+  const incomplete = allowOtherShardResidue
+    ? [path.join(runRoot, "failures", `${shard}.json`), path.join(runRoot, ".staging", shard), path.join(runRoot, ".claims", `${shard}.json`)]
+    : [path.join(runRoot, "failures", `${shard}.json`), path.join(runRoot, ".staging"), path.join(runRoot, ".claims")];
+  if (incomplete.some(existsSync)) fail("incomplete_attempt");
   const result = existingPublication(root, runRoot, runId, shard);
   if (result === null) fail("manifest_invalid");
   const expectedIdentity = publicationIdentity(runRoot);

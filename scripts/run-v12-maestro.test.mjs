@@ -148,6 +148,8 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
     assert.ok(value.calls.length > 0);
     assert.ok(value.calls.every((program) => path.isAbsolute(program)));
     const publication = JSON.parse(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/publication/${shard}.json`), "utf8"));
+    const mapping = JSON.parse(readFileSync(path.join(value.root, `artifacts/native/v1.2/${runId}/mapping/${shard}.json`), "utf8"));
+    assert.match(mapping.git_attestation_sha256, /^[a-f0-9]{64}$/u);
     assert.equal(publication.execution_origin.action, shard);
     assert.equal(publication.execution_origin.kind, "test-fixture");
     assert.equal(publication.execution_origin.toolchain_origin, "test-controlled/v1");

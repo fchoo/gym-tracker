@@ -188,7 +188,10 @@ export function createV12NativeExecutionOriginAttestation({ action, executionToo
 }
 
 export function resolveV12GitExecution({ env = process.env, runCommand = spawnSync } = {}) {
-  const executionTools = resolveV12NativeExecutionTools({ requiredTools: ["git"], env });
+  if (env.V12_EXECUTION_ORIGIN !== undefined && env.V12_EXECUTION_ORIGIN !== V12_TEST_EXECUTION_ORIGIN) fail("execution_origin_invalid");
+  const executionTools = env.V12_GIT_PATH === undefined
+    ? Object.freeze({ execution_origin: V12_PRODUCTION_EXECUTION_ORIGIN, test_only: false, git: productionGit() })
+    : resolveV12NativeExecutionTools({ requiredTools: ["git"], env });
   const attestation = createV12NativeExecutionOriginAttestation({
     action: "source-control",
     executionTools,

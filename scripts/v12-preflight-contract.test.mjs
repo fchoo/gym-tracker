@@ -12,6 +12,7 @@ import {
   validateV12FinalNativeIdentity,
   validateV12FinalProductionIdentity,
   validateV12ProductionPublicationOrigins,
+  V12_NATIVE_PROVENANCE_REGISTRY,
 } from "./verify-v12-native-evidence.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
 
@@ -72,39 +73,29 @@ test("preseal binds every adapter shard to its expected action and production do
     "scripts/v12-production-native-visual-actions.mjs": "visual\n",
     "scripts/v12-production-native-quality-actions.mjs": "quality\n",
     "scripts/run-v12-maestro.mjs": "maestro\n",
+    "src/testing/contracts/multiPlanRunning.contract.ts": "multi-plan contract\n",
+    "src/testing/contracts/phase15Workout.contract.ts": "workout contract\n",
+    "src/testing/contracts/phase17LibraryRunning.contract.ts": "library running contract\n",
   };
   for (const [relative, bytes] of Object.entries(sourceFiles)) {
     mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
     writeFileSync(path.join(root, relative), bytes);
   }
   const digest = (relative) => createHash("sha256").update(sourceFiles[relative]).digest("hex");
-  const contracts = {
-    sqlite: ["sqlite", "scripts/v12-production-native-runtime.mjs"],
-    recovery: ["recovery", "scripts/v12-production-native-domain-actions.mjs"],
-    garmin: ["garmin", "scripts/v12-production-native-domain-actions.mjs"],
-    calendar: ["calendar", "scripts/v12-production-native-calendar-action.mjs"],
-    visual: ["visual-capture", "scripts/v12-production-native-visual-actions.mjs"],
-    comparison: ["visual-compare", "scripts/v12-production-native-visual-actions.mjs"],
-    accessibility: ["accessibility", "scripts/v12-production-native-quality-actions.mjs"],
-    performance: ["performance", "scripts/v12-production-native-quality-actions.mjs"],
-    "multi-plan": ["multi-plan", "scripts/run-v12-maestro.mjs"],
-    workout: ["workout", "scripts/run-v12-maestro.mjs"],
-    "library-running": ["library-running", "scripts/run-v12-maestro.mjs"],
-  };
   const publicationDirectory = path.join(root, "artifacts/native/v1.2", RUN_ID, "publication");
   mkdirSync(publicationDirectory, { recursive: true });
-  for (const [shard, [action, domain]] of Object.entries(contracts)) {
+  for (const [shard, contract] of Object.entries(V12_NATIVE_PROVENANCE_REGISTRY)) {
     writeFileSync(path.join(publicationDirectory, `${shard}.json`), JSON.stringify({
       execution_origin: {
         schema_version: 1,
-        action,
+        action: contract.actions[0],
         kind: "production-default-launcher",
         toolchain_origin: "production-attested/v1",
         default_launcher: true,
         test_only: false,
-        adapter_source_sha256: digest("scripts/v12-native-adapter.mjs"),
-        launcher_source_sha256: digest("scripts/v12-production-native-adapter-launcher.mjs"),
-        domain_source_sha256: digest(domain),
+        adapter_source_sha256: digest(contract.adapter),
+        launcher_source_sha256: digest(contract.launcher),
+        domain_source_sha256: digest(contract.domain),
         request_attestation_sha256: h("f"),
       },
     }));

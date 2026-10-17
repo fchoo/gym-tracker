@@ -189,9 +189,9 @@ export function publishV12RollbackEvidence({ root = process.cwd(), runId, priorA
   });
 }
 
-export function verifyV12RollbackEvidence({ root = process.cwd(), runId, verifyApkSignature, environment } = {}) {
+export function verifyV12RollbackEvidence({ root = process.cwd(), runId, verifyApkSignature, environment, allowFinalResidue = false } = {}) {
   if (!RUN_ID.test(runId ?? "")) fail("arguments_invalid");
-  try { verifyV12AtomicShard({ root, runId, shard: "rollback" }); }
+  try { verifyV12AtomicShard({ root, runId, shard: "rollback", allowOtherShardResidue: allowFinalResidue }); }
   catch (error) { throw error; }
   const base = `artifacts/native/v1.2/${runId}`;
   const publication = JSON.parse(readFileSync(retainedFile(root, `${base}/publication/rollback.json`), "utf8"));

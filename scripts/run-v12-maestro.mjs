@@ -145,7 +145,7 @@ function resolvedExecutionTools(value) {
   return Object.freeze(resolved);
 }
 
-function executionOrigin({ root, runId, shard, manifest, snapshot, tools }) {
+function executionOrigin({ root, runId, shard, manifest, snapshot, tools, gitAttestationSha256 }) {
   const production = tools.execution_origin === V12_PRODUCTION_EXECUTION_ORIGIN;
   const sources = V12_MAESTRO_SOURCE_PATHS[shard];
   if (sources === undefined) genericFail("toolchain_invalid");
@@ -168,6 +168,7 @@ function executionOrigin({ root, runId, shard, manifest, snapshot, tools }) {
       device_identity_sha256: manifest.device.identity_sha256,
       flow_sha256: snapshot.flow_sha256,
       source_sha256: snapshot.source_sha256,
+      git_attestation_sha256: gitAttestationSha256,
       tool_sha256: {
         adb: sourceSha256(tools.adb),
         maestro: sourceSha256(tools.maestro),
@@ -256,9 +257,9 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
   const manifest = readJson(`artifacts/native/v1.2/${runId}/build.json`);
   try { validateGenericV12RunManifest(manifest); } catch { genericFail("manifest_invalid"); }
   if (manifest.run_id !== runId || manifest.mode !== "live" || manifest.build.package !== V12_PACKAGE) genericFail("manifest_invalid");
-  const gitExecution = dependencies.gitExecution ?? ((dependencies.currentHead !== undefined
-    && dependencies.sourceDigest !== undefined && dependencies.isAncestor !== undefined)
-    ? undefined : readV12RetainedGitExecution({ root, runManifest: manifest, env: dependencies.environment ?? process.env }));
+  const gitExecution = dependencies.gitExecution ?? (manifest.evidence_origin === "native"
+    ? readV12RetainedGitExecution({ root, runManifest: manifest, env: dependencies.environment ?? process.env })
+    : resolveV12GitExecution({ env: dependencies.environment ?? process.env }));
   const sourceIdentity = validateV12LiveSourceLineage(manifest, { ...dependencies, gitExecution });
   genericIdentityMatches(manifest, dependencies.currentIdentity ?? liveIdentity(manifest, root, sourceIdentity));
   const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
@@ -306,8 +307,9 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
     const flowSha256 = sha256(readFileSync(flowPath));
     const observations = caseIds.map((caseId, index) => Object.freeze({ case_id: caseId, ordinal: index + 1, fixture_id: "v12-synthetic-fixtures-r18", report_sha256: sha256(reports[index]) }));
     const sourceSnapshot = Object.freeze({ flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }) });
-    const provenance = executionOrigin({ root, runId, shard, manifest, snapshot: sourceSnapshot, tools });
-    const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), execution_origin: provenance, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
+    const gitAttestationSha256 = gitExecution.retained_sha256 ?? sha256(`${JSON.stringify(gitExecution.attestation)}\n`);
+    const provenance = executionOrigin({ root, runId, shard, manifest, snapshot: sourceSnapshot, tools, gitAttestationSha256 });
+    const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), git_attestation_sha256: gitAttestationSha256, execution_origin: provenance, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
     validateSourceOrderedObservations(observations, caseIds, shard);
     const writeReport = dependencies.writeReport ?? ((file, value) => {
       const absoluteReport = path.join(root, file);

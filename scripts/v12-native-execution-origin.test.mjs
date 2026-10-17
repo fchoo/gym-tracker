@@ -94,6 +94,9 @@ test("Git resolution ignores poisoned PATH and records realpath, bytes, and live
   assert.match(execution.attestation.tools[0].executable_sha256, /^[a-f0-9]{64}$/u);
   assert.match(execution.attestation.tools[0].version, /^git version /u);
   assert.equal(assertV12GitExecutionAttestation(execution.attestation, { execution }), true);
+  const nativeTestEnvironment = resolveV12GitExecution({ env: { PATH: poison, V12_EXECUTION_ORIGIN: V12_TEST_EXECUTION_ORIGIN } });
+  assert.equal(nativeTestEnvironment.attestation.execution_origin, "production-attested/v1");
+  assert.notEqual(nativeTestEnvironment.executable, realpathSync(poisonedGit));
 });
 
 test("controlled Git requires explicit test origin and still records its live version", () => {
