@@ -10,6 +10,7 @@ import { PNG } from "pngjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { executeProductionVisualAction, resolveV12ProductionVisualConfiguration } from "./v12-production-native-visual-actions.mjs";
+import { createV12NativeExecutionOriginAttestation, resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 import { V12_VISUAL_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 
 const project = fileURLToPath(new URL("../", import.meta.url));
@@ -23,8 +24,9 @@ const fixtureId = "v12-synthetic-fixtures-r18";
 function controlledTool(state, executable, args, options = {}) {
   const ok = (stdout = "") => ({ status: 0, stdout: Buffer.from(stdout), stderr: Buffer.alloc(0) });
   const bad = () => ({ status: 1, stdout: Buffer.alloc(0), stderr: Buffer.from("/private/device-private bearer") });
-  state.commands.push([executable, ...args]);
-  if (executable === "maestro") {
+  const toolName = path.basename(executable);
+  state.commands.push([toolName, ...args]);
+  if (toolName === "maestro") {
     if (state.noRoute && args.includes("VISUAL_MODE=capture")) return bad();
     const entry = args.find((v) => v.startsWith("VISUAL_LINK="));
     if (!entry) return bad();
@@ -38,7 +40,7 @@ function controlledTool(state, executable, args, options = {}) {
     state.readyId = args.find((value) => value.startsWith("VISUAL_READY_ID="))?.slice("VISUAL_READY_ID=".length);
     return ok();
   }
-  if (executable !== "adb" || args[0] !== "-s" || args[1] !== "device-private") return bad();
+  if (toolName !== "adb" || args[0] !== "-s" || args[1] !== "device-private") return bad();
   const a = args.slice(2);
   if (a[0] === "get-state") return ok(state.offline ? "offline" : "device");
   if (a[0] === "exec-out" && a[1] === "screencap") {
@@ -49,10 +51,15 @@ function controlledTool(state, executable, args, options = {}) {
     if (state.missingMarker) return ok();
     const parts = state.configurationId.split("-");
     const visual = state.visualState;
+    const registryBinding = [visual.route, visual.component, visual.name, visual.fixture_seed,
+      visual.fixture_variant, visual.scenario, visual.readiness.screen_test_id,
+      visual.readiness.test_ids, visual.focus_target, visual.evidence_scope];
+    const readinessBinding = [visual.readiness.semantics, visual.readiness.actions,
+      visual.readiness.order, visual.readiness.non_color, visual.readiness.source_receipt.assertions];
     const viewport = { C360: [360, 800], C390: [390, 844], M600: [600, 960], X840: [840, 1080] }[parts[2]];
     const portrait = parts[3] === "P";
     const marker = {
-      schema_version: 2, nonce: state.staleMarker ? "0".repeat(32) : state.nonce,
+      schema_version: 3, nonce: state.staleMarker ? "0".repeat(32) : state.nonce,
       state_id: state.wrongState && state.mode === "capture" ? "BW-002" : state.stateId,
       configuration_id: state.configurationId, fixture_id: fixtureId,
       mode: state.mode, status: state.mode === "reset" ? "reset" : "ready",
@@ -60,30 +67,25 @@ function controlledTool(state, executable, args, options = {}) {
       color_scheme: parts[1].startsWith("S") ? state.night === "yes" ? "dark" : "light" : parts[1] === "D" ? "dark" : "light",
       width_dp: state.wrongConfig ? 360 : portrait ? viewport[0] : viewport[1], height_dp: portrait ? viewport[1] : viewport[0], screen_width_dp: portrait ? viewport[0] : viewport[1], screen_height_dp: portrait ? viewport[1] : viewport[0],
       font_scale: state.mode === "reset" ? Number(state.settings.font_scale) : 1,
-      density: 1, route: "/__phase20-visual-probe", source_state: "plan-type-chooser",
-      source_route: "/library/plan/create", source_component: "PlanTypeChooserScreen",
-      fixture_seed: visual.fixture_seed, fixture_variant: visual.fixture_variant, scenario: visual.scenario,
-      screen_test_id: visual.readiness.screen_test_id, readiness_test_ids: visual.readiness.test_ids,
-      readiness_semantics: visual.readiness.semantics, readiness_actions: visual.readiness.actions,
-      readiness_order: visual.readiness.order, readiness_non_color: visual.readiness.non_color,
-      focus_target: visual.readiness.focus.target,
-      evidence_scope: "production_screen",
+      density: 1,
+      registry_sha256: hash(JSON.stringify(registryBinding)),
+      readiness_sha256: hash(JSON.stringify(readinessBinding)),
       source_revision: 18, source_read_only: true,
       source_receipt: {
-        schema_version: 2,
+        schema_version: 3,
         nonce: state.staleMarker ? "0".repeat(32) : state.nonce,
         state_id: state.stateId,
-        fixture_variant: visual.fixture_variant,
-        assertions: visual.readiness.source_receipt.assertions,
+        assertions_sha256: hash(JSON.stringify(visual.readiness.source_receipt.assertions)),
         production_instance_id: "phase20-production-instance-7",
         mount_id: state.remounted && state.night === "yes" ? "phase20-production-mount-8" : "phase20-production-mount-7",
-        scroll_offsets: [{ native_id: "plan-type-chooser-scroll", x: 0, y: state.scrollChanged && state.night === "yes" ? 145 : 144 }],
+        scroll_offsets: [{ native_id_sha256: hash(JSON.stringify("plan-type-chooser-scroll")), x: 0, y: state.scrollChanged && state.night === "yes" ? 145 : 144 }],
         timer: { state: "paused", revision: state.timerChanged && state.night === "yes" ? 8 : 7, remaining_ms: 90_000, ends_at_ms: null },
       },
     };
     if (state.mode === "reset" && state.badReset) marker.appearance = "Dark";
     if (state.extraMarkerField && state.mode === "capture") marker.private = "/private/device-private";
-    return ok(`PHASE20_VISUAL_RESULT ${JSON.stringify(marker)}`);
+    state.lastMarkerLine = `PHASE20_VISUAL_RESULT ${JSON.stringify(marker)}`;
+    return ok(state.lastMarkerLine);
   }
   // The production module uses shell-quoted argument strings, never payload text.
   if (a[0] !== "shell") return bad();
@@ -141,6 +143,14 @@ function fixture(t) {
   execFileSync("git", ["init", "--quiet"], { cwd: root });
   const runDir = path.join(root, "artifacts/native/v1.2", runId);
   mkdirSync(runDir, { recursive: true });
+  const toolRoot = path.join(root, "artifacts/controlled-visual-tools");
+  mkdirSync(toolRoot, { recursive: true });
+  for (const name of ["adb", "maestro"]) writeFileSync(path.join(toolRoot, name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  const environment = {
+    V12_EXECUTION_ORIGIN: "test-controlled/v1",
+    V12_ADB_PATH: path.join(toolRoot, "adb"),
+    V12_MAESTRO_PATH: path.join(toolRoot, "maestro"),
+  };
   const apk = Buffer.from("controlled APK, not native evidence");
   writeFileSync(path.join(runDir, "test.apk"), apk);
   const facts = { serial: "device-private", abi: "arm64-v8a", apiLevel: "36", model: "controlled" };
@@ -152,12 +162,19 @@ function fixture(t) {
   const visualState = JSON.parse(readFileSync(path.join(root, "src/testing/phase20VisualStateRegistry.json"), "utf8")).find(({ id }) => id === "BW-054");
   const state = { commands: [], visualState, settings: { font_scale: "1.15", accelerometer_rotation: "1", user_rotation: "0" }, size: null, density: null, night: "auto", png, darkPng: PNG.sync.write(image).toString("base64"), apkHash: hash(apk), props: { "ro.product.cpu.abi": facts.abi, "ro.build.version.sdk": facts.apiLevel, "ro.product.model": facts.model }, lease: { lease_id: "a".repeat(48), native_execution: "EXECUTED", run_id: runId, device_identity_sha256: attestation.device_identity_sha256, settings: {} } };
   const payload = { run_id: runId, state_id: "BW-054", configuration_id: config, fixture_id: fixtureId };
-  const call = (action = "visual-capture", body = payload, overrides = {}) => executeProductionVisualAction({ action, payload: body, attestation: { ...attestation, action }, root, serial: facts.serial, runCommand: (exe, args, options) => controlledTool(state, exe, args, options), ...overrides });
-  return { root, runDir, state, payload, call, attestation, manifest };
+  const call = (action = "visual-capture", body = payload, overrides = {}) => executeProductionVisualAction({ action, payload: body, attestation: { ...attestation, action }, root, serial: facts.serial, environment, runCommand: (exe, args, options) => controlledTool(state, exe, args, options), ...overrides });
+  return { root, runDir, state, payload, call, attestation, manifest, environment };
 }
 
 test("non-owned actions do no work", async () => {
   assert.equal(await executeProductionVisualAction({ action: "sqlite" }), undefined);
+});
+test("visual probe logs only opaque registry bindings, never route, semantic, or action values", () => {
+  const source = readFileSync(path.join(project, "src/testing/phase20VisualProbe.tsx"), "utf8");
+  assert.match(source, /registry_sha256/u);
+  assert.match(source, /readiness_sha256/u);
+  assert.match(source, /assertions_sha256/u);
+  assert.doesNotMatch(source, /\bsource_route\s*:|\bsource_component\s*:|\bsource_state\s*:|\breadiness_semantics\s*:|\breadiness_actions\s*:|\breadiness_order\s*:|\breadiness_non_color\s*:|\bfocus_target\s*:/u);
 });
 test("production configuration resolves the exact required portrait and landscape bounds", () => {
   assert.deepEqual(resolveV12ProductionVisualConfiguration("AP-L-C360-P-F100"), { id: "AP-L-C360-P-F100", appearance: "Light", scheme: "light", size: "C360", orientation: "P", width: 360, height: 800, fontScale: 1 });
@@ -189,6 +206,10 @@ test("capture binds actual PNG, state/configuration and UI geometry, then reads 
   assert.equal(cleanupAdbCommands.length, 1 + V12_VISUAL_COMMAND_GRAPH.cleanup.length);
   const readyAck = f.state.commands.find((command) => command[0] === "adb" && command.join(" ").includes("android.intent.action.VIEW"));
   assert.match(readyAck?.join(" ") ?? "", /[?&]ready=[a-f0-9]{32}/u);
+  for (const privateStateValue of [f.state.visualState.route, f.state.visualState.component, f.state.visualState.name,
+    f.state.visualState.readiness.screen_test_id, ...f.state.visualState.readiness.semantics,
+    ...f.state.visualState.readiness.actions.flatMap(({ id, label }) => [id, label].filter(Boolean)),
+    "plan-type-chooser-scroll"]) assert.equal(f.state.lastMarkerLine.includes(privateStateValue), false);
   assert.doesNotMatch(JSON.stringify(result), /device-private|\/private\/|\/Users\//u);
 });
 test("batch preserves requested configuration order and individually bound receipts", async (t) => {
@@ -200,6 +221,24 @@ test("batch preserves requested configuration order and individually bound recei
   assert.notEqual(results[0].settings.state_receipt.nonce, results[1].settings.state_receipt.nonce);
   assert.ok(results.every((x) => x.settings.restored));
   await assert.rejects(f.call("visual-capture-batch", { run_id: runId, captures: Array.from({ length: 5 }, () => f.payload) }), /payload_invalid/u);
+});
+test("batch resets the operation deadline before every visual lock attempt", async (t) => {
+  const f = fixture(t);
+  let nowCalls = 0;
+  const lockDeadlineCalls = [];
+  const runCommand = (executable, args, options) => {
+    if (path.basename(executable) === "adb" && args.join(" ").includes("'mkdir' '/data/local/tmp/gym-tracker-v12-visual'")) {
+      lockDeadlineCalls.push(nowCalls);
+    }
+    return controlledTool(f.state, executable, args, options);
+  };
+  await f.call("visual-capture-batch", {
+    run_id: runId,
+    captures: [{ ...f.payload, configuration_id: "AP-D-C390-P-F100" }, f.payload],
+  }, { runCommand, now: () => { nowCalls += 1; return Date.now(); } });
+  assert.equal(lockDeadlineCalls.length, 2);
+  assert.ok(lockDeadlineCalls[0] > 0);
+  assert.ok(lockDeadlineCalls[1] > lockDeadlineCalls[0]);
 });
 test("System light to dark switches in place and preserves the mounted state receipt", async (t) => {
   const f = fixture(t); const systemDark = { ...f.payload, configuration_id: "AP-SD-C390-P-F100" };
@@ -312,16 +351,27 @@ test("controlled non-test launcher runs default ADB/Maestro transport through pr
   const scratch = path.join(f.root, "artifacts/controlled"); mkdirSync(scratch, { recursive: true });
   const bin = path.join(scratch, "bin"); mkdirSync(bin);
   const tool = path.join(scratch, "tool.mjs");
-  writeFileSync(tool, `import fs from 'node:fs';\nconst fixtureId=${JSON.stringify(fixtureId)};\nconst controlledTool=${controlledTool.toString()};\nconst file=process.env.VISUAL_CONTROLLED_STATE; const state=JSON.parse(fs.readFileSync(file)); const r=controlledTool(state,process.argv[2],process.argv.slice(3), {input:fs.readFileSync(0,'utf8')}); fs.writeFileSync(file,JSON.stringify(state));process.stdout.write(r.stdout);process.stderr.write(r.stderr);process.exitCode=r.status;`);
+  writeFileSync(tool, `import fs from 'node:fs'; import path from 'node:path'; import {createHash} from 'node:crypto';\nconst fixtureId=${JSON.stringify(fixtureId)}; const hash=(value)=>createHash('sha256').update(value).digest('hex');\nconst controlledTool=${controlledTool.toString()};\nconst file=process.env.VISUAL_CONTROLLED_STATE; const state=JSON.parse(fs.readFileSync(file)); const r=controlledTool(state,process.argv[2],process.argv.slice(3), {input:fs.readFileSync(0,'utf8')}); fs.writeFileSync(file,JSON.stringify(state));process.stdout.write(r.stdout);process.stderr.write(r.stderr);process.exitCode=r.status;`);
   const quote = (v) => `'${v.replaceAll("'", "'\\''")}'`;
   for (const exe of ["adb", "maestro"]) writeFileSync(path.join(bin, exe), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(tool)} ${exe} "$@"\n`, { mode: 0o755 });
+  const poison = path.join(scratch, "poison"); mkdirSync(poison);
+  for (const exe of ["adb", "maestro"]) writeFileSync(path.join(poison, exe), "#!/bin/sh\nexit 92\n", { mode: 0o755 });
   const statePath = path.join(scratch, "state.json"); writeFileSync(statePath, JSON.stringify(f.state));
   f.manifest.source.tree_sha256 = sourceTreeSha256(f.root);
   writeFileSync(path.join(f.runDir, "build.json"), JSON.stringify(f.manifest));
   const attestation = { ...f.attestation, source_tree_sha256: f.manifest.source.tree_sha256, launcher_source_sha256: hash(readFileSync(launcher)) };
-  const env = { ...process.env, NODE_ENV: "production", PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: "device-private", VISUAL_CONTROLLED_STATE: statePath };
+  const env = { ...process.env, NODE_ENV: "production", PATH: `${poison}:/usr/bin:/bin`,
+    V12_EXECUTION_ORIGIN: "test-controlled/v1", V12_ADB_PATH: path.join(bin, "adb"), V12_MAESTRO_PATH: path.join(bin, "maestro"),
+    V12_DEVICE_SERIAL: "device-private", VISUAL_CONTROLLED_STATE: statePath };
   for (const key of ["NODE_TEST_CONTEXT", "V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS"]) delete env[key];
-  const invoke = (action, payload) => spawnSync(process.execPath, [launcher, "--action", action], { cwd: f.root, env, input: JSON.stringify({ schema_version: 1, action, payload: { ...payload, lease: { lease_id: f.state.lease.lease_id, native_execution: "EXECUTED" } }, attestation: { ...attestation, action } }), encoding: "utf8", timeout: 90_000, maxBuffer: 32 * 1024 * 1024 });
+  const executionTools = resolveV12NativeExecutionTools({ requiredTools: ["adb", "maestro"], env });
+  const invoke = (action, payload) => spawnSync(process.execPath, [launcher, "--action", action], { cwd: f.root, env, input: JSON.stringify({
+    schema_version: 1,
+    action,
+    payload: { ...payload, lease: { lease_id: f.state.lease.lease_id, native_execution: "EXECUTED" } },
+    attestation: { ...attestation, action },
+    execution_origin: createV12NativeExecutionOriginAttestation({ action, executionTools }),
+  }), encoding: "utf8", timeout: 90_000, maxBuffer: 32 * 1024 * 1024 });
   const result = invoke("visual-capture", f.payload);
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout); assert.equal(output.ok, true); assert.equal(output.result.settings.restored, true);

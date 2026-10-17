@@ -6,6 +6,11 @@ import { executeProductionDomainAction } from "./v12-production-native-domain-ac
 import { createProductionNativeRuntime } from "./v12-production-native-runtime.mjs";
 import { executeProductionQualityAction } from "./v12-production-native-quality-actions.mjs";
 import { executeProductionVisualAction } from "./v12-production-native-visual-actions.mjs";
+import {
+  createV12NativeExecutionOriginAttestation,
+  requiredV12NativeToolsForAction,
+  resolveV12NativeExecutionTools,
+} from "./v12-native-execution-origin.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SELF = fileURLToPath(import.meta.url);
@@ -14,6 +19,9 @@ const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const fail = (code) => { throw new Error(`v12_production_native_launcher_${code}`); };
+let requestedSignal = null;
+for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { requestedSignal ??= signal; });
+const terminationGuard = () => { if (requestedSignal !== null) fail("termination_requested"); };
 
 function readRequest() {
   let body = "";
@@ -39,10 +47,11 @@ function validateAttestation(request, action) {
     || ![value.source_tree_sha256, value.apk_sha256, value.installed_apk_sha256, value.apk_signature_sha256, value.device_identity_sha256].every((entry) => SHA256.test(entry ?? ""))) fail("attestation_invalid");
   return value;
 }
-async function execute(action, payload, attestation) {
-  const quality = await executeProductionQualityAction(action, payload, attestation);
+async function execute(action, payload, attestation, executionTools) {
+  terminationGuard();
+  const quality = await executeProductionQualityAction(action, payload, attestation, { executionTools });
   if (quality !== undefined) return quality;
-  const runtime = createProductionNativeRuntime(attestation, { cleanup: ["restore-settings", "release-lease"].includes(action) });
+  const runtime = createProductionNativeRuntime(attestation, { cleanup: ["restore-settings", "release-lease"].includes(action), executionTools });
   if (action === "acquire-lease") return runtime.acquireLease();
   if (action === "release-lease") return runtime.releaseLease(payload.lease);
   if (action === "snapshot-settings") return runtime.snapshotSettings(payload.lease);
@@ -50,9 +59,9 @@ async function execute(action, payload, attestation) {
   if (action === "sqlite") return runtime.withLease(payload, runtime.sqlite);
   const handlers = [
     () => action.startsWith("visual-")
-      ? runtime.withLease(payload, () => executeProductionVisualAction({ action, payload, attestation }))
+      ? runtime.withLease(payload, () => executeProductionVisualAction({ action, payload, attestation, executionTools }))
       : undefined,
-    () => executeProductionDomainAction(action, payload, attestation),
+    () => executeProductionDomainAction(action, payload, attestation, { executionTools }),
   ];
   for (const handler of handlers) {
     const result = await handler();
@@ -69,12 +78,17 @@ try {
   const attestation = validateAttestation(request, action);
   if (request.payload.run_id !== attestation.run_id) fail("attestation_invalid");
   if (process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined || process.env.V12_NATIVE_ADAPTER_TEST_PROCESS !== undefined || process.env.NODE_ENV === "test") fail("test_environment_forbidden");
-  const result = await execute(action, request.payload, attestation);
-  const response = `${JSON.stringify({ schema_version: 1, action, ok: true, result, attestation })}\n`;
+  const executionTools = resolveV12NativeExecutionTools({ requiredTools: requiredV12NativeToolsForAction(action) });
+  const executionOrigin = createV12NativeExecutionOriginAttestation({ action, executionTools });
+  if (JSON.stringify(request.execution_origin) !== JSON.stringify(executionOrigin)) fail("execution_origin_invalid");
+  const result = await execute(action, request.payload, attestation, executionTools);
+  terminationGuard();
+  const response = `${JSON.stringify({ schema_version: 1, action, ok: true, result, attestation, execution_origin: executionOrigin })}\n`;
   if (Buffer.byteLength(response) > MAX_RESPONSE_BYTES) fail("response_too_large");
   process.stdout.write(response);
 } catch (error) {
-  const code = error instanceof Error && /^v12_production_native_launcher_[a-z_]+$/u.test(error.message)
+  const code = requestedSignal !== null ? "v12_production_native_launcher_termination_requested"
+    : error instanceof Error && /^v12_production_native_launcher_[a-z_]+$/u.test(error.message)
     ? error.message : "v12_production_native_launcher_failed";
   process.stderr.write(`${code}\n`);
   process.exitCode = 1;

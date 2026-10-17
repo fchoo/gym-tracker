@@ -202,20 +202,41 @@ export function writeV12PerformanceObservation({ runId, identity, collect, root 
 }
 
 export function verifyV12PerformanceObservation({ runId, root = process.cwd(), readJson, identity } = {}) {
-  if (!V12_RUN_ID.test(runId ?? "") || !identity) fail("arguments_invalid");
+  if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
   const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
+  const expectedIdentity = identity ?? (() => {
+    const manifest = read(`artifacts/native/v1.2/${runId}/build.json`);
+    const value = {
+      base_head: manifest?.source?.head,
+      source_tree_sha256: manifest?.source?.tree_sha256,
+      apk_sha256: manifest?.build?.apk?.sha256,
+      installed_apk_sha256: manifest?.device?.installed_apk_sha256,
+      package: manifest?.build?.package,
+      device_identity_sha256: manifest?.device?.identity_sha256,
+      fixture_sha256: manifest?.fixtures?.registry_sha256,
+    };
+    if (manifest?.run_id !== runId || manifest?.build?.profile !== "development-test"
+      || !/^[a-f0-9]{40}$/u.test(value.base_head ?? "") || value.package !== "com.fchoo.gymtracker.devtest"
+      || [value.source_tree_sha256, value.apk_sha256, value.installed_apk_sha256,
+        value.device_identity_sha256, value.fixture_sha256].some((entry) => !HASH.test(entry ?? ""))) fail("identity_invalid");
+    return Object.freeze(value);
+  })();
   const output = read(`artifacts/native/v1.2/${runId}/performance.json`);
   if (!output || output.run_id !== runId || output.producer !== "v12-release-performance-writer/v1" || output.build_variant !== "release" || output.sample_origin !== "release-native-source-backed" || Object.hasOwn(output, "verdict") || Object.hasOwn(output, "readiness")) fail("output_invalid");
-  return validateV12PerformanceShard(output.observation, identity);
+  return validateV12PerformanceShard(output.observation, expectedIdentity);
 }
 
-export function runV12PerformanceCli(args = process.argv.slice(2), io = process) {
+export function runV12PerformanceCli(args = process.argv.slice(2), io = process, {
+  root = process.cwd(),
+  createAdapter = createV12NativeAdapter,
+} = {}) {
   try {
     if (args.length !== 3 || args[0] !== "--run" || !V12_RUN_ID.test(args[1] ?? "") || !["--execute", "--verify"].includes(args[2])) fail("arguments_invalid");
-    const adapter = createV12NativeAdapter();
-    const identity = adapter.collectPerformance({ run_id: args[1], request: "identity" }).identity;
-    if (args[2] === "--execute") publishV12AtomicShard({ runId: args[1], shard: "performance", executionOrigin: () => adapter.executionOrigin("performance"), produce: ({ write }) => writeV12PerformanceObservation({ runId: args[1], identity, collect: adapter.collectPerformance, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
-    else verifyV12PerformanceObservation({ runId: args[1], identity });
+    if (args[2] === "--execute") {
+      const adapter = createAdapter();
+      const identity = adapter.collectPerformance({ run_id: args[1], request: "identity" }).identity;
+      publishV12AtomicShard({ runId: args[1], shard: "performance", executionOrigin: () => adapter.executionOrigin("performance"), produce: ({ write }) => writeV12PerformanceObservation({ runId: args[1], identity, collect: adapter.collectPerformance, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+    } else verifyV12PerformanceObservation({ runId: args[1], root });
     io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
     return 0;
   } catch (error) { io.stderr.write(`${error.message}\n`); return 1; }

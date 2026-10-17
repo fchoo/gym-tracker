@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import {
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_NATIVE_PROCESS_TREE_KILL_GRACE_MS,
+  V12_NATIVE_PROCESS_TREE_TERM_GRACE_MS,
   V12_CALENDAR_ACTION_BUDGET,
   V12_CALENDAR_COMMAND_GRAPH,
   V12_GARMIN_ACTION_BUDGET,
@@ -29,6 +31,8 @@ import {
 export {
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
+  V12_NATIVE_PROCESS_TREE_KILL_GRACE_MS,
+  V12_NATIVE_PROCESS_TREE_TERM_GRACE_MS,
   V12_CALENDAR_ACTION_BUDGET,
   V12_CALENDAR_COMMAND_GRAPH,
   V12_GARMIN_ACTION_BUDGET,
@@ -49,6 +53,9 @@ export {
   v12CommandPathMaxMs,
 };
 import {
+  createV12NativeExecutionOriginAttestation,
+  requiredV12NativeToolsForAction,
+  resolveV12NativeExecutionTools,
   V12_PRODUCTION_EXECUTION_ORIGIN,
   V12_TEST_EXECUTION_ORIGIN,
 } from "./v12-native-execution-origin.mjs";
@@ -166,6 +173,107 @@ function sameAttestation(expected, actual) {
     && Object.keys(actual).length === Object.keys(expected).length;
 }
 
+const killTree = (child, signal) => {
+  if (!Number.isSafeInteger(child.pid) || child.pid < 1) return;
+  try { process.kill(-child.pid, signal); }
+  catch { try { child.kill(signal); } catch { /* process already exited */ } }
+};
+
+/** Owns one detached process group and bounds TERM -> KILL escalation. */
+export function superviseV12NativeProcess({
+  executable,
+  args,
+  cwd,
+  environment,
+  input,
+  timeoutMs,
+  termGraceMs = V12_NATIVE_PROCESS_TREE_TERM_GRACE_MS,
+  killGraceMs = V12_NATIVE_PROCESS_TREE_KILL_GRACE_MS,
+  maxBuffer = V12_NATIVE_MAX_RESPONSE_BYTES,
+  signal,
+} = {}) {
+  if (typeof executable !== "string" || !path.isAbsolute(executable) || !Array.isArray(args)
+    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(termGraceMs) || termGraceMs < 1
+    || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || !Number.isSafeInteger(maxBuffer) || maxBuffer < 1) {
+    return Promise.reject(new Error("v12_native_adapter_supervisor_invalid"));
+  }
+  return new Promise((resolve) => {
+    const child = spawn(executable, args, {
+      cwd,
+      env: environment,
+      detached: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const stdout = []; const stderr = [];
+    let stdoutBytes = 0; let stderrBytes = 0;
+    let timedOut = false; let cancelled = false; let outputExceeded = false; let termination = null; let settled = false;
+    let termTimer; let killTimer;
+    const terminate = (reason) => {
+      if (settled || termination !== null) return;
+      timedOut = reason === "timeout";
+      cancelled = reason === "signal";
+      termination = "SIGTERM";
+      killTree(child, "SIGTERM");
+      termTimer = setTimeout(() => {
+        if (settled) return;
+        termination = "SIGKILL";
+        killTree(child, "SIGKILL");
+        killTimer = setTimeout(() => killTree(child, "SIGKILL"), killGraceMs);
+      }, termGraceMs);
+    };
+    const deadline = setTimeout(() => terminate("timeout"), timeoutMs);
+    const onAbort = () => terminate("signal");
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const collect = (chunks, kind) => (chunk) => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (kind === "stdout") stdoutBytes += bytes.length; else stderrBytes += bytes.length;
+      if (stdoutBytes + stderrBytes > maxBuffer) { outputExceeded = true; terminate("output"); return; }
+      chunks.push(bytes);
+    };
+    child.stdout.on("data", collect(stdout, "stdout"));
+    child.stderr.on("data", collect(stderr, "stderr"));
+    child.on("error", () => terminate("error"));
+    child.on("close", (status, childSignal) => {
+      settled = true;
+      clearTimeout(deadline); clearTimeout(termTimer); clearTimeout(killTimer);
+      signal?.removeEventListener("abort", onAbort);
+      resolve(Object.freeze({
+        status,
+        signal: childSignal,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        timed_out: timedOut,
+        cancelled,
+        output_exceeded: outputExceeded,
+        termination,
+      }));
+    });
+    child.stdin.on("error", () => { /* close/error settles through the child */ });
+    child.stdin.end(input ?? "");
+  });
+}
+
+async function runSupervisorCli() {
+  const timeoutMs = Number(process.argv[3]);
+  const executable = process.argv[4];
+  const args = process.argv.slice(5);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGTERM", abort); process.once("SIGINT", abort);
+  const result = await superviseV12NativeProcess({
+    executable,
+    args,
+    cwd: process.cwd(),
+    environment: process.env,
+    input: readFileSync(0),
+    timeoutMs,
+    signal: controller.signal,
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.exitCode = result.status === 0 && result.signal === null ? 0 : 1;
+}
+
 /**
  * Production boundary for Phase 20 device execution. The production launcher
  * is fixed and checked in; a subprocess fake is accepted only for a Node test
@@ -180,14 +288,25 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) fail("request_invalid");
   const target = commandFor(root, command, environment);
   const attestation = createAttestation(action, payload, root);
-  const request = `${JSON.stringify({ schema_version: 1, action, payload, attestation })}\n`;
+  const nativeExecutionOrigin = target.testOnly ? undefined : createV12NativeExecutionOriginAttestation({
+    action,
+    executionTools: resolveV12NativeExecutionTools({
+      requiredTools: requiredV12NativeToolsForAction(action),
+      env: environment,
+    }),
+  });
+  const request = `${JSON.stringify({ schema_version: 1, action, payload, attestation,
+    ...(nativeExecutionOrigin === undefined ? {} : { execution_origin: nativeExecutionOrigin }) })}\n`;
   if (Buffer.byteLength(request) > V12_NATIVE_MAX_REQUEST_BYTES) fail("request_too_large");
-  const result = spawnSync(target.executable, [...target.args, "--action", action], {
+  const supervisedTimeoutMs = V12_NATIVE_ACTION_TIMEOUT_MS[action] - V12_NATIVE_ADAPTER_EXIT_MARGIN_MS;
+  const result = spawnSync(process.execPath, [ADAPTER, "--supervise", String(supervisedTimeoutMs), target.executable,
+    ...target.args, "--action", action], {
     cwd: root,
     input: request,
     encoding: "utf8",
     env: environment,
     timeout: V12_NATIVE_ACTION_TIMEOUT_MS[action],
+    killSignal: "SIGKILL",
     maxBuffer: V12_NATIVE_MAX_RESPONSE_BYTES,
   });
   if (result.error || result.signal || result.status !== 0) {
@@ -199,6 +318,7 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
   if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)
     || (target.testOnly ? response.evidence_origin !== "test" : Object.hasOwn(response, "evidence_origin"))) fail("response_invalid");
   if (!sameAttestation(attestation, response.attestation)) fail("attestation_invalid");
+  if (!target.testOnly && JSON.stringify(response.execution_origin) !== JSON.stringify(nativeExecutionOrigin)) fail("execution_origin_invalid");
   let normalizedResult = response.result;
   if (action === "garmin") {
     if (normalizedResult === null || typeof normalizedResult !== "object" || Array.isArray(normalizedResult)) fail("response_invalid");
@@ -221,10 +341,13 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
       adapter_source_sha256: sourceHash(ADAPTER),
       launcher_source_sha256: sourceHash(target.source),
       domain_source_sha256: sourceHash(target.testOnly ? target.source : ACTION_DOMAIN_SOURCE[action]),
-      request_attestation_sha256: sha256(JSON.stringify(attestation)),
+      request_attestation_sha256: sha256(JSON.stringify({ attestation, execution_origin: nativeExecutionOrigin ?? null })),
     }),
   });
 }
+
+if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(ADAPTER)
+  && process.argv[2] === "--supervise") await runSupervisorCli();
 
 export function invokeV12NativeAdapter(action, payload, options = {}) {
   return invokeV12NativeAdapterEnvelope(action, payload, options).result;

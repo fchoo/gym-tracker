@@ -8,6 +8,7 @@ import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "./benchmark-v
 import { V12_QUALITY_RUNTIME_SETTINGS } from "./v12-device-settings-contract.mjs";
 import { V12_NATIVE_ADB_CALL_TIMEOUT_MS, V12_QUALITY_PRODUCER_TIMEOUT_MS } from "./v12-native-time-budgets.mjs";
 import { canonicalV12QualityJson, validateV12AccessibilityProducer, validateV12PerformanceProducer } from "./v12-quality-evidence-contract.mjs";
+import { resolveV12NativeExecutionTools } from "./v12-native-execution-origin.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const COMPONENT = `${PACKAGE}/com.fchoo.gymtracker.Phase20QualityInstrumentation`;
@@ -44,33 +45,33 @@ function assertIdentity(actual, expected) {
 
 // The commands are fixed; neither executable paths nor shell fragments come from a request.
 // https://nodejs.org/docs/latest-v24.x/api/child_process.html#child_processspawnsynccommand-args-options
-function adb(serial, args) {
-  const child = spawnSync("adb", ["-s", serial, ...args], { encoding: "utf8", timeout: V12_NATIVE_ADB_CALL_TIMEOUT_MS, killSignal: "SIGKILL", maxBuffer: MAX_BYTES });
+function adb(adbPath, serial, args) {
+  const child = spawnSync(adbPath, ["-s", serial, ...args], { encoding: "utf8", timeout: V12_NATIVE_ADB_CALL_TIMEOUT_MS, killSignal: "SIGKILL", maxBuffer: MAX_BYTES });
   if (child.error || child.signal || child.status !== 0) fail("device_command_failed");
   return child.stdout.trim();
 }
-function shell(serial, ...args) { return adb(serial, ["shell", args.map(quote).join(" ")]); }
-function shellOptional(serial, ...args) {
-  const child = spawnSync("adb", ["-s", serial, "shell", args.map(quote).join(" ")], { encoding: "utf8", timeout: 20_000, killSignal: "SIGKILL", maxBuffer: MAX_BYTES });
+function shell(adbPath, serial, ...args) { return adb(adbPath, serial, ["shell", args.map(quote).join(" ")]); }
+function shellOptional(adbPath, serial, ...args) {
+  const child = spawnSync(adbPath, ["-s", serial, "shell", args.map(quote).join(" ")], { encoding: "utf8", timeout: 20_000, killSignal: "SIGKILL", maxBuffer: MAX_BYTES });
   if (child.error || child.signal || ![0, 1].includes(child.status)) fail("device_command_failed");
   return child.stdout.trim();
 }
-function settingsSnapshot(serial) {
+function settingsSnapshot(adbPath, serial) {
   return Object.fromEntries(Object.entries(SETTINGS).map(([key, namespace]) => {
-    const value = shell(serial, "settings", "get", namespace, key);
+    const value = shell(adbPath, serial, "settings", "get", namespace, key);
     if (!/^(?:null|\d+(?:\.\d+)?)$/u.test(value)) fail("settings_invalid");
     return [key, value];
   }));
 }
-function restore(serial, original) {
+function restore(adbPath, serial, original) {
   let failed = false;
   for (const [key, namespace] of Object.entries(SETTINGS)) {
     try {
-      if (original[key] === "null") shell(serial, "settings", "delete", namespace, key);
-      else shell(serial, "settings", "put", namespace, key, original[key]);
+      if (original[key] === "null") shell(adbPath, serial, "settings", "delete", namespace, key);
+      else shell(adbPath, serial, "settings", "put", namespace, key, original[key]);
     } catch { failed = true; }
   }
-  try { if (!isDeepStrictEqual(settingsSnapshot(serial), original)) failed = true; } catch { failed = true; }
+  try { if (!isDeepStrictEqual(settingsSnapshot(adbPath, serial), original)) failed = true; } catch { failed = true; }
   if (failed) fail("settings_restore_failed");
 }
 
@@ -87,14 +88,14 @@ function restore(serial, original) {
  * Chunk order/count/digest and one terminal marker are mandatory. No logcat clear,
  * polling stale files, user data clear, host timing samples, or environment overrides.
  */
-function instrument(serial, action, identity, nonce, coldLaunchEvidence) {
+function instrument(adbPath, serial, action, identity, nonce, coldLaunchEvidence) {
   return new Promise((resolve, reject) => {
     const arguments_ = ["am", "instrument", "-w", "-r", "-e", "qualityAction", action,
       "-e", "qualityNonce", nonce, "-e", "qualityIdentity", Buffer.from(JSON.stringify(identity)).toString("base64"),
       "-e", "qualityWorkload", Buffer.from(JSON.stringify(V12_PERFORMANCE_WORKLOAD)).toString("base64"),
       "-e", "qualityBudgets", Buffer.from(JSON.stringify(V12_PERFORMANCE_BUDGETS)).toString("base64"),
       ...(coldLaunchEvidence === undefined ? [] : ["-e", "qualityColdLaunchEvidence", Buffer.from(JSON.stringify(coldLaunchEvidence)).toString("base64")]), COMPONENT];
-    const child = spawn("adb", ["-s", serial, "shell", arguments_.map(quote).join(" ")], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(adbPath, ["-s", serial, "shell", arguments_.map(quote).join(" ")], { stdio: ["ignore", "pipe", "pipe"] });
     let buffered = ""; let bytes = 0; let progress = 0; const chunks = []; let total; let resultHash; let problem; let completed = false;
     let idle;
     const abort = (code) => { problem ??= code; child.kill("SIGKILL"); };
@@ -167,20 +168,20 @@ function instrument(serial, action, identity, nonce, coldLaunchEvidence) {
   });
 }
 
-function processFacts(serial) {
-  const processId = Number(shellOptional(serial, "pidof", PACKAGE).split(/\s+/u)[0]);
+function processFacts(adbPath, serial) {
+  const processId = Number(shellOptional(adbPath, serial, "pidof", PACKAGE).split(/\s+/u)[0]);
   if (!Number.isSafeInteger(processId) || processId < 1) return undefined;
-  const stat = shell(serial, "cat", `/proc/${processId}/stat`);
+  const stat = shell(adbPath, serial, "cat", `/proc/${processId}/stat`);
   const fields = stat.slice(stat.lastIndexOf(") ") + 2).trim().split(/\s+/u);
   const processStartTicks = Number(fields[19]);
   if (!Number.isSafeInteger(processStartTicks) || processStartTicks < 1) fail("cold_process_invalid");
   return { processId, processStartTicks };
 }
 
-async function waitForColdReady(serial, nonce, sequence) {
+async function waitForColdReady(adbPath, serial, nonce, sequence) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const output = shell(serial, "logcat", "-d", "-v", "monotonic", "ReactNativeJS:I", "*:S");
+    const output = shell(adbPath, serial, "logcat", "-d", "-v", "monotonic", "ReactNativeJS:I", "*:S");
     let ready; let routeCallback;
     for (const line of output.split(/\r?\n/u)) {
       const markerAt = line.indexOf("GYM_TRACKER_PHASE20_WORKLOAD:");
@@ -204,26 +205,27 @@ async function waitForColdReady(serial, nonce, sequence) {
 }
 
 /** The Node launcher survives each app force-stop and binds process start to the app's ready marker. */
-export async function collectV12ColdLaunchEvidence(serial, nonce, sourceTreeSha256, count = 20) {
+export async function collectV12ColdLaunchEvidence(serial, nonce, sourceTreeSha256, count = 20, executionTools = resolveV12NativeExecutionTools()) {
   digest(sourceTreeSha256);
-  const hertz = Number(shell(serial, "getconf", "CLK_TCK"));
+  const adbPath = executionTools.adb;
+  const hertz = Number(shell(adbPath, serial, "getconf", "CLK_TCK"));
   if (!Number.isFinite(hertz) || hertz <= 0) fail("cold_clock_invalid");
-  let previous = processFacts(serial);
+  let previous = processFacts(adbPath, serial);
   if (previous === undefined) {
-    shell(serial, "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
+    shell(adbPath, serial, "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
       `gymtracker-devtest://__phase20-quality-probe?nonce=${nonce}&action=performance&operation=launch-warm&sequence=1`, PACKAGE);
-    previous = processFacts(serial);
+    previous = processFacts(adbPath, serial);
   }
   if (previous === undefined) fail("cold_process_invalid");
   const cycles = [];
   for (let sequence = 1; sequence <= count; sequence += 1) {
-    shell(serial, "logcat", "-c");
-    shell(serial, "am", "force-stop", PACKAGE);
-    if (processFacts(serial) !== undefined) fail("cold_force_stop_invalid");
-    shell(serial, "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
+    shell(adbPath, serial, "logcat", "-c");
+    shell(adbPath, serial, "am", "force-stop", PACKAGE);
+    if (processFacts(adbPath, serial) !== undefined) fail("cold_force_stop_invalid");
+    shell(adbPath, serial, "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
       `gymtracker-devtest://__phase20-quality-probe?nonce=${nonce}&action=performance&operation=launch-cold&sequence=${sequence}`, PACKAGE);
-    const ready = await waitForColdReady(serial, nonce, sequence);
-    const current = processFacts(serial);
+    const ready = await waitForColdReady(adbPath, serial, nonce, sequence);
+    const current = processFacts(adbPath, serial);
     if (current === undefined || (current.processId === previous.processId && current.processStartTicks === previous.processStartTicks)) fail("cold_process_not_restarted");
     const processStartMs = current.processStartTicks * 1_000 / hertz;
     if (ready.readyMs <= processStartMs) fail("cold_clock_invalid");
@@ -261,7 +263,9 @@ function validatePerformance(performance, identity) {
  * The invoking adapter derives its deadline from the 20-minute producer plus
  * every independently bounded ADB call through restoration and lease release.
  */
-export async function executeProductionQualityAction(action, payload, attestation) {
+export async function executeProductionQualityAction(action, payload, attestation, {
+  executionTools = resolveV12NativeExecutionTools(),
+} = {}) {
   if (action !== "accessibility" && action !== "performance") return undefined;
   try {
     if (process.env.NODE_ENV === "test" || process.env.V12_NATIVE_ADAPTER_TEST_MODE !== undefined
@@ -277,7 +281,7 @@ export async function executeProductionQualityAction(action, payload, attestatio
       : { workload: V12_PERFORMANCE_WORKLOAD, budgets: V12_PERFORMANCE_BUDGETS, build_variant: "release", sample_origin: "release-native-source-backed", request: "identity" };
     for (const [key, value] of Object.entries(expected)) if (Object.hasOwn(payload, key) && !isDeepStrictEqual(payload[key], value)) fail("request_invalid");
     const root = process.cwd();
-    const runtime = createProductionNativeRuntime(attestation);
+    const runtime = createProductionNativeRuntime(attestation, { executionTools });
     const identity = identityFromManifest(root, attestation);
     const serial = process.env.V12_DEVICE_SERIAL;
     const owned = payload.lease === undefined;
@@ -287,17 +291,17 @@ export async function executeProductionQualityAction(action, payload, attestatio
       if (owned) baseSettings = runtime.snapshotSettings(lease);
       return await runtime.withLease({ lease }, async () => {
         if (action === "performance" && payload.request === "identity") return { identity };
-        const listing = shell(serial, "pm", "list", "instrumentation");
+        const listing = shell(executionTools.adb, serial, "pm", "list", "instrumentation");
         if (!listing.split(/\r?\n/u).includes(`instrumentation:${COMPONENT} (target=${PACKAGE})`)) fail("instrumentation_missing");
-        const original = settingsSnapshot(serial);
+        const original = settingsSnapshot(executionTools.adb, serial);
         let value;
         try {
-          if (action === "accessibility") shell(serial, "settings", "put", "system", "font_scale", "2");
+          if (action === "accessibility") shell(executionTools.adb, serial, "settings", "put", "system", "font_scale", "2");
           const nonce = randomBytes(24).toString("hex");
           const coldLaunchEvidence = action === "performance"
-            ? await collectV12ColdLaunchEvidence(serial, nonce, identity.source_tree_sha256)
+            ? await collectV12ColdLaunchEvidence(serial, nonce, identity.source_tree_sha256, 20, executionTools)
             : undefined;
-          const measured = await instrument(serial, action, identity, nonce, coldLaunchEvidence);
+          const measured = await instrument(executionTools.adb, serial, action, identity, nonce, coldLaunchEvidence);
           exact(measured, ["schema_version", "action", "identity", "build_variant", "debugger_attached", action === "accessibility" ? "observations" : "performance"]);
           if (measured.schema_version !== 1 || measured.action !== action || measured.build_variant !== "release" || measured.debugger_attached !== false) fail("release_required");
           assertIdentity(measured.identity, identity);
@@ -309,15 +313,15 @@ export async function executeProductionQualityAction(action, payload, attestatio
           value = action === "accessibility" ? validateAccessibility(measured.observations, identity) : validatePerformance(measured.performance, identity);
           // Recheck source, device and installed bytes after native execution as well.
           createProductionNativeRuntime(attestation);
-          const installed = shell(serial, "pm", "path", PACKAGE);
+          const installed = shell(executionTools.adb, serial, "pm", "path", PACKAGE);
           if (!/^package:\/data\/app\/[A-Za-z0-9_./=+-]+\.apk$/u.test(installed)
-            || shell(serial, "sha256sum", installed.slice(8)).split(/\s/u)[0] !== identity.apk_sha256) fail("identity_mismatch");
+            || shell(executionTools.adb, serial, "sha256sum", installed.slice(8)).split(/\s/u)[0] !== identity.apk_sha256) fail("identity_mismatch");
         } finally {
           // A killed host ADB process need not stop the device-side instrumentation.
           // Always stop it before restoring; a stop failure cannot yield a success receipt.
           let stopFailed = false;
-          try { shell(serial, "am", "force-stop", PACKAGE); } catch { stopFailed = true; }
-          try { restore(serial, original); } catch (error) { safeToRelease = false; throw error; }
+          try { shell(executionTools.adb, serial, "am", "force-stop", PACKAGE); } catch { stopFailed = true; }
+          try { restore(executionTools.adb, serial, original); } catch (error) { safeToRelease = false; throw error; }
           if (stopFailed) safeToRelease = false;
           if (stopFailed) fail("instrumentation_stop_failed");
         }

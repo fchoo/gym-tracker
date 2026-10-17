@@ -422,13 +422,13 @@ async function recovery(io) {
  * Unknown actions return undefined. No injected runtime, command, result, or test
  * mode is accepted. Throws bounded launcher errors; never publishes a verdict.
  */
-export async function executeProductionDomainAction(action, payload, attestation) {
+export async function executeProductionDomainAction(action, payload, attestation, { executionTools } = {}) {
   if (!['garmin', 'calendar', 'recovery'].includes(action)) return undefined;
-  if (action === 'calendar') return executeProductionCalendarAction(payload, attestation);
+  const resolvedExecutionTools = executionTools ?? resolveV12NativeExecutionTools({ domain: true });
+  if (action === 'calendar') return executeProductionCalendarAction(payload, attestation, { executionTools: resolvedExecutionTools });
   try {
     const root = process.cwd(); validate(action, payload, attestation, root);
-    const executionTools = resolveV12NativeExecutionTools({ domain: true });
-    const runtime = createProductionNativeRuntime(attestation, { root, executionTools });
+    const runtime = createProductionNativeRuntime(attestation, { root, executionTools: resolvedExecutionTools });
     const owned = payload.lease === undefined;
     const lease = owned ? runtime.acquireLease() : payload.lease;
     let settings; let restoreFailed = false;
@@ -436,10 +436,13 @@ export async function executeProductionDomainAction(action, payload, attestation
       if (owned) settings = runtime.snapshotSettings(lease);
       const leasedPayload = { ...payload, lease };
       return await runtime.withLease(leasedPayload, async () => {
-        const io = session(root, attestation, action, executionTools);
+        const io = session(root, attestation, action, resolvedExecutionTools);
         io.standalone();
         try {
-          return await io.restoreAround(() => action === 'garmin' ? garmin(io, leasedPayload) : recovery(io));
+          return await io.restoreAround(() => action === 'garmin' ? garmin(io, leasedPayload) : (async () => {
+            try { return await recovery(io); }
+            finally { io.stop(); }
+          })());
         } catch (error) {
           restoreFailed = error?.message === 'v12_production_native_launcher_settings_restore_failed';
           throw error;
