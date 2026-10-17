@@ -8,13 +8,14 @@ const phase20Tests = readdirSync("scripts")
   .sort();
 
 test("the Phase 20 evidence and coverage gates enumerate every v12 integration test", () => {
-  assert.equal(phase20Tests.length, 27);
+  assert.equal(phase20Tests.length, 30);
 
   const coverageGate = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
   for (const file of phase20Tests) {
     assert.match(coverageGate, new RegExp(file.replaceAll(".", "\\."), "u"), file);
   }
   assert.match(coverageGate, /phase20_evidence_test_manifest_drift/u);
+  assert.match(coverageGate, /expected_count: 30/u);
   assert.match(coverageGate, /--test-timeout=600000/u);
   assert.match(coverageGate, /src\/testing\/contracts\/phase20CoverageGate\.test\.ts/u);
 

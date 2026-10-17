@@ -129,9 +129,11 @@ const phase16EvidenceFiles = [
 const phase20EvidenceTests = Object.freeze([
   "scripts/native-device-selection.test.mjs",
   "scripts/v12-accessibility-shard.test.mjs",
+  "scripts/v12-artifact-privacy.test.mjs",
   "scripts/v12-atomic-publication.integration.test.mjs",
   "scripts/v12-atomic-shard-publication.test.mjs",
   "scripts/v12-blocker-row-resolver.test.mjs",
+  "scripts/v12-calendar-artifact-transport.test.mjs",
   "scripts/v12-calendar-cli-blackbox.test.mjs",
   "scripts/v12-calendar-comparison.test.mjs",
   "scripts/v12-calendar-evidence-coverage.test.mjs",
@@ -143,6 +145,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/v12-garmin-shard.test.mjs",
   "scripts/v12-native-adapter-attestation.test.mjs",
   "scripts/v12-native-execution-origin.test.mjs",
+  "scripts/v12-performance-shard.test.mjs",
   "scripts/v12-phase20-cli-blackbox.test.mjs",
   "scripts/v12-preflight-contract.test.mjs",
   "scripts/v12-production-domain-receipts.test.mjs",
@@ -167,10 +170,10 @@ function validatePhase20EvidenceTestManifest() {
   const registered = [...phase20V12EvidenceTests].sort();
   const missing = discovered.filter((file) => !registered.includes(file));
   const stale = registered.filter((file) => !discovered.includes(file));
-  if (missing.length > 0 || stale.length > 0 || registered.length !== 27) {
+  if (missing.length > 0 || stale.length > 0 || registered.length !== 30) {
     throw new Error(JSON.stringify({
       error: "phase20_evidence_test_manifest_drift",
-      expected_count: 27,
+      expected_count: 30,
       registered_count: registered.length,
       discovered_count: discovered.length,
       missing,
