@@ -190,26 +190,10 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
   if (!Number.isSafeInteger(batchWindow) || batchWindow < 1 || batchWindow > 512) fail("adapter_invalid");
   const records = [];
   const windows = [];
-  const measuredItems = [];
-  if (typeof captureAll === "function") {
-    for (let offset = 0; offset < plan.captures.length; offset += batchWindow) {
-      const requested = plan.captures.slice(offset, offset + batchWindow);
-      const batch = captureAll(Object.freeze({ run_id: runId, captures: requested }));
-      if (!Array.isArray(batch) || batch.length !== requested.length) fail("capture_invalid");
-      const requestBytes = Buffer.byteLength(JSON.stringify({ run_id: runId, captures: requested }));
-      const responseBytes = Buffer.byteLength(JSON.stringify(batch.map(({ png, ...entry }) => ({ ...entry, png_base64: entry.png_base64 ?? png?.toString("base64") }))));
-      if (requestBytes > 1024 * 1024 || responseBytes > 32 * 1024 * 1024) fail("batch_transport_limit_invalid");
-      measuredItems.push(...batch);
-      windows.push(Object.freeze({ ordinal: windows.length, offset, count: requested.length,
-        first: `${requested[0].state_id}/${requested[0].configuration_id}`,
-        last: `${requested.at(-1).state_id}/${requested.at(-1).configuration_id}`,
-        request_bytes: requestBytes, response_bytes: responseBytes,
-        request_sha256: hash(JSON.stringify(requested)),
-        result_sha256: hash(JSON.stringify(batch.map((entry) => entry?.settings?.state_receipt ?? null))) }));
-    }
-  }
-  for (const [captureIndex, item] of plan.captures.entries()) {
-    const measured = measuredItems[captureIndex] ?? capture(Object.freeze({ ...item, run_id: runId }));
+  const reduceCapture = (item, rawMeasured) => {
+    const measured = rawMeasured && typeof rawMeasured === "object" && Object.hasOwn(rawMeasured, "png_base64")
+      ? (({ png_base64: _discarded, ...retained }) => retained)(rawMeasured)
+      : rawMeasured;
     if (!measured || measured.native_execution !== "EXECUTED" || measured.fixture_id !== item.fixture_id
       || !Buffer.isBuffer(measured.png) || measured.png.length === 0 || !measured.settings
       || measured.settings.restored !== true || measured.settings.privacy !== "synthetic-only") fail("capture_invalid");
@@ -224,8 +208,27 @@ export function executeLiveV12VisualCapture({ runId, root = process.cwd(), captu
       writeFileSync(absolute, measured.png, { flag: "wx" });
     }
     const receipt = validateStateReceipt(root, runId, item, measured, pngSha256);
-    const record = Object.freeze({ schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) });
-    records.push(record);
+    records.push(Object.freeze({ schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: item.state_id, configuration_id: item.configuration_id, fixture_id: item.fixture_id, native_execution: "EXECUTED", native_png: Object.freeze({ path: pngPath, sha256: pngSha256, size_bytes: measured.png.length, width: dimensions.width, height: dimensions.height }), settings: Object.freeze({ ...measured.settings }) }));
+    return receipt;
+  };
+  if (typeof captureAll === "function") {
+    for (let offset = 0; offset < plan.captures.length; offset += batchWindow) {
+      const requested = plan.captures.slice(offset, offset + batchWindow);
+      const batch = captureAll(Object.freeze({ run_id: runId, captures: requested }));
+      if (!Array.isArray(batch) || batch.length !== requested.length) fail("capture_invalid");
+      const requestBytes = Buffer.byteLength(JSON.stringify({ run_id: runId, captures: requested }));
+      const responseBytes = Buffer.byteLength(JSON.stringify(batch.map(({ png, ...entry }) => ({ ...entry, png_base64: entry.png_base64 ?? png?.toString("base64") }))));
+      if (requestBytes > 1024 * 1024 || responseBytes > 32 * 1024 * 1024) fail("batch_transport_limit_invalid");
+      const receipts = batch.map((measured, index) => reduceCapture(requested[index], measured));
+      windows.push(Object.freeze({ ordinal: windows.length, offset, count: requested.length,
+        first: `${requested[0].state_id}/${requested[0].configuration_id}`,
+        last: `${requested.at(-1).state_id}/${requested.at(-1).configuration_id}`,
+        request_bytes: requestBytes, response_bytes: responseBytes,
+        request_sha256: hash(JSON.stringify(requested)),
+        result_sha256: hash(JSON.stringify(receipts)) }));
+    }
+  } else {
+    for (const item of plan.captures) reduceCapture(item, capture(Object.freeze({ ...item, run_id: runId })));
   }
   if (new Set(records.map(({ settings }) => settings.state_receipt.nonce)).size !== records.length) fail("state_receipt_duplicate");
   const effectiveWindows = windows.length > 0 ? windows : plan.captures.map((item, offset) => Object.freeze({ ordinal: offset, offset, count: 1, first: `${item.state_id}/${item.configuration_id}`, last: `${item.state_id}/${item.configuration_id}`,

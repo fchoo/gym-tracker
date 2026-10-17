@@ -136,3 +136,43 @@ test("chunks all 6,848 captures into bounded ordered windows and rejects stale o
   loading.settings.state_receipt.readiness_status = "ready";
   assert.throws(() => verifyV12VisualCapture({ runId: index.run_id, root: ROOT, readJson: () => loadingAsReady, readBytes: (file) => written.get(file) }), /state_receipt_invalid/u);
 });
+
+test("reduces realistic capture batches before requesting the next window", () => {
+  const image = new PNG({ width: 128, height: 128 });
+  let random = 0x5EED1234;
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    random = (Math.imul(random, 1_664_525) + 1_013_904_223) >>> 0;
+    image.data[offset] = random & 255;
+    image.data[offset + 1] = (random >>> 8) & 255;
+    image.data[offset + 2] = (random >>> 16) & 255;
+    image.data[offset + 3] = 255;
+  }
+  const realisticPng = PNG.sync.write(image, { colorType: 6 });
+  assert.ok(realisticPng.length >= 48 * 1024, `fixture must be realistic-sized, got ${realisticPng.length}`);
+
+  const baselineRss = process.memoryUsage().rss;
+  let firstWriteRss;
+  let ordinal = 0;
+  const index = executeLiveV12VisualCapture({
+    runId: "phase20-20261014T000000Z-aaaaaaaaaaaa",
+    root: ROOT,
+    capture: () => { throw new Error("single capture must not run"); },
+    captureAll: ({ captures }) => captures.map((item) => {
+      const sequence = ++ordinal;
+      const png = Buffer.from(realisticPng);
+      return {
+        native_execution: "EXECUTED",
+        fixture_id: "v12-synthetic-fixtures-r18",
+        png,
+        settings: { restored: true, privacy: "synthetic-only", ...receiptFor(item, png, sequence) },
+      };
+    }),
+    batchWindow: 8,
+    write: () => { firstWriteRss ??= process.memoryUsage().rss; },
+  });
+
+  const retainedBeforeFirstWrite = firstWriteRss - baselineRss;
+  assert.equal(index.records.length, 6_848);
+  assert.ok(retainedBeforeFirstWrite < 192 * 1024 * 1024,
+    `capture batches retained ${Math.round(retainedBeforeFirstWrite / 1024 / 1024)} MiB before the first write`);
+});
