@@ -71,6 +71,7 @@ test("preseal binds every adapter shard to its expected action and production do
     "scripts/v12-production-native-calendar-action.mjs": "calendar\n",
     "scripts/v12-production-native-visual-actions.mjs": "visual\n",
     "scripts/v12-production-native-quality-actions.mjs": "quality\n",
+    "scripts/run-v12-maestro.mjs": "maestro\n",
   };
   for (const [relative, bytes] of Object.entries(sourceFiles)) {
     mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
@@ -86,6 +87,9 @@ test("preseal binds every adapter shard to its expected action and production do
     comparison: ["visual-compare", "scripts/v12-production-native-visual-actions.mjs"],
     accessibility: ["accessibility", "scripts/v12-production-native-quality-actions.mjs"],
     performance: ["performance", "scripts/v12-production-native-quality-actions.mjs"],
+    "multi-plan": ["multi-plan", "scripts/run-v12-maestro.mjs"],
+    workout: ["workout", "scripts/run-v12-maestro.mjs"],
+    "library-running": ["library-running", "scripts/run-v12-maestro.mjs"],
   };
   const publicationDirectory = path.join(root, "artifacts/native/v1.2", RUN_ID, "publication");
   mkdirSync(publicationDirectory, { recursive: true });
@@ -107,6 +111,12 @@ test("preseal binds every adapter shard to its expected action and production do
   }
 
   assert.equal(validateV12ProductionPublicationOrigins(root, RUN_ID), true);
+  const visualPath = path.join(publicationDirectory, "visual.json");
+  const visual = JSON.parse(readFileSync(visualPath, "utf8"));
+  visual.execution_origin.action = "visual-capture-batch";
+  writeFileSync(visualPath, JSON.stringify(visual));
+  assert.equal(validateV12ProductionPublicationOrigins(root, RUN_ID), true);
+  assert.equal(JSON.parse(readFileSync(visualPath, "utf8")).execution_origin.action, "visual-capture-batch");
   const calendarPath = path.join(publicationDirectory, "calendar.json");
   const calendar = JSON.parse(readFileSync(calendarPath, "utf8"));
   calendar.execution_origin.toolchain_origin = "test-controlled/v1";

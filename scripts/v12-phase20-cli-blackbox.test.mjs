@@ -139,7 +139,8 @@ function attendedObservations(root) {
       const bytes = PNG.sync.write(image); const id = `S20-0${index + 1}`;
       const relative = `artifacts/native/v1.2/${run}/attended/${id}.png`;
       const absolute = path.join(root, relative); mkdirSync(path.dirname(absolute), { recursive: true }); writeFileSync(absolute, bytes);
-      return { id, status: "passed", png: { path: relative, sha256: createHash("sha256").update(bytes).digest("hex"), size_bytes: bytes.length, width: 1, height: 1 } };
+      const png = { path: relative, sha256: createHash("sha256").update(bytes).digest("hex"), size_bytes: bytes.length, width: 1, height: 1 };
+      return { id, status: "passed", png, attestation: { schema_version: 1, kind: "trusted-synthetic-state-content-review", fixture_id: "v12-synthetic-fixtures-r18", synthetic_state: true, content_reviewed: true, png_sha256: png.sha256 } };
     }),
   };
 }

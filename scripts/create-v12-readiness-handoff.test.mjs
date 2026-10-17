@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -8,44 +11,59 @@ import {
 } from "./create-v12-readiness-handoff.mjs";
 
 const digest = (character) => character.repeat(64);
+const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const identity = Object.freeze({
-  run_id: "v12-samsung-acceptance-001",
+  run_id: runId,
   source_tree_sha256: digest("a"),
   apk_sha256: digest("b"),
   apk_signature_sha256: digest("c"),
   installed_apk_sha256: digest("b"),
+  device_sha256: digest("8"),
   config_sha256: digest("d"),
 });
 
 const validException = Object.freeze({
   deviation_id: "DEV-20-001",
   owner_decision: "approved with constrained scope",
-  owner_decided_at: "2026-10-14T00:00:00.000Z",
-  scope: ["Samsung SM-S916B", "Dark", "F200"],
+  decided_at: "2026-10-14",
+  scope: "Samsung SM-S916B Dark F200",
+  configurations: ["AP-SD-C390-P-F200"],
   rationale: "The signed candidate preserves an explicitly reviewed native limitation.",
-  evidence_sha256: [digest("e"), digest("f")],
+  evidence_hashes: [digest("e"), digest("f")],
 });
 
 function finalEvidence(overrides = {}) {
+  const rows = [
+    { inventory_id: "INV-001", requirement_id: "VER-01", owning_phase: 20, coverage_class: "automated", verdict: "PASS", observations: [] },
+    { inventory_id: "INV-012", requirement_id: "VER-12", owning_phase: 20, coverage_class: "attended", verdict: "ACCEPTED_EXCEPTION", observations: [] },
+  ];
   return {
+    schema_version: 3,
+    run_id: runId,
+    evidence_origin: "native",
     identity,
-    rows: [
-      { id: "VER-01", verdict: "PASS", evidence_sha256: [digest("1")] },
-      { id: "VER-12", verdict: "ACCEPTED_EXCEPTION", evidence_sha256: [digest("2")], exception: validException },
-    ],
+    rows,
+    source_results: [],
+    evidence_hashes: [digest("1"), digest("2")],
     gates: [
       { id: "identity", verdict: "PASS", evidence_sha256: digest("3") },
       { id: "automated", verdict: "PASS", evidence_sha256: digest("4") },
     ],
+    readiness: "CONDITIONALLY_READY",
+    verdict_counts: { PASS: 1, ACCEPTED_EXCEPTION: 1, NOT_RUN: 0, FAIL: 0, REVIEW_REQUIRED: 0, N_A_REVIEWED: 0 },
+    accepted_exception_count: 1,
+    release_authorized: false,
+    policy: reviewedPolicy,
+    exceptions: [{ row_id: "VER-12", ...validException }],
     ...overrides,
   };
 }
 
 const reviewedPolicy = Object.freeze({
   policy_id: "v12-reviewed-exception-policy",
-  reviewer: "owner",
-  reviewed_at: "2026-10-14T00:00:00.000Z",
-  permits_conditional_readiness: true,
+  reviewed_by: "owner",
+  reviewed_at: "2026-10-14",
+  permits_accepted_exceptions: true,
 });
 
 const rollback = Object.freeze({
@@ -76,6 +94,9 @@ test("conditional readiness keeps every verdict and exception separate while rel
   });
   assert.equal(handoff.release_authorized, false);
   assert.deepEqual(handoff.exceptions, [{ row_id: "VER-12", ...validException }]);
+  assert.equal(handoff.schema_version, 2);
+  assert.equal(handoff.run_id, runId);
+  assert.equal(handoff.final_evidence_sha256.length, 64);
   assert.doesNotMatch(JSON.stringify(handoff), /release command|publish|promote/iu);
   assert.doesNotThrow(() => validateV12ReadinessHandoff(handoff));
 });
@@ -84,7 +105,7 @@ test("missing gates, unreviewed exceptions, and other non-PASS verdicts prevent 
   assert.throws(
     () => buildV12ReadinessHandoff({
       final_evidence: finalEvidence({ gates: finalEvidence().gates.slice(1) }),
-      reviewed_policy: reviewedPolicy,
+      reviewed_policy: null,
       rollback,
       generated_at: "2026-10-14T01:00:00.000Z",
     }),
@@ -93,9 +114,14 @@ test("missing gates, unreviewed exceptions, and other non-PASS verdicts prevent 
   for (const verdict of ["NOT_RUN", "FAIL", "REVIEW_REQUIRED", "N_A_REVIEWED"]) {
     const handoff = buildV12ReadinessHandoff({
       final_evidence: finalEvidence({
-        rows: [{ id: "VER-01", verdict, evidence_sha256: [digest("1")] }],
+        rows: [{ inventory_id: "INV-001", requirement_id: "VER-01", owning_phase: 20, coverage_class: "automated", verdict, observations: [] }],
+        verdict_counts: { PASS: 0, ACCEPTED_EXCEPTION: 0, NOT_RUN: 0, FAIL: 0, REVIEW_REQUIRED: 0, N_A_REVIEWED: 0, [verdict]: 1 },
+        accepted_exception_count: 0,
+        readiness: "NOT_READY",
+        exceptions: [],
+        policy: null,
       }),
-      reviewed_policy: reviewedPolicy,
+      reviewed_policy: null,
       rollback,
       generated_at: "2026-10-14T01:00:00.000Z",
     });
@@ -105,7 +131,7 @@ test("missing gates, unreviewed exceptions, and other non-PASS verdicts prevent 
   assert.throws(
     () => buildV12ReadinessHandoff({
       final_evidence: finalEvidence({
-        rows: [{ id: "VER-12", verdict: "ACCEPTED_EXCEPTION", evidence_sha256: [digest("2")] }],
+        exceptions: [],
       }),
       reviewed_policy: reviewedPolicy,
       rollback,
@@ -125,6 +151,13 @@ test("rollback binds a prior signed archive and requires compatible restore or a
     }),
     /rollback|boundary/u,
   );
+  const blocked = buildV12ReadinessHandoff({
+    final_evidence: finalEvidence(), reviewed_policy: reviewedPolicy,
+    rollback: { status: "NOT_VERIFIED", reason_code: "rollback_evidence_missing", recovery_boundary: "compatible_restore_or_forward_fix" },
+    generated_at: "2026-10-14T01:00:00.000Z",
+  });
+  assert.equal(blocked.readiness, "NOT_READY");
+  assert.doesNotThrow(() => validateV12ReadinessHandoff(blocked));
 });
 
 test("the validator rejects authorization and generated release commands even when all evidence looks valid", () => {
@@ -142,6 +175,24 @@ test("the validator rejects authorization and generated release commands even wh
     () => validateV12ReadinessHandoff({ ...handoff, release_command: "npm run release" }),
     /unexpected|release/u,
   );
+});
+
+test("the real --verify CLI exits nonzero for a tampered or incomplete handoff", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-readiness-cli-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const base = path.join(root, "artifacts/native/v1.2", runId);
+  mkdirSync(base, { recursive: true });
+  const evidence = finalEvidence();
+  const handoff = buildV12ReadinessHandoff({ final_evidence: evidence, reviewed_policy: reviewedPolicy, rollback, generated_at: "2026-10-14T01:00:00.000Z" });
+  writeFileSync(path.join(base, "final-evidence.json"), `${JSON.stringify(evidence)}\n`);
+  writeFileSync(path.join(base, "readiness-handoff.md"), `${JSON.stringify(handoff)}\n`);
+  const script = new URL("./create-v12-readiness-handoff.mjs", import.meta.url);
+  const valid = spawnSync(process.execPath, [script.pathname, "--run", runId, "--verify"], { cwd: root, encoding: "utf8" });
+  assert.equal(valid.status, 0, valid.stderr);
+  writeFileSync(path.join(base, "readiness-handoff.md"), `${JSON.stringify({ ...handoff, final_evidence_sha256: digest("0") })}\n`);
+  const invalid = spawnSync(process.execPath, [script.pathname, "--run", runId, "--verify"], { cwd: root, encoding: "utf8" });
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /v12_readiness_invalid/u);
 });
 
 test("Phase 20 package commands are registered as host-only entrypoints", () => {
