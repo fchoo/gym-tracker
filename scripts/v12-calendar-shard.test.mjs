@@ -31,6 +31,7 @@ const productionOrigin = Object.freeze({
   schema_version: 1,
   action: "calendar",
   kind: "production-default-launcher",
+  toolchain_origin: "production-attested/v1",
   default_launcher: true,
   test_only: false,
   adapter_source_sha256: "6".repeat(64),

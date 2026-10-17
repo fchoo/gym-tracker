@@ -311,14 +311,14 @@ internal class GarminTokenStore(
 
   private fun encode(encrypted: EncryptedGarminTokens): ByteArray {
     val output = ByteArrayOutputStream()
-    DataOutputStream(output).use { data ->
-      data.write(RECORD_MAGIC)
-      data.writeInt(RECORD_VERSION)
-      data.writeByte(encrypted.nonce.size)
-      data.writeInt(encrypted.ciphertext.size)
-      data.write(encrypted.nonce)
-      data.write(encrypted.ciphertext)
-    }
+    val data = DataOutputStream(output)
+    data.write(RECORD_MAGIC)
+    data.writeInt(RECORD_VERSION)
+    data.writeByte(encrypted.nonce.size)
+    data.writeInt(encrypted.ciphertext.size)
+    data.write(encrypted.nonce)
+    data.write(encrypted.ciphertext)
+    data.flush()
     return output.toByteArray()
   }
 }

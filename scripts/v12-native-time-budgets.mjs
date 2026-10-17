@@ -121,6 +121,20 @@ export const V12_RECOVERY_ACTION_BUDGET = Object.freeze({
     .reduce((total, path) => total + v12CommandPathMaxMs(path), 0),
 });
 
+const garminProducer = commands("domain.garmin", ["producer"], 12 * 60_000);
+export const V12_GARMIN_COMMAND_GRAPH = Object.freeze({
+  shared_setup: nativeOwnedLeaseSetup,
+  producer: garminProducer,
+  local_cleanup: recoveryLocalCleanup,
+  shared_cleanup: nativeRuntimeCleanup,
+});
+export const V12_GARMIN_ACTION_BUDGET = Object.freeze({
+  producer_max_ms: v12CommandPathMaxMs(garminProducer),
+  local_cleanup_adb_call_count: recoveryLocalCleanup.length,
+  max_ms: Object.values(V12_GARMIN_COMMAND_GRAPH)
+    .reduce((total, path) => total + v12CommandPathMaxMs(path), 0),
+});
+
 const calendarReadSettings = concat(
   commands("calendar.settings", ["airplane-mode-read", "night-mode-read"], V12_NATIVE_ADB_CALL_TIMEOUT_MS),
   commands("calendar.settings", nativeSettings.map((key) => `settings-read-${key}`), V12_NATIVE_ADB_CALL_TIMEOUT_MS),

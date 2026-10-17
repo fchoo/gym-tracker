@@ -126,7 +126,7 @@ function fixture(t, action = "performance") {
   const deviceFile = path.join(runner.scratch, "quality-device.mjs");
   writeFileSync(deviceFile, DEVICE_TOOL);
   writeFileSync(path.join(runner.scratch, "bin/adb"), `#!/bin/sh\nexec ${quoted(process.execPath)} ${quoted(deviceFile)} "$@"\n`, { mode: 0o755 });
-  const environment = { ...process.env, NODE_ENV: "production", PATH: `${path.join(runner.scratch, "bin")}:${process.env.PATH}`, V12_DEVICE_SERIAL: "controlled-device-20", V12_CONTROLLED_STATE: runner.scratch };
+  const environment = { ...process.env, ...runner.executionEnvironment, NODE_ENV: "production", PATH: `${path.join(runner.scratch, "bin")}:${process.env.PATH}`, V12_DEVICE_SERIAL: "controlled-device-20", V12_CONTROLLED_STATE: runner.scratch };
   for (const name of ["NODE_TEST_CONTEXT", "V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS"]) delete environment[name];
   const program = `import fs from 'node:fs'; import {executeProductionQualityAction} from './scripts/v12-production-native-quality-actions.mjs';
     const {action,payload,attestation}=JSON.parse(fs.readFileSync(0,'utf8'));

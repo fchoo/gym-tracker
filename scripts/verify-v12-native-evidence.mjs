@@ -926,7 +926,8 @@ export function validateV12ProductionPublicationOrigins(root, runId) {
     let origin;
     try { origin = validateV12ExecutionOrigin(publication.execution_origin); }
     catch { preflightFail("adapter_provenance_invalid"); }
-    if (origin.kind === "test-fixture" || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
+    if (origin.kind === "test-fixture" || origin.toolchain_origin !== "production-attested/v1"
+      || origin.test_only === true || origin.default_launcher !== true) preflightFail("test_provenance_forbidden");
     const domainSha256 = sha256(readFileSync(preflightSafeFile(root, expected.domain)));
     if (origin.action !== expected.action || origin.adapter_source_sha256 !== adapterSha256
       || origin.launcher_source_sha256 !== launcherSha256 || origin.domain_source_sha256 !== domainSha256) preflightFail("adapter_provenance_stale");
@@ -1057,10 +1058,11 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
   let preseal; try { preseal = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/preseal-validation.json`), "utf8")); } catch { preflightFail("preseal_invalid"); }
   if (preseal?.schema_version !== 3 || preseal.producer !== "v12-preseal-validation/v3" || preseal.run_id !== options.run_id || !Array.isArray(preseal.row_evidence)) preflightFail("preseal_invalid");
   try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "preseal" }); } catch { preflightFail("publication_invalid"); }
+  // Recheck shard provenance before generic source hashes so a test-origin
+  // substitution is rejected explicitly at the final boundary.
+  preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
   if (preseal.build_sha256 !== build_sha256 || !Array.isArray(preseal.all_artifact_hashes)
     || preseal.all_artifact_hashes.some(item => preflightHashFile(root, item.path) !== item.sha256)) preflightFail("source_hash_invalid");
-  // A final seal repeats the full shard validation after the owner checkpoint.
-  preflightValidateArtifacts(root, options.run_id, Object.keys(V12_ARTIFACT_REGISTRY));
   let attended; try { attended = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/attended-observations.json`), "utf8")); } catch { preflightFail("attended_invalid"); }
   const ledger = deriveV12Ledger({ inputs: loadV12ContractInputs({ root }), manifest, evidence: preseal.row_evidence, attended, root, readArtifact: (relative) => readFileSync(preflightSafeFile(root, relative)) });
   const finalWrites = [];

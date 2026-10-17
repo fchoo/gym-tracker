@@ -36,6 +36,7 @@ jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {
     expoConfig: {
+      android: { package: "com.fchoo.gymtracker.devtest" },
       extra: {
         get buildProfile() {
           return mockBuildProfile;
@@ -493,6 +494,7 @@ describe("RootLayout attended preview isolation", () => {
     },
     { label: "Phase 20 quality", pathname: "/__phase20-quality-probe", params: {} },
     { label: "v1.2 native contracts", pathname: "/__native-contracts", params: {} },
+    { label: "Phase 20 Garmin", pathname: "/__v12-production-garmin", params: {} },
     { label: "Garmin evidence", pathname: "/__phase18-garmin-proof", params: {} },
   ])(
     "keeps the $label route off production preferences during cold font loading",

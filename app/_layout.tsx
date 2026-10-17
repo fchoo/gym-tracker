@@ -248,6 +248,17 @@ function Phase18GarminAdversarialNavigator() {
   );
 }
 
+function V12ProductionGarminNavigator() {
+  return (
+    <Stack
+      initialRouteName="__v12-production-garmin"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__v12-production-garmin" />
+    </Stack>
+  );
+}
+
 function NativeContractsNavigator() {
   return (
     <Stack
@@ -373,6 +384,11 @@ function RootLayoutAttempt({
   const phase18GarminAdversarialEnabled = nativeContractsEnabled
     && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__phase18-garmin-adversarial";
+  const v12ProductionGarminEnabled = nativeContractsEnabled
+    && nativeContractSuite === "v1.2-acceptance"
+    && Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig?.android?.package === "com.fchoo.gymtracker.devtest"
+    && pathname === "/__v12-production-garmin";
   const v12NativeContractsEnabled = nativeContractsEnabled
     && nativeContractSuite === "v1.2-acceptance"
     && pathname === "/__native-contracts";
@@ -388,7 +404,8 @@ function RootLayoutAttempt({
     || phase18GarminAdversarialEnabled
     || v12NativeContractsEnabled
     || phase20VisualPath
-    || phase20QualityEnabled;
+    || phase20QualityEnabled
+    || v12ProductionGarminEnabled;
   const fontLoadingAppearanceStore = attendedPreviewEnabled
     ? attendedPreviewAppearanceStore
     : phase6GestureSmokeEnabled
@@ -494,6 +511,18 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <Phase18GarminAdversarialNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12ProductionGarminEnabled) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            <V12ProductionGarminNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

@@ -27,7 +27,7 @@ const FLOW = "maestro/v1.2/calendar.yaml";
 const FLOW_REVISION = V12_CALENDAR_FLOW_REVISION;
 export const V12_CALENDAR_SHARD_STAGE_IDS = V12_CALENDAR_STAGE_IDS;
 const ARTIFACTS = Object.freeze(["calendar-transitions.json", "calendar-requirements.json", "maestro/calendar.xml", "maestro/calendar-requirements.xml", "calendar/artifact-registry.json"]);
-const ORIGIN_KEYS = Object.freeze(["schema_version", "action", "kind", "default_launcher", "test_only", "adapter_source_sha256", "launcher_source_sha256", "domain_source_sha256", "request_attestation_sha256"]);
+const ORIGIN_KEYS = Object.freeze(["schema_version", "action", "kind", "toolchain_origin", "default_launcher", "test_only", "adapter_source_sha256", "launcher_source_sha256", "domain_source_sha256", "request_attestation_sha256"]);
 function fail(code) { throw new Error(`calendar_${code}`); }
 function record(value, code) { if (value === null || typeof value !== "object" || Array.isArray(value)) fail(code); return value; }
 function exactKeys(value, keys) { return Object.keys(record(value, "schema_invalid")).length === keys.length && keys.every((key) => Object.hasOwn(value, key)); }
@@ -44,7 +44,8 @@ function validateExecutionOrigin(value, allowTestFixture = false) {
     || ![value.adapter_source_sha256, value.launcher_source_sha256, value.domain_source_sha256, value.request_attestation_sha256].every((entry) => SHA256.test(entry ?? ""))) fail("native_origin_invalid");
   const production = value.kind === "production-default-launcher" && value.default_launcher === true && value.test_only === false;
   const testOnly = value.kind === "test-fixture" && value.default_launcher === false && value.test_only === true;
-  if (!production && !(allowTestFixture && testOnly)) fail("native_origin_invalid");
+  if (!(production && value.toolchain_origin === "production-attested/v1")
+    && !(allowTestFixture && testOnly && value.toolchain_origin === "test-controlled/v1")) fail("native_origin_invalid");
 }
 
 function validateRequirements(value) {

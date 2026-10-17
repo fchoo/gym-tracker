@@ -37,6 +37,7 @@ export function createControlledRunner() {
   writeFileSync(path.join(bin, "adb"), `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(tool)} "$@"\n`, { mode: 0o755 });
   // If an unimplemented branch tries to treat Maestro --version as evidence it fails.
   writeFileSync(path.join(bin, "maestro"), "#!/bin/sh\nexit 71\n", { mode: 0o755 });
+  writeFileSync(path.join(bin, "unzip"), "#!/bin/sh\nexit 71\n", { mode: 0o755 });
   const serial = "controlled-device-20";
   const facts = { serial, abi: "arm64-v8a", apiLevel: "36", model: "controlled" };
   const apk = Buffer.from("controlled-APK-bytes-not-a-real-APK");
@@ -50,7 +51,13 @@ export function createControlledRunner() {
   const build = { run_id: fixtureRun, mode: "live", source: { head: "a".repeat(40), tree_sha256: digest }, fixtures: { registry_sha256: hash("controlled-fixtures") }, build: { profile: "development-test", package: "com.fchoo.gymtracker.devtest", apk: { path: "artifacts/controlled/fixture.apk", sha256: apkHash, signature_sha256: hash("controlled-signature") } }, device: { installed_apk_sha256: apkHash, identity_sha256: phase18DeviceIdentitySha256(facts) } };
   const manifestPath = path.join(root, "artifacts/native/v1.2", fixtureRun, "build.json");
   mkdirSync(path.dirname(manifestPath), { recursive: true }); writeFileSync(manifestPath, JSON.stringify(build));
-  const environment = { ...process.env, PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: serial, V12_CONTROLLED_STATE: scratch, NODE_ENV: "production" };
+  const executionEnvironment = {
+    V12_EXECUTION_ORIGIN: "test-controlled/v1",
+    V12_ADB_PATH: path.join(bin, "adb"),
+    V12_MAESTRO_PATH: path.join(bin, "maestro"),
+    V12_UNZIP_PATH: path.join(bin, "unzip"),
+  };
+  const environment = { ...process.env, PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: serial, V12_CONTROLLED_STATE: scratch, NODE_ENV: "production", ...executionEnvironment };
   for (const name of ["V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "NODE_TEST_CONTEXT"]) delete environment[name];
   function invoke(action, payload = {}, extra = {}) {
     const input = { action, payload: { run_id: fixtureRun, ...payload } };
@@ -82,7 +89,7 @@ export function createControlledRunner() {
   }
   const readState = () => JSON.parse(readFileSync(stateFile, "utf8"));
   const updateState = (update) => writeFileSync(stateFile, JSON.stringify({ ...readState(), ...update }));
-  return { root, scratch, build, manifestPath, contract, invoke, invokeCalendar, calendarSettingsScenario, success, readState, updateState, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, scratch, build, manifestPath, contract, executionEnvironment, invoke, invokeCalendar, calendarSettingsScenario, success, readState, updateState, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
 export function runControlledIntegration() {

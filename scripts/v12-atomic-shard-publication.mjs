@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { V12_PRODUCTION_EXECUTION_ORIGIN } from "./v12-native-execution-origin.mjs";
 
 const RUN = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._-]*$/u;
 const HASH = /^[a-f0-9]{64}$/u;
 const EXECUTION_ORIGIN_KEYS = Object.freeze([
-  "schema_version", "action", "kind", "default_launcher", "test_only",
+  "schema_version", "action", "kind", "toolchain_origin", "default_launcher", "test_only",
   "adapter_source_sha256", "launcher_source_sha256", "domain_source_sha256",
   "request_attestation_sha256",
 ]);
@@ -66,6 +67,8 @@ export function validateV12ExecutionOrigin(value) {
     || value.schema_version !== 1
     || typeof value.action !== "string" || !/^[a-z][a-z0-9-]*$/u.test(value.action)
     || !["production-default-launcher", "test-fixture"].includes(value.kind)
+    || !["production-attested/v1", "test-controlled/v1"].includes(value.toolchain_origin)
+    || (value.kind === "test-fixture" && value.toolchain_origin !== "test-controlled/v1")
     || typeof value.default_launcher !== "boolean" || typeof value.test_only !== "boolean"
     || value.default_launcher === value.test_only
     || (value.kind === "production-default-launcher") !== value.default_launcher
@@ -100,11 +103,12 @@ function assertCompleteStage(stage, members) {
 }
 
 /** Stage members privately, write a manifest last, then publish exactly once. */
-export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true, executionOrigin } = {}) {
+export function publishV12AtomicShard({ root = process.cwd(), runId, shard, produce, validate = () => true, executionOrigin, domainExecutionOrigin } = {}) {
   if (!SAFE.test(shard ?? "") || typeof produce !== "function") fail("arguments_invalid");
   const runRoot = safeRoot(root, runId); const finalManifest = path.join(runRoot, "publication", `${shard}.json`);
   const failure = path.join(runRoot, "failures", `${shard}.json`);
   if (existsSync(finalManifest) || existsSync(failure)) fail("attempt_consumed");
+  if (shard === "garmin" && domainExecutionOrigin !== V12_PRODUCTION_EXECUTION_ORIGIN) fail("execution_origin_invalid");
   const stage = path.join(runRoot, ".staging", `${shard}-${process.pid}-${Date.now()}`); const members = [];
   mkdirSync(stage, { recursive: true }); noLinks(runRoot, stage);
   const write = (artifact, value) => {
@@ -119,7 +123,10 @@ export function publishV12AtomicShard({ root = process.cwd(), runId, shard, prod
     if (members.length === 0 || validate(Object.freeze([...members]), stage) !== true) fail("validation_failed");
     const resolvedOrigin = executionOrigin === undefined ? undefined
       : validateV12ExecutionOrigin(typeof executionOrigin === "function" ? executionOrigin() : executionOrigin);
-    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard, identity: publicationIdentity(runRoot), ...(resolvedOrigin === undefined ? {} : { execution_origin: resolvedOrigin }), members: Object.freeze([...members]), completed: true });
+    const manifest = Object.freeze({ schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: runId, shard,
+      identity: publicationIdentity(runRoot), ...(resolvedOrigin === undefined ? {} : { execution_origin: resolvedOrigin }),
+      ...(shard === "garmin" ? { domain_execution_origin: domainExecutionOrigin } : {}),
+      members: Object.freeze([...members]), completed: true });
     const stagedManifest = path.join(stage, "manifest.json");
     writeFileSync(stagedManifest, `${JSON.stringify(manifest)}\n`, { flag: "wx" }); fsyncFile(stagedManifest);
     assertCompleteStage(stage, members);
@@ -147,6 +154,7 @@ export function verifyV12AtomicShard({ root = process.cwd(), runId, shard } = {}
   const manifestPath = path.join(runRoot, "publication", `${shard}.json`);
   noLinks(runRoot, manifestPath);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (shard === "garmin" && manifest?.domain_execution_origin !== V12_PRODUCTION_EXECUTION_ORIGIN) fail("execution_origin_invalid");
   if (manifest?.run_id !== runId || manifest.shard !== shard || manifest.completed !== true || !Array.isArray(manifest.members)) fail("manifest_invalid");
   const expectedIdentity = publicationIdentity(runRoot);
   if (expectedIdentity !== null && JSON.stringify(manifest.identity) !== JSON.stringify(expectedIdentity)) fail("manifest_identity_invalid");

@@ -8,6 +8,8 @@ import {
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   V12_CALENDAR_ACTION_BUDGET,
   V12_CALENDAR_COMMAND_GRAPH,
+  V12_GARMIN_ACTION_BUDGET,
+  V12_GARMIN_COMMAND_GRAPH,
   V12_NATIVE_CLEANUP_BUDGET,
   V12_NATIVE_COMMAND_GRAPH,
   V12_NATIVE_LEASE_ACTION_BUDGETS,
@@ -29,6 +31,8 @@ export {
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   V12_CALENDAR_ACTION_BUDGET,
   V12_CALENDAR_COMMAND_GRAPH,
+  V12_GARMIN_ACTION_BUDGET,
+  V12_GARMIN_COMMAND_GRAPH,
   V12_NATIVE_CLEANUP_BUDGET,
   V12_NATIVE_COMMAND_GRAPH,
   V12_NATIVE_LEASE_ACTION_BUDGETS,
@@ -44,6 +48,10 @@ export {
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
   v12CommandPathMaxMs,
 };
+import {
+  V12_PRODUCTION_EXECUTION_ORIGIN,
+  V12_TEST_EXECUTION_ORIGIN,
+} from "./v12-native-execution-origin.mjs";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
@@ -87,7 +95,7 @@ export const V12_NATIVE_ACTION_TIMEOUT_MS = Object.freeze({
   performance: V12_QUALITY_ACTION_BUDGETS.performance.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   sqlite: V12_SQLITE_PRODUCER_BOUND_MS + V12_NATIVE_ADAPTER_GRACE_MS,
   recovery: V12_RECOVERY_ACTION_BUDGET.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
-  garmin: 20 * 60_000,
+  garmin: V12_GARMIN_ACTION_BUDGET.max_ms + V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
   calendar: V12_CALENDAR_ADAPTER_TIMEOUT_MS,
 });
 
@@ -191,12 +199,23 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
   if (!response || response.schema_version !== 1 || response.action !== action || response.ok !== true || !("result" in response)
     || (target.testOnly ? response.evidence_origin !== "test" : Object.hasOwn(response, "evidence_origin"))) fail("response_invalid");
   if (!sameAttestation(attestation, response.attestation)) fail("attestation_invalid");
+  let normalizedResult = response.result;
+  if (action === "garmin") {
+    if (normalizedResult === null || typeof normalizedResult !== "object" || Array.isArray(normalizedResult)) fail("response_invalid");
+    const domainOrigin = target.testOnly ? V12_TEST_EXECUTION_ORIGIN : normalizedResult.execution_origin;
+    if (![V12_PRODUCTION_EXECUTION_ORIGIN, V12_TEST_EXECUTION_ORIGIN].includes(domainOrigin)) fail("execution_origin_invalid");
+    normalizedResult = Object.freeze({ ...normalizedResult, execution_origin: domainOrigin });
+  }
+  const toolchainOrigin = target.testOnly || environment.V12_EXECUTION_ORIGIN === V12_TEST_EXECUTION_ORIGIN
+    ? V12_TEST_EXECUTION_ORIGIN
+    : V12_PRODUCTION_EXECUTION_ORIGIN;
   return Object.freeze({
-    result: response.result,
+    result: normalizedResult,
     execution_origin: Object.freeze({
       schema_version: 1,
       action,
       kind: target.testOnly ? "test-fixture" : "production-default-launcher",
+      toolchain_origin: toolchainOrigin,
       default_launcher: target.testOnly === false,
       test_only: target.testOnly,
       adapter_source_sha256: sourceHash(ADAPTER),
@@ -239,7 +258,7 @@ export function createV12NativeAdapter(options = {}) {
     executeGarmin: (lease, settings, payload) => {
       const response = callEnvelope("garmin", { lease, settings, ...payload });
       if (response.result === null || typeof response.result !== "object" || Array.isArray(response.result)) fail("response_invalid");
-      return Object.freeze({ ...response.result, execution_origin: response.execution_origin });
+      return response.result;
     },
     executeCalendar: (lease, settings, payload) => {
       const response = callEnvelope("calendar", { lease, settings, ...payload });

@@ -91,6 +91,7 @@ test('Calendar resolver accepts only source-bound default-launcher origin', () =
     schema_version: 1,
     action: 'calendar',
     kind: 'production-default-launcher',
+    toolchain_origin: 'production-attested/v1',
     default_launcher: true,
     test_only: false,
     adapter_source_sha256: digest('scripts/v12-native-adapter.mjs'),

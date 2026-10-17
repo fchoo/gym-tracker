@@ -152,7 +152,7 @@ for (const marker of ["missingMarker", "staleMarker", "routeError"]) test(`SQLit
   assert.equal(existsSync(path.join(runner.scratch, "lock")), false);
   assert.equal(runner.readState().settings.font_scale, "1.15");
 });
-for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "recovery", "garmin", "calendar"]) {
+for (const action of ["visual-capture", "visual-capture-batch", "visual-compare", "accessibility", "performance", "calendar", "recovery", "garmin"]) {
   test(`${action} reaches its checked-in production action module`, (t) => {
     const runner = fixture(t);
     const result = runner.invoke(action);

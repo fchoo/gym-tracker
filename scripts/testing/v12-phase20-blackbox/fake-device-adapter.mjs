@@ -13,6 +13,10 @@ const sha = (value) => createHash("sha256").update(Buffer.isBuffer(value) ? valu
 const read = await new Promise((resolve) => { let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }); process.stdin.on("end", () => resolve(JSON.parse(body))); });
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
 if (fail && action.includes(fail)) process.exit(1);
+if (process.env.V12_FAKE_GARMIN_AUTH_REQUIRED === "1" && action === "garmin") {
+  process.stderr.write("v12_production_native_launcher_auth_required\n");
+  process.exit(1);
+}
 if (mutation && action === "garmin") process.exit(1);
 const png = (key, reference = false) => { const image = new PNG({ width: 200, height: 1 }); const hash = Buffer.from(sha(key), "hex"); image.data.set([hash[0], hash[1], hash[2], 255, hash[3], hash[4], hash[5], 255]); if (reference) image.data[0] ^= 1; return PNG.sync.write(image).toString("base64"); };
 const build = JSON.parse(readFileSync(`artifacts/native/v1.2/${read.attestation.run_id}/build.json`, 'utf8'));
@@ -153,7 +157,12 @@ const response = (() => {
   };
   if (action === "recovery") return recoveryReport();
   if (action === "garmin") return {
-    cases: garminCaseIds.map((id, order) => ({ id, order, status: "PASS", code: "native-passed", count: id === "match-one" ? 1 : 0 })),
+    producer: "v12-production-garmin-host/v1",
+    cases: garminCaseIds.map((id, order) => ({
+      id, order, status: "PASS", code: `${id}-observed`, count: id === "match-one" ? 1 : 0,
+      receipt_sha256: sha(`fake-garmin:${id}`),
+    })),
+    execution_origin: "test-controlled/v1",
   };
   if (action === "calendar") {
     return createV12CalendarNativeFixtureResult({ flowSha256: read.payload.flow_sha256,

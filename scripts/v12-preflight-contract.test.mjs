@@ -95,6 +95,7 @@ test("preseal binds every adapter shard to its expected action and production do
         schema_version: 1,
         action,
         kind: "production-default-launcher",
+        toolchain_origin: "production-attested/v1",
         default_launcher: true,
         test_only: false,
         adapter_source_sha256: digest("scripts/v12-native-adapter.mjs"),
@@ -108,6 +109,10 @@ test("preseal binds every adapter shard to its expected action and production do
   assert.equal(validateV12ProductionPublicationOrigins(root, RUN_ID), true);
   const calendarPath = path.join(publicationDirectory, "calendar.json");
   const calendar = JSON.parse(readFileSync(calendarPath, "utf8"));
+  calendar.execution_origin.toolchain_origin = "test-controlled/v1";
+  writeFileSync(calendarPath, JSON.stringify(calendar));
+  assert.throws(() => validateV12ProductionPublicationOrigins(root, RUN_ID), /v12_preflight_test_provenance_forbidden/u);
+  calendar.execution_origin.toolchain_origin = "production-attested/v1";
   calendar.execution_origin.action = "release-lease";
   writeFileSync(calendarPath, JSON.stringify(calendar));
   assert.throws(() => validateV12ProductionPublicationOrigins(root, RUN_ID), /v12_preflight_adapter_provenance_stale/u);

@@ -11,6 +11,8 @@ import {
   V12_CALENDAR_ADAPTER_TIMEOUT_MS,
   V12_CALENDAR_ACTION_BUDGET,
   V12_CALENDAR_COMMAND_GRAPH,
+  V12_GARMIN_ACTION_BUDGET,
+  V12_GARMIN_COMMAND_GRAPH,
   V12_NATIVE_ACTION_TIMEOUT_MS,
   V12_NATIVE_ADAPTER_GRACE_MS,
   V12_NATIVE_ADAPTER_EXIT_MARGIN_MS,
@@ -68,17 +70,36 @@ test("adapter envelope labels the checked-in fake as test-only provenance", (t) 
     });
     assert.deepEqual(Object.keys(result.execution_origin).sort(), [
       "action", "adapter_source_sha256", "default_launcher", "domain_source_sha256", "kind", "launcher_source_sha256",
-      "request_attestation_sha256", "schema_version", "test_only",
+      "request_attestation_sha256", "schema_version", "test_only", "toolchain_origin",
     ]);
     assert.equal(result.execution_origin.action, "acquire-lease");
     assert.equal(result.execution_origin.kind, "test-fixture");
     assert.equal(result.execution_origin.default_launcher, false);
     assert.equal(result.execution_origin.test_only, true);
+    assert.equal(result.execution_origin.toolchain_origin, "test-controlled/v1");
   } finally {
     for (const [key, value] of Object.entries(prior)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
+});
+test("default launcher provenance preserves a controlled toolchain as test-only evidence", (t) => {
+  const runner = fixture(t);
+  const environment = {
+    ...process.env,
+    ...runner.executionEnvironment,
+    NODE_ENV: "production",
+    V12_DEVICE_SERIAL: "controlled-device-20",
+    V12_CONTROLLED_STATE: runner.scratch,
+  };
+  for (const key of ["V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS", "NODE_TEST_CONTEXT"]) delete environment[key];
+  const result = invokeV12NativeAdapterEnvelope("acquire-lease", { run_id: runner.build.run_id }, {
+    root: runner.root,
+    environment,
+  });
+  assert.equal(result.execution_origin.kind, "production-default-launcher");
+  assert.equal(result.execution_origin.default_launcher, true);
+  assert.equal(result.execution_origin.toolchain_origin, "test-controlled/v1");
 });
 test("adapter provenance is immutable and action-scoped across borrowed-lease cleanup", (t) => {
   const runner = fixture(t);
@@ -255,6 +276,7 @@ test("outer adapter survives maximum producers and every restoration/release cal
   for (const [action, budget, graph] of [
     ["recovery", V12_RECOVERY_ACTION_BUDGET, V12_RECOVERY_COMMAND_GRAPH],
     ["calendar", V12_CALENDAR_ACTION_BUDGET, V12_CALENDAR_COMMAND_GRAPH],
+    ["garmin", V12_GARMIN_ACTION_BUDGET, V12_GARMIN_COMMAND_GRAPH],
   ]) {
     const completedAt = Object.values(graph).reduce((total, path) => total + v12CommandPathMaxMs(path), 0);
     assert.equal(completedAt, budget.max_ms);
