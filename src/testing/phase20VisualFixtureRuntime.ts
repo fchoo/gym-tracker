@@ -1,5 +1,5 @@
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
-import { createProductionWorkoutAppRuntimeDependencies, type WorkoutAppRuntimeDependencies } from "../bootstrap/workoutAppRuntime";
+import type { WorkoutAppRuntimeDependencies } from "../bootstrap/workoutAppRuntime";
 import { createOwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
 import { createRunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
 import { parseFullBodyFoundation } from "../domains/content";
@@ -9,7 +9,6 @@ import { canonicalJson } from "../domains/activities/importContracts";
 import type { GarminSourceEnvelope } from "../domains/activities/garminActivitySourcePort";
 import { activateStarterPlan } from "../domains/plans";
 import type { RunningPlanAggregate, RunningSessionKind, RunningSessionRevision } from "../domains/running/contracts";
-import type { RestAlertPreferences, RestNotificationPort, RestNotificationScheduleInput } from "../domains/rest";
 import { startWorkout } from "../domains/workout";
 import { createCustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
 import { createImportedActivityRepository } from "../platform/sqlite/repositories/importedActivityRepository";
@@ -18,6 +17,7 @@ import { captureStrengthOccurrenceSnapshot } from "../platform/sqlite/repositori
 import type { SqliteKernel } from "../platform/sqlite";
 import { phase20VisualState } from "./phase20VisualStateRegistry";
 import type { Phase20VisualRequest } from "./phase20VisualRequest";
+import { createStrictIsolatedWorkoutRuntimeDependencies } from "./isolatedWorkoutRuntime";
 
 export const PHASE20_VISUAL_NOW = new Date("2026-10-01T01:41:00.000Z");
 export const PHASE20_VISUAL_NOW_MS = PHASE20_VISUAL_NOW.getTime();
@@ -50,27 +50,6 @@ export function phase20VisualDatabaseName(nonce: string): string {
     throw new Error("phase20_visual_nonce_invalid");
   }
   return `gym-tracker-phase20-visual-${nonce}.db`;
-}
-
-function createFixtureNotificationPort(): RestNotificationPort {
-  const scheduled = new Map<string, Readonly<{
-    identifier: string;
-    sessionId: string;
-    restRevision: number;
-    endsAtMs: number;
-  }>>();
-  return Object.freeze({
-    ensureChannel: async () => undefined,
-    permission: async () => "granted" as const,
-    requestPermission: async () => "granted" as const,
-    listScheduled: async () => Object.freeze([...scheduled.values()]),
-    cancel: async (identifier: string) => { scheduled.delete(identifier); },
-    schedule: async (input: RestNotificationScheduleInput) => {
-      scheduled.set(input.identifier, Object.freeze(input));
-      return input.identifier;
-    },
-    openSettings: async () => undefined,
-  });
 }
 
 async function seedLegacyStrengthWorkout(
@@ -542,40 +521,12 @@ export function createPhase20VisualRuntimeDependencies(
 ): WorkoutAppRuntimeDependencies {
   const databaseName = phase20VisualDatabaseName(request.nonce);
   cleanupStates.set(request.nonce, "pending");
-  const production = createProductionWorkoutAppRuntimeDependencies(databaseName);
-  const {
-    createAutomaticBackupRuntime: _automaticBackupRuntime,
-    createAutomaticBackupScheduler: _automaticBackupScheduler,
-    createBackupCommands: _backupCommands,
-    createCsvExportRepository: _csvRepository,
-    createCsvFiles: _csvFiles,
-    createMergeCommands: _mergeCommands,
-    createRestoreCommands: _restoreCommands,
-    reconcileRestore: _reconcileRestore,
-    ...isolated
-  } = production;
-  let preferences: RestAlertPreferences = Object.freeze({ soundEnabled: true, vibrationEnabled: true });
-  return Object.freeze({
-    ...isolated,
-    createNotifications: createFixtureNotificationPort,
-    restAlertPreferenceStore: Object.freeze({
-      read: () => preferences,
-      write: (next: RestAlertPreferences) => { preferences = Object.freeze({ ...next }); },
-    }),
+  return createStrictIsolatedWorkoutRuntimeDependencies({
+    databaseName,
     now: () => new Date(PHASE20_VISUAL_NOW),
     nowMs: () => PHASE20_VISUAL_NOW_MS,
-    strictDisposal: true,
-    reportDisposalFailure: () => { cleanupStates.set(request.nonce, "failed"); },
     prepareRuntime: ({ kernel }) => bootstrapPhase20VisualFixture(kernel, request),
-    async disposeRuntime() {
-      const { deleteDatabaseAsync } = require("expo-sqlite") as typeof import("expo-sqlite");
-      try {
-        await deleteDatabaseAsync(databaseName);
-        cleanupStates.set(request.nonce, "complete");
-      } catch (error) {
-        cleanupStates.set(request.nonce, "failed");
-        throw error;
-      }
-    },
+    onDisposed: () => { cleanupStates.set(request.nonce, "complete"); },
+    onDisposalFailure: () => { cleanupStates.set(request.nonce, "failed"); },
   });
 }

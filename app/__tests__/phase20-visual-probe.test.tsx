@@ -8,6 +8,11 @@ import { phase20VisualTimerReceipt } from "../../src/testing/phase20VisualProbe"
 
 let mockExtra: Record<string, unknown>;
 let mockParams: Record<string, unknown>;
+const mockUseWorkoutAppRuntime = jest.fn(() => ({
+  launchState: "trusted" as const,
+  runningPlanRuntime: {},
+  getActiveWorkout: jest.fn(),
+}));
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: { expoConfig: { get extra() { return mockExtra; } } },
@@ -24,7 +29,7 @@ jest.mock("expo-router", () => ({
   },
 }));
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ launchState: "trusted", runningPlanRuntime: {}, getActiveWorkout: jest.fn() }),
+  useWorkoutAppRuntime: () => mockUseWorkoutAppRuntime(),
 }));
 jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
   phase20VisualCleanupStatus: () => "complete",
@@ -33,6 +38,7 @@ jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
 
 describe("Phase 20 visual probe", () => {
   beforeEach(() => {
+    mockUseWorkoutAppRuntime.mockClear();
     mockExtra = { buildProfile: "development-test", nativeContractsEnabled: true, nativeContractSuite: "v1.2-acceptance" };
     mockParams = { state: "BW-054", configuration: "AP-L-C390-P-F100", fixture: "v12-synthetic-fixtures-r18", nonce: "a".repeat(32), ready: "a".repeat(32), mode: "capture" };
   });
@@ -63,6 +69,7 @@ describe("Phase 20 visual probe", () => {
     await render(<Phase20VisualProbeRoute />);
     expect(screen.queryByTestId("plan-type-chooser")).toBeNull();
     expect(screen.getByTestId("phase20-visual-reset")).toBeOnTheScreen();
+    expect(mockUseWorkoutAppRuntime).not.toHaveBeenCalled();
   });
   it("emits only after the host acknowledges the visible production state with the same nonce", async () => {
     delete mockParams.ready;

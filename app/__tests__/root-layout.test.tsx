@@ -22,6 +22,9 @@ const mockRuntimeProviderDependencies = jest.fn();
 const mockCreatePhase20VisualDependencies = jest.fn<
   (request: unknown) => Readonly<{ fixture: true }>
 >(() => ({ fixture: true }));
+const mockCreatePhase20CalendarDependencies = jest.fn(
+  (databaseName: string) => ({ calendarFixture: databaseName }),
+);
 const mockProductionAppearanceRead = jest.fn(() => null);
 const mockProductionAppearanceWrite = jest.fn();
 const mockPreviewAppearanceRead = jest.fn(() => null);
@@ -70,6 +73,7 @@ jest.mock("expo-router", () => {
   );
 
   return {
+    Redirect: () => <View testID="evidence-route-disabled" />,
     Stack,
     usePathname: () => mockPathname,
     useLocalSearchParams: () => mockSearchParams,
@@ -84,6 +88,15 @@ jest.mock("../../src/testing/phase20VisualFixtureRuntime", () => ({
   phase20VisualCleanupStatus: () => "complete",
   clearPhase20VisualCleanupStatus: jest.fn(),
 }));
+
+jest.mock("../../src/testing/phase20CalendarRuntime", () => {
+  const actual = jest.requireActual("../../src/testing/phase20CalendarRuntime") as object;
+  return {
+    ...actual,
+    createPhase20CalendarRuntimeDependencies: (databaseName: string) =>
+      mockCreatePhase20CalendarDependencies(databaseName),
+  };
+});
 
 jest.mock("expo-status-bar", () => {
   const { View } = require("react-native") as typeof import("react-native");
@@ -256,6 +269,7 @@ describe("RootLayout attended preview isolation", () => {
     mockRuntimeProviderMounted.mockClear();
     mockRuntimeProviderDependencies.mockClear();
     mockCreatePhase20VisualDependencies.mockClear();
+    mockCreatePhase20CalendarDependencies.mockClear();
     mockUseFonts.mockClear();
     mockProductionAppearanceRead.mockReset();
     mockProductionAppearanceRead.mockReturnValue(null);
@@ -389,17 +403,18 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
-  it("keeps the native contract path behind the exact v1.2 acceptance suite gate", async () => {
+  it("keeps a disabled native-contract deep link off the production runtime", async () => {
     mockPathname = "/__native-contracts";
     mockNativeContractSuite = "phase2";
 
     await render(<RootLayout />);
 
-    expect(screen.getByTestId("workout-runtime-provider"))
+    expect(screen.getByTestId("root-stack-screen-__native-contracts"))
       .toBeOnTheScreen();
-    expect(screen.getByTestId("startup-readiness-gate"))
-      .toBeOnTheScreen();
-    expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
   });
 
   it("isolates a valid Phase 20 visual request before production startup", async () => {
@@ -444,6 +459,25 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
   });
 
+  it("renders visual reset without mounting any workout runtime", async () => {
+    mockPathname = "/__phase20-visual-probe";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      state: "BW-001",
+      configuration: "AP-L-C390-P-F100",
+      fixture: "v12-synthetic-fixtures-r18",
+      nonce: "a".repeat(32),
+      mode: "reset",
+    };
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__phase20-visual-probe"))
+      .toBeOnTheScreen();
+    expect(mockCreatePhase20VisualDependencies).not.toHaveBeenCalled();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+  });
+
   it("does not activate the visual runtime outside the exact development-test suite", async () => {
     mockPathname = "/__phase20-visual-probe";
     mockBuildProfile = "production";
@@ -459,6 +493,104 @@ describe("RootLayout attended preview isolation", () => {
     await render(<RootLayout />);
 
     expect(mockCreatePhase20VisualDependencies).not.toHaveBeenCalled();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["Phase 6 gesture", "/__phase6-gesture-smoke"],
+    ["Phase 12 cleanup", "/__phase12-google-cleanup"],
+    ["Phase 12 Google auth", "/__phase12-google-auth-smoke"],
+    ["Phase 18 Garmin proof", "/__phase18-garmin-proof"],
+    ["Phase 18 Garmin adversarial", "/__phase18-garmin-adversarial"],
+    ["Phase 20 quality", "/__phase20-quality-probe"],
+    ["Phase 20 Garmin", "/__v12-production-garmin"],
+  ])("keeps a disabled %s deep link off the production runtime", async (_label, pathname) => {
+    mockPathname = pathname;
+    mockBuildProfile = "production";
+    mockNativeContractsEnabled = false;
+    mockNativeContractSuite = null;
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId(`root-stack-screen-${pathname.slice(1)}`))
+      .toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("renders the loaded Garmin evidence route without a workout runtime", async () => {
+    mockPathname = "/__v12-production-garmin";
+    mockNativeContractSuite = "v1.2-acceptance";
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__v12-production-garmin"))
+      .toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("mounts validated Calendar evidence over a strict nonce-scoped runtime", async () => {
+    mockPathname = "/calendar";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "b".repeat(32),
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+
+    await render(<RootLayout />);
+
+    const databaseName = `gym-tracker-phase20-calendar-${"b".repeat(32)}.db`;
+    expect(mockCreatePhase20CalendarDependencies).toHaveBeenCalledWith(databaseName);
+    expect(mockRuntimeProviderDependencies).toHaveBeenCalledWith({
+      calendarFixture: databaseName,
+    });
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("fails malformed Calendar evidence closed before any runtime mounts", async () => {
+    mockPathname = "/calendar";
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockSearchParams = {
+      phase20CalendarFixture: "v12-calendar-isolated-facts-v1",
+      phase20CalendarEvidenceNonce: "short",
+      phase20CalendarRequirementsSha256: "a".repeat(64),
+    };
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("evidence-route-disabled")).toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+  });
+
+  it("keeps an ordinary Calendar route on the production runtime", async () => {
+    mockPathname = "/calendar";
+    mockNativeContractsEnabled = false;
+    mockSearchParams = {};
+
+    await render(<RootLayout />);
+
+    expect(mockRuntimeProviderDependencies).toHaveBeenCalledWith({});
+    expect(mockCreatePhase20CalendarDependencies).not.toHaveBeenCalled();
+    expect(screen.getByTestId("startup-readiness-gate")).toBeOnTheScreen();
+  });
+
+  it.each([
+    ["Visual", "/__phase20-visual-probe"],
+    ["Quality", "/__phase20-quality-probe"],
+    ["Garmin", "/__v12-production-garmin"],
+  ])("fails the isolated %s route closed when bundled fonts fail", async (_label, pathname) => {
+    mockPathname = pathname;
+    mockNativeContractSuite = "v1.2-acceptance";
+    mockFontsLoaded = false;
+    mockFontError = new Error("isolated font load failed");
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-failure-font")).toBeOnTheScreen();
     expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
     expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
   });
@@ -513,25 +645,22 @@ describe("RootLayout attended preview isolation", () => {
     },
   );
 
-  it("keeps production runtime initialization when the preview path lacks the exact flag", async () => {
+  it("keeps a disabled preview deep link off the production runtime", async () => {
     mockNativeContractsEnabled = false;
 
     await render(<RootLayout />);
 
-    expect(screen.getByTestId("workout-runtime-provider"))
+    expect(screen.getByTestId("root-stack-screen-__phase2-attended-preview"))
       .toBeOnTheScreen();
-    expect(screen.getByTestId("startup-readiness-gate"))
-      .toBeOnTheScreen();
-    expect(screen.getByTestId("gesture-handler-root"))
-      .toContainElement(screen.getByTestId("workout-runtime-provider"));
-    expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
-    expect(mockProductionAppearanceRead).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByRole("button", {
       name: "Set dark appearance",
     }));
-    expect(mockProductionAppearanceWrite).toHaveBeenCalledWith("Dark");
-    expect(mockPreviewAppearanceRead).not.toHaveBeenCalled();
-    expect(mockPreviewAppearanceWrite).not.toHaveBeenCalled();
+    expect(mockPreviewAppearanceWrite).toHaveBeenCalledWith("Dark");
+    expect(mockProductionAppearanceWrite).not.toHaveBeenCalled();
   });
 
   it("retries the trusted runtime after a pre-runtime bundled font failure", async () => {
