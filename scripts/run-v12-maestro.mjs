@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { validateV12RunManifest as validateGenericV12RunManifest } from "./create-v12-run-manifest.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
@@ -12,6 +13,11 @@ import {
   recordV12CalendarStageResult,
 } from "./v12-calendar-artifacts.mjs";
 import { publishV12AtomicShard, recordV12AtomicFailure } from "./v12-atomic-shard-publication.mjs";
+import {
+  resolveV12NativeExecutionTools,
+  V12_PRODUCTION_EXECUTION_ORIGIN,
+  V12_TEST_EXECUTION_ORIGIN,
+} from "./v12-native-execution-origin.mjs";
 import {
   V12_CALENDAR_FLOW_REVISION,
   V12_CALENDAR_CHUNK_MARKER,
@@ -25,6 +31,12 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_HEAD = /^[a-f0-9]{40}$/u;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+const RUNNER_SOURCE = fileURLToPath(import.meta.url);
+const LIVE_GENERIC_SHARDS = Object.freeze(["multi-plan", "workout", "library-running"]);
+const sourceSha256 = (file) => {
+  try { return sha256(readFileSync(file)); }
+  catch { genericFail("toolchain_invalid"); }
+};
 
 const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const V12_PACKAGE = "com.fchoo.gymtracker.devtest";
@@ -106,6 +118,54 @@ function validateSourceOrderedObservations(observations, caseIds, shard) {
   if (seen.size !== caseIds.length || shard === "recovery") genericFail("observation_mapping_invalid");
 }
 
+function resolvedExecutionTools(value) {
+  if (!value || ![V12_PRODUCTION_EXECUTION_ORIGIN, V12_TEST_EXECUTION_ORIGIN].includes(value.execution_origin)) genericFail("toolchain_invalid");
+  const resolved = { execution_origin: value.execution_origin };
+  for (const name of ["adb", "maestro", "unzip"]) {
+    if (typeof value[name] !== "string" || !path.isAbsolute(value[name])) genericFail("toolchain_invalid");
+    try {
+      const executable = realpathSync(value[name]);
+      if (!path.isAbsolute(executable) || !statSync(executable).isFile()) genericFail("toolchain_invalid");
+      accessSync(executable, constants.X_OK);
+      resolved[name] = executable;
+    } catch (error) {
+      if (error instanceof Error && error.message === "v12_maestro_toolchain_invalid") throw error;
+      genericFail("toolchain_invalid");
+    }
+  }
+  return Object.freeze(resolved);
+}
+
+function executionOrigin({ runId, shard, manifest, snapshot, tools, sourceFile }) {
+  const production = tools.execution_origin === V12_PRODUCTION_EXECUTION_ORIGIN;
+  return Object.freeze({
+    schema_version: 1,
+    action: shard,
+    kind: production ? "production-default-launcher" : "test-fixture",
+    toolchain_origin: tools.execution_origin,
+    default_launcher: production,
+    test_only: !production,
+    adapter_source_sha256: sourceSha256(RUNNER_SOURCE),
+    launcher_source_sha256: sourceSha256(RUNNER_SOURCE),
+    domain_source_sha256: snapshot.source_sha256[sourceFile],
+    request_attestation_sha256: sha256(JSON.stringify({
+      schema_version: 1,
+      action: shard,
+      run_id: runId,
+      source_tree_sha256: manifest.source.tree_sha256,
+      apk_sha256: manifest.build.apk.sha256,
+      device_identity_sha256: manifest.device.identity_sha256,
+      flow_sha256: snapshot.flow_sha256,
+      source_sha256: snapshot.source_sha256,
+      tool_sha256: {
+        adb: sourceSha256(tools.adb),
+        maestro: sourceSha256(tools.maestro),
+        unzip: sourceSha256(tools.unzip),
+      },
+    })),
+  });
+}
+
 export function executeGenericV12Maestro(args = process.argv.slice(2), dependencies = {}) {
   const { runId, shard } = exactGenericArguments(args);
   const root = dependencies.root ?? ROOT;
@@ -179,6 +239,7 @@ export function executeGenericV12Maestro(args = process.argv.slice(2), dependenc
 export function executeLiveV12GenericMaestro(args = process.argv.slice(2), dependencies = {}) {
   const { runId, shard } = exactGenericArguments(args);
   if (shard === "recovery") return executeLiveV12RecoveryMaestro(args, dependencies);
+  if (!LIVE_GENERIC_SHARDS.includes(shard)) genericFail("live_shard_invalid");
   const root = dependencies.root ?? ROOT;
   const readJson = dependencies.readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
   const manifest = readJson(`artifacts/native/v1.2/${runId}/build.json`);
@@ -194,7 +255,9 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
   const serial = dependencies.serial ?? process.env.V12_DEVICE_SERIAL;
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]+$/u.test(serial) || serial.startsWith("emulator-")) genericFail("ephemeral_device_required");
   const execute = dependencies.execFileSync ?? execFileSync;
-  assertMaestroVersion(execute);
+  const tools = resolvedExecutionTools(dependencies.executionTools
+    ?? resolveV12NativeExecutionTools({ domain: true, env: dependencies.environment ?? process.env }));
+  assertMaestroVersion(execute, tools.maestro);
   const outputRoot = `artifacts/native/v1.2/${runId}`;
   const reportPath = `${outputRoot}/maestro/${shard}.xml`;
   const mappingPath = `${outputRoot}/mapping/${shard}.json`;
@@ -202,7 +265,10 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
   if ([reportPath, mappingPath].some((file) => existsSync(path.join(root, file))) || existsSync(leasePath)) genericFail("immutable_output_invalid");
   mkdirSync(path.dirname(leasePath), { recursive: true });
   writeFileSync(leasePath, `${sha256(serial)}\n`, { flag: "wx" });
-  const adb = dependencies.adb ?? ((...command) => execute("adb", ["-s", serial, ...command], { encoding: "utf8" }).trim());
+  const adb = dependencies.adb ?? ((...command) => {
+    try { return execute(tools.adb, ["-s", serial, ...command], { encoding: "utf8" }).trim(); }
+    catch { genericFail("native_command_failed"); }
+  });
   const reports = [];
   let restored = false;
   let outcome;
@@ -214,7 +280,10 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
     });
     for (const [index, caseId] of caseIds.entries()) {
       const temporary = path.join(root, `${outputRoot}/maestro/.${shard}-${index + 1}.xml`);
-      execute("maestro", ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", "V12_FIXTURE_ID=v12-synthetic-fixtures-r18", "--format", "junit", "--output", temporary, flowPath], { stdio: "inherit" });
+      mkdirSync(path.dirname(temporary), { recursive: true });
+      try {
+        execute(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", "V12_FIXTURE_ID=v12-synthetic-fixtures-r18", "--format", "junit", "--output", temporary, flowPath], { stdio: "inherit" });
+      } catch { genericFail("native_command_failed"); }
       if (!existsSync(temporary)) genericFail("report_missing");
       reports.push(readFileSync(temporary, "utf8"));
       unlinkSync(temporary);
@@ -222,7 +291,9 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
     const reportText = `<testsuites source_tree_sha256="${manifest.source.tree_sha256}" apk_sha256="${manifest.build.apk.sha256}" installed_apk_sha256="${manifest.device.installed_apk_sha256}" device_identity_sha256="${manifest.device.identity_sha256}">${reports.join("")}</testsuites>\n`;
     const flowSha256 = sha256(readFileSync(flowPath));
     const observations = caseIds.map((caseId, index) => Object.freeze({ case_id: caseId, ordinal: index + 1, fixture_id: "v12-synthetic-fixtures-r18", report_sha256: sha256(reports[index]) }));
-    const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }), case_ids: caseIds, observations });
+    const sourceSnapshot = Object.freeze({ flow_sha256: flowSha256, source_sha256: Object.freeze({ [contract.sources[0]]: sha256(sourceBytes) }) });
+    const provenance = executionOrigin({ runId, shard, manifest, snapshot: sourceSnapshot, tools, sourceFile: contract.sources[0] });
+    const mapping = Object.freeze({ schema_version: 1, producer: "v12-maestro-source-map/v1", run_id: runId, shard, identity: Object.freeze({ source_tree_sha256: manifest.source.tree_sha256, apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256, certificate_sha256: manifest.build.apk.certificate_sha256, device_identity_sha256: manifest.device.identity_sha256, settings_sha256: manifest.device.settings_sha256, configuration_id: manifest.configuration.id }), execution_origin: provenance, flow_sha256: flowSha256, source_sha256: sourceSnapshot.source_sha256, case_ids: caseIds, observations });
     validateSourceOrderedObservations(observations, caseIds, shard);
     const writeReport = dependencies.writeReport ?? ((file, value) => {
       const absoluteReport = path.join(root, file);
@@ -231,7 +302,7 @@ export function executeLiveV12GenericMaestro(args = process.argv.slice(2), depen
     });
     writeReport(reportPath, reportText);
     immutableWrite(root, mappingPath, mapping, dependencies.writeImmutableJson);
-    outcome = Object.freeze({ run_id: runId, shard, report: reportPath, mapping: mappingPath, cases: caseIds.length });
+    outcome = Object.freeze({ run_id: runId, shard, report: reportPath, mapping: mappingPath, cases: caseIds.length, execution_origin: provenance });
   } finally {
     try {
       if (previousSettings !== undefined) {
@@ -284,8 +355,10 @@ function liveIdentity(manifest, root, sourceIdentity) {
   };
 }
 
-function assertMaestroVersion(execute = execFileSync) {
-  const version = execute("maestro", ["--version"], { encoding: "utf8" }).trim();
+function assertMaestroVersion(execute = execFileSync, maestro = "maestro") {
+  let version;
+  try { version = execute(maestro, ["--version"], { encoding: "utf8" }).trim(); }
+  catch { genericFail("maestro_version_invalid"); }
   if (!/(?:^|\s)2\.8\.0(?:\s|$)/u.test(version)) genericFail("maestro_version_invalid");
 }
 
@@ -438,19 +511,21 @@ export function executeV12Maestro(args = process.argv.slice(2), dependencies = {
   throw new Error("v12_calendar_native_execution_phase20_only");
 }
 
-export function runV12MaestroCli(args = process.argv.slice(2), io = process) {
+export function runV12MaestroCli(args = process.argv.slice(2), io = process, dependencies = {}) {
   try {
     if (args.includes("--run")) {
       const { runId, shard } = exactGenericArguments(args);
       if (shard === "recovery") {
-        io.stdout.write(`${JSON.stringify(executeLiveV12RecoveryMaestro(args))}\n`);
+        io.stdout.write(`${JSON.stringify(executeLiveV12RecoveryMaestro(args, dependencies))}\n`);
       } else {
         const writes = [];
         const result = executeLiveV12GenericMaestro(args, {
+          ...dependencies,
           writeReport: (file, value) => writes.push([file.replace(`artifacts/native/v1.2/${runId}/`, ""), value]),
           writeImmutableJson: (file, value) => writes.push([file.replace(`artifacts/native/v1.2/${runId}/`, ""), value]),
         });
-        publishV12AtomicShard({ runId, shard, produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
+        publishV12AtomicShard({ root: dependencies.root, runId, shard, executionOrigin: result.execution_origin,
+          produce: ({ write }) => writes.forEach(([file, value]) => write(file, value)) });
         io.stdout.write(`${JSON.stringify(result)}\n`);
       }
     } else io.stdout.write(`${JSON.stringify(executeV12Maestro(args))}\n`);
@@ -458,7 +533,7 @@ export function runV12MaestroCli(args = process.argv.slice(2), io = process) {
   } catch (error) {
     const runIndex = args.indexOf("--run"); const shardIndex = args.indexOf("--shard");
     const runId = runIndex >= 0 ? args[runIndex + 1] : undefined; const shard = shardIndex >= 0 ? args[shardIndex + 1] : undefined;
-    if (V12_RUN_ID.test(runId ?? "") && typeof shard === "string" && shard !== "recovery") { try { recordV12AtomicFailure({ runId, shard, error }); } catch { /* first receipt wins */ } }
+    if (V12_RUN_ID.test(runId ?? "") && typeof shard === "string" && shard !== "recovery") { try { recordV12AtomicFailure({ root: dependencies.root, runId, shard, error }); } catch { /* first receipt wins */ } }
     io.stderr.write(`${error.message}\n`);
     return 1;
   }

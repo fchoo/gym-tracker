@@ -36,3 +36,16 @@ test("the v1.2 acceptance build uses the canonical restoration digest contract",
   assert.match(source, /v12-device-settings-contract\.mjs --read-digest/u);
   assert.doesNotMatch(source, /shell settings get system font_scale[\s\S]*shasum -a 256/u);
 });
+
+test("the v1.2 acceptance build validates predecessors and uses privacy-safe doctor mode before freezing source", () => {
+  const source = readFileSync(new URL("./build-current-native-test-apk.sh", import.meta.url), "utf8");
+  const predecessor = source.indexOf("node scripts/validate-v12-prebuild-predecessors.mjs");
+  const doctor = source.indexOf("sh scripts/doctor-android.sh --phase20");
+  const freeze = source.indexOf("base_head=$(git rev-parse HEAD)");
+  const generation = source.indexOf("npx expo prebuild --clean");
+
+  assert.ok(predecessor >= 0);
+  assert.ok(doctor > predecessor);
+  assert.ok(freeze > doctor);
+  assert.ok(generation > freeze);
+});

@@ -314,12 +314,13 @@ test("controlled non-test launcher runs default ADB/Maestro transport through pr
   const tool = path.join(scratch, "tool.mjs");
   writeFileSync(tool, `import fs from 'node:fs';\nconst fixtureId=${JSON.stringify(fixtureId)};\nconst controlledTool=${controlledTool.toString()};\nconst file=process.env.VISUAL_CONTROLLED_STATE; const state=JSON.parse(fs.readFileSync(file)); const r=controlledTool(state,process.argv[2],process.argv.slice(3), {input:fs.readFileSync(0,'utf8')}); fs.writeFileSync(file,JSON.stringify(state));process.stdout.write(r.stdout);process.stderr.write(r.stderr);process.exitCode=r.status;`);
   const quote = (v) => `'${v.replaceAll("'", "'\\''")}'`;
-  for (const exe of ["adb", "maestro"]) writeFileSync(path.join(bin, exe), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(tool)} ${exe} "$@"\n`, { mode: 0o755 });
+  for (const exe of ["adb", "maestro", "unzip"]) writeFileSync(path.join(bin, exe), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(tool)} ${exe} "$@"\n`, { mode: 0o755 });
   const statePath = path.join(scratch, "state.json"); writeFileSync(statePath, JSON.stringify(f.state));
   f.manifest.source.tree_sha256 = sourceTreeSha256(f.root);
   writeFileSync(path.join(f.runDir, "build.json"), JSON.stringify(f.manifest));
   const attestation = { ...f.attestation, source_tree_sha256: f.manifest.source.tree_sha256, launcher_source_sha256: hash(readFileSync(launcher)) };
-  const env = { ...process.env, NODE_ENV: "production", PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: "device-private", VISUAL_CONTROLLED_STATE: statePath };
+  const env = { ...process.env, NODE_ENV: "production", PATH: `${bin}:${process.env.PATH}`, V12_DEVICE_SERIAL: "device-private", VISUAL_CONTROLLED_STATE: statePath,
+    V12_EXECUTION_ORIGIN: "test-controlled/v1", V12_ADB_PATH: path.join(bin, "adb"), V12_MAESTRO_PATH: path.join(bin, "maestro"), V12_UNZIP_PATH: path.join(bin, "unzip") };
   for (const key of ["NODE_TEST_CONTEXT", "V12_NATIVE_ADAPTER_COMMAND", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS"]) delete env[key];
   const invoke = (action, payload) => spawnSync(process.execPath, [launcher, "--action", action], { cwd: f.root, env, input: JSON.stringify({ schema_version: 1, action, payload: { ...payload, lease: { lease_id: f.state.lease.lease_id, native_execution: "EXECUTED" } }, attestation: { ...attestation, action } }), encoding: "utf8", timeout: 90_000, maxBuffer: 32 * 1024 * 1024 });
   const result = invoke("visual-capture", f.payload);

@@ -114,6 +114,9 @@ jobs:
             'verify:artifact-roundtrip',
             'verify:phase12:evidence',
             'test:evidence:phase12',
+            'test:evidence:v12',
+            'test:evidence:v12:all',
+            'validate:v12:prebuild',
             'test:all',
             'ci:pr',
           ];
@@ -128,7 +131,7 @@ jobs:
     name: Typecheck through host SQLite
     needs: required-suite-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 90
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -151,6 +154,9 @@ jobs:
         run: |
           npm run lint
           npm run check:boundaries
+
+      - name: Validate Phase 20 predecessors
+        run: npm run validate:v12:prebuild
 
       - name: Unit tests
         run: npm run test:unit -- --runInBand

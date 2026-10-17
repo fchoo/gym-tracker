@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import nodeTest from "node:test";
 
 import { PNG } from "pngjs";
 import { deriveV12PixelComparison } from "./compare-v12-visual.mjs";
@@ -22,14 +22,27 @@ const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const sha = (letter) => letter.repeat(64);
 const progress = (message) => { if (process.env.V12_BLACKBOX_PROGRESS === "1") process.stderr.write(`[v12-blackbox] ${message}\n`); };
+const TEST_TIMEOUT_MS = 20 * 60_000;
+const SUBPROCESS_TIMEOUT_MS = 5 * 60_000;
+const test = (name, optionsOrFunction, maybeFunction) => typeof optionsOrFunction === "function"
+  ? nodeTest(name, { timeout: TEST_TIMEOUT_MS }, optionsOrFunction)
+  : nodeTest(name, { timeout: TEST_TIMEOUT_MS, ...optionsOrFunction }, maybeFunction);
 
-function fixtureRoot() {
+function fixtureRoot({ performanceOverBudget = false } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "v12-phase20-blackbox-"));
   // Production CLIs use cwd as their source/run root. These are source inputs,
   // not production modules, and the entrypoints themselves remain absolute.
   for (const member of ["scripts", "src/testing/contracts", "src/testing/phase20VisualStateRegistry.json", "src/testing/phase20CalendarFixture.ts", "maestro/v1.2", ".planning/design", ".planning/phases/20-native-acceptance", ".planning/REQUIREMENTS.md"]) {
     const source = path.join(project, member);
     if (existsSync(source)) cpSync(source, path.join(root, member), { recursive: true });
+  }
+  if (performanceOverBudget) {
+    const adapter = path.join(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs");
+    const source = readFileSync(adapter, "utf8");
+    const original = 'if (action === "performance") return performanceEvidence(performanceIdentity, qualityNonce);';
+    const replacement = 'if (action === "performance") { const value = performanceEvidence(performanceIdentity, qualityNonce); value.samples.warm_launch_to_interactive_ms = Array(20).fill(1001); value.samples.native_receipts.timings.warm_launch_to_interactive_ms.spans = value.samples.warm_launch_to_interactive_ms.map((duration, index) => ({ start_ms: index * 2000, end_ms: index * 2000 + duration })); return value; }';
+    assert.ok(source.includes(original));
+    writeFileSync(adapter, source.replace(original, replacement));
   }
   writeFileSync(path.join(root, "package.json"), readFileSync(path.join(project, "package.json")));
   writeFileSync(path.join(root, "package-lock.json"), readFileSync(path.join(project, "package-lock.json")));
@@ -44,6 +57,7 @@ function fixtureRoot() {
   assert.equal(tree.status, 0, tree.stderr);
   mkdirSync(path.join(root, "artifacts/native/v1.2", run), { recursive: true });
   writeFileSync(path.join(root, "artifacts/native/v1.2", run, "build.json"), `${JSON.stringify(buildManifest(head, tree.stdout.trim()))}\n`);
+  symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");
   return root;
 }
 
@@ -60,10 +74,10 @@ function buildManifest(head, sourceTreeSha256) {
 
 function invoke(root, script, args, extra = {}) {
   const bins = path.join(root, "artifacts", "fake-bin"); mkdirSync(bins, { recursive: true });
-  for (const command of ["adb", "maestro"]) writeFileSync(path.join(bins, command), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(project, "scripts/testing/v12-phase20-blackbox/fake-device-tool.mjs"))} --tool ${command} \"$@\"\n`, { mode: 0o755 });
+  for (const command of ["adb", "maestro", "unzip"]) writeFileSync(path.join(bins, command), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(project, "scripts/testing/v12-phase20-blackbox/fake-device-tool.mjs"))} --tool ${command} \"$@\"\n`, { mode: 0o755 });
   return spawnSync(process.execPath, [path.join(project, script), ...args], {
-    cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, ...extra, PATH: `${bins}:${process.env.PATH}`, NODE_ENV: "test", V12_NATIVE_ADAPTER_TEST_MODE: "phase20-native-adapter-subprocess", V12_NATIVE_ADAPTER_TEST_PROCESS: "1", V12_NATIVE_ADAPTER_COMMAND: path.join(project, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"), V12_NATIVE_ADAPTER_BATCH: "1", V12_DEVICE_SERIAL: "fake-device-20" },
+    cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: SUBPROCESS_TIMEOUT_MS,
+    env: { ...process.env, ...extra, PATH: `${bins}:${process.env.PATH}`, NODE_ENV: "test", V12_NATIVE_ADAPTER_TEST_MODE: "phase20-native-adapter-subprocess", V12_NATIVE_ADAPTER_TEST_PROCESS: "1", V12_NATIVE_ADAPTER_COMMAND: path.join(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"), V12_NATIVE_ADAPTER_BATCH: "1", V12_DEVICE_SERIAL: "fake-device-20", V12_EXECUTION_ORIGIN: "test-controlled/v1", V12_ADB_PATH: path.join(bins, "adb"), V12_MAESTRO_PATH: path.join(bins, "maestro"), V12_UNZIP_PATH: path.join(bins, "unzip") },
   });
 }
 
@@ -75,6 +89,7 @@ function invokeWithoutTestEnvironment(root, script, args) {
     encoding: "utf8",
     env: environment,
     maxBuffer: 64 * 1024 * 1024,
+    timeout: 60_000,
   });
 }
 
@@ -94,12 +109,15 @@ function completion(root, shard) {
   assert.equal(manifest.run_id, run); assert.equal(manifest.shard, shard); assert.equal(manifest.completed, true);
   assert.equal(manifest.identity.evidence_origin, "test");
   assert.ok(Array.isArray(manifest.members) && manifest.members.length > 0);
-  if (["sqlite", "recovery", "garmin", "calendar", "visual", "comparison", "accessibility", "performance"].includes(shard)) {
+  if (["sqlite", "recovery", "garmin", "calendar", "multi-plan", "workout", "library-running", "visual", "comparison", "accessibility", "performance"].includes(shard)) {
     const expectedAction = {
       sqlite: "sqlite",
       recovery: "recovery",
       garmin: "garmin",
       calendar: "calendar",
+      "multi-plan": "multi-plan",
+      workout: "workout",
+      "library-running": "library-running",
       visual: "visual-capture-batch",
       comparison: "visual-compare",
       accessibility: "accessibility",
@@ -111,7 +129,9 @@ function completion(root, shard) {
     assert.equal(manifest.execution_origin?.default_launcher, false);
     assert.equal(manifest.execution_origin?.test_only, true);
     assert.match(manifest.execution_origin?.domain_source_sha256 ?? "", /^[a-f0-9]{64}$/u);
-    assert.equal(manifest.execution_origin.domain_source_sha256, manifest.execution_origin.launcher_source_sha256);
+    if (["multi-plan", "workout", "library-running"].includes(shard)) {
+      assert.notEqual(manifest.execution_origin.domain_source_sha256, manifest.execution_origin.launcher_source_sha256);
+    } else assert.equal(manifest.execution_origin.domain_source_sha256, manifest.execution_origin.launcher_source_sha256);
     if (shard === "garmin") assert.equal(manifest.domain_execution_origin, "production-attested/v1");
   }
   assert.equal(existsSync(path.join(root, "artifacts/native/v1.2", run, ".staging")), false, `${shard} left staging behind`);
@@ -201,51 +221,25 @@ function completeMultiPlanFixture(root) {
   rewriteFixturePublication(root, "multi-plan");
 }
 
-function completeBlockedGarminFixture(root) {
-  const base = path.join(root, "artifacts/native/v1.2", run);
-  const build = JSON.parse(readFileSync(path.join(base, "build.json"), "utf8"));
-  const identity = {
-    source_digest: build.source.tree_sha256, fixture_digest: build.fixtures.registry_sha256,
-    apk_digest: build.build.apk.sha256, installed_apk_digest: build.device.installed_apk_sha256,
-    device_digest: build.device.identity_sha256, settings_digest: build.device.settings_sha256,
-    restoration_digest: build.device.restoration_sha256, configuration_id: build.configuration.id,
-  };
-  const ids = [
-    "packaging", "bridge-allowlist", "canonical-json", "sync-read", "account-lifecycle", "recovery",
-    "dedupe-restart", "dedupe-restore", "dedupe-merge", "match-zero", "match-one", "match-many",
-    "match-stale", "match-alternate", "match-cancel", "match-confirm", "match-reassign", "privacy",
-  ];
-  const cases = ids.map((id, order) => ({ id, order, status: "REVIEW_REQUIRED", code: `${id}-observed`, count: id === "match-one" ? 1 : 0, receipt_sha256: createHash("sha256").update(`blocked:${id}`).digest("hex") }));
-  const common = { schema_version: 2, producer: "v12-garmin-shard/v3", run_id: run, identity };
-  const values = {
-    "garmin/packaging-auth.json": { ...common, schema: "packaging-auth/v1", cases: [cases[0], cases[1], cases[4], cases[5]] },
-    "garmin/sync-read.json": { ...common, schema: "sync-read/v1", cases: [cases[2], cases[3], cases[17]] },
-    "garmin/dedupe.json": { ...common, schema: "dedupe/v1", cases: cases.slice(6, 9) },
-    "garmin/matching.json": { ...common, schema: "matching/v1", cases: cases.slice(9, 17) },
-    "maestro/garmin-progress.xml": `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-garmin" tests="18" failures="0" errors="0" skipped="18" source_digest="${identity.source_digest}">${cases.map(({ id }) => `<testcase classname="v12.garmin" name="${id}"><skipped message="test fixture cannot seal native evidence"/></testcase>`).join("")}</testsuite>\n`,
-  };
-  const members = [];
-  for (const [relative, value] of Object.entries(values)) {
-    const bytes = Buffer.from(typeof value === "string" ? value : `${JSON.stringify(value)}\n`);
-    const target = path.join(base, relative); mkdirSync(path.dirname(target), { recursive: true }); writeFileSync(target, bytes);
-    members.push({ artifact: relative, sha256: createHash("sha256").update(bytes).digest("hex"), size_bytes: bytes.length });
-  }
-  const adapterSource = readFileSync(path.join(root, "scripts/v12-native-adapter.mjs"));
-  const fakeSource = readFileSync(path.join(root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs"));
-  const publication = { schema_version: 1, producer: "v12-atomic-shard-publication/v1", run_id: run, shard: "garmin", identity: {
-    evidence_origin: build.evidence_origin,
-    source_tree_sha256: build.source.tree_sha256, apk_sha256: build.build.apk.sha256,
-    installed_apk_sha256: build.device.installed_apk_sha256, device_identity_sha256: build.device.identity_sha256,
-    fixture_sha256: build.fixtures.registry_sha256, configuration_id: build.configuration.id,
-  }, execution_origin: {
-    schema_version: 1, action: "garmin", kind: "test-fixture", toolchain_origin: "test-controlled/v1", default_launcher: false, test_only: true,
-    adapter_source_sha256: createHash("sha256").update(adapterSource).digest("hex"),
-    launcher_source_sha256: createHash("sha256").update(fakeSource).digest("hex"),
-    domain_source_sha256: createHash("sha256").update(fakeSource).digest("hex"),
-    request_attestation_sha256: createHash("sha256").update("blocked-garmin-attestation").digest("hex"),
-  }, domain_execution_origin: "production-attested/v1", members, completed: true };
-  mkdirSync(path.join(base, "publication"), { recursive: true });
-  writeFileSync(path.join(base, "publication/garmin.json"), `${JSON.stringify(publication)}\n`);
+function executeGarminThroughCli(root) {
+  const program = `
+    import { readFileSync } from 'node:fs';
+    import { executeV12GarminShardCli, V12_GARMIN_SHARD_CASE_IDS } from ${JSON.stringify(path.join(project, "scripts/v12-garmin-shard.mjs"))};
+    import { publishV12AtomicShard } from ${JSON.stringify(path.join(project, "scripts/v12-atomic-shard-publication.mjs"))};
+    const root = process.argv[1]; const runId = process.argv[2]; const build = JSON.parse(readFileSync(root + '/artifacts/native/v1.2/' + runId + '/build.json', 'utf8')); const writes = [];
+    const origin = { schema_version: 1, action: 'garmin', kind: 'test-fixture', toolchain_origin: 'test-controlled/v1', default_launcher: false, test_only: true, adapter_source_sha256: '1'.repeat(64), launcher_source_sha256: '2'.repeat(64), domain_source_sha256: '2'.repeat(64), request_attestation_sha256: '4'.repeat(64) };
+    const result = { producer: 'v12-production-garmin-host/v1', execution_origin: 'production-attested/v1', cases: V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({ id, order, status: 'PASS', code: id + '-observed', count: id === 'match-one' ? 1 : 0, receipt_sha256: String(order).padStart(64, 'a').slice(-64) })) };
+    const value = await executeV12GarminShardCli(['--run', runId, '--execute'], { root, readBuild: () => build, sourceDigest: build.source.tree_sha256, currentHead: build.source.head, isAncestor: () => true, acquireLease: () => ({ opaque: true }), releaseLease: () => true, snapshotSettings: () => ({ bounded: true }), restoreSettings: () => true, executeNative: () => result, writeImmutable: (file, content) => writes.push([file, content]), outputExists: () => false });
+    publishV12AtomicShard({ root, runId, shard: 'garmin', executionOrigin: origin, domainExecutionOrigin: value.execution_origin, produce: ({write}) => writes.forEach(([file, content]) => write(file.replace('artifacts/native/v1.2/' + runId + '/', ''), content)) });
+    process.stdout.write(JSON.stringify(value));
+  `;
+  const execute = spawnSync(process.execPath, ["--input-type=module", "--eval", program, root, run], {
+    cwd: root, encoding: "utf8", timeout: 30_000, maxBuffer: 4 * 1024 * 1024,
+  });
+  assert.equal(execute.status, 0, execute.stderr);
+  assert.equal(JSON.parse(execute.stdout).mode, "execute");
+  pass(root, "scripts/v12-garmin-shard.mjs", ["--run", run, "--verify"]);
+  return completion(root, "garmin");
 }
 
 test("Phase 20 fake-device Recovery path proves offline rollback and one retry", () => {
@@ -272,6 +266,27 @@ test("Phase 20 fake-device Recovery path proves offline rollback and one retry",
   }
 });
 
+test("over-budget performance executes through the CLI and publishes one immutable FAIL observation", () => {
+  const root = fixtureRoot({ performanceOverBudget: true });
+  try {
+    pass(root, "scripts/v12-performance-shard.mjs", ["--run", run, "--execute"]);
+    const base = path.join(root, "artifacts/native/v1.2", run);
+    const publicationPath = path.join(base, "publication/performance.json");
+    const firstPublication = readFileSync(publicationPath);
+    const output = JSON.parse(readFileSync(path.join(base, "performance.json"), "utf8"));
+    assert.equal(output.observation.observation_state, "FAIL");
+    assert.equal(output.observation.summary.classification, "FAIL");
+    assert.equal(output.observation.summary.gates.warm_launch_to_interactive.result, "FAIL");
+    completion(root, "performance");
+    pass(root, "scripts/v12-performance-shard.mjs", ["--run", run, "--verify"]);
+    const duplicate = invoke(root, "scripts/v12-performance-shard.mjs", ["--run", run, "--execute"]);
+    assert.notEqual(duplicate.status, 0);
+    assert.deepEqual(readFileSync(publicationPath), firstPublication);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Phase 20 fake-device pipeline exercises every CLI but cannot publish preseal or final native evidence", async (t) => {
   const root = fixtureRoot(); t.after(() => rmSync(root, { recursive: true, force: true }));
   const mainRun = run;
@@ -293,10 +308,10 @@ test("Phase 20 fake-device pipeline exercises every CLI but cannot publish prese
     assert.equal(failure.failure_code, "auth_required");
     assert.equal(existsSync(path.join(authRoot, "artifacts/native/v1.2", authRun, "publication/garmin.json")), false);
   } finally { rmSync(authRoot, { recursive: true, force: true }); run = mainRun; }
-  // Every call below is the documented CLI order. The test intentionally does
-  // not call exported production functions or manufacture final evidence.
+  // Every retained artifact below is emitted by the production execute and
+  // verify handlers; the test never writes a Garmin shard fixture directly.
   for (const script of ["scripts/v12-sqlite-shard.mjs", "scripts/v12-recovery-shard.mjs"]) for (const mode of ["--execute", "--verify"]) pass(root, script, ["--run", run, mode]);
-  completeBlockedGarminFixture(root);
+  executeGarminThroughCli(root);
   const rejectedCalendar = invoke(root, "scripts/v12-calendar-shard.mjs", ["--run", run, "--execute"]);
   assert.notEqual(rejectedCalendar.status, 0);
   assert.match(rejectedCalendar.stderr, /calendar_native_origin_invalid/u);

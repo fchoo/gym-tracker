@@ -30,7 +30,9 @@ external_conditional: 0
 | Host | Node 24.19.0; npm 11.17.0; Jest 29.7 projects `unit`, `components`, `sqlite-host`, `integration`; RNTL 14.0.1 |
 | Android | Java 17.0.20+8; API 36; Build Tools 36.0.0; NDK 27.1.12297006; ADB; Maestro 2.8.0; apksigner; zipalign |
 | Source registries | 172 parity rows; 107 ordered browser occurrences; exact 64 AP-SIZE-ORIENTATION-FONT configurations; native-only packs |
-| Host/freeze gate | `npm run typecheck && npm run lint && npm run check:boundaries && npm run test:all -- --runInBand && npm run test:coverage -- --runInBand && npm run test:evidence:v12` |
+| Host/freeze gate | `npm run validate:v12:prebuild && npm run typecheck && npm run lint && npm run check:boundaries && npm run test:all -- --runInBand && npm run test:coverage -- --runInBand && npm run test:evidence:v12` |
+| Prebuild predecessor gate | `npm run validate:v12:prebuild` revalidates the exact terminal Phase 13–19 summary, validation, verification-status and authority contracts before any v1.2 source freeze or native generation. |
+| Phase 20 evidence tests | `npm run test:evidence:v12`; its required npm pre-hook runs `test:evidence:v12:all`, which executes every registered `v12-*.test.mjs` integration suite with bounded test timeouts before the legacy evidence trio. |
 | Native SQLite | `npm run test:sqlite:device -- --suite v1.2-acceptance --manifest "artifacts/native/v1.2/$V12_RUN_ID/build.json"` |
 | Native runner | `npm run test:maestro:v12 -- --run "$V12_RUN_ID" --shard <id>` |
 | Performance | `npm run benchmark:v12:interactions -- --run "$V12_RUN_ID" --all` |

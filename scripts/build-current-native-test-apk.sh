@@ -75,6 +75,10 @@ cd "$project_root"
 [ "$(git rev-parse --show-toplevel)" = "$project_root" ] ||
   fail 'script must run from its own Git worktree root.'
 
+if [ "$suite" = 'v1.2-acceptance' ]; then
+  node scripts/validate-v12-prebuild-predecessors.mjs
+fi
+
 artifact_directory="artifacts/native/$suite"
 build_manifest="$artifact_directory/build.json"
 apk_path="$artifact_directory/gym-tracker-$suite-devtest.apk"
@@ -127,7 +131,9 @@ done
 [ "$boot_completed" = '1' ] ||
   fail "$device_serial did not complete boot within 360 seconds."
 
-if [ "$suite" = 'phase6-gesture-smoke' ]; then
+if [ "$suite" = 'v1.2-acceptance' ]; then
+  sh scripts/doctor-android.sh --phase20
+elif [ "$suite" = 'phase6-gesture-smoke' ]; then
   # This disposable Phase 6 development-test smoke alone accepts Node 24.19.0's bundled npm.
   GYM_TRACKER_ALLOW_DEVTEST_NPM_12=true sh scripts/doctor-android.sh
 else

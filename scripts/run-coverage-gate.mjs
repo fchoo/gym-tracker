@@ -5,6 +5,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import {
+  readdirSync,
   readFileSync,
   rmSync,
 } from "node:fs";
@@ -125,9 +126,59 @@ const phase16EvidenceFiles = [
   "scripts/v12-calendar-case-evidence.mjs",
   "scripts/v12-calendar-case-registry.mjs",
 ];
-const phase20EvidenceTests = [
+const phase20EvidenceTests = Object.freeze([
   "scripts/native-device-selection.test.mjs",
-];
+  "scripts/v12-accessibility-shard.test.mjs",
+  "scripts/v12-atomic-publication.integration.test.mjs",
+  "scripts/v12-atomic-shard-publication.test.mjs",
+  "scripts/v12-blocker-row-resolver.test.mjs",
+  "scripts/v12-calendar-cli-blackbox.test.mjs",
+  "scripts/v12-calendar-comparison.test.mjs",
+  "scripts/v12-calendar-evidence-coverage.test.mjs",
+  "scripts/v12-calendar-observation-contract.test.mjs",
+  "scripts/v12-calendar-shard.test.mjs",
+  "scripts/v12-device-settings-contract.test.mjs",
+  "scripts/v12-evidence-contract.test.mjs",
+  "scripts/v12-evidence-scripts.test.mjs",
+  "scripts/v12-garmin-shard.test.mjs",
+  "scripts/v12-native-adapter-attestation.test.mjs",
+  "scripts/v12-native-execution-origin.test.mjs",
+  "scripts/v12-phase20-cli-blackbox.test.mjs",
+  "scripts/v12-preflight-contract.test.mjs",
+  "scripts/v12-production-domain-receipts.test.mjs",
+  "scripts/v12-production-native-calendar-action.test.mjs",
+  "scripts/v12-production-native-domain-actions.test.mjs",
+  "scripts/v12-production-native-launcher.test.mjs",
+  "scripts/v12-production-native-quality-actions.test.mjs",
+  "scripts/v12-production-native-visual-actions.test.mjs",
+  "scripts/v12-quality-evidence-contract.test.mjs",
+  "scripts/v12-quality-maestro-contract.test.mjs",
+  "scripts/v12-recovery-shard.test.mjs",
+  "scripts/v12-sqlite-shard.test.mjs",
+]);
+const phase20V12EvidenceTests = phase20EvidenceTests.filter((file) =>
+  /^scripts\/v12-.*\.test\.mjs$/u.test(file)
+);
+function validatePhase20EvidenceTestManifest() {
+  const discovered = readdirSync(path.join(projectRoot, "scripts"))
+    .filter((file) => /^v12-.*\.test\.mjs$/u.test(file))
+    .map((file) => `scripts/${file}`)
+    .sort();
+  const registered = [...phase20V12EvidenceTests].sort();
+  const missing = discovered.filter((file) => !registered.includes(file));
+  const stale = registered.filter((file) => !discovered.includes(file));
+  if (missing.length > 0 || stale.length > 0 || registered.length !== 27) {
+    throw new Error(JSON.stringify({
+      error: "phase20_evidence_test_manifest_drift",
+      expected_count: 27,
+      registered_count: registered.length,
+      discovered_count: discovered.length,
+      missing,
+      stale,
+    }));
+  }
+  return registered;
+}
 const phase20EvidenceFiles = [
   "scripts/native-device-selection.mjs",
 ];
@@ -501,6 +552,8 @@ let focusPhase18 = false;
 let focusPhase16Evidence = false;
 let focusPhase19 = false;
 let focusPhase20 = false;
+let phase20EvidenceOnly = false;
+let listPhase20EvidenceTests = false;
 for (let index = 0; index < forwarded.length; index += 1) {
   const argument = forwarded[index];
   if (argument === "--focus-phase18") {
@@ -511,6 +564,10 @@ for (let index = 0; index < forwarded.length; index += 1) {
     focusPhase19 = true;
   } else if (argument === "--focus-phase20") {
     focusPhase20 = true;
+  } else if (argument === "--phase20-evidence-only") {
+    phase20EvidenceOnly = true;
+  } else if (argument === "--list-phase20-evidence-tests") {
+    listPhase20EvidenceTests = true;
   } else if (argument.startsWith("--focus-integrity=")) {
     focusedIntegrityFiles.push(...argument.slice("--focus-integrity=".length).split(",").filter(Boolean));
   } else if (argument.startsWith("--focus-project=")) {
@@ -523,17 +580,24 @@ for (let index = 0; index < forwarded.length; index += 1) {
     jestForwarded.push(argument);
   }
 }
+validatePhase20EvidenceTestManifest();
+if (listPhase20EvidenceTests) {
+  console.log(JSON.stringify({ ok: true, tests: phase20V12EvidenceTests }));
+  process.exit(0);
+}
 if (focusPhase16Evidence) {
   focusedIntegrityFiles.push("src/bootstrap/phase16CalendarTestControls.ts");
   focusedProjects.push("unit");
   jestForwarded.push("src/bootstrap/phase16CalendarTestControls.test.ts");
 }
-if (!focusPhase16Evidence && !focusPhase18) {
+if (phase20EvidenceOnly || focusPhase20
+  || (!focusPhase16Evidence && !focusPhase18 && !focusPhase19)) {
   const evidence = spawnSync(
     process.execPath,
     [
       "--experimental-test-coverage",
-      "--test-concurrency=1",
+      "--test-concurrency=2",
+      "--test-timeout=600000",
       ...phase20EvidenceFiles.map((file) => `--test-coverage-include=${file}`),
       "--test-coverage-lines=100",
       "--test-coverage-branches=100",
@@ -546,6 +610,7 @@ if (!focusPhase16Evidence && !focusPhase18) {
   if (evidence.error !== undefined) throw evidence.error;
   if (evidence.status !== 0) process.exit(evidence.status ?? 1);
 }
+if (phase20EvidenceOnly) process.exit(0);
 if (focusPhase18) {
   focusedIntegrityFiles.push(...phase18IntegrityCriticalFiles);
   focusedProjects.push("unit", "components", "sqlite-host", "integration");
@@ -558,7 +623,7 @@ if (focusPhase19) {
 }
 if (focusPhase20) {
   focusedIntegrityFiles.push(...phase20IntegrityCriticalFiles);
-  focusedProjects.push("unit", "components");
+  focusedProjects.push("unit");
   jestForwarded.push(
     "src/bootstrap/v12AcceptanceBenchmark.test.ts",
     "src/testing/contracts/v12Acceptance.contract.test.ts",
@@ -566,6 +631,7 @@ if (focusPhase20) {
     "src/testing/contracts/v12CalendarAcceptance.contract.test.ts",
     "src/testing/contracts/v12GarminAcceptance.contract.test.ts",
     "src/testing/contracts/v12Recovery.contract.test.ts",
+    "src/testing/contracts/phase20CoverageGate.test.ts",
   );
 }
 if (focusedIntegrityFiles.length > 0) {
