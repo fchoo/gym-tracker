@@ -416,6 +416,56 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
+  it.each(["multi-plan", "workout", "library-running"])(
+    "isolates the %s native acceptance route from production bootstrap",
+    async (shard) => {
+      mockPathname = `/native-acceptance/${shard}`;
+      mockNativeContractSuite = "v1.2-acceptance";
+      mockSearchParams = {
+        case: shard === "multi-plan"
+          ? "phase13-migration-failure-cuts"
+          : shard === "workout"
+            ? "workout.root-identity"
+            : "library.remembered-state",
+        fixture: "v12-synthetic-fixtures-r18",
+      };
+
+      await render(<RootLayout />);
+
+      expect(screen.getByTestId("root-stack-screen-native-acceptance/[shard]"))
+        .toBeOnTheScreen();
+      expect(screen.queryByTestId("workout-runtime-provider"))
+        .not.toBeOnTheScreen();
+      expect(screen.queryByTestId("startup-readiness-gate"))
+        .not.toBeOnTheScreen();
+      expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+      expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+      expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["disabled", false, "phase13-migration-failure-cuts"],
+    ["wrong suite", true, "phase13-migration-failure-cuts"],
+    ["malformed case", true, "../../production"],
+  ])(
+    "keeps a %s native acceptance deep link off production bootstrap",
+    async (label, enabled, caseId) => {
+      mockPathname = "/native-acceptance/multi-plan";
+      mockNativeContractsEnabled = enabled;
+      mockNativeContractSuite = label === "wrong suite" ? "phase17" : "v1.2-acceptance";
+      mockSearchParams = { case: caseId, fixture: "v12-synthetic-fixtures-r18" };
+
+      await render(<RootLayout />);
+
+      expect(screen.getByTestId("root-stack-screen-native-acceptance/[shard]"))
+        .toBeOnTheScreen();
+      expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+      expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+      expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps a disabled native-contract deep link off the production runtime", async () => {
     mockPathname = "/__native-contracts";
     mockNativeContractSuite = "phase2";
