@@ -54,10 +54,10 @@ function fixture(t) {
     actions: state.readiness.actions.map((entry) => ({ ...entry, matched: true, enabled: true, observed_order: entry.order })),
     order: state.readiness.order.map((value, observed_order) => ({ value, observed_order })),
     non_color: state.readiness.non_color.map((value) => ({ value, matched: true })),
-    focus: { target: state.readiness.focus.target, matched: true, focusable: true, focused: false },
+    focus: { target: state.readiness.focus.target, matched: true, focusable: true, focused: true },
     source_receipt: sourceReceipt,
   };
-  const baseObservation = { native_execution: "EXECUTED", state_id: state.id, configuration_id: configurationId, readiness, native_focus: { resource_id: "focus-node", class_name: "android.view.View", bounds: "[0,0][48,48]" }, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], measurement: { kind: "source_semantic", renderer_digest: state.reference.source.renderer_digest, semantic_digest: state.reference.source.semantic_digest, layout_digest: state.reference.source.layout_digest } };
+  const baseObservation = { native_execution: "EXECUTED", state_id: state.id, configuration_id: configurationId, readiness, native_focus: { resource_id: `com.fchoo.gymtracker.devtest:id/${state.readiness.focus.target}`, class_name: "android.view.View", bounds: "[0,0][48,48]" }, targets: [{ width_dp: 48, height_dp: 48, overlap: false }], measurement: { kind: "source_semantic", renderer_digest: state.reference.source.renderer_digest, semantic_digest: state.reference.source.semantic_digest, layout_digest: state.reference.source.layout_digest } };
   const captureReceipt = { schema_version: 3, nonce: "a".repeat(32), run_id: runId, state_id: state.id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", readiness_status: state.readiness.status, source_tree_sha256: "a".repeat(64), apk_sha256: "b".repeat(64), device_identity_sha256: "c".repeat(64), png_sha256: descriptor.sha256, observation_sha256: sha256(JSON.stringify(baseObservation)), source_receipt: sourceReceipt };
   const capture = { schema_version: 3, producer: "v12-visual-capture/v3", run_id: runId, state_id: state.id, configuration_id: configurationId, fixture_id: "v12-synthetic-fixtures-r18", native_execution: "EXECUTED", native_png: descriptor, settings: { restored: true, privacy: "synthetic-only", observation: baseObservation, state_receipt: captureReceipt } };
   writeFileSync(path.join(root, capturePath), `${JSON.stringify(capture)}\n`);
@@ -70,6 +70,17 @@ function fixture(t) {
     request: {
       id: state.id, configuration_id: configurationId, reference_binding: { kind: "retained_png", ...state.reference.light, source: state.reference.source },
       capture_state_receipt: captureReceipt, state_receipt: stateReceipt, observation,
+    },
+  };
+}
+
+function withObservation(request, observation) {
+  return {
+    ...request,
+    observation,
+    state_receipt: {
+      ...request.state_receipt,
+      observation_sha256: sha256(JSON.stringify(observation)),
     },
   };
 }
@@ -102,6 +113,49 @@ test("comparison verification recomputes metrics and re-checks the approved refe
   assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result: { ...result, state_receipt: { ...result.state_receipt, nonce: result.capture_state_receipt.nonce } } }), /state_receipt/u);
   writeFileSync(path.join(input.root, input.referencePath), png(90));
   assert.throws(() => verifyV12ComparisonRecord({ runId, root: input.root, result }), /(?:artifact|reference)/u);
+});
+
+test("comparison rejects a required focus target that is present but not focused", (t) => {
+  const input = fixture(t);
+  const observation = {
+    ...input.request.observation,
+    readiness: {
+      ...input.request.observation.readiness,
+      focus: {
+        ...input.request.observation.readiness.focus,
+        focused: false,
+      },
+    },
+  };
+
+  assert.throws(
+    () => produceV12ComparisonRecord({
+      runId,
+      root: input.root,
+      input: withObservation(input.request, observation),
+    }),
+    /v12_visual_compare_observation_invalid/u,
+  );
+});
+
+test("comparison rejects native focus on a different control", (t) => {
+  const input = fixture(t);
+  const observation = {
+    ...input.request.observation,
+    native_focus: {
+      ...input.request.observation.native_focus,
+      resource_id: "com.fchoo.gymtracker.devtest:id/wrong-control",
+    },
+  };
+
+  assert.throws(
+    () => produceV12ComparisonRecord({
+      runId,
+      root: input.root,
+      input: withObservation(input.request, observation),
+    }),
+    /v12_visual_compare_observation_invalid/u,
+  );
 });
 
 test("pixel triage counts only unmasked RGB deltas greater than twelve", () => {

@@ -75,6 +75,15 @@ import {
   useLaunchState,
 } from "../screens/RootScreens";
 import { PHASE14_FONT_PROOF } from "../../testing/phase14FontProof";
+import { Phase20VisualContextProvider } from "../../testing/phase20VisualContext";
+
+const phase20VisualRequest = {
+  appearance: "Light",
+  configuration: "AP-L-C390-P-F100",
+  mode: "capture",
+  nonce: "a".repeat(32),
+  state: "BW-001",
+} as const;
 
 function ThemeProbe() {
   const theme = useAppTheme();
@@ -586,6 +595,48 @@ describe("Plan 01-02 UI foundation", () => {
       x: 0,
       y: 320,
     });
+    scrollTo.mockRestore();
+  });
+
+  it("never resets ordinary production scroll during layout", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    await render(
+      <AppearanceProvider>
+        <AdaptiveScreen primary={<Text>Production content</Text>} />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+  });
+
+  it("forces the initial visual evidence scroll exactly once", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    await render(
+      <AppearanceProvider>
+        <Phase20VisualContextProvider
+          onScrollOffset={() => undefined}
+          request={phase20VisualRequest}
+        >
+          <AdaptiveScreen primary={<Text>Evidence content</Text>} scrollOffset={24} />
+        </Phase20VisualContextProvider>
+      </AppearanceProvider>,
+    );
+
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+    await fireEvent(screen.getByTestId("adaptive-screen-scroll"), "layout");
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ animated: false, x: 0, y: 24 });
     scrollTo.mockRestore();
   });
 

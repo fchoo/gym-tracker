@@ -196,6 +196,7 @@ export function BottomSheet({
   const headingRef = useRef<View>(null);
   const scrollRef = useRef<ScrollView>(null);
   const reportVisualScroll = usePhase20VisualScrollReporter();
+  const forcedEvidenceScrollRef = useRef(false);
   const scrollNativeID = scrollTestID ?? "bottom-sheet-scroll";
   const registeredFocusablesRef = useRef<BottomSheetFocusableRef[]>([]);
   const currentFocusedRef = useRef<BottomSheetFocusableRef | null>(null);
@@ -210,6 +211,11 @@ export function BottomSheet({
   const horizontalInsetStyle = horizontalInset === undefined
     ? undefined
     : { paddingHorizontal: horizontalInset };
+  const initializeEvidenceScroll = React.useCallback(() => {
+    if (reportVisualScroll === null || forcedEvidenceScrollRef.current) return;
+    forcedEvidenceScrollRef.current = true;
+    scrollRef.current?.scrollTo({ animated: false, x: 0, y: 0 });
+  }, [reportVisualScroll]);
 
   if (visible && depth > 0) {
     throw new Error("BottomSheet cannot be nested");
@@ -451,7 +457,7 @@ export function BottomSheet({
                         horizontal={false}
                         keyboardShouldPersistTaps="handled"
                         nativeID={scrollNativeID}
-                        onLayout={() => scrollRef.current?.scrollTo({ animated: false, x: 0, y: 0 })}
+                        onLayout={initializeEvidenceScroll}
                         onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
                           const { x, y } = event.nativeEvent.contentOffset;
                           reportVisualScroll?.({ native_id: scrollNativeID, x, y });
