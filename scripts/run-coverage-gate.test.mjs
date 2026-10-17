@@ -55,7 +55,10 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   assert.equal(manifest.phase20_coverage.node_subprocess_v8_100.length, 4);
   assert.equal(manifest.phase20_coverage.jest_istanbul_100.length, 6);
   const separate = Object.values(manifest.phase20_coverage.separately_enforced_gates);
-  assert.equal(new Set(separate.flatMap(({ modules }) => modules)).size, 9);
+  const separateModules = new Set(separate.flatMap(({ modules }) => modules));
+  assert.equal(separateModules.size, 10);
+  assert.equal(separateModules.has("scripts/v12-rollback-evidence.mjs"), true);
+  assert.equal(separateModules.has("scripts/v12-visual-streaming.mjs"), true);
   assert.ok(separate.every(({ tests }) => tests.length > 0
     && tests.every((file) => manifest.phase20.includes(file))));
   assert.match(

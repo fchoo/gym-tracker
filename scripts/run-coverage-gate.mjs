@@ -233,6 +233,7 @@ const phase20SeparatelyEnforcedGates = Object.freeze({
   verifier_handoff: Object.freeze({
     modules: Object.freeze([
       "scripts/create-v12-readiness-handoff.mjs",
+      "scripts/v12-rollback-evidence.mjs",
       "scripts/verify-v12-native-evidence.mjs",
     ]),
     tests: Object.freeze([
