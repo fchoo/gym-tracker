@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { loadV12ContractInputs } from './v12-evidence-contract.mjs';
 import { createHash } from 'node:crypto';
-import { parseV12SourceJUnit, resolveV12PerformanceGates, createV12RowSelectorTable, resolveV12SqliteReceipt, validateV12CalendarExecutionOrigin } from './v12-blocker-row-resolver.mjs';
+import { parseV12SourceJUnit, resolveV12DomContract, resolveV12PerformanceGates, createV12RowSelectorTable, resolveV12SqliteReceipt, validateV12CalendarExecutionOrigin } from './v12-blocker-row-resolver.mjs';
 
 const inputs = loadV12ContractInputs();
 
@@ -19,6 +19,13 @@ test('canonical matrix has exactly 172 typed selectors in source order', () => {
   assert.ok(table.every(x => x.selector.type && x.selector.id && x.selector.contract));
   const dom = table.filter(x => x.row_id.startsWith('DOM'));
   assert.equal(dom.find(x => x.row_id === 'DOM-01').selector.id, 'phase13-map01-activation');
+  assert.equal(dom.every(x => x.selector.type === 'dom-contract' && x.selector.native_case_ids.length > 0), true);
+  assert.deepEqual(dom.find(x => x.row_id === 'DOM-03').selector.native_case_ids, [
+    'fresh-migration', 'schema27-upgrade', 'supported-legacy-upgrade', 'failure-reopen', 'restore', 'immutable-history',
+  ]);
+  assert.deepEqual(dom.find(x => x.row_id === 'DOM-15').selector.native_case_ids, [
+    'backup', 'restore', 'merge', 'noop-replay', 'rebuild', 'immutable-history',
+  ]);
   assert.equal(table.find(x => x.row_id === 'WRK-36').selector.id, 'workout.completion-writeback');
   assert.equal(table.find(x => x.row_id === 'LIB-36').selector.id, 'library.running-conflict');
   const calendarRows = table.filter(x => x.row_id.startsWith('CAL-'));
@@ -40,6 +47,22 @@ test('canonical matrix has exactly 172 typed selectors in source order', () => {
   assert.throws(() => createV12RowSelectorTable({ inputs: { ...inputs, matrix: { ...inputs.matrix, rows: [...inputs.matrix.rows.slice(1), inputs.matrix.rows[1]] } } }), /row_resolver_.*matrix/);
 });
 
+test('DOM resolver combines the UI journey with every exact native SQLite case', () => {
+  const selector = {
+    type: 'dom-contract', shard: 'multi-plan', id: 'phase13-map01-activation',
+    native_case_ids: ['schema27-upgrade', 'restore', 'merge'],
+  };
+  const members = new Map([
+    ['multi-plan:phase13-map01-activation', { id: 'phase13-map01-activation', result: 'PASS' }],
+    ['sqlite-case:schema27-upgrade', { id: 'schema27-upgrade', result: 'PASS' }],
+    ['sqlite-case:restore', { id: 'restore', result: 'FAIL' }],
+    ['sqlite-case:merge', { id: 'merge', result: 'PASS' }],
+  ]);
+  assert.equal(resolveV12DomContract(selector, (key) => members.get(key)).result, 'FAIL');
+  members.delete('sqlite-case:restore');
+  assert.throws(() => resolveV12DomContract(selector, (key) => members.get(key)), /row_resolver_selector_unknown/u);
+});
+
 for (const [body, expected] of [['', 'PASS'], ['<failure/>', 'FAIL'], ['<error/>', 'FAIL'], ['<skipped/>', 'REVIEW_REQUIRED']]) {
   test(`JUnit concrete result ${expected}: ${body || 'executed'}`, () => {
     const entries = parseV12SourceJUnit(`<testsuite><testcase name="case-1">${body}</testcase></testsuite>`, ['case-1']);
@@ -59,7 +82,9 @@ test('JUnit rejects missing, unknown, duplicate and malformed selectors', () => 
 test('SQLite resolver passes only exact bounded ordered all-passed case facts', () => {
   const caseFacts = [
     'fresh-migration', 'schema27-upgrade', 'supported-legacy-upgrade', 'failure-reopen',
-  ].map((id, order) => ({ id, order, status: 'passed', digest: createHash('sha256').update(id).digest('hex') }));
+  ].map((id, order) => ({ id, order, status: 'passed',
+    source_facts: [{ registry: 'sqlite-kernel', cases: [{ id: 'connection-configuration', status: 'passed' }] }],
+    digest: createHash('sha256').update(id).digest('hex') }));
   const receipt = {
     schema_version: 1,
     producer: 'v12-sqlite-shard',
@@ -75,6 +100,7 @@ test('SQLite resolver passes only exact bounded ordered all-passed case facts', 
   assert.deepEqual(resolveV12SqliteReceipt(receipt, 'migration'), {
     result: 'PASS',
     case_ids: caseFacts.map(({ id }) => id),
+    case_facts: caseFacts,
     digest: receipt.digest,
   });
 
@@ -83,6 +109,8 @@ test('SQLite resolver passes only exact bounded ordered all-passed case facts', 
     (value) => { value.case_facts.reverse(); },
     (value) => { value.case_facts[0].order = 1; },
     (value) => { value.case_facts[0].status = 'failed'; },
+    (value) => { value.case_facts[0].source_facts[0].cases[0].status = 'failed'; },
+    (value) => { value.case_facts[0].source_facts = []; },
     (value) => { value.case_facts[0].digest = '0'.repeat(64); },
     (value) => { value.all_passed = false; },
     (value) => { value.digest = '0'.repeat(64); },

@@ -152,7 +152,7 @@ const response = (() => {
       passed: sqliteCaseIds.length,
       failed: 0,
       skipped: 0,
-      cases: sqliteCaseIds.map((id) => ({ id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 1 } })),
+      cases: sqliteCaseIds.map((id) => ({ id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 1 }, sourceFacts: [{ registry: "sqlite-kernel", cases: [{ id: "connection-configuration", status: "passed" }] }] })),
     },
   };
   if (action === "recovery") return recoveryReport();
