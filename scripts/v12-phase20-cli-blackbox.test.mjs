@@ -281,7 +281,8 @@ test("over-budget performance executes through the CLI and publishes one immutab
     completion(root, "performance");
     pass(root, "scripts/v12-performance-shard.mjs", ["--run", run, "--verify"]);
     const duplicate = invoke(root, "scripts/v12-performance-shard.mjs", ["--run", run, "--execute"]);
-    assert.notEqual(duplicate.status, 0);
+    assert.equal(duplicate.status, 0, duplicate.stderr);
+    assert.deepEqual(JSON.parse(duplicate.stdout), { run_id: run, command: "--execute", ok: true });
     assert.deepEqual(readFileSync(publicationPath), firstPublication);
   } finally {
     rmSync(root, { recursive: true, force: true });
