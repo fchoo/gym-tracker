@@ -34,7 +34,9 @@ import {
 } from "./v12-rollback-evidence.mjs";
 import {
   createV12DirectMaestroToolAttestation,
+  createV12FunctionalExecutionReceipt,
   readV12DirectMaestroDeviceMeasurement,
+  validateV12DirectMaestroMapping,
 } from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { executeV12SqliteShardCli } from "./v12-sqlite-shard.mjs";
@@ -53,6 +55,7 @@ import {
   readV12VisualJsonHeader,
 } from "./v12-visual-streaming.mjs";
 import { loadV12VisualAuthority } from "./v12-visual-authority.mjs";
+import { createV12ShellRequirementEvidence } from "./v12-shell-requirement-evidence.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_NATIVE_PROVENANCE_REGISTRY,
@@ -1716,6 +1719,19 @@ test("production-shaped retained evidence completes preseal and final readiness"
         catch { continue; }
         const before = JSON.stringify(value);
         rebindIdentity(value);
+        if (/^garmin\/(?:packaging-auth|sync-read|dedupe|matching)\.json$/u.test(member.artifact)) {
+          for (const entry of value.cases) {
+            const { binding_sha256: _bindingSha256, ...nativeReceipt } = entry;
+            entry.binding_sha256 = sha256(JSON.stringify({
+              run_id: runId,
+              identity: value.identity,
+              case: nativeReceipt,
+            }));
+          }
+        }
+        if (member.artifact === "semantics/accessibility.json") {
+          value.shell_receipts = createV12ShellRequirementEvidence(value.observations, build);
+        }
         if (member.artifact === "screenshots/index.json") {
           for (const record of value.records) {
             record.settings.state_receipt.observation_sha256 = createHash("sha256")
@@ -1895,13 +1911,35 @@ test("production-shaped retained evidence completes preseal and final readiness"
         executionTools: directMaestroTools,
         shard,
       });
-      mapping.observations = mapping.observations.map((observation) => ({
-        ...observation,
-        device_measurement: {
-          before: directMaestroMeasurement,
-          after: directMaestroMeasurement,
-        },
-      }));
+      mapping.observations = mapping.observations.map((observation) => {
+        const priorReceipt = observation.execution_receipt;
+        return {
+          ...observation,
+          device_measurement: {
+            before: directMaestroMeasurement,
+            after: directMaestroMeasurement,
+          },
+          execution_receipt: createV12FunctionalExecutionReceipt({
+            nonce: priorReceipt.nonce,
+            runId,
+            shard,
+            caseId: observation.case_id,
+            identity: {
+              source_tree_sha256: build.source.tree_sha256,
+              apk_sha256: build.build.apk.sha256,
+              installed_apk_sha256: build.device.installed_apk_sha256,
+              device_identity_sha256: build.device.identity_sha256,
+              configuration_id: build.configuration.id,
+            },
+            pre: { source_sha256: priorReceipt.phases[0].source_sha256 },
+            action: { report_sha256: observation.report_sha256 },
+            post: {
+              source_sha256: priorReceipt.phases[2].source_sha256,
+              ui_sha256: priorReceipt.phases[2].ui_sha256,
+            },
+          }),
+        };
+      });
       mapping.identity = {
         source_tree_sha256: build.source.tree_sha256,
         package: directMaestroMeasurement.package,
@@ -1935,9 +1973,11 @@ test("production-shaped retained evidence completes preseal and final readiness"
           git_attestation_sha256: mapping.git_attestation_sha256,
           tool_attestation_sha256: sha256(JSON.stringify(toolAttestation)),
           measurement_sha256: sha256(JSON.stringify(mapping.observations.map(({ device_measurement: measurement }) => measurement))),
+          execution_receipt_sha256: sha256(JSON.stringify(mapping.observations.map(({ execution_receipt: receipt }) => receipt?.receipt_sha256))),
         })),
       };
       mapping.execution_origin = executionOrigin;
+      assert.equal(validateV12DirectMaestroMapping(mapping, { root, manifest: build, shard }), true);
       publication.execution_origin = executionOrigin;
       writeJson(mappingRelative, mapping);
       const mappingMember = publication.members.find(({ artifact }) => artifact === `mapping/${shard}.json`);
