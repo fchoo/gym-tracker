@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+test("mandatory v1.2 Maestro deep links have source-owned registered routes", () => {
+  const layout = readFileSync("app/_layout.tsx", "utf8");
+  const route = readFileSync("app/native-acceptance/[shard].tsx", "utf8");
+  const fixtureSource = readFileSync("src/testing/v12NativeAcceptanceFixture.tsx", "utf8");
+  for (const shard of ["multi-plan", "workout", "library-running"]) {
+    const flow = readFileSync(`maestro/v1.2/${shard}.yaml`, "utf8");
+    assert.match(flow, new RegExp(`gymtracker-devtest:///native-acceptance/${shard}\\?case=\\$\\{V12_CASE_ID\\}&fixture=\\$\\{V12_FIXTURE_ID\\}`, "u"));
+    assert.match(flow, /native-acceptance-stage/u);
+    assert.match(flow, /assertVisible: "\$\{V12_CASE_ID\}"/u);
+  }
+  assert.match(layout, /native-acceptance\/\[shard\]/u);
+  assert.match(route, /V12NativeAcceptanceFixture/u);
+  assert.match(fixtureSource, /native-acceptance-stage/u);
+});

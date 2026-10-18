@@ -4,7 +4,7 @@ import { readFileSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 import { V12_CONFIG_IDS, V12_BROWSER_WALK_STATE_IDS } from './v12-evidence-contract.mjs';
 import { verifyV12ComparisonRecord } from './compare-v12-visual.mjs';
-import { V12_MAESTRO_FLOW_CONTRACTS } from './run-v12-maestro.mjs';
+import { V12_MAESTRO_FLOW_CONTRACTS, validateV12DirectMaestroMapping } from './run-v12-maestro.mjs';
 import { V12_CALENDAR_SHARD_STAGE_IDS } from './v12-calendar-shard.mjs';
 import { V12_CALENDAR_FLOW_REVISION, validateV12CalendarStageResult } from './v12-calendar-observation-contract.mjs';
 import { V12_GARMIN_SHARD_CASE_IDS } from './v12-garmin-shard.mjs';
@@ -19,6 +19,7 @@ import {
   V12_CALENDAR_REQUIREMENT_PROBE_COUNT,
 } from './v12-calendar-requirement-map.mjs';
 import { validateV12AccessibilityProducer, validateV12PerformanceProducer } from './v12-quality-evidence-contract.mjs';
+import { deriveV12MaestroCaseIds } from './v12-maestro-source-registry.mjs';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
@@ -42,17 +43,8 @@ function exactIds(actual, expected, code) {
 }
 
 export function readV12FunctionalRegistry(shard, root = process.cwd()) {
-  const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
-  ensure(contract?.prefix, 'registry_invalid');
-  const text = readFileSync(path.join(root, contract.sources[0]), 'utf8');
-  // Phase 13 is a flat exported array; phases 15/17 are ordered [id, assertion] tuples.
-  const block = shard === 'multi-plan' ? /export const MULTI_PLAN_RUNNING_CONTRACT_CASES = \[([\s\S]*?)\] as const/u.exec(text)?.[1] : text;
-  ensure(typeof block === 'string', 'registry_invalid');
-  const expression = shard === 'multi-plan' ? /["'](phase13-[^"']+)["']/gu : /\[\s*["']([^"']+)["']/gu;
-  const ids = [...new Set([...block.matchAll(expression)].map(match => match[1]).filter(id => id.startsWith(contract.prefix)))];
-  ensure(ids.length === ({ 'multi-plan': 13, workout: 42, 'library-running': 46 })[shard]
-    && new Set(ids).size === ids.length, 'registry_drift');
-  return ids;
+  try { return deriveV12MaestroCaseIds(shard, root); }
+  catch { fail('registry_drift'); }
 }
 
 const DOM_CASES = [1, 1, 0, 2, 2, 3, 2, 2, 2, 4, 7, 6, 11, 8, 10, 3, 5];
@@ -221,7 +213,9 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   for (const shard of ['multi-plan', 'workout', 'library-running']) {
     const mappingPath = `mapping/${shard}.json`; const xmlPath = `maestro/${shard}.xml`;
     const mapping = json(mappingPath); const contract = V12_MAESTRO_FLOW_CONTRACTS[shard]; const ids = readV12FunctionalRegistry(shard, root);
-    ensure(mapping.run_id === manifest.run_id && mapping.shard === shard && ['v12-maestro-source-map/v1', 'v12-maestro-runner/v1'].includes(mapping.producer), 'functional_schema_invalid');
+    try { validateV12DirectMaestroMapping(mapping, { root, manifest, shard, allowTest: manifest.evidence_origin === 'test' }); }
+    catch { fail('functional_attestation_invalid'); }
+    ensure(mapping.run_id === manifest.run_id && mapping.shard === shard && mapping.producer === 'v12-maestro-source-map/v2', 'functional_schema_invalid');
     bindIdentity(mapping.identity, 'sha');
     ensure(mapping.identity.configuration_id === manifest.configuration.id && mapping.identity.certificate_sha256 === manifest.build.apk.certificate_sha256 && mapping.identity.settings_sha256 === manifest.device.settings_sha256, 'configuration_invalid');
     exactIds(mapping.case_ids, ids, 'functional_selectors_invalid');

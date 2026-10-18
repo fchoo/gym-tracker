@@ -17,10 +17,16 @@ import nodeTest from "node:test";
 
 import { PNG } from "pngjs";
 import { deriveV12PixelComparison } from "./compare-v12-visual.mjs";
+import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
+import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
 
 const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const sha = (letter) => letter.repeat(64);
+const digest = (value) => createHash("sha256").update(value).digest("hex");
+const FAKE_DEVICE_FACTS = Object.freeze({ serial: "fake-device-20", abi: "arm64-v8a", apiLevel: "36", model: "Samsung N4" });
+const FAKE_DEVICE_SETTINGS = Object.freeze({ font_scale: "1", ui_night_mode: "1", animator_duration_scale: "1" });
+const FAKE_APK_BYTES = Buffer.from("apk");
 const progress = (message) => { if (process.env.V12_BLACKBOX_PROGRESS === "1") process.stderr.write(`[v12-blackbox] ${message}\n`); };
 const TEST_TIMEOUT_MS = 30 * 60_000;
 const SUBPROCESS_TIMEOUT_MS = 5 * 60_000;
@@ -69,7 +75,10 @@ function fixtureRoot({ performanceOverBudget = false } = {}) {
   });
   assert.equal(tree.status, 0, tree.stderr);
   mkdirSync(path.join(root, "artifacts/native/v1.2", run), { recursive: true });
-  writeFileSync(path.join(root, "artifacts/native/v1.2", run, "build.json"), `${JSON.stringify(buildManifest(head, tree.stdout.trim()))}\n`);
+  const build = buildManifest(head, tree.stdout.trim());
+  writeFileSync(path.join(root, "artifacts/native/v1.2", run, "build.json"), `${JSON.stringify(build)}\n`);
+  mkdirSync(path.join(root, "artifacts/native/v1.2-acceptance"), { recursive: true });
+  writeFileSync(path.join(root, build.build.apk.path), FAKE_APK_BYTES);
   symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");
   return root;
 }
@@ -80,8 +89,8 @@ function buildManifest(head, sourceTreeSha256) {
     source: { head, tree_sha256: sourceTreeSha256, dirty: false, package_json_sha256: sha("c"), package_lock_sha256: sha("d") },
     planning: { matrix_sha256: sha("e"), requirements_sha256: sha("f"), source_manifest_sha256: sha("1"), owner_brief_sha256: sha("2"), ui_spec_sha256: sha("3"), deviations_sha256: sha("4") },
     prototype: { revision: 18, approval_sha256: sha("5"), html_sha256: sha("6") }, fixtures: { registry_sha256: sha("7") },
-    build: { profile: "development-test", package: "com.fchoo.gymtracker.devtest", version_name: "0.1.0", version_code: 1, apk: { path: "artifacts/native/v1.2-acceptance/fake.apk", sha256: sha("8"), size_bytes: 1, page_alignment_verified: true, signature_sha256: sha("9"), certificate_sha256: sha("a") } },
-    device: { identity_sha256: sha("b"), abi: "arm64-v8a", installed_apk_sha256: sha("8"), settings_sha256: sha("c"), restoration_sha256: sha("d") }, configuration: { id: "AP-L-C390-P-F100" },
+    build: { profile: "development-test", package: "com.fchoo.gymtracker.devtest", version_name: "0.1.0", version_code: 1, apk: { path: "artifacts/native/v1.2-acceptance/fake.apk", sha256: digest(FAKE_APK_BYTES), size_bytes: FAKE_APK_BYTES.length, page_alignment_verified: true, signature_sha256: sha("9"), certificate_sha256: sha("a") } },
+    device: { identity_sha256: phase18DeviceIdentitySha256(FAKE_DEVICE_FACTS), abi: FAKE_DEVICE_FACTS.abi, installed_apk_sha256: digest(FAKE_APK_BYTES), settings_sha256: digestV12CanonicalRestorationSnapshot(FAKE_DEVICE_SETTINGS), restoration_sha256: sha("d") }, configuration: { id: "AP-L-C390-P-F100" },
   };
 }
 
@@ -219,21 +228,6 @@ function recoveryIdentity(build, cases, report) {
     cue_digest: digest(retryFacts('cue_count')),
   };
 }
-function completeMultiPlanFixture(root) {
-  const base = path.join(root, "artifacts/native/v1.2", run);
-  const file = path.join(base, "mapping/multi-plan.json");
-  const mapping = JSON.parse(readFileSync(file, "utf8"));
-  const source = readFileSync(path.join(root, "src/testing/contracts/multiPlanRunning.contract.ts"), "utf8");
-  const block = /MULTI_PLAN_RUNNING_CONTRACT_CASES = \[([\s\S]*?)\] as const/u.exec(source)[1];
-  const ids = [...block.matchAll(/"(phase13-[^"]+)"/gu)].map(match => match[1]);
-  assert.equal(ids.length, 13);
-  const reports = ids.map(id => `<testsuite name="fake"><testcase name="${id}"/></testsuite>\n`);
-  mapping.case_ids = ids;
-  mapping.observations = ids.map((case_id, index) => ({ case_id, ordinal: index + 1, fixture_id: "v12-synthetic-fixtures-r18", report_sha256: createHash("sha256").update(reports[index]).digest("hex") }));
-  writeFileSync(file, JSON.stringify(mapping));
-  writeFileSync(path.join(base, "maestro/multi-plan.xml"), `<testsuites>${reports.join("")}</testsuites>\n`);
-  rewriteFixturePublication(root, "multi-plan");
-}
 
 function executeGarminThroughCli(root) {
   const program = `
@@ -351,7 +345,6 @@ test("Phase 20 fake-device pipeline exercises every CLI but cannot publish prese
   }
   for (const shard of ["sqlite", "recovery", "garmin", "calendar", "multi-plan", "workout", "library-running", "visual", "comparison", "accessibility", "performance"]) completion(root, shard);
   pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "shards-only", "--ids", "multi-plan,workout,library-running"]);
-  completeMultiPlanFixture(root);
   const resolved = JSON.parse(pass(root, "scripts/verify-v12-native-evidence.mjs", ["--run", run, "--mode", "test-resolve"]).stdout);
   assert.equal(resolved.sealable, false);
   assert.equal(resolved.row_evidence.length, 172);

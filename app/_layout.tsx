@@ -279,6 +279,17 @@ function NativeContractsNavigator() {
   );
 }
 
+function V12NativeAcceptanceNavigator() {
+  return (
+    <Stack
+      initialRouteName="native-acceptance/[shard]"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="native-acceptance/[shard]" />
+    </Stack>
+  );
+}
+
 function Phase20VisualNavigator() {
   return (
     <Stack
@@ -377,6 +388,7 @@ function RootLayoutAttempt({
   const v12ProductionGarminPath = pathname === "/__v12-production-garmin";
   const v12ProductionRecoveryPath = pathname === "/__v12-production-recovery";
   const v12NativeContractsPath = pathname === "/__native-contracts";
+  const v12NativeAcceptancePath = pathname.startsWith("/native-acceptance/");
   const phase20QualityPath = pathname === "/__phase20-quality-probe";
   const phase20CalendarEvidencePath = phase20CalendarEvidencePathRequested(searchParams);
   const nativeIdentity = {
@@ -438,6 +450,7 @@ function RootLayoutAttempt({
     || phase18GarminProofPath
     || phase18GarminAdversarialPath
     || v12NativeContractsPath
+    || v12NativeAcceptancePath
     || phase20VisualPath
     || phase20QualityPath
     || v12ProductionGarminPath
@@ -445,6 +458,7 @@ function RootLayoutAttempt({
     || phase20CalendarEvidencePath;
   const failClosedFontRoute = phase20VisualPath
     || phase20QualityPath
+    || v12NativeAcceptancePath
     || v12ProductionGarminPath
     || v12ProductionRecoveryPath
     || phase20CalendarEvidencePath;
@@ -577,6 +591,18 @@ function RootLayoutAttempt({
         <SafeAreaProvider>
           <AppearanceProvider store={isolatedNativeAppearanceStore}>
             <NativeContractsNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (v12NativeAcceptancePath) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={isolatedNativeAppearanceStore}>
+            <V12NativeAcceptanceNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
