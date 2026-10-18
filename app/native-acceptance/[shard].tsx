@@ -13,6 +13,7 @@ export default function NativeAcceptanceRoute() {
     shard?: string | string[];
     case?: string | string[];
     fixture?: string | string[];
+    nonce?: string | string[];
   }>();
   const extra = Constants.expoConfig?.extra;
   const request = resolveV12NativeAcceptanceRequest({

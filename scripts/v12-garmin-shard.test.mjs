@@ -28,6 +28,9 @@ const publicationOrigin = Object.freeze({
   domain_source_sha256: "3".repeat(64),
   request_attestation_sha256: "4".repeat(64),
 });
+const bindCases = (cases, runId, identity) => cases.map((entry) => ({ ...entry,
+  binding_sha256: createHash("sha256").update(JSON.stringify({ run_id: runId, identity, case: entry })).digest("hex"),
+}));
 
 test("Garmin shard exposes an exact ordered registry and a strict run CLI", () => {
   assert.deepEqual(V12_GARMIN_SHARD_CASE_IDS, [
@@ -133,7 +136,7 @@ test("Garmin verify requires the atomic completion manifest, exact four JSON sch
     installed_apk_digest: "c".repeat(64), device_digest: "d".repeat(64), settings_digest: "e".repeat(64),
     restoration_digest: "f".repeat(64), configuration_id: "AP-L-C390-P-F100",
   };
-  const cases = V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({ id, order, status: "PASS", code: `${id}-observed`, count: id === "match-one" ? 1 : 0, receipt_sha256: String(order).padStart(64, "a").slice(-64) }));
+  const cases = bindCases(V12_GARMIN_SHARD_CASE_IDS.map((id, order) => ({ id, order, status: "PASS", code: `${id}-observed`, count: id === "match-one" ? 1 : 0, receipt_sha256: String(order).padStart(64, "a").slice(-64) })), runId, identity);
   const base = { schema_version: 2, producer: "v12-garmin-shard/v3", run_id: runId, identity };
   const artifacts = new Map([
     [`artifacts/native/v1.2/${runId}/garmin/packaging-auth.json`, JSON.stringify({ ...base, schema: "packaging-auth/v1", cases: [cases[0], cases[1], cases[4], cases[5]] })],
@@ -152,6 +155,25 @@ test("Garmin verify requires the atomic completion manifest, exact four JSON sch
     isAncestor: () => true, outputExists: (file) => artifacts.has(file), readArtifact: (file) => artifacts.get(file),
     readPublication: () => publication, verifyAtomic: () => true,
   }), { ok: true, mode: "verify", run_id: runId });
+  const packagingPath = `artifacts/native/v1.2/${runId}/garmin/packaging-auth.json`;
+  const originalPackaging = artifacts.get(packagingPath);
+  const forgedPackaging = JSON.parse(originalPackaging);
+  forgedPackaging.cases[0].binding_sha256 = "0".repeat(64);
+  const forgedPackagingBytes = JSON.stringify(forgedPackaging);
+  artifacts.set(packagingPath, forgedPackagingBytes);
+  const packagingMember = publication.members.find(({ artifact }) => artifact === "garmin/packaging-auth.json");
+  const originalMemberHash = packagingMember.sha256;
+  const originalMemberSize = packagingMember.size_bytes;
+  packagingMember.sha256 = createHash("sha256").update(forgedPackagingBytes).digest("hex");
+  packagingMember.size_bytes = Buffer.byteLength(forgedPackagingBytes);
+  await assert.rejects(executeV12GarminShardCli(["--run", runId, "--verify"], {
+    root: "/synthetic-root", readBuild: () => manifest, sourceDigest: identity.source_digest, currentHead: manifest.source.head,
+    isAncestor: () => true, outputExists: (file) => artifacts.has(file), readArtifact: (file) => artifacts.get(file),
+    readPublication: () => publication, verifyAtomic: () => true,
+  }), /garmin_native_cases_invalid/u);
+  artifacts.set(packagingPath, originalPackaging);
+  packagingMember.sha256 = originalMemberHash;
+  packagingMember.size_bytes = originalMemberSize;
   publication.domain_execution_origin = "test-controlled/v1";
   await assert.rejects(executeV12GarminShardCli(["--run", runId, "--verify"], {
     root: "/synthetic-root", readBuild: () => manifest, sourceDigest: identity.source_digest, currentHead: manifest.source.head,

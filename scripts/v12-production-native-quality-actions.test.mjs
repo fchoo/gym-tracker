@@ -193,7 +193,7 @@ test("production subprocess returns measured F200/accessibility with restored se
   const result = successful(runner, { required_inputs: ["touch", "software-keyboard", "hardware-keyboard", "dpad"], font_scale: 2, focus_ring_dp: 3, excludes: ["live-talkback", "switch-scanning"] });
   assert.deepEqual(result, runner.measured.observations.map((entry) => ({ ...entry, restored_settings: true })));
   const writes = [];
-  const shard = executeLiveV12AccessibilityShard({ runId: runner.build.run_id, observe: () => result, write: (file, value) => writes.push([file, value]) });
+  const shard = executeLiveV12AccessibilityShard({ runId: runner.build.run_id, manifest: runner.build, observe: () => result, write: (file, value) => writes.push([file, value]) });
   assert.deepEqual(shard.semantic.excludes, ["live-talkback", "switch-scanning", "final-verdict"]);
   assert.equal(writes.length, 2); assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(independentQualityCommands(runner).length,

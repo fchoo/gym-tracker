@@ -24,6 +24,29 @@ const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const sha = (letter) => letter.repeat(64);
 const digest = (value) => createHash("sha256").update(value).digest("hex");
+function refreshFunctionalMappingAuthenticators(value) {
+  for (const observation of value.observations) {
+    const receipt = observation.execution_receipt;
+    receipt.phases[1].report_sha256 = observation.report_sha256;
+    const unsigned = { ...receipt }; delete unsigned.receipt_sha256;
+    receipt.receipt_sha256 = digest(JSON.stringify(unsigned));
+  }
+  value.execution_origin.request_attestation_sha256 = digest(JSON.stringify({
+    schema_version: 2,
+    action: value.shard,
+    run_id: value.run_id,
+    source_tree_sha256: value.identity.source_tree_sha256,
+    apk_sha256: value.identity.apk_sha256,
+    device_identity_sha256: value.identity.device_identity_sha256,
+    flow_sha256: value.flow_sha256,
+    source_sha256: value.source_sha256,
+    git_attestation_sha256: value.git_attestation_sha256,
+    tool_attestation_sha256: digest(JSON.stringify(value.tool_attestation)),
+    measurement_sha256: digest(JSON.stringify(value.observations.map(({ device_measurement: measurement }) => measurement))),
+    execution_receipt_sha256: digest(JSON.stringify(value.observations.map(({ execution_receipt: receipt }) => receipt.receipt_sha256))),
+  }));
+  return value;
+}
 const FAKE_DEVICE_FACTS = Object.freeze({ serial: "fake-device-20", abi: "arm64-v8a", apiLevel: "36", model: "Samsung N4" });
 const FAKE_DEVICE_SETTINGS = Object.freeze({ font_scale: "1", ui_night_mode: "1", animator_duration_scale: "1" });
 const FAKE_APK_BYTES = Buffer.from("apk");
@@ -473,7 +496,7 @@ async function assertSourceMutations(t, root) {
   for (const state of ["FAIL", "NOT_RUN", "REVIEW_REQUIRED"]) {
     await mutation(`Calendar stage retains ${state}`, "CAL-07", state, ["calendar"], edit => edit("calendar-transitions.json", value => { value.stages[0].status = state; value.junit_cases[0].status = state; return value; }));
     await mutation(`Garmin case retains ${state}`, "GAR-04", state, ["garmin"], edit => {
-      edit("garmin/packaging-auth.json", value => { const entry = value.cases.find(candidate => candidate.id === "account-lifecycle"); entry.status = state; entry.code = state === "FAIL" ? "account-lifecycle-evidence-mismatch" : "account-lifecycle-observed"; return value; });
+      edit("garmin/packaging-auth.json", value => { const entry = value.cases.find(candidate => candidate.id === "account-lifecycle"); entry.status = state; entry.code = state === "FAIL" ? "account-lifecycle-evidence-mismatch" : "account-lifecycle-observed"; const native = { ...entry }; delete native.binding_sha256; entry.binding_sha256 = digest(JSON.stringify({ run_id: run, identity: value.identity, case: native })); return value; });
       edit("maestro/garmin-progress.xml", xml => {
         const changed = xml.replace(
           /(<testcase classname="v12\.garmin" name="account-lifecycle">)[\s\S]*?(<\/testcase>)/u,
@@ -483,7 +506,7 @@ async function assertSourceMutations(t, root) {
       }, true);
     });
     await mutation(`accessibility observation rejects non-producer ${state}`, "VER-04", state, ["accessibility"], edit => edit("semantics/accessibility.json", value => { const observation = value.observations[0]; if (state === "FAIL") observation.targets[0].non_color_cue = false; if (state === "NOT_RUN") observation.native_execution = "NOT_RUN"; if (state === "REVIEW_REQUIRED") delete observation.restored_settings; return value; }), { invalid: true });
-    await mutation(`performance warm launch derives ${state}`, "PRO-01", state, ["performance"], edit => edit("performance.json", value => { const samples = state === "FAIL" ? Array(20).fill(1001) : state === "NOT_RUN" ? [] : [100]; value.observation.raw_samples.warm_launch_to_interactive_ms = samples; value.observation.raw_samples.native_receipts.timings.warm_launch_to_interactive_ms.spans = samples.map((duration, index) => ({ start_ms: index * 2000, end_ms: index * 2000 + duration })); value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: samples.length ? Math.max(...samples) : 0 }; if (state === "FAIL") { value.observation.observation_state = "FAIL"; value.observation.summary.classification = "FAIL"; value.observation.summary.gates.warm_launch_to_interactive = { result: "FAIL", samples: 20, measured: 1001, limit: 1000, metric: "max" }; } return value; }), { invalid: state !== "FAIL" });
+    await mutation(`performance warm launch derives ${state}`, "VER-11", state, ["performance"], edit => edit("performance.json", value => { const samples = state === "FAIL" ? Array(20).fill(1001) : state === "NOT_RUN" ? [] : [100]; value.observation.raw_samples.warm_launch_to_interactive_ms = samples; value.observation.raw_samples.native_receipts.timings.warm_launch_to_interactive_ms.spans = samples.map((duration, index) => ({ start_ms: index * 2000, end_ms: index * 2000 + duration })); value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: samples.length ? Math.max(...samples) : 0 }; if (state === "FAIL") { value.observation.observation_state = "FAIL"; value.observation.summary.classification = "FAIL"; value.observation.summary.gates.warm_launch_to_interactive = { result: "FAIL", samples: 20, measured: 1001, limit: 1000, metric: "max" }; } return value; }), { invalid: state !== "FAIL" });
     await mutation(`Recovery cut retains ${state}`, "VER-08", state, ["recovery"], edit => {
       let report;
       edit("maestro/recovery.xml", xml => { report = xml.replace('</properties>', `</properties>${state === 'FAIL' ? '<error/>' : '<skipped/>'}`); return report; }, true);
@@ -495,6 +518,16 @@ async function assertSourceMutations(t, root) {
       });
     });
   }
+  await mutation('performance failure cannot change an exact PRO row', 'PRO-01', 'PASS', ['performance'], edit => edit('performance.json', value => {
+    const samples = Array(20).fill(1001);
+    value.observation.raw_samples.warm_launch_to_interactive_ms = samples;
+    value.observation.raw_samples.native_receipts.timings.warm_launch_to_interactive_ms.spans = samples.map((duration, index) => ({ start_ms: index * 2000, end_ms: index * 2000 + duration }));
+    value.observation.observation_state = 'FAIL';
+    value.observation.summary.classification = 'FAIL';
+    value.observation.summary.warm_launch_to_interactive = { samples: samples.length, max_ms: 1001 };
+    value.observation.summary.gates.warm_launch_to_interactive = { result: 'FAIL', samples: 20, measured: 1001, limit: 1000, metric: 'max' };
+    return value;
+  }));
   for (const [shard, row] of [["multi-plan", "DOM-03"], ["workout", "WRK-01"], ["library-running", "LIB-01"]]) for (const state of ["FAIL", "REVIEW_REQUIRED"]) {
     await mutation(`${shard} concrete JUnit retains ${state}`, row, state, [shard], edit => {
       let reportHash;
@@ -503,11 +536,11 @@ async function assertSourceMutations(t, root) {
         const report = /<testsuite\b[^>]*>[\s\S]*?<\/testsuite>\s*/u.exec(changed)[0];
         reportHash = createHash('sha256').update(report).digest('hex'); return changed;
       }, true);
-      edit(`mapping/${shard}.json`, value => { value.observations[0].report_sha256 = reportHash; return value; });
+      edit(`mapping/${shard}.json`, value => { value.observations[0].report_sha256 = reportHash; return refreshFunctionalMappingAuthenticators(value); });
     });
   }
   for (const state of ['FAIL', 'NOT_RUN', 'REVIEW_REQUIRED']) {
-    await mutation(`visual byte-derived classification retains ${state}`, 'SHL-01', state, ['visual', 'comparison'], edit => {
+    await mutation(`visual byte-derived classification retains ${state}`, 'VER-02', state, ['visual', 'comparison'], edit => {
       let comparison;
       const digest = bytes => createHash('sha256').update(bytes).digest('hex');
       edit('comparison/index.json', value => {
@@ -538,6 +571,33 @@ async function assertSourceMutations(t, root) {
       edit('screenshots/index.json', value => { const capture = value.records.find(entry => entry.state_id === comparison.id && entry.configuration_id === comparison.configuration_id); capture.native_png = comparison.artifacts.native; capture.settings.state_receipt.png_sha256 = comparison.artifacts.native.sha256; for (const window of value.windows) window.result_sha256 = digest(JSON.stringify(value.records.slice(window.offset, window.offset + window.count).map(({ settings }) => settings.state_receipt))); return value; });
     });
   }
+  await mutation('visual failure is supplemental and cannot change SHL-01', 'SHL-01', 'PASS', ['visual', 'comparison'], edit => {
+    let comparison;
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+    edit('comparison/index.json', value => {
+      comparison = value.results.find(entry => entry.comparison_mode === 'retained_png');
+      const referenceBytes = readFileSync(path.join(root, comparison.artifacts.reference.path));
+      const native = PNG.sync.read(referenceBytes);
+      for (let i = 0; i < Math.ceil(native.width * native.height * 0.03); i++) native.data[i * 4] = native.data[i * 4] <= 242 ? native.data[i * 4] + 13 : native.data[i * 4] - 13;
+      const reference = PNG.sync.read(referenceBytes); const derived = deriveV12PixelComparison(reference, native);
+      const encodedNative = PNG.sync.write(native); const nativeHash = digest(encodedNative);
+      edit(comparison.artifacts.native.path.replace(`artifacts/native/v1.2/${run}/`, ''), () => encodedNative, 'bytes');
+      Object.assign(comparison.artifacts.native, { sha256: nativeHash, size_bytes: encodedNative.length, width: native.width, height: native.height });
+      for (const [kind, bytes] of Object.entries(derived.bytes)) {
+        edit(comparison.artifacts[kind].path.replace(`artifacts/native/v1.2/${run}/`, ''), () => bytes, 'bytes');
+        Object.assign(comparison.artifacts[kind], { sha256: digest(bytes), size_bytes: bytes.length, width: native.width, height: native.height });
+      }
+      let observationBytes;
+      edit(comparison.observation.path.replace(`artifacts/native/v1.2/${run}/`, ''), observation => { observation.capture_png_sha256 = nativeHash; observationBytes = Buffer.from(JSON.stringify(observation)); return observation; });
+      Object.assign(comparison.observation, { sha256: digest(observationBytes), size_bytes: observationBytes.length });
+      comparison.classification = 'FAIL'; comparison.counts_as_pass = false; comparison.metrics = derived.metrics;
+      comparison.state_receipt.png_sha256 = nativeHash; comparison.state_receipt.observation_sha256 = comparison.observation.sha256;
+      comparison.capture_state_receipt.png_sha256 = nativeHash;
+      for (const window of value.windows) window.result_sha256 = digest(JSON.stringify(value.results.slice(window.offset, window.offset + window.count).map(({ state_receipt }) => state_receipt)));
+      return value;
+    });
+    edit('screenshots/index.json', value => { const capture = value.records.find(entry => entry.state_id === comparison.id && entry.configuration_id === comparison.configuration_id); capture.native_png = comparison.artifacts.native; capture.settings.state_receipt.png_sha256 = comparison.artifacts.native.sha256; for (const window of value.windows) window.result_sha256 = digest(JSON.stringify(value.records.slice(window.offset, window.offset + window.count).map(({ settings }) => settings.state_receipt))); return value; });
+  });
   await mutation('attended failed row blocks VER-12 and its relevant gate', 'VER-12', 'FAIL', [], edit => edit('attended-observations.json', value => { value.rows[0].status = 'failed'; value.status = 'failed'; return value; }), { attended: true });
   await mutation('SQLite counts cannot substitute for concrete cases', 'VER-07', 'REVIEW_REQUIRED', ['sqlite'], edit => edit('sqlite/migration.json', value => { value.cases = 3; return value; }), { invalid: true });
   for (const kind of ['missing', 'duplicate', 'unknown', 'configuration', 'hash']) {

@@ -67,6 +67,20 @@ const sqliteCaseIds = [
   "fresh-migration", "schema27-upgrade", "supported-legacy-upgrade", "failure-reopen",
   "backup", "restore", "merge", "noop-replay", "rebuild", "immutable-history",
 ];
+const multiPlanCaseIds = [
+  "phase13-migration-failure-cuts", "phase13-map01-activation", "phase13-running-two-slots",
+  "phase13-strength-completion-retry", "phase13-import-normalized-identity", "phase13-import-remove-restore",
+  "phase13-match-invalidation", "phase13-stale-replay-no-resurrection", "phase13-bodyweight-correction-delete",
+  "phase13-backup-clean-restore", "phase13-merge-rebuild", "phase13-source-generation-neutrality",
+  "phase13-tim01-retirement",
+];
+const progressCaseIds = [
+  "progress-pro01-sport-range", "progress-pro02-all", "progress-pro03-strength", "progress-pro04-running",
+  "progress-pro05-fixed-goal", "progress-pro06-unset-goals", "progress-pro07-source-states", "progress-pro08-errors",
+  "progress-pro09-history-sheet", "progress-pro10-exercise-history", "progress-pro11-relative-view", "progress-pro12-target-editor",
+  "progress-pro13-target-persistence", "progress-pro14-recommendation", "progress-pro15-recommendation-persistence",
+  "progress-pro16-settings", "progress-pro17-bodyweight-history", "progress-pro18-bodyweight-editor",
+];
 const garminCaseIds = [
   "packaging", "bridge-allowlist", "canonical-json", "sync-read", "account-lifecycle", "recovery",
   "dedupe-restart", "dedupe-restore", "dedupe-merge", "match-zero", "match-one", "match-many",
@@ -152,7 +166,15 @@ const response = (() => {
       passed: sqliteCaseIds.length,
       failed: 0,
       skipped: 0,
-      cases: sqliteCaseIds.map((id) => ({ id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 1 }, sourceFacts: [{ registry: "sqlite-kernel", cases: [{ id: "connection-configuration", status: "passed" }] }] })),
+      cases: sqliteCaseIds.map((id) => {
+        const sourceFacts = id === "rebuild"
+          ? [{ registry: "progress-parity", cases: progressCaseIds.map((caseId) => ({ id: caseId, status: "passed" })) }]
+          : id === "immutable-history"
+            ? [{ registry: "multi-plan-running", cases: multiPlanCaseIds.map((caseId) => ({ id: caseId, status: "passed" })) }]
+            : [{ registry: "sqlite-kernel", cases: [{ id: "connection-configuration", status: "passed" }] }];
+        return { id, status: "passed", code: "v12_acceptance_case_passed",
+          counts: { sourceCases: sourceFacts.reduce((count, source) => count + source.cases.length, 0) }, sourceFacts };
+      }),
     },
   };
   if (action === "recovery") return recoveryReport();

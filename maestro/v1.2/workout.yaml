@@ -3,10 +3,13 @@ name: V1.2 source-owned full workout lifecycle flow
 tags: [v1.2, phase-20, source-owned, synthetic-fixture]
 ---
 - assertTrue: ${V12_CASE_ID != null}
+- assertTrue: ${V12_EVIDENCE_NONCE != null}
 - assertTrue: ${V12_FIXTURE_ID == 'v12-synthetic-fixtures-r18'}
 - launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
-- openLink: "gymtracker-devtest:///native-acceptance/workout?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}"
+- openLink: "gymtracker-devtest:///native-acceptance/workout?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}&nonce=${V12_EVIDENCE_NONCE}"
 - extendedWaitUntil: { visible: "Native acceptance fixture", timeout: 30000 }
 - assertVisible: { id: "native-acceptance-stage" }
-- assertVisible: "${V12_CASE_ID}"
+- tapOn: { id: "native-acceptance-execute" }
+- extendedWaitUntil: { visible: "Case verified", timeout: 30000 }
+- assertVisible: { id: "native-acceptance-readback" }
 - takeScreenshot: "v12-${V12_CASE_ID}-${V12_CONFIG_ID}"
