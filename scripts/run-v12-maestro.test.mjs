@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { PassThrough } from "node:stream";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -309,6 +311,82 @@ test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000
   const descendant = Number(readFileSync(childPid, "utf8"));
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
+});
+
+function simulatedWindowsChild() {
+  const child = new EventEmitter();
+  child.pid = 4242;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => { throw new Error("leader_only_kill_forbidden"); };
+  return child;
+}
+
+test("Windows bounded supervisor uses taskkill tree termination even when the leader exits cooperatively", async () => {
+  const child = simulatedWindowsChild();
+  let leaderAlive = true;
+  let descendantAlive = true;
+  const calls = [];
+  const running = runV12BoundedProcess("/tools/maestro.exe", ["test"], {
+    platform: "win32",
+    spawnImplementation: () => child,
+    killImplementation: () => { if (!leaderAlive) throw new Error("ESRCH"); },
+    taskkillImplementation: (_program, args) => {
+      calls.push(args);
+      descendantAlive = !args.includes("/T");
+      leaderAlive = false;
+      queueMicrotask(() => child.emit("close", 1, null));
+      return { status: 0, signal: null, error: undefined };
+    },
+    timeoutMs: 5,
+    termGraceMs: 20,
+    killGraceMs: 20,
+  });
+
+  await assert.rejects(running, /v12_maestro_process_timeout/u);
+  assert.deepEqual(calls, [["/PID", "4242", "/T"]]);
+  assert.equal(descendantAlive, false);
+});
+
+test("Windows bounded supervisor escalates the complete tree and rejects failed taskkill outcomes", async () => {
+  const escalatedChild = simulatedWindowsChild();
+  let leaderAlive = true;
+  const escalationCalls = [];
+  const escalating = runV12BoundedProcess("/tools/maestro.exe", ["test"], {
+    platform: "win32",
+    spawnImplementation: () => escalatedChild,
+    killImplementation: () => { if (!leaderAlive) throw new Error("ESRCH"); },
+    taskkillImplementation: (_program, args) => {
+      escalationCalls.push(args);
+      if (args.includes("/F")) {
+        leaderAlive = false;
+        queueMicrotask(() => escalatedChild.emit("close", 1, null));
+      }
+      return { status: 0, signal: null, error: undefined };
+    },
+    timeoutMs: 5,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  await assert.rejects(escalating, /v12_maestro_process_timeout/u);
+  assert.deepEqual(escalationCalls, [["/PID", "4242", "/T"], ["/PID", "4242", "/T", "/F"]]);
+
+  const failedChild = simulatedWindowsChild();
+  const failedCalls = [];
+  const failed = runV12BoundedProcess("/tools/maestro.exe", ["test"], {
+    platform: "win32",
+    spawnImplementation: () => failedChild,
+    killImplementation: () => undefined,
+    taskkillImplementation: (_program, args) => {
+      failedCalls.push(args);
+      return { status: 1, signal: null, error: undefined };
+    },
+    timeoutMs: 5,
+    termGraceMs: 5,
+    killGraceMs: 20,
+  });
+  await assert.rejects(failed, /v12_maestro_process_tree_termination_failed/u);
+  assert.deepEqual(failedCalls, [["/PID", "4242", "/T"], ["/PID", "4242", "/T", "/F"]]);
 });
 
 test("hung Maestro restores settings and removes the lease before returning", { timeout: TEST_TIMEOUT_MS }, async (t) => {

@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -99,27 +99,50 @@ export function runV12BoundedProcess(program, args, {
   termGraceMs = V12_MAESTRO_COMMAND_BUDGETS.term_grace_ms,
   killGraceMs = V12_MAESTRO_COMMAND_BUDGETS.kill_grace_ms,
   maxBuffer = 16 * 1024 * 1024,
+  platform = process.platform,
+  spawnImplementation = spawn,
+  killImplementation = process.kill.bind(process),
+  taskkillImplementation = spawnSync,
 } = {}) {
   if (typeof program !== "string" || !path.isAbsolute(program) || !Array.isArray(args)
     || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(termGraceMs) || termGraceMs < 1
-    || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || signal?.aborted) {
+    || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || !["win32", "darwin", "linux", "freebsd", "openbsd", "aix", "sunos"].includes(platform)
+    || typeof spawnImplementation !== "function" || typeof killImplementation !== "function" || typeof taskkillImplementation !== "function"
+    || signal?.aborted) {
     return Promise.reject(new Error(signal?.aborted ? "v12_maestro_process_cancelled" : "v12_maestro_process_arguments_invalid"));
   }
   return new Promise((resolve, reject) => {
-    const child = spawn(program, args, { cwd, env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawnImplementation(program, args, { cwd, env, detached: platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     let stdout = ""; let stdoutBytes = 0; let stderrBytes = 0; let settled = false; let terminationCode;
     let timeout; let escalation; let killDeadline;
     const groupAlive = () => {
       if (child.pid === undefined) return false;
-      try { process.kill(process.platform === "win32" ? child.pid : -child.pid, 0); return true; }
+      try { killImplementation(platform === "win32" ? child.pid : -child.pid, 0); return true; }
       catch { return false; }
     };
-    const killTree = (signalName) => {
-      if (child.pid === undefined) return;
+    const taskkillTree = (force) => {
+      if (child.pid === undefined) return false;
+      let outcome;
       try {
-        if (process.platform !== "win32") process.kill(-child.pid, signalName);
-        else child.kill(signalName);
-      } catch { try { child.kill(signalName); } catch { /* already exited */ } }
+        outcome = taskkillImplementation("taskkill", ["/PID", String(child.pid), "/T", ...(force ? ["/F"] : [])], {
+          encoding: "utf8",
+          maxBuffer: 64 * 1024,
+          timeout: force ? killGraceMs : termGraceMs,
+          windowsHide: true,
+        });
+      } catch { return false; }
+      return outcome?.status === 0 && outcome.signal === null && outcome.error === undefined;
+    };
+    const killTree = (signalName) => {
+      if (child.pid === undefined) return false;
+      if (platform === "win32") return taskkillTree(signalName === "SIGKILL");
+      try {
+        killImplementation(-child.pid, signalName);
+        return true;
+      } catch {
+        try { return child.kill(signalName); }
+        catch { return false; }
+      }
     };
     const cleanup = () => {
       clearTimeout(timeout); clearTimeout(escalation); clearTimeout(killDeadline);
@@ -132,10 +155,23 @@ export function runV12BoundedProcess(program, args, {
     const terminate = (code) => {
       if (terminationCode !== undefined || settled) return;
       terminationCode = code;
-      killTree("SIGTERM");
+      const cooperative = killTree("SIGTERM");
+      if (platform === "win32" && !cooperative) {
+        if (!killTree("SIGKILL")) {
+          terminationCode = "process_tree_termination_failed";
+          rejectTermination();
+          return;
+        }
+        killDeadline = setTimeout(rejectTermination, killGraceMs);
+        return;
+      }
       escalation = setTimeout(() => {
         if (!groupAlive()) { rejectTermination(); return; }
-        killTree("SIGKILL");
+        if (!killTree("SIGKILL")) {
+          terminationCode = "process_tree_termination_failed";
+          rejectTermination();
+          return;
+        }
         killDeadline = setTimeout(rejectTermination, killGraceMs);
       }, termGraceMs);
     };
