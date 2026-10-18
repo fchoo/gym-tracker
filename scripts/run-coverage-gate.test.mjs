@@ -6,6 +6,7 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 const { load: parseYaml } = require("js-yaml");
+const ts = require("typescript");
 
 const supportTests = new Set([
   "build-current-native-test-apk.test.mjs",
@@ -36,6 +37,39 @@ function runsExactCommand(commands, expected) {
     .includes(expected));
 }
 
+function inspectSubprocessCalls(source, fileName) {
+  const sourceFile = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const calls = [];
+  function visit(node) {
+    if (ts.isCallExpression(node)
+      && ts.isIdentifier(node.expression)
+      && ["execFileSync", "spawnSync"].includes(node.expression.text)) {
+      const options = node.arguments[2];
+      const timeoutProperty = ts.isObjectLiteralExpression(options)
+        ? options.properties.find((property) => ts.isPropertyAssignment(property)
+          && property.name.getText(sourceFile) === "timeout")
+        : undefined;
+      const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+      calls.push({
+        callee: node.expression.text,
+        line: location.line + 1,
+        node,
+        sourceFile,
+        timeoutProperty,
+      });
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return calls;
+}
+
 test("evidence manifests match discovery and PR CI executes the active aggregate gates", () => {
   const manifest = JSON.parse(execFileSync(
     process.execPath,
@@ -44,22 +78,43 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 48);
+  assert.equal(manifest.phase20.length, 49);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
-    "jest_istanbul_100",
-    "node_subprocess_v8_100",
-    "separately_enforced_gates",
+    "jest_istanbul_modules",
+    "metrics",
+    "node_v8_projects",
+    "required_percent",
   ]);
-  assert.equal(manifest.phase20_coverage.node_subprocess_v8_100.length, 4);
-  assert.equal(manifest.phase20_coverage.jest_istanbul_100.length, 6);
-  const separate = Object.values(manifest.phase20_coverage.separately_enforced_gates);
-  const separateModules = new Set(separate.flatMap(({ modules }) => modules));
-  assert.equal(separateModules.size, 10);
-  assert.equal(separateModules.has("scripts/v12-rollback-evidence.mjs"), true);
-  assert.equal(separateModules.has("scripts/v12-visual-streaming.mjs"), true);
-  assert.ok(separate.every(({ tests }) => tests.length > 0
+  assert.equal(manifest.phase20_coverage.required_percent, 100);
+  assert.deepEqual(
+    manifest.phase20_coverage.metrics,
+    ["statements", "branches", "functions", "lines"],
+  );
+  assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 6);
+  const coverageProjects = manifest.phase20_coverage.node_v8_projects;
+  const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
+  assert.equal(coveredModules.size, 15);
+  for (const required of [
+    "scripts/v12-atomic-shard-publication.mjs",
+    "scripts/v12-rollback-evidence.mjs",
+    "scripts/verify-v12-native-evidence.mjs",
+    "scripts/create-v12-readiness-handoff.mjs",
+    "scripts/v12-calendar-artifact-transport.mjs",
+    "scripts/capture-v12-visual.mjs",
+    "scripts/compare-v12-visual.mjs",
+    "scripts/v12-visual-streaming.mjs",
+    "scripts/v12-native-execution-origin.mjs",
+    "scripts/v12-native-adapter.mjs",
+    "scripts/v12-native-time-budgets.mjs",
+    "scripts/v12-sqlite-shard.mjs",
+    "scripts/v12-sqlite-producer-contract.mjs",
+    "scripts/v12-blocker-row-resolver.mjs",
+    "scripts/v12-artifact-privacy.mjs",
+  ]) assert.ok(coveredModules.has(required), required);
+  assert.ok(coverageProjects.every(({ modules, tests }) => modules.length > 0
+    && tests.length > 0
     && tests.every((file) => manifest.phase20.includes(file))));
   assert.match(
     readFileSync("scripts/capture-v12-visual.test.mjs", "utf8"),
@@ -96,16 +151,36 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
 
 test("every Phase 20 black-box child process has an explicit test-only timeout", () => {
   const source = readFileSync("scripts/v12-phase20-cli-blackbox.test.mjs", "utf8");
-  const calls = [...source.matchAll(/\b(?:execFileSync|spawnSync)\(/gu)];
+  const calls = inspectSubprocessCalls(source, "scripts/v12-phase20-cli-blackbox.test.mjs");
   assert.equal(calls.length, 6);
   for (const call of calls) {
-    assert.match(
-      source.slice(call.index, call.index + 700),
-      /\btimeout\s*:/u,
-      `unbounded child process near offset ${String(call.index)}`,
+    assert.ok(call.timeoutProperty, `unbounded ${call.callee} call at line ${String(call.line)}`);
+    const propertyName = call.timeoutProperty.name;
+    const mutated = `${source.slice(0, propertyName.getStart(call.sourceFile))}removedTimeout${source.slice(propertyName.end)}`;
+    const mutatedCalls = inspectSubprocessCalls(mutated, "mutated-v12-phase20-cli-blackbox.test.mjs");
+    assert.equal(
+      mutatedCalls.filter(({ timeoutProperty }) => timeoutProperty === undefined).length,
+      1,
+      `renaming the timeout on ${call.callee} line ${String(call.line)} must fail closed`,
     );
   }
   assert.match(source, /FIXTURE_COMMAND_TIMEOUT_MS = 10_000/u);
   assert.match(source, /INLINE_HELPER_TIMEOUT_MS = 240_000/u);
   assert.match(source, /SUBPROCESS_TIMEOUT_MS = 5 \* 60_000/u);
+});
+
+test("the exact Phase 18 evidence subprocess owns a local timeout", () => {
+  const source = readFileSync("scripts/run-coverage-gate.mjs", "utf8");
+  const calls = inspectSubprocessCalls(source, "scripts/run-coverage-gate.mjs");
+  const phase18EvidenceCall = calls.find(({ node, sourceFile }) =>
+    node.arguments[1]?.getText(sourceFile).includes("phase18EvidenceTests"));
+  assert.ok(phase18EvidenceCall, "Phase 18 evidence subprocess call not found");
+  assert.ok(
+    phase18EvidenceCall.timeoutProperty,
+    `unbounded Phase 18 evidence subprocess at line ${String(phase18EvidenceCall.line)}`,
+  );
+  assert.equal(
+    phase18EvidenceCall.timeoutProperty.initializer.getText(phase18EvidenceCall.sourceFile),
+    "PHASE18_EVIDENCE_TIMEOUT_MS",
+  );
 });

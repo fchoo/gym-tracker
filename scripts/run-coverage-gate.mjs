@@ -19,6 +19,7 @@ import { runPhase20SubprocessCoverage } from "./phase20-subprocess-coverage.mjs"
 const projectRoot = process.cwd();
 const coverageDirectory = path.join(projectRoot, "coverage");
 const summaryPath = path.join(coverageDirectory, "coverage-summary.json");
+const PHASE18_EVIDENCE_TIMEOUT_MS = 30 * 60_000;
 const phase19CoverageManifest = JSON.parse(readFileSync(
   path.join(projectRoot, "scripts/phase19-integrity-coverage.json"),
   "utf8",
@@ -160,6 +161,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/v12-evidence-contract.test.mjs",
   "scripts/v12-evidence-scripts.test.mjs",
   "scripts/v12-garmin-shard.test.mjs",
+  "scripts/v12-maestro-route-contract.test.mjs",
   "scripts/v12-native-adapter-attestation.test.mjs",
   "scripts/v12-native-execution-origin.test.mjs",
   "scripts/v12-performance-shard.test.mjs",
@@ -208,71 +210,9 @@ function validateEvidenceTestManifest({ tests, isEvidenceTest, error, expectedCo
   }
   return registered;
 }
-const phase20EvidenceFiles = [
-  "scripts/v12-artifact-privacy.mjs",
-  "scripts/v12-blocker-row-resolver.mjs",
-  "scripts/v12-native-time-budgets.mjs",
-  "scripts/v12-sqlite-producer-contract.mjs",
-];
-const phase20SeparatelyEnforcedGates = Object.freeze({
-  native_provenance: Object.freeze({
-    modules: Object.freeze(["scripts/v12-native-execution-origin.mjs"]),
-    tests: Object.freeze([
-      "scripts/v12-native-adapter-attestation.test.mjs",
-      "scripts/v12-native-execution-origin.test.mjs",
-      "scripts/v12-production-native-launcher.test.mjs",
-    ]),
-  }),
-  atomic_publication: Object.freeze({
-    modules: Object.freeze(["scripts/v12-atomic-shard-publication.mjs"]),
-    tests: Object.freeze([
-      "scripts/v12-atomic-publication.integration.test.mjs",
-      "scripts/v12-atomic-shard-publication.test.mjs",
-    ]),
-  }),
-  verifier_handoff: Object.freeze({
-    modules: Object.freeze([
-      "scripts/create-v12-readiness-handoff.mjs",
-      "scripts/v12-rollback-evidence.mjs",
-      "scripts/verify-v12-native-evidence.mjs",
-    ]),
-    tests: Object.freeze([
-      "scripts/create-v12-readiness-handoff.test.mjs",
-      "scripts/phase20-integrity-coverage.test.mjs",
-      "scripts/v12-phase20-cli-blackbox.test.mjs",
-      "scripts/v12-preflight-contract.test.mjs",
-      "scripts/verify-v12-native-evidence.security.test.mjs",
-    ]),
-  }),
-  calendar_transport: Object.freeze({
-    modules: Object.freeze(["scripts/v12-calendar-artifact-transport.mjs"]),
-    tests: Object.freeze([
-      "scripts/v12-calendar-artifact-transport.test.mjs",
-      "scripts/v12-calendar-cli-blackbox.test.mjs",
-    ]),
-  }),
-  visual_streaming: Object.freeze({
-    modules: Object.freeze([
-      "scripts/capture-v12-visual.mjs",
-      "scripts/compare-v12-visual.mjs",
-      "scripts/v12-visual-streaming.mjs",
-    ]),
-    tests: Object.freeze([
-      "scripts/capture-v12-visual.test.mjs",
-      "scripts/compare-v12-visual.test.mjs",
-      "scripts/phase20-visual-integrity-coverage.test.mjs",
-      "scripts/v12-phase20-cli-blackbox.test.mjs",
-    ]),
-  }),
-  sqlite_cli: Object.freeze({
-    modules: Object.freeze(["scripts/v12-sqlite-shard.mjs"]),
-    tests: Object.freeze([
-      "scripts/v12-phase20-cli-blackbox.test.mjs",
-      "scripts/v12-sqlite-shard.test.mjs",
-    ]),
-  }),
-});
 const phase20NativeActionTests = new Set([
+  "scripts/v12-native-adapter-attestation.test.mjs",
+  "scripts/v12-native-execution-origin.test.mjs",
   "scripts/v12-production-native-domain-actions.test.mjs",
   "scripts/v12-production-native-launcher.test.mjs",
   "scripts/v12-production-native-quality-actions.test.mjs",
@@ -281,10 +221,22 @@ const phase20NativeActionTests = new Set([
 const phase20BlackBoxTests = new Set([
   "scripts/v12-phase20-cli-blackbox.test.mjs",
 ]);
+const phase20CliCoverageTests = new Set([
+  "scripts/phase20-subprocess-coverage.test.mjs",
+]);
 const phase20FixtureCoverageTests = new Set([
+  "scripts/create-v12-readiness-handoff.test.mjs",
   "scripts/phase20-integrity-coverage.test.mjs",
+  "scripts/run-v12-maestro.test.mjs",
+  "scripts/v12-blocker-row-resolver.test.mjs",
+  "scripts/v12-calendar-evidence-coverage.test.mjs",
+  "scripts/v12-evidence-scripts.test.mjs",
+  "scripts/v12-preflight-contract.test.mjs",
+  "scripts/verify-v12-native-evidence.security.test.mjs",
 ]);
 const phase20FixtureVisualCoverageTests = new Set([
+  "scripts/capture-v12-visual.test.mjs",
+  "scripts/compare-v12-visual.test.mjs",
   "scripts/phase20-visual-integrity-coverage.test.mjs",
 ]);
 const phase20CoverageFixture = path.join(coverageDirectory, "phase20-node/blackbox-fixture");
@@ -292,27 +244,69 @@ const phase20EvidenceProjects = Object.freeze([
   Object.freeze({
     name: "contracts",
     concurrency: 2,
+    modules: Object.freeze([
+      "scripts/v12-artifact-privacy.mjs",
+      "scripts/v12-atomic-shard-publication.mjs",
+      "scripts/v12-calendar-artifact-transport.mjs",
+      "scripts/v12-sqlite-producer-contract.mjs",
+      "scripts/v12-sqlite-shard.mjs",
+    ]),
     tests: phase20EvidenceTests.filter((file) =>
       !phase20NativeActionTests.has(file)
       && !phase20BlackBoxTests.has(file)
+      && !phase20CliCoverageTests.has(file)
       && !phase20FixtureCoverageTests.has(file)
       && !phase20FixtureVisualCoverageTests.has(file)),
   }),
   Object.freeze({
     name: "native-actions",
     concurrency: 2,
+    modules: Object.freeze([
+      "scripts/v12-native-adapter.mjs",
+      "scripts/v12-native-execution-origin.mjs",
+      "scripts/v12-native-time-budgets.mjs",
+    ]),
     tests: [...phase20NativeActionTests],
   }),
   Object.freeze({
     name: "cli-blackbox",
     concurrency: 1,
-    tests: [...phase20BlackBoxTests],
     coverage: false,
+    tests: [...phase20BlackBoxTests],
+    env: Object.freeze({ V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture }),
+  }),
+  Object.freeze({
+    name: "cli-coverage",
+    concurrency: 1,
+    tests: [...phase20CliCoverageTests],
+    modules: Object.freeze([
+      "scripts/capture-v12-visual.mjs",
+      "scripts/compare-v12-visual.mjs",
+      "scripts/create-v12-readiness-handoff.mjs",
+      "scripts/v12-artifact-privacy.mjs",
+      "scripts/v12-atomic-shard-publication.mjs",
+      "scripts/v12-blocker-row-resolver.mjs",
+      "scripts/v12-calendar-artifact-transport.mjs",
+      "scripts/v12-native-adapter.mjs",
+      "scripts/v12-native-execution-origin.mjs",
+      "scripts/v12-native-time-budgets.mjs",
+      "scripts/v12-rollback-evidence.mjs",
+      "scripts/v12-sqlite-producer-contract.mjs",
+      "scripts/v12-sqlite-shard.mjs",
+      "scripts/v12-visual-streaming.mjs",
+      "scripts/verify-v12-native-evidence.mjs",
+    ]),
     env: Object.freeze({ V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture }),
   }),
   Object.freeze({
     name: "fixture-coverage",
     concurrency: 1,
+    modules: Object.freeze([
+      "scripts/create-v12-readiness-handoff.mjs",
+      "scripts/v12-blocker-row-resolver.mjs",
+      "scripts/v12-rollback-evidence.mjs",
+      "scripts/verify-v12-native-evidence.mjs",
+    ]),
     tests: [...phase20FixtureCoverageTests],
     env: Object.freeze({
       NODE_ENV: "test",
@@ -324,6 +318,11 @@ const phase20EvidenceProjects = Object.freeze([
   Object.freeze({
     name: "fixture-visual-coverage",
     concurrency: 1,
+    modules: Object.freeze([
+      "scripts/capture-v12-visual.mjs",
+      "scripts/compare-v12-visual.mjs",
+      "scripts/v12-visual-streaming.mjs",
+    ]),
     tests: [...phase20FixtureVisualCoverageTests],
     env: Object.freeze({ V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture }),
   }),
@@ -337,9 +336,16 @@ const phase20IntegrityCriticalFiles = [
   "src/testing/contracts/v12Recovery.contract.ts",
 ];
 const phase20CoverageClassifications = Object.freeze({
-  node_subprocess_v8_100: Object.freeze([...phase20EvidenceFiles]),
-  jest_istanbul_100: Object.freeze([...phase20IntegrityCriticalFiles]),
-  separately_enforced_gates: phase20SeparatelyEnforcedGates,
+  required_percent: 100,
+  metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
+  node_v8_projects: Object.freeze(phase20EvidenceProjects
+    .filter(({ coverage }) => coverage !== false)
+    .map(({ name, modules, tests }) => Object.freeze({
+      name,
+      modules: Object.freeze([...modules]),
+      tests: Object.freeze([...tests]),
+    }))),
+  jest_istanbul_modules: Object.freeze([...phase20IntegrityCriticalFiles]),
 });
 const phase19IntegrityCriticalFiles = phase19CoverageManifest.required_files;
 const integrityCriticalFiles = [
@@ -742,7 +748,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 48,
+  expectedCount: 49,
 });
 const registeredPhase18EvidenceTests = validateEvidenceTestManifest({
   tests: phase18EvidenceTests,
@@ -768,7 +774,6 @@ if (!skipPhase20Evidence && (allEvidenceOnly || phase20EvidenceOnly || focusPhas
   || (!focusPhase16Evidence && !focusPhase18 && !focusPhase19))) {
   await runPhase20SubprocessCoverage({
     projectRoot,
-    targetFiles: phase20EvidenceFiles,
     projects: phase20EvidenceProjects,
     maxParallel: 1,
   });
@@ -856,7 +861,13 @@ if (allEvidenceOnly || focusPhase18) {
       "--test",
       ...phase18EvidenceTests,
     ],
-    { cwd: projectRoot, encoding: "utf8", env: evidenceEnvironment, stdio: "inherit" },
+    {
+      cwd: projectRoot,
+      encoding: "utf8",
+      env: evidenceEnvironment,
+      stdio: "inherit",
+      timeout: PHASE18_EVIDENCE_TIMEOUT_MS,
+    },
   );
   if (evidence.error !== undefined) throw evidence.error;
   if (evidence.status !== 0) process.exit(evidence.status ?? 1);
