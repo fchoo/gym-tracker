@@ -94,7 +94,10 @@ test("Calendar subprocess publishes 69 exact nonce-bound probe receipts", (t) =>
   }), true);
   assert.equal(existsSync(path.join(base, ".staging")), false);
 
+  const publicationBytes = readFileSync(publicationPath);
   const duplicate = invoke(root, runId);
-  assert.notEqual(duplicate.status, 0);
-  assert.match(`${duplicate.stderr}\n${duplicate.stdout}`, /calendar_output_exists|atomic_publication_exists/u);
+  assert.equal(duplicate.status, 0, `${duplicate.stderr}\n${duplicate.stdout}`);
+  assert.deepEqual(JSON.parse(duplicate.stdout), { ok: true, mode: "execute", run_id: runId });
+  assert.deepEqual(readFileSync(publicationPath), publicationBytes);
+  assert.equal(existsSync(path.join(base, ".staging")), false);
 });

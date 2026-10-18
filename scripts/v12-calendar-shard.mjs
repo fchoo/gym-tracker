@@ -195,7 +195,7 @@ function validatedStages(result, expectedFlowSha256, allowTestFixture = false, r
 function xml(stages, id, flowSha256) { return `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-calendar" tests="${stages.length}" source_digest="${id.source_digest}" flow_sha256="${flowSha256}">${stages.map(({ id: stageId, status }) => `<testcase classname="v12.calendar" name="${stageId}">${status === "FAIL" ? "<failure message=\"observed failure\"/>" : status === "NOT_RUN" || status === "REVIEW_REQUIRED" ? "<skipped message=\"observation incomplete\"/>" : ""}</testcase>`).join("")}</testsuite>\n`; }
 function requirementsXml(requirements, id) { return `<?xml version="1.0" encoding="UTF-8"?><testsuite name="v12-calendar-requirements" tests="${requirements.junit_cases.length}" source_digest="${id.source_digest}" flow_sha256="${requirements.flow_sha256}">${requirements.junit_cases.map(({ id: evidenceId, status }) => `<testcase classname="v12.calendar.requirement" name="${evidenceId}">${status === "FAIL" ? "<failure message=\"observed failure\"/>" : status === "NOT_RUN" || status === "REVIEW_REQUIRED" ? "<skipped message=\"observation incomplete\"/>" : ""}</testcase>`).join("")}</testsuite>\n`; }
 
-function verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read }) {
+function verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read, allowTestFixture = false }) {
   const files = ARTIFACTS.map((file) => outputPath(runId, file));
   if (files.some((file) => !exists(file))) fail("output_missing");
   const observation = JSON.parse(read(files[0]).toString());
@@ -219,7 +219,7 @@ function verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read }
   const validated = validatedStages({ flow_sha256: observation.flow_sha256, flow_revision: observation.flow_revision,
     stages: observation.stages, junit_cases: observation.junit_cases, requirements: { flow_sha256: requirementEvidence.flow_sha256,
       fixture_id: requirementEvidence.fixture_id, records: requirementEvidence.records, junit_cases: requirementEvidence.junit_cases },
-    native_receipt: observation.native_receipt, execution_origin: observation.execution_origin, artifacts: artifactPayloads }, flowSha256, false,
+    native_receipt: observation.native_receipt, execution_origin: observation.execution_origin, artifacts: artifactPayloads }, flowSha256, allowTestFixture,
   (descriptor) => Buffer.from(read(outputPath(runId, descriptor.relative_path))));
   validateNativeReceipt(validated.native_receipt, { ...id, run_id: runId }, validated);
   const report = read(files[2]).toString(); const requirementReport = read(files[3]).toString();
@@ -228,14 +228,14 @@ function verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read }
   return Object.freeze({ observation, requirementEvidence, registry, validated });
 }
 
-function verifyExistingCalendarPublication({ root, runId, id, flowSha256, exists, read, cleanupTransport }) {
+function verifyExistingCalendarPublication({ root, runId, id, flowSha256, exists, read, cleanupTransport, allowTestFixture = false }) {
   verifyV12AtomicShard({ root, runId, shard: "calendar", allowOtherShardResidue: true });
-  const retained = verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read });
+  const retained = verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read, allowTestFixture });
   if (!hasV12CalendarArtifactTransport({ root, runId })) return retained;
   const transport = openV12CalendarArtifactTransport({ root, runId });
   const completed = transport.loadCompleted();
   if (completed === null) fail("transport_result_missing");
-  const native = validatedStages(completed, flowSha256, false, (descriptor) => transport.readArtifact(descriptor));
+  const native = validatedStages(completed, flowSha256, allowTestFixture, (descriptor) => transport.readArtifact(descriptor));
   validateNativeReceipt(native.native_receipt, { ...id, run_id: runId }, native);
   const bindings = [
     [native.flow_sha256, retained.observation.flow_sha256],
@@ -273,13 +273,13 @@ export async function executeV12CalendarShardCli(args = process.argv.slice(2), d
     return nativeTransport.readArtifact(descriptor);
   });
   if (mode === "verify") {
-    verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read });
+    verifyRetainedCalendarArtifacts({ runId, id, flowSha256, exists, read, allowTestFixture: testFixture });
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
   const publication = path.join(root, `artifacts/native/v1.2/${runId}/publication/calendar.json`);
   if (existsSync(publication)) {
     verifyExistingCalendarPublication({ root, runId, id, flowSha256, exists, read,
-      cleanupTransport: dependencies.cleanupTransport });
+      cleanupTransport: dependencies.cleanupTransport, allowTestFixture: testFixture });
     return Object.freeze({ ok: true, mode, run_id: runId });
   }
   if (files.some(exists) || exists(outputPath(runId, "calendar-failure.json"))) fail("output_exists");
@@ -327,7 +327,7 @@ export async function executeV12CalendarShardCli(args = process.argv.slice(2), d
   }
 }
 
-export function publishV12CalendarShardWrites({ root = process.cwd(), runId, writes, executionOrigin, cleanupTransport } = {}) {
+export function publishV12CalendarShardWrites({ root = process.cwd(), runId, writes, executionOrigin, cleanupTransport, allowTestFixture = false } = {}) {
   if (!RUN_ID.test(runId ?? "") || !Array.isArray(writes)) fail("cli_invalid");
   let transport;
   const publication = publishV12AtomicShard({ root, runId, shard: "calendar", executionOrigin, produce: ({ write }) => {
@@ -349,6 +349,7 @@ export function publishV12CalendarShardWrites({ root = process.cwd(), runId, wri
     exists: (file) => existsSync(path.join(root, file)),
     read: (file) => readFileSync(path.join(root, file)),
     cleanupTransport,
+    allowTestFixture,
   });
   return publication;
 }
@@ -373,7 +374,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     writeFailureReceipt: (value) => writes.push([`artifacts/native/v1.2/${runId}/calendar-failure.json`, value]),
   }).then((value) => {
     if (args[2] === "--execute") {
-      publishV12CalendarShardWrites({ runId, writes, executionOrigin });
+      publishV12CalendarShardWrites({ runId, writes, executionOrigin, allowTestFixture: args[3] === "--test-fixture" });
     }
     process.stdout.write(`${JSON.stringify(value)}\n`);
   }).catch((error) => {
