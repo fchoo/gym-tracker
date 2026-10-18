@@ -92,7 +92,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 50);
+  assert.equal(manifest.phase20.length, 49);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -108,6 +108,23 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   );
   assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 6);
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
+  assert.equal(coverageProjects.length, 6);
+  assert.deepEqual(coverageProjects.map(({ name }) => name), [
+    "contracts",
+    "native-actions",
+    "native-fixtures",
+    "cli-blackbox",
+    "cli-coverage",
+    "fixture-coverage",
+  ]);
+  assert.deepEqual(
+    coverageProjects.filter(({ coverage }) => coverage === false).map(({ name }) => name),
+    ["native-fixtures", "cli-blackbox"],
+  );
+  const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
+  assert.equal(registeredProjectTests.length, 49);
+  assert.equal(new Set(registeredProjectTests).size, 49);
+  assert.deepEqual([...registeredProjectTests].sort(), manifest.phase20);
   const coveredModules = new Set(coverageProjects.flatMap(({ modules }) => modules));
   assert.equal(coveredModules.size, 15);
   for (const required of [
@@ -127,7 +144,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     "scripts/v12-blocker-row-resolver.mjs",
     "scripts/v12-artifact-privacy.mjs",
   ]) assert.ok(coveredModules.has(required), required);
-  assert.ok(coverageProjects.every(({ modules, tests }) => modules.length > 0
+  assert.ok(coverageProjects.every(({ coverage, modules, tests }) => (coverage === false || modules.length > 0)
     && tests.length > 0
     && tests.every((file) => manifest.phase20.includes(file))));
   assert.match(

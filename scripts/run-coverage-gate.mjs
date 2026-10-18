@@ -176,7 +176,6 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/v12-production-domain-receipts.test.mjs",
   "scripts/v12-production-native-calendar-action.test.mjs",
   "scripts/v12-production-native-domain-actions.test.mjs",
-  "scripts/v12-production-native-adapter-launcher-lifecycle.test.mjs",
   "scripts/v12-production-native-launcher.test.mjs",
   "scripts/v12-production-native-quality-actions.test.mjs",
   "scripts/v12-production-native-visual-actions.test.mjs",
@@ -220,7 +219,6 @@ function validateEvidenceTestManifest({ tests, isEvidenceTest, error, expectedCo
 const phase20NativeActionTests = new Set([
   "scripts/v12-native-adapter-attestation.test.mjs",
   "scripts/v12-native-execution-origin.test.mjs",
-  "scripts/v12-production-native-adapter-launcher-lifecycle.test.mjs",
   "scripts/v12-production-native-domain-actions.test.mjs",
   "scripts/v12-production-native-launcher.test.mjs",
   "scripts/v12-production-native-quality-actions.test.mjs",
@@ -320,29 +318,21 @@ const phase20EvidenceProjects = Object.freeze([
     name: "fixture-coverage",
     concurrency: 1,
     modules: Object.freeze([
+      "scripts/capture-v12-visual.mjs",
+      "scripts/compare-v12-visual.mjs",
       "scripts/create-v12-readiness-handoff.mjs",
       "scripts/v12-blocker-row-resolver.mjs",
       "scripts/v12-rollback-evidence.mjs",
+      "scripts/v12-visual-streaming.mjs",
       "scripts/verify-v12-native-evidence.mjs",
     ]),
-    tests: [...phase20FixtureCoverageTests],
+    tests: [...phase20FixtureCoverageTests, ...phase20FixtureVisualCoverageTests],
     env: Object.freeze({
       NODE_ENV: "test",
       V12_NATIVE_ADAPTER_TEST_MODE: "phase20-native-adapter-subprocess",
       V12_NATIVE_ADAPTER_TEST_PROCESS: "1",
       V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture,
     }),
-  }),
-  Object.freeze({
-    name: "fixture-visual-coverage",
-    concurrency: 1,
-    modules: Object.freeze([
-      "scripts/capture-v12-visual.mjs",
-      "scripts/compare-v12-visual.mjs",
-      "scripts/v12-visual-streaming.mjs",
-    ]),
-    tests: [...phase20FixtureVisualCoverageTests],
-    env: Object.freeze({ V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture }),
   }),
 ]);
 const phase20IntegrityCriticalFiles = [
@@ -357,9 +347,9 @@ const phase20CoverageClassifications = Object.freeze({
   required_percent: 100,
   metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
   node_v8_projects: Object.freeze(phase20EvidenceProjects
-    .filter(({ coverage }) => coverage !== false)
-    .map(({ name, modules, tests }) => Object.freeze({
+    .map(({ name, coverage, modules = [], tests }) => Object.freeze({
       name,
+      coverage: coverage !== false,
       modules: Object.freeze([...modules]),
       tests: Object.freeze([...tests]),
     }))),
@@ -766,8 +756,32 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 50,
+  expectedCount: 49,
 });
+const expectedPhase20ProjectNames = [
+  "contracts",
+  "native-actions",
+  "native-fixtures",
+  "cli-blackbox",
+  "cli-coverage",
+  "fixture-coverage",
+];
+const assignedPhase20Tests = phase20EvidenceProjects.flatMap(({ tests }) => tests);
+const assignedPhase20Modules = new Set(phase20EvidenceProjects.flatMap(({ modules = [] }) => modules));
+if (JSON.stringify(phase20EvidenceProjects.map(({ name }) => name)) !== JSON.stringify(expectedPhase20ProjectNames)
+  || assignedPhase20Tests.length !== 49
+  || new Set(assignedPhase20Tests).size !== 49
+  || JSON.stringify([...assignedPhase20Tests].sort()) !== JSON.stringify(registeredPhase20EvidenceTests)
+  || assignedPhase20Modules.size !== 15
+  || phase20EvidenceProjects.find(({ name }) => name === "cli-blackbox")?.coverage !== false) {
+  throw new Error(JSON.stringify({
+    error: "phase20_coverage_project_manifest_invalid",
+    project_count: phase20EvidenceProjects.length,
+    test_count: assignedPhase20Tests.length,
+    unique_test_count: new Set(assignedPhase20Tests).size,
+    integrity_module_count: assignedPhase20Modules.size,
+  }));
+}
 const registeredPhase18EvidenceTests = validateEvidenceTestManifest({
   tests: phase18EvidenceTests,
   isEvidenceTest: (file) => file.endsWith(".test.mjs") && file.includes("phase18"),
