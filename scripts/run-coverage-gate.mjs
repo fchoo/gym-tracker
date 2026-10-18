@@ -16,6 +16,12 @@ import { createRequire } from "node:module";
 import { loadPhase18LanguageCoverageReports } from "./phase18-language-coverage.mjs";
 import { runPhase20SubprocessCoverage } from "./phase20-subprocess-coverage.mjs";
 
+const REQUIRED_NODE_VERSION = "24.19.0";
+if (process.versions.node !== REQUIRED_NODE_VERSION) {
+  console.error(`phase20_node_version_invalid:${REQUIRED_NODE_VERSION}:${process.versions.node}`);
+  process.exit(1);
+}
+
 const projectRoot = process.cwd();
 const coverageDirectory = path.join(projectRoot, "coverage");
 const summaryPath = path.join(coverageDirectory, "coverage-summary.json");

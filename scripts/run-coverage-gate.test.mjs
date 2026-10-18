@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
@@ -69,6 +69,20 @@ function inspectSubprocessCalls(source, fileName) {
   visit(sourceFile);
   return calls;
 }
+
+test("Phase 20 gates reject the wrong Node runtime before manifest or test work", () => {
+  const preload = "Object.defineProperty(process.versions, 'node', { value: '0.0.0' });";
+  const started = Date.now();
+  const result = spawnSync(process.execPath, [
+    `--import=data:text/javascript,${encodeURIComponent(preload)}`,
+    "scripts/run-coverage-gate.mjs",
+    "--list-evidence-tests",
+  ], { encoding: "utf8", timeout: 2_000 });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /phase20_node_version_invalid:24\.19\.0:0\.0\.0/u);
+  assert.ok(Date.now() - started < 2_000);
+});
 
 test("evidence manifests match discovery and PR CI executes the active aggregate gates", () => {
   const manifest = JSON.parse(execFileSync(
