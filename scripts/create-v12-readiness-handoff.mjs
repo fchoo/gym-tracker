@@ -92,6 +92,11 @@ function counts(rows) {
   return result;
 }
 
+function sameCanonicalVerdictCounts(actual, expected, label) {
+  keys(actual, VERDICTS, label);
+  return VERDICTS.every(verdict => actual[verdict] === expected[verdict]);
+}
+
 function readiness(verdictCounts, gates, reviewedPolicy) {
   const gatesPass = gates.every(gate => gate.verdict === "PASS");
   if (!gatesPass || verdictCounts.NOT_RUN > 0 || verdictCounts.FAIL > 0 || verdictCounts.REVIEW_REQUIRED > 0 || verdictCounts.N_A_REVIEWED > 0) return "NOT_READY";
@@ -135,8 +140,7 @@ function finalEvidence(value) {
   if (exceptionsByRow.size !== exceptions.length || exceptions.some(item => !rowIds.has(item.row_id))
     || value.rows.some(row => (row.verdict === "ACCEPTED_EXCEPTION") !== exceptionsByRow.has(row.requirement_id))) fail("final evidence exceptions do not match rows.");
   const expectedCounts = counts(value.rows);
-  keys(value.verdict_counts, VERDICTS, "final evidence verdict counts");
-  if (JSON.stringify(value.verdict_counts) !== JSON.stringify(expectedCounts)
+  if (!sameCanonicalVerdictCounts(value.verdict_counts, expectedCounts, "final evidence verdict counts")
     || value.accepted_exception_count !== expectedCounts.ACCEPTED_EXCEPTION) fail("final evidence verdict counts are malformed.");
   const reviewedPolicy = policy(value.policy, expectedCounts.ACCEPTED_EXCEPTION > 0);
   if (value.readiness !== readiness(expectedCounts, value.gates, reviewedPolicy)) fail("final evidence readiness is malformed.");
@@ -177,7 +181,7 @@ export function validateV12ReadinessHandoff(handoff, { final_evidence: expectedF
   if (handoff.rollback.status === "NOT_VERIFIED") fail("final handoff requires verified rollback evidence.");
   if (expectedFinalEvidence !== undefined && JSON.stringify(evidence) !== JSON.stringify(finalEvidence(expectedFinalEvidence))) fail("handoff final evidence does not match retained evidence.");
   if (handoff.run_id !== evidence.run_id || JSON.stringify(handoff.identity) !== JSON.stringify(evidence.identity)
-    || JSON.stringify(handoff.verdict_counts) !== JSON.stringify(evidence.verdict_counts)
+    || !sameCanonicalVerdictCounts(handoff.verdict_counts, evidence.verdict_counts, "handoff verdict counts")
     || JSON.stringify(handoff.exceptions) !== JSON.stringify(evidence.exceptions)
     || JSON.stringify(handoff.gates) !== JSON.stringify(evidence.gates)
     || JSON.stringify(handoff.policy) !== JSON.stringify(evidence.policy)

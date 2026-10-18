@@ -117,6 +117,27 @@ test("conditional readiness keeps every verdict and exception separate while rel
   assert.doesNotThrow(() => validateV12ReadinessHandoff(handoff));
 });
 
+test("verdict counts are validated by key and value independently of insertion order", () => {
+  const evidence = finalEvidence();
+  const adversarialVerdictCounts = {
+    N_A_REVIEWED: 0,
+    REVIEW_REQUIRED: 0,
+    FAIL: 0,
+    NOT_RUN: 0,
+    ACCEPTED_EXCEPTION: 1,
+    PASS: 171,
+  };
+  const handoff = buildV12ReadinessHandoff({
+    final_evidence: { ...evidence, verdict_counts: adversarialVerdictCounts },
+    reviewed_policy: reviewedPolicy,
+    rollback,
+    generated_at: "2026-10-14T01:00:00.000Z",
+  });
+
+  assert.deepEqual(handoff.verdict_counts, adversarialVerdictCounts);
+  assert.doesNotThrow(() => validateV12ReadinessHandoff(handoff));
+});
+
 test("missing gates, unreviewed exceptions, and other non-PASS verdicts prevent conditional readiness", () => {
   assert.throws(
     () => buildV12ReadinessHandoff({
