@@ -299,12 +299,14 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
     ...(nativeExecutionOrigin === undefined ? {} : { execution_origin: nativeExecutionOrigin }) })}\n`;
   if (Buffer.byteLength(request) > V12_NATIVE_MAX_REQUEST_BYTES) fail("request_too_large");
   const supervisedTimeoutMs = V12_NATIVE_ACTION_TIMEOUT_MS[action] - V12_NATIVE_ADAPTER_EXIT_MARGIN_MS;
+  const targetEnvironment = { ...environment };
+  if (target.testOnly) delete targetEnvironment.NODE_V8_COVERAGE;
   const result = spawnSync(process.execPath, [ADAPTER, "--supervise", String(supervisedTimeoutMs), target.executable,
     ...target.args, "--action", action], {
     cwd: root,
     input: request,
     encoding: "utf8",
-    env: environment,
+    env: targetEnvironment,
     timeout: V12_NATIVE_ACTION_TIMEOUT_MS[action],
     killSignal: "SIGKILL",
     maxBuffer: V12_NATIVE_MAX_RESPONSE_BYTES,
