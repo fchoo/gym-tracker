@@ -400,6 +400,11 @@ import {
   type Phase20QualityWorkloadProof,
 } from "../testing/phase20QualityWorkload";
 import {
+  executeV12NativeAcceptanceReadAction,
+  type V12NativeAcceptanceReadbacks,
+  type V12NativeAcceptanceRequest,
+} from "../testing/v12NativeAcceptanceExecutor";
+import {
   createPhase17FixtureProtocol,
   type Phase17Fixture,
   type Phase17SourceProbe,
@@ -757,6 +762,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   garminImport: GarminImportApplicationPort;
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase20QualitySourceProof(): Promise<Phase20QualityWorkloadProof>;
+  executeV12NativeAcceptanceCase(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
   triggerPhase20ProgressRebuild(): Promise<void>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
@@ -5244,6 +5250,20 @@ export function WorkoutAppRuntimeProvider({
         kernel: requireServices().kernel,
         sha256: (value) =>
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
+    executeV12NativeAcceptanceCase: (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        return Promise.reject(new Error("v12_native_acceptance_executor_unavailable"));
+      }
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      return executeV12NativeAcceptanceReadAction({
+        kernel: requireServices().kernel,
+        request,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
     },
     triggerPhase20ProgressRebuild: async () => {

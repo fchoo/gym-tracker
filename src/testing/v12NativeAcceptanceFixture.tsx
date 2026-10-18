@@ -1,6 +1,8 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { useWorkoutAppRuntime } from "../bootstrap/workoutAppRuntime";
+
 import {
   MULTI_PLAN_RUNNING_CONTRACT_CASES,
 } from "./contracts/multiPlanRunning.contract";
@@ -11,10 +13,14 @@ import {
   PHASE17_CASE_ACTION_CONTRACTS,
   PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS,
 } from "./contracts/phase17LibraryRunning.contract";
+import {
+  authorityTablesForV12NativeAcceptance,
+  type V12NativeAcceptanceReadbacks,
+  type V12NativeAcceptanceRequest,
+  type V12NativeAcceptanceShard as NativeAcceptanceShard,
+} from "./v12NativeAcceptanceExecutor";
 
 export const V12_NATIVE_ACCEPTANCE_FIXTURE_ID = "v12-synthetic-fixtures-r18";
-
-type NativeAcceptanceShard = "multi-plan" | "workout" | "library-running";
 
 type NativeAcceptanceIdentity = Readonly<{
   packageName?: unknown;
@@ -35,25 +41,17 @@ type NativeAcceptanceCase = Readonly<{
   requirement: string;
   action: string;
   readback: string;
+  sourceProbe: string;
 }>;
 
-export type V12NativeAcceptanceRequest = Readonly<{
-  shard: NativeAcceptanceShard;
-  caseId: string;
-  fixtureId: typeof V12_NATIVE_ACCEPTANCE_FIXTURE_ID;
-  title: string;
-  source: string;
-  requirement: string;
-  action: string;
-  readback: string;
-  nonce: string;
-}>;
+export type { V12NativeAcceptanceRequest } from "./v12NativeAcceptanceExecutor";
 
 const multiPlanCases = MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => Object.freeze({
   id,
   requirement: "Phase 13 source-owned contract",
   action: id.slice("phase13-".length),
   readback: "SQLite-backed contract observation",
+  sourceProbe: `multi-plan-running:${id}`,
 }));
 
 const workoutCases: readonly NativeAcceptanceCase[] = PHASE15_REQUIRED_CASES.map((entry) => {
@@ -67,6 +65,7 @@ const workoutCases: readonly NativeAcceptanceCase[] = PHASE15_REQUIRED_CASES.map
     requirement,
     action: id.slice("workout.".length),
     readback: "Workout source contract observation",
+    sourceProbe: `phase15-workout-ledger:${id}`,
   });
 });
 
@@ -80,6 +79,7 @@ const libraryCases = [
   requirement: sourceProbe,
   action,
   readback: uiReadback,
+  sourceProbe,
 }));
 
 const SHARDS: Readonly<Record<NativeAcceptanceShard, Readonly<{
@@ -133,14 +133,36 @@ export function resolveV12NativeAcceptanceRequest(
     requirement: fixtureCase.requirement,
     action: fixtureCase.action,
     readback: fixtureCase.readback,
+    sourceProbe: fixtureCase.sourceProbe,
+    authorityTables: authorityTablesForV12NativeAcceptance(shard, fixtureCase.id, fixtureCase.sourceProbe),
     nonce,
   });
+}
+
+function receiptLabel(prefix: string, value: object): string {
+  return `${prefix}:${encodeURIComponent(JSON.stringify(value))}`;
+}
+
+function readbacksMatchRequest(
+  request: V12NativeAcceptanceRequest,
+  readbacks: V12NativeAcceptanceReadbacks,
+): boolean {
+  const source = readbacks.source_receipt;
+  const ui = readbacks.ui_readback;
+  return source.shard === request.shard && source.case_id === request.caseId && source.nonce === request.nonce
+    && source.action_id === request.action && source.source_probe === request.sourceProbe
+    && JSON.stringify(source.authority_tables) === JSON.stringify(request.authorityTables)
+    && ui.shard === request.shard && ui.case_id === request.caseId && ui.nonce === request.nonce
+    && ui.declared_action === request.action && ui.declared_readback === request.readback
+    && ui.source_receipt_sha256 === source.source_receipt_sha256;
 }
 
 export function V12NativeAcceptanceFixture({
   request,
 }: Readonly<{ request: V12NativeAcceptanceRequest }>) {
-  const [executed, setExecuted] = React.useState(false);
+  const runtime = useWorkoutAppRuntime();
+  const [readbacks, setReadbacks] = React.useState<V12NativeAcceptanceReadbacks | null>(null);
+  const [status, setStatus] = React.useState<"idle" | "running" | "failed">("idle");
   React.useEffect(() => {
     console.info(`GYM_TRACKER_V12_NATIVE_ACCEPTANCE_STAGE:${JSON.stringify({
       schema_version: 1,
@@ -167,20 +189,41 @@ export function V12NativeAcceptanceFixture({
         <Pressable
           accessibilityLabel={`Execute ${request.caseId}`}
           accessibilityRole="button"
-          onPress={() => setExecuted(true)}
+          disabled={status === "running" || readbacks !== null}
+          onPress={() => {
+            setStatus("running");
+            void runtime.executeV12NativeAcceptanceCase(request).then((result) => {
+              if (!readbacksMatchRequest(request, result)) throw new Error("v12_native_acceptance_receipt_invalid");
+              setReadbacks(result);
+              setStatus("idle");
+            }).catch(() => {
+              setReadbacks(null);
+              setStatus("failed");
+            });
+          }}
           testID="native-acceptance-execute"
         >
           <Text>Execute case</Text>
         </Pressable>
-        {executed ? (
-          <Text
-            accessibilityLabel={`Case verified ${request.caseId} ${request.nonce}`}
-            accessibilityLiveRegion="polite"
-            testID="native-acceptance-readback"
-          >
-            Case verified
-          </Text>
-        ) : null}
+        {status === "running" ? <Text testID="native-acceptance-running">Executing authoritative read</Text> : null}
+        {status === "failed" ? <Text testID="native-acceptance-error">Case execution failed</Text> : null}
+        {readbacks === null ? null : (
+          <>
+            <Text
+              accessibilityLabel={receiptLabel("V12_SOURCE_RECEIPT", readbacks.source_receipt)}
+              testID="native-acceptance-source-receipt"
+            >
+              Source receipt ready
+            </Text>
+            <Text
+              accessibilityLabel={receiptLabel("V12_UI_READBACK", readbacks.ui_readback)}
+              accessibilityLiveRegion="polite"
+              testID="native-acceptance-readback"
+            >
+              Case verified
+            </Text>
+          </>
+        )}
       </View>
     </ScrollView>
   );

@@ -2,11 +2,19 @@ import { act, fireEvent, render } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
+import type {
+  V12NativeAcceptanceReadbacks,
+  V12NativeAcceptanceRequest,
+} from "../../../src/testing/v12NativeAcceptanceExecutor";
+
 let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;
 let mockNativeContractSuite = "v1.2-acceptance";
 let mockPackageName = "com.fchoo.gymtracker.devtest";
 let mockParams: Record<string, string> = {};
+const mockExecuteV12NativeAcceptanceCase = jest.fn<(
+  request: V12NativeAcceptanceRequest,
+) => Promise<V12NativeAcceptanceReadbacks>>();
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -30,6 +38,13 @@ jest.mock("expo-router", () => {
   };
 });
 
+jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
+  useWorkoutAppRuntime: () => ({
+    launchState: "trusted",
+    executeV12NativeAcceptanceCase: mockExecuteV12NativeAcceptanceCase,
+  }),
+}));
+
 import NativeAcceptanceRoute from "../[shard]";
 
 describe("v1.2 native acceptance route", () => {
@@ -44,6 +59,36 @@ describe("v1.2 native acceptance route", () => {
       fixture: "v12-synthetic-fixtures-r18",
       nonce: "a".repeat(48),
     };
+    mockExecuteV12NativeAcceptanceCase.mockReset();
+    mockExecuteV12NativeAcceptanceCase.mockImplementation(async (request) => ({
+      source_receipt: {
+        schema_version: 1,
+        producer: "v12-native-acceptance-source/v1",
+        authority: "sqlite-domain-read",
+        shard: request.shard,
+        case_id: request.caseId,
+        nonce: request.nonce,
+        action_id: request.action,
+        source_probe: request.sourceProbe,
+        authority_tables: request.authorityTables,
+        pre: { source_sha256: "1".repeat(64), row_count: 1, table_count: 1, schema_version: 42 },
+        action: { source_sha256: "2".repeat(64), row_count: 1, table_count: 1, schema_version: 42 },
+        post: { source_sha256: "3".repeat(64), row_count: 1, table_count: 1, schema_version: 42 },
+        action_request_sha256: "4".repeat(64),
+        source_receipt_sha256: "5".repeat(64),
+      },
+      ui_readback: {
+        schema_version: 1,
+        producer: "v12-native-acceptance-ui-readback/v1",
+        shard: request.shard,
+        case_id: request.caseId,
+        nonce: request.nonce,
+        declared_action: request.action,
+        declared_readback: request.readback,
+        source_receipt_sha256: "5".repeat(64),
+        ui_receipt_sha256: "6".repeat(64),
+      },
+    }) as V12NativeAcceptanceReadbacks);
   });
 
   const validRequests: [string, string, string][] = [
@@ -66,9 +111,23 @@ describe("v1.2 native acceptance route", () => {
     await act(async () => { fireEvent.press(view.getByTestId("native-acceptance-execute")); });
     expect(view.getByTestId("native-acceptance-readback")).toHaveTextContent("Case verified");
     expect(view.getByTestId("native-acceptance-readback")).toHaveProp(
-      "accessibilityLabel", `Case verified ${caseId} ${"a".repeat(48)}`,
+      "accessibilityLabel", expect.stringContaining(`V12_UI_READBACK:`),
+    );
+    expect(mockExecuteV12NativeAcceptanceCase).toHaveBeenCalledWith(expect.objectContaining({ shard, caseId, nonce: "a".repeat(48) }));
+    expect(view.getByTestId("native-acceptance-source-receipt")).toHaveProp(
+      "accessibilityLabel", expect.stringContaining("V12_SOURCE_RECEIPT:"),
     );
     expect(view.queryByTestId("native-acceptance-disabled")).not.toBeOnTheScreen();
+  });
+
+  it("does not expose a success label when the runtime rejects or substitutes the case receipt", async () => {
+    mockExecuteV12NativeAcceptanceCase.mockRejectedValueOnce(new Error("v12_native_acceptance_receipt_invalid"));
+    const view = await render(<NativeAcceptanceRoute />);
+
+    await act(async () => { fireEvent.press(view.getByTestId("native-acceptance-execute")); });
+
+    expect(view.queryByTestId("native-acceptance-readback")).not.toBeOnTheScreen();
+    expect(view.getByTestId("native-acceptance-error")).toHaveTextContent("Case execution failed");
   });
 
   const invalidRequests: readonly (readonly [string, Readonly<Partial<{

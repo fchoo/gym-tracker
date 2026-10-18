@@ -33,6 +33,7 @@ import {
   verifyV12RollbackEvidence,
 } from "./v12-rollback-evidence.mjs";
 import {
+  createV12AppFunctionalReadbacks,
   createV12DirectMaestroToolAttestation,
   createV12FunctionalExecutionReceipt,
   readV12DirectMaestroDeviceMeasurement,
@@ -1913,6 +1914,18 @@ test("production-shaped retained evidence completes preseal and final readiness"
       });
       mapping.observations = mapping.observations.map((observation) => {
         const priorReceipt = observation.execution_receipt;
+        const appReadbacks = createV12AppFunctionalReadbacks({
+          shard,
+          caseId: observation.case_id,
+          nonce: priorReceipt.nonce,
+          actionId: priorReceipt.source_receipt.action_id,
+          sourceProbe: priorReceipt.source_receipt.source_probe,
+          declaredReadback: priorReceipt.ui_readback.declared_readback,
+          authorityTables: priorReceipt.source_receipt.authority_tables,
+          pre: priorReceipt.source_receipt.pre,
+          action: priorReceipt.source_receipt.action,
+          post: priorReceipt.source_receipt.post,
+        });
         return {
           ...observation,
           device_measurement: {
@@ -1931,11 +1944,13 @@ test("production-shaped retained evidence completes preseal and final readiness"
               device_identity_sha256: build.device.identity_sha256,
               configuration_id: build.configuration.id,
             },
+            sourceReceipt: appReadbacks.source_receipt,
+            uiReadback: appReadbacks.ui_readback,
             pre: { source_sha256: priorReceipt.phases[0].source_sha256 },
             action: { report_sha256: observation.report_sha256 },
             post: {
               source_sha256: priorReceipt.phases[2].source_sha256,
-              ui_sha256: priorReceipt.phases[2].ui_sha256,
+              ui_sha256: appReadbacks.ui_readback.ui_receipt_sha256,
             },
           }),
         };

@@ -190,7 +190,106 @@ function commandRunner(dependencies, signal) {
     timeoutMs: options.timeoutMs, maxBuffer: options.maxBuffer });
 }
 
-export function createV12FunctionalExecutionReceipt({ nonce, runId, shard, caseId, identity, pre, action, post }) {
+const APP_SOURCE_RECEIPT_KEYS = Object.freeze(["schema_version", "producer", "authority", "shard", "case_id", "nonce", "action_id", "source_probe", "authority_tables", "pre", "action", "post", "action_request_sha256", "source_receipt_sha256"]);
+const APP_UI_READBACK_KEYS = Object.freeze(["schema_version", "producer", "shard", "case_id", "nonce", "declared_action", "declared_readback", "source_receipt_sha256", "ui_receipt_sha256"]);
+const APP_SOURCE_STATE_KEYS = Object.freeze(["source_sha256", "row_count", "table_count", "schema_version"]);
+
+export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId, sourceProbe, declaredReadback = sourceProbe, authorityTables, pre, action, post }) {
+  const actionRequest = {
+    schema_version: 1,
+    producer: "v12-native-acceptance-action-request/v1",
+    shard,
+    case_id: caseId,
+    nonce,
+    action_id: actionId,
+    source_probe: sourceProbe,
+    authority_tables: authorityTables,
+  };
+  const sourceUnsigned = {
+    schema_version: 1,
+    producer: "v12-native-acceptance-source/v1",
+    authority: "sqlite-domain-read",
+    shard,
+    case_id: caseId,
+    nonce,
+    action_id: actionId,
+    source_probe: sourceProbe,
+    authority_tables: Object.freeze([...authorityTables]),
+    pre: Object.freeze({ ...pre }),
+    action: Object.freeze({ ...action }),
+    post: Object.freeze({ ...post }),
+    action_request_sha256: sha256(JSON.stringify(actionRequest)),
+  };
+  const sourceReceipt = Object.freeze({ ...sourceUnsigned, source_receipt_sha256: sha256(JSON.stringify(sourceUnsigned)) });
+  const uiUnsigned = {
+    schema_version: 1,
+    producer: "v12-native-acceptance-ui-readback/v1",
+    shard,
+    case_id: caseId,
+    nonce,
+    declared_action: actionId,
+    declared_readback: declaredReadback,
+    source_receipt_sha256: sourceReceipt.source_receipt_sha256,
+  };
+  const uiReadback = Object.freeze({ ...uiUnsigned, ui_receipt_sha256: sha256(JSON.stringify(uiUnsigned)) });
+  return Object.freeze({ source_receipt: sourceReceipt, ui_readback: uiReadback });
+}
+
+function validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, shard, caseId, nonce }) {
+  if (!exactKeys(sourceReceipt, APP_SOURCE_RECEIPT_KEYS)
+    || sourceReceipt.schema_version !== 1 || sourceReceipt.producer !== "v12-native-acceptance-source/v1"
+    || sourceReceipt.authority !== "sqlite-domain-read" || sourceReceipt.shard !== shard
+    || sourceReceipt.case_id !== caseId || sourceReceipt.nonce !== nonce || !FUNCTIONAL_NONCE.test(sourceReceipt.nonce ?? "")
+    || typeof sourceReceipt.action_id !== "string" || sourceReceipt.action_id.length === 0
+    || typeof sourceReceipt.source_probe !== "string" || sourceReceipt.source_probe.length === 0
+    || !Array.isArray(sourceReceipt.authority_tables) || sourceReceipt.authority_tables.length === 0
+    || new Set(sourceReceipt.authority_tables).size !== sourceReceipt.authority_tables.length
+    || sourceReceipt.authority_tables.some((table) => !/^[a-z][a-z0-9_]{1,80}$/u.test(table))) genericFail("source_readback_invalid");
+  for (const state of [sourceReceipt.pre, sourceReceipt.action, sourceReceipt.post]) {
+    if (!exactKeys(state, APP_SOURCE_STATE_KEYS) || !SHA256.test(state.source_sha256 ?? "")
+      || !Number.isSafeInteger(state.row_count) || state.row_count < 0
+      || !Number.isSafeInteger(state.table_count) || state.table_count !== sourceReceipt.authority_tables.length
+      || !Number.isSafeInteger(state.schema_version) || state.schema_version < 1) genericFail("source_readback_invalid");
+  }
+  if (sourceReceipt.pre.source_sha256 !== sourceReceipt.action.source_sha256
+    || sourceReceipt.pre.source_sha256 !== sourceReceipt.post.source_sha256) genericFail("source_readback_invalid");
+  const actionRequest = {
+    schema_version: 1, producer: "v12-native-acceptance-action-request/v1", shard, case_id: caseId, nonce,
+    action_id: sourceReceipt.action_id, source_probe: sourceReceipt.source_probe, authority_tables: sourceReceipt.authority_tables,
+  };
+  const { source_receipt_sha256: sourceReceiptSha256, ...sourceUnsigned } = sourceReceipt;
+  if (!SHA256.test(sourceReceipt.action_request_sha256 ?? "")
+    || sourceReceipt.action_request_sha256 !== sha256(JSON.stringify(actionRequest))
+    || !SHA256.test(sourceReceiptSha256 ?? "") || sourceReceiptSha256 !== sha256(JSON.stringify(sourceUnsigned))) genericFail("source_readback_invalid");
+  if (!exactKeys(uiReadback, APP_UI_READBACK_KEYS)
+    || uiReadback.schema_version !== 1 || uiReadback.producer !== "v12-native-acceptance-ui-readback/v1"
+    || uiReadback.shard !== shard || uiReadback.case_id !== caseId || uiReadback.nonce !== nonce
+    || uiReadback.declared_action !== sourceReceipt.action_id || typeof uiReadback.declared_readback !== "string" || uiReadback.declared_readback.length === 0
+    || uiReadback.source_receipt_sha256 !== sourceReceiptSha256) genericFail("ui_readback_invalid");
+  const { ui_receipt_sha256: uiReceiptSha256, ...uiUnsigned } = uiReadback;
+  if (!SHA256.test(uiReceiptSha256 ?? "") || uiReceiptSha256 !== sha256(JSON.stringify(uiUnsigned))) genericFail("ui_readback_invalid");
+  return true;
+}
+
+function readV12HierarchyReceipt(hierarchy, marker, code) {
+  if (typeof hierarchy !== "string" || !hierarchy.includes("<hierarchy")
+    || /(?:password="true"|(?:text|content-desc)="[^"]*(?:@|bearer|password|credential|latitude|longitude|gps))/iu.test(hierarchy)) genericFail(code);
+  const matches = [...hierarchy.matchAll(new RegExp(`(?:content-desc|text)="${marker}:([^"]+)"`, "gu"))];
+  if (matches.length !== 1) genericFail(code);
+  try { return JSON.parse(decodeURIComponent(matches[0][1])); }
+  catch { genericFail(code); }
+}
+
+export function validateV12FunctionalCaseReadbacks({ hierarchy, report, shard, caseId, nonce }) {
+  if (typeof report !== "string" || !report.includes("<testsuite") || /<(?:failure|error|skipped)\b/iu.test(report)) genericFail("junit_readback_invalid");
+  const sourceReceipt = readV12HierarchyReceipt(hierarchy, "V12_SOURCE_RECEIPT", "source_readback_invalid");
+  const uiReadback = readV12HierarchyReceipt(hierarchy, "V12_UI_READBACK", "ui_readback_invalid");
+  validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, shard, caseId, nonce });
+  return Object.freeze({ source_receipt: sourceReceipt, ui_readback: uiReadback });
+}
+
+export function createV12FunctionalExecutionReceipt({ nonce, runId, shard, caseId, identity, sourceReceipt, uiReadback, pre, action, post }) {
+  validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, shard, caseId, nonce });
   const receipt = {
     schema_version: 1,
     producer: "v12-functional-execution-receipt/v1",
@@ -199,6 +298,8 @@ export function createV12FunctionalExecutionReceipt({ nonce, runId, shard, caseI
     shard,
     case_id: caseId,
     identity: Object.freeze({ ...identity }),
+    source_receipt: sourceReceipt,
+    ui_readback: uiReadback,
     phases: Object.freeze([
       Object.freeze({ phase: "pre", nonce, authority: "authoritative-sqlite", source_sha256: pre?.source_sha256 }),
       Object.freeze({ phase: "action", nonce, authority: "executable-maestro", report_sha256: action?.report_sha256 }),
@@ -217,11 +318,12 @@ export function validateV12FunctionalExecutionReceipt(receipt, { runId, shard, c
     device_identity_sha256: manifest?.device?.identity_sha256,
     configuration_id: manifest?.configuration?.id,
   };
-  if (!exactKeys(receipt, ["schema_version", "producer", "nonce", "run_id", "shard", "case_id", "identity", "phases", "receipt_sha256"])
+  if (!exactKeys(receipt, ["schema_version", "producer", "nonce", "run_id", "shard", "case_id", "identity", "source_receipt", "ui_readback", "phases", "receipt_sha256"])
     || receipt.schema_version !== 1 || receipt.producer !== "v12-functional-execution-receipt/v1"
     || !FUNCTIONAL_NONCE.test(receipt.nonce ?? "") || receipt.run_id !== runId || receipt.shard !== shard || receipt.case_id !== caseId
     || !exactKeys(receipt.identity, identityKeys) || JSON.stringify(receipt.identity) !== JSON.stringify(expectedIdentity)
     || !Array.isArray(receipt.phases) || receipt.phases.length !== FUNCTIONAL_RECEIPT_PHASES.length) genericFail("execution_receipt_invalid");
+  validateV12AppFunctionalReadbackObjects({ sourceReceipt: receipt.source_receipt, uiReadback: receipt.ui_readback, shard, caseId, nonce: receipt.nonce });
   const expectedPhaseKeys = [
     ["phase", "nonce", "authority", "source_sha256"],
     ["phase", "nonce", "authority", "report_sha256"],
@@ -233,6 +335,9 @@ export function validateV12FunctionalExecutionReceipt(receipt, { runId, shard, c
       || phase.nonce !== receipt.nonce || phase.authority !== authorities[index]
       || Object.entries(phase).filter(([key]) => key.endsWith("_sha256")).some(([, value]) => !SHA256.test(value))) genericFail("execution_receipt_invalid");
   }
+  if (receipt.phases[0].source_sha256 !== receipt.source_receipt.pre.source_sha256
+    || receipt.phases[2].source_sha256 !== receipt.source_receipt.post.source_sha256
+    || receipt.phases[2].ui_sha256 !== receipt.ui_readback.ui_receipt_sha256) genericFail("execution_receipt_invalid");
   const { receipt_sha256: receiptSha256, ...unsigned } = receipt;
   if (!SHA256.test(receiptSha256 ?? "") || receiptSha256 !== sha256(JSON.stringify(unsigned))) genericFail("execution_receipt_invalid");
   return true;
@@ -241,6 +346,7 @@ export function validateV12FunctionalExecutionReceipt(receipt, { runId, shard, c
 export function validateV12FunctionalMaestroFlow(flow) {
   if (typeof flow !== "string" || !flow.includes("V12_EVIDENCE_NONCE")
     || !/tapOn:\s*\{\s*id:\s*["']native-acceptance-execute["']\s*\}/u.test(flow)
+    || !/assertVisible:\s*\{\s*id:\s*["']native-acceptance-source-receipt["']\s*\}/u.test(flow)
     || !/assertVisible:\s*\{\s*id:\s*["']native-acceptance-readback["']\s*\}/u.test(flow)) genericFail("functional_flow_not_executable");
   return true;
 }
@@ -433,23 +539,6 @@ async function directMaestroUiReadback(adb, nonce) {
   if (typeof value !== "string" || !value.includes("<hierarchy")
     || /(?:password="true"|(?:text|content-desc)="[^"]*(?:@|bearer|password|credential|latitude|longitude|gps))/iu.test(value)) genericFail("ui_readback_invalid");
   return value;
-}
-
-async function directMaestroSourceProof(adb, packageName, nonce, phase) {
-  const remote = `/sdcard/v12-functional-source-${nonce}-${phase}.xml`;
-  await adb("shell", "am", "force-stop", packageName);
-  await adb("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
-    "gymtracker-devtest://__phase14-source-state-proof", "-p", packageName);
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    await adb("shell", "uiautomator", "dump", remote);
-    const output = await adb("exec-out", "cat", remote);
-    const match = output.match(/PHASE14_SOURCE_STATE_PROOF digest_sha256=([a-f0-9]{64}) table_count=(\d+) row_count=(\d+) schema_version=(\d+)/u);
-    if (match !== null) return Object.freeze({
-      digest_sha256: match[1], table_count: Number(match[2]), row_count: Number(match[3]), schema_version: Number(match[4]),
-    });
-    if (attempt < 39) await adb("shell", "sleep", "0.25");
-  }
-  genericFail("source_readback_invalid");
 }
 
 async function measureDirectMaestroDeviceAsync(adb, serial, manifest) {
@@ -755,11 +844,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       const before = await measureDirectMaestroDeviceAsync(adb, serial, manifest);
       assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, before.measurement);
       const nonce = randomBytes(24).toString("hex");
-      const captureSourceProof = dependencies.captureSourceProof ?? ((input) => directMaestroSourceProof(input.adb, input.manifest.build.package, input.nonce, input.phase));
       const captureUiReadback = dependencies.captureUiReadback ?? ((input) => directMaestroUiReadback(input.adb, input.nonce));
-      const sourceBefore = tools.test_only && dependencies.captureSourceProof === undefined
-        ? { digest_sha256: sha256(`test-source:${caseId}:pre`) }
-        : await captureSourceProof({ adb, manifest, nonce, phase: "pre", caseId });
       let after;
       let flowError;
       try {
@@ -777,14 +862,18 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       if (flowError !== undefined) throw flowError;
       if (!existsSync(temporary)) genericFail("report_missing");
       const report = readFileSync(temporary, "utf8");
-      const uiReadback = tools.test_only && dependencies.captureUiReadback === undefined
-        ? `<hierarchy case="${caseId}" nonce="${nonce}"/>`
-        : await captureUiReadback({ adb, manifest, nonce, caseId });
-      const sourceAfter = tools.test_only && dependencies.captureSourceProof === undefined
-        ? { digest_sha256: sha256(`test-source:${caseId}:post`) }
-        : await captureSourceProof({ adb, manifest, nonce, phase: "post", caseId });
-      if (!SHA256.test(sourceBefore?.digest_sha256 ?? "") || !SHA256.test(sourceAfter?.digest_sha256 ?? "")
-        || typeof uiReadback !== "string" || uiReadback.length === 0) genericFail("execution_receipt_invalid");
+      let uiHierarchy;
+      if (tools.test_only && dependencies.captureUiReadback === undefined) {
+        const state = { source_sha256: sha256(`test-source:${caseId}`), row_count: 0, table_count: 1, schema_version: 42 };
+        const appReadbacks = createV12AppFunctionalReadbacks({
+          shard, caseId, nonce, actionId: `test-read:${caseId}`, sourceProbe: `test-source:${caseId}`,
+          authorityTables: ["app_settings"], pre: state, action: state, post: state,
+        });
+        uiHierarchy = `<hierarchy><node content-desc="V12_SOURCE_RECEIPT:${encodeURIComponent(JSON.stringify(appReadbacks.source_receipt))}"/><node content-desc="V12_UI_READBACK:${encodeURIComponent(JSON.stringify(appReadbacks.ui_readback))}"/></hierarchy>`;
+      } else {
+        uiHierarchy = await captureUiReadback({ adb, manifest, nonce, caseId });
+      }
+      const appReadbacks = validateV12FunctionalCaseReadbacks({ hierarchy: uiHierarchy, report, shard, caseId, nonce });
       const executionReceipt = createV12FunctionalExecutionReceipt({
         nonce, runId, shard, caseId,
         identity: {
@@ -794,9 +883,11 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
           device_identity_sha256: manifest.device.identity_sha256,
           configuration_id: manifest.configuration.id,
         },
-        pre: { source_sha256: sourceBefore.digest_sha256 },
+        sourceReceipt: appReadbacks.source_receipt,
+        uiReadback: appReadbacks.ui_readback,
+        pre: { source_sha256: appReadbacks.source_receipt.pre.source_sha256 },
         action: { report_sha256: sha256(report) },
-        post: { source_sha256: sourceAfter.digest_sha256, ui_sha256: sha256(uiReadback) },
+        post: { source_sha256: appReadbacks.source_receipt.post.source_sha256, ui_sha256: appReadbacks.ui_readback.ui_receipt_sha256 },
       });
       reports.push(report);
       observations.push(Object.freeze({

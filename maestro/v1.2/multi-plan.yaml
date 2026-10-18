@@ -12,5 +12,6 @@ tags: [v1.2, phase-20, source-owned, synthetic-fixture]
 - assertVisible: "${V12_CASE_ID}"
 - tapOn: { id: "native-acceptance-execute" }
 - extendedWaitUntil: { visible: "Case verified", timeout: 30000 }
+- assertVisible: { id: "native-acceptance-source-receipt" }
 - assertVisible: { id: "native-acceptance-readback" }
 - takeScreenshot: "v12-${V12_CASE_ID}-${V12_CONFIG_ID}"

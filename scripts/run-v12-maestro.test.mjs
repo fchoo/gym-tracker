@@ -7,12 +7,14 @@ import test from "node:test";
 
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
+  createV12AppFunctionalReadbacks,
   createV12FunctionalExecutionReceipt,
   executeLiveV12RecoveryMaestro,
   executeLiveV12GenericMaestro,
   runV12BoundedProcess,
   runV12MaestroCli,
   validateV12DirectMaestroMapping,
+  validateV12FunctionalCaseReadbacks,
   validateV12FunctionalExecutionReceipt,
 } from "./run-v12-maestro.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
@@ -109,6 +111,8 @@ function fixture(t, shard) {
   for (const tool of Object.values(tools).filter((value) => typeof value === "string" && path.isAbsolute(value))) writeFileSync(tool, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   const calls = [];
   const maestroCaseIds = [];
+  let activeCaseId = "";
+  let activeNonce = "";
   const execute = (program, args) => {
     calls.push(program);
     assert.equal(path.isAbsolute(program), true);
@@ -118,6 +122,8 @@ function fixture(t, shard) {
     if (path.basename(program) === "maestro") {
       const output = args[args.indexOf("--output") + 1];
       const caseId = args.find((value) => value.startsWith("V12_CASE_ID=")).slice("V12_CASE_ID=".length);
+      activeCaseId = caseId;
+      activeNonce = args.find((value) => value.startsWith("V12_EVIDENCE_NONCE=")).slice("V12_EVIDENCE_NONCE=".length);
       maestroCaseIds.push(caseId);
       writeFileSync(output, `<testsuite><testcase name="${caseId}"/></testsuite>\n`);
       return "";
@@ -140,7 +146,11 @@ function fixture(t, shard) {
         return `<hierarchy text="PHASE14_SOURCE_STATE_PROOF digest_sha256=${hash("source-state")} table_count=27 row_count=0 schema_version=27"/>`;
       }
       if (command[0] === "exec-out" && command[1] === "cat" && command[2]?.includes("functional-ui")) {
-        return '<hierarchy><node text="Case verified" resource-id="native-acceptance-readback"/></hierarchy>';
+        const state = { source_sha256: hash(`source:${activeCaseId}`), row_count: 0, table_count: 1, schema_version: 42 };
+        const readbacks = createV12AppFunctionalReadbacks({ shard, caseId: activeCaseId, nonce: activeNonce,
+          actionId: `read:${activeCaseId}`, sourceProbe: `source:${activeCaseId}`, authorityTables: ["app_settings"],
+          pre: state, action: state, post: state });
+        return `<hierarchy><node content-desc="V12_SOURCE_RECEIPT:${encodeURIComponent(JSON.stringify(readbacks.source_receipt))}"/><node content-desc="V12_UI_READBACK:${encodeURIComponent(JSON.stringify(readbacks.ui_readback))}"/></hierarchy>`;
       }
     }
     return "";
@@ -199,6 +209,14 @@ test("alternate Recovery Maestro supplies canonical step and nonce variables thr
 
 test("functional receipt binds nonce, run, source, APK, device, and pre/action/post readbacks", () => {
   const build = manifest();
+  const readbacks = createV12AppFunctionalReadbacks({
+    shard: "workout", caseId: "workout.root-identity", nonce: "f".repeat(48),
+    actionId: "root-identity", sourceProbe: "workout source contract observation",
+    authorityTables: ["plans", "workout_sessions"],
+    pre: { source_sha256: hash("sqlite-state"), row_count: 2, table_count: 2, schema_version: 42 },
+    action: { source_sha256: hash("sqlite-state"), row_count: 2, table_count: 2, schema_version: 42 },
+    post: { source_sha256: hash("sqlite-state"), row_count: 2, table_count: 2, schema_version: 42 },
+  });
   const receipt = createV12FunctionalExecutionReceipt({
     nonce: "f".repeat(48), runId, shard: "workout", caseId: "workout.root-identity",
     identity: {
@@ -208,9 +226,11 @@ test("functional receipt binds nonce, run, source, APK, device, and pre/action/p
       device_identity_sha256: build.device.identity_sha256,
       configuration_id: build.configuration.id,
     },
-    pre: { source_sha256: hash("sqlite-before") },
+    sourceReceipt: readbacks.source_receipt,
+    uiReadback: readbacks.ui_readback,
+    pre: { source_sha256: readbacks.source_receipt.pre.source_sha256 },
     action: { report_sha256: hash("maestro-action") },
-    post: { source_sha256: hash("sqlite-after"), ui_sha256: hash("ui-readback") },
+    post: { source_sha256: readbacks.source_receipt.post.source_sha256, ui_sha256: readbacks.ui_readback.ui_receipt_sha256 },
   });
   assert.equal(validateV12FunctionalExecutionReceipt(receipt, {
     runId, shard: "workout", caseId: "workout.root-identity", manifest: build,
@@ -227,7 +247,35 @@ test("functional receipt binds nonce, run, source, APK, device, and pre/action/p
     const changed = structuredClone(receipt); mutate(changed);
     assert.throws(() => validateV12FunctionalExecutionReceipt(changed, {
       runId, shard: "workout", caseId: "workout.root-identity", manifest: build,
-    }), /v12_maestro_execution_receipt_invalid/u);
+    }), /v12_maestro_(?:execution_receipt|source_readback|ui_readback)_invalid/u);
+  }
+});
+
+test("functional case readbacks reject synthetic hierarchy, wrong case, wrong nonce, and unrelated digests", () => {
+  const nonce = "d".repeat(48);
+  const readbacks = createV12AppFunctionalReadbacks({
+    shard: "library-running", caseId: "library.metric-profile-migration", nonce,
+    actionId: "migrate-custom-exercise-metric-profile", sourceProbe: "metric_profile_migration_events",
+    authorityTables: ["metric_profile_migration_events"],
+    pre: { source_sha256: hash("state"), row_count: 1, table_count: 1, schema_version: 42 },
+    action: { source_sha256: hash("state"), row_count: 1, table_count: 1, schema_version: 42 },
+    post: { source_sha256: hash("state"), row_count: 1, table_count: 1, schema_version: 42 },
+  });
+  const hierarchy = `<hierarchy><node content-desc="V12_SOURCE_RECEIPT:${encodeURIComponent(JSON.stringify(readbacks.source_receipt))}"/><node content-desc="V12_UI_READBACK:${encodeURIComponent(JSON.stringify(readbacks.ui_readback))}"/></hierarchy>`;
+  const report = `<testsuite><testcase name="library.metric-profile-migration"/></testsuite>`;
+  assert.deepEqual(validateV12FunctionalCaseReadbacks({ hierarchy, report, shard: "library-running", caseId: "library.metric-profile-migration", nonce }), readbacks);
+  for (const [name, changedHierarchy, changedReport, changedCase, changedNonce] of [
+    ["synthetic toggle", '<hierarchy><node content-desc="Case verified"/></hierarchy>', report, "library.metric-profile-migration", nonce],
+    ["arbitrary hierarchy", `<hierarchy digest_sha256="${hash("unrelated")}"/>`, report, "library.metric-profile-migration", nonce],
+    ["label-only JUnit", "<hierarchy/>", report, "library.metric-profile-migration", nonce],
+    ["wrong case", hierarchy, report, "library.custom-exercise", nonce],
+    ["wrong nonce", hierarchy, report, "library.metric-profile-migration", "e".repeat(48)],
+  ]) {
+    assert.throws(
+      () => validateV12FunctionalCaseReadbacks({ hierarchy: changedHierarchy, report: changedReport, shard: "library-running", caseId: changedCase, nonce: changedNonce }),
+      /v12_maestro_(?:source|ui|junit)_readback_invalid/u,
+      name,
+    );
   }
 });
 
@@ -359,15 +407,30 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
       root: value.root, manifest: value.build, shard, allowTest: true,
     }), /v12_maestro_observation_mapping_invalid/u);
     const duplicateNonce = structuredClone(mapping);
+    const prior = duplicateNonce.observations[1].execution_receipt;
+    const duplicateReadbacks = createV12AppFunctionalReadbacks({
+      shard,
+      caseId: duplicateNonce.observations[1].case_id,
+      nonce: duplicateNonce.observations[0].execution_receipt.nonce,
+      actionId: prior.source_receipt.action_id,
+      sourceProbe: prior.source_receipt.source_probe,
+      declaredReadback: prior.ui_readback.declared_readback,
+      authorityTables: prior.source_receipt.authority_tables,
+      pre: prior.source_receipt.pre,
+      action: prior.source_receipt.action,
+      post: prior.source_receipt.post,
+    });
     duplicateNonce.observations[1].execution_receipt = createV12FunctionalExecutionReceipt({
       nonce: duplicateNonce.observations[0].execution_receipt.nonce, runId, shard,
       caseId: duplicateNonce.observations[1].case_id,
       identity: duplicateNonce.observations[1].execution_receipt.identity,
+      sourceReceipt: duplicateReadbacks.source_receipt,
+      uiReadback: duplicateReadbacks.ui_readback,
       pre: { source_sha256: duplicateNonce.observations[1].execution_receipt.phases[0].source_sha256 },
       action: { report_sha256: duplicateNonce.observations[1].report_sha256 },
       post: {
         source_sha256: duplicateNonce.observations[1].execution_receipt.phases[2].source_sha256,
-        ui_sha256: duplicateNonce.observations[1].execution_receipt.phases[2].ui_sha256,
+        ui_sha256: duplicateReadbacks.ui_readback.ui_receipt_sha256,
       },
     });
     assert.throws(() => validateV12DirectMaestroMapping(duplicateNonce, {
