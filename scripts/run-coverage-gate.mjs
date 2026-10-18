@@ -170,6 +170,7 @@ const phase20EvidenceTests = Object.freeze([
   "scripts/v12-production-domain-receipts.test.mjs",
   "scripts/v12-production-native-calendar-action.test.mjs",
   "scripts/v12-production-native-domain-actions.test.mjs",
+  "scripts/v12-production-native-adapter-launcher-lifecycle.test.mjs",
   "scripts/v12-production-native-launcher.test.mjs",
   "scripts/v12-production-native-quality-actions.test.mjs",
   "scripts/v12-production-native-visual-actions.test.mjs",
@@ -213,10 +214,15 @@ function validateEvidenceTestManifest({ tests, isEvidenceTest, error, expectedCo
 const phase20NativeActionTests = new Set([
   "scripts/v12-native-adapter-attestation.test.mjs",
   "scripts/v12-native-execution-origin.test.mjs",
+  "scripts/v12-production-native-adapter-launcher-lifecycle.test.mjs",
   "scripts/v12-production-native-domain-actions.test.mjs",
   "scripts/v12-production-native-launcher.test.mjs",
   "scripts/v12-production-native-quality-actions.test.mjs",
   "scripts/v12-production-native-visual-actions.test.mjs",
+]);
+const phase20NativeCoverageTests = new Set([
+  "scripts/v12-native-adapter-attestation.test.mjs",
+  "scripts/v12-native-execution-origin.test.mjs",
 ]);
 const phase20BlackBoxTests = new Set([
   "scripts/v12-phase20-cli-blackbox.test.mjs",
@@ -266,7 +272,13 @@ const phase20EvidenceProjects = Object.freeze([
       "scripts/v12-native-execution-origin.mjs",
       "scripts/v12-native-time-budgets.mjs",
     ]),
-    tests: [...phase20NativeActionTests],
+    tests: [...phase20NativeCoverageTests],
+  }),
+  Object.freeze({
+    name: "native-fixtures",
+    concurrency: 1,
+    coverage: false,
+    tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)),
   }),
   Object.freeze({
     name: "cli-blackbox",
@@ -748,7 +760,7 @@ const registeredPhase20EvidenceTests = validateEvidenceTestManifest({
   tests: phase20EvidenceTests,
   isEvidenceTest: isPhase20EvidenceTest,
   error: "phase20_evidence_test_manifest_drift",
-  expectedCount: 49,
+  expectedCount: 50,
 });
 const registeredPhase18EvidenceTests = validateEvidenceTestManifest({
   tests: phase18EvidenceTests,

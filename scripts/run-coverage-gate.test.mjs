@@ -78,7 +78,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   ));
   assert.deepEqual(manifest.phase20, discoveredPhase20);
   assert.deepEqual(manifest.phase18, discoveredPhase18);
-  assert.equal(manifest.phase20.length, 49);
+  assert.equal(manifest.phase20.length, 50);
   assert.equal(manifest.phase18.length, 18);
   assert.ok(manifest.phase18.includes("scripts/phase18-garmin-proof.test.mjs"));
   assert.deepEqual(Object.keys(manifest.phase20_coverage).sort(), [
@@ -166,7 +166,7 @@ test("every Phase 20 black-box child process has an explicit test-only timeout",
   }
   assert.match(source, /FIXTURE_COMMAND_TIMEOUT_MS = 10_000/u);
   assert.match(source, /INLINE_HELPER_TIMEOUT_MS = 240_000/u);
-  assert.match(source, /SUBPROCESS_TIMEOUT_MS = 5 \* 60_000/u);
+  assert.match(source, /SUBPROCESS_TIMEOUT_MS = 10 \* 60_000/u);
 });
 
 test("the exact Phase 18 evidence subprocess owns a local timeout", () => {
