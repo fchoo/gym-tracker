@@ -20,6 +20,8 @@ import {
 } from './v12-calendar-requirement-map.mjs';
 import { validateV12AccessibilityProducer, validateV12PerformanceProducer } from './v12-quality-evidence-contract.mjs';
 import { deriveV12MaestroCaseIds } from './v12-maestro-source-registry.mjs';
+import { PHASE14_SHELL_EVIDENCE_CASES } from '../src/testing/contracts/phase14Shell.contract.ts';
+import { validateV12ShellRequirementEvidence } from './v12-shell-requirement-evidence.mjs';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
@@ -73,10 +75,101 @@ const DOM_SHARED = {
   2: 'Running structure, advisory goal fields and independent schedule/overlap rows share the two-slot running fixture.',
   3: 'Occurrence selection and offline commit acknowledgement share the completion/retry transaction fixture.',
 };
-const SHL_STATES = [2, 34, 1, 61, 9, 17, 8, 10, 84, 83, 86, 88, 90];
-const GAR_CASES = [0, 1, 5, 4, 2, 3, 17, 6, 7, 8, 9, 11, 10, 15, 12, 14];
-const PERFORMANCE_GATES = [...Object.keys(V12_PERFORMANCE_BUDGETS), 'phase12_merge_peak_growth'];
 const VER_GATES = ['inventory', 'appearance', 'viewports', 'targets', 'input-focus', 'reduced-motion', 'sqlite', 'recovery', 'calendar', 'garmin', 'performance', 'attended', 'preseal'];
+
+export const V12_PROGRESS_REQUIREMENT_REGISTRY = Object.freeze(Object.fromEntries(
+  Array.from({ length: 18 }, (_, index) => {
+    const suffix = String(index + 1).padStart(2, '0');
+    const names = [
+      'sport-range', 'all', 'strength', 'running', 'fixed-goal', 'unset-goals',
+      'source-states', 'errors', 'history-sheet', 'exercise-history', 'relative-view',
+      'target-editor', 'target-persistence', 'recommendation', 'recommendation-persistence',
+      'settings', 'bodyweight-history', 'bodyweight-editor',
+    ];
+    return [`PRO-${suffix}`, `progress-pro${suffix}-${names[index]}`];
+  }),
+));
+
+const garminRequirement = (domain, ui, readbacks) => Object.freeze({
+  domain_case_ids: Object.freeze(domain),
+  ui_action_ids: Object.freeze(ui),
+  readback_case_ids: Object.freeze(readbacks),
+});
+
+/** Requirement-owned Garmin evidence. Order in the producer case array has no
+ * semantic meaning; every listed member must resolve by exact case identity. */
+export const V12_GARMIN_REQUIREMENT_REGISTRY = Object.freeze({
+  'GAR-01': garminRequirement(['account-lifecycle'], ['packaging'], ['account-lifecycle']),
+  'GAR-02': garminRequirement(['packaging'], ['packaging'], ['packaging']),
+  'GAR-03': garminRequirement(['account-lifecycle', 'recovery'], ['account-lifecycle'], ['sync-read']),
+  'GAR-04': garminRequirement(['bridge-allowlist', 'account-lifecycle', 'recovery'], ['account-lifecycle'], ['sync-read']),
+  'GAR-05': garminRequirement(['packaging', 'sync-read', 'dedupe-restart'], ['sync-read'], ['account-lifecycle', 'dedupe-restart']),
+  'GAR-06': garminRequirement(['sync-read', 'recovery'], ['sync-read'], ['recovery']),
+  'GAR-07': garminRequirement(['account-lifecycle', 'recovery'], ['account-lifecycle'], ['sync-read']),
+  'GAR-08': garminRequirement(['bridge-allowlist', 'canonical-json', 'sync-read', 'dedupe-restart'], ['sync-read'], ['canonical-json', 'dedupe-restart']),
+  'GAR-09': garminRequirement(['recovery', 'dedupe-restart', 'dedupe-restore', 'dedupe-merge', 'match-stale'], ['recovery'], ['dedupe-restore', 'dedupe-merge']),
+  'GAR-10': garminRequirement(['canonical-json', 'sync-read'], ['sync-read'], ['canonical-json']),
+  'GAR-11': garminRequirement(['canonical-json', 'sync-read'], ['sync-read'], ['canonical-json']),
+  'GAR-12': garminRequirement(['canonical-json'], ['sync-read'], ['canonical-json']),
+  'GAR-13': garminRequirement(['match-zero', 'match-one', 'match-many', 'match-alternate'], ['match-one'], ['match-zero', 'match-one', 'match-many']),
+  'GAR-14': garminRequirement(['match-confirm', 'match-stale', 'match-cancel', 'match-reassign'], ['match-confirm', 'match-cancel'], ['match-confirm', 'match-stale', 'match-reassign']),
+  'GAR-15': garminRequirement(['recovery', 'match-stale'], ['recovery'], ['sync-read']),
+  'GAR-16': garminRequirement(['account-lifecycle'], ['account-lifecycle'], ['privacy']),
+});
+
+const SHELL_REQUIREMENTS = Object.freeze(Object.fromEntries(
+  PHASE14_SHELL_EVIDENCE_CASES.map((entry) => [entry.requirement, entry]),
+));
+
+export function resolveV12ShellRequirement(selector, receipts, expectedIdentity) {
+  ensure(selector?.type === 'shell-requirement' && Array.isArray(receipts), 'shell_selector_invalid');
+  const matches = receipts.filter((receipt) => receipt?.requirement_id === selector.requirement_id);
+  ensure(matches.length === 1, matches.length === 0 ? 'shell_receipt_missing' : 'shell_receipt_duplicate');
+  const receipt = matches[0];
+  ensure(receipt.schema_version === 1 && receipt.producer === 'v12-shell-requirement-receipt/v1'
+    && receipt.requirement_id === selector.requirement_id && receipt.case_id === selector.id
+    && same(receipt.action_ids, selector.action_ids) && same(receipt.postcondition_ids, selector.postcondition_ids)
+    && ['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED'].includes(receipt.result)
+    && Array.isArray(receipt.members) && receipt.members.length > 0
+    && receipt.members.every((member) => member && same(Object.keys(member), ['id', 'result', 'receipt_sha256'])
+      && typeof member.id === 'string' && RESULTS.includes(member.result) && HASH.test(member.receipt_sha256 ?? ''))
+    && new Set(receipt.members.map(({ id }) => id)).size === receipt.members.length, 'shell_receipt_invalid');
+  ensure(Object.entries(expectedIdentity).every(([key, value]) => receipt[key] === value), 'shell_receipt_identity_invalid');
+  const { receipt_sha256: receiptSha256, ...unsigned } = receipt;
+  ensure(HASH.test(receiptSha256 ?? '') && receiptSha256 === jsonHash(unsigned), 'shell_receipt_hash_invalid');
+  ensure(receipt.result === combineV12SourceResults(receipt.members.map(({ result: memberResult }) => memberResult)), 'shell_receipt_result_invalid');
+  return Object.freeze({ type: selector.type, id: selector.id, result: receipt.result, members: Object.freeze(receipt.members), receipt_sha256: receiptSha256 });
+}
+
+export function resolveV12GarminRequirement(selector, lookup) {
+  ensure(selector?.type === 'garmin-requirement' && typeof lookup === 'function', 'garmin_selector_invalid');
+  const sets = [
+    ['domain', selector.domain_case_ids],
+    ['ui', selector.ui_action_ids],
+    ['readback', selector.readback_case_ids],
+  ];
+  const members = sets.flatMap(([kind, ids]) => {
+    ensure(Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length, 'garmin_selector_invalid');
+    return ids.map((id) => {
+      const key = `garmin-${kind}:${id}`;
+      const value = lookup(key);
+      ensure(value, `selector_unknown:${key}`);
+      return value;
+    });
+  });
+  return Object.freeze({ type: selector.type, id: selector.id,
+    result: combineV12SourceResults(members.map(({ result: memberResult }) => memberResult)),
+    members: Object.freeze(members) });
+}
+
+export function resolveV12ProgressContract(selector, lookup) {
+  ensure(selector?.type === 'progress-contract' && selector.shard === 'sqlite-source'
+    && typeof selector.id === 'string' && typeof lookup === 'function', 'progress_selector_invalid');
+  const key = `sqlite-source:progress-parity:${selector.id}`;
+  const member = lookup(key);
+  ensure(member?.registry === 'progress-parity' && member.id === selector.id, `selector_unknown:${key}`);
+  return Object.freeze({ type: selector.type, id: selector.id, result: result(member.result), members: Object.freeze([member]) });
+}
 
 export function validateV12CalendarExecutionOrigin(value, root = process.cwd(), allowTestFixture = false) {
   const keys = ['schema_version', 'action', 'kind', 'toolchain_origin', 'default_launcher', 'test_only', 'adapter_source_sha256', 'launcher_source_sha256', 'domain_source_sha256', 'request_attestation_sha256'];
@@ -106,7 +199,14 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
     let type, id, shard, shared_contract;
     if (prefix === 'DOM') { type = 'dom-contract'; shard = 'multi-plan'; id = functional[shard][DOM_CASES[ordinal]]; shared_contract = DOM_SHARED[DOM_CASES[ordinal]]; }
     if (prefix === 'WRK' || prefix === 'LIB') { type = 'functional-case'; shard = prefix === 'WRK' ? 'workout' : 'library-running'; id = functional[shard][ordinal]; }
-    if (prefix === 'SHL') { type = 'comparison-state'; shard = 'visual'; id = `BW-${String(SHL_STATES[ordinal]).padStart(3, '0')}`; }
+    if (prefix === 'SHL') {
+      const contract = SHELL_REQUIREMENTS[row.requirement_id];
+      ensure(contract !== undefined && contract.id === row.inventory_id, 'shell_selector_invalid');
+      type = 'shell-requirement'; shard = 'accessibility'; id = contract.id;
+      return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
+        selector: { type, shard, id, requirement_id: row.requirement_id, contract: row.acceptance_contract,
+          action_ids: contract.actions.map(({ id: actionId }) => actionId), postcondition_ids: [...contract.postconditions] } };
+    }
     if (prefix === 'CAL') {
       const mapping = calendar.get(row.requirement_id);
       ensure(mapping !== undefined && mapping.evidence_id === row.inventory_id, 'calendar_selector_invalid');
@@ -114,13 +214,19 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
       return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
         selector: { type, shard, id, contract: row.acceptance_contract, stage_ids: mapping.stage_ids, probe_ids: mapping.probe_ids } };
     }
-    if (prefix === 'GAR') { type = 'garmin-case'; shard = 'garmin'; id = V12_GARMIN_SHARD_CASE_IDS[GAR_CASES[ordinal]]; }
-    if (prefix === 'PRO') { type = 'performance-budget'; shard = 'performance'; id = PERFORMANCE_GATES[ordinal]; }
+    if (prefix === 'GAR') {
+      const contract = V12_GARMIN_REQUIREMENT_REGISTRY[row.requirement_id];
+      ensure(contract !== undefined, 'garmin_selector_invalid');
+      type = 'garmin-requirement'; shard = 'garmin'; id = row.requirement_id;
+      return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
+        selector: { type, shard, id, contract: row.acceptance_contract, ...contract } };
+    }
+    if (prefix === 'PRO') { type = 'progress-contract'; shard = 'sqlite-source'; id = V12_PROGRESS_REQUIREMENT_REGISTRY[row.requirement_id]; }
     if (prefix === 'VER') { type = 'phase20-gate'; shard = 'verification'; id = VER_GATES[ordinal]; }
     ensure(type && id && typeof row.acceptance_contract === 'string', 'selector_unknown');
     return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
       selector: { type, shard, id, contract: row.acceptance_contract,
-        ...(prefix === 'DOM' ? { native_case_ids: DOM_NATIVE_CASES[ordinal] } : {}),
+        ...(prefix === 'DOM' ? { native_case_ids: DOM_NATIVE_CASES[ordinal], source_case_ids: [id] } : {}),
         ...(shared_contract ? { shared_contract } : {}) } };
   });
   const seen = new Map();
@@ -195,8 +301,10 @@ export function resolveV12SqliteReceipt(value, group) {
 export function resolveV12DomContract(selector, lookup) {
   ensure(selector?.type === 'dom-contract' && selector.shard === 'multi-plan'
     && typeof selector.id === 'string' && Array.isArray(selector.native_case_ids)
-    && selector.native_case_ids.length > 0 && typeof lookup === 'function', 'dom_selector_invalid');
-  const keys = [`multi-plan:${selector.id}`, ...selector.native_case_ids.map(id => `sqlite-case:${id}`)];
+    && selector.native_case_ids.length > 0 && Array.isArray(selector.source_case_ids)
+    && same(selector.source_case_ids, [selector.id]) && typeof lookup === 'function', 'dom_selector_invalid');
+  const keys = [`multi-plan:${selector.id}`, `sqlite-source:multi-plan-running:${selector.id}`,
+    ...selector.native_case_ids.map(id => `sqlite-case:${id}`)];
   const members = keys.map(key => { const value = lookup(key); ensure(value, `selector_unknown:${key}`); return value; });
   return Object.freeze({ type: 'dom-contract', id: selector.id,
     result: combineV12SourceResults(members.map(({ result: memberResult }) => memberResult)), members: Object.freeze(members) });
@@ -264,7 +372,11 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     ids.forEach((id, index) => {
       const observation = mapping.observations[index];
       ensure(observation.ordinal === index + 1 && observation.fixture_id === 'v12-synthetic-fixtures-r18' && observation.report_sha256 === sha(reports[index]), 'functional_report_hash_invalid');
-      leaf(`${shard}:${id}`, 'functional-case', id, tests[index].result, [mappingPath, xmlPath], { testcase: id, report_sha256: observation.report_sha256 });
+      leaf(`${shard}:${id}`, 'functional-case', id, tests[index].result, [mappingPath, xmlPath], {
+        testcase: id, report_sha256: observation.report_sha256,
+        execution_receipt_sha256: observation.execution_receipt.receipt_sha256,
+        execution_receipt: observation.execution_receipt,
+      });
     });
   }
   const calendar = json('calendar-transitions.json'); bindIdentity(calendar.identity);
@@ -388,11 +500,13 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
       && value.identity.configuration_id === manifest.configuration.id && value.run_id === manifest.run_id && Array.isArray(value.cases), 'garmin_schema_invalid');
     exactIds(value.cases.map(entry => entry.id), ids, 'garmin_selectors_invalid');
     value.cases.forEach((entry) => {
-      ensure(Object.keys(entry).sort().join(',') === 'code,count,id,order,receipt_sha256,status'
+      ensure(Object.keys(entry).sort().join(',') === 'binding_sha256,code,count,id,order,receipt_sha256,status'
         && entry.order === V12_GARMIN_SHARD_CASE_IDS.indexOf(entry.id)
         && ['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED'].includes(entry.status)
         && entry.code === `${entry.id}-${entry.status === 'FAIL' ? 'evidence-mismatch' : 'observed'}`
-        && Number.isSafeInteger(entry.count) && entry.count >= 0 && HASH.test(entry.receipt_sha256 ?? ''), 'garmin_receipt_invalid');
+        && Number.isSafeInteger(entry.count) && entry.count >= 0 && HASH.test(entry.receipt_sha256 ?? '')
+        && entry.binding_sha256 === jsonHash({ run_id: manifest.run_id, identity: value.identity,
+          case: Object.fromEntries(Object.entries(entry).filter(([key]) => key !== 'binding_sha256')) }), 'garmin_receipt_invalid');
       garminStates[entry.id] = result(entry.status);
     });
     if (name === 'matching' && value.cases.find(entry => entry.id === 'match-one')?.count !== 1) garminStates['match-one'] = 'FAIL';
@@ -401,8 +515,14 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   for (const test of garminTests) {
     const name = Object.keys(garminGroups).find(key => garminGroups[key].includes(test.id));
     const receipt = garminValues[name].cases.find(entry => entry.id === test.id);
-    leaf(`garmin:${test.id}`, 'garmin-case', test.id, combineV12SourceResults([test.result, garminStates[test.id]]), [`garmin/${name}.json`, 'maestro/garmin-progress.xml'], { testcase: test.id, junit_result: test.result, case_result: garminStates[test.id], receipt_sha256: receipt.receipt_sha256, shared_contract: `The ${name} artifact retains one host-derived status and receipt for each exact operation-backed case.` });
+    const artifacts = [`garmin/${name}.json`, 'maestro/garmin-progress.xml'];
+    const shared = `The ${name} artifact retains one host-derived status and receipt for each exact operation-backed case.`;
+    leaf(`garmin:${test.id}`, 'garmin-case', test.id, combineV12SourceResults([test.result, garminStates[test.id]]), artifacts, { testcase: test.id, junit_result: test.result, case_result: garminStates[test.id], receipt_sha256: receipt.receipt_sha256, shared_contract: shared });
+    leaf(`garmin-domain:${test.id}`, 'garmin-domain-case', test.id, garminStates[test.id], artifacts, { receipt_sha256: receipt.binding_sha256, shared_contract: shared });
+    leaf(`garmin-ui:${test.id}`, 'garmin-ui-action', test.id, test.result, artifacts, { testcase: test.id, shared_contract: shared });
+    leaf(`garmin-readback:${test.id}`, 'garmin-authoritative-readback', test.id, garminStates[test.id], artifacts, { receipt_sha256: receipt.binding_sha256, shared_contract: shared });
   }
+  const sqliteSourceCases = new Map();
   for (const name of ['migration', 'portability', 'history']) {
     const value = json(`sqlite/${name}.json`); bindIdentity(value.identity);
     const observation = resolveV12SqliteReceipt(value, name);
@@ -410,7 +530,21 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     for (const caseFact of observation.case_facts) {
       leaf(`sqlite-case:${caseFact.id}`, 'sqlite-case', caseFact.id, caseFact.status,
         [`sqlite/${name}.json`], { order: caseFact.order, digest: caseFact.digest, source_facts: caseFact.source_facts });
+      for (const source of caseFact.source_facts) for (const sourceCase of source.cases) {
+        const key = `${source.registry}:${sourceCase.id}`;
+        const retained = sqliteSourceCases.get(key) ?? { registry: source.registry, id: sourceCase.id, results: [], artifacts: [], receipts: [] };
+        retained.results.push(result(sourceCase.status));
+        retained.artifacts.push(`sqlite/${name}.json`);
+        retained.receipts.push(caseFact.digest);
+        sqliteSourceCases.set(key, retained);
+      }
     }
+  }
+  for (const source of sqliteSourceCases.values()) {
+    ensure(source.results.every((state) => state === source.results[0]), 'sqlite_source_result_conflict');
+    leaf(`sqlite-source:${source.registry}:${source.id}`, 'sqlite-source-case', source.id,
+      source.results[0], source.artifacts, { registry: source.registry,
+        receipt_sha256: jsonHash({ registry: source.registry, id: source.id, receipts: source.receipts }) });
   }
   const recovery = json('recovery/lifecycle.json');
   const recoveryXml = bytes(full('maestro/recovery.xml')).toString('utf8');
@@ -496,7 +630,9 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   return table.map(entry => {
     const selector = entry.selector;
     const resolved = selector.type === 'phase20-gate' ? gates[selector.id]
-      : selector.type === 'comparison-state' ? group(V12_CONFIG_IDS.map(config => `visual:${selector.id}:${config}`), selector.id)
+      : selector.type === 'shell-requirement' ? leaves.get(`shell:${selector.id}`)
+        : selector.type === 'garmin-requirement' ? resolveV12GarminRequirement(selector, key => leaves.get(key))
+          : selector.type === 'progress-contract' ? resolveV12ProgressContract(selector, key => leaves.get(key))
         : selector.type === 'dom-contract' ? resolveV12DomContract(selector, key => leaves.get(key))
         : leaves.get(`${selector.shard}:${selector.id}`);
     ensure(resolved, 'selector_missing');
@@ -554,8 +690,12 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
   }
   function resolveAccessibility() {
     const semantics = json('semantics/accessibility.json'); const geometry = json('geometry/hit-targets.json');
-    ensure(semantics.run_id === manifest.run_id && semantics.producer === 'v12-accessibility-native-observation/v1' && geometry.run_id === manifest.run_id && geometry.producer === 'v12-accessibility-geometry/v1' && Array.isArray(semantics.observations), 'accessibility_schema_invalid');
+    ensure(semantics.schema_version === 2 && semantics.run_id === manifest.run_id && semantics.producer === 'v12-accessibility-native-observation/v2'
+      && semantics.scope === 'semantics-input-focus-motion-and-shell-requirements'
+      && geometry.run_id === manifest.run_id && geometry.producer === 'v12-accessibility-geometry/v1'
+      && Array.isArray(semantics.observations) && Array.isArray(semantics.shell_receipts), 'accessibility_schema_invalid');
     validateV12AccessibilityProducer(semantics.observations, { source_tree_sha256: manifest.source.tree_sha256, fixture_sha256: manifest.fixtures.registry_sha256 }, code => fail(code));
+    try { validateV12ShellRequirementEvidence(semantics.shell_receipts, manifest); } catch { fail('shell_receipt_invalid'); }
     const configKeys = new Set(); const gates = { targets: [], 'input-focus': [], motion: [] };
     const targetGeometry = [];
     semantics.observations.forEach((observation, ordinal) => {
@@ -582,6 +722,18 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     });
     ensure(same(geometry.targets, targetGeometry), 'accessibility_geometry_binding_invalid');
     for (const [id, observations] of Object.entries(gates)) leaf(`accessibility:${id}`, 'accessibility-gate', id, combineV12SourceResults(observations.map(o => o.result)), ['semantics/accessibility.json', 'geometry/hit-targets.json'], { observations });
+    const shellIdentity = {
+      run_id: manifest.run_id, source_tree_sha256: manifest.source.tree_sha256,
+      apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256,
+      device_identity_sha256: manifest.device.identity_sha256,
+    };
+    for (const entry of table.filter(({ selector }) => selector.type === 'shell-requirement')) {
+      const resolved = resolveV12ShellRequirement(entry.selector, semantics.shell_receipts, shellIdentity);
+      leaf(`shell:${entry.selector.id}`, 'shell-requirement', entry.selector.id, resolved.result,
+        ['semantics/accessibility.json', 'geometry/hit-targets.json'], {
+          requirement_id: entry.row_id, members: resolved.members, receipt_sha256: resolved.receipt_sha256,
+        });
+    }
   }
   function resolvePerformance() {
     const value = json('performance.json'); const observation = value.observation;

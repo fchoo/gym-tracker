@@ -3,7 +3,19 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { loadV12ContractInputs } from './v12-evidence-contract.mjs';
 import { createHash } from 'node:crypto';
-import { parseV12SourceJUnit, resolveV12DomContract, resolveV12PerformanceGates, createV12RowSelectorTable, resolveV12SqliteReceipt, validateV12CalendarExecutionOrigin } from './v12-blocker-row-resolver.mjs';
+import {
+  createV12RowSelectorTable,
+  parseV12SourceJUnit,
+  resolveV12DomContract,
+  resolveV12GarminRequirement,
+  resolveV12PerformanceGates,
+  resolveV12ProgressContract,
+  resolveV12ShellRequirement,
+  resolveV12SqliteReceipt,
+  validateV12CalendarExecutionOrigin,
+  V12_GARMIN_REQUIREMENT_REGISTRY,
+  V12_PROGRESS_REQUIREMENT_REGISTRY,
+} from './v12-blocker-row-resolver.mjs';
 
 const inputs = loadV12ContractInputs();
 
@@ -28,6 +40,28 @@ test('canonical matrix has exactly 172 typed selectors in source order', () => {
   ]);
   assert.equal(table.find(x => x.row_id === 'WRK-36').selector.id, 'workout.completion-writeback');
   assert.equal(table.find(x => x.row_id === 'LIB-36').selector.id, 'library.running-conflict');
+  const shell = table.filter(x => x.row_id.startsWith('SHL-'));
+  assert.deepEqual(shell.map(x => x.selector.id), [
+    'shell.four-roots', 'shell.root-state', 'shell.appearance', 'shell.tokens',
+    'shell.sheets', 'shell.toasts', 'shell.launch', 'shell.rest-alerts',
+    'shell.settings-deep-links', 'shell.removed-sessions', 'shell.data-recovery',
+    'shell.automatic-backup', 'shell.manual-backup',
+  ]);
+  assert.ok(shell.every(x => x.selector.type === 'shell-requirement'
+    && Array.isArray(x.selector.action_ids)
+    && Array.isArray(x.selector.postcondition_ids)
+    && !Object.hasOwn(x.selector, 'ordinal_state')));
+  const garmin = table.filter(x => x.row_id.startsWith('GAR-'));
+  assert.deepEqual(garmin.map(x => x.selector.id), Object.keys(V12_GARMIN_REQUIREMENT_REGISTRY));
+  assert.ok(garmin.every(x => x.selector.type === 'garmin-requirement'
+    && x.selector.domain_case_ids.length > 0
+    && x.selector.ui_action_ids.length > 0
+    && x.selector.readback_case_ids.length > 0));
+  const progress = table.filter(x => x.row_id.startsWith('PRO-'));
+  assert.deepEqual(progress.map(x => x.selector.id), Object.values(V12_PROGRESS_REQUIREMENT_REGISTRY));
+  assert.ok(progress.every(x => x.selector.type === 'progress-contract'
+    && x.selector.shard === 'sqlite-source'));
+  assert.equal(progress.some(x => x.selector.type === 'performance-budget'), false);
   const calendarRows = table.filter(x => x.row_id.startsWith('CAL-'));
   const matrixCalendarRows = inputs.matrix.rows.filter(x => x.requirement_id.startsWith('CAL-'));
   assert.deepEqual(calendarRows.map(x => x.selector.id), matrixCalendarRows.map(x => x.inventory_id));
@@ -47,13 +81,76 @@ test('canonical matrix has exactly 172 typed selectors in source order', () => {
   assert.throws(() => createV12RowSelectorTable({ inputs: { ...inputs, matrix: { ...inputs.matrix, rows: [...inputs.matrix.rows.slice(1), inputs.matrix.rows[1]] } } }), /row_resolver_.*matrix/);
 });
 
+test('SHL resolver is requirement keyed and rejects missing, duplicate, or stale receipts independent of order', () => {
+  const selector = createV12RowSelectorTable({ inputs }).find(x => x.row_id === 'SHL-01').selector;
+  const identity = {
+    run_id: 'phase20-20261017T000000Z-aaaaaaaaaaaa',
+    source_tree_sha256: 'a'.repeat(64), apk_sha256: 'b'.repeat(64),
+    installed_apk_sha256: 'b'.repeat(64), device_identity_sha256: 'c'.repeat(64),
+  };
+  const receipt = {
+    schema_version: 1, producer: 'v12-shell-requirement-receipt/v1', ...identity,
+    requirement_id: 'SHL-01', case_id: 'shell.four-roots', action_ids: selector.action_ids,
+    postcondition_ids: selector.postcondition_ids,
+    members: [{ id: 'workout:normal', result: 'PASS', receipt_sha256: 'd'.repeat(64) }],
+    result: 'PASS', receipt_sha256: 'e'.repeat(64),
+  };
+  const hash = createHash('sha256');
+  const unsigned = { ...receipt }; delete unsigned.receipt_sha256;
+  receipt.receipt_sha256 = hash.update(JSON.stringify(unsigned)).digest('hex');
+  assert.equal(resolveV12ShellRequirement(selector, [receipt], identity).result, 'PASS');
+  assert.equal(resolveV12ShellRequirement(selector, [structuredClone(receipt)].reverse(), identity).result, 'PASS');
+  assert.throws(() => resolveV12ShellRequirement(selector, [], identity), /shell_receipt_missing/u);
+  assert.throws(() => resolveV12ShellRequirement(selector, [receipt, receipt], identity), /shell_receipt_duplicate/u);
+  const stale = structuredClone(receipt); stale.run_id = 'phase20-20261018T000000Z-bbbbbbbbbbbb';
+  assert.throws(() => resolveV12ShellRequirement(selector, [stale], identity), /shell_receipt_identity_invalid/u);
+});
+
+test('GAR resolver requires the explicit domain, UI action, and readback members regardless of artifact order', () => {
+  const selector = createV12RowSelectorTable({ inputs }).find(x => x.row_id === 'GAR-14').selector;
+  const required = [
+    ...selector.domain_case_ids.map(id => [`garmin-domain:${id}`, { type: 'garmin-domain-case', id, result: 'PASS' }]),
+    ...selector.ui_action_ids.map(id => [`garmin-ui:${id}`, { type: 'garmin-ui-action', id, result: 'PASS' }]),
+    ...selector.readback_case_ids.map(id => [`garmin-readback:${id}`, { type: 'garmin-authoritative-readback', id, result: 'PASS' }]),
+  ];
+  const members = new Map(required.reverse());
+  members.set('garmin-domain:recovery', { type: 'garmin-domain-case', id: 'recovery', result: 'FAIL' });
+  assert.equal(resolveV12GarminRequirement(selector, key => members.get(key)).result, 'PASS', 'unrelated cases cannot close or fail GAR-14');
+  members.set(`garmin-domain:${selector.domain_case_ids[0]}`, { type: 'garmin-domain-case', id: selector.domain_case_ids[0], result: 'FAIL' });
+  assert.equal(resolveV12GarminRequirement(selector, key => members.get(key)).result, 'FAIL');
+  members.delete(`garmin-readback:${selector.readback_case_ids[0]}`);
+  assert.throws(() => resolveV12GarminRequirement(selector, key => members.get(key)), /selector_unknown/u);
+});
+
+test('PRO registry is exact and independent from performance gate mutations', () => {
+  assert.deepEqual(Object.keys(V12_PROGRESS_REQUIREMENT_REGISTRY), Array.from({ length: 18 }, (_, index) => `PRO-${String(index + 1).padStart(2, '0')}`));
+  assert.equal(V12_PROGRESS_REQUIREMENT_REGISTRY['PRO-01'], 'progress-pro01-sport-range');
+  assert.equal(V12_PROGRESS_REQUIREMENT_REGISTRY['PRO-18'], 'progress-pro18-bodyweight-editor');
+  const table = createV12RowSelectorTable({ inputs });
+  const pro = table.find(x => x.row_id === 'PRO-01');
+  assert.equal(pro.selector.id, 'progress-pro01-sport-range');
+  assert.notEqual(pro.selector.id, Object.keys(resolveV12PerformanceGates({ summary: { gates: { warm_launch_to_interactive: { result: 'FAIL' } } } }))[0]);
+  const members = new Map([[`sqlite-source:progress-parity:${pro.selector.id}`, {
+    registry: 'progress-parity', id: pro.selector.id, result: 'FAIL',
+  }]]);
+  assert.equal(resolveV12ProgressContract(pro.selector, key => members.get(key)).result, 'FAIL');
+  members.set('sqlite-source:progress-parity:progress-pro02-all', {
+    registry: 'progress-parity', id: 'progress-pro02-all', result: 'PASS',
+  });
+  assert.equal(resolveV12ProgressContract(pro.selector, key => members.get(key)).result, 'FAIL', 'unrelated progress evidence cannot close PRO-01');
+  const pro02 = table.find(x => x.row_id === 'PRO-02');
+  assert.equal(resolveV12ProgressContract(pro02.selector, key => members.get(key)).result, 'PASS', 'the matching progress failure affects only its exact PRO row');
+});
+
 test('DOM resolver combines the UI journey with every exact native SQLite case', () => {
   const selector = {
     type: 'dom-contract', shard: 'multi-plan', id: 'phase13-map01-activation',
     native_case_ids: ['schema27-upgrade', 'restore', 'merge'],
+    source_case_ids: ['phase13-map01-activation'],
   };
   const members = new Map([
     ['multi-plan:phase13-map01-activation', { id: 'phase13-map01-activation', result: 'PASS' }],
+    ['sqlite-source:multi-plan-running:phase13-map01-activation', { id: 'phase13-map01-activation', result: 'PASS' }],
     ['sqlite-case:schema27-upgrade', { id: 'schema27-upgrade', result: 'PASS' }],
     ['sqlite-case:restore', { id: 'restore', result: 'FAIL' }],
     ['sqlite-case:merge', { id: 'merge', result: 'PASS' }],

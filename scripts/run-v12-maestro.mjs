@@ -109,6 +109,11 @@ export function runV12BoundedProcess(program, args, {
     const child = spawn(program, args, { cwd, env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     let stdout = ""; let stderrBytes = 0; let settled = false; let terminationCode;
     let timeout; let escalation; let killDeadline;
+    const groupAlive = () => {
+      if (child.pid === undefined) return false;
+      try { process.kill(process.platform === "win32" ? child.pid : -child.pid, 0); return true; }
+      catch { return false; }
+    };
     const killTree = (signalName) => {
       if (child.pid === undefined) return;
       try {
@@ -120,15 +125,19 @@ export function runV12BoundedProcess(program, args, {
       clearTimeout(timeout); clearTimeout(escalation); clearTimeout(killDeadline);
       signal?.removeEventListener("abort", onAbort);
     };
+    const rejectTermination = () => {
+      if (settled) return;
+      settled = true; cleanup(); reject(new Error(`v12_maestro_${terminationCode}`));
+    };
     const terminate = (code) => {
       if (terminationCode !== undefined || settled) return;
       terminationCode = code;
       killTree("SIGTERM");
-      escalation = setTimeout(() => killTree("SIGKILL"), termGraceMs);
-      killDeadline = setTimeout(() => {
-        if (settled) return;
-        settled = true; cleanup(); reject(new Error(`v12_maestro_${code}`));
-      }, termGraceMs + killGraceMs);
+      escalation = setTimeout(() => {
+        if (!groupAlive()) { rejectTermination(); return; }
+        killTree("SIGKILL");
+        killDeadline = setTimeout(rejectTermination, killGraceMs);
+      }, termGraceMs);
     };
     const onAbort = () => terminate("process_cancelled");
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -148,9 +157,12 @@ export function runV12BoundedProcess(program, args, {
     });
     child.on("close", (code, childSignal) => {
       if (settled) return;
+      if (terminationCode !== undefined) {
+        if (!groupAlive()) rejectTermination();
+        return;
+      }
       settled = true; cleanup();
-      if (terminationCode !== undefined) reject(new Error(`v12_maestro_${terminationCode}`));
-      else if (code !== 0 || childSignal !== null) reject(new Error("v12_maestro_process_failed"));
+      if (code !== 0 || childSignal !== null) reject(new Error("v12_maestro_process_failed"));
       else resolve(stdout);
     });
   });
@@ -377,6 +389,7 @@ function directMaestroRequestAttestation({ runId, shard, manifest, snapshot, git
     git_attestation_sha256: gitAttestationSha256,
     tool_attestation_sha256: sha256(JSON.stringify(toolAttestation)),
     measurement_sha256: sha256(JSON.stringify(observations.map(({ device_measurement: measurement }) => measurement))),
+    execution_receipt_sha256: sha256(JSON.stringify(observations.map(({ execution_receipt: receipt }) => receipt?.receipt_sha256))),
   }));
 }
 
@@ -877,13 +890,6 @@ function retainedApkSha256(root, manifest) {
   const digest = sha256(bytes);
   if (bytes.length !== manifest.build.apk.size_bytes || digest !== manifest.build.apk.sha256) genericFail("identity_mismatch");
   return digest;
-}
-
-function assertMaestroVersion(execute = execFileSync, maestro = "maestro") {
-  let version;
-  try { version = execute(maestro, ["--version"], { encoding: "utf8", timeout: V12_MAESTRO_COMMAND_BUDGETS.version_ms, killSignal: "SIGKILL" }).trim(); }
-  catch { genericFail("maestro_version_invalid"); }
-  if (!/(?:^|\s)2\.8\.0(?:\s|$)/u.test(version)) genericFail("maestro_version_invalid");
 }
 
 async function assertMaestroVersionAsync(run, maestro) {

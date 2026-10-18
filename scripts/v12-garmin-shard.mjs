@@ -55,13 +55,18 @@ function identity(manifest, runId, dependencies) {
   return Object.freeze({ source_digest: source.tree_sha256, fixture_digest: fixtures.registry_sha256, apk_digest: apk.sha256, installed_apk_digest: device.installed_apk_sha256, device_digest: device.identity_sha256, settings_digest: device.settings_sha256, restoration_digest: device.restoration_sha256, configuration_id: manifest.configuration?.id });
 }
 
-function exactCases(value, expected) {
+function exactCases(value, expected, binding = undefined) {
   if (!Array.isArray(value) || value.length !== expected.length) fail("native_cases_invalid");
   value.forEach((entry, order) => {
     const globalOrder = V12_GARMIN_SHARD_CASE_IDS.indexOf(expected[order]);
     record(entry, "native_cases_invalid"); noPrivate(entry, `case[${order}]`);
-    if (!exactKeys(entry, ["id", "order", "status", "code", "count", "receipt_sha256"]) || entry.id !== expected[order] || entry.order !== globalOrder || !["PASS", "FAIL"].includes(entry.status)
+    const keys = ["id", "order", "status", "code", "count", "receipt_sha256", ...(binding === undefined ? [] : ["binding_sha256"] )];
+    if (!exactKeys(entry, keys) || entry.id !== expected[order] || entry.order !== globalOrder || !["PASS", "FAIL"].includes(entry.status)
       || entry.code !== `${entry.id}-${entry.status === "PASS" ? "observed" : "evidence-mismatch"}` || !Number.isSafeInteger(entry.count) || entry.count < 0 || !SHA256.test(entry.receipt_sha256 ?? "")) fail("native_cases_invalid");
+    if (binding !== undefined) {
+      const { binding_sha256: bindingSha256, ...nativeReceipt } = entry;
+      if (!SHA256.test(bindingSha256 ?? "") || bindingSha256 !== sha({ run_id: binding.runId, identity: binding.identity, case: nativeReceipt })) fail("native_cases_invalid");
+    }
   });
 }
 
@@ -71,7 +76,10 @@ function observations(result, id) {
   exactCases(result.cases, V12_GARMIN_SHARD_CASE_IDS);
   const { run_id, ...artifactIdentity } = id;
   const byId = Object.fromEntries(result.cases.map((entry) => [entry.id, entry]));
-  const selected = (ids) => ids.map((caseId) => byId[caseId]);
+  const selected = (ids) => ids.map((caseId) => {
+    const entry = byId[caseId];
+    return Object.freeze({ ...entry, binding_sha256: sha({ run_id, identity: artifactIdentity, case: entry }) });
+  });
   const base = { schema_version: 2, producer: "v12-garmin-shard/v3", run_id, identity: artifactIdentity };
   return Object.freeze({
     "garmin/packaging-auth.json": { ...base, schema: "packaging-auth/v1", cases: selected(["packaging", "bridge-allowlist", "account-lifecycle", "recovery"]) },
@@ -130,13 +138,13 @@ export async function executeV12GarminShardCli(args = process.argv.slice(2), dep
         || value.schema_version !== 2 || value.producer !== "v12-garmin-shard/v3" || value.run_id !== runId
         || JSON.stringify(value.identity) !== JSON.stringify(id) || value.schema !== schemas[index]) fail("verify_invalid");
       const expectedIds = groups[index].map((order) => V12_GARMIN_SHARD_CASE_IDS[order]);
-      exactCases(value.cases, expectedIds);
+      exactCases(value.cases, expectedIds, { runId, identity: id });
       value.cases.forEach((entry) => {
         if (observed.has(entry.id)) fail("verify_invalid"); observed.set(entry.id, entry);
       });
     });
     const cases = V12_GARMIN_SHARD_CASE_IDS.map((caseId) => observed.get(caseId));
-    exactCases(cases, V12_GARMIN_SHARD_CASE_IDS);
+    exactCases(cases, V12_GARMIN_SHARD_CASE_IDS, { runId, identity: id });
     const report = read(files.at(-1));
     if (typeof report !== "string" || report !== xml({ cases }, id)) fail("verify_invalid");
     return Object.freeze({ ok: true, mode, run_id: runId });

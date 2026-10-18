@@ -245,17 +245,18 @@ test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-supervisor-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const childPid = path.join(root, "child.pid");
+  const childReady = path.join(root, "child.ready");
   const script = path.join(root, "hung.mjs");
   writeFileSync(script, `
     import { spawn } from "node:child_process";
-    import { writeFileSync } from "node:fs";
-    const child = spawn(process.execPath, ["-e", "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"], { stdio: "ignore" });
-    writeFileSync(${JSON.stringify(childPid)}, String(child.pid));
+    import { existsSync, writeFileSync } from "node:fs";
+    const child = spawn(process.execPath, ["-e", ${JSON.stringify(`const fs=require("node:fs");process.on("SIGTERM",()=>{});fs.writeFileSync(${JSON.stringify(childReady)},"ready");setInterval(()=>{},1000)`)}], { stdio: "ignore" });
+    const ready = setInterval(() => { if (existsSync(${JSON.stringify(childReady)})) { clearInterval(ready); writeFileSync(${JSON.stringify(childPid)}, String(child.pid)); } }, 5);
     process.on("SIGTERM", () => {});
     setInterval(() => {}, 1000);
   `);
   await assert.rejects(() => runV12BoundedProcess(process.execPath, [script], {
-    cwd: root, timeoutMs: 100, termGraceMs: 100, killGraceMs: 1_000,
+    cwd: root, timeoutMs: 500, termGraceMs: 100, killGraceMs: 1_000,
   }), /v12_maestro_process_timeout/u);
   const descendant = Number(readFileSync(childPid, "utf8"));
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -275,6 +276,29 @@ test("hung Maestro restores settings and removes the lease before returning", { 
     sourceDigest: value.build.source.tree_sha256, isAncestor: () => true,
     currentIdentity: value.currentIdentity, executionTools: value.tools, runProcess,
   }), /v12_maestro_native_command_timeout/u);
+  assert.ok(restoreCalls >= 3);
+  assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/.leases/multi-plan-${DEVICE_FACTS.serial}.lease`)), false);
+});
+
+test("external cancellation terminates Maestro before cleanup restores settings and removes the lease", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+  const value = fixture(t, "multi-plan");
+  const controller = new AbortController();
+  let restoreCalls = 0;
+  const runProcess = async (program, args, options) => {
+    if (program === value.tools.maestro && args[0] === "test") {
+      return new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("v12_maestro_process_cancelled")), { once: true }));
+    }
+    if (program === value.tools.adb && args.includes("put")) restoreCalls += 1;
+    return value.execute(program, args, options);
+  };
+  const running = executeLiveV12GenericMaestro(["--run", runId, "--shard", "multi-plan"], {
+    root: value.root, serial: DEVICE_FACTS.serial, currentHead: value.build.source.head,
+    sourceDigest: value.build.source.tree_sha256, isAncestor: () => true,
+    currentIdentity: value.currentIdentity, executionTools: value.tools, runProcess,
+    signal: controller.signal,
+  });
+  setTimeout(() => controller.abort(), 20);
+  await assert.rejects(running, /v12_maestro_native_command_cancelled/u);
   assert.ok(restoreCalls >= 3);
   assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/.leases/multi-plan-${DEVICE_FACTS.serial}.lease`)), false);
 });
