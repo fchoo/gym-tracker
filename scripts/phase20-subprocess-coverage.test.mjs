@@ -321,6 +321,37 @@ test("coverage projects reject a successful test process with skipped tests", as
   );
 });
 
+test("a converted raw V8 directory is gone before the next project starts", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-coverage-raw-lifecycle-"));
+  const outputDirectory = path.join(root, "coverage");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(path.join(root, "covered.mjs"), "export const covered = () => 1;\n");
+  writeFileSync(path.join(root, "covered.test.mjs"), [
+    "import assert from 'node:assert/strict';",
+    "import test from 'node:test';",
+    "import { covered } from './covered.mjs';",
+    "test('covers the module', () => assert.equal(covered(), 1));",
+    "",
+  ].join("\n"));
+  writeFileSync(path.join(root, "next.test.mjs"), [
+    "import assert from 'node:assert/strict';",
+    "import { existsSync } from 'node:fs';",
+    "import test from 'node:test';",
+    `test('previous raw coverage is deleted', () => assert.equal(existsSync(${JSON.stringify(path.join(outputDirectory, "projects/covered/raw-v8"))}), false));`,
+    "",
+  ].join("\n"));
+  await assert.doesNotReject(() => runPhase20SubprocessCoverage({
+    projectRoot: root,
+    outputDirectory,
+    maxParallel: 1,
+    projects: [
+      { name: "covered", modules: ["covered.mjs"], tests: ["covered.test.mjs"] },
+      { name: "next", coverage: false, tests: ["next.test.mjs"] },
+    ],
+    projectTimeoutMs: 10_000,
+  }));
+});
+
 test("child-only coverage instruments production CLI descendants without instrumenting the test worker", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-child-only-coverage-"));
   try {

@@ -360,34 +360,38 @@ export async function runPhase20SubprocessCoverage({
       const rawDirectory = path.join(projectDirectory, "raw-v8");
       const testReportPath = path.join(projectDirectory, "test-results.tap");
       mkdirSync(rawDirectory, { recursive: true });
-      await runTestProject(project, {
-        projectRoot,
-        rawDirectory,
-        testReportPath,
-        projectTimeoutMs,
-        terminateGraceMs,
-        signal,
-        onProjectSignal,
-      });
-      assertNoSkippedTests(testReportPath, project.name);
-      if (project.coverage === false) return {
-        coverageMap: createCoverageMap({}),
-        files: {},
-      };
-      const projectCoverage = await loadPhase20CoverageMap({
-        projectRoot,
-        rawDirectory,
-        targetFiles: project.modules,
-      });
-      const report = summarizePhase20Coverage(projectCoverage);
-      writeFileSync(
-        path.join(projectDirectory, "coverage-summary.json"),
-        `${JSON.stringify(report.files, null, 2)}\n`,
-      );
-      return {
-        coverageMap: projectCoverage.coverageMap,
-        files: report.files,
-      };
+      try {
+        await runTestProject(project, {
+          projectRoot,
+          rawDirectory,
+          testReportPath,
+          projectTimeoutMs,
+          terminateGraceMs,
+          signal,
+          onProjectSignal,
+        });
+        assertNoSkippedTests(testReportPath, project.name);
+        if (project.coverage === false) return {
+          coverageMap: createCoverageMap({}),
+          files: {},
+        };
+        const projectCoverage = await loadPhase20CoverageMap({
+          projectRoot,
+          rawDirectory,
+          targetFiles: project.modules,
+        });
+        const report = summarizePhase20Coverage(projectCoverage);
+        writeFileSync(
+          path.join(projectDirectory, "coverage-summary.json"),
+          `${JSON.stringify(report.files, null, 2)}\n`,
+        );
+        return {
+          coverageMap: projectCoverage.coverageMap,
+          files: report.files,
+        };
+      } finally {
+        rmSync(rawDirectory, { recursive: true, force: true });
+      }
     },
   }, maxParallel);
   const coverageMap = createCoverageMap({});
@@ -406,12 +410,6 @@ export async function runPhase20SubprocessCoverage({
       error: "phase20_integrity_coverage_failed",
       failures: report.failures,
     }));
-  }
-  for (const project of projects) {
-    rmSync(path.join(outputDirectory, "projects", project.name, "raw-v8"), {
-      recursive: true,
-      force: true,
-    });
   }
   rmSync(path.join(outputDirectory, "blackbox-fixture"), { recursive: true, force: true });
   console.log(JSON.stringify({
