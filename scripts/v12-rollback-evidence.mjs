@@ -352,8 +352,12 @@ function cli(args) {
     lastValidSchemaVersion: Number(args[9]) });
 }
 
+export function v12RollbackErrorMessage(error) {
+  return error instanceof Error ? error.message : "v12_rollback_failed";
+}
+
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   try { process.stdout.write(`${JSON.stringify(cli(process.argv.slice(2)))}\n`); }
-  catch (error) { process.stderr.write(`${error instanceof Error ? error.message : "v12_rollback_failed"}\n`); process.exitCode = 1; }
+  catch (error) { process.stderr.write(`${v12RollbackErrorMessage(error)}\n`); process.exitCode = 1; }
 }

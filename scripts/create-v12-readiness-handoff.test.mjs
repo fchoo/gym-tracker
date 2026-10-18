@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -292,7 +292,19 @@ test("the planning mirror is regenerated only from a verified final publication"
   const mirror = path.join(planningDirectory, "20-READINESS-HANDOFF.md");
   assert.equal(writeV12VerifiedReadinessMirror({ root, runId }).refreshed, true);
   assert.deepEqual(JSON.parse(readFileSync(mirror, "utf8")), handoff);
+  assert.equal(writeV12VerifiedReadinessMirror({ root, runId }).refreshed, false);
   writeFileSync(mirror, "stale mirror\n");
+  const originalNow = Date.now;
+  Date.now = () => 1_234;
+  const collision = path.join(planningDirectory, `.20-READINESS-HANDOFF-${process.pid}-1234.tmp`);
+  writeFileSync(collision, "occupied\n");
+  try {
+    assert.throws(() => writeV12VerifiedReadinessMirror({ root, runId }));
+    assert.equal(existsSync(collision), false);
+    assert.equal(readFileSync(mirror, "utf8"), "stale mirror\n");
+  } finally {
+    Date.now = originalNow;
+  }
   assert.equal(writeV12VerifiedReadinessMirror({ root, runId }).refreshed, true);
   assert.deepEqual(JSON.parse(readFileSync(mirror, "utf8")), handoff);
 

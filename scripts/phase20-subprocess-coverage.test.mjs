@@ -29,6 +29,7 @@ import {
 } from "./v12-native-execution-origin.mjs";
 import {
   publishV12RollbackEvidence,
+  v12RollbackErrorMessage,
   verifyV12RollbackEvidence,
 } from "./v12-rollback-evidence.mjs";
 import {
@@ -71,7 +72,8 @@ function executable(file, body = "#!/bin/sh\nexit 0\n") {
 }
 
 function nonErrorStdoutPreload(root) {
-  const file = path.join(root, "throw-non-error-on-stdout.mjs");
+  const file = path.join(root, "artifacts/coverage-preloads/throw-non-error-on-stdout.mjs");
+  mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, 'process.stdout.write = () => { throw "non-error"; };\n');
   return file;
 }
@@ -515,6 +517,8 @@ test("rollback evidence enforces every supported archive generation and the real
     });
     assert.equal(fallback.status, 1);
     assert.match(fallback.stderr, /^v12_rollback_restore_parser_required\s*$/u);
+    assert.equal(v12RollbackErrorMessage(new Error("v12_rollback_expected")), "v12_rollback_expected");
+    assert.equal(v12RollbackErrorMessage("non-error"), "v12_rollback_failed");
   } finally {
     rmSync(cliFixture.root, { recursive: true, force: true });
   }
@@ -1384,7 +1388,7 @@ test("native final identity re-reads Git, APK, signature, installed bytes, setti
 test("production-shaped retained evidence completes preseal and final readiness", {
   skip: process.env.V12_PHASE20_COVERAGE_FIXTURE === undefined
     || process.env.V12_APPROVED_SOURCE_ROOT === undefined,
-  timeout: 10 * 60_000,
+  timeout: 25 * 60_000,
 }, () => {
   const root = process.env.V12_PHASE20_COVERAGE_FIXTURE;
   const runId = readdirSync(path.join(root, "artifacts/native/v1.2"))
@@ -1907,6 +1911,69 @@ test("production-shaped retained evidence completes preseal and final readiness"
     });
     assert.equal(final.status, 0, final.stderr);
     assert.equal(JSON.parse(final.stdout).mode, "final");
+    const finalPublicationRelative = `artifacts/native/v1.2/${runId}/publication/final.json`;
+    const finalPublication = JSON.parse(readFileSync(path.join(root, finalPublicationRelative), "utf8"));
+    const finalStage = path.join(runRoot, ".staging/final");
+    mkdirSync(finalStage, { recursive: true });
+    for (const member of finalPublication.members) {
+      const source = path.join(runRoot, member.artifact);
+      const staged = path.join(finalStage, member.artifact);
+      mkdirSync(path.dirname(staged), { recursive: true });
+      copyFileSync(source, staged);
+      rmSync(source);
+    }
+    writeFileSync(path.join(finalStage, "manifest.json"), `${JSON.stringify(finalPublication)}\n`);
+    rmSync(path.join(root, finalPublicationRelative));
+    const recoveryScript = [
+      `import assert from "node:assert/strict";`,
+      `import { recoverV12FinalPublication } from ${JSON.stringify(new URL("./verify-v12-native-evidence.mjs", import.meta.url).href)};`,
+      "assert.equal(recoverV12FinalPublication(process.argv[1], process.argv[2]), true);",
+    ].join("\n");
+    const recovery = spawnSync(process.execPath, ["--input-type=module", "--eval", recoveryScript, root, runId], {
+      cwd: root,
+      encoding: "utf8",
+      env: liveEnvironment,
+      maxBuffer: 1024 * 1024 * 1024,
+      timeout: RETAINED_CLI_TIMEOUT_MS,
+    });
+    assert.equal(recovery.status, 0, recovery.stderr);
+    const replay = spawnSync(process.execPath, [verifier, "--run", runId, "--mode", "final"], {
+      cwd: root,
+      encoding: "utf8",
+      env: liveEnvironment,
+      maxBuffer: 1024 * 1024 * 1024,
+      timeout: RETAINED_CLI_TIMEOUT_MS,
+    });
+    assert.equal(replay.status, 0, replay.stderr);
+    assert.equal(JSON.parse(replay.stdout).recovered, true);
+    const preloader = nonErrorStdoutPreload(root);
+    created.push(preloader);
+    const nonErrorFinal = spawnSync(process.execPath, [
+      `--import=${pathToFileURL(preloader).href}`,
+      verifier, "--run", runId, "--mode", "final",
+    ], {
+      cwd: root,
+      encoding: "utf8",
+      env: liveEnvironment,
+      maxBuffer: 1024 * 1024 * 1024,
+      timeout: RETAINED_CLI_TIMEOUT_MS,
+    });
+    assert.equal(nonErrorFinal.status, 1);
+    assert.match(nonErrorFinal.stderr, /v12_preflight_failed\s*$/u);
+    if (process.platform !== "win32") {
+      const special = path.join(runRoot, "coverage-special-file");
+      execFileSync("/usr/bin/mkfifo", [special]);
+      const specialResult = spawnSync(process.execPath, [verifier, "--run", runId, "--mode", "final"], {
+        cwd: root,
+        encoding: "utf8",
+        env: liveEnvironment,
+        maxBuffer: 1024 * 1024 * 1024,
+        timeout: RETAINED_CLI_TIMEOUT_MS,
+      });
+      assert.equal(specialResult.status, 1);
+      assert.match(specialResult.stderr, /v12_preflight_artifact_invalid/u);
+      rmSync(special);
+    }
   } finally {
     for (const output of [
       `artifacts/native/v1.2/${runId}/preseal-validation.json`,

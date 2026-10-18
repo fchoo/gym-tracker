@@ -77,6 +77,28 @@ test("the retained black-box fixture covers source resolution and final-ledger i
     ledger.rows.find(({ requirement_id }) => requirement_id === blocker.row_id).verdict,
     blocker.result,
   );
+  const passing = sourceEvidence.find(({ result }) => result === "PASS");
+  assert.ok(passing);
+  const accepted = deriveV12Ledger({
+    ...args,
+    allowTestCalendarFixture: true,
+    exceptions: [{
+      ...exception,
+      row_id: passing.row_id,
+      evidence_hashes: [passing.sha256],
+      rationale: "accept a bounded deviation from otherwise passing evidence",
+    }],
+    readiness_policy: {
+      policy_id: "v12-reviewed-policy",
+      reviewed_by: "owner",
+      reviewed_at: "2026-10-14",
+      permits_accepted_exceptions: true,
+    },
+  });
+  assert.equal(
+    accepted.rows.find(({ requirement_id }) => requirement_id === passing.row_id).verdict,
+    "ACCEPTED_EXCEPTION",
+  );
   assert.throws(
     () => sealV12FinalEvidence({
       mode: "final",
@@ -96,6 +118,23 @@ test("the retained black-box fixture covers source resolution and final-ledger i
       allowTestCalendarFixture: true,
     }),
     /source_resolution_mismatch/u,
+  );
+  const malformedNa = structuredClone(sourceEvidence);
+  malformedNa[0] = {
+    row_id: malformedNa[0].row_id,
+    artifact: malformedNa[0].artifact,
+    sha256: malformedNa[0].sha256,
+    result: "N_A_REVIEWED",
+    configuration_id: malformedNa[0].configuration_id,
+    na: {},
+  };
+  assert.throws(
+    () => deriveV12Ledger({
+      ...args,
+      evidence: malformedNa,
+      allowTestCalendarFixture: true,
+    }),
+    /na_metadata_invalid/u,
   );
 });
 

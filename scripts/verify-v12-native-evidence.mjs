@@ -914,6 +914,10 @@ function deriveExpectedFinalOutputs({ root, runId, manifest, preseal, attended, 
   return Object.freeze({ ledger, finalEvidence, readinessHandoff, writes: Object.freeze(writes) });
 }
 
+function validateFinalPublicationMembers(members) {
+  return assertV12ExactArtifactFileSet(members.map(item => item.artifact), V12_PREFLIGHT_FINAL_OUTPUTS);
+}
+
 function validateFinalCandidateBytes(root, runId, expected) {
   const runPrefix = `artifacts/native/v1.2/${runId}`;
   const stagedManifestFile = preflightSafeFile(root, `${runPrefix}/.staging/final/manifest.json`, { required: false });
@@ -923,7 +927,7 @@ function validateFinalCandidateBytes(root, runId, expected) {
   let publication;
   try { publication = JSON.parse(readFileSync(manifestFile, "utf8")); } catch { preflightFail("final_recovery_invalid"); }
   if (!Array.isArray(publication.members)) preflightFail("final_recovery_invalid");
-  assertV12ExactArtifactFileSet(publication.members.map(member => member?.artifact), V12_PREFLIGHT_FINAL_OUTPUTS);
+  validateFinalPublicationMembers(publication.members);
   const expectedByName = new Map(expected.writes.map(([relative, value]) => [relative,
     Buffer.isBuffer(value) ? value : Buffer.from(typeof value === "string" ? value : `${JSON.stringify(value)}\n`),
   ]));
@@ -985,8 +989,8 @@ function recoverV12FinalPublicationWithExpected(root, runId, expected) {
     root,
     runId,
     shard: "final",
-    produce: () => { preflightFail("final_recovery_invalid"); },
-    validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), V12_PREFLIGHT_FINAL_OUTPUTS),
+    produce: preflightFail.bind(null, "final_recovery_invalid"),
+    validate: validateFinalPublicationMembers,
   });
   try { verifyV12AtomicShard({ root, runId, shard: "final" }); } catch { preflightFail("publication_invalid"); }
   validateFinalCandidateBytes(root, runId, expected);
@@ -1033,11 +1037,6 @@ function preflightPng(bytes) {
   if (!Buffer.isBuffer(bytes) || bytes.length < 24 || !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) preflightFail("png_invalid");
   const width = bytes.readUInt32BE(16); const height = bytes.readUInt32BE(20);
   if (width < 1 || height < 1) preflightFail("png_invalid");
-}
-
-function preflightIdentityText(text, manifest) {
-  const required = [manifest.source.tree_sha256, manifest.build.apk.sha256, manifest.device.installed_apk_sha256, manifest.device.identity_sha256];
-  if (required.some((value) => !text.includes(value))) preflightFail("artifact_identity_invalid");
 }
 
 function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalendarFixture = false) {
