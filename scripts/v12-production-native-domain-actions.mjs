@@ -183,10 +183,22 @@ function session(root, a, action, executionTools) {
       fail('garmin_cleanup_failed');
     }
   }
-  function garminPrivacy(processIds) {
-    if (!Array.isArray(processIds) || processIds.length !== 2 || new Set(processIds).size !== 2
-      || processIds.some(value => !Number.isSafeInteger(value) || value <= 0)) fail('garmin_privacy_failed');
-    const retained = processIds.flatMap(processId => adb('logcat', '-d', '--pid', String(processId), '-v', 'raw', 'ReactNativeJS:I', '*:S').split(/\r?\n/u));
+  function garminProcessClaim() {
+    const pid = Number(shell('pidof', PACKAGE));
+    if (!Number.isSafeInteger(pid) || pid <= 0) fail('garmin_restart_invalid');
+    const stat = shell('cat', `/proc/${pid}/stat`);
+    const commandEnd = stat.lastIndexOf(')');
+    const fields = commandEnd > 0 ? stat.slice(commandEnd + 1).trim().split(/\s+/u) : [];
+    const startTicks = Number(fields[19]);
+    if (!Number.isSafeInteger(startTicks) || startTicks <= 0) fail('garmin_restart_invalid');
+    return Object.freeze({ pid, startTicks });
+  }
+  function garminPrivacy(processClaims) {
+    if (!Array.isArray(processClaims) || processClaims.length !== 2
+      || new Set(processClaims.map(({ pid, startTicks }) => `${pid}:${startTicks}`)).size !== 2
+      || processClaims.some(({ pid, startTicks }) => !Number.isSafeInteger(pid) || pid <= 0
+        || !Number.isSafeInteger(startTicks) || startTicks <= 0)) fail('garmin_privacy_failed');
+    const retained = processClaims.flatMap(({ pid }) => adb('logcat', '-d', '--pid', String(pid), '-v', 'raw', 'ReactNativeJS:I', '*:S').split(/\r?\n/u));
     const bytes = Buffer.byteLength(retained.join('\n'));
     if (bytes > 1024 * 1024 || retained.length > 2_048
       || /(?:authorization|bearer|credential|password|secret|@|\/Users\/|\/home\/|heart.?rate|latitude|longitude|filename)/iu.test(retained.join('\n'))) fail('garmin_privacy_failed');
@@ -220,7 +232,7 @@ function session(root, a, action, executionTools) {
   }
   return { get nonce() { return nonce; }, renewNonce: () => { nonce = randomBytes(16).toString('hex'); return nonce; },
     shell, marker, maestro, recoveryMaestro, version, standalone, restoreAround, retained,
-    garminArm, launchGarmin, garminCleanup, garminPrivacy,
+    garminArm, launchGarmin, garminCleanup, garminProcessClaim, garminPrivacy,
     executionOrigin: executionTools.execution_origin,
     stop: () => cleanupShell('am', 'force-stop', PACKAGE),
     screenshot: () => command(executionTools.adb, ['-s', serial, 'exec-out', 'screencap', '-p'], { binary: true }).stdout };
@@ -235,8 +247,7 @@ async function garmin(io, payload) {
     const preflight = await io.marker('garmin-preflight');
     if (!exact(preflight, ['schema_version', 'nonce', 'kind', 'session_sha256'])
       || preflight.schema_version !== 2 || !HASH.test(preflight.session_sha256 ?? '')) fail('garmin_preflight_invalid');
-    const firstPid = Number(io.shell('pidof', PACKAGE));
-    if (!Number.isSafeInteger(firstPid) || firstPid <= 0) fail('garmin_restart_invalid');
+    const firstProcess = io.garminProcessClaim();
     io.stop(); io.garminCleanup(io.nonce, true);
     io.renewNonce(); nonces.push(io.nonce);
     io.launchGarmin('execute', io.garminArm('execute', payload.lease));
@@ -244,14 +255,15 @@ async function garmin(io, payload) {
     if (!exact(value, ['schema_version', 'nonce', 'kind', 'receipts', 'host_observations', 'cleanup']) || value.schema_version !== 2
       || !exact(value.cleanup, ['arm', 'databases_deleted']) || value.cleanup.arm !== 'cleared'
       || value.cleanup.databases_deleted !== 3) fail('garmin_result_invalid');
-    const secondPid = Number(io.shell('pidof', PACKAGE));
-    if (!Number.isSafeInteger(secondPid) || secondPid <= 0 || firstPid === secondPid) fail('garmin_restart_invalid');
+    const secondProcess = io.garminProcessClaim();
+    const processChanged = firstProcess.pid !== secondProcess.pid || firstProcess.startTicks !== secondProcess.startTicks;
+    if (!processChanged) fail('garmin_restart_invalid');
     io.stop(); io.garminCleanup(io.nonce, true);
-    const privacy = io.garminPrivacy([firstPid, secondPid]);
+    const privacy = io.garminPrivacy([firstProcess, secondProcess]);
     const privacyReceipt = Object.freeze({ id: 'privacy', order: 17, code: 'privacy-observed', count: 6,
-      receipt_sha256: hash(JSON.stringify({ ...privacy, preflight: preflight.session_sha256, firstPidChanged: firstPid !== secondPid })) });
+      receipt_sha256: hash(JSON.stringify({ ...privacy, preflight: preflight.session_sha256, processChanged })) });
     return Object.freeze({ ...garminCases({ receipts: value.receipts, host_observations: { ...value.host_observations,
-      restart: { process_changed: firstPid !== secondPid, session_consistent: value.host_observations?.lifecycle?.before_sha256 === preflight.session_sha256 } } }, privacyReceipt),
+      restart: { process_changed: processChanged, session_consistent: value.host_observations?.lifecycle?.before_sha256 === preflight.session_sha256 } } }, privacyReceipt),
     execution_origin: io.executionOrigin });
   } finally {
     try { io.stop(); } finally { for (const runNonce of nonces) io.garminCleanup(runNonce, false); }

@@ -100,11 +100,25 @@ if (shell[0] === 'am' && shell[1] === 'start') {
   state.nonce = link.searchParams.get('nonce');
   state.garminPhase = link.searchParams.get('mode');
   state.arm = false;
-  state.processCounter += 1; state.currentPid = state.processCounter;
+  if (!state.reuseProcessId || !state.lastProcessId) {
+    state.processCounter += 1;
+    state.lastProcessId = state.processCounter;
+  }
+  state.currentPid = state.lastProcessId;
+  if (!state.reuseProcessBirth || !state.lastProcessStartTicks) {
+    state.processStartTicks += 100;
+    state.lastProcessStartTicks = state.processStartTicks;
+  }
   save(); out('Status: ok'); return 0;
 }
 if (shell[0] === 'am' && shell[1] === 'force-stop') { state.currentPid = null; save(); return 0; }
 if (shell[0] === 'pidof') { if (state.currentPid) out(String(state.currentPid)); return state.currentPid ? 0 : 1; }
+if (shell[0] === 'cat' && /^\/proc\/\d+\/stat$/u.test(shell[1] ?? '')) {
+  const pid = Number(shell[1].split('/')[2]);
+  if (pid !== state.currentPid) return 1;
+  out(`${pid} (controlled) S ${Array(18).fill('0').join(' ')} ${state.lastProcessStartTicks}`);
+  return 0;
+}
 if (tool === 'adb' && args[2] === 'exec-out') { out(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1EAAAAASUVORK5CYII=', 'base64')); return 0; }
 if (tool === 'adb' && args[2] === 'logcat') {
   if (state.missingMarker) return 0;

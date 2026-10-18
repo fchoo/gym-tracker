@@ -47,6 +47,7 @@ export function createDomainRunner() {
       },
     },
     processCounter: 1000,
+    processStartTicks: 5000,
     calendar: V12_CALENDAR_SHARD_STAGE_IDS.map((id, order) => ({ id, order, status: 'PASS', samples: [sample(1), sample(2)], receipt: { content_width_dp: 400, start_dp: [0, 10], end_dp: [100, 10], dx_dp: 100, dy_dp: 0, event_sequence: ['pointer-down', 'pointer-move', 'pointer-up'], cancelled: false, settled: true, callback_count: 1, semantic_transition: { pre: 'month', during: 'drag', post: 'month' }, screenshot_sha256: hash('controlled-png'), trace_sha256: hash(JSON.stringify([sample(1), sample(2)])), expected_outcome: id } })),
     flow,
   });
