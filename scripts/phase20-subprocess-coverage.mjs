@@ -26,18 +26,11 @@ function installChildOnlyCoverage() {
   const rawDirectory = process.env.PHASE20_CHILD_COVERAGE_DIRECTORY;
   const projectRoot = process.env.PHASE20_CHILD_COVERAGE_PROJECT_ROOT;
   if (rawDirectory === undefined || projectRoot === undefined) return;
-  const scriptsRoot = realpathSync(path.resolve(projectRoot, "scripts"));
   const originalSpawnSync = childProcess.spawnSync;
   childProcess.spawnSync = (command, args, options = {}) => {
-    const entrypoint = Array.isArray(args) && typeof args[0] === "string"
-      && !args[0].startsWith("-") ? path.resolve(args[0]) : undefined;
-    const relative = entrypoint === undefined ? ".." : path.relative(scriptsRoot, entrypoint);
-    const isProductionCli = command === process.execPath
-      && relative !== ".."
-      && !relative.startsWith(`..${path.sep}`)
-      && !path.isAbsolute(relative)
-      && relative.endsWith(".mjs");
-    if (!isProductionCli) return originalSpawnSync(command, args, options);
+    if (command !== process.execPath || options.env?.NODE_V8_COVERAGE !== undefined) {
+      return originalSpawnSync(command, args, options);
+    }
     return originalSpawnSync(command, args, {
       ...options,
       env: { ...process.env, ...(options.env ?? {}), NODE_V8_COVERAGE: rawDirectory },

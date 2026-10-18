@@ -310,6 +310,10 @@ test("child-only coverage instruments production CLI descendants without instrum
       "classify(false);",
       "",
     ].join("\n"));
+    writeFileSync(path.join(root, "scripts/eval-target.mjs"), [
+      "export function classify(value) { return value ? 'yes' : 'no'; }",
+      "",
+    ].join("\n"));
     writeFileSync(path.join(root, "target.test.mjs"), [
       "import assert from 'node:assert/strict';",
       "import { spawnSync } from 'node:child_process';",
@@ -318,6 +322,9 @@ test("child-only coverage instruments production CLI descendants without instrum
       "test('runs the production CLI child', () => {",
       "  const result = spawnSync(process.execPath, [path.join(process.cwd(), 'scripts/target.mjs')], { encoding: 'utf8' });",
       "  assert.equal(result.status, 0, result.stderr);",
+      "  const imported = new URL('./scripts/eval-target.mjs', new URL(`file://${process.cwd()}/`)).href;",
+      "  const evalResult = spawnSync(process.execPath, ['--input-type=module', '--eval', `const { classify } = await import(${JSON.stringify(imported)}); classify(true); classify(false);`], { encoding: 'utf8' });",
+      "  assert.equal(evalResult.status, 0, evalResult.stderr);",
       "});",
       "",
     ].join("\n"));
@@ -326,18 +333,20 @@ test("child-only coverage instruments production CLI descendants without instrum
       projects: [{
         name: "child-only",
         coverage: "children",
-        modules: ["scripts/target.mjs"],
+        modules: ["scripts/target.mjs", "scripts/eval-target.mjs"],
         tests: ["target.test.mjs"],
       }],
       outputDirectory: path.join(root, "coverage"),
       maxParallel: 1,
     });
     const summary = JSON.parse(readFileSync(path.join(root, "coverage/coverage-summary.json"), "utf8"));
-    assert.deepEqual(
-      ["statements", "branches", "functions", "lines"]
-        .map((metric) => summary["scripts/target.mjs"][metric].pct),
-      [100, 100, 100, 100],
-    );
+    for (const module of ["scripts/target.mjs", "scripts/eval-target.mjs"]) {
+      assert.deepEqual(
+        ["statements", "branches", "functions", "lines"]
+          .map((metric) => summary[module][metric].pct),
+        [100, 100, 100, 100],
+      );
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
