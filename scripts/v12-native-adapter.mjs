@@ -63,6 +63,8 @@ import {
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const ADAPTER = fileURLToPath(import.meta.url);
+const SUPERVISOR = fileURLToPath(new URL("./v12-native-adapter-supervisor.mjs", import.meta.url));
+const PROCESS_BOOTSTRAP = fileURLToPath(new URL("./v12-native-process-bootstrap.mjs", import.meta.url));
 const LAUNCHER = fileURLToPath(new URL("./v12-production-native-adapter-launcher.mjs", import.meta.url));
 const NATIVE_RUNTIME = fileURLToPath(new URL("./v12-production-native-runtime.mjs", import.meta.url));
 const DOMAIN_ACTIONS = fileURLToPath(new URL("./v12-production-native-domain-actions.mjs", import.meta.url));
@@ -173,11 +175,36 @@ function sameAttestation(expected, actual) {
     && Object.keys(actual).length === Object.keys(expected).length;
 }
 
-const killTree = (child, signal) => {
-  if (!Number.isSafeInteger(child.pid) || child.pid < 1) return;
-  try { process.kill(-child.pid, signal); }
-  catch { try { child.kill(signal); } catch { /* process already exited */ } }
-};
+function signalOwnedTree(child, signal) {
+  if (!Number.isSafeInteger(child.pid) || child.pid < 1 || child.exitCode !== null || child.signalCode !== null) return true;
+  if (process.platform === "win32") {
+    const result = spawnSync("taskkill", ["/PID", String(child.pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
+      encoding: "utf8",
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    return !result.error && !result.signal && result.status === 0;
+  }
+  try { process.kill(-child.pid, signal); return true; }
+  catch (error) {
+    if (error?.code === "ESRCH") return true;
+    return false;
+  }
+}
+
+function processGroupIsEmpty(processGroupId) {
+  if (process.platform === "win32") return true;
+  try { process.kill(-processGroupId, 0); return false; }
+  catch (error) { return error?.code === "ESRCH"; }
+}
+
+async function verifyProcessGroupEmpty(processGroupId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (!processGroupIsEmpty(processGroupId) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return processGroupIsEmpty(processGroupId);
+}
 
 /** Owns one detached process group and bounds TERM -> KILL escalation. */
 export function superviseV12NativeProcess({
@@ -197,28 +224,62 @@ export function superviseV12NativeProcess({
     || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || !Number.isSafeInteger(maxBuffer) || maxBuffer < 1) {
     return Promise.reject(new Error("v12_native_adapter_supervisor_invalid"));
   }
+  if (signal?.aborted) {
+    return Promise.resolve(Object.freeze({
+      status: null,
+      signal: null,
+      stdout: "",
+      stderr: "",
+      timed_out: false,
+      cancelled: true,
+      output_exceeded: false,
+      termination: null,
+      cleanup_verified: true,
+    }));
+  }
   return new Promise((resolve) => {
-    const child = spawn(executable, args, {
+    const child = spawn(process.execPath, [PROCESS_BOOTSTRAP, executable, ...args], {
       cwd,
       env: environment,
-      detached: true,
-      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      stdio: ["pipe", "pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
+    const processGroupId = child.pid;
     const stdout = []; const stderr = [];
     let stdoutBytes = 0; let stderrBytes = 0;
     let timedOut = false; let cancelled = false; let outputExceeded = false; let termination = null; let settled = false;
+    let cleanupVerified = true;
     let termTimer; let killTimer;
+    const finish = async (status, childSignal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline); clearTimeout(termTimer); clearTimeout(killTimer);
+      signal?.removeEventListener("abort", onAbort);
+      cleanupVerified = cleanupVerified && await verifyProcessGroupEmpty(processGroupId, killGraceMs);
+      resolve(Object.freeze({
+        status,
+        signal: childSignal,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        timed_out: timedOut,
+        cancelled,
+        output_exceeded: outputExceeded,
+        termination,
+        cleanup_verified: cleanupVerified,
+      }));
+    };
     const terminate = (reason) => {
       if (settled || termination !== null) return;
       timedOut = reason === "timeout";
       cancelled = reason === "signal";
       termination = "SIGTERM";
-      killTree(child, "SIGTERM");
+      cleanupVerified = signalOwnedTree(child, "SIGTERM") && cleanupVerified;
       termTimer = setTimeout(() => {
         if (settled) return;
         termination = "SIGKILL";
-        killTree(child, "SIGKILL");
-        killTimer = setTimeout(() => killTree(child, "SIGKILL"), killGraceMs);
+        cleanupVerified = signalOwnedTree(child, "SIGKILL") && cleanupVerified;
+        killTimer = setTimeout(() => finish(null, null), killGraceMs);
       }, termGraceMs);
     };
     const deadline = setTimeout(() => terminate("timeout"), timeoutMs);
@@ -233,33 +294,18 @@ export function superviseV12NativeProcess({
     child.stdout.on("data", collect(stdout, "stdout"));
     child.stderr.on("data", collect(stderr, "stderr"));
     child.on("error", () => terminate("error"));
-    child.on("close", (status, childSignal) => {
-      settled = true;
-      clearTimeout(deadline); clearTimeout(termTimer); clearTimeout(killTimer);
-      signal?.removeEventListener("abort", onAbort);
-      resolve(Object.freeze({
-        status,
-        signal: childSignal,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        timed_out: timedOut,
-        cancelled,
-        output_exceeded: outputExceeded,
-        termination,
-      }));
-    });
+    child.on("close", finish);
+    child.stdio[3].resume();
     child.stdin.on("error", () => { /* close/error settles through the child */ });
     child.stdin.end(input ?? "");
   });
 }
 
-async function runSupervisorCli() {
-  const timeoutMs = Number(process.argv[3]);
-  const executable = process.argv[4];
-  const args = process.argv.slice(5);
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  process.once("SIGTERM", abort); process.once("SIGINT", abort);
+export async function runV12NativeSupervisorCli({ signal, argv = process.argv.slice(2) } = {}) {
+  const offset = argv[0] === "--supervise" ? 1 : 0;
+  const timeoutMs = Number(argv[offset]);
+  const executable = argv[offset + 1];
+  const args = argv.slice(offset + 2);
   const result = await superviseV12NativeProcess({
     executable,
     args,
@@ -267,7 +313,7 @@ async function runSupervisorCli() {
     environment: process.env,
     input: readFileSync(0),
     timeoutMs,
-    signal: controller.signal,
+    signal,
   });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -301,7 +347,7 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
   const supervisedTimeoutMs = V12_NATIVE_ACTION_TIMEOUT_MS[action] - V12_NATIVE_ADAPTER_EXIT_MARGIN_MS;
   const targetEnvironment = { ...environment };
   if (target.testOnly) delete targetEnvironment.NODE_V8_COVERAGE;
-  const result = spawnSync(process.execPath, [ADAPTER, "--supervise", String(supervisedTimeoutMs), target.executable,
+  const result = spawnSync(process.execPath, [SUPERVISOR, String(supervisedTimeoutMs), target.executable,
     ...target.args, "--action", action], {
     cwd: root,
     input: request,
@@ -349,7 +395,12 @@ export function invokeV12NativeAdapterEnvelope(action, payload, {
 }
 
 if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(ADAPTER)
-  && process.argv[2] === "--supervise") await runSupervisorCli();
+  && process.argv[2] === "--supervise") {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGTERM", abort); process.once("SIGINT", abort);
+  await runV12NativeSupervisorCli({ signal: controller.signal });
+}
 
 export function invokeV12NativeAdapter(action, payload, options = {}) {
   return invokeV12NativeAdapterEnvelope(action, payload, options).result;

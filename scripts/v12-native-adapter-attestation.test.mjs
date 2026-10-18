@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -184,7 +184,8 @@ test("supervisor forwards host cancellation through the same bounded TERM path",
   const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-signal-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const cleaned = path.join(root, "signal-cleaned");
-  const program = `import fs from "node:fs"; process.on("SIGTERM",()=>{fs.writeFileSync(${JSON.stringify(cleaned)},"yes"); process.exit(0)}); setInterval(()=>{},1000);`;
+  const ready = path.join(root, "signal-ready");
+  const program = `import fs from "node:fs"; process.on("SIGTERM",()=>{fs.writeFileSync(${JSON.stringify(cleaned)},"yes"); process.exitCode=0}); fs.writeFileSync(${JSON.stringify(ready)},"yes"); const timer=setInterval(()=>{},1000); process.once("SIGTERM",()=>clearInterval(timer));`;
   const controller = new AbortController();
   const running = superviseV12NativeProcess({
     executable: process.execPath,
@@ -198,11 +199,83 @@ test("supervisor forwards host cancellation through the same bounded TERM path",
     maxBuffer: 1024,
     signal: controller.signal,
   });
-  setTimeout(() => controller.abort(), 150);
+  for (let attempt = 0; attempt < 100 && !existsSync(ready); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(existsSync(ready), true, "target never acknowledged signal readiness");
+  controller.abort();
   const result = await running;
   assert.equal(readFileSync(cleaned, "utf8"), "yes");
   assert.equal(result.cancelled, true);
   assert.equal(result.termination, "SIGTERM");
+});
+
+test("supervisor cancels a pre-aborted request without starting the target", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-pre-abort-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const started = path.join(root, "started");
+  const controller = new AbortController();
+  controller.abort();
+  const result = await superviseV12NativeProcess({
+    executable: process.execPath,
+    args: ["--input-type=module", "--eval", `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(started)}, "yes"); setInterval(()=>{},1000);`],
+    cwd: root,
+    environment: process.env,
+    input: "",
+    timeoutMs: 5_000,
+    termGraceMs: 100,
+    killGraceMs: 100,
+    maxBuffer: 1024,
+    signal: controller.signal,
+  });
+  assert.equal(result.cancelled, true);
+  assert.equal(result.cleanup_verified, true);
+  assert.equal(existsSync(started), false);
+});
+
+test("supervisor keeps group ownership after a cooperative leader exits and kills its resistant grandchild", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-cooperative-leader-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const pidFile = path.join(root, "grandchild.pid");
+  const grandchild = `process.on("SIGTERM",()=>{}); setInterval(()=>{},1000);`;
+  const program = `import fs from "node:fs"; import {spawn} from "node:child_process"; const child=spawn(process.execPath,["--input-type=module","--eval",${JSON.stringify(grandchild)}],{stdio:"ignore"}); fs.writeFileSync(${JSON.stringify(pidFile)},String(child.pid)); const timer=setInterval(()=>{},1000); process.on("SIGTERM",()=>{clearInterval(timer);process.exitCode=0});`;
+  const result = await superviseV12NativeProcess({
+    executable: process.execPath,
+    args: ["--input-type=module", "--eval", program],
+    cwd: root,
+    environment: process.env,
+    input: "",
+    timeoutMs: 150,
+    termGraceMs: 100,
+    killGraceMs: 500,
+    maxBuffer: 1024,
+  });
+  const grandchildPid = Number(readFileSync(pidFile, "utf8"));
+  assert.equal(result.timed_out, true);
+  assert.equal(result.termination, "SIGKILL");
+  assert.equal(result.cleanup_verified, true);
+  assert.throws(() => process.kill(grandchildPid, 0), { code: "ESRCH" });
+});
+
+test("minimal supervisor bootstrap acknowledges signal readiness before imports complete", { timeout: 10_000 }, async () => {
+  const bootstrap = new URL("./v12-native-adapter-supervisor.mjs", import.meta.url).pathname;
+  const supervisor = spawn(process.execPath, [bootstrap, "10000", process.execPath, "--input-type=module", "--eval", "setInterval(() => {}, 1000);"], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe", "pipe"],
+  });
+  supervisor.stdin.end();
+  await new Promise((resolve, reject) => {
+    supervisor.stdio[3].once("data", resolve);
+    supervisor.once("error", reject);
+    supervisor.once("close", () => reject(new Error("supervisor_closed_before_ready")));
+  });
+  supervisor.kill("SIGTERM");
+  const result = await new Promise((resolve, reject) => {
+    supervisor.once("error", reject);
+    supervisor.once("close", (status, signal) => resolve({ status, signal }));
+  });
+  assert.deepEqual(result, { status: 1, signal: null });
 });
 test("adapter provenance is immutable and action-scoped across borrowed-lease cleanup", (t) => {
   const runner = fixture(t);
