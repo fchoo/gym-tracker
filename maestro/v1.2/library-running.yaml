@@ -9,6 +9,7 @@ tags: [v1.2, phase-20, source-owned, synthetic-fixture]
 - openLink: "gymtracker-devtest:///native-acceptance/library-running?case=${V12_CASE_ID}&fixture=${V12_FIXTURE_ID}&nonce=${V12_EVIDENCE_NONCE}"
 - extendedWaitUntil: { visible: "Native acceptance fixture", timeout: 30000 }
 - assertVisible: { id: "native-acceptance-stage" }
+- assertVisible: "${V12_CASE_ID}"
 - tapOn: { id: "native-acceptance-execute" }
 - extendedWaitUntil: { visible: "Case verified", timeout: 30000 }
 - assertVisible: { id: "native-acceptance-readback" }
