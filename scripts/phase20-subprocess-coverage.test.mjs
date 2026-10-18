@@ -57,6 +57,7 @@ import {
 } from "./v12-visual-streaming.mjs";
 import { loadV12VisualAuthority } from "./v12-visual-authority.mjs";
 import { createV12ShellRequirementEvidence } from "./v12-shell-requirement-evidence.mjs";
+import { phase14ShellEvidenceFixture } from "./testing/v12-phase14-shell-evidence-fixture.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_NATIVE_PROVENANCE_REGISTRY,
@@ -1710,6 +1711,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
       }
     };
     const captureReceipts = new Map();
+    const reboundPhase14 = phase14ShellEvidenceFixture(build);
     for (const shard of Object.keys(V12_NATIVE_PROVENANCE_REGISTRY)) {
       const publicationRelative = `artifacts/native/v1.2/${runId}/publication/${shard}.json`;
       const publication = JSON.parse(readFileSync(save(publicationRelative), "utf8"));
@@ -1731,8 +1733,10 @@ test("production-shaped retained evidence completes preseal and final readiness"
           }
         }
         if (member.artifact === "semantics/accessibility.json") {
-          value.shell_receipts = createV12ShellRequirementEvidence(value.observations, build);
+          value.shell_receipts = createV12ShellRequirementEvidence(reboundPhase14.evidence, reboundPhase14.phase14Manifest, build);
         }
+        if (member.artifact === "shell/phase14-build.json") value = reboundPhase14.phase14Manifest;
+        if (member.artifact === "shell/phase14-evidence.json") value = reboundPhase14.evidence;
         if (member.artifact === "screenshots/index.json") {
           for (const record of value.records) {
             record.settings.state_receipt.observation_sha256 = createHash("sha256")

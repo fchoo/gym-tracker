@@ -19,6 +19,7 @@ import { PNG } from "pngjs";
 import { deriveV12PixelComparison } from "./compare-v12-visual.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
+import { phase14ShellEvidenceFixture } from "./testing/v12-phase14-shell-evidence-fixture.mjs";
 
 const project = process.cwd();
 let run = "phase20-20261014T000000Z-aaaaaaaaaaaa";
@@ -100,6 +101,10 @@ function fixtureRoot({ performanceOverBudget = false } = {}) {
   mkdirSync(path.join(root, "artifacts/native/v1.2", run), { recursive: true });
   const build = buildManifest(head, tree.stdout.trim());
   writeFileSync(path.join(root, "artifacts/native/v1.2", run, "build.json"), `${JSON.stringify(build)}\n`);
+  const phase14 = phase14ShellEvidenceFixture(build);
+  mkdirSync(path.join(root, "artifacts/native/phase14/maestro"), { recursive: true });
+  writeFileSync(path.join(root, "artifacts/native/phase14/build.json"), `${JSON.stringify(phase14.phase14Manifest)}\n`);
+  writeFileSync(path.join(root, "artifacts/native/phase14/maestro/phase14-evidence.json"), `${JSON.stringify(phase14.evidence)}\n`);
   mkdirSync(path.join(root, "artifacts/native/v1.2-acceptance"), { recursive: true });
   writeFileSync(path.join(root, build.build.apk.path), FAKE_APK_BYTES);
   symlinkSync(path.join(project, "node_modules"), path.join(root, "node_modules"), "dir");

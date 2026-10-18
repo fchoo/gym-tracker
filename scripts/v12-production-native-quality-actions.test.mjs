@@ -11,6 +11,7 @@ import { executeV12PerformanceShard } from "./v12-performance-shard.mjs";
 import { V12_PERFORMANCE_BUDGETS, V12_PERFORMANCE_WORKLOAD } from "./benchmark-v12-interactions.mjs";
 import { V12_QUALITY_COMMAND_GRAPH } from "./v12-native-time-budgets.mjs";
 import { accessibilityEvidence, performanceEvidence } from "./testing/v12-quality-evidence-fixture.mjs";
+import { phase14ShellEvidenceFixture } from "./testing/v12-phase14-shell-evidence-fixture.mjs";
 
 // Deliberately synthetic transport data. It is never installed, published, or
 // presented as measurements. Only the ADB executable is controlled; the module,
@@ -193,9 +194,13 @@ test("production subprocess returns measured F200/accessibility with restored se
   const result = successful(runner, { required_inputs: ["touch", "software-keyboard", "hardware-keyboard", "dpad"], font_scale: 2, focus_ring_dp: 3, excludes: ["live-talkback", "switch-scanning"] });
   assert.deepEqual(result, runner.measured.observations.map((entry) => ({ ...entry, restored_settings: true })));
   const writes = [];
-  const shard = executeLiveV12AccessibilityShard({ runId: runner.build.run_id, manifest: runner.build, observe: () => result, write: (file, value) => writes.push([file, value]) });
+  const shardManifest = { ...runner.build, configuration: { id: "AP-L-C390-P-F100" } };
+  const phase14 = phase14ShellEvidenceFixture(shardManifest);
+  const shard = executeLiveV12AccessibilityShard({ runId: runner.build.run_id, manifest: shardManifest,
+    phase14Manifest: phase14.phase14Manifest, phase14Evidence: phase14.evidence,
+    observe: () => result, write: (file, value) => writes.push([file, value]) });
   assert.deepEqual(shard.semantic.excludes, ["live-talkback", "switch-scanning", "final-verdict"]);
-  assert.equal(writes.length, 2); assert.deepEqual(runner.readState().settings, before); released(runner);
+  assert.equal(writes.length, 4); assert.deepEqual(runner.readState().settings, before); released(runner);
   assert.equal(independentQualityCommands(runner).length,
     V12_QUALITY_COMMAND_GRAPH.accessibility.length);
 });

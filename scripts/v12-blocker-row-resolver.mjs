@@ -123,25 +123,37 @@ export function resolveV12ShellRequirement(selector, receipts, expectedIdentity)
   const matches = receipts.filter((receipt) => receipt?.requirement_id === selector.requirement_id);
   ensure(matches.length === 1, matches.length === 0 ? 'shell_receipt_missing' : 'shell_receipt_duplicate');
   const receipt = matches[0];
-  ensure(receipt.schema_version === 1 && receipt.producer === 'v12-shell-requirement-receipt/v1'
+  ensure(receipt.schema_version === 2 && receipt.producer === 'v12-shell-requirement-receipt/v2'
     && receipt.requirement_id === selector.requirement_id && receipt.case_id === selector.id
     && same(receipt.action_ids, selector.action_ids) && same(receipt.postcondition_ids, selector.postcondition_ids)
     && Array.isArray(receipt.action_receipts) && Array.isArray(receipt.postcondition_receipts)
-    && same(receipt.action_receipts.map(({ id }) => id), selector.action_ids)
-    && same(receipt.postcondition_receipts.map(({ id }) => id), selector.postcondition_ids)
-    && ['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED'].includes(receipt.result)
+    && same(receipt.action_receipts.map(({ action_id: id }) => id), selector.action_ids)
+    && same(receipt.postcondition_receipts.map(({ postcondition_id: id }) => id), selector.postcondition_ids)
+    && receipt.result === 'PASS'
     && Array.isArray(receipt.members) && receipt.members.length > 0
-    && receipt.members.every((member) => member && same(Object.keys(member), ['id', 'result', 'receipt_sha256'])
-      && typeof member.id === 'string' && RESULTS.includes(member.result) && HASH.test(member.receipt_sha256 ?? ''))
-    && new Set(receipt.members.map(({ id }) => id)).size === receipt.members.length, 'shell_receipt_invalid');
-  const memberIds = new Set(receipt.members.map(({ id }) => id));
-  ensure([...receipt.action_receipts, ...receipt.postcondition_receipts].every((entry) => entry
-    && same(Object.keys(entry), ['id', 'member_id', 'receipt_sha256'])
-    && memberIds.has(entry.member_id) && HASH.test(entry.receipt_sha256 ?? '')), 'shell_receipt_invalid');
+    && receipt.members.every((member) => member?.producer === 'v12-shell-phase14-cell-receipt/v1'
+      && member.domain === 'phase14-shell-cell' && member.requirement_id === selector.requirement_id
+      && member.case_id === selector.id && typeof member.cell_id === 'string' && member.result === 'PASS'
+      && HASH.test(member.receipt_sha256 ?? ''))
+    && new Set(receipt.members.map(({ cell_id: id }) => id)).size === receipt.members.length
+    && receipt.action_receipts.every((entry) => entry?.producer === 'v12-shell-phase14-action-receipt/v1'
+      && entry.domain === 'phase14-shell-action' && entry.requirement_id === selector.requirement_id
+      && entry.case_id === selector.id && entry.result === 'PASS' && HASH.test(entry.receipt_sha256 ?? ''))
+    && receipt.postcondition_receipts.every((entry) => entry?.producer === 'v12-shell-phase14-postcondition-receipt/v1'
+      && entry.domain === 'phase14-shell-postcondition' && entry.requirement_id === selector.requirement_id
+      && entry.case_id === selector.id && entry.result === 'PASS' && HASH.test(entry.receipt_sha256 ?? ''))
+    && receipt.retained_source?.manifest?.artifact_class === 'phase14-build-manifest'
+    && receipt.retained_source.manifest.path === 'shell/phase14-build.json'
+    && receipt.retained_source.manifest.sha256 === receipt.phase14_manifest_sha256
+    && receipt.retained_source?.evidence?.artifact_class === 'phase14-native-evidence'
+    && receipt.retained_source.evidence.path === 'shell/phase14-evidence.json'
+    && receipt.retained_source.evidence.sha256 === receipt.phase14_evidence_sha256, 'shell_receipt_invalid');
   ensure(Object.entries(expectedIdentity).every(([key, value]) => receipt[key] === value), 'shell_receipt_identity_invalid');
   const { receipt_sha256: receiptSha256, ...unsigned } = receipt;
   ensure(HASH.test(receiptSha256 ?? '') && receiptSha256 === jsonHash(unsigned), 'shell_receipt_hash_invalid');
-  ensure(receipt.result === combineV12SourceResults(receipt.members.map(({ result: memberResult }) => memberResult)), 'shell_receipt_result_invalid');
+  ensure(receipt.result === combineV12SourceResults([
+    ...receipt.members, ...receipt.action_receipts, ...receipt.postcondition_receipts,
+  ].map(({ result: memberResult }) => memberResult)), 'shell_receipt_result_invalid');
   return Object.freeze({ type: selector.type, id: selector.id, result: receipt.result, members: Object.freeze(receipt.members), receipt_sha256: receiptSha256 });
 }
 
@@ -742,12 +754,12 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const shellIdentity = {
       run_id: manifest.run_id, source_tree_sha256: manifest.source.tree_sha256,
       apk_sha256: manifest.build.apk.sha256, installed_apk_sha256: manifest.device.installed_apk_sha256,
-      device_identity_sha256: manifest.device.identity_sha256,
+      device_identity_sha256: manifest.device.identity_sha256, configuration_id: manifest.configuration.id,
     };
     for (const entry of table.filter(({ selector }) => selector.type === 'shell-requirement')) {
       const resolved = resolveV12ShellRequirement(entry.selector, semantics.shell_receipts, shellIdentity);
       leaf(`shell:${entry.selector.id}`, 'shell-requirement', entry.selector.id, resolved.result,
-        ['semantics/accessibility.json', 'geometry/hit-targets.json'], {
+        ['semantics/accessibility.json', 'geometry/hit-targets.json', 'shell/phase14-build.json', 'shell/phase14-evidence.json'], {
           requirement_id: entry.row_id, members: resolved.members, receipt_sha256: resolved.receipt_sha256,
         });
     }

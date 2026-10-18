@@ -16,6 +16,8 @@ import {
   V12_GARMIN_REQUIREMENT_REGISTRY,
   V12_PROGRESS_REQUIREMENT_REGISTRY,
 } from './v12-blocker-row-resolver.mjs';
+import { createV12ShellRequirementEvidence } from './v12-shell-requirement-evidence.mjs';
+import { phase14ShellEvidenceFixture } from './testing/v12-phase14-shell-evidence-fixture.mjs';
 
 const inputs = loadV12ContractInputs();
 
@@ -87,25 +89,31 @@ test('SHL resolver is requirement keyed and rejects missing, duplicate, or stale
     run_id: 'phase20-20261017T000000Z-aaaaaaaaaaaa',
     source_tree_sha256: 'a'.repeat(64), apk_sha256: 'b'.repeat(64),
     installed_apk_sha256: 'b'.repeat(64), device_identity_sha256: 'c'.repeat(64),
+    configuration_id: 'AP-L-C390-P-F100',
   };
-  const receipt = {
-    schema_version: 1, producer: 'v12-shell-requirement-receipt/v1', ...identity,
-    requirement_id: 'SHL-01', case_id: 'shell.four-roots', action_ids: selector.action_ids,
-    postcondition_ids: selector.postcondition_ids,
-    action_receipts: selector.action_ids.map((id) => ({ id, member_id: 'workout:normal', receipt_sha256: 'f'.repeat(64) })),
-    postcondition_receipts: selector.postcondition_ids.map((id) => ({ id, member_id: 'workout:normal', receipt_sha256: 'f'.repeat(64) })),
-    members: [{ id: 'workout:normal', result: 'PASS', receipt_sha256: 'd'.repeat(64) }],
-    result: 'PASS', receipt_sha256: 'e'.repeat(64),
+  const manifest = {
+    run_id: identity.run_id,
+    source: { head: 'd'.repeat(40), tree_sha256: identity.source_tree_sha256 },
+    build: { package: 'com.fchoo.gymtracker.devtest', apk: { sha256: identity.apk_sha256, size_bytes: 1 } },
+    device: { installed_apk_sha256: identity.installed_apk_sha256, identity_sha256: identity.device_identity_sha256 },
+    configuration: { id: identity.configuration_id },
   };
-  const hash = createHash('sha256');
-  const unsigned = { ...receipt }; delete unsigned.receipt_sha256;
-  receipt.receipt_sha256 = hash.update(JSON.stringify(unsigned)).digest('hex');
+  const phase14 = phase14ShellEvidenceFixture(manifest);
+  const receipts = createV12ShellRequirementEvidence(phase14.evidence, phase14.phase14Manifest, manifest);
+  const receipt = receipts.find((entry) => entry.requirement_id === 'SHL-01');
   assert.equal(resolveV12ShellRequirement(selector, [receipt], identity).result, 'PASS');
   assert.equal(resolveV12ShellRequirement(selector, [structuredClone(receipt)].reverse(), identity).result, 'PASS');
   assert.throws(() => resolveV12ShellRequirement(selector, [], identity), /shell_receipt_missing/u);
   assert.throws(() => resolveV12ShellRequirement(selector, [receipt, receipt], identity), /shell_receipt_duplicate/u);
   const stale = structuredClone(receipt); stale.run_id = 'phase20-20261018T000000Z-bbbbbbbbbbbb';
   assert.throws(() => resolveV12ShellRequirement(selector, [stale], identity), /shell_receipt_identity_invalid/u);
+  const wrongAction = structuredClone(receipt); wrongAction.action_receipts[0].action_id = 'generic-accessibility-pass';
+  assert.throws(() => resolveV12ShellRequirement(selector, [wrongAction], identity), /shell_receipt_invalid/u);
+  for (const requirement of ['SHL-01', 'SHL-13']) {
+    const selected = createV12RowSelectorTable({ inputs }).find(x => x.row_id === requirement).selector;
+    assert.throws(() => resolveV12ShellRequirement(selected, [], identity), /shell_receipt_missing/u,
+      `${requirement} cannot close from generic accessibility PASS alone`);
+  }
 });
 
 test('GAR resolver requires the explicit domain, UI action, and readback members regardless of artifact order', () => {

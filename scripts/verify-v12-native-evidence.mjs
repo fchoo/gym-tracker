@@ -699,7 +699,7 @@ export const V12_ARTIFACT_REGISTRY = Object.freeze({
   workout: Object.freeze(["maestro/workout.xml", "mapping/workout.json"]),
   "library-running": Object.freeze(["maestro/library-running.xml", "mapping/library-running.json"]),
   visual: Object.freeze(["screenshots/index.json", "comparison/index.json"]),
-  accessibility: Object.freeze(["semantics/accessibility.json", "geometry/hit-targets.json"]),
+  accessibility: Object.freeze(["semantics/accessibility.json", "geometry/hit-targets.json", "shell/phase14-build.json", "shell/phase14-evidence.json"]),
   performance: Object.freeze(["performance.json"]),
 });
 const V12_PREFLIGHT_SHARDS = V12_ARTIFACT_REGISTRY;
@@ -1048,7 +1048,15 @@ function preflightVerifyArtifact(root, runId, relative, manifest, allowTestCalen
     if (!/<testsuite[ >]/u.test(text) || !/<testcase[ >]/u.test(text)) preflightFail("xml_schema_invalid");
   } else {
     let value; try { value = JSON.parse(bytes.toString("utf8")); } catch { preflightFail("json_schema_invalid"); }
-    if (!finalPlainObject(value) || (value.run_id !== undefined && value.run_id !== runId) || typeof value.producer !== "string") preflightFail("json_schema_invalid");
+    const retainedPhase14Manifest = relative === "shell/phase14-build.json";
+    if (!finalPlainObject(value) || (value.run_id !== undefined && value.run_id !== runId)
+      || (retainedPhase14Manifest
+        ? value.schema_version !== 1 || value.suite !== "phase14" || value.profile !== "development-test"
+          || value.package !== manifest.build.package || value.base_head !== manifest.source.head
+          || value.source_tree_sha256 !== manifest.source.tree_sha256 || value.apk?.sha256 !== manifest.build.apk.sha256
+          || value.installed_apk?.sha256 !== manifest.device.installed_apk_sha256
+          || value.device?.identity_sha256 !== manifest.device.identity_sha256
+        : typeof value.producer !== "string")) preflightFail("json_schema_invalid");
     if (relative === "calendar-transitions.json") {
       try { validateV12CalendarExecutionOrigin(value.execution_origin, root, allowTestCalendarFixture); } catch { preflightFail("calendar_origin_invalid"); }
     }
