@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -131,11 +132,27 @@ function processAlive(pid) {
   catch (error) { return error?.code === "EPERM"; }
 }
 
+function processBirthSha256(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return null;
+  const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+    encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024, stdio: ["ignore", "pipe", "ignore"],
+  });
+  const birth = result.status === 0 && !result.error && !result.signal ? result.stdout.trim().replaceAll(/\s+/gu, " ") : "";
+  return birth.length === 0 ? null : sha256(birth);
+}
+
+function claimOwnerAlive(owner) {
+  if (!processAlive(owner.pid)) return false;
+  const observed = processBirthSha256(owner.pid);
+  return observed === null || observed === owner.process_birth_sha256;
+}
+
 function validateClaimOwner(value, runId, shard) {
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).length !== 5 || value.schema_version !== 1
+    || Object.keys(value).length !== 6 || value.schema_version !== 2
     || value.run_id !== runId || value.shard !== shard
     || !Number.isSafeInteger(value.pid) || value.pid < 1
+    || !HASH.test(value.process_birth_sha256 ?? "")
     || typeof value.nonce !== "string" || !/^[a-f0-9]{32}$/u.test(value.nonce)) fail("claim_conflict");
   return value;
 }
@@ -144,7 +161,9 @@ function acquireClaim(runRoot, runId, shard) {
   const claims = ensureDirectory(runRoot, path.join(runRoot, ".claims"));
   const claim = path.join(claims, `${shard}.json`);
   const nonce = randomBytes(16).toString("hex");
-  const owner = `${JSON.stringify({ schema_version: 1, run_id: runId, shard, pid: process.pid, nonce })}\n`;
+  const processBirth = processBirthSha256(process.pid);
+  if (processBirth === null) fail("claim_conflict");
+  const owner = `${JSON.stringify({ schema_version: 2, run_id: runId, shard, pid: process.pid, process_birth_sha256: processBirth, nonce })}\n`;
   for (let attempt = 0; attempt < 8; attempt += 1) {
     assertAncestors(runRoot, claim);
     try {
@@ -165,7 +184,7 @@ function acquireClaim(runRoot, runId, shard) {
       if (stat.isSymbolicLink() || !stat.isFile()) fail("symlink_forbidden");
       let existing;
       try { existing = validateClaimOwner(JSON.parse(readFileSync(claim, "utf8")), runId, shard); } catch { fail("claim_conflict"); }
-      if (processAlive(existing?.pid)) fail("claim_conflict");
+      if (claimOwnerAlive(existing)) fail("claim_conflict");
       const stale = path.join(claims, `${shard}.stale-${nonce}-${attempt}.json`);
       try { renameSync(claim, stale); }
       catch (renameError) { if (renameError?.code === "ENOENT") continue; throw renameError; }

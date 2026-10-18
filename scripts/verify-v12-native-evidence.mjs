@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -43,7 +43,7 @@ import {
 import { generateV12ParityReport } from "./generate-v12-parity-report.mjs";
 import { resolveV12SourceRows, combineV12SourceResults, validateV12CalendarExecutionOrigin } from "./v12-blocker-row-resolver.mjs";
 import { validateV12AttendedObservations } from "./generate-v12-attended-checklist.mjs";
-import { buildV12ReadinessHandoff, validateV12ReadinessHandoff, V12_FINAL_PUBLICATION_MEMBERS } from "./create-v12-readiness-handoff.mjs";
+import { buildV12ReadinessHandoff, validateV12ReadinessHandoff, V12_FINAL_PUBLICATION_MEMBERS, writeV12VerifiedReadinessMirror } from "./create-v12-readiness-handoff.mjs";
 import { assertV12ArtifactPrivacySafe, assertV12PrivacySafeValue } from "./v12-artifact-privacy.mjs";
 import {
   V12_DEVICE_LEASE_PATHS,
@@ -857,46 +857,6 @@ function preflightCollectFiles(root, runId) {
   return result.sort();
 }
 
-function preflightWriteOnce(root, relative, value) {
-  const target = path.resolve(root, preflightSafeRelative(relative));
-  const projectRoot = path.resolve(root);
-  if (!target.startsWith(`${projectRoot}${path.sep}`)) preflightFail("path_invalid");
-  const rootStat = lstatSync(projectRoot, { throwIfNoEntry: false });
-  if (!rootStat?.isDirectory() || rootStat.isSymbolicLink()) preflightFail("symlink_forbidden");
-  let cursor = projectRoot;
-  for (const part of path.relative(projectRoot, path.dirname(target)).split(path.sep).filter(Boolean)) {
-    cursor = path.join(cursor, part);
-    const stat = lstatSync(cursor, { throwIfNoEntry: false });
-    if (stat === undefined) mkdirSync(cursor, { mode: 0o700 });
-    const current = lstatSync(cursor);
-    if (current.isSymbolicLink() || !current.isDirectory()) preflightFail("symlink_forbidden");
-  }
-  const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
-  try { assertV12ArtifactPrivacySafe(relative, bytes); } catch { preflightFail("privacy_invalid"); }
-  const existing = lstatSync(target, { throwIfNoEntry: false });
-  if (existing !== undefined) {
-    if (existing.isSymbolicLink() || !existing.isFile()) preflightFail("symlink_forbidden");
-    if (!readFileSync(target).equals(bytes)) preflightFail("output_exists");
-    return true;
-  }
-  const directory = path.dirname(target);
-  const temporary = `${target}.partial-${process.pid}-${Date.now()}`;
-  try {
-    writeFileSync(temporary, bytes, { flag: "wx", mode: 0o600 });
-    const fileDescriptor = openSync(temporary, "r"); try { fsyncSync(fileDescriptor); } finally { closeSync(fileDescriptor); }
-    try { linkSync(temporary, target); }
-    catch (error) {
-      if (error?.code !== "EEXIST" || !lstatSync(target).isFile() || !readFileSync(target).equals(bytes)) preflightFail("output_exists");
-    }
-    const directoryDescriptor = openSync(directory, "r"); try { fsyncSync(directoryDescriptor); } finally { closeSync(directoryDescriptor); }
-    unlinkSync(temporary);
-  } catch (error) {
-    if (existsSync(temporary)) unlinkSync(temporary);
-    throw error;
-  }
-  return true;
-}
-
 function readFinalRecoveryJson(root, runPrefix, name) {
   const published = preflightSafeFile(root, `${runPrefix}/${name}`, { required: false });
   const staged = published === null ? preflightSafeFile(root, `${runPrefix}/.staging/final/${name}`, { required: false }) : null;
@@ -1027,8 +987,10 @@ function recoverV12FinalPublicationWithExpected(root, runId, expected) {
     shard: "final",
     produce: () => { preflightFail("final_recovery_invalid"); },
     validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), V12_PREFLIGHT_FINAL_OUTPUTS),
-    beforeManifest: () => preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", handoff),
   });
+  try { verifyV12AtomicShard({ root, runId, shard: "final" }); } catch { preflightFail("publication_invalid"); }
+  validateFinalCandidateBytes(root, runId, expected);
+  writeV12VerifiedReadinessMirror({ root, runId });
   return true;
 }
 
@@ -1405,7 +1367,7 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     const readinessHandoff = JSON.parse(readFileSync(preflightSafeFile(root, `${runPrefix}/readiness-handoff.md`), "utf8"));
     validateFinalCandidateBytes(root, options.run_id, expectedFinal);
     validateV12ReadinessHandoff(readinessHandoff, { final_evidence: finalEvidence });
-    preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff);
+    writeV12VerifiedReadinessMirror({ root, runId: options.run_id });
     assertV12ExactArtifactFileSet(beforeFinalFiles, [...expectedBeforeFinal, ...V12_PREFLIGHT_FINAL_OUTPUTS.map(output => `${runPrefix}/${output}`), `${runPrefix}/publication/final.json`]);
     beforeFinalFiles.forEach(item => preflightHashFile(root, item));
     return Object.freeze({ ok: true, run_id: options.run_id, mode: "final", rows: finalEvidence.rows.length, readiness: readinessHandoff.readiness, release_authorized: false, recovered: true });
@@ -1421,8 +1383,10 @@ export function executeV12EvidenceCli(args, { root = ROOT } = {}) {
     shard: "final",
     produce: ({ write: publish }) => finalWrites.forEach(([relative, value]) => publish(relative, value)),
     validate: members => assertV12ExactArtifactFileSet(members.map(item => item.artifact), V12_PREFLIGHT_FINAL_OUTPUTS),
-    beforeManifest: () => preflightWriteOnce(root, ".planning/phases/20-native-acceptance/20-READINESS-HANDOFF.md", readinessHandoff),
   });
+  try { verifyV12AtomicShard({ root, runId: options.run_id, shard: "final" }); } catch { preflightFail("publication_invalid"); }
+  validateFinalCandidateBytes(root, options.run_id, expectedFinal);
+  writeV12VerifiedReadinessMirror({ root, runId: options.run_id });
   for (const output of ["ui-state-matrix.json", "final-evidence.json", "parity-report.md", "readiness-handoff.md"]) preflightSafeFile(root, `${runPrefix}/${output}`);
   const afterFinalFiles = preflightCollectFiles(root, options.run_id);
   assertV12ExactArtifactFileSet(afterFinalFiles, [...expectedBeforeFinal, ...V12_PREFLIGHT_FINAL_OUTPUTS.map(output => `${runPrefix}/${output}`), `${runPrefix}/publication/final.json`]);

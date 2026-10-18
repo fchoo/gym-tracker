@@ -10,18 +10,190 @@ device_serial=${GYM_TRACKER_ANDROID_SERIAL:-}
 package_name='com.fchoo.gymtracker.devtest'
 native_build_lock="$project_root/.native-build.lock"
 native_build_lock_acquired=0
+native_build_lock_owner=''
+single_build_claim_acquired=0
+single_build_claim_completed=0
+single_build_claim_directory=''
+single_build_claim_nonce=''
+single_build_claim_birth=''
+single_build_claim_scope_sha256=''
 
 fail() {
   printf 'build-current-native-test-apk: %s\n' "$1" >&2
   exit 1
 }
 
+process_birth_sha256() {
+  claim_pid=$1
+  claim_birth=$(/bin/ps -o lstart= -p "$claim_pid" 2>/dev/null | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//' || true)
+  [ -n "$claim_birth" ] || return 1
+  printf '%s' "$claim_birth" | shasum -a 256 | awk '{ print $1 }'
+}
+
+acquire_native_build_lock() {
+  lock_nonce=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  lock_birth=$(process_birth_sha256 "$$") || fail 'could not bind the native build lock to this process birth.'
+  native_build_lock_owner=$(printf '{"schema_version":1,"pid":%s,"process_birth_sha256":"%s","nonce":"%s"}\n' "$$" "$lock_birth" "$lock_nonce")
+  lock_attempt=0
+  while [ "$lock_attempt" -lt 8 ]; do
+    if mkdir "$native_build_lock" 2>/dev/null; then
+      printf '%s' "$native_build_lock_owner" >"$native_build_lock/owner.json"
+      native_build_lock_acquired=1
+      return 0
+    fi
+    [ ! -L "$native_build_lock" ] && [ -f "$native_build_lock/owner.json" ] && [ ! -L "$native_build_lock/owner.json" ] ||
+      fail "another generated-native operation holds an invalid $native_build_lock."
+    lock_fields=$(LOCK_OWNER="$native_build_lock/owner.json" "$node_executable" <<'NODE'
+import { readFileSync } from "node:fs";
+const value = JSON.parse(readFileSync(process.env.LOCK_OWNER, "utf8"));
+const keys = ["schema_version", "pid", "process_birth_sha256", "nonce"];
+if (!value || Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))
+  || value.schema_version !== 1 || !Number.isSafeInteger(value.pid) || value.pid < 1
+  || !/^[a-f0-9]{64}$/u.test(value.process_birth_sha256) || !/^[a-f0-9]{32}$/u.test(value.nonce)) {
+  throw new Error("native_build_lock_invalid");
+}
+process.stdout.write(`${value.pid} ${value.process_birth_sha256} ${value.nonce}\n`);
+NODE
+) || fail "another generated-native operation holds an invalid $native_build_lock."
+    set -- $lock_fields
+    existing_pid=$1; existing_birth=$2; existing_nonce=$3
+    observed_birth=$(process_birth_sha256 "$existing_pid" || true)
+    if kill -0 "$existing_pid" 2>/dev/null && { [ -z "$observed_birth" ] || [ "$observed_birth" = "$existing_birth" ]; }; then
+      fail "another generated-native operation holds $native_build_lock."
+    fi
+    stale_lock_root="$project_root/artifacts/native/.stale-native-build-locks"
+    [ ! -L "$project_root/artifacts" ] && [ ! -L "$project_root/artifacts/native" ] || fail 'native artifacts root must not be a symlink.'
+    mkdir -p "$stale_lock_root"
+    [ ! -L "$stale_lock_root" ] || fail 'native stale-lock root must not be a symlink.'
+    stale_lock="$stale_lock_root/$existing_nonce-$lock_attempt.lock"
+    [ ! -e "$stale_lock" ] || fail 'native build stale-lock destination already exists.'
+    if mv "$native_build_lock" "$stale_lock" 2>/dev/null; then
+      lock_attempt=$((lock_attempt + 1))
+      continue
+    fi
+    lock_attempt=$((lock_attempt + 1))
+  done
+  fail 'native build lock could not be acquired.'
+}
+
+write_single_build_claim() {
+  claim_state=$1
+  claim_create=$2
+  CLAIM_DIRECTORY="$single_build_claim_directory" \
+    CLAIM_NONCE="$single_build_claim_nonce" \
+    CLAIM_PROCESS_BIRTH="$single_build_claim_birth" \
+    CLAIM_RUN_SCOPE_SHA256="$single_build_claim_scope_sha256" \
+    CLAIM_SOURCE_HEAD="$base_head" \
+    CLAIM_SOURCE_TREE_SHA256="$source_tree_sha256" \
+    CLAIM_STATE="$claim_state" \
+    CLAIM_SUITE="$suite" \
+    CLAIM_CREATE="$claim_create" \
+    "$node_executable" <<'NODE'
+import { closeSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+const directory = process.env.CLAIM_DIRECTORY;
+const ownerFile = path.join(directory, "owner.json");
+const value = {
+  schema_version: 1,
+  suite: process.env.CLAIM_SUITE,
+  source_head: process.env.CLAIM_SOURCE_HEAD,
+  source_tree_sha256: process.env.CLAIM_SOURCE_TREE_SHA256,
+  run_scope_sha256: process.env.CLAIM_RUN_SCOPE_SHA256,
+  pid: process.ppid,
+  process_birth_sha256: process.env.CLAIM_PROCESS_BIRTH,
+  nonce: process.env.CLAIM_NONCE,
+  state: process.env.CLAIM_STATE,
+};
+const bytes = `${JSON.stringify(value)}\n`;
+if (process.env.CLAIM_CREATE === "1") {
+  writeFileSync(ownerFile, bytes, { flag: "wx", mode: 0o600 });
+  const descriptor = openSync(ownerFile, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+} else {
+  const current = JSON.parse(readFileSync(ownerFile, "utf8"));
+  if (current.nonce !== value.nonce || current.run_scope_sha256 !== value.run_scope_sha256 || current.state !== "active") {
+    throw new Error("single_build_claim_owner_changed");
+  }
+  const temporary = path.join(directory, `.owner-${value.nonce}.tmp`);
+  writeFileSync(temporary, bytes, { flag: "wx", mode: 0o600 });
+  const descriptor = openSync(temporary, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+  renameSync(temporary, ownerFile);
+}
+const directoryDescriptor = openSync(directory, "r");
+try { fsyncSync(directoryDescriptor); } finally { closeSync(directoryDescriptor); }
+NODE
+}
+
+read_single_build_claim() {
+  CLAIM_DIRECTORY="$single_build_claim_directory" CLAIM_RUN_SCOPE_SHA256="$single_build_claim_scope_sha256" \
+    CLAIM_SOURCE_HEAD="$base_head" CLAIM_SOURCE_TREE_SHA256="$source_tree_sha256" CLAIM_SUITE="$suite" \
+    "$node_executable" <<'NODE'
+import { lstatSync, readFileSync } from "node:fs";
+import path from "node:path";
+const ownerFile = path.join(process.env.CLAIM_DIRECTORY, "owner.json");
+const stat = lstatSync(ownerFile);
+if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("single_build_claim_invalid");
+const value = JSON.parse(readFileSync(ownerFile, "utf8"));
+const keys = ["schema_version", "suite", "source_head", "source_tree_sha256", "run_scope_sha256", "pid", "process_birth_sha256", "nonce", "state"];
+if (!value || Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))
+  || value.schema_version !== 1 || value.suite !== process.env.CLAIM_SUITE
+  || value.source_head !== process.env.CLAIM_SOURCE_HEAD || value.source_tree_sha256 !== process.env.CLAIM_SOURCE_TREE_SHA256
+  || value.run_scope_sha256 !== process.env.CLAIM_RUN_SCOPE_SHA256 || !Number.isSafeInteger(value.pid) || value.pid < 1
+  || !/^[a-f0-9]{64}$/u.test(value.process_birth_sha256) || !/^[a-f0-9]{32}$/u.test(value.nonce)
+  || !["active", "completed", "failed"].includes(value.state)) throw new Error("single_build_claim_invalid");
+process.stdout.write(`${value.pid} ${value.process_birth_sha256} ${value.nonce} ${value.state}\n`);
+NODE
+}
+
+acquire_single_build_claim() {
+  claims_root="$project_root/artifacts/native/.single-build-claims"
+  [ ! -L "$project_root/artifacts" ] || fail 'artifacts root must not be a symlink.'
+  [ ! -L "$project_root/artifacts/native" ] || fail 'native artifacts root must not be a symlink.'
+  mkdir -p "$claims_root"
+  [ ! -L "$project_root/artifacts/native" ] && [ ! -L "$claims_root" ] || fail 'native claim path must not be a symlink.'
+  single_build_claim_scope_sha256=$(printf '%s\n%s\n%s\n' "$suite" "$base_head" "$source_tree_sha256" | shasum -a 256 | awk '{ print $1 }')
+  single_build_claim_directory="$claims_root/$single_build_claim_scope_sha256.claim"
+  single_build_claim_nonce=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+  single_build_claim_birth=$(process_birth_sha256 "$$") || fail 'could not bind the single-build claim to this process birth.'
+  claim_attempt=0
+  while [ "$claim_attempt" -lt 8 ]; do
+    if mkdir "$single_build_claim_directory" 2>/dev/null; then
+      write_single_build_claim active 1
+      single_build_claim_acquired=1
+      return 0
+    fi
+    claim_fields=$(read_single_build_claim) || fail 'single-build claim is malformed.'
+    set -- $claim_fields
+    existing_pid=$1; existing_birth=$2; existing_nonce=$3; existing_state=$4
+    [ "$existing_state" = active ] || fail "single-build claim was already consumed for this source/run scope ($existing_state)."
+    observed_birth=$(process_birth_sha256 "$existing_pid" || true)
+    if kill -0 "$existing_pid" 2>/dev/null && { [ -z "$observed_birth" ] || [ "$observed_birth" = "$existing_birth" ]; }; then
+      fail 'single-build claim is held by a live process.'
+    fi
+    stale="$claims_root/$single_build_claim_scope_sha256.stale-$existing_nonce-$claim_attempt.claim"
+    [ ! -e "$stale" ] || fail 'single-build stale claim destination already exists.'
+    if mv "$single_build_claim_directory" "$stale" 2>/dev/null; then
+      claim_attempt=$((claim_attempt + 1))
+      continue
+    fi
+    claim_attempt=$((claim_attempt + 1))
+  done
+  fail 'single-build claim could not be acquired.'
+}
+
 on_exit() {
   exit_code=$?
   trap - EXIT
+  if [ "$single_build_claim_acquired" -eq 1 ] && [ "$single_build_claim_completed" -eq 0 ]; then
+    single_build_claim_acquired=0
+    write_single_build_claim failed 0 >/dev/null 2>&1 || true
+  fi
   if [ "$native_build_lock_acquired" -eq 1 ]; then
     rm -rf "$project_root/android" "$project_root/ios"
-    rmdir "$native_build_lock" 2>/dev/null || true
+    if [ "$(cat "$native_build_lock/owner.json" 2>/dev/null || true)" = "$(printf '%s' "$native_build_lock_owner")" ]; then
+      rm -f "$native_build_lock/owner.json"
+      rmdir "$native_build_lock" 2>/dev/null || true
+    fi
   fi
   rm -rf "$temporary_directory"
   exit "$exit_code"
@@ -72,27 +244,24 @@ case "$suite" in
 esac
 
 cd "$project_root"
-git_executable=$(node scripts/v12-native-execution-origin.mjs --git-path)
+node_executable=$(command -v node)
+git_executable=$("$node_executable" scripts/v12-native-execution-origin.mjs --git-path)
 git_attestation_source="$temporary_directory/git-execution-origin.json"
-node scripts/v12-native-execution-origin.mjs --git-attestation >"$git_attestation_source"
+"$node_executable" scripts/v12-native-execution-origin.mjs --git-attestation >"$git_attestation_source"
 V12_GIT_ATTESTATION_PATH="$git_attestation_source"
 export V12_GIT_ATTESTATION_PATH
 [ "$("$git_executable" rev-parse --show-toplevel)" = "$project_root" ] ||
   fail 'script must run from its own Git worktree root.'
 
 if [ "$suite" = 'v1.2-acceptance' ]; then
-  node scripts/validate-v12-prebuild-predecessors.mjs
+  "$node_executable" scripts/validate-v12-prebuild-predecessors.mjs
 fi
 
 artifact_directory="artifacts/native/$suite"
 build_manifest="$artifact_directory/build.json"
 apk_path="$artifact_directory/gym-tracker-$suite-devtest.apk"
 alignment_log="$artifact_directory/zipalign.txt"
-
-if ! mkdir "$native_build_lock" 2>/dev/null; then
-  fail "another generated-native operation holds $native_build_lock."
-fi
-native_build_lock_acquired=1
+[ ! -e "$artifact_directory" ] || fail "$artifact_directory already exists; existing artifact directories are never deleted or overwritten."
 
 if [ -z "${JAVA_HOME:-}" ] && [ -x /usr/libexec/java_home ]; then
   JAVA_HOME=$(/usr/libexec/java_home -v 17 2>/dev/null || true)
@@ -146,20 +315,43 @@ else
 fi
 
 base_head=$("$git_executable" rev-parse HEAD)
-source_tree_sha256=$(node scripts/source-tree-digest.mjs \
+source_tree_sha256=$("$node_executable" scripts/source-tree-digest.mjs \
   --head "$base_head" --assert-clean)
 [ "${#base_head}" -eq 40 ] || fail 'base_head is not a full Git SHA.'
 [ "${#source_tree_sha256}" -eq 64 ] ||
   fail 'could not compute the current source-tree digest.'
 
-rm -rf "$artifact_directory"
-mkdir -p "$artifact_directory"
+if [ "$single_build" -eq 1 ]; then
+  acquire_single_build_claim
+fi
+case "${V12_SINGLE_BUILD_CLAIM_TEST_ACTION:-}" in
+  '') ;;
+  kill)
+    [ "$single_build" -eq 1 ] && [ "${NODE_TEST_CONTEXT:-}" = child-v8 ] || fail 'single-build claim test mode is forbidden.'
+    kill -KILL "$$"
+    ;;
+  hold)
+    [ "$single_build" -eq 1 ] && [ "${NODE_TEST_CONTEXT:-}" = child-v8 ] || fail 'single-build claim test mode is forbidden.'
+    while :; do sleep 1; done
+    ;;
+  *) fail 'single-build claim test mode is invalid.' ;;
+esac
+
+acquire_native_build_lock
+
+artifact_stage="$temporary_directory/artifact-$suite"
+mkdir "$artifact_stage"
+staged_build_manifest="$artifact_stage/build.json"
+staged_apk_path="$artifact_stage/gym-tracker-$suite-devtest.apk"
+staged_alignment_log="$artifact_stage/zipalign.txt"
 git_attestation_path=''
+staged_git_attestation_path=''
 git_attestation_sha256=''
 if [ "$suite" = 'v1.2-acceptance' ]; then
   git_attestation_path="$artifact_directory/git-execution-origin.json"
-  cp "$git_attestation_source" "$git_attestation_path"
-  git_attestation_sha256=$(sh scripts/hash-apk.sh "$git_attestation_path")
+  staged_git_attestation_path="$artifact_stage/git-execution-origin.json"
+  cp "$git_attestation_source" "$staged_git_attestation_path"
+  git_attestation_sha256=$(sh scripts/hash-apk.sh "$staged_git_attestation_path")
 fi
 build_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
@@ -190,17 +382,17 @@ fi
 zipalign_path="$ANDROID_HOME/build-tools/36.0.0/zipalign"
 [ -x "$zipalign_path" ] ||
   fail "pinned zipalign is missing: $zipalign_path"
-"$zipalign_path" -c -P 16 -v 4 "$generated_apk" >"$alignment_log"
+"$zipalign_path" -c -P 16 -v 4 "$generated_apk" >"$staged_alignment_log"
 
-cp "$generated_apk" "$apk_path.tmp"
-mv "$apk_path.tmp" "$apk_path"
-apk_sha256=$(sh scripts/hash-apk.sh "$apk_path")
+cp "$generated_apk" "$staged_apk_path.tmp"
+mv "$staged_apk_path.tmp" "$staged_apk_path"
+apk_sha256=$(sh scripts/hash-apk.sh "$staged_apk_path")
 generated_apk_sha256=$(sh scripts/hash-apk.sh "$generated_apk")
 [ "$generated_apk_sha256" = "$apk_sha256" ] ||
   fail 'retained APK bytes differ from the Gradle output.'
-apk_size_bytes=$(wc -c <"$apk_path" | tr -d ' ')
+apk_size_bytes=$(wc -c <"$staged_apk_path" | tr -d ' ')
 
-adb -s "$device_serial" install -r "$apk_path"
+adb -s "$device_serial" install -r "$staged_apk_path"
 installed_apk_path=$(
   adb -s "$device_serial" shell pm path "$package_name" |
     tr -d '\r' |
@@ -222,7 +414,7 @@ if [ "$suite" = 'v1.2-acceptance' ]; then
   apksigner_path="$ANDROID_HOME/build-tools/36.0.0/apksigner"
   [ -x "$apksigner_path" ] || fail "pinned apksigner is missing: $apksigner_path"
   signature_report="$temporary_directory/apksigner-v12.txt"
-  "$apksigner_path" verify --verbose --print-certs "$apk_path" >"$signature_report"
+  "$apksigner_path" verify --verbose --print-certs "$staged_apk_path" >"$signature_report"
   grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$signature_report" >/dev/null ||
     fail 'APK v2 signature verification failed.'
   certificate_sha256=$(awk -F': ' '/certificate SHA-256 digest:/ { print $2; exit }' "$signature_report" | tr -d ':' | tr 'A-F' 'a-f')
@@ -264,7 +456,7 @@ device_identity_sha256=$(
 )
 build_finished_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
-BUILD_MANIFEST="$build_manifest" \
+BUILD_MANIFEST="$staged_build_manifest" \
   SUITE="$suite" \
   BASE_HEAD="$base_head" \
   SOURCE_TREE_SHA256="$source_tree_sha256" \
@@ -366,7 +558,21 @@ writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`);
 renameSync(temporaryPath, process.env.BUILD_MANIFEST);
 NODE
 
+[ -s "$staged_build_manifest" ] || fail 'build manifest was not staged.'
+[ ! -e "$artifact_directory" ] || fail "$artifact_directory appeared during the build; refusing to clobber it."
+mkdir -p "$(dirname "$artifact_directory")"
+mkdir "$artifact_directory" || fail "$artifact_directory could not be claimed without clobbering."
+ln "$staged_apk_path" "$apk_path" || fail 'retained APK could not be published without clobbering.'
+ln "$staged_alignment_log" "$alignment_log" || fail 'alignment receipt could not be published without clobbering.'
+if [ -n "$staged_git_attestation_path" ]; then
+  ln "$staged_git_attestation_path" "$git_attestation_path" || fail 'Git attestation could not be published without clobbering.'
+fi
+ln "$staged_build_manifest" "$build_manifest" || fail 'build manifest could not be published last without clobbering.'
 [ -s "$build_manifest" ] || fail 'build manifest was not published.'
+if [ "$single_build_claim_acquired" -eq 1 ]; then
+  write_single_build_claim completed 0
+  single_build_claim_completed=1
+fi
 printf 'build-current-native-test-apk: manifest=%s\n' "$build_manifest"
 printf 'build-current-native-test-apk: apk=%s\n' "$apk_path"
 printf 'build-current-native-test-apk: sha256=%s\n' "$apk_sha256"

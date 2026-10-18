@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -75,8 +75,8 @@ function rollback(value) {
     if (value.reason_code !== "rollback_evidence_missing" || value.recovery_boundary !== SAFE_RECOVERY_BOUNDARY) fail("rollback evidence state is malformed.");
     return value;
   }
-  keys(value, ["compatible_archive_format_version", "compatible_archive_sha256", "current_schema_version", "last_valid_schema_version", "newer_schema_committed", "prior_apk_certificate_sha256", "prior_apk_signature_sha256", "prior_signed_apk_sha256", "recovery_boundary", "rollback_evidence_sha256"], "rollback");
-  for (const field of ["prior_signed_apk_sha256", "prior_apk_signature_sha256", "prior_apk_certificate_sha256", "compatible_archive_sha256", "rollback_evidence_sha256"]) hash(value[field], `rollback ${field}`);
+  keys(value, ["clean_restore_receipt_sha256", "compatible_archive_format_version", "compatible_archive_sha256", "current_schema_version", "last_valid_schema_version", "newer_schema_committed", "post_restore_facts_sha256", "prior_apk_certificate_sha256", "prior_apk_signature_sha256", "prior_release_manifest_sha256", "prior_signed_apk_sha256", "recovery_boundary", "rollback_evidence_sha256"], "rollback");
+  for (const field of ["prior_release_manifest_sha256", "prior_signed_apk_sha256", "prior_apk_signature_sha256", "prior_apk_certificate_sha256", "compatible_archive_sha256", "clean_restore_receipt_sha256", "post_restore_facts_sha256", "rollback_evidence_sha256"]) hash(value[field], `rollback ${field}`);
   if (!Number.isSafeInteger(value.last_valid_schema_version) || value.last_valid_schema_version < 1
     || !Number.isSafeInteger(value.current_schema_version) || value.current_schema_version <= value.last_valid_schema_version
     || !Number.isSafeInteger(value.compatible_archive_format_version) || value.compatible_archive_format_version < 1
@@ -206,9 +206,8 @@ function readJson(root, relative) {
   try { return JSON.parse(bytes.toString("utf8")); } catch { fail("artifact is not valid JSON."); }
 }
 
-export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { root = process.cwd() } = {}) {
-  if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !RUN_ID.test(args[1] ?? "") || args[2] !== "--verify") fail("CLI arguments are malformed.");
-  const runId = args[1]; const base = `artifacts/native/v1.2/${runId}`;
+function verifiedFinalPublication(root, runId) {
+  const base = `artifacts/native/v1.2/${runId}`;
   try { verifyV12AtomicShard({ root, runId, shard: "final" }); }
   catch { fail("final atomic publication is invalid."); }
   const publication = readJson(root, `${base}/publication/final.json`);
@@ -223,8 +222,49 @@ export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { ro
       || digest(readFileSync(safeFile(root, `${base}/${member.artifact}`))) !== member.sha256) fail("final atomic publication member hash is invalid.");
   }
   const evidence = readJson(root, `${base}/final-evidence.json`);
-  const handoff = readJson(root, `${base}/readiness-handoff.md`);
+  const handoffFile = safeFile(root, `${base}/readiness-handoff.md`);
+  const handoffBytes = readFileSync(handoffFile);
+  let handoff; try { handoff = JSON.parse(handoffBytes.toString("utf8")); } catch { fail("artifact is not valid JSON."); }
   validateV12ReadinessHandoff(handoff, { final_evidence: evidence });
+  return Object.freeze({ evidence, handoff, handoffBytes });
+}
+
+export function writeV12VerifiedReadinessMirror({ root = process.cwd(), runId } = {}) {
+  if (!RUN_ID.test(runId ?? "")) fail("CLI arguments are malformed.");
+  const verified = verifiedFinalPublication(root, runId);
+  const directory = path.resolve(root, ".planning/phases/20-native-acceptance");
+  const base = path.resolve(root);
+  if (!directory.startsWith(`${base}${path.sep}`)) fail("path is unsafe.");
+  let cursor = base;
+  for (const part of path.relative(base, directory).split(path.sep)) {
+    cursor = path.join(cursor, part);
+    const stat = lstatSync(cursor, { throwIfNoEntry: false });
+    if (stat === undefined || stat.isSymbolicLink() || !stat.isDirectory()) fail("path is unsafe.");
+  }
+  const target = path.join(directory, "20-READINESS-HANDOFF.md");
+  const current = lstatSync(target, { throwIfNoEntry: false });
+  if (current?.isSymbolicLink() || (current !== undefined && !current.isFile())) fail("path is unsafe.");
+  if (current !== undefined && readFileSync(target).equals(verified.handoffBytes)) {
+    return Object.freeze({ mirror_path: path.relative(base, target), refreshed: false });
+  }
+  const temporary = path.join(directory, `.20-READINESS-HANDOFF-${process.pid}-${Date.now()}.tmp`);
+  try {
+    writeFileSync(temporary, verified.handoffBytes, { flag: "wx", mode: 0o600 });
+    const fileDescriptor = openSync(temporary, "r"); try { fsyncSync(fileDescriptor); } finally { closeSync(fileDescriptor); }
+    const beforeRename = lstatSync(target, { throwIfNoEntry: false });
+    if (beforeRename?.isSymbolicLink() || (beforeRename !== undefined && !beforeRename.isFile())) fail("path is unsafe.");
+    renameSync(temporary, target);
+    const directoryDescriptor = openSync(directory, "r"); try { fsyncSync(directoryDescriptor); } finally { closeSync(directoryDescriptor); }
+  } catch (error) {
+    if (existsSync(temporary)) unlinkSync(temporary);
+    throw error;
+  }
+  return Object.freeze({ mirror_path: path.relative(base, target), refreshed: true });
+}
+
+export function executeV12ReadinessHandoffCli(args = process.argv.slice(2), { root = process.cwd() } = {}) {
+  if (!Array.isArray(args) || args.length !== 3 || args[0] !== "--run" || !RUN_ID.test(args[1] ?? "") || args[2] !== "--verify") fail("CLI arguments are malformed.");
+  const runId = args[1]; const { handoff } = verifiedFinalPublication(root, runId);
   return Object.freeze({ ok: true, run_id: runId, readiness: handoff.readiness, release_authorized: false });
 }
 

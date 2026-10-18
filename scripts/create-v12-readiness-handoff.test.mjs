@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   buildV12ReadinessHandoff,
   validateV12ReadinessHandoff,
+  writeV12VerifiedReadinessMirror,
 } from "./create-v12-readiness-handoff.mjs";
 import { publishV12AtomicShard } from "./v12-atomic-shard-publication.mjs";
 
@@ -75,11 +76,14 @@ const reviewedPolicy = Object.freeze({
 });
 
 const rollback = Object.freeze({
+  prior_release_manifest_sha256: digest("4"),
   prior_signed_apk_sha256: digest("5"),
   prior_apk_signature_sha256: digest("6"),
   prior_apk_certificate_sha256: digest("a"),
   compatible_archive_sha256: digest("7"),
   compatible_archive_format_version: 9,
+  clean_restore_receipt_sha256: digest("8"),
+  post_restore_facts_sha256: digest("9"),
   last_valid_schema_version: 44,
   current_schema_version: 45,
   newer_schema_committed: true,
@@ -244,6 +248,37 @@ test("the real --verify CLI rejects a final publication with a missing or extra 
   const invalid = spawnSync(process.execPath, [script.pathname, "--run", runId, "--verify"], { cwd: root, encoding: "utf8" });
   assert.notEqual(invalid.status, 0);
   assert.match(invalid.stderr, /v12_readiness_invalid/u);
+});
+
+test("the planning mirror is regenerated only from a verified final publication", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-readiness-mirror-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const base = path.join(root, "artifacts/native/v1.2", runId);
+  const planningDirectory = path.join(root, ".planning/phases/20-native-acceptance");
+  mkdirSync(base, { recursive: true }); mkdirSync(planningDirectory, { recursive: true });
+  const evidence = finalEvidence();
+  const handoff = buildV12ReadinessHandoff({ final_evidence: evidence, reviewed_policy: reviewedPolicy, rollback,
+    generated_at: "2026-10-14T01:00:00.000Z" });
+  publishV12AtomicShard({
+    root, runId, shard: "final",
+    produce: ({ write }) => {
+      write("ui-state-matrix.json", { schema_version: 3, run_id: runId });
+      write("final-evidence.json", evidence);
+      write("parity-report.md", "Phase 20 parity report\n");
+      write("readiness-handoff.md", handoff);
+    },
+  });
+  const mirror = path.join(planningDirectory, "20-READINESS-HANDOFF.md");
+  assert.equal(writeV12VerifiedReadinessMirror({ root, runId }).refreshed, true);
+  assert.deepEqual(JSON.parse(readFileSync(mirror, "utf8")), handoff);
+  writeFileSync(mirror, "stale mirror\n");
+  assert.equal(writeV12VerifiedReadinessMirror({ root, runId }).refreshed, true);
+  assert.deepEqual(JSON.parse(readFileSync(mirror, "utf8")), handoff);
+
+  writeFileSync(mirror, "must remain\n");
+  writeFileSync(path.join(base, "readiness-handoff.md"), `${JSON.stringify({ ...handoff, final_evidence_sha256: digest("0") })}\n`);
+  assert.throws(() => writeV12VerifiedReadinessMirror({ root, runId }));
+  assert.equal(readFileSync(mirror, "utf8"), "must remain\n");
 });
 
 test("Phase 20 package commands are registered as host-only entrypoints", () => {
