@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const v8ToIstanbul = require("v8-to-istanbul");
@@ -20,6 +20,7 @@ const { createCoverageMap } = require("istanbul-lib-coverage");
 const PROJECT_TIMEOUT_MS = 30 * 60_000;
 const TERMINATE_GRACE_MS = 2_000;
 const COVERAGE_METRICS = Object.freeze(["statements", "branches", "functions", "lines"]);
+const PROCESS_BOOTSTRAP = fileURLToPath(new URL("./v12-native-process-bootstrap.mjs", import.meta.url));
 
 function installChildOnlyCoverage() {
   const rawDirectory = process.env.PHASE20_CHILD_COVERAGE_DIRECTORY;
@@ -50,13 +51,31 @@ function installChildOnlyCoverage() {
 installChildOnlyCoverage();
 
 function signalProcessGroup(child, signal) {
-  if (child.pid === undefined) return;
-  try {
-    if (process.platform === "win32") child.kill(signal);
-    else process.kill(-child.pid, signal);
-  } catch (error) {
-    if (error?.code !== "ESRCH") throw error;
+  if (!Number.isSafeInteger(child.pid) || child.pid < 1 || child.exitCode !== null || child.signalCode !== null) return true;
+  if (process.platform === "win32") {
+    const result = childProcess.spawnSync("taskkill", ["/PID", String(child.pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
+      encoding: "utf8",
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    return !result.error && !result.signal && result.status === 0;
   }
+  try { process.kill(-child.pid, signal); return true; }
+  catch (error) { return error?.code === "ESRCH"; }
+}
+
+function processGroupIsEmpty(processGroupId) {
+  if (process.platform === "win32") return true;
+  try { process.kill(-processGroupId, 0); return false; }
+  catch (error) { return error?.code === "ESRCH"; }
+}
+
+async function verifyProcessGroupEmpty(processGroupId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (!processGroupIsEmpty(processGroupId) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return processGroupIsEmpty(processGroupId);
 }
 
 function runTestProject(project, {
@@ -64,6 +83,8 @@ function runTestProject(project, {
   rawDirectory,
   projectTimeoutMs,
   terminateGraceMs,
+  signal,
+  onProjectSignal,
 }) {
   return new Promise((resolve, reject) => {
     const { name, tests, concurrency = 1 } = project;
@@ -76,9 +97,13 @@ function runTestProject(project, {
       environment.PHASE20_CHILD_COVERAGE_DIRECTORY = rawDirectory;
       environment.PHASE20_CHILD_COVERAGE_PROJECT_ROOT = projectRoot;
     }
-    let timedOut = false;
     let settled = false;
-    const child = spawn(process.execPath, [
+    let stopReason = null;
+    let cleanupVerified = true;
+    let terminalError;
+    let terminateTimer;
+    let killTimer;
+    const child = spawn(process.execPath, [PROCESS_BOOTSTRAP, process.execPath,
       "--test",
       `--test-concurrency=${String(concurrency)}`,
       "--test-timeout=600000",
@@ -88,51 +113,85 @@ function runTestProject(project, {
       cwd: projectRoot,
       detached: process.platform !== "win32",
       env: environment,
-      stdio: "inherit",
+      stdio: ["ignore", "inherit", "inherit", "pipe"],
+      windowsHide: true,
     });
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      signalProcessGroup(child, "SIGTERM");
-      setTimeout(() => {
-        signalProcessGroup(child, "SIGKILL");
-        setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          reject(new Error(`phase20_coverage_project_timeout:${name}`));
-        }, 25);
+    const processGroupId = child.pid;
+    const notifyAndSignal = (treeSignal) => {
+      onProjectSignal?.({ project: name, signal: treeSignal });
+      cleanupVerified = signalProcessGroup(child, treeSignal) && cleanupVerified;
+    };
+    const finish = async (code, childSignal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout); clearTimeout(terminateTimer); clearTimeout(killTimer);
+      signal?.removeEventListener("abort", onAbort);
+      cleanupVerified = cleanupVerified && await verifyProcessGroupEmpty(processGroupId, terminateGraceMs);
+      if (!cleanupVerified) {
+        reject(new Error(`phase20_coverage_project_cleanup_failed:${name}:${stopReason ?? "exit"}`));
+      } else if (terminalError !== undefined) {
+        reject(terminalError);
+      } else if (stopReason === "timeout") {
+        reject(new Error(`phase20_coverage_project_timeout:${name}`));
+      } else if (stopReason === "abort") {
+        reject(new Error(`phase20_coverage_project_aborted:${name}`));
+      } else if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`phase20_coverage_project_failed:${name}:${String(code)}:${childSignal ?? "none"}`));
+      }
+    };
+    const stop = (reason) => {
+      if (settled || stopReason !== null) return;
+      stopReason = reason;
+      notifyAndSignal("SIGTERM");
+      terminateTimer = setTimeout(() => {
+        if (settled) return;
+        notifyAndSignal("SIGKILL");
+        killTimer = setTimeout(() => { void finish(null, null); }, terminateGraceMs);
       }, terminateGraceMs);
-    }, projectTimeoutMs);
+    };
+    const timeout = setTimeout(() => stop("timeout"), projectTimeoutMs);
+    const onAbort = () => stop("abort");
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
     child.once("error", (error) => {
-      if (timedOut || settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      reject(error);
+      terminalError = error;
+      void finish(null, null);
     });
-    child.once("exit", (code, signal) => {
-      if (timedOut || settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      if (code === 0) resolve();
-      else reject(new Error(`phase20_coverage_project_failed:${name}:${String(code)}:${signal ?? "none"}`));
+    child.once("close", (code, childSignal) => {
+      void finish(code, childSignal);
     });
+    child.stdio[3].resume();
   });
 }
 
 async function runBoundedProjects(projects, options, maxParallel) {
   let next = 0;
+  let firstFailure;
+  const cancellation = new AbortController();
   const results = new Array(projects.length);
   async function worker() {
-    while (next < projects.length) {
+    while (firstFailure === undefined && next < projects.length) {
       const index = next;
       const project = projects[index];
       next += 1;
-      results[index] = await options.run(project);
+      try {
+        results[index] = await options.run(project, { signal: cancellation.signal });
+      } catch (error) {
+        if (firstFailure === undefined) {
+          firstFailure = error;
+          cancellation.abort();
+        }
+      }
     }
   }
-  await Promise.all(Array.from(
+  const workers = Array.from(
     { length: Math.min(maxParallel, projects.length) },
     () => worker(),
-  ));
+  );
+  await Promise.allSettled(workers);
+  if (firstFailure !== undefined) throw firstFailure;
   return results;
 }
 
@@ -283,12 +342,13 @@ export async function runPhase20SubprocessCoverage({
   outputDirectory = path.join(projectRoot, "coverage/phase20-node"),
   projectTimeoutMs = PROJECT_TIMEOUT_MS,
   terminateGraceMs = TERMINATE_GRACE_MS,
+  onProjectSignal,
 }) {
   const { registeredModules, registeredTests } = validateCoverageProjects(projects, projectRoot);
   rmSync(outputDirectory, { force: true, recursive: true });
   mkdirSync(outputDirectory, { recursive: true });
   const projectReports = await runBoundedProjects(projects, {
-    run: async (project) => {
+    run: async (project, { signal }) => {
       const projectDirectory = path.join(outputDirectory, "projects", project.name);
       const rawDirectory = path.join(projectDirectory, "raw-v8");
       mkdirSync(rawDirectory, { recursive: true });
@@ -297,6 +357,8 @@ export async function runPhase20SubprocessCoverage({
         rawDirectory,
         projectTimeoutMs,
         terminateGraceMs,
+        signal,
+        onProjectSignal,
       });
       if (project.coverage === false) return {
         coverageMap: createCoverageMap({}),
