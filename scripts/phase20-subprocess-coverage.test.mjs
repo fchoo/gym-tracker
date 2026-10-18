@@ -31,6 +31,10 @@ import {
   publishV12RollbackEvidence,
   verifyV12RollbackEvidence,
 } from "./v12-rollback-evidence.mjs";
+import {
+  createV12DirectMaestroToolAttestation,
+  readV12DirectMaestroDeviceMeasurement,
+} from "./run-v12-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 import { executeV12SqliteShardCli } from "./v12-sqlite-shard.mjs";
 import {
@@ -1296,7 +1300,9 @@ test("native final identity re-reads Git, APK, signature, installed bytes, setti
       "  *\"get-state\"*) printf 'device\\n' ;;",
       "  *\"ro.product.cpu.abi\"*) printf 'arm64-v8a\\n' ;;",
       "  *\"ro.build.version.sdk\"*) printf '36\\n' ;;",
+      "  *\"version\"*) printf 'Android Debug Bridge version 1.0.41\\n' ;;",
       "  *\"ro.product.model\"*) printf 'Coverage Device\\n' ;;",
+      "  *\"pm list packages\"*) printf 'package:com.fchoo.gymtracker.devtest\\n' ;;",
       "  *\"pm path\"*) printf 'package:/data/app/coverage/base.apk\\n' ;;",
       "  *\"exec-out cat\"*) printf '\\120\\113\\003\\004\\252\\273\\314\\335' ;;",
       `  *\"sha256sum\"*) printf '${createHash("sha256").update(apkBytes).digest("hex")}  /data/app/coverage/base.apk\\n' ;;`,
@@ -1375,7 +1381,7 @@ test("native final identity re-reads Git, APK, signature, installed bytes, setti
   }
 });
 
-test("production-shaped retained evidence completes preseal and exposes only the known final count-order blocker", {
+test("production-shaped retained evidence completes preseal and final readiness", {
   skip: process.env.V12_PHASE20_COVERAGE_FIXTURE === undefined
     || process.env.V12_APPROVED_SOURCE_ROOT === undefined,
   timeout: 10 * 60_000,
@@ -1770,7 +1776,9 @@ test("production-shaped retained evidence completes preseal and exposes only the
       "  *\"get-state\"*) printf 'device\\n' ;;",
       "  *\"ro.product.cpu.abi\"*) printf 'arm64-v8a\\n' ;;",
       "  *\"ro.build.version.sdk\"*) printf '36\\n' ;;",
+      "  *\"version\"*) printf 'Android Debug Bridge version 1.0.41\\n' ;;",
       "  *\"ro.product.model\"*) printf 'Coverage Device\\n' ;;",
+      "  *\"pm list packages\"*) printf 'package:com.fchoo.gymtracker.devtest\\n' ;;",
       "  *\"pm path\"*) printf 'package:/data/app/coverage/base.apk\\n' ;;",
       "  *\"exec-out cat\"*) printf '\\120\\113\\003\\004\\252\\273\\314\\335' ;;",
       `  *\"sha256sum\"*) printf '${apkSha256}  /data/app/coverage/base.apk\\n' ;;`,
@@ -1791,6 +1799,91 @@ test("production-shaped retained evidence completes preseal and exposes only the
       V12_DEVICE_SERIAL: serial,
       V12_APPROVED_SOURCE_ROOT: approvedRoot,
     });
+    const executeDirectMaestroTool = (executablePath, args, options = {}) => {
+      const result = spawnSync(executablePath, args, { ...options, encoding: "utf8" });
+      assert.equal(result.status, 0, `${path.basename(executablePath)} ${args.join(" ")}: ${result.stderr}`);
+      return result.stdout;
+    };
+    const directMaestroTools = resolveV12NativeExecutionTools({ domain: true, env: liveEnvironment });
+    for (const [args, expected] of [
+      [["-s", serial, "get-state"], "device"],
+      [["-s", serial, "shell", "pm", "list", "packages", build.build.package], `package:${build.build.package}`],
+      [["-s", serial, "shell", "pm", "path", build.build.package], "package:/data/app/coverage/base.apk"],
+      [["-s", serial, "shell", "sha256sum", "/data/app/coverage/base.apk"], `${apkSha256}  /data/app/coverage/base.apk`],
+      [["-s", serial, "shell", "getprop", "ro.product.cpu.abi"], "arm64-v8a"],
+      [["-s", serial, "shell", "getprop", "ro.build.version.sdk"], "36"],
+      [["-s", serial, "shell", "getprop", "ro.product.model"], "Coverage Device"],
+      [["-s", serial, "shell", "settings", "get", "system", "font_scale"], "1.0"],
+      [["-s", serial, "shell", "settings", "get", "secure", "ui_night_mode"], "0"],
+      [["-s", serial, "shell", "settings", "get", "global", "animator_duration_scale"], "1.0"],
+    ]) assert.equal(executeDirectMaestroTool(directMaestroTools.adb, args).trim(), expected);
+    const directMaestroMeasurement = readV12DirectMaestroDeviceMeasurement(build, {
+      serial,
+      executionTools: directMaestroTools,
+      execute: executeDirectMaestroTool,
+    });
+    for (const shard of ["multi-plan", "workout", "library-running"]) {
+      const mappingRelative = `artifacts/native/v1.2/${runId}/mapping/${shard}.json`;
+      const publicationRelative = `artifacts/native/v1.2/${runId}/publication/${shard}.json`;
+      const mapping = JSON.parse(readFileSync(save(mappingRelative), "utf8"));
+      const publication = JSON.parse(readFileSync(save(publicationRelative), "utf8"));
+      const toolAttestation = createV12DirectMaestroToolAttestation({
+        execute: executeDirectMaestroTool,
+        executionTools: directMaestroTools,
+        shard,
+      });
+      mapping.observations = mapping.observations.map((observation) => ({
+        ...observation,
+        device_measurement: {
+          before: directMaestroMeasurement,
+          after: directMaestroMeasurement,
+        },
+      }));
+      mapping.identity = {
+        source_tree_sha256: build.source.tree_sha256,
+        package: directMaestroMeasurement.package,
+        apk_sha256: build.build.apk.sha256,
+        installed_apk_sha256: directMaestroMeasurement.installed_apk_sha256,
+        certificate_sha256: build.build.apk.certificate_sha256,
+        device_identity_sha256: directMaestroMeasurement.device_identity_sha256,
+        settings_sha256: directMaestroMeasurement.settings_sha256,
+        configuration_id: directMaestroMeasurement.configuration_id,
+      };
+      mapping.tool_attestation = toolAttestation;
+      const executionOrigin = {
+        schema_version: 1,
+        action: shard,
+        kind: "production-default-launcher",
+        toolchain_origin: "production-attested/v1",
+        default_launcher: true,
+        test_only: false,
+        adapter_source_sha256: publication.execution_origin.adapter_source_sha256,
+        launcher_source_sha256: publication.execution_origin.launcher_source_sha256,
+        domain_source_sha256: publication.execution_origin.domain_source_sha256,
+        request_attestation_sha256: sha256(JSON.stringify({
+          schema_version: 2,
+          action: shard,
+          run_id: runId,
+          source_tree_sha256: build.source.tree_sha256,
+          apk_sha256: build.build.apk.sha256,
+          device_identity_sha256: build.device.identity_sha256,
+          flow_sha256: mapping.flow_sha256,
+          source_sha256: mapping.source_sha256,
+          git_attestation_sha256: mapping.git_attestation_sha256,
+          tool_attestation_sha256: sha256(JSON.stringify(toolAttestation)),
+          measurement_sha256: sha256(JSON.stringify(mapping.observations.map(({ device_measurement: measurement }) => measurement))),
+        })),
+      };
+      mapping.execution_origin = executionOrigin;
+      publication.execution_origin = executionOrigin;
+      writeJson(mappingRelative, mapping);
+      const mappingMember = publication.members.find(({ artifact }) => artifact === `mapping/${shard}.json`);
+      assert.ok(mappingMember);
+      const mappingBytes = readFileSync(path.join(root, mappingRelative));
+      mappingMember.sha256 = sha256(mappingBytes);
+      mappingMember.size_bytes = mappingBytes.length;
+      writeJson(publicationRelative, publication);
+    }
     const verifier = new URL("./verify-v12-native-evidence.mjs", import.meta.url).pathname;
     const preseal = spawnSync(process.execPath, [verifier, "--run", runId, "--mode", "preseal", "--no-final-write"], {
       cwd: root,
@@ -1812,8 +1905,8 @@ test("production-shaped retained evidence completes preseal and exposes only the
       maxBuffer: 1024 * 1024 * 1024,
       timeout: RETAINED_CLI_TIMEOUT_MS,
     });
-    if (final.status === 0) assert.equal(JSON.parse(final.stdout).mode, "final");
-    else assert.match(final.stderr, /v12_readiness_invalid: final evidence verdict counts are malformed/u);
+    assert.equal(final.status, 0, final.stderr);
+    assert.equal(JSON.parse(final.stdout).mode, "final");
   } finally {
     for (const output of [
       `artifacts/native/v1.2/${runId}/preseal-validation.json`,
