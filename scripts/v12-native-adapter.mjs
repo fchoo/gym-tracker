@@ -175,35 +175,45 @@ function sameAttestation(expected, actual) {
     && Object.keys(actual).length === Object.keys(expected).length;
 }
 
-function signalOwnedTree(child, signal) {
+export function signalV12OwnedProcessTree(child, signal, {
+  platform = process.platform,
+  spawnSyncImplementation = spawnSync,
+  killImplementation = process.kill,
+} = {}) {
   if (!Number.isSafeInteger(child.pid) || child.pid < 1 || child.exitCode !== null || child.signalCode !== null) return true;
-  if (process.platform === "win32") {
-    const result = spawnSync("taskkill", ["/PID", String(child.pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
+  if (platform === "win32") {
+    const result = spawnSyncImplementation("taskkill", ["/PID", String(child.pid), "/T", ...(signal === "SIGKILL" ? ["/F"] : [])], {
       encoding: "utf8",
       timeout: 5_000,
       windowsHide: true,
     });
     return !result.error && !result.signal && result.status === 0;
   }
-  try { process.kill(-child.pid, signal); return true; }
+  try { killImplementation(-child.pid, signal); return true; }
   catch (error) {
     if (error?.code === "ESRCH") return true;
     return false;
   }
 }
 
-function processGroupIsEmpty(processGroupId) {
-  if (process.platform === "win32") return true;
-  try { process.kill(-processGroupId, 0); return false; }
+export function v12ProcessGroupIsEmpty(processGroupId, {
+  platform = process.platform,
+  killImplementation = process.kill,
+} = {}) {
+  if (platform === "win32") return true;
+  try { killImplementation(-processGroupId, 0); return false; }
   catch (error) { return error?.code === "ESRCH"; }
 }
 
-async function verifyProcessGroupEmpty(processGroupId, timeoutMs) {
+export async function verifyV12ProcessGroupEmpty(processGroupId, timeoutMs, {
+  isEmpty = v12ProcessGroupIsEmpty,
+  pollMs = 10,
+} = {}) {
   const deadline = Date.now() + timeoutMs;
-  while (!processGroupIsEmpty(processGroupId) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  while (!isEmpty(processGroupId) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
-  return processGroupIsEmpty(processGroupId);
+  return isEmpty(processGroupId);
 }
 
 /** Owns one detached process group and bounds TERM -> KILL escalation. */
@@ -256,7 +266,7 @@ export function superviseV12NativeProcess({
       settled = true;
       clearTimeout(deadline); clearTimeout(termTimer); clearTimeout(killTimer);
       signal?.removeEventListener("abort", onAbort);
-      cleanupVerified = cleanupVerified && await verifyProcessGroupEmpty(processGroupId, killGraceMs);
+      cleanupVerified = cleanupVerified && await verifyV12ProcessGroupEmpty(processGroupId, killGraceMs);
       resolve(Object.freeze({
         status,
         signal: childSignal,
@@ -274,11 +284,11 @@ export function superviseV12NativeProcess({
       timedOut = reason === "timeout";
       cancelled = reason === "signal";
       termination = "SIGTERM";
-      cleanupVerified = signalOwnedTree(child, "SIGTERM") && cleanupVerified;
+      cleanupVerified = signalV12OwnedProcessTree(child, "SIGTERM") && cleanupVerified;
       termTimer = setTimeout(() => {
         if (settled) return;
         termination = "SIGKILL";
-        cleanupVerified = signalOwnedTree(child, "SIGKILL") && cleanupVerified;
+        cleanupVerified = signalV12OwnedProcessTree(child, "SIGKILL") && cleanupVerified;
         killTimer = setTimeout(() => finish(null, null), killGraceMs);
       }, termGraceMs);
     };

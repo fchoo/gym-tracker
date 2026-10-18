@@ -36,7 +36,10 @@ import {
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
   createV12NativeAdapter,
   invokeV12NativeAdapterEnvelope,
+  signalV12OwnedProcessTree,
   superviseV12NativeProcess,
+  v12ProcessGroupIsEmpty,
+  verifyV12ProcessGroupEmpty,
   v12CommandPathMaxMs,
 } from "./v12-native-adapter.mjs";
 
@@ -145,6 +148,57 @@ test("supervisor gives a process tree TERM cleanup time before bounded KILL", as
   assert.equal(result.timed_out, true);
   assert.equal(result.termination, "SIGTERM");
   assert.equal(result.status, 0);
+});
+
+test("process-tree signaling records bounded Windows TERM and forced KILL receipts", () => {
+  const calls = [];
+  const child = { pid: 42, exitCode: null, signalCode: null };
+  const spawnSyncImplementation = (command, args, options) => {
+    calls.push({ command, args, options });
+    return { status: 0, signal: null, error: undefined };
+  };
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", { platform: "win32", spawnSyncImplementation }), true);
+  assert.equal(signalV12OwnedProcessTree(child, "SIGKILL", { platform: "win32", spawnSyncImplementation }), true);
+  assert.deepEqual(calls.map(({ command, args }) => [command, args]), [
+    ["taskkill", ["/PID", "42", "/T"]],
+    ["taskkill", ["/PID", "42", "/T", "/F"]],
+  ]);
+  assert.ok(calls.every(({ options }) => options.timeout === 5_000 && options.windowsHide === true));
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", {
+    platform: "win32",
+    spawnSyncImplementation: () => ({ status: 1, signal: null, error: undefined }),
+  }), false);
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", {
+    platform: "win32",
+    spawnSyncImplementation: () => ({ status: null, signal: null, error: new Error("taskkill_missing") }),
+  }), false);
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", {
+    platform: "win32",
+    spawnSyncImplementation: () => ({ status: null, signal: "SIGTERM", error: undefined }),
+  }), false);
+});
+
+test("process-tree signaling validates ownership before POSIX signals and group-empty polling", async () => {
+  const active = { pid: 42, exitCode: null, signalCode: null };
+  const exited = { pid: 42, exitCode: 0, signalCode: null };
+  assert.equal(signalV12OwnedProcessTree(exited, "SIGTERM", { platform: "linux" }), true);
+  assert.equal(signalV12OwnedProcessTree({ ...active, pid: 0 }, "SIGTERM", { platform: "linux" }), true);
+  assert.equal(signalV12OwnedProcessTree({ ...active, signalCode: "SIGTERM" }, "SIGTERM", { platform: "linux" }), true);
+  assert.equal(signalV12OwnedProcessTree(active, "SIGTERM", { platform: "linux", killImplementation: () => {} }), true);
+  assert.equal(signalV12OwnedProcessTree(active, "SIGTERM", { platform: "linux", killImplementation: () => { const error = new Error("gone"); error.code = "ESRCH"; throw error; } }), true);
+  assert.equal(signalV12OwnedProcessTree(active, "SIGTERM", { platform: "linux", killImplementation: () => { throw new Error("denied"); } }), false);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "win32" }), true);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "linux", killImplementation: () => {} }), false);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "linux", killImplementation: () => { const error = new Error("gone"); error.code = "ESRCH"; throw error; } }), true);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "linux", killImplementation: () => { throw new Error("denied"); } }), false);
+  let polls = 0;
+  assert.equal(await verifyV12ProcessGroupEmpty(42, 100, { pollMs: 1, isEmpty: () => { polls += 1; return polls >= 2; } }), true);
+  assert.equal(polls, 3);
+  assert.equal(await verifyV12ProcessGroupEmpty(42, 1, { pollMs: 2, isEmpty: () => false }), false);
+});
+
+test("supervisor rejects an invalid process contract before spawning", async () => {
+  await assert.rejects(superviseV12NativeProcess({ executable: "relative", args: [], timeoutMs: 1 }), /supervisor_invalid/u);
 });
 
 test("supervisor escalates an uncooperative process tree from TERM to KILL", async (t) => {
