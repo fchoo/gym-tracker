@@ -173,7 +173,11 @@ export function V12NativeAcceptanceFixture({
           <Text>Execute case</Text>
         </Pressable>
         {executed ? (
-          <Text accessibilityLiveRegion="polite" testID="native-acceptance-readback">
+          <Text
+            accessibilityLabel={`Case verified ${request.caseId} ${request.nonce}`}
+            accessibilityLiveRegion="polite"
+            testID="native-acceptance-readback"
+          >
             Case verified
           </Text>
         ) : null}

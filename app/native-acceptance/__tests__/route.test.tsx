@@ -65,6 +65,9 @@ describe("v1.2 native acceptance route", () => {
     expect(view.queryByTestId("native-acceptance-readback")).not.toBeOnTheScreen();
     await act(async () => { fireEvent.press(view.getByTestId("native-acceptance-execute")); });
     expect(view.getByTestId("native-acceptance-readback")).toHaveTextContent("Case verified");
+    expect(view.getByTestId("native-acceptance-readback")).toHaveProp(
+      "accessibilityLabel", `Case verified ${caseId} ${"a".repeat(48)}`,
+    );
     expect(view.queryByTestId("native-acceptance-disabled")).not.toBeOnTheScreen();
   });
 

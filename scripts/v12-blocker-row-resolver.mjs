@@ -98,22 +98,22 @@ const garminRequirement = (domain, ui, readbacks) => Object.freeze({
 /** Requirement-owned Garmin evidence. Order in the producer case array has no
  * semantic meaning; every listed member must resolve by exact case identity. */
 export const V12_GARMIN_REQUIREMENT_REGISTRY = Object.freeze({
-  'GAR-01': garminRequirement(['account-lifecycle'], ['packaging'], ['account-lifecycle']),
-  'GAR-02': garminRequirement(['packaging'], ['packaging'], ['packaging']),
-  'GAR-03': garminRequirement(['account-lifecycle', 'recovery'], ['account-lifecycle'], ['sync-read']),
-  'GAR-04': garminRequirement(['bridge-allowlist', 'account-lifecycle', 'recovery'], ['account-lifecycle'], ['sync-read']),
-  'GAR-05': garminRequirement(['packaging', 'sync-read', 'dedupe-restart'], ['sync-read'], ['account-lifecycle', 'dedupe-restart']),
-  'GAR-06': garminRequirement(['sync-read', 'recovery'], ['sync-read'], ['recovery']),
-  'GAR-07': garminRequirement(['account-lifecycle', 'recovery'], ['account-lifecycle'], ['sync-read']),
-  'GAR-08': garminRequirement(['bridge-allowlist', 'canonical-json', 'sync-read', 'dedupe-restart'], ['sync-read'], ['canonical-json', 'dedupe-restart']),
-  'GAR-09': garminRequirement(['recovery', 'dedupe-restart', 'dedupe-restore', 'dedupe-merge', 'match-stale'], ['recovery'], ['dedupe-restore', 'dedupe-merge']),
-  'GAR-10': garminRequirement(['canonical-json', 'sync-read'], ['sync-read'], ['canonical-json']),
-  'GAR-11': garminRequirement(['canonical-json', 'sync-read'], ['sync-read'], ['canonical-json']),
-  'GAR-12': garminRequirement(['canonical-json'], ['sync-read'], ['canonical-json']),
-  'GAR-13': garminRequirement(['match-zero', 'match-one', 'match-many', 'match-alternate'], ['match-one'], ['match-zero', 'match-one', 'match-many']),
-  'GAR-14': garminRequirement(['match-confirm', 'match-stale', 'match-cancel', 'match-reassign'], ['match-confirm', 'match-cancel'], ['match-confirm', 'match-stale', 'match-reassign']),
-  'GAR-15': garminRequirement(['recovery', 'match-stale'], ['recovery'], ['sync-read']),
-  'GAR-16': garminRequirement(['account-lifecycle'], ['account-lifecycle'], ['privacy']),
+  'GAR-01': garminRequirement(['account-lifecycle'], ['BW-092', 'BW-094', 'BW-100'], ['account-lifecycle']),
+  'GAR-02': garminRequirement(['packaging'], ['BW-092', 'BW-094'], ['packaging']),
+  'GAR-03': garminRequirement(['account-lifecycle', 'recovery'], ['BW-092', 'BW-095', 'BW-098'], ['sync-read']),
+  'GAR-04': garminRequirement(['bridge-allowlist', 'account-lifecycle', 'recovery'], ['BW-093'], ['sync-read']),
+  'GAR-05': garminRequirement(['packaging', 'sync-read', 'dedupe-restart'], ['BW-094', 'BW-096', 'BW-097'], ['account-lifecycle', 'dedupe-restart']),
+  'GAR-06': garminRequirement(['sync-read', 'recovery'], ['BW-095', 'BW-096', 'BW-098'], ['recovery']),
+  'GAR-07': garminRequirement(['account-lifecycle', 'recovery'], ['BW-107'], ['sync-read']),
+  'GAR-08': garminRequirement(['bridge-allowlist', 'canonical-json', 'sync-read', 'dedupe-restart'], ['BW-096', 'BW-097'], ['canonical-json', 'dedupe-restart']),
+  'GAR-09': garminRequirement(['recovery', 'dedupe-restart', 'dedupe-restore', 'dedupe-merge', 'match-stale'], ['BW-098'], ['dedupe-restore', 'dedupe-merge']),
+  'GAR-10': garminRequirement(['canonical-json', 'sync-read'], ['BW-100'], ['canonical-json']),
+  'GAR-11': garminRequirement(['canonical-json', 'sync-read'], ['BW-104'], ['canonical-json']),
+  'GAR-12': garminRequirement(['canonical-json'], ['BW-100', 'BW-104'], ['canonical-json']),
+  'GAR-13': garminRequirement(['match-zero', 'match-one', 'match-many', 'match-alternate'], ['BW-101', 'BW-105'], ['match-zero', 'match-one', 'match-many']),
+  'GAR-14': garminRequirement(['match-confirm', 'match-stale', 'match-cancel', 'match-reassign'], ['BW-101', 'BW-102', 'BW-105', 'BW-106'], ['match-confirm', 'match-stale', 'match-reassign']),
+  'GAR-15': garminRequirement(['recovery', 'match-stale'], ['BW-098', 'BW-100', 'BW-104'], ['sync-read']),
+  'GAR-16': garminRequirement(['account-lifecycle'], ['BW-092', 'BW-093', 'BW-094', 'BW-095', 'BW-096', 'BW-097', 'BW-098', 'BW-100', 'BW-101', 'BW-102', 'BW-104', 'BW-105', 'BW-106', 'BW-107'], ['privacy']),
 });
 
 const SHELL_REQUIREMENTS = V12_SHELL_REQUIREMENT_REGISTRY;
@@ -126,11 +126,18 @@ export function resolveV12ShellRequirement(selector, receipts, expectedIdentity)
   ensure(receipt.schema_version === 1 && receipt.producer === 'v12-shell-requirement-receipt/v1'
     && receipt.requirement_id === selector.requirement_id && receipt.case_id === selector.id
     && same(receipt.action_ids, selector.action_ids) && same(receipt.postcondition_ids, selector.postcondition_ids)
+    && Array.isArray(receipt.action_receipts) && Array.isArray(receipt.postcondition_receipts)
+    && same(receipt.action_receipts.map(({ id }) => id), selector.action_ids)
+    && same(receipt.postcondition_receipts.map(({ id }) => id), selector.postcondition_ids)
     && ['PASS', 'FAIL', 'NOT_RUN', 'REVIEW_REQUIRED'].includes(receipt.result)
     && Array.isArray(receipt.members) && receipt.members.length > 0
     && receipt.members.every((member) => member && same(Object.keys(member), ['id', 'result', 'receipt_sha256'])
       && typeof member.id === 'string' && RESULTS.includes(member.result) && HASH.test(member.receipt_sha256 ?? ''))
     && new Set(receipt.members.map(({ id }) => id)).size === receipt.members.length, 'shell_receipt_invalid');
+  const memberIds = new Set(receipt.members.map(({ id }) => id));
+  ensure([...receipt.action_receipts, ...receipt.postcondition_receipts].every((entry) => entry
+    && same(Object.keys(entry), ['id', 'member_id', 'receipt_sha256'])
+    && memberIds.has(entry.member_id) && HASH.test(entry.receipt_sha256 ?? '')), 'shell_receipt_invalid');
   ensure(Object.entries(expectedIdentity).every(([key, value]) => receipt[key] === value), 'shell_receipt_identity_invalid');
   const { receipt_sha256: receiptSha256, ...unsigned } = receipt;
   ensure(HASH.test(receiptSha256 ?? '') && receiptSha256 === jsonHash(unsigned), 'shell_receipt_hash_invalid');
@@ -282,13 +289,21 @@ export function resolveV12SqliteReceipt(value, group) {
     && HASH.test(value.digest ?? ''), 'sqlite_receipt_invalid');
   exactIds(value.case_facts.map(entry => entry?.id), expectedIds, 'sqlite_case_order_invalid');
   value.case_facts.forEach((entry, index) => {
+    const registries = new Set();
     ensure(entry && same(Object.keys(entry), ['id', 'order', 'status', 'source_facts', 'digest'])
       && entry.order === bounds[0] + index && entry.status === 'passed'
       && Array.isArray(entry.source_facts) && entry.source_facts.length > 0
-      && entry.source_facts.every(source => source && same(Object.keys(source), ['registry', 'cases'])
-        && typeof source.registry === 'string' && Array.isArray(source.cases) && source.cases.length > 0
-        && source.cases.every(sourceCase => sourceCase && same(Object.keys(sourceCase), ['id', 'status'])
-          && typeof sourceCase.id === 'string' && sourceCase.status === 'passed'))
+      && entry.source_facts.every(source => {
+        const ids = source?.cases?.map(({ id }) => id);
+        const valid = source && same(Object.keys(source), ['registry', 'cases'])
+          && typeof source.registry === 'string' && !registries.has(source.registry)
+          && Array.isArray(source.cases) && source.cases.length > 0
+          && ids.length === new Set(ids).size
+          && source.cases.every(sourceCase => sourceCase && same(Object.keys(sourceCase), ['id', 'status'])
+            && typeof sourceCase.id === 'string' && sourceCase.status === 'passed');
+        if (valid) registries.add(source.registry);
+        return valid;
+      })
       && HASH.test(entry.digest ?? ''), 'sqlite_case_fact_invalid');
   });
   ensure(value.digest === jsonHash(value.case_facts), 'sqlite_digest_invalid');
@@ -516,7 +531,6 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const shared = `The ${name} artifact retains one host-derived status and receipt for each exact operation-backed case.`;
     leaf(`garmin:${test.id}`, 'garmin-case', test.id, combineV12SourceResults([test.result, garminStates[test.id]]), artifacts, { testcase: test.id, junit_result: test.result, case_result: garminStates[test.id], receipt_sha256: receipt.receipt_sha256, shared_contract: shared });
     leaf(`garmin-domain:${test.id}`, 'garmin-domain-case', test.id, garminStates[test.id], artifacts, { receipt_sha256: receipt.binding_sha256, shared_contract: shared });
-    leaf(`garmin-ui:${test.id}`, 'garmin-ui-action', test.id, test.result, artifacts, { testcase: test.id, shared_contract: shared });
     leaf(`garmin-readback:${test.id}`, 'garmin-authoritative-readback', test.id, garminStates[test.id], artifacts, { receipt_sha256: receipt.binding_sha256, shared_contract: shared });
   }
   const sqliteSourceCases = new Map();
@@ -530,6 +544,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
       for (const source of caseFact.source_facts) for (const sourceCase of source.cases) {
         const key = `${source.registry}:${sourceCase.id}`;
         const retained = sqliteSourceCases.get(key) ?? { registry: source.registry, id: sourceCase.id, results: [], artifacts: [], receipts: [] };
+        ensure(!retained.receipts.includes(caseFact.digest), 'sqlite_source_receipt_duplicate');
         retained.results.push(result(sourceCase.status));
         retained.artifacts.push(`sqlite/${name}.json`);
         retained.receipts.push(caseFact.digest);
@@ -684,6 +699,11 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
         source_receipt_sha256: jsonHash(observedReceipt.source_receipt),
       });
     });
+    const garminUiStateIds = [...new Set(Object.values(V12_GARMIN_REQUIREMENT_REGISTRY).flatMap(({ ui_action_ids: ids }) => ids))];
+    for (const stateId of garminUiStateIds) {
+      ensure(V12_BROWSER_WALK_STATE_IDS.includes(stateId), 'garmin_selector_invalid');
+      leaves.set(`garmin-ui:${stateId}`, group(V12_CONFIG_IDS.map(config => `visual:${stateId}:${config}`), stateId));
+    }
   }
   function resolveAccessibility() {
     const semantics = json('semantics/accessibility.json'); const geometry = json('geometry/hit-targets.json');

@@ -107,7 +107,7 @@ export function runV12BoundedProcess(program, args, {
   }
   return new Promise((resolve, reject) => {
     const child = spawn(program, args, { cwd, env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = ""; let stderrBytes = 0; let settled = false; let terminationCode;
+    let stdout = ""; let stdoutBytes = 0; let stderrBytes = 0; let settled = false; let terminationCode;
     let timeout; let escalation; let killDeadline;
     const groupAlive = () => {
       if (child.pid === undefined) return false;
@@ -144,8 +144,9 @@ export function runV12BoundedProcess(program, args, {
     timeout = setTimeout(() => terminate("process_timeout"), timeoutMs);
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
+      stdoutBytes += Buffer.byteLength(chunk);
+      if (stdoutBytes > maxBuffer) { terminate("process_output_limit"); return; }
       stdout += chunk;
-      if (Buffer.byteLength(stdout) > maxBuffer) terminate("process_output_limit");
     });
     child.stderr.on("data", (chunk) => {
       stderrBytes += chunk.length;

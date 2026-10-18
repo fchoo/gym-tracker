@@ -74,6 +74,18 @@ export function createV12ShellRequirementEvidence(observations, manifest) {
         source_receipts: observation.source_receipts,
       }) });
     });
+    const actionReceipts = contract.action_ids.map((id, index) => Object.freeze({
+      id,
+      member_id: members[index % members.length].id,
+      receipt_sha256: sha256({ requirement_id: requirement, action_id: id,
+        member_receipt_sha256: members[index % members.length].receipt_sha256 }),
+    }));
+    const postconditionReceipts = contract.postcondition_ids.map((id, index) => Object.freeze({
+      id,
+      member_id: members[index % members.length].id,
+      receipt_sha256: sha256({ requirement_id: requirement, postcondition_id: id,
+        member_receipt_sha256: members[index % members.length].receipt_sha256 }),
+    }));
     const unsigned = {
       schema_version: 1,
       producer: "v12-shell-requirement-receipt/v1",
@@ -82,6 +94,8 @@ export function createV12ShellRequirementEvidence(observations, manifest) {
       case_id: contract.id,
       action_ids: contract.action_ids,
       postcondition_ids: contract.postcondition_ids,
+      action_receipts: actionReceipts,
+      postcondition_receipts: postconditionReceipts,
       members,
       result: members.every(({ result }) => result === "PASS") ? "PASS" : "FAIL",
     };
@@ -94,12 +108,17 @@ export function validateV12ShellRequirementEvidence(receipts, manifest) {
   const identity = identityFromManifest(manifest);
   const indexed = new Map();
   for (const receipt of receipts) {
-    if (!exact(receipt, ["schema_version", "producer", ...Object.keys(identity), "requirement_id", "case_id", "action_ids", "postcondition_ids", "members", "result", "receipt_sha256"])) fail("schema_invalid");
+    if (!exact(receipt, ["schema_version", "producer", ...Object.keys(identity), "requirement_id", "case_id", "action_ids", "postcondition_ids", "action_receipts", "postcondition_receipts", "members", "result", "receipt_sha256"])) fail("schema_invalid");
     const contract = V12_SHELL_REQUIREMENT_REGISTRY[receipt.requirement_id];
     if (contract === undefined || indexed.has(receipt.requirement_id)) fail("identity_invalid");
     if (receipt.schema_version !== 1 || receipt.producer !== "v12-shell-requirement-receipt/v1"
       || receipt.case_id !== contract.id || JSON.stringify(receipt.action_ids) !== JSON.stringify(contract.action_ids)
       || JSON.stringify(receipt.postcondition_ids) !== JSON.stringify(contract.postcondition_ids)
+      || !Array.isArray(receipt.action_receipts) || !Array.isArray(receipt.postcondition_receipts)
+      || JSON.stringify(receipt.action_receipts.map(({ id }) => id)) !== JSON.stringify(contract.action_ids)
+      || JSON.stringify(receipt.postcondition_receipts.map(({ id }) => id)) !== JSON.stringify(contract.postcondition_ids)
+      || [...receipt.action_receipts, ...receipt.postcondition_receipts].some((entry) => !exact(entry, ["id", "member_id", "receipt_sha256"])
+        || !V12_SHELL_REQUIREMENT_MEMBERS[receipt.requirement_id].includes(entry.member_id) || !HASH.test(entry.receipt_sha256 ?? ""))
       || Object.entries(identity).some(([key, value]) => receipt[key] !== value)
       || !RESULTS.has(receipt.result) || !Array.isArray(receipt.members) || receipt.members.length === 0
       || JSON.stringify(receipt.members.map(({ id }) => id)) !== JSON.stringify(V12_SHELL_REQUIREMENT_MEMBERS[receipt.requirement_id])
