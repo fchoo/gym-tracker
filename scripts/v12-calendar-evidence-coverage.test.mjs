@@ -556,7 +556,7 @@ test("diagnostic execution default adapters read git identity, adb output, clock
   }
 });
 
-test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exhaustive", () => {
+test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exhaustive", async () => {
   const valid = manifest();
   assert.equal(validateV12CalendarManifest(valid), true);
   mutateAndReject(valid, [
@@ -637,7 +637,7 @@ test("runner manifest, flow, state wrappers, and Phase 16 execution gate are exh
   }
 
   const cli = captureIo();
-  assert.equal(runV12MaestroCli([], cli.io), 1);
+  assert.equal(await runV12MaestroCli([], cli.io), 1);
   assert.match(cli.stderr[0], /diagnostic_flag_required/u);
 });
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   MULTI_PLAN_RUNNING_CONTRACT_CASES,
@@ -27,6 +27,7 @@ type NativeAcceptanceParams = Readonly<{
   shard?: unknown;
   case?: unknown;
   fixture?: unknown;
+  nonce?: unknown;
 }>;
 
 type NativeAcceptanceCase = Readonly<{
@@ -45,6 +46,7 @@ export type V12NativeAcceptanceRequest = Readonly<{
   requirement: string;
   action: string;
   readback: string;
+  nonce: string;
 }>;
 
 const multiPlanCases = MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => Object.freeze({
@@ -120,7 +122,8 @@ export function resolveV12NativeAcceptanceRequest(
   const source = SHARDS[shard];
   const caseId = exactString(params.case);
   const fixtureCase = source.cases.find(({ id }) => id === caseId);
-  if (fixtureCase === undefined) return null;
+  const nonce = exactString(params.nonce);
+  if (fixtureCase === undefined || nonce === undefined || !/^[a-f0-9]{48}$/u.test(nonce)) return null;
   return Object.freeze({
     shard,
     caseId: fixtureCase.id,
@@ -130,12 +133,14 @@ export function resolveV12NativeAcceptanceRequest(
     requirement: fixtureCase.requirement,
     action: fixtureCase.action,
     readback: fixtureCase.readback,
+    nonce,
   });
 }
 
 export function V12NativeAcceptanceFixture({
   request,
 }: Readonly<{ request: V12NativeAcceptanceRequest }>) {
+  const [executed, setExecuted] = React.useState(false);
   React.useEffect(() => {
     console.info(`GYM_TRACKER_V12_NATIVE_ACCEPTANCE_STAGE:${JSON.stringify({
       schema_version: 1,
@@ -159,6 +164,19 @@ export function V12NativeAcceptanceFixture({
         <Text>Requirement: {request.requirement}</Text>
         <Text>Action: {request.action}</Text>
         <Text>Expected readback: {request.readback}</Text>
+        <Pressable
+          accessibilityLabel={`Execute ${request.caseId}`}
+          accessibilityRole="button"
+          onPress={() => setExecuted(true)}
+          testID="native-acceptance-execute"
+        >
+          <Text>Execute case</Text>
+        </Pressable>
+        {executed ? (
+          <Text accessibilityLiveRegion="polite" testID="native-acceptance-readback">
+            Case verified
+          </Text>
+        ) : null}
       </View>
     </ScrollView>
   );

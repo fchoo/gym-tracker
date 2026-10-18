@@ -11,7 +11,8 @@ function phase14SourceStateProofEnabled(): boolean {
   const extra = Constants.expoConfig?.extra;
   return extra?.buildProfile === "development-test"
     && extra?.nativeContractsEnabled === true
-    && extra?.nativeContractSuite === "phase14";
+    && (extra?.nativeContractSuite === "phase14"
+      || extra?.nativeContractSuite === "v1.2-acceptance");
 }
 
 function SourceStateProofContent() {

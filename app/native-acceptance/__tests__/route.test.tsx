@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -42,6 +42,7 @@ describe("v1.2 native acceptance route", () => {
       shard: "multi-plan",
       case: "phase13-migration-failure-cuts",
       fixture: "v12-synthetic-fixtures-r18",
+      nonce: "a".repeat(48),
     };
   });
 
@@ -52,7 +53,7 @@ describe("v1.2 native acceptance route", () => {
   ];
 
   it.each(validRequests)("renders the source-owned %s fixture and native marker", async (shard, caseId, title) => {
-    mockParams = { shard, case: caseId, fixture: "v12-synthetic-fixtures-r18" };
+    mockParams = { shard, case: caseId, fixture: "v12-synthetic-fixtures-r18", nonce: "a".repeat(48) };
 
     const view = await render(<NativeAcceptanceRoute />);
 
@@ -61,6 +62,9 @@ describe("v1.2 native acceptance route", () => {
     expect(view.getByTestId("native-acceptance-stage")).toBeOnTheScreen();
     expect(view.getByText(caseId)).toBeOnTheScreen();
     expect(view.getByText(title)).toBeOnTheScreen();
+    expect(view.queryByTestId("native-acceptance-readback")).not.toBeOnTheScreen();
+    await act(async () => { fireEvent.press(view.getByTestId("native-acceptance-execute")); });
+    expect(view.getByTestId("native-acceptance-readback")).toHaveTextContent("Case verified");
     expect(view.queryByTestId("native-acceptance-disabled")).not.toBeOnTheScreen();
   });
 
@@ -72,6 +76,7 @@ describe("v1.2 native acceptance route", () => {
     shard: string;
     caseId: string;
     fixture: string;
+    nonce: string;
   }>>])[] = [
     ["disabled", { enabled: false }],
     ["production build", { buildProfile: "production" }],
@@ -80,6 +85,7 @@ describe("v1.2 native acceptance route", () => {
     ["unknown shard", { shard: "unknown" }],
     ["unknown case", { caseId: "workout.not-real" }],
     ["wrong fixture", { fixture: "production" }],
+    ["missing nonce", { nonce: "" }],
   ];
 
   it.each(invalidRequests)("fails closed for %s", async (_label, overrides) => {
@@ -90,6 +96,7 @@ describe("v1.2 native acceptance route", () => {
       shard: overrides.shard ?? "workout",
       case: overrides.caseId ?? "workout.root-identity",
       fixture: overrides.fixture ?? "v12-synthetic-fixtures-r18",
+      nonce: overrides.nonce ?? "a".repeat(48),
     };
     mockPackageName = overrides.packageName ?? "com.fchoo.gymtracker.devtest";
 

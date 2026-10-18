@@ -6,7 +6,15 @@ import path from "node:path";
 import test from "node:test";
 
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
-import { executeLiveV12RecoveryMaestro, runV12MaestroCli, validateV12DirectMaestroMapping } from "./run-v12-maestro.mjs";
+import {
+  createV12FunctionalExecutionReceipt,
+  executeLiveV12RecoveryMaestro,
+  executeLiveV12GenericMaestro,
+  runV12BoundedProcess,
+  runV12MaestroCli,
+  validateV12DirectMaestroMapping,
+  validateV12FunctionalExecutionReceipt,
+} from "./run-v12-maestro.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
 import { validateV12ProductionPublicationOrigins } from "./verify-v12-native-evidence.mjs";
 
@@ -86,7 +94,7 @@ function fixture(t, shard) {
   }
   writeFileSync(path.join(root, `artifacts/native/v1.2/${runId}/build.json`), JSON.stringify(build));
   writeFileSync(path.join(root, build.build.apk.path), "apk");
-  writeFileSync(path.join(root, flow), "appId: com.fchoo.gymtracker.devtest\n---\n- launchApp\n");
+  cpSync(path.join(process.cwd(), flow), path.join(root, flow));
   cpSync(path.join(process.cwd(), source), path.join(root, source));
   mkdirSync(path.join(root, "scripts"), { recursive: true });
   writeFileSync(path.join(root, "scripts/run-v12-maestro.mjs"), readFileSync(new URL("./run-v12-maestro.mjs", import.meta.url)));
@@ -128,6 +136,12 @@ function fixture(t, shard) {
         return `${DEVICE_SETTINGS[key]}\n`;
       }
       if (command.includes("settings") && ["put", "delete"].some((action) => command.includes(action))) return "";
+      if (command[0] === "exec-out" && command[1] === "cat" && command[2]?.includes("functional-source")) {
+        return `<hierarchy text="PHASE14_SOURCE_STATE_PROOF digest_sha256=${hash("source-state")} table_count=27 row_count=0 schema_version=27"/>`;
+      }
+      if (command[0] === "exec-out" && command[1] === "cat" && command[2]?.includes("functional-ui")) {
+        return '<hierarchy><node text="Case verified" resource-id="native-acceptance-readback"/></hierarchy>';
+      }
     }
     return "";
   };
@@ -145,7 +159,7 @@ function fixture(t, shard) {
   return { root, build, caseIds, tools, calls, maestroCaseIds, execute, currentIdentity };
 }
 
-test("alternate Recovery Maestro supplies canonical step and nonce variables through absolute tools", { timeout: TEST_TIMEOUT_MS }, (t) => {
+test("alternate Recovery Maestro supplies canonical step and nonce variables through absolute tools", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   const value = fixture(t, "multi-plan");
   const flow = "maestro/v1.2/recovery.yaml";
   mkdirSync(path.dirname(path.join(value.root, flow)), { recursive: true });
@@ -163,7 +177,7 @@ test("alternate Recovery Maestro supplies canonical step and nonce variables thr
     if (path.basename(program) === "adb" && args.includes("get")) return "0\n";
     return "";
   };
-  const result = executeLiveV12RecoveryMaestro(["--run", runId, "--shard", "recovery"], {
+  const result = await executeLiveV12RecoveryMaestro(["--run", runId, "--shard", "recovery"], {
     root: value.root,
     currentHead: value.build.source.head,
     sourceDigest: value.build.source.tree_sha256,
@@ -182,12 +196,94 @@ test("alternate Recovery Maestro supplies canonical step and nonce variables thr
     assert.match(args.find(value => value.startsWith("V12_DOMAIN_NONCE=")), /^V12_DOMAIN_NONCE=[a-f0-9]{32}$/u);
   }
 });
+
+test("functional receipt binds nonce, run, source, APK, device, and pre/action/post readbacks", () => {
+  const build = manifest();
+  const receipt = createV12FunctionalExecutionReceipt({
+    nonce: "f".repeat(48), runId, shard: "workout", caseId: "workout.root-identity",
+    identity: {
+      source_tree_sha256: build.source.tree_sha256,
+      apk_sha256: build.build.apk.sha256,
+      installed_apk_sha256: build.device.installed_apk_sha256,
+      device_identity_sha256: build.device.identity_sha256,
+      configuration_id: build.configuration.id,
+    },
+    pre: { source_sha256: hash("sqlite-before") },
+    action: { report_sha256: hash("maestro-action") },
+    post: { source_sha256: hash("sqlite-after"), ui_sha256: hash("ui-readback") },
+  });
+  assert.equal(validateV12FunctionalExecutionReceipt(receipt, {
+    runId, shard: "workout", caseId: "workout.root-identity", manifest: build,
+  }), true);
+  for (const mutate of [
+    value => { value.nonce = "0".repeat(48); },
+    value => { value.run_id = "phase20-20261018T000000Z-bbbbbbbbbbbb"; },
+    value => { value.case_id = "workout.day-switch"; },
+    value => { value.identity.apk_sha256 = "0".repeat(64); },
+    value => { value.phases.pop(); },
+    value => { value.phases.reverse(); },
+    value => { value.receipt_sha256 = "0".repeat(64); },
+  ]) {
+    const changed = structuredClone(receipt); mutate(changed);
+    assert.throws(() => validateV12FunctionalExecutionReceipt(changed, {
+      runId, shard: "workout", caseId: "workout.root-identity", manifest: build,
+    }), /v12_maestro_execution_receipt_invalid/u);
+  }
+});
+
+test("v1.2 functional flows require a real per-case action and post-action readback", () => {
+  for (const shard of ["multi-plan", "workout", "library-running"]) {
+    const source = readFileSync(`maestro/v1.2/${shard}.yaml`, "utf8");
+    assert.match(source, /V12_EVIDENCE_NONCE/u);
+    assert.match(source, /tapOn:\s*\{ id: "native-acceptance-execute" \}/u);
+    assert.match(source, /assertVisible:\s*\{ id: "native-acceptance-readback" \}/u);
+  }
+  assert.equal(existsSync("maestro/v1.2/accessibility.yaml"), false);
+});
+
+test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000 }, async (t) => {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "v12-maestro-supervisor-")));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const childPid = path.join(root, "child.pid");
+  const script = path.join(root, "hung.mjs");
+  writeFileSync(script, `
+    import { spawn } from "node:child_process";
+    import { writeFileSync } from "node:fs";
+    const child = spawn(process.execPath, ["-e", "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"], { stdio: "ignore" });
+    writeFileSync(${JSON.stringify(childPid)}, String(child.pid));
+    process.on("SIGTERM", () => {});
+    setInterval(() => {}, 1000);
+  `);
+  await assert.rejects(() => runV12BoundedProcess(process.execPath, [script], {
+    cwd: root, timeoutMs: 100, termGraceMs: 100, killGraceMs: 1_000,
+  }), /v12_maestro_process_timeout/u);
+  const descendant = Number(readFileSync(childPid, "utf8"));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
+});
+
+test("hung Maestro restores settings and removes the lease before returning", { timeout: TEST_TIMEOUT_MS }, async (t) => {
+  const value = fixture(t, "multi-plan");
+  let restoreCalls = 0;
+  const runProcess = async (program, args, options) => {
+    if (program === value.tools.maestro && args[0] === "test") throw new Error("v12_maestro_process_timeout");
+    if (program === value.tools.adb && args.includes("put")) restoreCalls += 1;
+    return value.execute(program, args, options);
+  };
+  await assert.rejects(() => executeLiveV12GenericMaestro(["--run", runId, "--shard", "multi-plan"], {
+    root: value.root, serial: DEVICE_FACTS.serial, currentHead: value.build.source.head,
+    sourceDigest: value.build.source.tree_sha256, isAncestor: () => true,
+    currentIdentity: value.currentIdentity, executionTools: value.tools, runProcess,
+  }), /v12_maestro_native_command_timeout/u);
+  assert.ok(restoreCalls >= 3);
+  assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/.leases/multi-plan-${DEVICE_FACTS.serial}.lease`)), false);
+});
 for (const shard of ["multi-plan", "workout", "library-running"]) {
-  test(`${shard} publishes action-scoped provenance after absolute-tool execution`, { timeout: TEST_TIMEOUT_MS }, (t) => {
+  test(`${shard} publishes action-scoped provenance after absolute-tool execution`, { timeout: TEST_TIMEOUT_MS }, async (t) => {
     const value = fixture(t, shard);
     const stdout = [];
     const stderr = [];
-    const status = runV12MaestroCli(["--run", runId, "--shard", shard], {
+    const status = await runV12MaestroCli(["--run", runId, "--shard", shard], {
       stdout: { write: (message) => stdout.push(message) },
       stderr: { write: (message) => stderr.push(message) },
     }, {
@@ -229,6 +325,30 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
       && measurement.before.device_identity_sha256 === value.build.device.identity_sha256
       && measurement.before.settings_sha256 === value.build.device.settings_sha256
     )));
+    assert.equal(new Set(mapping.observations.map(({ execution_receipt: receipt }) => receipt.nonce)).size, mapping.observations.length);
+    assert.ok(mapping.observations.every(({ case_id: caseId, execution_receipt: receipt }) => (
+      validateV12FunctionalExecutionReceipt(receipt, { runId, shard, caseId, manifest: value.build })
+    )));
+    const labelOnly = structuredClone(mapping);
+    delete labelOnly.observations[0].execution_receipt;
+    assert.throws(() => validateV12DirectMaestroMapping(labelOnly, {
+      root: value.root, manifest: value.build, shard, allowTest: true,
+    }), /v12_maestro_observation_mapping_invalid/u);
+    const duplicateNonce = structuredClone(mapping);
+    duplicateNonce.observations[1].execution_receipt = createV12FunctionalExecutionReceipt({
+      nonce: duplicateNonce.observations[0].execution_receipt.nonce, runId, shard,
+      caseId: duplicateNonce.observations[1].case_id,
+      identity: duplicateNonce.observations[1].execution_receipt.identity,
+      pre: { source_sha256: duplicateNonce.observations[1].execution_receipt.phases[0].source_sha256 },
+      action: { report_sha256: duplicateNonce.observations[1].report_sha256 },
+      post: {
+        source_sha256: duplicateNonce.observations[1].execution_receipt.phases[2].source_sha256,
+        ui_sha256: duplicateNonce.observations[1].execution_receipt.phases[2].ui_sha256,
+      },
+    });
+    assert.throws(() => validateV12DirectMaestroMapping(duplicateNonce, {
+      root: value.root, manifest: value.build, shard, allowTest: true,
+    }), /v12_maestro_execution_receipt_invalid/u);
     const forgedMapping = structuredClone(mapping);
     forgedMapping.execution_origin.kind = "production-default-launcher";
     forgedMapping.execution_origin.toolchain_origin = "production-attested/v1";
@@ -271,7 +391,7 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
   });
 }
 
-test("direct Maestro rejects a forged injected identity when absolute adb measures another APK", (t) => {
+test("direct Maestro rejects a forged injected identity when absolute adb measures another APK", async (t) => {
   const value = fixture(t, "multi-plan");
   const stderr = [];
   const execute = (program, args, options) => {
@@ -280,7 +400,7 @@ test("direct Maestro rejects a forged injected identity when absolute adb measur
     }
     return value.execute(program, args, options);
   };
-  const status = runV12MaestroCli(["--run", runId, "--shard", "multi-plan"], {
+  const status = await runV12MaestroCli(["--run", runId, "--shard", "multi-plan"], {
     stdout: { write: () => undefined },
     stderr: { write: (message) => stderr.push(message) },
   }, {
@@ -300,7 +420,7 @@ test("direct Maestro rejects a forged injected identity when absolute adb measur
   assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/publication/multi-plan.json`)), false);
 });
 
-test("direct Maestro rejects device drift measured after a flow", (t) => {
+test("direct Maestro rejects device drift measured after a flow", async (t) => {
   const value = fixture(t, "multi-plan");
   const stderr = [];
   let flowExecuted = false;
@@ -312,7 +432,7 @@ test("direct Maestro rejects device drift measured after a flow", (t) => {
     if (program === value.tools.maestro && args[0] === "test") flowExecuted = true;
     return result;
   };
-  const status = runV12MaestroCli(["--run", runId, "--shard", "multi-plan"], {
+  const status = await runV12MaestroCli(["--run", runId, "--shard", "multi-plan"], {
     stdout: { write: () => undefined },
     stderr: { write: (message) => stderr.push(message) },
   }, {
@@ -332,7 +452,7 @@ test("direct Maestro rejects device drift measured after a flow", (t) => {
   assert.equal(existsSync(path.join(value.root, `artifacts/native/v1.2/${runId}/publication/multi-plan.json`)), false);
 });
 
-test("preseal provenance revalidates complete tools and current device measurements", (t) => {
+test("preseal provenance revalidates complete tools and current device measurements", async (t) => {
   const value = fixture(t, "multi-plan");
   const productionTools = Object.freeze({
     ...value.tools,
@@ -340,7 +460,7 @@ test("preseal provenance revalidates complete tools and current device measureme
     test_only: false,
   });
   const stderr = [];
-  const status = runV12MaestroCli(["--run", runId, "--shard", "multi-plan"], {
+  const status = await runV12MaestroCli(["--run", runId, "--shard", "multi-plan"], {
     stdout: { write: () => undefined },
     stderr: { write: (message) => stderr.push(message) },
   }, {
@@ -375,11 +495,11 @@ test("preseal provenance revalidates complete tools and current device measureme
 
 test("real source registries drive exact ordered mappings and executions", { timeout: TEST_TIMEOUT_MS }, async (t) => {
   for (const shard of ["multi-plan", "workout", "library-running"]) {
-    await t.test(shard, () => {
+    await t.test(shard, async () => {
       const value = fixture(t, shard);
       const stdout = [];
       const stderr = [];
-      const status = runV12MaestroCli(["--run", runId, "--shard", shard], {
+      const status = await runV12MaestroCli(["--run", runId, "--shard", shard], {
         stdout: { write: (message) => stdout.push(message) },
         stderr: { write: (message) => stderr.push(message) },
       }, {
