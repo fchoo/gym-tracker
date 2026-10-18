@@ -20,8 +20,7 @@ import {
 } from './v12-calendar-requirement-map.mjs';
 import { validateV12AccessibilityProducer, validateV12PerformanceProducer } from './v12-quality-evidence-contract.mjs';
 import { deriveV12MaestroCaseIds } from './v12-maestro-source-registry.mjs';
-import { PHASE14_SHELL_EVIDENCE_CASES } from '../src/testing/contracts/phase14Shell.contract.ts';
-import { validateV12ShellRequirementEvidence } from './v12-shell-requirement-evidence.mjs';
+import { validateV12ShellRequirementEvidence, V12_SHELL_REQUIREMENT_REGISTRY } from './v12-shell-requirement-evidence.mjs';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
@@ -117,9 +116,7 @@ export const V12_GARMIN_REQUIREMENT_REGISTRY = Object.freeze({
   'GAR-16': garminRequirement(['account-lifecycle'], ['account-lifecycle'], ['privacy']),
 });
 
-const SHELL_REQUIREMENTS = Object.freeze(Object.fromEntries(
-  PHASE14_SHELL_EVIDENCE_CASES.map((entry) => [entry.requirement, entry]),
-));
+const SHELL_REQUIREMENTS = V12_SHELL_REQUIREMENT_REGISTRY;
 
 export function resolveV12ShellRequirement(selector, receipts, expectedIdentity) {
   ensure(selector?.type === 'shell-requirement' && Array.isArray(receipts), 'shell_selector_invalid');
@@ -205,7 +202,7 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
       type = 'shell-requirement'; shard = 'accessibility'; id = contract.id;
       return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
         selector: { type, shard, id, requirement_id: row.requirement_id, contract: row.acceptance_contract,
-          action_ids: contract.actions.map(({ id: actionId }) => actionId), postcondition_ids: [...contract.postconditions] } };
+          action_ids: contract.action_ids, postcondition_ids: contract.postcondition_ids } };
     }
     if (prefix === 'CAL') {
       const mapping = calendar.get(row.requirement_id);

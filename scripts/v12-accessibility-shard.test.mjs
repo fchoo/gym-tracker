@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { executeLiveV12AccessibilityShard, executeV12AccessibilityShard, validateV12AccessibilityShard, verifyV12AccessibilityShard } from "./v12-accessibility-shard.mjs";
 import { accessibilityEvidence, qualityIdentity } from "./testing/v12-quality-evidence-fixture.mjs";
-import { createV12ShellRequirementEvidence, validateV12ShellRequirementEvidence } from "./v12-shell-requirement-evidence.mjs";
+import { PHASE14_SHELL_EVIDENCE_CASES } from "../src/testing/contracts/phase14Shell.contract.ts";
+import { createV12ShellRequirementEvidence, validateV12ShellRequirementEvidence, V12_SHELL_REQUIREMENT_REGISTRY } from "./v12-shell-requirement-evidence.mjs";
 
 test("plans source-only accessibility observations without native execution", () => {
   const plan = executeV12AccessibilityShard({ mode: "plan" });
@@ -11,6 +12,13 @@ test("plans source-only accessibility observations without native execution", ()
   assert.equal(plan.focus_ring_dp, 3);
   const identity = qualityIdentity();
   assert.equal(validateV12AccessibilityShard({ schema_version: 1, observations: accessibilityEvidence(identity) }, identity), true);
+});
+
+test("generated SHL registry exactly mirrors the Phase 14 action and postcondition contract", () => {
+  assert.deepEqual(Object.entries(V12_SHELL_REQUIREMENT_REGISTRY), PHASE14_SHELL_EVIDENCE_CASES.map((entry) => [
+    entry.requirement,
+    { id: entry.id, action_ids: entry.actions.map(({ id }) => id), postcondition_ids: [...entry.postconditions] },
+  ]));
 });
 
 test("rejects old fixture-shaped and incomplete accessibility evidence", () => {
