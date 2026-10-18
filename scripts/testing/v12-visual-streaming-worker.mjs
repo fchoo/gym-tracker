@@ -11,12 +11,17 @@ import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../v12-evidence-cont
 const project = fileURLToPath(new URL("../../", import.meta.url));
 const [artifactRoot, phase, crashText] = process.argv.slice(2);
 const crashAfter = Number(crashText);
+const coverageInstrumented = typeof process.env.NODE_V8_COVERAGE === "string"
+  && process.env.NODE_V8_COVERAGE.length > 0;
 const runId = "phase20-20261014T000000Z-aaaaaaaaaaaa";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const states = JSON.parse(readFileSync(path.join(project, "src/testing/phase20VisualStateRegistry.json"), "utf8"));
 const stateById = new Map(states.map((state) => [state.id, state]));
 const stateOrdinal = new Map(V12_BROWSER_WALK_STATE_IDS.map((id, index) => [id, index]));
 const configurationOrdinal = new Map(V12_CONFIG_IDS.map((id, index) => [id, index]));
+if (phase === "probe") {
+  process.stdout.write(`${JSON.stringify({ coverage_instrumented: coverageInstrumented })}\n`);
+} else {
 mkdirSync(path.join(artifactRoot, `artifacts/native/v1.2/${runId}`), { recursive: true });
 
 const image = new PNG({ width: 128, height: 128 });
@@ -92,24 +97,33 @@ function captureResult(item) {
 }
 
 function monitor(label) {
-  global.gc?.();
-  const baseline = process.memoryUsage().rss;
-  let max = baseline;
+  let baseline;
+  let max;
   let samples = 0;
+  let warmupSamples = 0;
+  const settledRss = () => {
+    global.gc?.();
+    global.gc?.();
+    return process.memoryUsage().rss;
+  };
   return {
     committed({ ordinal }) {
-      if (ordinal % 128 === 0 || ordinal === 1_711) {
-        global.gc?.();
-        max = Math.max(max, process.memoryUsage().rss);
+      if (baseline === undefined) {
+        baseline = settledRss();
+        max = baseline;
+        warmupSamples += 1;
+      } else if (ordinal % 128 === 0 || ordinal === 1_711) {
+        max = Math.max(max, settledRss());
         samples += 1;
       }
       if (crashAfter > 0 && ordinal + 1 === crashAfter) process.exit(86);
     },
     result() {
-      global.gc?.();
-      const final = process.memoryUsage().rss;
+      if (baseline === undefined || max === undefined) throw new Error("rss_baseline_unavailable");
+      const final = settledRss();
       max = Math.max(max, final);
-      return { label, baseline_bytes: baseline, final_bytes: final, max_bytes: max, max_growth_bytes: Math.max(0, max - baseline), samples };
+      return { label, controlled_baseline: true, warmup_samples: warmupSamples, baseline_bytes: baseline,
+        final_bytes: final, max_bytes: max, max_growth_bytes: Math.max(0, max - baseline), samples };
     },
   };
 }
@@ -134,7 +148,8 @@ if (phase === "capture") {
     onWindowCommitted: rss.committed,
   });
   const verified = verifyV12VisualCapture({ runId, root: project, artifactRoot });
-  process.stdout.write(`${JSON.stringify({ result, verified, adapter_calls: adapterCalls, max_batch: maxBatch, rss: rss.result() })}\n`);
+  process.stdout.write(`${JSON.stringify({ result, verified, adapter_calls: adapterCalls, max_batch: maxBatch,
+    coverage_instrumented: coverageInstrumented, rss: rss.result() })}\n`);
 } else if (phase === "comparison") {
   const rss = monitor("comparison");
   let adapterCalls = 0;
@@ -178,7 +193,9 @@ if (phase === "capture") {
     },
     onWindowCommitted: rss.committed,
   });
-  process.stdout.write(`${JSON.stringify({ result, adapter_calls: adapterCalls, max_batch: maxBatch, rss: rss.result() })}\n`);
+  process.stdout.write(`${JSON.stringify({ result, adapter_calls: adapterCalls, max_batch: maxBatch,
+    coverage_instrumented: coverageInstrumented, rss: rss.result() })}\n`);
 } else {
   throw new Error(`unknown_phase:${phase}`);
+}
 }

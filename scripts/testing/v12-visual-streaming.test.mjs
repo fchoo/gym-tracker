@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -58,12 +58,17 @@ function staleVisualClaim(root, shard, overrides = {}) {
 }
 
 function invoke(root, phase, crashAfter = 0) {
+  const environment = { ...process.env, NODE_ENV: "test", V12_PHASE20_BLACKBOX: "1", V12_NATIVE_ADAPTER_TEST_PROCESS: "1" };
+  environment.NODE_V8_COVERAGE = "";
+  for (const key of ["PHASE20_CHILD_COVERAGE_DIRECTORY", "PHASE20_CHILD_COVERAGE_PROJECT_ROOT"]) {
+    delete environment[key];
+  }
   return spawnSync(process.execPath, ["--expose-gc", worker, root, phase, String(crashAfter)], {
     cwd: project,
     encoding: "utf8",
     timeout: 300_000,
     maxBuffer: 4 * 1024 * 1024,
-    env: { ...process.env, NODE_ENV: "test", V12_PHASE20_BLACKBOX: "1", V12_NATIVE_ADAPTER_TEST_PROCESS: "1" },
+    env: environment,
   });
 }
 
@@ -71,6 +76,23 @@ function readSummary(result) {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return JSON.parse(result.stdout.trim());
 }
+
+test("visual RSS workers drop parent V8 instrumentation", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-visual-rss-isolation-"));
+  const inheritedCoverage = mkdtempSync(path.join(tmpdir(), "v12-parent-v8-"));
+  const previousCoverage = process.env.NODE_V8_COVERAGE;
+  t.after(() => {
+    if (previousCoverage === undefined) delete process.env.NODE_V8_COVERAGE;
+    else process.env.NODE_V8_COVERAGE = previousCoverage;
+    rmSync(root, { recursive: true, force: true });
+    rmSync(inheritedCoverage, { recursive: true, force: true });
+  });
+  process.env.NODE_V8_COVERAGE = inheritedCoverage;
+  assert.deepEqual(readSummary(invoke(root, "probe")), {
+    coverage_instrumented: false,
+  });
+  assert.deepEqual(readdirSync(inheritedCoverage), []);
+});
 
 function streamedInventory(file, arrayKey, id) {
   const values = [];
@@ -128,6 +150,9 @@ test("visual capture and comparison resume monotonic journals without replay and
   assert.equal(capture.verified, true);
   assert.equal(capture.adapter_calls, 1_712 - 17);
   assert.equal(capture.max_batch, 4);
+  assert.equal(capture.coverage_instrumented, false);
+  assert.equal(capture.rss.controlled_baseline, true);
+  assert.equal(capture.rss.warmup_samples, 1);
   assert.ok(capture.rss.samples >= 13);
   assert.ok(capture.rss.max_growth_bytes < 192 * 1024 * 1024,
     `capture RSS grew ${Math.round(capture.rss.max_growth_bytes / 1024 / 1024)} MiB`);
@@ -171,6 +196,9 @@ test("visual capture and comparison resume monotonic journals without replay and
   assert.equal(comparison.result.resumed, true);
   assert.equal(comparison.adapter_calls, 1_712 - 19);
   assert.equal(comparison.max_batch, 4);
+  assert.equal(comparison.coverage_instrumented, false);
+  assert.equal(comparison.rss.controlled_baseline, true);
+  assert.equal(comparison.rss.warmup_samples, 1);
   assert.ok(comparison.rss.samples >= 13);
   assert.ok(comparison.rss.max_growth_bytes < 192 * 1024 * 1024,
     `comparison RSS grew ${Math.round(comparison.rss.max_growth_bytes / 1024 / 1024)} MiB`);
