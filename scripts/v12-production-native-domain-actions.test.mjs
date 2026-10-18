@@ -20,6 +20,24 @@ test('Garmin returns exactly 18 ordered privacy-safe native aggregates', (t) => 
   assert.ok(result.cases.every((entry) => Object.keys(entry).sort().join(',') === 'code,count,id,order,receipt_sha256,status'));
   assert.equal(existsSync(path.join(r.scratch, 'lock')), false);
 });
+test('Garmin accepts a restart with a different PID and a new process birth claim', (t) => {
+  const r = fixture(t); r.updateState({ reuseProcessId: false, reuseProcessBirth: false });
+  const result = success(r.invoke('garmin'));
+  assert.ok(result.cases.every(({ status }) => status === 'PASS'));
+  assert.equal(r.readState().processCounter, 1002);
+  assert.equal(r.readState().processStartTicks, 5200);
+});
+test('Garmin accepts same-PID reuse only when the process birth claim changes', (t) => {
+  const r = fixture(t); r.updateState({ reuseProcessId: true, reuseProcessBirth: false });
+  const result = success(r.invoke('garmin'));
+  assert.ok(result.cases.every(({ status }) => status === 'PASS'));
+  assert.equal(r.readState().processCounter, 1001);
+  assert.equal(r.readState().processStartTicks, 5200);
+});
+test('Garmin rejects the same PID with the same process birth claim', (t) => {
+  const r = fixture(t); r.updateState({ reuseProcessId: true, reuseProcessBirth: true });
+  bounded(r.invoke('garmin'), 'garmin_restart_invalid');
+});
 test('Garmin is reachable through the production adapter and checked-in default launcher subprocess', (t) => {
   const r = fixture(t); const result = success(r.invokeDefault('garmin'));
   assert.equal(result.producer, 'v12-production-garmin-host/v1');

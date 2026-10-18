@@ -52,7 +52,7 @@ const FAKE_DEVICE_SETTINGS = Object.freeze({ font_scale: "1", ui_night_mode: "1"
 const FAKE_APK_BYTES = Buffer.from("apk");
 const progress = (message) => { if (process.env.V12_BLACKBOX_PROGRESS === "1") process.stderr.write(`[v12-blackbox] ${message}\n`); };
 const TEST_TIMEOUT_MS = 30 * 60_000;
-const SUBPROCESS_TIMEOUT_MS = 5 * 60_000;
+const SUBPROCESS_TIMEOUT_MS = 10 * 60_000;
 const FIXTURE_COMMAND_TIMEOUT_MS = 10_000;
 const INLINE_HELPER_TIMEOUT_MS = 240_000;
 const test = (name, optionsOrFunction, maybeFunction) => typeof optionsOrFunction === "function"

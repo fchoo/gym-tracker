@@ -310,6 +310,10 @@ test("child-only coverage instruments production CLI descendants without instrum
       "classify(false);",
       "",
     ].join("\n"));
+    writeFileSync(path.join(root, "scripts/eval-target.mjs"), [
+      "export function classify(value) { return value ? 'yes' : 'no'; }",
+      "",
+    ].join("\n"));
     writeFileSync(path.join(root, "target.test.mjs"), [
       "import assert from 'node:assert/strict';",
       "import { spawnSync } from 'node:child_process';",
@@ -318,6 +322,9 @@ test("child-only coverage instruments production CLI descendants without instrum
       "test('runs the production CLI child', () => {",
       "  const result = spawnSync(process.execPath, [path.join(process.cwd(), 'scripts/target.mjs')], { encoding: 'utf8' });",
       "  assert.equal(result.status, 0, result.stderr);",
+      "  const imported = new URL('./scripts/eval-target.mjs', new URL(`file://${process.cwd()}/`)).href;",
+      "  const evalResult = spawnSync(process.execPath, ['--input-type=module', '--eval', `const { classify } = await import(${JSON.stringify(imported)}); classify(true); classify(false);`], { encoding: 'utf8' });",
+      "  assert.equal(evalResult.status, 0, evalResult.stderr);",
       "});",
       "",
     ].join("\n"));
@@ -326,18 +333,20 @@ test("child-only coverage instruments production CLI descendants without instrum
       projects: [{
         name: "child-only",
         coverage: "children",
-        modules: ["scripts/target.mjs"],
+        modules: ["scripts/target.mjs", "scripts/eval-target.mjs"],
         tests: ["target.test.mjs"],
       }],
       outputDirectory: path.join(root, "coverage"),
       maxParallel: 1,
     });
     const summary = JSON.parse(readFileSync(path.join(root, "coverage/coverage-summary.json"), "utf8"));
-    assert.deepEqual(
-      ["statements", "branches", "functions", "lines"]
-        .map((metric) => summary["scripts/target.mjs"][metric].pct),
-      [100, 100, 100, 100],
-    );
+    for (const module of ["scripts/target.mjs", "scripts/eval-target.mjs"]) {
+      assert.deepEqual(
+        ["statements", "branches", "functions", "lines"]
+          .map((metric) => summary[module][metric].pct),
+        [100, 100, 100, 100],
+      );
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -2072,7 +2081,6 @@ test("retained Phase 20 fixture executes the exact coverage CLI entrypoints", {
 });
 
 test("a timed-out coverage project kills its TERM-resistant grandchild", {
-  skip: process.platform === "win32",
   timeout: 10_000,
 }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-project-timeout-"));
@@ -2082,11 +2090,12 @@ test("a timed-out coverage project kills its TERM-resistant grandchild", {
     writeFileSync(path.join(root, "hung.test.mjs"), [
       "import { spawn } from 'node:child_process';",
       "import { writeFileSync } from 'node:fs';",
+      "import { setTimeout as delay } from 'node:timers/promises';",
       "import test from 'node:test';",
       "test('hangs with a resistant grandchild', async () => {",
       "  const child = spawn(process.execPath, ['--input-type=module', '--eval', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
       `  writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));`,
-      "  await new Promise(() => {});",
+      "  try { await delay(3000); } finally { try { child.kill('SIGKILL'); } catch {} }",
       "});",
       "",
     ].join("\n"));
@@ -2119,6 +2128,102 @@ test("a timed-out coverage project kills its TERM-resistant grandchild", {
     if (grandchildPid !== undefined) {
       try { process.kill(grandchildPid, "SIGKILL"); } catch { /* already gone */ }
     }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("first project failure stops dequeuing and awaits cleanup of every active project tree", {
+  timeout: 15_000,
+}, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-project-fail-fast-"));
+  const activeReady = path.join(root, "active.ready");
+  const activePid = path.join(root, "active.pid");
+  const queuedStarted = path.join(root, "queued.started");
+  let grandchildPid;
+  try {
+    writeFileSync(path.join(root, "active.test.mjs"), [
+      "import { spawn } from 'node:child_process';",
+      "import { writeFileSync } from 'node:fs';",
+      "import test from 'node:test';",
+      "test('stays active until peer failure cleanup', async () => {",
+      "  const child = spawn(process.execPath, ['--input-type=module', '--eval', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);\"], { stdio: 'ignore' });",
+      `  writeFileSync(${JSON.stringify(activePid)}, String(child.pid));`,
+      `  writeFileSync(${JSON.stringify(activeReady)}, 'ready');`,
+      "  await new Promise(() => {});",
+      "});",
+      "",
+    ].join("\n"));
+    writeFileSync(path.join(root, "fail.test.mjs"), [
+      "import assert from 'node:assert/strict';",
+      "import { existsSync } from 'node:fs';",
+      "import { setTimeout as delay } from 'node:timers/promises';",
+      "import test from 'node:test';",
+      "test('fails after the peer is active', async () => {",
+      `  for (let attempt = 0; attempt < 200 && !existsSync(${JSON.stringify(activeReady)}); attempt += 1) await delay(10);`,
+      `  assert.equal(existsSync(${JSON.stringify(activeReady)}), true);`,
+      "  assert.fail('first-project-failure');",
+      "});",
+      "",
+    ].join("\n"));
+    writeFileSync(path.join(root, "queued.test.mjs"), [
+      "import { writeFileSync } from 'node:fs';",
+      "import test from 'node:test';",
+      `writeFileSync(${JSON.stringify(queuedStarted)}, 'started');`,
+      "test('must not be dequeued', () => {});",
+      "",
+    ].join("\n"));
+
+    await assert.rejects(
+      runPhase20SubprocessCoverage({
+        projectRoot: root,
+        projects: [
+          { name: "active", coverage: false, tests: ["active.test.mjs"] },
+          { name: "fail", coverage: false, tests: ["fail.test.mjs"] },
+          { name: "queued", coverage: false, tests: ["queued.test.mjs"] },
+        ],
+        outputDirectory: path.join(root, "coverage"),
+        maxParallel: 2,
+        projectTimeoutMs: 10_000,
+        terminateGraceMs: 100,
+      }),
+      /phase20_coverage_project_failed:fail/u,
+    );
+    assert.equal(existsSync(queuedStarted), false, "scheduler dequeued work after the first failure");
+    grandchildPid = Number(readFileSync(activePid, "utf8"));
+    assert.throws(() => process.kill(grandchildPid, 0), { code: "ESRCH" });
+    grandchildPid = undefined;
+  } finally {
+    if (grandchildPid !== undefined) {
+      try { process.kill(grandchildPid, "SIGKILL"); } catch { /* already gone */ }
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a leader that exits after TERM cannot receive a delayed KILL", { timeout: 10_000 }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-project-no-late-kill-"));
+  const signals = [];
+  try {
+    writeFileSync(path.join(root, "hang.test.mjs"), [
+      "import test from 'node:test';",
+      "test('waits for supervisor termination', async () => { await new Promise(() => {}); });",
+      "",
+    ].join("\n"));
+    await assert.rejects(
+      runPhase20SubprocessCoverage({
+        projectRoot: root,
+        projects: [{ name: "hang", coverage: false, tests: ["hang.test.mjs"] }],
+        outputDirectory: path.join(root, "coverage"),
+        maxParallel: 1,
+        projectTimeoutMs: 200,
+        terminateGraceMs: 500,
+        onProjectSignal: ({ signal }) => signals.push(signal),
+      }),
+      /phase20_coverage_project_timeout:hang/u,
+    );
+    await delay(600);
+    assert.deepEqual(signals, ["SIGTERM"]);
+  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });

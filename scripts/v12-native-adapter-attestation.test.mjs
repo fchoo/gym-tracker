@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -36,7 +36,10 @@ import {
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
   createV12NativeAdapter,
   invokeV12NativeAdapterEnvelope,
+  signalV12OwnedProcessTree,
   superviseV12NativeProcess,
+  v12ProcessGroupIsEmpty,
+  verifyV12ProcessGroupEmpty,
   v12CommandPathMaxMs,
 } from "./v12-native-adapter.mjs";
 
@@ -147,6 +150,57 @@ test("supervisor gives a process tree TERM cleanup time before bounded KILL", as
   assert.equal(result.status, 0);
 });
 
+test("process-tree signaling records bounded Windows TERM and forced KILL receipts", () => {
+  const calls = [];
+  const child = { pid: 42, exitCode: null, signalCode: null };
+  const spawnSyncImplementation = (command, args, options) => {
+    calls.push({ command, args, options });
+    return { status: 0, signal: null, error: undefined };
+  };
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", { platform: "win32", spawnSyncImplementation }), true);
+  assert.equal(signalV12OwnedProcessTree(child, "SIGKILL", { platform: "win32", spawnSyncImplementation }), true);
+  assert.deepEqual(calls.map(({ command, args }) => [command, args]), [
+    ["taskkill", ["/PID", "42", "/T"]],
+    ["taskkill", ["/PID", "42", "/T", "/F"]],
+  ]);
+  assert.ok(calls.every(({ options }) => options.timeout === 5_000 && options.windowsHide === true));
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", {
+    platform: "win32",
+    spawnSyncImplementation: () => ({ status: 1, signal: null, error: undefined }),
+  }), false);
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", {
+    platform: "win32",
+    spawnSyncImplementation: () => ({ status: null, signal: null, error: new Error("taskkill_missing") }),
+  }), false);
+  assert.equal(signalV12OwnedProcessTree(child, "SIGTERM", {
+    platform: "win32",
+    spawnSyncImplementation: () => ({ status: null, signal: "SIGTERM", error: undefined }),
+  }), false);
+});
+
+test("process-tree signaling validates ownership before POSIX signals and group-empty polling", async () => {
+  const active = { pid: 42, exitCode: null, signalCode: null };
+  const exited = { pid: 42, exitCode: 0, signalCode: null };
+  assert.equal(signalV12OwnedProcessTree(exited, "SIGTERM", { platform: "linux" }), true);
+  assert.equal(signalV12OwnedProcessTree({ ...active, pid: 0 }, "SIGTERM", { platform: "linux" }), true);
+  assert.equal(signalV12OwnedProcessTree({ ...active, signalCode: "SIGTERM" }, "SIGTERM", { platform: "linux" }), true);
+  assert.equal(signalV12OwnedProcessTree(active, "SIGTERM", { platform: "linux", killImplementation: () => {} }), true);
+  assert.equal(signalV12OwnedProcessTree(active, "SIGTERM", { platform: "linux", killImplementation: () => { const error = new Error("gone"); error.code = "ESRCH"; throw error; } }), true);
+  assert.equal(signalV12OwnedProcessTree(active, "SIGTERM", { platform: "linux", killImplementation: () => { throw new Error("denied"); } }), false);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "win32" }), true);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "linux", killImplementation: () => {} }), false);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "linux", killImplementation: () => { const error = new Error("gone"); error.code = "ESRCH"; throw error; } }), true);
+  assert.equal(v12ProcessGroupIsEmpty(42, { platform: "linux", killImplementation: () => { throw new Error("denied"); } }), false);
+  let polls = 0;
+  assert.equal(await verifyV12ProcessGroupEmpty(42, 100, { pollMs: 1, isEmpty: () => { polls += 1; return polls >= 2; } }), true);
+  assert.equal(polls, 3);
+  assert.equal(await verifyV12ProcessGroupEmpty(42, 1, { pollMs: 2, isEmpty: () => false }), false);
+});
+
+test("supervisor rejects an invalid process contract before spawning", async () => {
+  await assert.rejects(superviseV12NativeProcess({ executable: "relative", args: [], timeoutMs: 1 }), /supervisor_invalid/u);
+});
+
 test("supervisor escalates an uncooperative process tree from TERM to KILL", async (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-kill-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -184,7 +238,8 @@ test("supervisor forwards host cancellation through the same bounded TERM path",
   const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-signal-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const cleaned = path.join(root, "signal-cleaned");
-  const program = `import fs from "node:fs"; process.on("SIGTERM",()=>{fs.writeFileSync(${JSON.stringify(cleaned)},"yes"); process.exit(0)}); setInterval(()=>{},1000);`;
+  const ready = path.join(root, "signal-ready");
+  const program = `import fs from "node:fs"; process.on("SIGTERM",()=>{fs.writeFileSync(${JSON.stringify(cleaned)},"yes"); process.exitCode=0}); fs.writeFileSync(${JSON.stringify(ready)},"yes"); const timer=setInterval(()=>{},1000); process.once("SIGTERM",()=>clearInterval(timer));`;
   const controller = new AbortController();
   const running = superviseV12NativeProcess({
     executable: process.execPath,
@@ -198,11 +253,83 @@ test("supervisor forwards host cancellation through the same bounded TERM path",
     maxBuffer: 1024,
     signal: controller.signal,
   });
-  setTimeout(() => controller.abort(), 150);
+  for (let attempt = 0; attempt < 100 && !existsSync(ready); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(existsSync(ready), true, "target never acknowledged signal readiness");
+  controller.abort();
   const result = await running;
   assert.equal(readFileSync(cleaned, "utf8"), "yes");
   assert.equal(result.cancelled, true);
   assert.equal(result.termination, "SIGTERM");
+});
+
+test("supervisor cancels a pre-aborted request without starting the target", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-pre-abort-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const started = path.join(root, "started");
+  const controller = new AbortController();
+  controller.abort();
+  const result = await superviseV12NativeProcess({
+    executable: process.execPath,
+    args: ["--input-type=module", "--eval", `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(started)}, "yes"); setInterval(()=>{},1000);`],
+    cwd: root,
+    environment: process.env,
+    input: "",
+    timeoutMs: 5_000,
+    termGraceMs: 100,
+    killGraceMs: 100,
+    maxBuffer: 1024,
+    signal: controller.signal,
+  });
+  assert.equal(result.cancelled, true);
+  assert.equal(result.cleanup_verified, true);
+  assert.equal(existsSync(started), false);
+});
+
+test("supervisor keeps group ownership after a cooperative leader exits and kills its resistant grandchild", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-supervisor-cooperative-leader-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const pidFile = path.join(root, "grandchild.pid");
+  const grandchild = `process.on("SIGTERM",()=>{}); setInterval(()=>{},1000);`;
+  const program = `import fs from "node:fs"; import {spawn} from "node:child_process"; const child=spawn(process.execPath,["--input-type=module","--eval",${JSON.stringify(grandchild)}],{stdio:"ignore"}); fs.writeFileSync(${JSON.stringify(pidFile)},String(child.pid)); const timer=setInterval(()=>{},1000); process.on("SIGTERM",()=>{clearInterval(timer);process.exitCode=0});`;
+  const result = await superviseV12NativeProcess({
+    executable: process.execPath,
+    args: ["--input-type=module", "--eval", program],
+    cwd: root,
+    environment: process.env,
+    input: "",
+    timeoutMs: 150,
+    termGraceMs: 100,
+    killGraceMs: 500,
+    maxBuffer: 1024,
+  });
+  const grandchildPid = Number(readFileSync(pidFile, "utf8"));
+  assert.equal(result.timed_out, true);
+  assert.equal(result.termination, "SIGKILL");
+  assert.equal(result.cleanup_verified, true);
+  assert.throws(() => process.kill(grandchildPid, 0), { code: "ESRCH" });
+});
+
+test("minimal supervisor bootstrap acknowledges signal readiness before imports complete", { timeout: 10_000 }, async () => {
+  const bootstrap = new URL("./v12-native-adapter-supervisor.mjs", import.meta.url).pathname;
+  const supervisor = spawn(process.execPath, [bootstrap, "10000", process.execPath, "--input-type=module", "--eval", "setInterval(() => {}, 1000);"], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe", "pipe"],
+  });
+  supervisor.stdin.end();
+  await new Promise((resolve, reject) => {
+    supervisor.stdio[3].once("data", resolve);
+    supervisor.once("error", reject);
+    supervisor.once("close", () => reject(new Error("supervisor_closed_before_ready")));
+  });
+  supervisor.kill("SIGTERM");
+  const result = await new Promise((resolve, reject) => {
+    supervisor.once("error", reject);
+    supervisor.once("close", (status, signal) => resolve({ status, signal }));
+  });
+  assert.deepEqual(result, { status: 1, signal: null });
 });
 test("adapter provenance is immutable and action-scoped across borrowed-lease cleanup", (t) => {
   const runner = fixture(t);

@@ -3,6 +3,7 @@
 // credentials, host path, or production data.
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { V12_BROWSER_WALK_STATE_IDS, V12_CONFIG_IDS } from "../../v12-evidence-contract.mjs";
@@ -10,14 +11,25 @@ import { V12_RECOVERY_CUT_DEFINITIONS, V12_RECOVERY_SCENARIOS, V12_RECOVERY_UNCO
 import { createV12CalendarNativeFixtureResult } from "../v12-calendar-observation-fixture.mjs";
 import { accessibilityEvidence, performanceEvidence } from "../v12-quality-evidence-fixture.mjs";
 const sha = (value) => createHash("sha256").update(Buffer.isBuffer(value) ? value : String(value)).digest("hex");
+const stdout = [];
+const stderr = [];
+async function drain() {
+  const outputValue = stdout.join("");
+  const errorValue = stderr.join("");
+  if (outputValue.length > 0 && !process.stdout.write(outputValue)) await once(process.stdout, "drain");
+  if (errorValue.length > 0 && !process.stderr.write(errorValue)) await once(process.stderr, "drain");
+}
+
+async function main() {
+try {
 const read = await new Promise((resolve) => { let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }); process.stdin.on("end", () => resolve(JSON.parse(body))); });
 const action = process.argv[3]; const fail = process.env.V12_FAKE_DEVICE_FAIL; const mutation = process.env.V12_FAKE_DEVICE_MUTATION;
-if (fail && action.includes(fail)) process.exit(1);
+if (fail && action.includes(fail)) return 1;
 if (process.env.V12_FAKE_GARMIN_AUTH_REQUIRED === "1" && action === "garmin") {
-  process.stderr.write("v12_production_native_launcher_auth_required\n");
-  process.exit(1);
+  stderr.push("v12_production_native_launcher_auth_required\n");
+  return 1;
 }
-if (mutation && action === "garmin") process.exit(1);
+if (mutation && action === "garmin") return 1;
 const png = (key, reference = false) => { const image = new PNG({ width: 200, height: 1 }); const hash = Buffer.from(sha(key), "hex"); image.data.set([hash[0], hash[1], hash[2], 255, hash[3], hash[4], hash[5], 255]); if (reference) image.data[0] ^= 1; return PNG.sync.write(image).toString("base64"); };
 const build = JSON.parse(readFileSync(`artifacts/native/v1.2/${read.attestation.run_id}/build.json`, 'utf8'));
 let visualStates;
@@ -200,4 +212,11 @@ const attestation = { ...read.attestation };
 if (process.env.V12_FAKE_DEVICE_FORGE_ATTESTATION === "apk") attestation.apk_sha256 = "0".repeat(64);
 if (process.env.V12_FAKE_DEVICE_FORGE_ATTESTATION === "device") attestation.device_identity_sha256 = "0".repeat(64);
 if (process.env.V12_FAKE_DEVICE_FORGE_ATTESTATION === "source") attestation.source_tree_sha256 = "0".repeat(64);
-process.stdout.write(`${JSON.stringify({ schema_version: 1, evidence_origin: "test", action, ok: true, result: response, attestation })}\n`);
+stdout.push(`${JSON.stringify({ schema_version: 1, evidence_origin: "test", action, ok: true, result: response, attestation })}\n`);
+return 0;
+} finally {
+  await drain();
+}
+}
+
+process.exitCode = await main();
