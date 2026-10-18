@@ -57,11 +57,13 @@ function staleVisualClaim(root, shard, overrides = {}) {
   })}\n`);
 }
 
-function invoke(root, phase, crashAfter = 0) {
+function invoke(root, phase, crashAfter = 0, instrumented = false) {
   const environment = { ...process.env, NODE_ENV: "test", V12_PHASE20_BLACKBOX: "1", V12_NATIVE_ADAPTER_TEST_PROCESS: "1" };
-  environment.NODE_V8_COVERAGE = "";
-  for (const key of ["PHASE20_CHILD_COVERAGE_DIRECTORY", "PHASE20_CHILD_COVERAGE_PROJECT_ROOT"]) {
-    delete environment[key];
+  if (!instrumented) {
+    environment.NODE_V8_COVERAGE = "";
+    for (const key of ["PHASE20_CHILD_COVERAGE_DIRECTORY", "PHASE20_CHILD_COVERAGE_PROJECT_ROOT"]) {
+      delete environment[key];
+    }
   }
   return spawnSync(process.execPath, ["--expose-gc", worker, root, phase, String(crashAfter)], {
     cwd: project,
@@ -134,11 +136,13 @@ test("visual capture and comparison resume monotonic journals without replay and
   const root = mkdtempSync(path.join(tmpdir(), "v12-visual-stream-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
-  const captureCrash = invoke(root, "capture", 17);
+  const captureCrash = invoke(root, "capture", 17, true);
   assert.equal(captureCrash.status, 86, captureCrash.stderr || captureCrash.stdout);
+  const captureCoverageResume = invoke(root, "capture", 18, true);
+  assert.equal(captureCoverageResume.status, 86, captureCoverageResume.stderr || captureCoverageResume.stdout);
   assert.deepEqual(inspectV12VisualJournal({ root, runId, shard: "visual" }), {
-    batch_count: 17,
-    item_count: 68,
+    batch_count: 18,
+    item_count: 72,
     last_sha256: inspectV12VisualJournal({ root, runId, shard: "visual" }).last_sha256,
   });
   assert.match(inspectV12VisualJournal({ root, runId, shard: "visual" }).last_sha256, /^[a-f0-9]{64}$/u);
@@ -148,7 +152,7 @@ test("visual capture and comparison resume monotonic journals without replay and
   assert.equal(capture.result.batch_count, 1_712);
   assert.equal(capture.result.resumed, true);
   assert.equal(capture.verified, true);
-  assert.equal(capture.adapter_calls, 1_712 - 17);
+  assert.equal(capture.adapter_calls, 1_712 - 18);
   assert.equal(capture.max_batch, 4);
   assert.equal(capture.coverage_instrumented, false);
   assert.equal(capture.rss.controlled_baseline, true);
@@ -183,18 +187,20 @@ test("visual capture and comparison resume monotonic journals without replay and
     ],
   });
 
-  const comparisonCrash = invoke(root, "comparison", 19);
+  const comparisonCrash = invoke(root, "comparison", 19, true);
   assert.equal(comparisonCrash.status, 86, comparisonCrash.stderr || comparisonCrash.stdout);
+  const comparisonCoverageResume = invoke(root, "comparison", 20, true);
+  assert.equal(comparisonCoverageResume.status, 86, comparisonCoverageResume.stderr || comparisonCoverageResume.stdout);
   const journal = inspectV12VisualJournal({ root, runId, shard: "comparison" });
-  assert.equal(journal.batch_count, 19);
-  assert.equal(journal.item_count, 76);
+  assert.equal(journal.batch_count, 20);
+  assert.equal(journal.item_count, 80);
   assert.match(journal.last_sha256, /^[a-f0-9]{64}$/u);
 
   const comparison = readSummary(invoke(root, "comparison"));
   assert.equal(comparison.result.comparison_count, 6_848);
   assert.equal(comparison.result.batch_count, 1_712);
   assert.equal(comparison.result.resumed, true);
-  assert.equal(comparison.adapter_calls, 1_712 - 19);
+  assert.equal(comparison.adapter_calls, 1_712 - 20);
   assert.equal(comparison.max_batch, 4);
   assert.equal(comparison.coverage_instrumented, false);
   assert.equal(comparison.rss.controlled_baseline, true);
