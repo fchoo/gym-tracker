@@ -27,6 +27,7 @@ const RESULTS = ['FAIL', 'REVIEW_REQUIRED', 'NOT_RUN', 'PASS'];
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const jsonHash = value => sha(JSON.stringify(value));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const fail = code => { throw new Error(`v12_row_resolver_${code}`); };
 const ensure = (condition, code) => { if (!condition) fail(code); };
 const result = value => {
@@ -95,6 +96,81 @@ const garminRequirement = (domain, ui, readbacks) => Object.freeze({
   readback_case_ids: Object.freeze(readbacks),
 });
 
+const GARMIN_MEMBER_CONTRACTS = Object.freeze({
+  domain: Object.freeze({ type: 'garmin-domain-case', artifact_class: 'garmin-domain-artifact', domain: 'v12-garmin-domain/v1' }),
+  ui: Object.freeze({ type: 'garmin-ui-action', artifact_class: 'garmin-visual-action-state', domain: 'v12-garmin-ui-action/v1' }),
+  readback: Object.freeze({ type: 'garmin-authoritative-readback', artifact_class: 'garmin-authoritative-case-readback', domain: 'v12-garmin-readback/v1' }),
+});
+
+function garminArtifactForCase(caseId) {
+  if (['packaging', 'bridge-allowlist', 'account-lifecycle', 'recovery'].includes(caseId)) return 'garmin/packaging-auth.json';
+  if (['canonical-json', 'sync-read', 'privacy'].includes(caseId)) return 'garmin/sync-read.json';
+  if (V12_GARMIN_SHARD_CASE_IDS.slice(6, 9).includes(caseId)) return 'garmin/dedupe.json';
+  if (V12_GARMIN_SHARD_CASE_IDS.slice(9, 17).includes(caseId)) return 'garmin/matching.json';
+  fail('garmin_selector_invalid');
+}
+
+export function createV12GarminAuthenticatedMember({ kind, id, result: state, runIdentity, bindings, facts }) {
+  const contract = GARMIN_MEMBER_CONTRACTS[kind];
+  ensure(contract !== undefined && typeof id === 'string' && id.length > 0 && plain(runIdentity)
+    && Array.isArray(bindings) && bindings.length > 0 && bindings.every((binding) => plain(binding)
+      && typeof binding.artifact === 'string' && HASH.test(binding.sha256 ?? ''))
+    && new Set(bindings.map(({ artifact }) => artifact)).size === bindings.length && plain(facts), 'garmin_member_invalid');
+  const normalizedResult = result(state);
+  const unsigned = {
+    schema_version: 1,
+    producer: 'v12-garmin-member-receipt/v1',
+    domain: contract.domain,
+    type: contract.type,
+    id,
+    result: normalizedResult,
+    run_identity: Object.freeze({ ...runIdentity }),
+    artifact_class: contract.artifact_class,
+    retained_artifacts: Object.freeze(bindings.map((binding) => Object.freeze({ ...binding }))),
+    facts_sha256: jsonHash(facts),
+  };
+  return Object.freeze({
+    type: contract.type,
+    id,
+    result: normalizedResult,
+    run_identity: unsigned.run_identity,
+    artifact_class: contract.artifact_class,
+    authoritative_facts: Object.freeze(structuredClone(facts)),
+    receipt: Object.freeze({ ...unsigned, receipt_sha256: jsonHash(unsigned) }),
+    bindings: unsigned.retained_artifacts,
+  });
+}
+
+function validateV12GarminMember(value, { kind, id, runIdentity }) {
+  const contract = GARMIN_MEMBER_CONTRACTS[kind];
+  ensure(contract !== undefined && value && same(Object.keys(value), ['type', 'id', 'result', 'run_identity', 'artifact_class', 'authoritative_facts', 'receipt', 'bindings'])
+    && value.type === contract.type && value.id === id && value.artifact_class === contract.artifact_class
+    && RESULTS.includes(value.result) && same(value.run_identity, runIdentity) && plain(value.authoritative_facts)
+    && Array.isArray(value.bindings) && value.bindings.length > 0 && new Set(value.bindings.map(({ artifact }) => artifact)).size === value.bindings.length
+    && value.bindings.every((binding) => plain(binding) && typeof binding.artifact === 'string' && HASH.test(binding.sha256 ?? '')),
+  'garmin_member_invalid');
+  const receipt = value.receipt;
+  ensure(receipt && same(Object.keys(receipt), ['schema_version', 'producer', 'domain', 'type', 'id', 'result', 'run_identity', 'artifact_class', 'retained_artifacts', 'facts_sha256', 'receipt_sha256'])
+    && receipt.schema_version === 1 && receipt.producer === 'v12-garmin-member-receipt/v1' && receipt.domain === contract.domain
+    && receipt.type === contract.type && receipt.id === id && receipt.result === value.result && same(receipt.run_identity, runIdentity)
+    && receipt.artifact_class === contract.artifact_class && same(receipt.retained_artifacts, value.bindings)
+    && receipt.facts_sha256 === jsonHash(value.authoritative_facts) && HASH.test(receipt.receipt_sha256 ?? ''), 'garmin_receipt_invalid');
+  const { receipt_sha256: digest, ...unsigned } = receipt;
+  ensure(digest === jsonHash(unsigned), 'garmin_receipt_invalid');
+  const expectedSuffixes = kind === 'ui'
+    ? ['comparison/index.json', 'screenshots/index.json']
+    : kind === 'readback' ? [garminArtifactForCase(id), 'maestro/garmin-progress.xml'] : [garminArtifactForCase(id)];
+  ensure(same(value.bindings.map(({ artifact }) => artifact.split('/').slice(-2).join('/')).sort(), [...expectedSuffixes].sort()), 'garmin_artifact_invalid');
+  if (kind === 'ui') ensure(value.authoritative_facts.state_id === id
+    && same(value.authoritative_facts.configuration_ids, V12_CONFIG_IDS), 'garmin_facts_invalid');
+  else ensure(value.authoritative_facts.case_id === id && value.authoritative_facts.artifact_path === garminArtifactForCase(id)
+    && value.authoritative_facts.status === value.result && HASH.test(value.authoritative_facts.native_receipt_sha256 ?? '')
+    && HASH.test(value.authoritative_facts.binding_sha256 ?? '')
+    && (kind !== 'readback' || value.authoritative_facts.junit?.testcase === id
+      && value.authoritative_facts.junit.result === value.result), 'garmin_facts_invalid');
+  return true;
+}
+
 /** Requirement-owned Garmin evidence. Order in the producer case array has no
  * semantic meaning; every listed member must resolve by exact case identity. */
 export const V12_GARMIN_REQUIREMENT_REGISTRY = Object.freeze({
@@ -157,19 +233,23 @@ export function resolveV12ShellRequirement(selector, receipts, expectedIdentity)
   return Object.freeze({ type: selector.type, id: selector.id, result: receipt.result, members: Object.freeze(receipt.members), receipt_sha256: receiptSha256 });
 }
 
-export function resolveV12GarminRequirement(selector, lookup) {
-  ensure(selector?.type === 'garmin-requirement' && typeof lookup === 'function', 'garmin_selector_invalid');
+export function resolveV12GarminRequirement(selector, lookup, expectedRunIdentity) {
+  ensure(selector?.type === 'garmin-requirement' && typeof lookup === 'function' && plain(expectedRunIdentity), 'garmin_selector_invalid');
   const sets = [
     ['domain', selector.domain_case_ids],
     ['ui', selector.ui_action_ids],
     ['readback', selector.readback_case_ids],
   ];
+  const receiptDigests = new Set();
   const members = sets.flatMap(([kind, ids]) => {
     ensure(Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length, 'garmin_selector_invalid');
     return ids.map((id) => {
       const key = `garmin-${kind}:${id}`;
       const value = lookup(key);
       ensure(value, `selector_unknown:${key}`);
+      validateV12GarminMember(value, { kind, id, runIdentity: expectedRunIdentity });
+      ensure(!receiptDigests.has(value.receipt.receipt_sha256), 'garmin_receipt_reused');
+      receiptDigests.add(value.receipt.receipt_sha256);
       return value;
     });
   });
@@ -362,6 +442,14 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     return hashes.get(relative);
   }
   const full = relative => `${prefix}${relative}`;
+  const garminRunIdentity = Object.freeze({
+    run_id: manifest.run_id,
+    source_tree_sha256: manifest.source.tree_sha256,
+    apk_sha256: manifest.build.apk.sha256,
+    installed_apk_sha256: manifest.device.installed_apk_sha256,
+    device_identity_sha256: manifest.device.identity_sha256,
+    configuration_id: manifest.configuration.id,
+  });
   function json(relative) { try { return JSON.parse(bytes(full(relative))); } catch (error) { if (error.message.startsWith('v12_row_resolver_')) throw error; fail('artifact_json_invalid'); } }
   function bindIdentity(identity, kind = 'digest') {
     const expected = kind === 'digest'
@@ -375,6 +463,13 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     ensure(!leaves.has(key), 'selector_duplicate');
     const value = { type, id, result: result(state), ...metadata, bindings: [...new Set(artifacts)].map(relative => ({ artifact: full(relative), sha256: artifactHash(full(relative)) })) };
     leaves.set(key, value); return value;
+  }
+  function garminMember(key, kind, id, state, artifacts, facts) {
+    ensure(!leaves.has(key), 'selector_duplicate');
+    const bindings = [...new Set(artifacts)].map(relative => ({ artifact: full(relative), sha256: artifactHash(full(relative)) }));
+    const value = createV12GarminAuthenticatedMember({ kind, id, result: state, runIdentity: garminRunIdentity, bindings, facts });
+    leaves.set(key, value);
+    return value;
   }
   const group = (keys, id) => ({ type: 'acceptance-gate', id, shared_contract: 'This verification gate requires every listed concrete source result; constituent results may also close their source-owned requirement rows.', result: combineV12SourceResults(keys.map(key => { ensure(leaves.has(key), `selector_unknown:${key}`); return leaves.get(key).result; })), members: keys.map(key => leaves.get(key)) });
   ensure(same(json('build.json'), manifest), 'build_binding_invalid');
@@ -542,8 +637,15 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const artifacts = [`garmin/${name}.json`, 'maestro/garmin-progress.xml'];
     const shared = `The ${name} artifact retains one host-derived status and receipt for each exact operation-backed case.`;
     leaf(`garmin:${test.id}`, 'garmin-case', test.id, combineV12SourceResults([test.result, garminStates[test.id]]), artifacts, { testcase: test.id, junit_result: test.result, case_result: garminStates[test.id], receipt_sha256: receipt.receipt_sha256, shared_contract: shared });
-    leaf(`garmin-domain:${test.id}`, 'garmin-domain-case', test.id, garminStates[test.id], artifacts, { receipt_sha256: receipt.binding_sha256, shared_contract: shared });
-    leaf(`garmin-readback:${test.id}`, 'garmin-authoritative-readback', test.id, garminStates[test.id], artifacts, { receipt_sha256: receipt.binding_sha256, shared_contract: shared });
+    const caseFacts = { case_id: test.id, status: garminStates[test.id], code: receipt.code, count: receipt.count,
+      native_receipt_sha256: receipt.receipt_sha256, binding_sha256: receipt.binding_sha256,
+      artifact_path: `garmin/${name}.json`, artifact_sha256: artifactHash(full(`garmin/${name}.json`)) };
+    garminMember(`garmin-domain:${test.id}`, 'domain', test.id, garminStates[test.id], [`garmin/${name}.json`], {
+      ...caseFacts, producer: garminValues[name].producer, schema: garminValues[name].schema,
+    });
+    garminMember(`garmin-readback:${test.id}`, 'readback', test.id, combineV12SourceResults([test.result, garminStates[test.id]]), artifacts, {
+      ...caseFacts, junit: { testcase: test.id, result: test.result },
+    });
   }
   const sqliteSourceCases = new Map();
   for (const name of ['migration', 'portability', 'history']) {
@@ -655,7 +757,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const selector = entry.selector;
     const resolved = selector.type === 'phase20-gate' ? gates[selector.id]
       : selector.type === 'shell-requirement' ? leaves.get(`shell:${selector.id}`)
-        : selector.type === 'garmin-requirement' ? resolveV12GarminRequirement(selector, key => leaves.get(key))
+        : selector.type === 'garmin-requirement' ? resolveV12GarminRequirement(selector, key => leaves.get(key), garminRunIdentity)
           : selector.type === 'progress-contract' ? resolveV12ProgressContract(selector, key => leaves.get(key))
         : selector.type === 'dom-contract' ? resolveV12DomContract(selector, key => leaves.get(key))
         : leaves.get(`${selector.shard}:${selector.id}`);
@@ -714,7 +816,17 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const garminUiStateIds = [...new Set(Object.values(V12_GARMIN_REQUIREMENT_REGISTRY).flatMap(({ ui_action_ids: ids }) => ids))];
     for (const stateId of garminUiStateIds) {
       ensure(V12_BROWSER_WALK_STATE_IDS.includes(stateId), 'garmin_selector_invalid');
-      leaves.set(`garmin-ui:${stateId}`, group(V12_CONFIG_IDS.map(config => `visual:${stateId}:${config}`), stateId));
+      const visualMembers = V12_CONFIG_IDS.map(config => leaves.get(`visual:${stateId}:${config}`));
+      ensure(visualMembers.every(Boolean), 'garmin_selector_invalid');
+      garminMember(`garmin-ui:${stateId}`, 'ui', stateId,
+        combineV12SourceResults(visualMembers.map(({ result: memberResult }) => memberResult)),
+        ['comparison/index.json', 'screenshots/index.json'], {
+          state_id: stateId,
+          configuration_ids: V12_CONFIG_IDS,
+          visual_results: visualMembers.map(({ id, result: memberResult, capture_state_receipt_sha256, state_receipt_sha256 }) => ({
+            id, result: memberResult, capture_state_receipt_sha256, state_receipt_sha256,
+          })),
+        });
     }
   }
   function resolveAccessibility() {

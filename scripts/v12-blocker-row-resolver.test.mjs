@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { loadV12ContractInputs } from './v12-evidence-contract.mjs';
+import { loadV12ContractInputs, V12_CONFIG_IDS } from './v12-evidence-contract.mjs';
 import { createHash } from 'node:crypto';
 import {
   createV12RowSelectorTable,
+  createV12GarminAuthenticatedMember,
   parseV12SourceJUnit,
   resolveV12DomContract,
   resolveV12GarminRequirement,
@@ -118,18 +119,68 @@ test('SHL resolver is requirement keyed and rejects missing, duplicate, or stale
 
 test('GAR resolver requires the explicit domain, UI action, and readback members regardless of artifact order', () => {
   const selector = createV12RowSelectorTable({ inputs }).find(x => x.row_id === 'GAR-14').selector;
+  const runIdentity = {
+    run_id: 'phase20-20261017T000000Z-aaaaaaaaaaaa', source_tree_sha256: 'a'.repeat(64),
+    apk_sha256: 'b'.repeat(64), installed_apk_sha256: 'b'.repeat(64), device_identity_sha256: 'c'.repeat(64),
+    configuration_id: 'AP-L-C390-P-F100',
+  };
+  const artifact = (id) => ['match-zero', 'match-one', 'match-many', 'match-stale', 'match-alternate', 'match-cancel', 'match-confirm', 'match-reassign'].includes(id)
+    ? 'garmin/matching.json' : 'garmin/packaging-auth.json';
+  const member = (kind, id, state = 'PASS') => {
+    const paths = kind === 'ui' ? ['comparison/index.json', 'screenshots/index.json']
+      : kind === 'readback' ? [artifact(id), 'maestro/garmin-progress.xml'] : [artifact(id)];
+    const bindings = paths.map((relative, index) => ({
+      artifact: `artifacts/native/v1.2/${runIdentity.run_id}/${relative}`,
+      sha256: String(index + 1).repeat(64),
+    }));
+    const facts = kind === 'ui'
+      ? { state_id: id, configuration_ids: V12_CONFIG_IDS, visual_results: [] }
+      : { case_id: id, status: state, code: `${id}-observed`, count: 1,
+        native_receipt_sha256: 'd'.repeat(64), binding_sha256: 'e'.repeat(64), artifact_path: artifact(id),
+        artifact_sha256: bindings[0].sha256,
+        ...(kind === 'readback' ? { junit: { testcase: id, result: state } } : { producer: 'v12-garmin-shard/v3', schema: 'matching/v1' }) };
+    return createV12GarminAuthenticatedMember({ kind, id, result: state, runIdentity, bindings, facts });
+  };
   const required = [
-    ...selector.domain_case_ids.map(id => [`garmin-domain:${id}`, { type: 'garmin-domain-case', id, result: 'PASS' }]),
-    ...selector.ui_action_ids.map(id => [`garmin-ui:${id}`, { type: 'garmin-ui-action', id, result: 'PASS' }]),
-    ...selector.readback_case_ids.map(id => [`garmin-readback:${id}`, { type: 'garmin-authoritative-readback', id, result: 'PASS' }]),
+    ...selector.domain_case_ids.map(id => [`garmin-domain:${id}`, member('domain', id)]),
+    ...selector.ui_action_ids.map(id => [`garmin-ui:${id}`, member('ui', id)]),
+    ...selector.readback_case_ids.map(id => [`garmin-readback:${id}`, member('readback', id)]),
   ];
   const members = new Map(required.reverse());
-  members.set('garmin-domain:recovery', { type: 'garmin-domain-case', id: 'recovery', result: 'FAIL' });
-  assert.equal(resolveV12GarminRequirement(selector, key => members.get(key)).result, 'PASS', 'unrelated cases cannot close or fail GAR-14');
-  members.set(`garmin-domain:${selector.domain_case_ids[0]}`, { type: 'garmin-domain-case', id: selector.domain_case_ids[0], result: 'FAIL' });
-  assert.equal(resolveV12GarminRequirement(selector, key => members.get(key)).result, 'FAIL');
+  assert.equal(resolveV12GarminRequirement(selector, key => members.get(key), runIdentity).result, 'PASS');
+  const failingId = selector.domain_case_ids[0];
+  members.set(`garmin-domain:${failingId}`, member('domain', failingId, 'FAIL'));
+  assert.equal(resolveV12GarminRequirement(selector, key => members.get(key), runIdentity).result, 'FAIL');
+  members.set(`garmin-domain:${failingId}`, member('domain', failingId));
   members.delete(`garmin-readback:${selector.readback_case_ids[0]}`);
-  assert.throws(() => resolveV12GarminRequirement(selector, key => members.get(key)), /selector_unknown/u);
+  assert.throws(() => resolveV12GarminRequirement(selector, key => members.get(key), runIdentity), /selector_unknown/u);
+  members.set(`garmin-readback:${selector.readback_case_ids[0]}`, member('readback', selector.readback_case_ids[0]));
+
+  const oneWrongDomain = member('domain', selector.domain_case_ids[0]);
+  assert.throws(() => resolveV12GarminRequirement(selector, () => oneWrongDomain, runIdentity), /garmin_member_invalid/u,
+    'one wrong garmin-domain member cannot satisfy every lookup');
+  const crossKind = new Map(members);
+  crossKind.set(`garmin-ui:${selector.ui_action_ids[0]}`, member('domain', selector.domain_case_ids[0]));
+  assert.throws(() => resolveV12GarminRequirement(selector, key => crossKind.get(key), runIdentity), /garmin_member_invalid/u);
+  const reused = new Map(members);
+  const readbackKey = `garmin-readback:${selector.readback_case_ids[0]}`;
+  const reusedReadback = structuredClone(reused.get(readbackKey));
+  reusedReadback.receipt.receipt_sha256 = reused.get(`garmin-domain:${selector.domain_case_ids[0]}`).receipt.receipt_sha256;
+  reused.set(readbackKey, reusedReadback);
+  assert.throws(() => resolveV12GarminRequirement(selector, key => reused.get(key), runIdentity), /garmin_receipt_invalid|garmin_receipt_reused/u);
+  for (const mutate of [
+    (value) => { value.id = 'wrong-id'; },
+    (value) => { value.type = 'garmin-authoritative-readback'; },
+    (value) => { value.bindings[0].artifact = value.bindings[0].artifact.replace('matching.json', 'dedupe.json'); },
+    (value) => { value.run_identity.run_id = 'phase20-20261018T000000Z-bbbbbbbbbbbb'; },
+  ]) {
+    const substituted = new Map(members);
+    const key = `garmin-domain:${selector.domain_case_ids[0]}`;
+    const value = structuredClone(substituted.get(key)); mutate(value); substituted.set(key, value);
+    assert.throws(() => resolveV12GarminRequirement(selector, lookup => substituted.get(lookup), runIdentity), /garmin_/u);
+  }
+  assert.throws(() => resolveV12GarminRequirement({ ...selector, domain_case_ids: [selector.domain_case_ids[0], selector.domain_case_ids[0]] },
+    key => members.get(key), runIdentity), /garmin_selector_invalid/u);
 });
 
 test('PRO registry is exact and independent from performance gate mutations', () => {
