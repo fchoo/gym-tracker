@@ -40,10 +40,25 @@ function privacySafe(value, path = 'observation') {
   }
 }
 function validateCase(entry, index) {
-  if (!exactKeys(entry, ['id', 'status', 'order', 'digests'])
+  if (!exactKeys(entry, ['id', 'status', 'order', 'digests', 'source_facts'])
     || entry.id !== V12_SQLITE_SHARD_CASE_IDS[index] || entry.status !== 'passed'
     || entry.order !== index || !exactKeys(entry.digests, ['pre', 'post', 'reopen', 'rebuild'])
-    || !Object.values(entry.digests).every(hash)) fail('case_invalid');
+    || !Object.values(entry.digests).every(hash) || !Array.isArray(entry.source_facts)
+    || entry.source_facts.length === 0) fail('case_invalid');
+  let sourceCount = 0;
+  const registries = new Set();
+  for (const source of entry.source_facts) {
+    if (!exactKeys(source, ['registry', 'cases']) || typeof source.registry !== 'string'
+      || registries.has(source.registry) || !Array.isArray(source.cases) || source.cases.length === 0) fail('case_invalid');
+    registries.add(source.registry);
+    const ids = new Set();
+    for (const sourceCase of source.cases) {
+      if (!exactKeys(sourceCase, ['id', 'status']) || typeof sourceCase.id !== 'string'
+        || sourceCase.status !== 'passed' || ids.has(sourceCase.id)) fail('case_invalid');
+      ids.add(sourceCase.id); sourceCount += 1;
+    }
+  }
+  if (sourceCount < 1) fail('case_invalid');
 }
 
 const GROUP_BOUNDS = Object.freeze({
@@ -57,6 +72,7 @@ function caseFacts(cases, [start, end]) {
     id: entry.id,
     order: entry.order,
     status: entry.status,
+    source_facts: entry.source_facts,
     digest: digest(entry.digests),
   })));
 }
@@ -82,9 +98,10 @@ function validateRetainedObservation(value, group) {
     || value.cases !== expectedIds.length || !Array.isArray(value.case_facts)
     || value.case_facts.length !== expectedIds.length || value.all_passed !== true) fail('observation_invalid');
   value.case_facts.forEach((entry, index) => {
-    if (!exactKeys(entry, ['id', 'order', 'status', 'digest'])
+    if (!exactKeys(entry, ['id', 'order', 'status', 'source_facts', 'digest'])
       || entry.id !== expectedIds[index] || entry.order !== bounds[0] + index
-      || entry.status !== 'passed' || !hash(entry.digest)) fail('observation_invalid');
+      || entry.status !== 'passed' || !Array.isArray(entry.source_facts)
+      || entry.source_facts.length === 0 || !hash(entry.digest)) fail('observation_invalid');
   });
   if (value.digest !== digest(value.case_facts)) fail('observation_invalid');
   return value;
@@ -151,8 +168,8 @@ function nativeResultToInput(manifest, result) {
     producer: 'v12-sqlite-shard',
     identity,
     cases: result.contract.cases.map((entry, order) => {
-      const base = { identity, id: entry.id, order, code: entry.code, counts: entry.counts };
-      return { id: entry.id, status: 'passed', order, digests: {
+      const base = { identity, id: entry.id, order, code: entry.code, counts: entry.counts, sourceFacts: entry.sourceFacts };
+      return { id: entry.id, status: 'passed', order, source_facts: entry.sourceFacts, digests: {
         pre: digest({ ...base, cut: 'pre' }), post: digest({ ...base, cut: 'post' }),
         reopen: digest({ ...base, cut: 'reopen' }), rebuild: digest({ ...base, cut: 'rebuild' }),
       } };

@@ -28,7 +28,11 @@ const valid = () => ({
   schema_version: 1,
   producer: 'v12-sqlite-shard',
   identity: { source_digest: digest, fixture_digest: digest, apk_digest: digest, installed_apk_digest: digest, device_digest: digest },
-  cases: caseIds.map((id, index) => ({ id, status: 'passed', order: index, digests: { pre: digest, post: digest, reopen: digest, rebuild: digest } })),
+  cases: caseIds.map((id, index) => ({
+    id, status: 'passed', order: index,
+    source_facts: [{ registry: 'sqlite-kernel', cases: [{ id: 'connection-configuration', status: 'passed' }] }],
+    digests: { pre: digest, post: digest, reopen: digest, rebuild: digest },
+  })),
 });
 
 const nativeV12Result = () => ({
@@ -44,6 +48,7 @@ const nativeV12Result = () => ({
     status: 'passed',
     code: 'v12_acceptance_case_passed',
     counts: { sourceCases: 1 },
+    sourceFacts: [{ registry: 'sqlite-kernel', cases: [{ id: 'connection-configuration', status: 'passed' }] }],
   })),
 });
 
@@ -60,7 +65,7 @@ test('validates the complete ordered privacy-safe SQLite observation set', () =>
   assert.ok(Object.values(result.observations).every((observation) => (
     observation.all_passed === true
       && observation.case_facts.length === observation.cases
-      && observation.case_facts.every((entry) => entry.status === 'passed')
+      && observation.case_facts.every((entry) => entry.status === 'passed' && entry.source_facts.length > 0)
   )));
 });
 
@@ -146,6 +151,9 @@ test('accepts only the exact V12 native envelope and rejects legacy cross-suite 
   const malformed = nativeV12Result();
   malformed.cases[2].counts = { sourceCases: 1, raw_rows: 1 };
   assert.throws(() => assertV12AcceptanceNativeContractResult(malformed, caseIds), /v12_sqlite_producer_v12_result_invalid/u);
+  const missingSourceFacts = nativeV12Result();
+  delete missingSourceFacts.cases[0].sourceFacts;
+  assert.throws(() => assertV12AcceptanceNativeContractResult(missingSourceFacts, caseIds), /v12_sqlite_producer_v12_result_invalid/u);
   const verdictInjected = nativeV12Result();
   verdictInjected.verdict = 'PASS';
   assert.throws(() => assertV12AcceptanceNativeContractResult(verdictInjected, caseIds), /v12_sqlite_producer_v12_result_invalid/u);
@@ -191,7 +199,7 @@ test('classifies every bounded native failure and rejects unsafe receipt input',
   }
 });
 
-test('gives the V12 three-registry execution a finite source-derived polling budget and emits progress markers', () => {
+test('gives all seven V12 source registries a finite source-derived polling budget and emits progress markers', () => {
   const runner = readFileSync('scripts/run-native-sqlite-contracts.mjs', 'utf8');
   const route = readFileSync('app/__native-contracts.tsx', 'utf8');
 
@@ -201,7 +209,7 @@ test('gives the V12 three-registry execution a finite source-derived polling bud
   assert.match(route, /emitAggregateProgress\(runId, `v1\.2-acceptance:\$\{stage\}`\)/u);
   assert.match(
     readFileSync('src/testing/contracts/v12Acceptance.contract.ts', 'utf8'),
-    /onProgress\?\.\("migrations"\)[\s\S]*onProgress\?\.\("portable-merge"\)[\s\S]*onProgress\?\.\("multi-plan-running"\)/u,
+    /onProgress\?\.\("sqlite-kernel"\)[\s\S]*onProgress\?\.\("migrations"\)[\s\S]*onProgress\?\.\("portable-merge"\)[\s\S]*onProgress\?\.\("multi-plan-running"\)[\s\S]*onProgress\?\.\("google-drive-backup"\)[\s\S]*onProgress\?\.\("garmin-acceptance"\)[\s\S]*onProgress\?\.\("progress-parity"\)/u,
   );
   assert.equal(
     classifyV12SqliteNativeFailure(new Error('Native contract result was not logged within 300000 ms.')),

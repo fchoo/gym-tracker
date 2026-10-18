@@ -3,13 +3,17 @@ import { describe, expect, it, jest } from "@jest/globals";
 import * as migrationsContracts from "./migrationsEffects.contract";
 import * as multiPlanContracts from "./multiPlanRunning.contract";
 import * as portableMergeContracts from "./portableMerge.contract";
-
+import * as kernelContracts from "./sqliteKernel.contract";
+import * as driveContracts from "./googleDriveBackup.contract";
+import * as progressContracts from "./progressParity.contract";
 import {
+  V12_ACCEPTANCE_SOURCE_REGISTRIES,
   V12_ACCEPTANCE_SQLITE_CASES,
   assertV12AcceptanceSourceDefinitions,
   createExpoV12AcceptanceSqliteContractAdapter,
   runV12AcceptanceSqliteContracts,
 } from "./v12Acceptance.contract";
+
 
 function passedRegistryResult(caseIds: readonly string[]) {
   return {
@@ -22,7 +26,49 @@ function passedRegistryResult(caseIds: readonly string[]) {
   };
 }
 
+function passedV12Case(definition: typeof V12_ACCEPTANCE_SQLITE_CASES[number]) {
+  return {
+    id: definition.id,
+    status: "passed" as const,
+    code: "v12_acceptance_case_passed" as const,
+    counts: { sourceCases: definition.sourceCaseIds.length },
+    sourceFacts: definition.sources.map(({ sourceRegistry, sourceCaseIds }) => ({
+      registry: sourceRegistry,
+      cases: sourceCaseIds.map((id) => ({ id, status: "passed" as const })),
+    })),
+  };
+}
+
+function mockAdditionalSourceRegistries() {
+  const kernelAdapter = jest.spyOn(kernelContracts, "createExpoSqliteContractAdapter").mockResolvedValue({} as never);
+  const kernelRun = jest.spyOn(kernelContracts, "runSqliteKernelContract").mockResolvedValue(
+    passedRegistryResult(kernelContracts.SQLITE_KERNEL_CONTRACT_CASES) as never,
+  );
+  const driveAdapter = jest.spyOn(driveContracts, "createExpoGoogleDriveBackupContractAdapter").mockResolvedValue({} as never);
+  const driveRun = jest.spyOn(driveContracts, "runGoogleDriveBackupContract").mockResolvedValue(
+    passedRegistryResult(driveContracts.GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS) as never,
+  );
+  const progressRun = jest.spyOn(progressContracts, "runProgressParityContract").mockResolvedValue(
+    passedRegistryResult(progressContracts.PROGRESS_PARITY_CONTRACT_CASES) as never,
+  );
+  return { kernelAdapter, kernelRun, driveAdapter, driveRun, progressRun };
+}
+
 describe("v1.2 aggregate SQLite acceptance contract", () => {
+  it("declares all seven real Expo SQLite source registries exactly once", () => {
+    expect(V12_ACCEPTANCE_SOURCE_REGISTRIES).toEqual([
+      "sqlite-kernel",
+      "migrations",
+      "portable-merge",
+      "multi-plan-running",
+      "google-drive-backup",
+      "garmin-acceptance",
+      "progress-parity",
+    ]);
+    expect(new Set(V12_ACCEPTANCE_SOURCE_REGISTRIES).size)
+      .toBe(V12_ACCEPTANCE_SOURCE_REGISTRIES.length);
+  });
+
   it("derives all ten ordered source-owned SQLite cases without skips", async () => {
     expect(V12_ACCEPTANCE_SQLITE_CASES).toHaveLength(10);
     expect(V12_ACCEPTANCE_SQLITE_CASES.map(({ id }) => id)).toEqual([
@@ -31,12 +77,7 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
     ]);
 
     const result = await runV12AcceptanceSqliteContracts({
-      runMixedUpgrade: async (definition) => ({
-        id: definition.id,
-        status: "passed" as const,
-        code: "v12_acceptance_case_passed",
-        counts: { sourceCases: definition.sourceCaseIds.length },
-      }),
+      runMixedUpgrade: async (definition) => passedV12Case(definition),
     });
 
     expect(result).toEqual({
@@ -47,15 +88,13 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
       passed: 10,
       failed: 0,
       skipped: 0,
-      cases: V12_ACCEPTANCE_SQLITE_CASES.map((definition) => ({
-        id: definition.id, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: definition.sourceCaseIds.length },
-      })),
+      cases: V12_ACCEPTANCE_SQLITE_CASES.map(passedV12Case),
     });
   });
 
   it("fails closed for invalid adapter shapes, thrown probes, and unsafe error text", async () => {
     const shape = await runV12AcceptanceSqliteContracts({
-      runMixedUpgrade: async () => ({ id: "wrong" as never, status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 3 } }),
+      runMixedUpgrade: async () => ({ id: "wrong", status: "passed", code: "v12_acceptance_case_passed", counts: { sourceCases: 3 } }) as never,
     });
     const thrown = await runV12AcceptanceSqliteContracts({
       runMixedUpgrade: async () => { throw new Error("contains whitespace"); },
@@ -70,6 +109,7 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
   });
 
   it("executes each source registry once and maps every V12 category to its declared passed source case", async () => {
+    const additional = mockAdditionalSourceRegistries();
     const migrationAdapter = jest.spyOn(migrationsContracts, "createExpoMigrationsEffectsContractAdapter").mockResolvedValue({} as never);
     const migrationRun = jest.spyOn(migrationsContracts, "runMigrationsEffectsContract").mockResolvedValue(
       passedRegistryResult(migrationsContracts.MIGRATIONS_EFFECTS_CONTRACT_CASES) as never,
@@ -82,7 +122,8 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
       passedRegistryResult(multiPlanContracts.MULTI_PLAN_RUNNING_CONTRACT_CASES) as never,
     );
     try {
-      const adapter = await createExpoV12AcceptanceSqliteContractAdapter("phase20");
+      const progress: string[] = [];
+      const adapter = await createExpoV12AcceptanceSqliteContractAdapter("phase20", (stage) => progress.push(stage));
       const result = await runV12AcceptanceSqliteContracts(adapter);
 
       expect(result).toMatchObject({ status: "passed", total: 10, passed: 10, failed: 0, skipped: 0 });
@@ -94,16 +135,21 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
       expect(mergeRun).toHaveBeenCalledTimes(1);
       expect(running).toHaveBeenCalledTimes(1);
       expect(running).toHaveBeenCalledWith("phase20-v12-multi-plan-running");
-      expect(V12_ACCEPTANCE_SQLITE_CASES.map(({ sourceRegistry }) => sourceRegistry)).toEqual([
-        "migrations", "migrations", "migrations", "migrations", "portable-merge",
-        "portable-merge", "portable-merge", "portable-merge", "migrations", "multi-plan-running",
-      ]);
+      expect(additional.kernelAdapter).toHaveBeenCalledWith("phase20-v12-kernel");
+      expect(additional.kernelRun).toHaveBeenCalledTimes(1);
+      expect(additional.driveAdapter).toHaveBeenCalledWith("phase20-v12-google-drive-backup");
+      expect(additional.driveRun).toHaveBeenCalledTimes(1);
+      expect(additional.progressRun).toHaveBeenCalledWith("phase20-v12-progress-parity");
+      expect(progress).toEqual(V12_ACCEPTANCE_SOURCE_REGISTRIES);
+      expect(result.cases.every(({ sourceFacts }) => sourceFacts.length > 0
+        && sourceFacts.every(({ cases }) => cases.length > 0 && cases.every(({ status }) => status === "passed")))).toBe(true);
     } finally {
       jest.restoreAllMocks();
     }
   });
 
   it("fails a V12 definition when its declared source case is missing or duplicate", async () => {
+    mockAdditionalSourceRegistries();
     const migrationAdapter = jest.spyOn(migrationsContracts, "createExpoMigrationsEffectsContractAdapter").mockResolvedValue({} as never);
     const migrationRun = jest.spyOn(migrationsContracts, "runMigrationsEffectsContract").mockResolvedValue({
       ...passedRegistryResult(migrationsContracts.MIGRATIONS_EFFECTS_CONTRACT_CASES),
@@ -138,6 +184,7 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
   });
 
   it("fails a V12 definition when its declared source case failed or the source registry skipped work", async () => {
+    mockAdditionalSourceRegistries();
     const migrationAdapter = jest.spyOn(migrationsContracts, "createExpoMigrationsEffectsContractAdapter").mockResolvedValue({} as never);
     const migrationRun = jest.spyOn(migrationsContracts, "runMigrationsEffectsContract");
     const mergeAdapter = jest.spyOn(portableMergeContracts, "createExpoPortableMergeContractAdapter").mockResolvedValue({} as never);
@@ -178,6 +225,7 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
   });
 
   it("rejects stale registry aggregates, wrong-registry definitions, and invalid source definitions", async () => {
+    mockAdditionalSourceRegistries();
     const migrationAdapter = jest.spyOn(migrationsContracts, "createExpoMigrationsEffectsContractAdapter").mockResolvedValue({} as never);
     const migrationRun = jest.spyOn(migrationsContracts, "runMigrationsEffectsContract");
     const mergeAdapter = jest.spyOn(portableMergeContracts, "createExpoPortableMergeContractAdapter").mockResolvedValue({} as never);
@@ -206,12 +254,13 @@ describe("v1.2 aggregate SQLite acceptance contract", () => {
       await expect(wrongRegistryAdapter.runMixedUpgrade({
         ...V12_ACCEPTANCE_SQLITE_CASES[0]!,
         sourceCaseIds: ["portable-merge-mixed-full-plan-success"],
+        sources: [{ sourceRegistry: "migrations", sourceCaseIds: ["portable-merge-mixed-full-plan-success"] }],
       })).resolves.toMatchObject({ status: "failed", errorCode: "v12_acceptance_source_case_wrong_registry" });
 
       expect(() => assertV12AcceptanceSourceDefinitions([])).toThrow("v12_acceptance_source_definition_count_invalid");
       expect(() => assertV12AcceptanceSourceDefinitions([
-        ...V12_ACCEPTANCE_SQLITE_CASES.map(({ sourceRegistry, sourceCaseIds }) => ({ sourceRegistry, sourceCaseIds })).slice(0, 9),
-        { sourceRegistry: "migrations", sourceCaseIds: [] },
+        ...V12_ACCEPTANCE_SQLITE_CASES.slice(0, 9),
+        { ...V12_ACCEPTANCE_SQLITE_CASES[9]!, sources: [{ sourceRegistry: "migrations", sourceCaseIds: [] }] },
       ])).toThrow("v12_acceptance_source_definition_invalid");
       expect(migrationAdapter).toHaveBeenCalledTimes(3);
       expect(mergeAdapter).toHaveBeenCalledTimes(3);

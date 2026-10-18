@@ -48,6 +48,25 @@ export function readV12FunctionalRegistry(shard, root = process.cwd()) {
 }
 
 const DOM_CASES = [1, 1, 0, 2, 2, 3, 2, 2, 2, 4, 7, 6, 11, 8, 10, 3, 5];
+const DOM_NATIVE_CASES = Object.freeze([
+  ['schema27-upgrade', 'restore', 'merge'],
+  ['fresh-migration', 'schema27-upgrade', 'restore', 'merge'],
+  ['fresh-migration', 'schema27-upgrade', 'supported-legacy-upgrade', 'failure-reopen', 'restore', 'immutable-history'],
+  ['schema27-upgrade', 'restore', 'merge', 'noop-replay'],
+  ['schema27-upgrade', 'restore', 'merge', 'noop-replay', 'immutable-history'],
+  ['failure-reopen', 'restore', 'noop-replay', 'immutable-history'],
+  ['fresh-migration', 'schema27-upgrade', 'restore', 'merge', 'immutable-history'],
+  ['fresh-migration', 'restore', 'merge', 'immutable-history'],
+  ['fresh-migration', 'restore', 'merge', 'immutable-history'],
+  ['backup', 'restore', 'merge', 'noop-replay', 'immutable-history'],
+  ['backup', 'restore', 'merge', 'noop-replay', 'immutable-history'],
+  ['backup', 'restore', 'merge', 'noop-replay', 'immutable-history'],
+  ['restore', 'merge', 'noop-replay', 'rebuild', 'immutable-history'],
+  ['backup', 'restore', 'merge', 'noop-replay', 'rebuild', 'immutable-history'],
+  ['backup', 'restore', 'merge', 'noop-replay', 'rebuild', 'immutable-history'],
+  ['failure-reopen', 'noop-replay', 'immutable-history'],
+  ['supported-legacy-upgrade', 'failure-reopen', 'backup', 'restore', 'merge', 'noop-replay', 'rebuild', 'immutable-history'],
+]);
 // Reuse is explicit: these rows share an executed transaction/fixture contract.
 const DOM_SHARED = {
   1: 'MAP-01 activation and inactive-plan persistence share the activation transaction fixture.',
@@ -85,7 +104,7 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
     const [prefix, suffix] = row.requirement_id.split('-'); const ordinal = Number(suffix) - 1;
     ensure(row.owning_phase === phases[prefix][0], 'matrix_phase_invalid');
     let type, id, shard, shared_contract;
-    if (prefix === 'DOM') { type = 'functional-case'; shard = 'multi-plan'; id = functional[shard][DOM_CASES[ordinal]]; shared_contract = DOM_SHARED[DOM_CASES[ordinal]]; }
+    if (prefix === 'DOM') { type = 'dom-contract'; shard = 'multi-plan'; id = functional[shard][DOM_CASES[ordinal]]; shared_contract = DOM_SHARED[DOM_CASES[ordinal]]; }
     if (prefix === 'WRK' || prefix === 'LIB') { type = 'functional-case'; shard = prefix === 'WRK' ? 'workout' : 'library-running'; id = functional[shard][ordinal]; }
     if (prefix === 'SHL') { type = 'comparison-state'; shard = 'visual'; id = `BW-${String(SHL_STATES[ordinal]).padStart(3, '0')}`; }
     if (prefix === 'CAL') {
@@ -100,7 +119,9 @@ export function createV12RowSelectorTable({ inputs, root = process.cwd() }) {
     if (prefix === 'VER') { type = 'phase20-gate'; shard = 'verification'; id = VER_GATES[ordinal]; }
     ensure(type && id && typeof row.acceptance_contract === 'string', 'selector_unknown');
     return { row_id: row.requirement_id, owning_phase: row.owning_phase, ordinal: ordinal + 1,
-      selector: { type, shard, id, contract: row.acceptance_contract, ...(shared_contract ? { shared_contract } : {}) } };
+      selector: { type, shard, id, contract: row.acceptance_contract,
+        ...(prefix === 'DOM' ? { native_case_ids: DOM_NATIVE_CASES[ordinal] } : {}),
+        ...(shared_contract ? { shared_contract } : {}) } };
   });
   const seen = new Map();
   for (const entry of table) {
@@ -158,12 +179,27 @@ export function resolveV12SqliteReceipt(value, group) {
     && HASH.test(value.digest ?? ''), 'sqlite_receipt_invalid');
   exactIds(value.case_facts.map(entry => entry?.id), expectedIds, 'sqlite_case_order_invalid');
   value.case_facts.forEach((entry, index) => {
-    ensure(entry && same(Object.keys(entry), ['id', 'order', 'status', 'digest'])
+    ensure(entry && same(Object.keys(entry), ['id', 'order', 'status', 'source_facts', 'digest'])
       && entry.order === bounds[0] + index && entry.status === 'passed'
+      && Array.isArray(entry.source_facts) && entry.source_facts.length > 0
+      && entry.source_facts.every(source => source && same(Object.keys(source), ['registry', 'cases'])
+        && typeof source.registry === 'string' && Array.isArray(source.cases) && source.cases.length > 0
+        && source.cases.every(sourceCase => sourceCase && same(Object.keys(sourceCase), ['id', 'status'])
+          && typeof sourceCase.id === 'string' && sourceCase.status === 'passed'))
       && HASH.test(entry.digest ?? ''), 'sqlite_case_fact_invalid');
   });
   ensure(value.digest === jsonHash(value.case_facts), 'sqlite_digest_invalid');
-  return { result: 'PASS', case_ids: expectedIds, digest: value.digest };
+  return { result: 'PASS', case_ids: expectedIds, case_facts: value.case_facts, digest: value.digest };
+}
+
+export function resolveV12DomContract(selector, lookup) {
+  ensure(selector?.type === 'dom-contract' && selector.shard === 'multi-plan'
+    && typeof selector.id === 'string' && Array.isArray(selector.native_case_ids)
+    && selector.native_case_ids.length > 0 && typeof lookup === 'function', 'dom_selector_invalid');
+  const keys = [`multi-plan:${selector.id}`, ...selector.native_case_ids.map(id => `sqlite-case:${id}`)];
+  const members = keys.map(key => { const value = lookup(key); ensure(value, `selector_unknown:${key}`); return value; });
+  return Object.freeze({ type: 'dom-contract', id: selector.id,
+    result: combineV12SourceResults(members.map(({ result: memberResult }) => memberResult)), members: Object.freeze(members) });
 }
 
 export function resolveV12PerformanceGates(observation) {
@@ -371,6 +407,10 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const value = json(`sqlite/${name}.json`); bindIdentity(value.identity);
     const observation = resolveV12SqliteReceipt(value, name);
     leaf(`sqlite:${name}`, 'sqlite-cases', name, observation.result, [`sqlite/${name}.json`], observation);
+    for (const caseFact of observation.case_facts) {
+      leaf(`sqlite-case:${caseFact.id}`, 'sqlite-case', caseFact.id, caseFact.status,
+        [`sqlite/${name}.json`], { order: caseFact.order, digest: caseFact.digest, source_facts: caseFact.source_facts });
+    }
   }
   const recovery = json('recovery/lifecycle.json');
   const recoveryXml = bytes(full('maestro/recovery.xml')).toString('utf8');
@@ -457,6 +497,7 @@ export function resolveV12SourceRows({ inputs, manifest, root = process.cwd(), r
     const selector = entry.selector;
     const resolved = selector.type === 'phase20-gate' ? gates[selector.id]
       : selector.type === 'comparison-state' ? group(V12_CONFIG_IDS.map(config => `visual:${selector.id}:${config}`), selector.id)
+        : selector.type === 'dom-contract' ? resolveV12DomContract(selector, key => leaves.get(key))
         : leaves.get(`${selector.shard}:${selector.id}`);
     ensure(resolved, 'selector_missing');
     const bindings = new Map();

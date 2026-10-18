@@ -38,17 +38,39 @@ function privacySafe(value, path = 'receipt') {
   }
 }
 
+function validSourceFacts(value, expectedCount) {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  const seenRegistries = new Set();
+  let count = 0;
+  for (const entry of value) {
+    if (!exactKeys(entry, ['registry', 'cases'])
+      || typeof entry.registry !== 'string' || !/^[a-z][a-z0-9-]{2,63}$/u.test(entry.registry)
+      || seenRegistries.has(entry.registry) || !Array.isArray(entry.cases) || entry.cases.length === 0) return false;
+    seenRegistries.add(entry.registry);
+    const seenCases = new Set();
+    for (const sourceCase of entry.cases) {
+      if (!exactKeys(sourceCase, ['id', 'status']) || typeof sourceCase.id !== 'string'
+        || !/^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u.test(sourceCase.id)
+        || sourceCase.status !== 'passed' || seenCases.has(sourceCase.id)) return false;
+      seenCases.add(sourceCase.id);
+      count += 1;
+    }
+  }
+  return count === expectedCount;
+}
+
 export function assertV12AcceptanceNativeContractResult(input, expectedCaseIds) {
   const cases = Array.isArray(input?.cases) ? input.cases : [];
   const validCases = Array.isArray(expectedCaseIds)
     && cases.length === expectedCaseIds.length
-    && cases.every((entry, index) => exactKeys(entry, ['id', 'status', 'code', 'counts'])
+    && cases.every((entry, index) => exactKeys(entry, ['id', 'status', 'code', 'counts', 'sourceFacts'])
       && entry.id === expectedCaseIds[index]
       && entry.status === 'passed'
       && entry.code === 'v12_acceptance_case_passed'
       && exactKeys(entry.counts, ['sourceCases'])
       && Number.isSafeInteger(entry.counts.sourceCases)
-      && entry.counts.sourceCases > 0);
+      && entry.counts.sourceCases > 0
+      && validSourceFacts(entry.sourceFacts, entry.counts.sourceCases));
   if (!exactKeys(input, ['schemaVersion', 'contractVersion', 'status', 'total', 'passed', 'failed', 'skipped', 'cases'])
     || input.schemaVersion !== 1
     || input.contractVersion !== 1
@@ -58,6 +80,7 @@ export function assertV12AcceptanceNativeContractResult(input, expectedCaseIds) 
     || input.failed !== 0
     || input.skipped !== 0
     || !validCases) fail('v12_result_invalid');
+  privacySafe(input);
   return Object.freeze(structuredClone(input));
 }
 

@@ -237,7 +237,13 @@ test("Calendar shard streams compact staged artifacts without changing published
   });
   assert.equal(writes.filter(([, , nativeArtifact]) => nativeArtifact === true).length, 208);
   assert.equal(writes.some(([, value]) => Buffer.isBuffer(value) && value.length > 300 * 1024), false);
-  publishV12CalendarShardWrites({ root, runId, writes, executionOrigin: productionOrigin });
+  assert.throws(() => publishV12CalendarShardWrites({
+    root,
+    runId,
+    writes,
+    executionOrigin: productionOrigin,
+    cleanupTransport: () => { throw new Error("simulated_publication_cleanup_crash"); },
+  }), /simulated_publication_cleanup_crash/u);
   const observationOutput = JSON.parse(readFileSync(path.join(root, `artifacts/native/v1.2/${runId}/calendar-transitions.json`), "utf8"));
   const registry = JSON.parse(readFileSync(path.join(root, `artifacts/native/v1.2/${runId}/calendar/artifact-registry.json`), "utf8"));
   assert.equal(observationOutput.schema_version, 5);
@@ -245,7 +251,34 @@ test("Calendar shard streams compact staged artifacts without changing published
   assert.equal(registry.members.length, 208);
   assert.equal(writes.length, 213);
   assert.equal(existsSync(path.join(root, `artifacts/native/v1.2/${runId}/publication/calendar.json`)), true);
-  assert.equal(existsSync(path.join(root, `artifacts/native/v1.2/${runId}/.calendar-transport`)), false);
+  const transportRoot = path.join(root, `artifacts/native/v1.2/${runId}/.calendar-transport`);
+  assert.equal(existsSync(transportRoot), true);
+  let nativeCalls = 0;
+  const replayDependencies = {
+    root, flowSha256, readBuild: () => manifest, sourceDigest: manifest.source.tree_sha256, currentHead: manifest.source.head,
+    isAncestor: () => true, acquireLease: () => { nativeCalls += 1; throw new Error("device_must_not_run"); },
+    executeNative: () => { nativeCalls += 1; throw new Error("device_must_not_run"); },
+  };
+  const transportResultPath = path.join(transportRoot, "result.json");
+  const transportManifestPath = path.join(transportRoot, "manifest.json");
+  const originalTransportResult = readFileSync(transportResultPath);
+  const originalTransportManifest = readFileSync(transportManifestPath);
+  const tamperedResult = JSON.parse(originalTransportResult);
+  tamperedResult.execution_origin.request_attestation_sha256 = createHash("sha256").update("different-request").digest("hex");
+  const tamperedResultBytes = Buffer.from(`${JSON.stringify(tamperedResult)}\n`);
+  const tamperedManifest = JSON.parse(originalTransportManifest);
+  tamperedManifest.result_sha256 = createHash("sha256").update(tamperedResultBytes).digest("hex");
+  writeFileSync(transportResultPath, tamperedResultBytes);
+  writeFileSync(transportManifestPath, `${JSON.stringify(tamperedManifest)}\n`);
+  await assert.rejects(executeV12CalendarShardCli(["--run", runId, "--execute"], replayDependencies),
+    /calendar_transport_result_binding_invalid/u);
+  assert.equal(existsSync(transportRoot), true);
+  writeFileSync(transportResultPath, originalTransportResult);
+  writeFileSync(transportManifestPath, originalTransportManifest);
+  assert.deepEqual(await executeV12CalendarShardCli(["--run", runId, "--execute"], replayDependencies),
+    { ok: true, mode: "execute", run_id: runId });
+  assert.equal(nativeCalls, 0);
+  assert.equal(existsSync(transportRoot), false);
   assert.deepEqual(await executeV12CalendarShardCli(["--run", runId, "--verify"], { root, flowSha256 }), { ok: true, mode: "verify", run_id: runId });
 });
 

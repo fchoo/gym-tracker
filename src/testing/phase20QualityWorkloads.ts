@@ -2,6 +2,7 @@ import { CryptoDigestAlgorithm, digestStringAsync } from "expo-crypto";
 
 import type { Phase12BackupBenchmarkResult } from "../bootstrap/phase12BackupBenchmark";
 import type { Phase12BackupBenchmarkObserver } from "../bootstrap/phase12BackupBenchmark";
+import type { Phase12BackupBenchmarkControls } from "../bootstrap/phase12BackupBenchmark";
 import type { Phase20PerformanceOperation } from "./phase20QualityProtocol";
 import { phase20QualityDatabaseName } from "./phase20QualityProtocol";
 import { canonicalJson } from "../domains/activities/importContracts";
@@ -37,8 +38,14 @@ type GarminResult = Readonly<{
 }>;
 
 type Dependencies = Readonly<{
-  phase12(observe?: Phase12BackupBenchmarkObserver, observeDatabaseName?: (databaseName: string) => void): Promise<Phase12BackupBenchmarkResult>;
-  garmin(nonce: string): Promise<GarminResult>;
+  phase12(observe: Phase12BackupBenchmarkObserver | undefined, observeDatabaseName: ((databaseName: string) => void) | undefined,
+    controls: Phase12BackupBenchmarkControls): Promise<Phase12BackupBenchmarkResult>;
+  garmin(nonce: string, controls: Phase20QualityWorkloadControls): Promise<GarminResult>;
+}>;
+
+export type Phase20QualityWorkloadControls = Readonly<{
+  signal?: Readonly<{ aborted: boolean }>;
+  yieldControl?: () => Promise<void>;
 }>;
 
 export type Phase20HeavyWorkloadResult = Readonly<{
@@ -56,6 +63,17 @@ function finiteSamples(value: unknown, minimum: number): value is readonly numbe
     && value.every((entry) => Number.isFinite(entry) && entry >= 0);
 }
 const SHA256 = /^[a-f0-9]{64}$/u;
+const ORDINARY_YIELD_INTERVAL = 10;
+
+function assertActive(controls: Phase20QualityWorkloadControls): void {
+  if (controls.signal?.aborted === true) throw new Error("phase20_quality_cancelled");
+}
+
+async function yieldControl(controls: Phase20QualityWorkloadControls): Promise<void> {
+  assertActive(controls);
+  await (controls.yieldControl ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 0))))();
+  assertActive(controls);
+}
 
 function validSpans(
   spans: readonly Readonly<{ start_ms: number; end_ms: number }>[],
@@ -99,7 +117,10 @@ function validWorkloadProof(value: Readonly<Record<string, unknown>>): value is 
       .every((digest) => typeof digest === "string" && SHA256.test(digest));
 }
 
-async function productionGarmin(nonce: string): Promise<GarminResult> {
+async function productionGarmin(
+  nonce: string,
+  controls: Phase20QualityWorkloadControls,
+): Promise<GarminResult> {
   const garmin = await import("../../modules/garmin-connect/src/index");
   const payloadJson = canonicalJson(maximumGarminFixture());
   const fixtureSha256 = await receipt(payloadJson);
@@ -110,8 +131,11 @@ async function productionGarmin(nonce: string): Promise<GarminResult> {
   const peakRssBytes: number[] = [];
   let payloadSha256 = ""; let outputSha256 = ""; let transport: GarminResult["transport"] | undefined;
   for (let sequence = 1; sequence <= 10; sequence += 1) {
+    await yieldControl(controls);
     const startedAt = performance.now();
+    assertActive(controls);
     const result = await garmin.benchmarkGarminDeterministicJson(payloadJson);
+    assertActive(controls);
     const endedAt = performance.now();
     const runtime = await garmin.readGarminRuntimeInfo();
     if (runtime.benchmark.memoryRssBytes === undefined || result.payloadSha256 !== fixtureSha256
@@ -146,9 +170,9 @@ async function productionGarmin(nonce: string): Promise<GarminResult> {
 }
 
 const productionDependencies: Dependencies = Object.freeze({
-  phase12: async () => {
+  phase12: async (observe, observeDatabaseName, controls) => {
     const { performPhase12BackupBenchmark } = await import("../bootstrap/phase12BackupBenchmark");
-    return performPhase12BackupBenchmark();
+    return performPhase12BackupBenchmark(observe, observeDatabaseName, controls);
   },
   garmin: productionGarmin,
 });
@@ -158,18 +182,22 @@ export async function runPhase20HeavyWorkload(
   dependencies: Dependencies = productionDependencies,
   nonce = "0".repeat(48),
   sourceFacts?: Readonly<Record<string, unknown>>,
+  controls: Phase20QualityWorkloadControls = {},
 ): Promise<Phase20HeavyWorkloadResult | null> {
+  assertActive(controls);
   if (operation === "ordinary-js-task") {
     if (sourceFacts === undefined || !validWorkloadProof(sourceFacts)) throw new Error("phase20_quality_source_facts_missing");
     const jsSpans: { start_ms: number; end_ms: number }[] = [];
     const jsTaskMs: number[] = [];
     let checksum = 0;
     for (let sequence = 1; sequence <= 100; sequence += 1) {
+      assertActive(controls);
       const start_ms = performance.now();
       checksum ^= executePhase2OrdinaryJsTask(sourceFacts, sequence);
       const end_ms = performance.now();
       jsSpans.push({ start_ms, end_ms });
       jsTaskMs.push(end_ms - start_ms);
+      if (sequence % ORDINARY_YIELD_INTERVAL === 0) await yieldControl(controls);
     }
     if (!Number.isSafeInteger(checksum) || !finiteSamples(jsTaskMs, 100) || !validSpans(jsSpans, jsTaskMs)) throw new Error("phase20_quality_ordinary_js_result_invalid");
     const samples = Object.freeze({
@@ -197,10 +225,15 @@ export async function runPhase20HeavyWorkload(
       merge_materialization_ms: [],
     };
     let databaseName = "";
+    const resolvedControls = Object.freeze({
+      ...(controls.signal === undefined ? {} : { signal: controls.signal }),
+      yieldControl: controls.yieldControl ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 0))),
+    });
     const result = await dependencies.phase12((sample) => {
       const key = `${sample.operation.replaceAll("-", "_")}_ms`;
       spans[key]?.push({ start_ms: sample.startMs, end_ms: sample.endMs });
-    }, (value) => { databaseName = value; });
+    }, (value) => { databaseName = value; }, resolvedControls);
+    assertActive(controls);
     const values = result.measurements;
     if (result.status !== "passed"
       || !finiteSamples(values.dirty_trigger_ms, 1)
@@ -237,7 +270,8 @@ export async function runPhase20HeavyWorkload(
     });
   }
   if (operation === "garmin-json-normalization") {
-    const result = await dependencies.garmin(nonce);
+    const result = await dependencies.garmin(nonce, controls);
+    assertActive(controls);
     if (!/^gym-tracker-phase20-quality-[a-f0-9]{48}-workout\.db$/u.test(result.database_name)
       || !finiteSamples(result.normalization_ms, 5)
       || !Array.isArray(result.normalization_spans)
