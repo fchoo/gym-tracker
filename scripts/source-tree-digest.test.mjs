@@ -167,6 +167,20 @@ test("recomputes planning, prototype, and fixture authority outside the implemen
   }
 });
 
+test("resolves the checked-in hash-matched prototype authority without an external root", () => {
+  const manifest = JSON.parse(readFileSync(
+    ".planning/design/v1.2-browser-evidence/source-manifest.json",
+    "utf8",
+  ));
+  const sources = Object.fromEntries(manifest.sources.map(({ id, sha256 }) => [id, sha256]));
+  const digests = v12ContractSourceDigests(process.cwd(), { approvedSourceRoot: null });
+  assert.deepEqual(digests.prototype, {
+    revision: 18,
+    approval_sha256: sources["approved-json"],
+    html_sha256: sources["approved-hybrid-html"],
+  });
+});
+
 test("source operations use one explicitly attested absolute Git executable", () => {
   const root = mkdtempSync(path.join(tmpdir(), "gym-source-tree-git-origin-"));
   const tools = mkdtempSync(path.join(tmpdir(), "gym-source-tree-git-tools-"));

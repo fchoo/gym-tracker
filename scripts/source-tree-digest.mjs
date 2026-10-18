@@ -17,6 +17,7 @@ import {
   assertV12GitExecutionAttestation,
   resolveV12GitExecution,
 } from "./v12-native-execution-origin.mjs";
+import { loadV12VisualAuthority } from "./v12-visual-authority.mjs";
 
 const excludedSourcePath =
   /^\.coverage$|^(?:node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage(?:-[^/.]+)?|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
@@ -88,16 +89,27 @@ export function v12ContractSourceDigests(root = process.cwd(), { approvedSourceR
   try { manifest = JSON.parse(readFileSync(safeRegularFile(root, V12_PLANNING_PATHS.source_manifest_sha256, "v12_contract_prototype_invalid"), "utf8")); }
   catch (error) { if (error instanceof Error && error.message.startsWith("v12_contract_")) throw error; throw new Error("v12_contract_prototype_invalid"); }
   if (manifest?.schema_version !== 2 || manifest.revision !== 18 || !Array.isArray(manifest.sources)
-    || manifest.sources.length < 2 || typeof approvedSourceRoot !== "string" || approvedSourceRoot.length === 0) {
+    || manifest.sources.length < 2) {
     throw new Error("v12_contract_prototype_invalid");
   }
   const sourceById = new Map(manifest.sources.map(source => [source.id, source]));
   const approvedJson = sourceById.get("approved-json"); const approvedHtml = sourceById.get("approved-hybrid-html");
   if (!approvedJson || !approvedHtml) throw new Error("v12_contract_prototype_invalid");
-  const approvedRoot = path.resolve(approvedSourceRoot);
-  const approvalSha256 = fileSha256(approvedRoot, approvedJson.filename, "v12_contract_prototype_invalid");
-  const htmlSha256 = fileSha256(approvedRoot, approvedHtml.filename, "v12_contract_prototype_invalid");
-  if (approvalSha256 !== approvedJson.sha256 || htmlSha256 !== approvedHtml.sha256) throw new Error("v12_contract_prototype_invalid");
+  let approvalSha256;
+  let htmlSha256;
+  if (typeof approvedSourceRoot === "string" && approvedSourceRoot.length > 0) {
+    const approvedRoot = path.resolve(approvedSourceRoot);
+    approvalSha256 = fileSha256(approvedRoot, approvedJson.filename, "v12_contract_prototype_invalid");
+    htmlSha256 = fileSha256(approvedRoot, approvedHtml.filename, "v12_contract_prototype_invalid");
+    if (approvalSha256 !== approvedJson.sha256 || htmlSha256 !== approvedHtml.sha256) throw new Error("v12_contract_prototype_invalid");
+  } else {
+    let authority;
+    try { authority = loadV12VisualAuthority({ root, externalRoot: "" }); }
+    catch { throw new Error("v12_contract_prototype_invalid"); }
+    approvalSha256 = authority.source_hashes["approved-json"];
+    htmlSha256 = authority.source_hashes["approved-hybrid-html"];
+    if (approvalSha256 !== approvedJson.sha256 || htmlSha256 !== approvedHtml.sha256) throw new Error("v12_contract_prototype_invalid");
+  }
   return Object.freeze({
     planning,
     prototype: Object.freeze({ revision: 18, approval_sha256: approvalSha256, html_sha256: htmlSha256 }),

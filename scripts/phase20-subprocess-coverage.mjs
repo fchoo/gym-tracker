@@ -74,6 +74,7 @@ async function verifyProcessGroupEmpty(processGroupId, timeoutMs) {
 function runTestProject(project, {
   projectRoot,
   rawDirectory,
+  testReportPath,
   projectTimeoutMs,
   terminateGraceMs,
   signal,
@@ -100,6 +101,10 @@ function runTestProject(project, {
       "--test",
       `--test-concurrency=${String(concurrency)}`,
       "--test-timeout=600000",
+      "--test-reporter=spec",
+      "--test-reporter-destination=stdout",
+      "--test-reporter=tap",
+      `--test-reporter-destination=${testReportPath}`,
       ...(childOnlyCoverage ? ["--test-isolation=none", `--import=${import.meta.url}`] : []),
       ...tests,
     ], {
@@ -157,6 +162,15 @@ function runTestProject(project, {
     });
     child.stdio[3].resume();
   });
+}
+
+function assertNoSkippedTests(testReportPath, projectName) {
+  const report = readFileSync(testReportPath, "utf8");
+  const matches = [...report.matchAll(/^# skipped (\d+)$/gmu)];
+  if (matches.length !== 1) throw new Error(`phase20_coverage_project_report_invalid:${projectName}`);
+  const skipped = Number(matches[0][1]);
+  if (!Number.isSafeInteger(skipped)) throw new Error(`phase20_coverage_project_report_invalid:${projectName}`);
+  if (skipped !== 0) throw new Error(`phase20_coverage_project_skipped_tests:${projectName}:${String(skipped)}`);
 }
 
 async function runBoundedProjects(projects, options, maxParallel) {
@@ -344,15 +358,18 @@ export async function runPhase20SubprocessCoverage({
     run: async (project, { signal }) => {
       const projectDirectory = path.join(outputDirectory, "projects", project.name);
       const rawDirectory = path.join(projectDirectory, "raw-v8");
+      const testReportPath = path.join(projectDirectory, "test-results.tap");
       mkdirSync(rawDirectory, { recursive: true });
       await runTestProject(project, {
         projectRoot,
         rawDirectory,
+        testReportPath,
         projectTimeoutMs,
         terminateGraceMs,
         signal,
         onProjectSignal,
       });
+      assertNoSkippedTests(testReportPath, project.name);
       if (project.coverage === false) return {
         coverageMap: createCoverageMap({}),
         files: {},

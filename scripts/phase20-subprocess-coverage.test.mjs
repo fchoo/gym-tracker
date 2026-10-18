@@ -52,6 +52,7 @@ import {
   iterateV12VisualJsonArray,
   readV12VisualJsonHeader,
 } from "./v12-visual-streaming.mjs";
+import { loadV12VisualAuthority } from "./v12-visual-authority.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_NATIVE_PROVENANCE_REGISTRY,
@@ -298,6 +299,26 @@ test("coverage projects fail closed on missing modules and tests", async () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("coverage projects reject a successful test process with skipped tests", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-coverage-skipped-"));
+  const outputDirectory = path.join(root, "coverage");
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(path.join(root, "skipped.test.mjs"), [
+    "import test from 'node:test';",
+    "test('must execute', { skip: true }, () => {});",
+    "",
+  ].join("\n"));
+  await assert.rejects(
+    runPhase20SubprocessCoverage({
+      projectRoot: root,
+      outputDirectory,
+      projects: [{ name: "skipped", coverage: false, tests: ["skipped.test.mjs"] }],
+      projectTimeoutMs: 10_000,
+    }),
+    /phase20_coverage_project_skipped_tests:skipped:1/u,
+  );
 });
 
 test("child-only coverage instruments production CLI descendants without instrumenting the test worker", async () => {
@@ -1395,8 +1416,7 @@ test("native final identity re-reads Git, APK, signature, installed bytes, setti
 });
 
 test("production-shaped retained evidence completes preseal and final readiness", {
-  skip: process.env.V12_PHASE20_COVERAGE_FIXTURE === undefined
-    || process.env.V12_APPROVED_SOURCE_ROOT === undefined,
+  skip: process.env.V12_PHASE20_COVERAGE_FIXTURE === undefined,
   timeout: 25 * 60_000,
 }, () => {
   const root = process.env.V12_PHASE20_COVERAGE_FIXTURE;
@@ -1433,12 +1453,12 @@ test("production-shaped retained evidence completes preseal and final readiness"
     writeJson(publicationRelative, publication);
   };
   const originalEnvironment = Object.fromEntries([
-    "ANDROID_HOME", "ANDROID_SDK_ROOT", "V12_DEVICE_SERIAL", "V12_APPROVED_SOURCE_ROOT",
+    "ANDROID_HOME", "ANDROID_SDK_ROOT", "V12_DEVICE_SERIAL",
   ].map((key) => [key, process.env[key]]));
   try {
     for (const helper of ["checklist.json", "identity.json", "observations.json", "test-resolution.json"]) removeSaved(helper);
 
-    const approvedRoot = process.env.V12_APPROVED_SOURCE_ROOT;
+    const authority = loadV12VisualAuthority({ root, externalRoot: "" });
     if (!existsSync(path.join(root, ".planning/v1.2-OWNER-BRIEF.md"))) {
       save(".planning/v1.2-OWNER-BRIEF.md");
       writeFileSync(path.join(root, ".planning/v1.2-OWNER-BRIEF.md"), "# Coverage owner brief\n");
@@ -1471,8 +1491,8 @@ test("production-shaped retained evidence completes preseal and final readiness"
     };
     build.prototype = {
       revision: 18,
-      approval_sha256: createHash("sha256").update(readFileSync(path.join(approvedRoot, "approved.json"))).digest("hex"),
-      html_sha256: createHash("sha256").update(readFileSync(path.join(approvedRoot, "approved-hybrid.html"))).digest("hex"),
+      approval_sha256: authority.source_hashes["approved-json"],
+      html_sha256: authority.source_hashes["approved-hybrid-html"],
     };
     build.fixtures.registry_sha256 = fileHash(".planning/design/v1.2-browser-evidence/serial-walk.json");
     build.build.apk = {
@@ -1810,7 +1830,6 @@ test("production-shaped retained evidence completes preseal and final readiness"
       ANDROID_SDK_ROOT: sdk,
       PATH: `${path.join(sdk, "platform-tools")}:${liveEnvironment.PATH}`,
       V12_DEVICE_SERIAL: serial,
-      V12_APPROVED_SOURCE_ROOT: approvedRoot,
     });
     const executeDirectMaestroTool = (executablePath, args, options = {}) => {
       const result = spawnSync(executablePath, args, { ...options, encoding: "utf8" });
