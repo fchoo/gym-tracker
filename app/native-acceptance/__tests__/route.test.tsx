@@ -6,6 +6,7 @@ import type {
   V12NativeAcceptanceReadbacks,
   V12NativeAcceptanceRequest,
 } from "../../../src/testing/v12NativeAcceptanceExecutor";
+import { v12NativeAcceptanceCaseContract } from "../../../src/testing/contracts/v12NativeAcceptance.contract";
 
 let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;
@@ -60,35 +61,51 @@ describe("v1.2 native acceptance route", () => {
       nonce: "a".repeat(48),
     };
     mockExecuteV12NativeAcceptanceCase.mockReset();
-    mockExecuteV12NativeAcceptanceCase.mockImplementation(async (request) => ({
+    mockExecuteV12NativeAcceptanceCase.mockImplementation(async (request) => {
+      const contract = v12NativeAcceptanceCaseContract(request.shard, request.caseId);
+      const state = (phase: "pre" | "action" | "post", digest: string) => ({
+        probe_id: contract.probes[phase].id,
+        facts_sha256: digest.repeat(64),
+        source_sha256: digest.repeat(64),
+        row_count: 1,
+        table_count: contract.probes[phase].tables.length,
+        schema_version: 42,
+      });
+      return ({
       source_receipt: {
-        schema_version: 1,
-        producer: "v12-native-acceptance-source/v1",
-        authority: "sqlite-domain-read",
+        schema_version: 2,
+        producer: "v12-native-acceptance-source/v2",
+        authority: "sqlite-production-operation",
         shard: request.shard,
         case_id: request.caseId,
         nonce: request.nonce,
         action_id: request.action,
+        operation_id: contract.operation.id,
+        operation_kind: contract.operation.kind,
+        operation_result: contract.operation.expectedResult,
+        operation_result_sha256: "7".repeat(64),
         source_probe: request.sourceProbe,
         authority_tables: request.authorityTables,
-        pre: { source_sha256: "1".repeat(64), row_count: 1, table_count: 1, schema_version: 42 },
-        action: { source_sha256: "2".repeat(64), row_count: 1, table_count: 1, schema_version: 42 },
-        post: { source_sha256: "3".repeat(64), row_count: 1, table_count: 1, schema_version: 42 },
+        pre: state("pre", "1"),
+        action: state("action", "2"),
+        post: state("post", "3"),
         action_request_sha256: "4".repeat(64),
         source_receipt_sha256: "5".repeat(64),
       },
       ui_readback: {
-        schema_version: 1,
-        producer: "v12-native-acceptance-ui-readback/v1",
+        schema_version: 2,
+        producer: "v12-native-acceptance-ui-readback/v2",
         shard: request.shard,
         case_id: request.caseId,
         nonce: request.nonce,
         declared_action: request.action,
         declared_readback: request.readback,
+        readback_id: contract.uiReadback.id,
         source_receipt_sha256: "5".repeat(64),
         ui_receipt_sha256: "6".repeat(64),
       },
-    }) as V12NativeAcceptanceReadbacks);
+      }) as V12NativeAcceptanceReadbacks;
+    });
   });
 
   const validRequests: [string, string, string][] = [

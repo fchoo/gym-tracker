@@ -36,6 +36,9 @@ import {
   deriveV12MaestroCaseIdsFromSource,
   V12_MAESTRO_FUNCTIONAL_REGISTRIES,
 } from "./v12-maestro-source-registry.mjs";
+import {
+  v12NativeAcceptanceCaseContract,
+} from "../src/testing/contracts/v12NativeAcceptance.contract.ts";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -226,45 +229,74 @@ function commandRunner(dependencies, signal) {
     timeoutMs: options.timeoutMs, maxBuffer: options.maxBuffer });
 }
 
-const APP_SOURCE_RECEIPT_KEYS = Object.freeze(["schema_version", "producer", "authority", "shard", "case_id", "nonce", "action_id", "source_probe", "authority_tables", "pre", "action", "post", "action_request_sha256", "source_receipt_sha256"]);
-const APP_UI_READBACK_KEYS = Object.freeze(["schema_version", "producer", "shard", "case_id", "nonce", "declared_action", "declared_readback", "source_receipt_sha256", "ui_receipt_sha256"]);
-const APP_SOURCE_STATE_KEYS = Object.freeze(["source_sha256", "row_count", "table_count", "schema_version"]);
+const APP_SOURCE_RECEIPT_KEYS = Object.freeze(["schema_version", "producer", "authority", "shard", "case_id", "nonce", "action_id", "operation_id", "operation_kind", "operation_result", "operation_result_sha256", "source_probe", "authority_tables", "pre", "action", "post", "action_request_sha256", "source_receipt_sha256"]);
+const APP_UI_READBACK_KEYS = Object.freeze(["schema_version", "producer", "shard", "case_id", "nonce", "declared_action", "declared_readback", "readback_id", "source_receipt_sha256", "ui_receipt_sha256"]);
+const APP_SOURCE_STATE_KEYS = Object.freeze(["probe_id", "facts_sha256", "source_sha256", "row_count", "table_count", "schema_version"]);
 
-export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId, sourceProbe, declaredReadback = sourceProbe, authorityTables, pre, action, post }) {
+export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId, sourceProbe, declaredReadback, authorityTables, pre, action, post, operationResult = undefined }) {
+  let contract;
+  try { contract = v12NativeAcceptanceCaseContract(shard, caseId); }
+  catch { genericFail("case_contract_invalid"); }
+  if ((actionId !== undefined && actionId !== contract.actionId)
+    || (sourceProbe !== undefined && sourceProbe !== contract.sourceProbe)
+    || (declaredReadback !== undefined && declaredReadback !== contract.uiReadback.label)
+    || (authorityTables !== undefined && JSON.stringify(authorityTables) !== JSON.stringify(contract.probes.post.tables))) genericFail("case_contract_invalid");
+  const normalizedOperationResult = operationResult ?? {
+    result: contract.operation.expectedResult,
+    sha256: sha256(JSON.stringify({ operation_id: contract.operation.id, result: contract.operation.expectedResult })),
+  };
+  const sourceState = (value, probe) => Object.freeze({
+    probe_id: probe.id,
+    facts_sha256: value?.facts_sha256 ?? value?.source_sha256,
+    source_sha256: value?.source_sha256,
+    row_count: value?.row_count,
+    table_count: probe.tables.length,
+    schema_version: value?.schema_version,
+  });
   const actionRequest = {
-    schema_version: 1,
-    producer: "v12-native-acceptance-action-request/v1",
+    schema_version: 2,
+    producer: "v12-native-acceptance-action-request/v2",
     shard,
     case_id: caseId,
     nonce,
-    action_id: actionId,
-    source_probe: sourceProbe,
-    authority_tables: authorityTables,
+    action_id: contract.actionId,
+    operation_id: contract.operation.id,
+    operation_kind: contract.operation.kind,
+    expected_result: contract.operation.expectedResult,
+    source_probe: contract.sourceProbe,
+    authority_tables: contract.probes.post.tables,
+    probe_ids: [contract.probes.pre.id, contract.probes.action.id, contract.probes.post.id],
+    ui_readback_id: contract.uiReadback.id,
   };
   const sourceUnsigned = {
-    schema_version: 1,
-    producer: "v12-native-acceptance-source/v1",
-    authority: "sqlite-domain-read",
+    schema_version: 2,
+    producer: "v12-native-acceptance-source/v2",
+    authority: "sqlite-production-operation",
     shard,
     case_id: caseId,
     nonce,
-    action_id: actionId,
-    source_probe: sourceProbe,
-    authority_tables: Object.freeze([...authorityTables]),
-    pre: Object.freeze({ ...pre }),
-    action: Object.freeze({ ...action }),
-    post: Object.freeze({ ...post }),
+    action_id: contract.actionId,
+    operation_id: contract.operation.id,
+    operation_kind: contract.operation.kind,
+    operation_result: normalizedOperationResult.result,
+    operation_result_sha256: normalizedOperationResult.sha256,
+    source_probe: contract.sourceProbe,
+    authority_tables: contract.probes.post.tables,
+    pre: sourceState(pre, contract.probes.pre),
+    action: sourceState(action, contract.probes.action),
+    post: sourceState(post, contract.probes.post),
     action_request_sha256: sha256(JSON.stringify(actionRequest)),
   };
   const sourceReceipt = Object.freeze({ ...sourceUnsigned, source_receipt_sha256: sha256(JSON.stringify(sourceUnsigned)) });
   const uiUnsigned = {
-    schema_version: 1,
-    producer: "v12-native-acceptance-ui-readback/v1",
+    schema_version: 2,
+    producer: "v12-native-acceptance-ui-readback/v2",
     shard,
     case_id: caseId,
     nonce,
-    declared_action: actionId,
-    declared_readback: declaredReadback,
+    declared_action: contract.actionId,
+    declared_readback: contract.uiReadback.label,
+    readback_id: contract.uiReadback.id,
     source_receipt_sha256: sourceReceipt.source_receipt_sha256,
   };
   const uiReadback = Object.freeze({ ...uiUnsigned, ui_receipt_sha256: sha256(JSON.stringify(uiUnsigned)) });
@@ -272,35 +304,44 @@ export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId
 }
 
 function validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, shard, caseId, nonce }) {
+  let contract;
+  try { contract = v12NativeAcceptanceCaseContract(shard, caseId); }
+  catch { genericFail("case_contract_invalid"); }
   if (!exactKeys(sourceReceipt, APP_SOURCE_RECEIPT_KEYS)
-    || sourceReceipt.schema_version !== 1 || sourceReceipt.producer !== "v12-native-acceptance-source/v1"
-    || sourceReceipt.authority !== "sqlite-domain-read" || sourceReceipt.shard !== shard
+    || sourceReceipt.schema_version !== 2 || sourceReceipt.producer !== "v12-native-acceptance-source/v2"
+    || sourceReceipt.authority !== "sqlite-production-operation" || sourceReceipt.shard !== shard
     || sourceReceipt.case_id !== caseId || sourceReceipt.nonce !== nonce || !FUNCTIONAL_NONCE.test(sourceReceipt.nonce ?? "")
-    || typeof sourceReceipt.action_id !== "string" || sourceReceipt.action_id.length === 0
-    || typeof sourceReceipt.source_probe !== "string" || sourceReceipt.source_probe.length === 0
+    || sourceReceipt.action_id !== contract.actionId || sourceReceipt.operation_id !== contract.operation.id
+    || sourceReceipt.operation_kind !== contract.operation.kind || sourceReceipt.operation_result !== contract.operation.expectedResult
+    || !SHA256.test(sourceReceipt.operation_result_sha256 ?? "") || sourceReceipt.source_probe !== contract.sourceProbe
+    || JSON.stringify(sourceReceipt.authority_tables) !== JSON.stringify(contract.probes.post.tables)
     || !Array.isArray(sourceReceipt.authority_tables) || sourceReceipt.authority_tables.length === 0
     || new Set(sourceReceipt.authority_tables).size !== sourceReceipt.authority_tables.length
     || sourceReceipt.authority_tables.some((table) => !/^[a-z][a-z0-9_]{1,80}$/u.test(table))) genericFail("source_readback_invalid");
-  for (const state of [sourceReceipt.pre, sourceReceipt.action, sourceReceipt.post]) {
+  for (const [index, state] of [sourceReceipt.pre, sourceReceipt.action, sourceReceipt.post].entries()) {
     if (!exactKeys(state, APP_SOURCE_STATE_KEYS) || !SHA256.test(state.source_sha256 ?? "")
+      || !SHA256.test(state.facts_sha256 ?? "") || state.probe_id !== [contract.probes.pre.id, contract.probes.action.id, contract.probes.post.id][index]
       || !Number.isSafeInteger(state.row_count) || state.row_count < 0
       || !Number.isSafeInteger(state.table_count) || state.table_count !== sourceReceipt.authority_tables.length
       || !Number.isSafeInteger(state.schema_version) || state.schema_version < 1) genericFail("source_readback_invalid");
   }
-  if (sourceReceipt.pre.source_sha256 !== sourceReceipt.action.source_sha256
-    || sourceReceipt.pre.source_sha256 !== sourceReceipt.post.source_sha256) genericFail("source_readback_invalid");
   const actionRequest = {
-    schema_version: 1, producer: "v12-native-acceptance-action-request/v1", shard, case_id: caseId, nonce,
-    action_id: sourceReceipt.action_id, source_probe: sourceReceipt.source_probe, authority_tables: sourceReceipt.authority_tables,
+    schema_version: 2, producer: "v12-native-acceptance-action-request/v2", shard, case_id: caseId, nonce,
+    action_id: contract.actionId, operation_id: contract.operation.id, operation_kind: contract.operation.kind,
+    expected_result: contract.operation.expectedResult, source_probe: contract.sourceProbe,
+    authority_tables: contract.probes.post.tables,
+    probe_ids: [contract.probes.pre.id, contract.probes.action.id, contract.probes.post.id],
+    ui_readback_id: contract.uiReadback.id,
   };
   const { source_receipt_sha256: sourceReceiptSha256, ...sourceUnsigned } = sourceReceipt;
   if (!SHA256.test(sourceReceipt.action_request_sha256 ?? "")
     || sourceReceipt.action_request_sha256 !== sha256(JSON.stringify(actionRequest))
     || !SHA256.test(sourceReceiptSha256 ?? "") || sourceReceiptSha256 !== sha256(JSON.stringify(sourceUnsigned))) genericFail("source_readback_invalid");
   if (!exactKeys(uiReadback, APP_UI_READBACK_KEYS)
-    || uiReadback.schema_version !== 1 || uiReadback.producer !== "v12-native-acceptance-ui-readback/v1"
+    || uiReadback.schema_version !== 2 || uiReadback.producer !== "v12-native-acceptance-ui-readback/v2"
     || uiReadback.shard !== shard || uiReadback.case_id !== caseId || uiReadback.nonce !== nonce
-    || uiReadback.declared_action !== sourceReceipt.action_id || typeof uiReadback.declared_readback !== "string" || uiReadback.declared_readback.length === 0
+    || uiReadback.declared_action !== contract.actionId || uiReadback.declared_readback !== contract.uiReadback.label
+    || uiReadback.readback_id !== contract.uiReadback.id
     || uiReadback.source_receipt_sha256 !== sourceReceiptSha256) genericFail("ui_readback_invalid");
   const { ui_receipt_sha256: uiReceiptSha256, ...uiUnsigned } = uiReadback;
   if (!SHA256.test(uiReceiptSha256 ?? "") || uiReceiptSha256 !== sha256(JSON.stringify(uiUnsigned))) genericFail("ui_readback_invalid");
@@ -902,8 +943,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       if (tools.test_only && dependencies.captureUiReadback === undefined) {
         const state = { source_sha256: sha256(`test-source:${caseId}`), row_count: 0, table_count: 1, schema_version: 42 };
         const appReadbacks = createV12AppFunctionalReadbacks({
-          shard, caseId, nonce, actionId: `test-read:${caseId}`, sourceProbe: `test-source:${caseId}`,
-          authorityTables: ["app_settings"], pre: state, action: state, post: state,
+          shard, caseId, nonce, pre: state, action: state, post: state,
         });
         uiHierarchy = `<hierarchy><node content-desc="V12_SOURCE_RECEIPT:${encodeURIComponent(JSON.stringify(appReadbacks.source_receipt))}"/><node content-desc="V12_UI_READBACK:${encodeURIComponent(JSON.stringify(appReadbacks.ui_readback))}"/></hierarchy>`;
       } else {

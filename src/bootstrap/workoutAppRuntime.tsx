@@ -400,6 +400,7 @@ import {
   type Phase20QualityWorkloadProof,
 } from "../testing/phase20QualityWorkload";
 import {
+  dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
   type V12NativeAcceptanceReadbacks,
   type V12NativeAcceptanceRequest,
@@ -5264,6 +5265,10 @@ export function WorkoutAppRuntimeProvider({
         kernel: requireServices().kernel,
         request,
         sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        executeOperation: ({ contract }) => dispatchV12NativeAcceptanceProductionOperation({
+          kernel: requireServices().kernel,
+          contract,
+        }),
       });
     },
     triggerPhase20ProgressRebuild: async () => {

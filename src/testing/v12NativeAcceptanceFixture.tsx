@@ -4,15 +4,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useWorkoutAppRuntime } from "../bootstrap/workoutAppRuntime";
 
 import {
-  MULTI_PLAN_RUNNING_CONTRACT_CASES,
-} from "./contracts/multiPlanRunning.contract";
-import {
-  PHASE15_REQUIRED_CASES,
-} from "./contracts/phase15Workout.contract";
-import {
-  PHASE17_CASE_ACTION_CONTRACTS,
-  PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS,
-} from "./contracts/phase17LibraryRunning.contract";
+  V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
+  v12NativeAcceptanceCaseContract,
+} from "./contracts/v12NativeAcceptance.contract";
 import {
   authorityTablesForV12NativeAcceptance,
   type V12NativeAcceptanceReadbacks,
@@ -46,41 +40,15 @@ type NativeAcceptanceCase = Readonly<{
 
 export type { V12NativeAcceptanceRequest } from "./v12NativeAcceptanceExecutor";
 
-const multiPlanCases = MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => Object.freeze({
-  id,
-  requirement: "Phase 13 source-owned contract",
-  action: id.slice("phase13-".length),
-  readback: "SQLite-backed contract observation",
-  sourceProbe: `multi-plan-running:${id}`,
-}));
-
-const workoutCases: readonly NativeAcceptanceCase[] = PHASE15_REQUIRED_CASES.map((entry) => {
-  const id = entry.id;
-  const requirement = entry.requirement;
-  if (typeof id !== "string" || typeof requirement !== "string") {
-    throw new Error("v12_native_acceptance_workout_registry_invalid");
-  }
-  return Object.freeze({
-    id,
-    requirement,
-    action: id.slice("workout.".length),
-    readback: "Workout source contract observation",
-    sourceProbe: `phase15-workout-ledger:${id}`,
-  });
-});
-
-const libraryCases = [
-  ...PHASE17_CASE_ACTION_CONTRACTS,
-  ...PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS.filter(({ id }) => (
-    !PHASE17_CASE_ACTION_CONTRACTS.some((entry) => entry.id === id)
-  )),
-].map(({ id, action, uiReadback, sourceProbe }) => Object.freeze({
-  id,
-  requirement: sourceProbe,
-  action,
-  readback: uiReadback,
-  sourceProbe,
-}));
+const casesFor = (shard: NativeAcceptanceShard): readonly NativeAcceptanceCase[] => Object.freeze(
+  V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter((entry) => entry.shard === shard).map((entry) => Object.freeze({
+    id: entry.caseId,
+    requirement: entry.requirement,
+    action: entry.actionId,
+    readback: entry.uiReadback.label,
+    sourceProbe: entry.sourceProbe,
+  })),
+);
 
 const SHARDS: Readonly<Record<NativeAcceptanceShard, Readonly<{
   title: string;
@@ -90,17 +58,17 @@ const SHARDS: Readonly<Record<NativeAcceptanceShard, Readonly<{
   "multi-plan": Object.freeze({
     title: "Multi-plan and running",
     source: "MULTI_PLAN_RUNNING_CONTRACT_CASES",
-    cases: Object.freeze(multiPlanCases),
+    cases: casesFor("multi-plan"),
   }),
   workout: Object.freeze({
     title: "Workout",
     source: "PHASE15_REQUIRED_CASES",
-    cases: Object.freeze(workoutCases),
+    cases: casesFor("workout"),
   }),
   "library-running": Object.freeze({
     title: "Library and running",
     source: "PHASE17_CASE_ACTION_CONTRACTS + PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS",
-    cases: Object.freeze(libraryCases),
+    cases: casesFor("library-running"),
   }),
 });
 
@@ -147,13 +115,19 @@ function readbacksMatchRequest(
   request: V12NativeAcceptanceRequest,
   readbacks: V12NativeAcceptanceReadbacks,
 ): boolean {
+  const contract = v12NativeAcceptanceCaseContract(request.shard, request.caseId);
   const source = readbacks.source_receipt;
   const ui = readbacks.ui_readback;
-  return source.shard === request.shard && source.case_id === request.caseId && source.nonce === request.nonce
+  return source.schema_version === 2 && source.producer === "v12-native-acceptance-source/v2"
+    && source.shard === request.shard && source.case_id === request.caseId && source.nonce === request.nonce
     && source.action_id === request.action && source.source_probe === request.sourceProbe
+    && source.operation_id === contract.operation.id && source.operation_kind === contract.operation.kind
+    && source.operation_result === contract.operation.expectedResult
     && JSON.stringify(source.authority_tables) === JSON.stringify(request.authorityTables)
+    && ui.schema_version === 2 && ui.producer === "v12-native-acceptance-ui-readback/v2"
     && ui.shard === request.shard && ui.case_id === request.caseId && ui.nonce === request.nonce
     && ui.declared_action === request.action && ui.declared_readback === request.readback
+    && ui.readback_id === contract.uiReadback.id
     && ui.source_receipt_sha256 === source.source_receipt_sha256;
 }
 

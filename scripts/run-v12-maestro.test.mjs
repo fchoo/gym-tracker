@@ -150,7 +150,6 @@ function fixture(t, shard) {
       if (command[0] === "exec-out" && command[1] === "cat" && command[2]?.includes("functional-ui")) {
         const state = { source_sha256: hash(`source:${activeCaseId}`), row_count: 0, table_count: 1, schema_version: 42 };
         const readbacks = createV12AppFunctionalReadbacks({ shard, caseId: activeCaseId, nonce: activeNonce,
-          actionId: `read:${activeCaseId}`, sourceProbe: `source:${activeCaseId}`, authorityTables: ["app_settings"],
           pre: state, action: state, post: state });
         return `<hierarchy><node content-desc="V12_SOURCE_RECEIPT:${encodeURIComponent(JSON.stringify(readbacks.source_receipt))}"/><node content-desc="V12_UI_READBACK:${encodeURIComponent(JSON.stringify(readbacks.ui_readback))}"/></hierarchy>`;
       }
@@ -213,8 +212,6 @@ test("functional receipt binds nonce, run, source, APK, device, and pre/action/p
   const build = manifest();
   const readbacks = createV12AppFunctionalReadbacks({
     shard: "workout", caseId: "workout.root-identity", nonce: "f".repeat(48),
-    actionId: "root-identity", sourceProbe: "workout source contract observation",
-    authorityTables: ["plans", "workout_sessions"],
     pre: { source_sha256: hash("sqlite-state"), row_count: 2, table_count: 2, schema_version: 42 },
     action: { source_sha256: hash("sqlite-state"), row_count: 2, table_count: 2, schema_version: 42 },
     post: { source_sha256: hash("sqlite-state"), row_count: 2, table_count: 2, schema_version: 42 },
@@ -257,8 +254,6 @@ test("functional case readbacks reject synthetic hierarchy, wrong case, wrong no
   const nonce = "d".repeat(48);
   const readbacks = createV12AppFunctionalReadbacks({
     shard: "library-running", caseId: "library.metric-profile-migration", nonce,
-    actionId: "migrate-custom-exercise-metric-profile", sourceProbe: "metric_profile_migration_events",
-    authorityTables: ["metric_profile_migration_events"],
     pre: { source_sha256: hash("state"), row_count: 1, table_count: 1, schema_version: 42 },
     action: { source_sha256: hash("state"), row_count: 1, table_count: 1, schema_version: 42 },
     post: { source_sha256: hash("state"), row_count: 1, table_count: 1, schema_version: 42 },
@@ -279,6 +274,53 @@ test("functional case readbacks reject synthetic hierarchy, wrong case, wrong no
       name,
     );
   }
+  const unrelated = structuredClone(readbacks);
+  const source = unrelated.source_receipt;
+  source.action_id = "unrelated-global-action";
+  source.operation_id = "global:settings-read";
+  source.operation_kind = "repository-read";
+  source.operation_result = "read";
+  source.operation_result_sha256 = hash("unrelated-operation");
+  source.source_probe = "global_settings";
+  source.authority_tables = ["app_settings"];
+  for (const [index, phase] of ["pre", "action", "post"].entries()) {
+    source[phase].probe_id = `global-settings:${phase}`;
+    source[phase].facts_sha256 = hash(`global-facts:${index}`);
+    source[phase].source_sha256 = hash(`global-source:${index}`);
+    source[phase].table_count = 1;
+  }
+  source.action_request_sha256 = hash(JSON.stringify({
+    schema_version: 2,
+    producer: "v12-native-acceptance-action-request/v2",
+    shard: "library-running",
+    case_id: "library.metric-profile-migration",
+    nonce,
+    action_id: source.action_id,
+    operation_id: source.operation_id,
+    operation_kind: source.operation_kind,
+    expected_result: source.operation_result,
+    source_probe: source.source_probe,
+    authority_tables: source.authority_tables,
+    probe_ids: [source.pre.probe_id, source.action.probe_id, source.post.probe_id],
+    ui_readback_id: "global-settings:ui",
+  }));
+  const { source_receipt_sha256: _sourceDigest, ...sourceUnsigned } = source;
+  source.source_receipt_sha256 = hash(JSON.stringify(sourceUnsigned));
+  unrelated.ui_readback.declared_action = source.action_id;
+  unrelated.ui_readback.declared_readback = "Global settings visible";
+  unrelated.ui_readback.readback_id = "global-settings:ui";
+  unrelated.ui_readback.source_receipt_sha256 = source.source_receipt_sha256;
+  const { ui_receipt_sha256: _uiDigest, ...uiUnsigned } = unrelated.ui_readback;
+  unrelated.ui_readback.ui_receipt_sha256 = hash(JSON.stringify(uiUnsigned));
+  const unrelatedHierarchy = `<hierarchy><node content-desc="V12_SOURCE_RECEIPT:${encodeURIComponent(JSON.stringify(source))}"/><node content-desc="V12_UI_READBACK:${encodeURIComponent(JSON.stringify(unrelated.ui_readback))}"/></hierarchy>`;
+  assert.throws(() => validateV12FunctionalCaseReadbacks({
+    hierarchy: unrelatedHierarchy,
+    report,
+    shard: "library-running",
+    caseId: "library.metric-profile-migration",
+    nonce,
+  }), /v12_maestro_source_readback_invalid/u,
+  "the review's recomputed unrelated-global-action/app_settings receipt must fail the source-owned case contract");
 });
 
 test("v1.2 functional flows require a real per-case action and post-action readback", () => {

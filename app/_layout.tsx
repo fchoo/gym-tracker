@@ -420,6 +420,22 @@ function RootLayoutAttempt({
       : createStrictIsolatedWorkoutRuntimeDependencies(v12ProductionRecoveryRuntime),
     [v12ProductionRecoveryRuntime?.databaseName],
   );
+  const v12NativeAcceptanceNonce = typeof searchParams.nonce === "string"
+    && /^[a-f0-9]{48}$/u.test(searchParams.nonce)
+    ? searchParams.nonce
+    : null;
+  const v12NativeAcceptanceDependencies = React.useMemo(
+    () => !v12NativeAcceptancePath || v12NativeAcceptanceNonce === null
+      || nativeIdentity.packageName !== "com.fchoo.gymtracker.devtest"
+      || nativeIdentity.buildProfile !== "development-test"
+      || nativeIdentity.nativeContractsEnabled !== true
+      || nativeIdentity.suite !== "v1.2-acceptance"
+      ? null
+      : createStrictIsolatedWorkoutRuntimeDependencies({
+        databaseName: `gym-tracker-v12-native-acceptance-${v12NativeAcceptanceNonce}.db`,
+      }),
+    [v12NativeAcceptanceNonce, v12NativeAcceptancePath],
+  );
   const phase20VisualRequest = phase20VisualGate({
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
     nativeContractsEnabled,
@@ -602,7 +618,13 @@ function RootLayoutAttempt({
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
           <AppearanceProvider store={isolatedNativeAppearanceStore}>
-            <V12NativeAcceptanceNavigator />
+            {v12NativeAcceptanceDependencies === null ? (
+              <V12NativeAcceptanceNavigator />
+            ) : (
+              <WorkoutAppRuntimeProvider dependencies={v12NativeAcceptanceDependencies}>
+                <V12NativeAcceptanceNavigator />
+              </WorkoutAppRuntimeProvider>
+            )}
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

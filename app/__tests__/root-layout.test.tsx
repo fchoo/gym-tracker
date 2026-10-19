@@ -428,17 +428,20 @@ describe("RootLayout attended preview isolation", () => {
             ? "workout.root-identity"
             : "library.remembered-state",
         fixture: "v12-synthetic-fixtures-r18",
+        nonce: "a".repeat(48),
       };
 
       await render(<RootLayout />);
 
       expect(screen.getByTestId("root-stack-screen-native-acceptance/[shard]"))
         .toBeOnTheScreen();
-      expect(screen.queryByTestId("workout-runtime-provider"))
-        .not.toBeOnTheScreen();
+      expect(screen.getByTestId("workout-runtime-provider"))
+        .toBeOnTheScreen();
       expect(screen.queryByTestId("startup-readiness-gate"))
         .not.toBeOnTheScreen();
-      expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+      const databaseName = `gym-tracker-v12-native-acceptance-${"a".repeat(48)}.db`;
+      expect(mockCreateRecoveryDependencies).toHaveBeenCalledWith(databaseName);
+      expect(mockRuntimeProviderDependencies).toHaveBeenCalledWith({ recoveryFixture: databaseName });
       expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
       expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
     },
