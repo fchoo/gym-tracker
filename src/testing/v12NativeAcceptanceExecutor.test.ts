@@ -470,7 +470,7 @@ describe("v1.2 native acceptance production executor", () => {
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
       kernel: kernel({ values: { mutation_kind: "favorite" } }), contract: favorite,
-    })).resolves.toMatchObject({ result: "committed", facts: { outcome: "already_committed" } });
+    })).rejects.toThrow("v12_native_acceptance_request_required");
 
     const authoritative = async (revision: number) => {
       const operation = await dispatchV12NativeAcceptanceProductionOperation({

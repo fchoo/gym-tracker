@@ -123,7 +123,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
             || [
               "library.exercise-favorites", "library.create-exercise", "library.custom-exercise",
               "library.custom-exercise-edit", "library.custom-exercise-hide", "library.custom-exercise-unhide",
-              "library.custom-exercise-archive", "library.custom-exercise-reactivate",
+              "library.custom-exercise-copy-bundled", "library.custom-exercise-archive", "library.custom-exercise-reactivate",
             ].includes(contract.caseId)
             ? "v12_native_acceptance_request_required"
             : "v12_native_acceptance_mutation_receipt_missing";
@@ -286,6 +286,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "library.custom-exercise-edit",
       "library.custom-exercise-hide",
       "library.custom-exercise-unhide",
+      "library.custom-exercise-copy-bundled",
       "library.custom-exercise",
       "library.custom-exercise-archive",
       "library.custom-exercise-reactivate",

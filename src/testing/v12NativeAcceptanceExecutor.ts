@@ -22,6 +22,7 @@ import {
 } from "../domains/running/contracts";
 import {
   archiveCustomExercise,
+  createCustomCopy,
   createCustomExercise,
   editCustomExercise,
   previewCustomExerciseArchive,
@@ -30,6 +31,9 @@ import {
   setExerciseHidden,
 } from "../domains/library/customExerciseCommands";
 import type { CustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
+import { createContentRepository } from "../platform/sqlite/repositories/contentRepository";
+import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
+import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -737,6 +741,7 @@ const CUSTOM_CREATE_HANDLER = "custom-exercise.custom-exercise-repository.create
 const CUSTOM_EDIT_HANDLER = "custom-exercise.custom-exercise-repository.edit-custom-exercise";
 const CUSTOM_HIDDEN_HANDLER = "custom-exercise.custom-exercise-repository.set-exercise-hidden";
 const CUSTOM_ARCHIVE_HANDLER = "custom-exercise.custom-exercise-repository.set-custom-exercise-archived";
+const CUSTOM_COPY_HANDLER = "custom-exercise.custom-exercise-repository.create-custom-copy";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
   return {
@@ -897,6 +902,85 @@ async function executeCustomArchive(input: V12NativeAcceptanceProductionHandlerI
   });
 }
 
+async function bundledExerciseSource(kernel: SqliteKernel) {
+  const [source] = await kernel.queryAll<Readonly<{
+    id: string;
+    revision: number;
+    name: string;
+  }>>(
+    `SELECT id, revision, name
+     FROM exercises
+     WHERE origin = 'bundled'
+       AND metric_profile = 'load_reps'
+     ORDER BY id
+     LIMIT 1`,
+  );
+  return source;
+}
+
+function copiedCustomExerciseId(request: V12NativeAcceptanceRequest): string {
+  return `v12:custom-copy:${request.nonce}`;
+}
+
+async function prepareCustomCopy(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  const request = requireRequest(input);
+  await createContentRepository(input.kernel).importAcceptedCatalog({
+    catalog: await parseAcceptedPhase2Catalog(runtimeSha256),
+  });
+  const source = await bundledExerciseSource(input.kernel);
+  if (source === undefined || source.revision < 1 || source.name.length === 0) {
+    throw new Error("v12_native_acceptance_copy_source_missing");
+  }
+  if (!copiedCustomExerciseId(request).includes(request.nonce)) {
+    throw new Error("v12_native_acceptance_copy_nonce_unbound");
+  }
+}
+
+async function executeCustomCopy(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = requireCustomExerciseRepository(input);
+  const requestId = customExerciseActionRequestId(request);
+  const before = await customExerciseReceipt(input.kernel, requestId);
+  const source = await bundledExerciseSource(input.kernel);
+  const exerciseId = copiedCustomExerciseId(request);
+  if (before === undefined) {
+    if (source === undefined) throw new Error("v12_native_acceptance_copy_precondition_missing");
+    const result = await createCustomCopy({
+      repository,
+      invalidate: async () => undefined,
+      input: {
+        requestId,
+        sourceExerciseId: source.id,
+        expectedSourceRevision: source.revision,
+        exerciseId,
+        name: `V12 copy of ${source.name}`,
+        createdAtMs: V12_RUNNING_SEED_AT_MS + 1,
+      },
+    });
+    if (result.outcome !== "committed" || result.exercise.exerciseId !== exerciseId) {
+      throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+    }
+  }
+  return customMutationFacts({
+    handler: input,
+    before,
+    expectedMutationKind: "copy",
+    verify: async () => {
+      const [copied] = await input.kernel.queryAll<Readonly<{
+        id: string;
+        origin: string;
+        revision: number;
+      }>>(
+        "SELECT id, origin, revision FROM exercises WHERE id = ? AND origin = 'custom'",
+        [exerciseId],
+      );
+      if (copied === undefined || copied.revision < 1) {
+        throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+      }
+    },
+  });
+}
+
 /**
  * Executes the case-owned production boundary. Phase 13 cases use their exact
  * repository contract. Workout and Library cases use a case-scoped query or
@@ -1011,6 +1095,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [CUSTOM_ARCHIVE_HANDLER]: Object.freeze({
     prepare: prepareCustomFavorite,
     execute: executeCustomArchive,
+  }),
+  [CUSTOM_COPY_HANDLER]: Object.freeze({
+    prepare: prepareCustomCopy,
+    execute: executeCustomCopy,
   }),
 });
 
