@@ -294,6 +294,7 @@ const phase20EvidenceProjects = Object.freeze([
   Object.freeze({
     name: "cli-coverage",
     concurrency: 1,
+    timeoutMs: 45 * 60_000,
     tests: [...phase20CliCoverageTests],
     modules: Object.freeze([
       "scripts/capture-v12-visual.mjs",
@@ -347,11 +348,12 @@ const phase20CoverageClassifications = Object.freeze({
   required_percent: 100,
   metrics: Object.freeze(["statements", "branches", "functions", "lines"]),
   node_v8_projects: Object.freeze(phase20EvidenceProjects
-    .map(({ name, coverage, modules = [], tests }) => Object.freeze({
+    .map(({ name, coverage, modules = [], tests, timeoutMs }) => Object.freeze({
       name,
       coverage: coverage !== false,
       modules: Object.freeze([...modules]),
       tests: Object.freeze([...tests]),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
     }))),
   jest_istanbul_modules: Object.freeze([...phase20IntegrityCriticalFiles]),
 });

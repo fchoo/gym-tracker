@@ -326,6 +326,23 @@ test("coverage projects reject a successful test process with skipped tests", as
   );
 });
 
+test("a project-specific timeout overrides the shorter scheduler default", async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-project-timeout-override-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(path.join(root, "bounded.test.mjs"), [
+    "import { setTimeout as delay } from 'node:timers/promises';",
+    "import test from 'node:test';",
+    "test('finishes inside its project allowance', async () => { await delay(100); });",
+    "",
+  ].join("\n"));
+  await assert.doesNotReject(() => runPhase20SubprocessCoverage({
+    projectRoot: root,
+    outputDirectory: path.join(root, "coverage"),
+    projects: [{ name: "bounded", coverage: false, tests: ["bounded.test.mjs"], timeoutMs: 1_000 }],
+    projectTimeoutMs: 50,
+  }));
+});
+
 test("a converted raw V8 directory is gone before the next project starts", async (t) => {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-coverage-raw-lifecycle-"));
   const outputDirectory = path.join(root, "coverage");

@@ -365,7 +365,7 @@ export async function runPhase20SubprocessCoverage({
           projectRoot,
           rawDirectory,
           testReportPath,
-          projectTimeoutMs,
+          projectTimeoutMs: project.timeoutMs ?? projectTimeoutMs,
           terminateGraceMs,
           signal,
           onProjectSignal,
