@@ -141,6 +141,11 @@ test('GAR resolver requires the explicit domain, UI action, and readback members
         ...(kind === 'readback' ? { junit: { testcase: id, result: state } } : { producer: 'v12-garmin-shard/v3', schema: 'matching/v1' }) };
     return createV12GarminAuthenticatedMember({ kind, id, result: state, runIdentity, bindings, facts });
   };
+  assert.throws(() => createV12GarminAuthenticatedMember({
+    kind: 'domain', id: 'unknown-case', result: 'PASS', runIdentity,
+    bindings: [{ artifact: `artifacts/native/v1.2/${runIdentity.run_id}/garmin/unknown.json`, sha256: 'a'.repeat(64) }],
+    facts: { case_id: 'unknown-case' },
+  }), /garmin_selector_invalid/u);
   const required = [
     ...selector.domain_case_ids.map(id => [`garmin-domain:${id}`, member('domain', id)]),
     ...selector.ui_action_ids.map(id => [`garmin-ui:${id}`, member('ui', id)]),

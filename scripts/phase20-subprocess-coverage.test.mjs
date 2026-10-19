@@ -1060,6 +1060,37 @@ test("native adapter supervisor forwards host cancellation through its abort han
   assert.equal(result.signal, null);
 });
 
+test("direct native adapter supervisor entry forwards cancellation after child readiness", { timeout: 20_000 }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-native-adapter-direct-ready-"));
+  const ready = path.join(root, "child.ready");
+  try {
+    const supervisor = spawn(process.execPath, [
+      new URL("./v12-native-adapter.mjs", import.meta.url).pathname,
+      "--supervise",
+      "10000",
+      process.execPath,
+      "--input-type=module",
+      "--eval",
+      `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(ready)}, "ready\\n"); setInterval(() => {}, 1000);`,
+    ], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    supervisor.stdin.end();
+    for (let attempt = 0; attempt < 1_000 && !existsSync(ready); attempt += 1) await delay(10);
+    assert.equal(readFileSync(ready, "utf8"), "ready\n");
+    supervisor.kill("SIGTERM");
+    const result = await new Promise((resolve, reject) => {
+      supervisor.once("error", reject);
+      supervisor.once("close", (status, signal) => resolve({ status, signal }));
+    });
+    assert.deepEqual(result, { status: 1, signal: null });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("visual capture and comparison cover malformed PNG, flow, timer, cursor, and producer paths", {
   skip: process.env.V12_PHASE20_COVERAGE_FIXTURE === undefined,
   timeout: 5 * 60_000,
