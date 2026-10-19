@@ -13,6 +13,8 @@ import {
   runMultiPlanRunningContractCase,
   type MultiPlanRunningContractCaseId,
 } from "./contracts/multiPlanRunning.contract";
+import type { RunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
+import { runningTargetForDistance, type RunningPlanAggregate } from "../domains/running/contracts";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -100,11 +102,22 @@ type V12NativeAcceptanceProductionHandlerInput = Readonly<{
   kernel: SqliteKernel;
   contract: V12NativeAcceptanceCaseContract;
   request?: V12NativeAcceptanceRequest;
+  runtime?: V12NativeAcceptanceProductionRuntime;
+}>;
+
+/**
+ * Production command ports deliberately live at the acceptance boundary.  The
+ * executor may read a receipt to prove a command, but it can never mint one:
+ * writes remain inside the owning repository/domain runtime.
+ */
+export type V12NativeAcceptanceProductionRuntime = Readonly<{
+  running?: RunningPlanRuntimePort;
 }>;
 
 export type V12NativeAcceptanceProductionHandler = Readonly<{
   handlerId: string;
   operationIds: readonly string[];
+  prepare?(input: V12NativeAcceptanceProductionHandlerInput): Promise<void>;
   execute(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>>;
 }>;
 
@@ -237,6 +250,132 @@ function operationFacts(input: Readonly<{
   });
 }
 
+const RUNNING_GOAL_EDIT_HANDLER = "running-plan.running-plan-repository.save-running-target";
+const V12_RUNNING_SEED_AT_MS = 1_800_000_000_000;
+
+function requireRequest(input: V12NativeAcceptanceProductionHandlerInput): V12NativeAcceptanceRequest {
+  if (input.request === undefined || !NONCE.test(input.request.nonce)) {
+    throw new Error("v12_native_acceptance_request_required");
+  }
+  return input.request;
+}
+
+function requireRunningRuntime(input: V12NativeAcceptanceProductionHandlerInput): RunningPlanRuntimePort {
+  const runtime = input.runtime?.running;
+  if (runtime === undefined) throw new Error("v12_native_acceptance_running_runtime_required");
+  return runtime;
+}
+
+function runningFixturePlanId(request: V12NativeAcceptanceRequest): string {
+  return `v12:running:${request.nonce}`;
+}
+
+function runningSeedRequestId(request: V12NativeAcceptanceRequest): string {
+  return `v12:running:${request.nonce}:seed`;
+}
+
+function runningActionRequestId(request: V12NativeAcceptanceRequest): string {
+  return `v12:running:${request.caseId}:${request.nonce}:action`;
+}
+
+function runningGoalFixture(planId: string) {
+  return Object.freeze({
+    version: 1 as const,
+    id: planId,
+    name: "V12 acceptance Running goal fixture",
+    revision: 1,
+    createdAtMs: V12_RUNNING_SEED_AT_MS,
+    goal: Object.freeze({
+      version: 1 as const,
+      id: `${planId}:goal:1`,
+      planId,
+      revision: 1,
+      goalDistanceMeters: 3_000,
+      targetDurationMs: 1_800_000,
+      trainingDays: ["Monday"] as RunningPlanAggregate["goal"]["trainingDays"],
+      runsPerWeek: 1,
+      longRunDay: "Monday" as const,
+      currentWeeklyDistanceMeters: 10_000,
+      createdAtMs: V12_RUNNING_SEED_AT_MS,
+    }),
+    sessions: Object.freeze([]),
+  });
+}
+
+async function readRunningReceipt(kernel: SqliteKernel, requestId: string) {
+  const [receipt] = await kernel.queryAll<Readonly<{
+    request_id: string;
+    request_sha256: string;
+    operation: string;
+    plan_id: string;
+    expected_plan_revision: number;
+    result_json: string;
+    committed_at_ms: number;
+  }>>(
+    `SELECT request_id, request_sha256, operation, plan_id, expected_plan_revision, result_json, committed_at_ms
+     FROM running_plan_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
+async function prepareRunningGoalEdit(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  const request = requireRequest(input);
+  const runtime = requireRunningRuntime(input);
+  const planId = runningFixturePlanId(request);
+  if (await runtime.loadPlan(planId) !== null) return;
+  await runtime.createInactivePlan({
+    requestId: runningSeedRequestId(request),
+    plan: runningGoalFixture(planId),
+  });
+  const seeded = await runtime.loadPlan(planId);
+  if (seeded === null || seeded.revision !== 1 || seeded.goal.goalDistanceMeters !== 3_000) {
+    throw new Error("v12_native_acceptance_running_seed_invalid");
+  }
+}
+
+async function executeRunningGoalEdit(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const runtime = requireRunningRuntime(input);
+  const actionRequestId = runningActionRequestId(request);
+  const planId = runningFixturePlanId(request);
+  const before = await readRunningReceipt(input.kernel, actionRequestId);
+  if (before === undefined) {
+    const plan = await runtime.loadPlan(planId);
+    if (plan === null || plan.revision < 1) throw new Error("v12_native_acceptance_running_precondition_missing");
+    const result = await runtime.saveRunningTarget({
+      planId,
+      requestId: actionRequestId,
+      expectedSourceRevision: plan.revision,
+      goalDistanceMeters: 5_000,
+      targetDurationMs: 1_950_000,
+      trainingDays: ["Monday"],
+    });
+    if (result.outcome !== "committed" || runningTargetForDistance(result.plan, 5_000)?.goalDistanceMeters !== 5_000) {
+      throw new Error("v12_native_acceptance_running_postcondition_failed");
+    }
+  }
+  const receipt = await readRunningReceipt(input.kernel, actionRequestId);
+  const plan = await runtime.loadPlan(planId);
+  if (receipt === undefined || receipt.operation !== "edit" || receipt.plan_id !== planId
+    || receipt.request_sha256.length !== 64 || plan === null || runningTargetForDistance(plan, 5_000)?.goalDistanceMeters !== 5_000) {
+    throw new Error("v12_native_acceptance_running_receipt_invalid");
+  }
+  if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  return Object.freeze({
+    result: "committed" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback,
+      receiptId: stableJson(Object.freeze({ request_id: receipt.request_id })),
+      outcome: before === undefined ? "committed" : "already_committed",
+      committedEffects: before === undefined ? 1 : 0,
+    }),
+  });
+}
+
 /**
  * Executes the case-owned production boundary. Phase 13 cases use their exact
  * repository contract. Workout and Library cases use a case-scoped query or
@@ -312,15 +451,27 @@ const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
   new Map<string, string[]>(),
 );
 
+const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptanceProductionHandler, "prepare" | "execute">>> = Object.freeze({
+  [RUNNING_GOAL_EDIT_HANDLER]: Object.freeze({
+    prepare: prepareRunningGoalEdit,
+    execute: executeRunningGoalEdit,
+  }),
+});
+
 export const V12_NATIVE_ACCEPTANCE_PRODUCTION_HANDLER_REGISTRY: Readonly<Record<string, V12NativeAcceptanceProductionHandler>> = Object.freeze(
-  Object.fromEntries([...productionHandlerEntries].map(([handlerId, operationIds]) => [
-    handlerId,
-    Object.freeze({
+  Object.fromEntries([...productionHandlerEntries].map(([handlerId, operationIds]) => {
+    const executor = productionHandlerExecutors[handlerId];
+    return [
       handlerId,
-      operationIds: Object.freeze([...operationIds]),
-      execute: (input: V12NativeAcceptanceProductionHandlerInput) => executeV12NativeAcceptanceProductionOperation(input),
-    }),
-  ])),
+      Object.freeze({
+        handlerId,
+        operationIds: Object.freeze([...operationIds]),
+        ...(executor?.prepare === undefined ? {} : { prepare: executor.prepare }),
+        execute: executor?.execute
+          ?? ((input: V12NativeAcceptanceProductionHandlerInput) => executeV12NativeAcceptanceProductionOperation(input)),
+      }),
+    ];
+  })),
 );
 
 export function resolveV12NativeAcceptanceProductionHandler(
@@ -349,10 +500,17 @@ export function assertV12NativeAcceptanceProductionHandlerRegistry(
 
 assertV12NativeAcceptanceProductionHandlerRegistry();
 
+/** Must run before source pre-state is captured so production setup is not
+ * misreported as the UI/action mutation. */
+export async function prepareV12NativeAcceptanceProductionOperation(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  await resolveV12NativeAcceptanceProductionHandler(input.contract).prepare?.(input);
+}
+
 export async function dispatchV12NativeAcceptanceProductionOperation(input: Readonly<{
   kernel: SqliteKernel;
   contract: V12NativeAcceptanceCaseContract;
   request?: V12NativeAcceptanceRequest;
+  runtime?: V12NativeAcceptanceProductionRuntime;
 }>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>> {
   return resolveV12NativeAcceptanceProductionHandler(input.contract).execute(input);
 }
@@ -389,6 +547,11 @@ export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
   kernel: SqliteKernel;
   request: V12NativeAcceptanceRequest;
   sha256(value: string): Promise<string>;
+  /** Case setup uses production commands and must finish before pre-state. */
+  prepareOperation?(input: Readonly<{
+    contract: V12NativeAcceptanceCaseContract;
+    request: V12NativeAcceptanceRequest;
+  }>): Promise<void>;
   executeOperation(input: Readonly<{
     contract: V12NativeAcceptanceCaseContract;
     request: V12NativeAcceptanceRequest;
@@ -418,6 +581,7 @@ export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
     ui_readback_id: contract.uiReadback.id,
   });
   const actionRequestSha256 = await input.sha256(JSON.stringify(actionRequest));
+  await input.prepareOperation?.({ contract, request });
   const preRead = await readAuthorityState({ ...input, contract, probe: contract.probes.pre });
   const operationResult = await input.executeOperation({ contract, request });
   if (operationResult.result !== contract.operation.expectedResult) throw new Error("v12_native_acceptance_operation_result_invalid");

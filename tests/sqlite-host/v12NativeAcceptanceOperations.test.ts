@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 
 import type {
   SqliteConnection,
@@ -11,7 +12,13 @@ import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS } from "../../src/testing/contracts/phase15Workout.contract";
-import { dispatchV12NativeAcceptanceProductionOperation } from "../../src/testing/v12NativeAcceptanceExecutor";
+import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
+import {
+  dispatchV12NativeAcceptanceProductionOperation,
+  executeV12NativeAcceptanceReadAction,
+  prepareV12NativeAcceptanceProductionOperation,
+  type V12NativeAcceptanceRequest,
+} from "../../src/testing/v12NativeAcceptanceExecutor";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(
@@ -111,7 +118,10 @@ describe("v1.2 Workout and Library production operation registry", () => {
             messages.push(current.message);
             current = current.cause;
           }
-          if (!messages.includes("v12_native_acceptance_mutation_receipt_missing")) {
+          const expectedFailure = contract.caseId === "library.running-goal-edit"
+            ? "v12_native_acceptance_request_required"
+            : "v12_native_acceptance_mutation_receipt_missing";
+          if (!messages.includes(expectedFailure)) {
             throw new Error(`${contract.caseId}:${messages.join(":")}`);
           }
         }
@@ -124,5 +134,48 @@ describe("v1.2 Workout and Library production operation registry", () => {
         await expect(execution).rejects.toThrow("v12_native_acceptance_postcondition_failed");
       }
     }
+  });
+
+  it("uses the real Running command port for a nonce-bound goal mutation and its exact replay", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ caseId }) => caseId === "library.running-goal-edit")!;
+    const request: V12NativeAcceptanceRequest = {
+      shard: "library-running",
+      caseId: contract.caseId,
+      fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Library and running",
+      source: "PHASE17_CASE_ACTION_CONTRACTS",
+      requirement: contract.requirement,
+      action: contract.actionId,
+      readback: contract.uiReadback.label,
+      sourceProbe: contract.sourceProbe,
+      authorityTables: contract.probes.post.tables,
+      nonce: "b".repeat(48),
+    };
+    let id = 0;
+    const runtime = createRunningPlanRuntimePort(kernel, {
+      nowMs: () => 1_800_000_000_000,
+      randomUUID: () => `host-${++id}`,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+    });
+
+    const execute = () => executeV12NativeAcceptanceReadAction({
+      kernel,
+      request,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest, runtime: { running: runtime },
+      }),
+      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest, runtime: { running: runtime },
+      }),
+    });
+    const first = await execute();
+    const replay = await execute();
+
+    expect(first.source_receipt).toMatchObject({ command_outcome: "committed", committed_effects: 1 });
+    expect(replay.source_receipt).toMatchObject({ command_outcome: "already_committed", committed_effects: 0 });
+    expect(first.source_receipt.command_receipt_id).toBe(replay.source_receipt.command_receipt_id);
+    expect(first.source_receipt.command_receipt_id).toContain(request.nonce);
   });
 });

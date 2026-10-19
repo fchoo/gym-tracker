@@ -402,6 +402,7 @@ import {
 import {
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
+  prepareV12NativeAcceptanceProductionOperation,
   type V12NativeAcceptanceReadbacks,
   type V12NativeAcceptanceRequest,
 } from "../testing/v12NativeAcceptanceExecutor";
@@ -5265,10 +5266,17 @@ export function WorkoutAppRuntimeProvider({
         kernel: requireServices().kernel,
         request,
         sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        prepareOperation: ({ contract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+          kernel: requireServices().kernel,
+          contract,
+          request: operationRequest,
+          runtime: { running: requireServices().runningPlans },
+        }),
         executeOperation: ({ contract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
           kernel: requireServices().kernel,
           contract,
           request: operationRequest,
+          runtime: { running: requireServices().runningPlans },
         }),
       });
     },
