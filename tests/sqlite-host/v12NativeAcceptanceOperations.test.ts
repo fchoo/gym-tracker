@@ -13,6 +13,7 @@ import { migrations } from "../../src/platform/sqlite/migrations";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS } from "../../src/testing/contracts/phase15Workout.contract";
 import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
+import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
 import {
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
@@ -118,7 +119,8 @@ describe("v1.2 Workout and Library production operation registry", () => {
             messages.push(current.message);
             current = current.cause;
           }
-          const expectedFailure = contract.caseId.startsWith("library.running-") && contract.caseId !== "library.running-conflict"
+          const expectedFailure = (contract.caseId.startsWith("library.running-") && contract.caseId !== "library.running-conflict")
+            || contract.caseId === "library.exercise-favorites"
             ? "v12_native_acceptance_request_required"
             : "v12_native_acceptance_mutation_receipt_missing";
           if (!messages.includes(expectedFailure)) {
@@ -232,5 +234,45 @@ describe("v1.2 Workout and Library production operation registry", () => {
         });
       }
     }
+  });
+
+  it("uses the custom-exercise repository to commit and replay a nonce-bound favorite mutation", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ caseId }) => caseId === "library.exercise-favorites")!;
+    const request: V12NativeAcceptanceRequest = {
+      shard: "library-running",
+      caseId: contract.caseId,
+      fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Library and running",
+      source: "PHASE17_CASE_ACTION_CONTRACTS",
+      requirement: contract.requirement,
+      action: contract.actionId,
+      readback: contract.uiReadback.label,
+      sourceProbe: contract.sourceProbe,
+      authorityTables: contract.probes.post.tables,
+      nonce: "d".repeat(48),
+    };
+    const execute = () => executeV12NativeAcceptanceReadAction({
+      kernel,
+      request,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+        runtime: { customExercises: createCustomExerciseRepository(kernel) },
+      }),
+      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+        runtime: { customExercises: createCustomExerciseRepository(kernel) },
+      }),
+    });
+
+    const first = await execute();
+    const replay = await execute();
+    expect(first.source_receipt).toMatchObject({ command_outcome: "committed", committed_effects: 1 });
+    expect(replay.source_receipt).toMatchObject({
+      command_outcome: "already_committed",
+      committed_effects: 0,
+      command_receipt_id: first.source_receipt.command_receipt_id,
+    });
   });
 });

@@ -20,6 +20,11 @@ import {
   type RunningSessionKind,
   type RunningSessionRevision,
 } from "../domains/running/contracts";
+import {
+  createCustomExercise,
+  setExerciseFavorite,
+} from "../domains/library/customExerciseCommands";
+import type { CustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -117,6 +122,7 @@ type V12NativeAcceptanceProductionHandlerInput = Readonly<{
  */
 export type V12NativeAcceptanceProductionRuntime = Readonly<{
   running?: RunningPlanRuntimePort;
+  customExercises?: CustomExerciseRepository;
 }>;
 
 export type V12NativeAcceptanceProductionHandler = Readonly<{
@@ -600,6 +606,128 @@ async function executeRunningGoalEdit(input: V12NativeAcceptanceProductionHandle
   });
 }
 
+const CUSTOM_FAVORITE_HANDLER = "custom-exercise.custom-exercise-repository.set-exercise-favorite";
+
+function requireCustomExerciseRepository(input: V12NativeAcceptanceProductionHandlerInput): CustomExerciseRepository {
+  const repository = input.runtime?.customExercises;
+  if (repository === undefined) throw new Error("v12_native_acceptance_custom_exercise_runtime_required");
+  return repository;
+}
+
+function customExerciseFixtureId(request: V12NativeAcceptanceRequest): string {
+  return `v12:custom-exercise:${request.nonce}`;
+}
+
+function customExerciseSeedRequestId(request: V12NativeAcceptanceRequest): string {
+  return `v12:custom-exercise:${request.nonce}:seed`;
+}
+
+function customExerciseActionRequestId(request: V12NativeAcceptanceRequest): string {
+  return `v12:custom-exercise:${request.caseId}:${request.nonce}:action`;
+}
+
+async function customExerciseRow(kernel: SqliteKernel, exerciseId: string) {
+  const [row] = await kernel.queryAll<Readonly<{ id: string; revision: number }>>(
+    "SELECT id, revision FROM exercises WHERE id = ? AND origin = 'custom'",
+    [exerciseId],
+  );
+  return row;
+}
+
+async function customExercisePreference(kernel: SqliteKernel, exerciseId: string) {
+  const [row] = await kernel.queryAll<Readonly<{ favorite: number; revision: number }>>(
+    "SELECT favorite, revision FROM exercise_owner_preferences WHERE exercise_id = ?",
+    [exerciseId],
+  );
+  return row;
+}
+
+async function customExerciseReceipt(kernel: SqliteKernel, requestId: string) {
+  const [row] = await kernel.queryAll<Readonly<{
+    request_id: string;
+    mutation_kind: string;
+    request_json: string;
+    result_json: string;
+    committed_at_ms: number;
+  }>>(
+    `SELECT request_id, mutation_kind, request_json, result_json, committed_at_ms
+     FROM custom_exercise_mutation_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return row;
+}
+
+async function prepareCustomFavorite(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  const request = requireRequest(input);
+  const repository = requireCustomExerciseRepository(input);
+  const exerciseId = customExerciseFixtureId(request);
+  if (await customExerciseRow(input.kernel, exerciseId) !== undefined) return;
+  const created = await createCustomExercise({
+    repository,
+    invalidate: async () => undefined,
+    input: {
+      requestId: customExerciseSeedRequestId(request),
+      exerciseId,
+      name: "V12 nonce-bound custom exercise",
+      aliases: ["V12 custom"],
+      exerciseType: "strength",
+      movementClass: "compound",
+      primaryMuscles: ["quadriceps"],
+      secondaryMuscles: ["glutes"],
+      equipment: ["barbell"],
+      metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+      defaultRestSeconds: 60,
+      progression: { kind: "manual_hold", version: 1 },
+      createdAtMs: V12_RUNNING_SEED_AT_MS,
+    },
+  });
+  if (created.outcome !== "committed" || created.exercise.exerciseId !== exerciseId) {
+    throw new Error("v12_native_acceptance_custom_exercise_seed_invalid");
+  }
+}
+
+async function executeCustomFavorite(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = requireCustomExerciseRepository(input);
+  const requestId = customExerciseActionRequestId(request);
+  const before = await customExerciseReceipt(input.kernel, requestId);
+  const exerciseId = customExerciseFixtureId(request);
+  if (before === undefined) {
+    const preference = await customExercisePreference(input.kernel, exerciseId);
+    const result = await setExerciseFavorite({
+      repository,
+      invalidate: async () => undefined,
+      input: {
+        requestId,
+        exerciseId,
+        expectedPreferenceRevision: preference?.revision ?? null,
+        favorite: true,
+        updatedAtMs: V12_RUNNING_SEED_AT_MS + 1,
+      },
+    });
+    if (result.outcome !== "committed" || result.favorite !== true) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+  }
+  const receipt = await customExerciseReceipt(input.kernel, requestId);
+  const preference = await customExercisePreference(input.kernel, exerciseId);
+  if (receipt === undefined || receipt.mutation_kind !== "favorite" || !receipt.request_json.includes(requestId)
+    || preference === undefined || preference.favorite !== 1) {
+    throw new Error("v12_native_acceptance_custom_exercise_receipt_invalid");
+  }
+  if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  return Object.freeze({
+    result: "committed" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback,
+      receiptId: stableJson(Object.freeze({ request_id: receipt.request_id })),
+      outcome: before === undefined ? "committed" : "already_committed",
+      committedEffects: before === undefined ? 1 : 0,
+    }),
+  });
+}
+
 /**
  * Executes the case-owned production boundary. Phase 13 cases use their exact
  * repository contract. Workout and Library cases use a case-scoped query or
@@ -695,6 +823,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [RUNNING_LIFECYCLE_HANDLER]: Object.freeze({
     prepare: prepareRunningFamilyB,
     execute: executeRunningLifecycle,
+  }),
+  [CUSTOM_FAVORITE_HANDLER]: Object.freeze({
+    prepare: prepareCustomFavorite,
+    execute: executeCustomFavorite,
   }),
 });
 

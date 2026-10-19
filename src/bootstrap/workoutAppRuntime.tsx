@@ -5270,13 +5270,19 @@ export function WorkoutAppRuntimeProvider({
           kernel: requireServices().kernel,
           contract,
           request: operationRequest,
-          runtime: { running: requireServices().runningPlans },
+          runtime: {
+            running: requireServices().runningPlans,
+            customExercises: requireServices().customExerciseRepository,
+          },
         }),
         executeOperation: ({ contract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
           kernel: requireServices().kernel,
           contract,
           request: operationRequest,
-          runtime: { running: requireServices().runningPlans },
+          runtime: {
+            running: requireServices().runningPlans,
+            customExercises: requireServices().customExerciseRepository,
+          },
         }),
       });
     },
