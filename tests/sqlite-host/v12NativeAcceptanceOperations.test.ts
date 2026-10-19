@@ -152,6 +152,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
         "workout.complete-failure", "workout.readonly-presentation", "workout.accessibility", "workout.performance",
         "workout.completion-review",
         "library.exercise-search",
+        "library.plan-groups", "library.owned-summary", "library.editor-draft-guards", "library.load-error-recovery", "workout.plan-after-workout",
         "workout.warmup-order", "workout.completion-collapse", "workout.exercise-menu",
         "workout.timing-flat", "workout.rest-dock",
       ].includes(contract.caseId) || contract.operation.handlerId.startsWith("running-plan.")) {

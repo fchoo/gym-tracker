@@ -44,6 +44,7 @@ import { createWorkoutRepository } from "../platform/sqlite/repositories/workout
 import { createWorkoutOutcomeRepository } from "../platform/sqlite/repositories/workoutOutcomeRepository";
 import { createRestRepository } from "../platform/sqlite/repositories/restRepository";
 import { createWorkoutPreferenceRepository } from "../platform/sqlite/repositories/workoutPreferenceRepository";
+import { createOwnedPlanRepository } from "../platform/sqlite/repositories/ownedPlanRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
@@ -578,6 +579,42 @@ async function executeLibraryExerciseSearch(input: V12NativeAcceptanceProduction
   const page = await createLibrarySearchRepository(input.kernel).searchExercises({ query: "press" });
   if (page.state !== "page" || page.items.length === 0 || page.items.some((item) => item.canonicalName.trim() === "")) {
     throw new Error("v12_native_acceptance_library_search_postcondition_failed");
+  }
+  return Object.freeze({ result: "read" as const, facts: operationFacts({
+    contract: input.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input),
+  }) });
+}
+
+function ownedPlanReadFixtureId(request: V12NativeAcceptanceRequest): string {
+  return `v12:owned-plan-read:${request.nonce}`;
+}
+
+async function prepareOwnedPlanReadFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  const request = requireRequest(input);
+  const repository = createOwnedPlanRepository(input.kernel);
+  const planId = ownedPlanReadFixtureId(request);
+  if (await repository.read(planId) !== null) return;
+  const result = await repository.createDraft({
+    requestId: `v12:owned-plan-read:${request.nonce}:seed`,
+    requestSha256: await runtimeSha256(`v12:owned-plan-read:${request.nonce}:seed`),
+    planId,
+    name: "V12 owned-plan read fixture",
+    dayId: `v12:owned-plan-read:${request.nonce}:day`,
+    dayName: "V12 owned-plan day",
+    createdAtMs: workoutFixtureActivatedAt(request),
+  });
+  if (result.outcome !== "committed" || result.plan.id !== planId || result.plan.days.length !== 1) {
+    throw new Error("v12_native_acceptance_owned_plan_read_seed_invalid");
+  }
+}
+
+async function executeOwnedPlanRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  await prepareOwnedPlanReadFixture(input);
+  const request = requireRequest(input);
+  const plan = await createOwnedPlanRepository(input.kernel).read(ownedPlanReadFixtureId(request));
+  if (plan === null || plan.name !== "V12 owned-plan read fixture" || plan.days.length !== 1 || plan.days[0]?.name !== "V12 owned-plan day") {
+    throw new Error("v12_native_acceptance_owned_plan_read_postcondition_failed");
   }
   return Object.freeze({ result: "read" as const, facts: operationFacts({
     contract: input.contract,
@@ -2227,6 +2264,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "library.library-search-repository.search-exercises": Object.freeze({
     prepare: prepareLibrarySearch,
     execute: executeLibraryExerciseSearch,
+  }),
+  "owned-plan.owned-plan-repository.read": Object.freeze({
+    prepare: prepareOwnedPlanReadFixture,
+    execute: executeOwnedPlanRead,
   }),
   [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
     prepare: prepareRunningFamilyB,
