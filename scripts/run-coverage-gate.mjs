@@ -282,6 +282,7 @@ const phase20EvidenceProjects = Object.freeze([
     name: "native-fixtures",
     concurrency: 1,
     coverage: false,
+    timeoutMs: 45 * 60_000,
     tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)),
   }),
   Object.freeze({
