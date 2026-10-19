@@ -45,11 +45,14 @@ import { createWorkoutOutcomeRepository } from "../platform/sqlite/repositories/
 import { createRestRepository } from "../platform/sqlite/repositories/restRepository";
 import { createWorkoutPreferenceRepository } from "../platform/sqlite/repositories/workoutPreferenceRepository";
 import { createOwnedPlanRepository } from "../platform/sqlite/repositories/ownedPlanRepository";
+import { createStarterPlanRepository } from "../platform/sqlite/repositories/starterPlanRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
+import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
+import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
 import { parseFullBodyFoundation } from "../domains/content";
-import { activateStarterPlan } from "../domains/plans";
+import { activateStarterPlan, createStarterPlanActivationConfirmationToken, parseAcceptedStarterPlanPack } from "../domains/plans";
 import { startWorkout } from "../domains/workout/startWorkout";
 import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
 import { addExercise, removeExercise, reorderExercises, replaceExercise } from "../domains/workout/sessionExerciseCommands";
@@ -620,6 +623,99 @@ async function executeOwnedPlanRead(input: V12NativeAcceptanceProductionHandlerI
     contract: input.contract,
     authoritativeReadback: await workoutAuthorityReadback(input),
   }) });
+}
+
+function prettyJson(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function acceptedStarterSchedule(template: Awaited<ReturnType<typeof parseAcceptedStarterPlanPack>>["templates"][number]) {
+  if (template.scheduleSuggestion.mode === "rotation") {
+    return Object.freeze({
+      startLocalDate: "2027-01-15",
+      timeZone: "UTC",
+      mode: "rotation" as const,
+      bindings: template.scheduleSuggestion.rotation.map((planDaySourceId, ordinal) => ({ planDaySourceId, ordinal })),
+    });
+  }
+  const suggestion = template.scheduleSuggestion;
+  return Object.freeze({
+    startLocalDate: "2027-01-15",
+    timeZone: "UTC",
+    mode: "weekday" as const,
+    bindings: suggestion.cycleWeeks.flatMap((week, weekIndex) => week.map((binding, ordinal) => ({
+      planDaySourceId: binding.dayId,
+      ordinal: suggestion.cycleWeeks.slice(0, weekIndex).reduce((count, value) => count + value.length, 0) + ordinal,
+      weekIndex,
+      weekday: binding.weekday,
+    }))),
+  });
+}
+
+async function executeAcceptedStarterActivation(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  await createContentRepository(input.kernel).importAcceptedCatalog({
+    catalog: await parseAcceptedPhase2Catalog(runtimeSha256),
+  });
+  const requestId = `v12:starter-activation:${request.nonce}`;
+  const [before] = await input.kernel.queryAll<Readonly<{ request_id: string; result_plan_id: string }>>(
+    "SELECT request_id, result_plan_id FROM starter_plan_activation_requests WHERE request_id = ?",
+    [requestId],
+  );
+  const pack = await parseAcceptedStarterPlanPack({
+    starterPackBytes: prettyJson(starterPlansAsset),
+    acceptanceBytes: prettyJson(starterPlansAcceptanceAsset),
+    sha256: runtimeSha256,
+  });
+  const template = pack.templates.find(({ id }) => id === "full-body-foundation");
+  if (template === undefined) throw new Error("v12_native_acceptance_starter_template_missing");
+  const schedule = acceptedStarterSchedule(template);
+  if (before === undefined) {
+    const activation = await activateStarterPlan({
+      kind: "accepted",
+      starterPackBytes: prettyJson(starterPlansAsset),
+      acceptanceBytes: prettyJson(starterPlansAcceptanceAsset),
+      sha256: runtimeSha256,
+      repository: createStarterPlanRepository(input.kernel),
+      requestId,
+      activatedAtMs: workoutFixtureActivatedAt(request),
+      expectedActiveScheduleRevision: null,
+      confirmationToken: createStarterPlanActivationConfirmationToken({
+        assetSha256: pack.assetSha256,
+        templateId: template.id,
+        templateRevision: template.revision,
+        ...schedule,
+        bindings: schedule.bindings as never,
+        copyChoice: null,
+      }),
+      templateId: template.id,
+      templateRevision: template.revision,
+      ...schedule,
+      bindings: schedule.bindings as never,
+      copyChoice: null,
+    });
+    if (activation.outcome !== "committed" || activation.plan.sourceTemplateId !== template.id || activation.days.length === 0) {
+      throw new Error("v12_native_acceptance_starter_activation_failed");
+    }
+  }
+  const [receipt] = await input.kernel.queryAll<Readonly<{ request_id: string; result_plan_id: string; choice: string | null }>>(
+    "SELECT request_id, result_plan_id, choice FROM starter_plan_activation_requests WHERE request_id = ?",
+    [requestId],
+  );
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [plan] = await input.kernel.queryAll<Readonly<{ id: string; is_active: number }>>(
+        "SELECT id, is_active FROM plans WHERE id = ?",
+        [receipt?.result_plan_id ?? ""],
+      );
+      if (receipt?.request_id !== requestId || receipt.choice !== "initial" || plan?.id !== receipt.result_plan_id || plan.is_active !== 1) {
+        throw new Error("v12_native_acceptance_starter_activation_postcondition_failed");
+      }
+    },
+  });
 }
 
 async function workoutMutationFacts(input: Readonly<{
@@ -2268,6 +2364,9 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "owned-plan.owned-plan-repository.read": Object.freeze({
     prepare: prepareOwnedPlanReadFixture,
     execute: executeOwnedPlanRead,
+  }),
+  "starter-plan.starter-plan-repository.activate-accepted-starter-plan": Object.freeze({
+    execute: executeAcceptedStarterActivation,
   }),
   [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
     prepare: prepareRunningFamilyB,

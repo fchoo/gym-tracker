@@ -126,6 +126,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
               "library.custom-exercise-edit", "library.custom-exercise-hide", "library.custom-exercise-unhide",
               "library.custom-exercise-copy-bundled", "library.custom-exercise-archive", "library.custom-exercise-reactivate",
               "library.copy-metric-migration", "library.metric-profile-migration",
+              "library.starter-activation",
               "workout.start-alternate", "workout.row-edit", "workout.load-reps-editor",
               "workout.duration-editor", "workout.all-metrics", "workout.add-set", "workout.complete-commit",
               "workout.rest-controls", "workout.rest-recovery",
@@ -226,12 +227,13 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "workout.undo",
       "workout.timing-policy",
       "workout.appearance",
+      "library.starter-activation",
     ];
     for (const [index, caseId] of cases.entries()) {
       const kernel = await open();
       const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.caseId === caseId)!;
       const request: V12NativeAcceptanceRequest = {
-        shard: "workout", caseId, fixtureId: "v12-synthetic-fixtures-r18",
+        shard: contract.shard, caseId, fixtureId: "v12-synthetic-fixtures-r18",
         title: "Workout", source: "PHASE15_REQUIRED_CASES",
         requirement: contract.requirement, action: contract.actionId,
         readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
