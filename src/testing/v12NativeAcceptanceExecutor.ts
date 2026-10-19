@@ -40,6 +40,7 @@ import { createContentRepository } from "../platform/sqlite/repositories/content
 import { createMetricRepository } from "../platform/sqlite/repositories/metricRepository";
 import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
 import { createWorkoutRepository } from "../platform/sqlite/repositories/workoutRepository";
+import { createWorkoutOutcomeRepository } from "../platform/sqlite/repositories/workoutOutcomeRepository";
 import { createRestRepository } from "../platform/sqlite/repositories/restRepository";
 import { createWorkoutPreferenceRepository } from "../platform/sqlite/repositories/workoutPreferenceRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
@@ -480,6 +481,14 @@ async function executeWorkoutRepositoryRead(input: V12NativeAcceptanceProduction
     }
     case "rest.rest-repository.get-rest-context": {
       if (sessionId === null || await createRestRepository(input.kernel).getRestContext(sessionId) === null) {
+        throw new Error("v12_native_acceptance_workout_read_precondition_missing");
+      }
+      break;
+    }
+    case "workout.workout-outcome-repository.get-session-detail": {
+      if (sessionId === null) throw new Error("v12_native_acceptance_workout_read_precondition_missing");
+      const detail = await createWorkoutOutcomeRepository(input.kernel).getSessionDetail(sessionId);
+      if (detail.id !== sessionId || detail.status !== "in_progress" || detail.exercises.length === 0) {
         throw new Error("v12_native_acceptance_workout_read_precondition_missing");
       }
       break;
@@ -2113,6 +2122,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     execute: executeWorkoutRepositoryRead,
   }),
   "rest.rest-repository.get-rest-context": Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutRepositoryRead,
+  }),
+  "workout.workout-outcome-repository.get-session-detail": Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutRepositoryRead,
   }),

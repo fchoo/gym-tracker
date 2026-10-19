@@ -149,6 +149,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
         "workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty",
         "workout.start-resume", "workout.active-layout", "workout.active-back",
         "workout.exercise-disclosure", "workout.active-indicator", "workout.set-states",
+        "workout.completion-review",
         "workout.warmup-order", "workout.completion-collapse", "workout.exercise-menu",
         "workout.timing-flat", "workout.rest-dock",
       ].includes(contract.caseId) || contract.operation.handlerId.startsWith("running-plan.")) {
