@@ -41,6 +41,7 @@ import { createMetricRepository } from "../platform/sqlite/repositories/metricRe
 import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
 import { createWorkoutRepository } from "../platform/sqlite/repositories/workoutRepository";
 import { createRestRepository } from "../platform/sqlite/repositories/restRepository";
+import { createWorkoutPreferenceRepository } from "../platform/sqlite/repositories/workoutPreferenceRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
@@ -741,6 +742,40 @@ async function executeWorkoutRemoveExercise(input: V12NativeAcceptanceProduction
   });
 }
 
+async function executeWorkoutPreferenceWrite(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareWorkoutFixture(input);
+  const request = requireRequest(input);
+  const repository = createWorkoutPreferenceRepository(input.kernel);
+  const planId = workoutFixturePlanId(request);
+  const current = await repository.read(planId);
+  const defaultRestSeconds = input.contract.caseId === "workout.appearance" ? 75 : 105;
+  const replay = current.defaultRestSeconds === defaultRestSeconds && current.weightIncrementGrams === 2500;
+  if (!replay) {
+    const saved = await repository.write({
+      planId,
+      expectedRevision: current.revision,
+      defaultRestSeconds,
+      weightIncrementGrams: 2500,
+      updatedAtMs: workoutFixtureActivatedAt(request) + 6_000,
+    });
+    if (saved.defaultRestSeconds !== defaultRestSeconds || saved.revision !== current.revision + 1) {
+      throw new Error("v12_native_acceptance_workout_preference_postcondition_failed");
+    }
+  }
+  const key = `gym_tracker.workout_plan_preferences.v1:${planId}`;
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ key, nonce: request.nonce }),
+    outcome: replay ? "already_committed" : "committed",
+    verify: async () => {
+      const persisted = await repository.read(planId);
+      if (persisted.defaultRestSeconds !== defaultRestSeconds || persisted.weightIncrementGrams !== 2500) {
+        throw new Error("v12_native_acceptance_workout_preference_postcondition_failed");
+      }
+    },
+  });
+}
+
 async function executeWorkoutCompleteSet(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
   await prepareActiveWorkoutFixture(input);
   const request = requireRequest(input);
@@ -1403,6 +1438,7 @@ const WORKOUT_ADD_EXERCISE_HANDLER = "active-workout.workout-repository.add-exer
 const WORKOUT_REORDER_EXERCISES_HANDLER = "active-workout.workout-repository.reorder-exercises";
 const WORKOUT_REPLACE_EXERCISE_HANDLER = "active-workout.workout-repository.replace-exercise";
 const WORKOUT_REMOVE_EXERCISE_HANDLER = "active-workout.workout-repository.remove-exercise";
+const WORKOUT_PREFERENCE_WRITE_HANDLER = "workout.workout-preference-repository.write";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
   return {
@@ -1966,6 +2002,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [WORKOUT_REMOVE_EXERCISE_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutRemoveExercise,
+  }),
+  [WORKOUT_PREFERENCE_WRITE_HANDLER]: Object.freeze({
+    prepare: prepareWorkoutFixture,
+    execute: executeWorkoutPreferenceWrite,
   }),
   "workout.plans-workout-repository.get-today-view": Object.freeze({
     prepare: prepareWorkoutFixture,
