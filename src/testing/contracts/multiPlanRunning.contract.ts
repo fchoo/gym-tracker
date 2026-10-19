@@ -853,6 +853,30 @@ export function runMultiPlanRunningContractCase(
   return caseAssertions[caseId](kernel);
 }
 
+/**
+ * Run the canonical 13-case wrapper against a caller-owned real SQLite
+ * runtime factory.  This is intentionally an adapter for the existing
+ * wrapper, rather than a parallel loop in a consumer: it preserves the
+ * wrapper's status, count, failure isolation, and cleanup semantics while
+ * allowing host tests to provide a freshly migrated kernel per case.
+ */
+export async function runMultiPlanRunningContractOnKernel(
+  createRuntime: (
+    caseId: MultiPlanRunningContractCaseId,
+  ) => Promise<Readonly<{ kernel: SqliteKernel; close(): Promise<void> }>>,
+): Promise<MultiPlanRunningContractResult> {
+  return runMultiPlanRunningContract(Object.freeze({
+    async runCase(caseId) {
+      const runtime = await createRuntime(caseId);
+      try {
+        await runMultiPlanRunningContractCase(caseId, runtime.kernel);
+      } finally {
+        await runtime.close();
+      }
+    },
+  }));
+}
+
 export async function createExpoMultiPlanRunningContractAdapter(
   runId: string,
 ): Promise<MultiPlanRunningContractAdapter> {
