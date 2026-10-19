@@ -1023,8 +1023,7 @@ test("the native adapter object exercises every action wrapper against the check
 
 test("native adapter supervisor forwards host cancellation through its abort handler", { timeout: 10_000 }, async () => {
   const supervisor = spawn(process.execPath, [
-    new URL("./v12-native-adapter.mjs", import.meta.url).pathname,
-    "--supervise",
+    new URL("./v12-native-adapter-supervisor.mjs", import.meta.url).pathname,
     "10000",
     process.execPath,
     "--input-type=module",
@@ -1033,10 +1032,25 @@ test("native adapter supervisor forwards host cancellation through its abort han
   ], {
     cwd: process.cwd(),
     env: process.env,
-    stdio: ["pipe", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe", "pipe"],
   });
   supervisor.stdin.end();
-  await delay(100);
+  await new Promise((resolve, reject) => {
+    let marker = "";
+    const failBeforeReady = (error) => reject(error instanceof Error
+      ? error
+      : new Error("v12_native_adapter_supervisor_closed_before_ready"));
+    supervisor.once("error", failBeforeReady);
+    supervisor.once("close", failBeforeReady);
+    supervisor.stdio[3].setEncoding("utf8");
+    supervisor.stdio[3].on("data", (chunk) => {
+      marker += chunk;
+      if (marker !== "ready\n") return;
+      supervisor.removeListener("error", failBeforeReady);
+      supervisor.removeListener("close", failBeforeReady);
+      resolve();
+    });
+  });
   supervisor.kill("SIGTERM");
   const result = await new Promise((resolve, reject) => {
     supervisor.once("error", reject);
