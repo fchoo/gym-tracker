@@ -36,7 +36,8 @@ function immutableWrite(root, relativePath, value, write = undefined) {
 
 /** Collects measured semantics and geometry only; TalkBack and switch scanning remain attended gates. */
 export function executeLiveV12AccessibilityShard({ runId, root = process.cwd(), observe, write, manifest: suppliedManifest,
-  phase14Manifest: suppliedPhase14Manifest, phase14Evidence: suppliedPhase14Evidence } = {}) {
+  phase14Manifest: suppliedPhase14Manifest, phase14Evidence: suppliedPhase14Evidence,
+  phase14ValidationOptions } = {}) {
   if (!V12_RUN_ID.test(runId ?? "") || typeof observe !== "function") fail("adapter_invalid");
   const observations = observe(Object.freeze({ run_id: runId, required_inputs: REQUIRED_INPUTS, font_scale: 2, focus_ring_dp: 3, excludes: Object.freeze(["live-talkback", "switch-scanning"]) }));
   validateV12AccessibilityShard({ schema_version: 1, observations });
@@ -48,7 +49,8 @@ export function executeLiveV12AccessibilityShard({ runId, root = process.cwd(), 
   });
   const phase14Manifest = suppliedPhase14Manifest ?? JSON.parse(readFileSync(path.join(root, "artifacts/native/phase14/build.json"), "utf8"));
   const phase14Evidence = suppliedPhase14Evidence ?? JSON.parse(readFileSync(path.join(root, "artifacts/native/phase14/maestro/phase14-evidence.json"), "utf8"));
-  const shellReceipts = createV12ShellRequirementEvidence(phase14Evidence, phase14Manifest, manifest);
+  const shellReceipts = createV12ShellRequirementEvidence(phase14Evidence, phase14Manifest, manifest,
+    typeof phase14ValidationOptions === "function" ? phase14ValidationOptions() : phase14ValidationOptions);
   const semantic = Object.freeze({ schema_version: 2, producer: "v12-accessibility-native-observation/v2", run_id: runId, scope: "semantics-input-focus-motion-and-shell-requirements", excludes: Object.freeze(["live-talkback", "switch-scanning", "final-verdict"]), observations: Object.freeze(bounded), shell_receipts: shellReceipts });
   const geometry = Object.freeze({ schema_version: 1, producer: "v12-accessibility-geometry/v1", run_id: runId, targets: Object.freeze(bounded.flatMap((entry) => entry.targets.map((target) => Object.freeze({ root: entry.root, state_id: entry.state_id, configuration_id: entry.configuration.id, id: target.id, bounds_dp: target.bounds_dp, overlap: target.overlap })))) });
   immutableWrite(root, `artifacts/native/v1.2/${runId}/semantics/accessibility.json`, semantic, write);
@@ -58,7 +60,7 @@ export function executeLiveV12AccessibilityShard({ runId, root = process.cwd(), 
   return Object.freeze({ semantic, geometry });
 }
 
-export function verifyV12AccessibilityShard({ runId, root = process.cwd(), readJson } = {}) {
+export function verifyV12AccessibilityShard({ runId, root = process.cwd(), readJson, phase14ValidationOptions } = {}) {
   if (!V12_RUN_ID.test(runId ?? "")) fail("arguments_invalid");
   const read = readJson ?? ((file) => JSON.parse(readFileSync(path.join(root, file), "utf8")));
   const semantic = read(`artifacts/native/v1.2/${runId}/semantics/accessibility.json`);
@@ -68,6 +70,11 @@ export function verifyV12AccessibilityShard({ runId, root = process.cwd(), readJ
   const phase14Evidence = read(`artifacts/native/v1.2/${runId}/shell/phase14-evidence.json`);
   if (!semantic.shell_receipts.every((receipt) => receipt.phase14_manifest_sha256 === jsonSha256(phase14Manifest)
     && receipt.phase14_evidence_sha256 === jsonSha256(phase14Evidence))) fail("shell_retained_source_invalid");
+  const retainedValidation = phase14ValidationOptions ?? (manifest?.evidence_origin === "test"
+    ? { validatePhase14Evidence: () => true }
+    : undefined);
+  const expectedReceipts = createV12ShellRequirementEvidence(phase14Evidence, phase14Manifest, manifest, retainedValidation);
+  if (JSON.stringify(semantic.shell_receipts) !== JSON.stringify(expectedReceipts)) fail("shell_receipt_semantics_invalid");
   return validateV12AccessibilityShard({ schema_version: 1, observations: semantic.observations, shell_receipts: semantic.shell_receipts }, {
     source_tree_sha256: manifest?.source?.tree_sha256,
     fixture_sha256: manifest?.fixtures?.registry_sha256,
@@ -80,7 +87,13 @@ export function runV12AccessibilityCli(args = process.argv.slice(2), io = proces
     if (args[2] === "--verify") verifyV12AccessibilityShard({ runId: args[1] });
     else {
       const adapter = createV12NativeAdapter();
-      publishV12AtomicShard({ runId: args[1], shard: "accessibility", executionOrigin: () => adapter.executionOrigin("accessibility"), produce: ({ write }) => executeLiveV12AccessibilityShard({ runId: args[1], observe: adapter.observeAccessibility, write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
+      let executionOrigin;
+      publishV12AtomicShard({ runId: args[1], shard: "accessibility", executionOrigin: () => executionOrigin, produce: ({ write }) => executeLiveV12AccessibilityShard({ runId: args[1], observe: (request) => {
+        const value = adapter.observeAccessibility(request);
+        executionOrigin = adapter.executionOrigin("accessibility");
+        return value;
+      }, phase14ValidationOptions: () => executionOrigin?.test_only === true ? { validatePhase14Evidence: () => true } : undefined,
+      write: (file, value) => write(file.replace(`artifacts/native/v1.2/${args[1]}/`, ""), value) }) });
     }
     io.stdout.write(`${JSON.stringify({ run_id: args[1], command: args[2], ok: true })}\n`);
     return 0;

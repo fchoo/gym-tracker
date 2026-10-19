@@ -520,6 +520,38 @@ test("Phase 14 rejects synthetic focus traces and hard-coded native verdicts", (
   );
 });
 
+test("Phase 14 rejects rehashed action semantics and immutable artifact substitutions", () => {
+  for (const mutate of [
+    (action) => { action.input = "NOOP"; },
+    (action) => { action.transport = "adb-launch"; },
+    (action) => { action.command = { key_code: 0 }; },
+  ]) {
+    const bundle = validBundle();
+    mutate(bundle.evidence.matrix_cells[0].actions[0]);
+    resealCaptureIndex(bundle);
+    assert.throws(
+      () => validatePhase14Evidence(bundle.evidence, manifest, [selectedId], { readArtifact: reader(bundle.artifacts) }),
+      /phase14_(?:action_observation|cell_checkpoint_merge|capture_index|focus_trace_binding)_invalid/u,
+    );
+  }
+
+  const substituted = validBundle();
+  const cell = substituted.evidence.matrix_cells[0];
+  const observation = cell.actions[0];
+  const unrelatedBytes = semanticXml([{ focused: true, label: "Unrelated checkpoint", selected: true }]);
+  substituted.artifacts.set(observation.pre.semantic_tree, unrelatedBytes);
+  observation.pre.semantic_tree_sha256 = sha256(unrelatedBytes);
+  const trace = JSON.parse(substituted.artifacts.get(cell.focus_key_trace));
+  trace.observations[0].pre.semantic_tree_sha256 = observation.pre.semantic_tree_sha256;
+  cell.focus_key_trace_sha256 = rebindJsonArtifact(substituted, cell.focus_key_trace, trace);
+  resealCaptureIndex(substituted);
+  assert.throws(
+    () => validatePhase14Evidence(substituted.evidence, manifest, [selectedId], { readArtifact: reader(substituted.artifacts) }),
+    /phase14_(?:action_precondition|focused_node)_invalid/u,
+    "changed artifact bytes remain invalid after every enclosing hash is recomputed",
+  );
+});
+
 test("Phase 14 rejects source-tree-as-runtime-state and mislabeled rendered themes", () => {
   const sourceTree = validBundle();
   const cell = sourceTree.evidence.matrix_cells.find(({ runtime_state: runtimeState }) => typeof runtimeState.path === "string");

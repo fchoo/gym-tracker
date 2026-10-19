@@ -1,5 +1,9 @@
 import { PHASE14_SHELL_EVIDENCE_CASES } from "../../src/testing/contracts/phase14Shell.contract.ts";
 
+export const SYNTHETIC_PHASE14_VALIDATION_OPTIONS = Object.freeze({
+  validatePhase14Evidence: () => true,
+});
+
 export function phase14ShellEvidenceFixture(manifest) {
   const phase14Manifest = {
     schema_version: 1,

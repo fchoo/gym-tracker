@@ -18,7 +18,7 @@ import {
   V12_PROGRESS_REQUIREMENT_REGISTRY,
 } from './v12-blocker-row-resolver.mjs';
 import { createV12ShellRequirementEvidence } from './v12-shell-requirement-evidence.mjs';
-import { phase14ShellEvidenceFixture } from './testing/v12-phase14-shell-evidence-fixture.mjs';
+import { phase14ShellEvidenceFixture, SYNTHETIC_PHASE14_VALIDATION_OPTIONS } from './testing/v12-phase14-shell-evidence-fixture.mjs';
 
 const inputs = loadV12ContractInputs();
 
@@ -100,7 +100,7 @@ test('SHL resolver is requirement keyed and rejects missing, duplicate, or stale
     configuration: { id: identity.configuration_id },
   };
   const phase14 = phase14ShellEvidenceFixture(manifest);
-  const receipts = createV12ShellRequirementEvidence(phase14.evidence, phase14.phase14Manifest, manifest);
+  const receipts = createV12ShellRequirementEvidence(phase14.evidence, phase14.phase14Manifest, manifest, SYNTHETIC_PHASE14_VALIDATION_OPTIONS);
   const receipt = receipts.find((entry) => entry.requirement_id === 'SHL-01');
   assert.equal(resolveV12ShellRequirement(selector, [receipt], identity).result, 'PASS');
   assert.equal(resolveV12ShellRequirement(selector, [structuredClone(receipt)].reverse(), identity).result, 'PASS');

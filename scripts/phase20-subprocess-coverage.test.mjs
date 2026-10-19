@@ -57,7 +57,7 @@ import {
 } from "./v12-visual-streaming.mjs";
 import { loadV12VisualAuthority } from "./v12-visual-authority.mjs";
 import { createV12ShellRequirementEvidence } from "./v12-shell-requirement-evidence.mjs";
-import { phase14ShellEvidenceFixture } from "./testing/v12-phase14-shell-evidence-fixture.mjs";
+import { phase14ShellEvidenceFixture, SYNTHETIC_PHASE14_VALIDATION_OPTIONS } from "./testing/v12-phase14-shell-evidence-fixture.mjs";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   V12_NATIVE_PROVENANCE_REGISTRY,
@@ -1747,7 +1747,7 @@ test("production-shaped retained evidence completes preseal and final readiness"
           }
         }
         if (member.artifact === "semantics/accessibility.json") {
-          value.shell_receipts = createV12ShellRequirementEvidence(reboundPhase14.evidence, reboundPhase14.phase14Manifest, build);
+          value.shell_receipts = createV12ShellRequirementEvidence(reboundPhase14.evidence, reboundPhase14.phase14Manifest, build, SYNTHETIC_PHASE14_VALIDATION_OPTIONS);
         }
         if (member.artifact === "shell/phase14-build.json") value = reboundPhase14.phase14Manifest;
         if (member.artifact === "shell/phase14-evidence.json") value = reboundPhase14.evidence;
