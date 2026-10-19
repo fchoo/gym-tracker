@@ -118,13 +118,15 @@ describe("v1.2 Workout and Library production operation registry", () => {
             messages.push(current.message);
             current = current.cause;
           }
-          const expectedFailure = contract.caseId === "library.running-goal-edit"
+          const expectedFailure = contract.caseId.startsWith("library.running-") && contract.caseId !== "library.running-conflict"
             ? "v12_native_acceptance_request_required"
             : "v12_native_acceptance_mutation_receipt_missing";
           if (!messages.includes(expectedFailure)) {
             throw new Error(`${contract.caseId}:${messages.join(":")}`);
           }
         }
+      } else if (contract.operation.handlerId.startsWith("running-plan.")) {
+        await expect(execution).rejects.toThrow("v12_native_acceptance_request_required");
       } else if ([
         "workout.scheduled-rest-empty",
         "library.neutral-plan-chooser",
@@ -177,5 +179,58 @@ describe("v1.2 Workout and Library production operation registry", () => {
     expect(replay.source_receipt).toMatchObject({ command_outcome: "already_committed", committed_effects: 0 });
     expect(first.source_receipt.command_receipt_id).toBe(replay.source_receipt.command_receipt_id);
     expect(first.source_receipt.command_receipt_id).toContain(request.nonce);
+  });
+
+  it("runs every Running Family B contract through a case-owned production command or projection", async () => {
+    const contracts = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ caseId }) => (
+      caseId.startsWith("library.running-") && caseId !== "library.running-conflict"
+    ));
+    expect(contracts).toHaveLength(14);
+
+    for (const [index, contract] of contracts.entries()) {
+      const kernel = await open();
+      let id = 0;
+      const runtime = createRunningPlanRuntimePort(kernel, {
+        nowMs: () => 1_800_000_000_000,
+        randomUUID: () => `family-b-${index}-${++id}`,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      });
+      const request: V12NativeAcceptanceRequest = {
+        shard: "library-running",
+        caseId: contract.caseId,
+        fixtureId: "v12-synthetic-fixtures-r18",
+        title: "Library and running",
+        source: "PHASE17_CASE_ACTION_CONTRACTS",
+        requirement: contract.requirement,
+        action: contract.actionId,
+        readback: contract.uiReadback.label,
+        sourceProbe: contract.sourceProbe,
+        authorityTables: contract.probes.post.tables,
+        nonce: `${index.toString(16).padStart(2, "0")}${"c".repeat(46)}`,
+      };
+      const execute = () => executeV12NativeAcceptanceReadAction({
+        kernel,
+        request,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+        prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest, runtime: { running: runtime },
+        }),
+        executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest, runtime: { running: runtime },
+        }),
+      });
+      const first = await execute();
+      if (contract.operation.kind === "repository-read") {
+        expect(first.source_receipt).toMatchObject({ command_receipt_id: null, command_outcome: null, committed_effects: 0 });
+      } else {
+        expect(first.source_receipt).toMatchObject({ command_outcome: "committed", committed_effects: 1 });
+        const replay = await execute();
+        expect(replay.source_receipt).toMatchObject({
+          command_outcome: "already_committed",
+          committed_effects: 0,
+          command_receipt_id: first.source_receipt.command_receipt_id,
+        });
+      }
+    }
   });
 });

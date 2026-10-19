@@ -405,7 +405,13 @@ const LIBRARY_OPERATION_RECEIPTS: Readonly<Record<string, ReturnType<typeof enti
     "library.running-recovery", "library.running-long", "library.running-progression", "library.running-tempo",
     "library.running-intervals", "library.running-hills", "library.running-fartlek", "library.running-session-lifecycle",
     "library.running-create-typed-sessions", "library.running-two-same-day-slots",
-  ].map((caseId) => [caseId, entityReceipt("running_plan_receipts", ["request_id"], ["operation", "plan_id", "result_json"], { operation: caseId === "library.running-create-zero-sessions" ? "create" : "edit" })]),
+  ].map((caseId) => [caseId, entityReceipt("running_plan_receipts", ["request_id"], ["operation", "plan_id", "result_json"], {
+    operation: caseId === "library.running-create-zero-sessions"
+      ? "create"
+      : caseId === "library.running-session-lifecycle"
+        ? "archive"
+        : "edit",
+  })]),
   ["library.running-conflict", entityReceipt("schedule_collision_receipts", ["request_id"], ["outcome_id", "result_json"])],
 ]));
 

@@ -14,7 +14,12 @@ import {
   type MultiPlanRunningContractCaseId,
 } from "./contracts/multiPlanRunning.contract";
 import type { RunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
-import { runningTargetForDistance, type RunningPlanAggregate } from "../domains/running/contracts";
+import {
+  runningTargetForDistance,
+  type RunningPlanAggregate,
+  type RunningSessionKind,
+  type RunningSessionRevision,
+} from "../domains/running/contracts";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -251,7 +256,19 @@ function operationFacts(input: Readonly<{
 }
 
 const RUNNING_GOAL_EDIT_HANDLER = "running-plan.running-plan-repository.save-running-target";
+const RUNNING_AGGREGATE_READ_HANDLER = "running-plan.running-plan-repository.read-aggregate";
+const RUNNING_CREATE_HANDLER = "running-plan.running-plan-repository.create-inactive-aggregate";
+const RUNNING_SOURCE_GRAPH_HANDLER = "running-plan.running-plan-repository.save-source-graph";
+const RUNNING_LIFECYCLE_HANDLER = "running-plan.running-plan-repository.confirm-lifecycle";
 const V12_RUNNING_SEED_AT_MS = 1_800_000_000_000;
+const RUNNING_FAMILY_B_CASE_IDS = new Set([
+  "library.running-detail", "library.running-create-zero-sessions", "library.running-goal-edit",
+  "library.running-session-common", "library.running-recovery", "library.running-long",
+  "library.running-progression", "library.running-tempo", "library.running-intervals",
+  "library.running-hills", "library.running-fartlek", "library.running-session-lifecycle",
+  "library.running-create-typed-sessions", "library.running-two-same-day-slots",
+]);
+type RunningWeekday = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
 
 function requireRequest(input: V12NativeAcceptanceProductionHandlerInput): V12NativeAcceptanceRequest {
   if (input.request === undefined || !NONCE.test(input.request.nonce)) {
@@ -276,6 +293,32 @@ function runningSeedRequestId(request: V12NativeAcceptanceRequest): string {
 
 function runningActionRequestId(request: V12NativeAcceptanceRequest): string {
   return `v12:running:${request.caseId}:${request.nonce}:action`;
+}
+
+function runningSessionKindForCase(caseId: string): RunningSessionKind {
+  const kind = (Object.freeze({
+    "library.running-session-common": "recovery",
+    "library.running-recovery": "recovery",
+    "library.running-long": "long_run",
+    "library.running-progression": "progression",
+    "library.running-tempo": "tempo",
+    "library.running-intervals": "intervals",
+    "library.running-hills": "hills",
+    "library.running-fartlek": "fartlek",
+  }) as Readonly<Partial<Record<string, RunningSessionKind>>>)[caseId];
+  if (kind === undefined) throw new Error("v12_native_acceptance_running_case_unimplemented");
+  return kind;
+}
+
+function runningSessionDefinition(kind: RunningSessionKind, weekday: RunningWeekday) {
+  const phases = [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 1_800_000 }] }];
+  if (kind === "recovery") return { sessionKind: kind, weekday, phases, advisoryTarget: { rpe: 4 }, contextual: {} };
+  if (kind === "long_run") return { sessionKind: kind, weekday, phases, advisoryTarget: { rpe: 4 }, contextual: { finish: "easy_throughout" as const } };
+  if (kind === "progression") return { sessionKind: kind, weekday, phases, contextual: { stages: 3, startTarget: { rpe: 3 }, finishTarget: { rpe: 6 } } };
+  if (kind === "tempo") return { sessionKind: kind, weekday, phases, advisoryTarget: { rpe: 6 }, contextual: { format: "continuous" as const, work: { durationMs: 1_800_000 } } };
+  if (kind === "intervals") return { sessionKind: kind, weekday, phases, advisoryTarget: { rpe: 7 }, contextual: { repetitions: 4, work: { durationMs: 180_000 }, recovery: { durationMs: 90_000 } } };
+  if (kind === "hills") return { sessionKind: kind, weekday, phases, advisoryTarget: { rpe: 7 }, contextual: { repetitions: 4, work: { durationMs: 120_000 }, returnRecovery: { durationMs: 120_000 } } };
+  return { sessionKind: kind, weekday, phases, advisoryTarget: { rpe: 6 }, contextual: { format: "structured" as const, repetitions: 4, work: { durationMs: 120_000 }, recovery: { durationMs: 120_000 } } };
 }
 
 function runningGoalFixture(planId: string) {
@@ -333,6 +376,187 @@ async function prepareRunningGoalEdit(input: V12NativeAcceptanceProductionHandle
   if (seeded === null || seeded.revision !== 1 || seeded.goal.goalDistanceMeters !== 3_000) {
     throw new Error("v12_native_acceptance_running_seed_invalid");
   }
+}
+
+async function prepareRunningFamilyB(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  if (!RUNNING_FAMILY_B_CASE_IDS.has(input.contract.caseId)) return;
+  if (input.contract.caseId === "library.running-create-zero-sessions") return;
+  await prepareRunningGoalEdit(input);
+}
+
+async function runningMutationFacts(input: Readonly<{
+  handler: V12NativeAcceptanceProductionHandlerInput;
+  before: Awaited<ReturnType<typeof readRunningReceipt>>;
+  expectedOperation: string;
+  verify(plan: RunningPlanAggregate): void;
+}>): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input.handler);
+  const actionRequestId = runningActionRequestId(request);
+  const receipt = await readRunningReceipt(input.handler.kernel, actionRequestId);
+  const plan = await requireRunningRuntime(input.handler).loadPlan(runningFixturePlanId(request));
+  if (receipt === undefined || receipt.operation !== input.expectedOperation
+    || receipt.plan_id !== runningFixturePlanId(request) || receipt.request_sha256.length !== 64 || plan === null) {
+    throw new Error("v12_native_acceptance_running_receipt_invalid");
+  }
+  input.verify(plan);
+  if (input.handler.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
+  const authoritativeReadback = await input.handler.kernel.readSnapshot((query) => readCaseFacts(query, input.handler.contract));
+  return Object.freeze({
+    result: "committed" as const,
+    facts: operationFacts({
+      contract: input.handler.contract,
+      authoritativeReadback,
+      receiptId: stableJson(Object.freeze({ request_id: receipt.request_id })),
+      outcome: input.before === undefined ? "committed" : "already_committed",
+      committedEffects: input.before === undefined ? 1 : 0,
+    }),
+  });
+}
+
+async function executeRunningAggregateRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const plan = await requireRunningRuntime(input).loadPlan(runningFixturePlanId(request));
+  if (plan === null || plan.lifecycle !== "inactive" || plan.goal.goalDistanceMeters !== 3_000) {
+    throw new Error("v12_native_acceptance_running_precondition_missing");
+  }
+  if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  return Object.freeze({ result: "read" as const, facts: operationFacts({ contract: input.contract, authoritativeReadback }) });
+}
+
+async function executeRunningCreateZeroSessions(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const runtime = requireRunningRuntime(input);
+  const actionRequestId = runningActionRequestId(request);
+  const before = await readRunningReceipt(input.kernel, actionRequestId);
+  if (before === undefined) {
+    const planId = runningFixturePlanId(request);
+    const created = await runtime.createInactivePlan({ requestId: actionRequestId, plan: runningGoalFixture(planId) });
+    if (created.sessions.length !== 0 || created.lifecycle !== "inactive") throw new Error("v12_native_acceptance_running_postcondition_failed");
+  }
+  return runningMutationFacts({
+    handler: input,
+    before,
+    expectedOperation: "create",
+    verify: (plan) => {
+      if (plan.sessions.length !== 0 || plan.lifecycle !== "inactive") throw new Error("v12_native_acceptance_running_postcondition_failed");
+    },
+  });
+}
+
+async function executeRunningSessionSave(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const runtime = requireRunningRuntime(input);
+  const actionRequestId = runningActionRequestId(request);
+  const before = await readRunningReceipt(input.kernel, actionRequestId);
+  const kind = runningSessionKindForCase(input.contract.caseId);
+  if (before === undefined) {
+    const plan = await runtime.loadPlan(runningFixturePlanId(request));
+    if (plan === null) throw new Error("v12_native_acceptance_running_precondition_missing");
+    const saved = await runtime.saveSession({
+      planId: plan.id,
+      expectedPlanRevision: plan.revision,
+      requestId: actionRequestId,
+      session: runningSessionDefinition(kind, "Monday"),
+    });
+    if (!saved.plan.sessions.some(({ session }) => session.sessionKind === kind)) {
+      throw new Error("v12_native_acceptance_running_postcondition_failed");
+    }
+  }
+  return runningMutationFacts({
+    handler: input,
+    before,
+    expectedOperation: "edit",
+    verify: (plan) => {
+      if (!plan.sessions.some(({ session }) => session.sessionKind === kind)) throw new Error("v12_native_acceptance_running_postcondition_failed");
+    },
+  });
+}
+
+function runningAggregateSession(
+  plan: RunningPlanAggregate,
+  kind: RunningSessionKind,
+  ordinal: number,
+  weekday: RunningWeekday,
+): RunningPlanAggregate["sessions"][number] {
+  const rootId = `${plan.id}:v12:${kind}:${ordinal}`;
+  const { weekday: sessionWeekday, ...definition } = runningSessionDefinition(kind, weekday);
+  const session: RunningSessionRevision = {
+    version: 1,
+    id: `${rootId}:revision:1`,
+    rootId,
+    planId: plan.id,
+    revision: 1,
+    createdAtMs: V12_RUNNING_SEED_AT_MS + ordinal,
+    ...definition,
+  } as RunningSessionRevision;
+  return Object.freeze({
+    session,
+    slot: Object.freeze({
+      id: `${rootId}:slot:revision:1`,
+      rootId: `${rootId}:slot`,
+      weekday: sessionWeekday,
+      revision: 1,
+      ordinal,
+      sessionRootId: rootId,
+      sessionRevisionId: session.id,
+    }),
+  });
+}
+
+async function executeRunningGraphSave(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const runtime = requireRunningRuntime(input);
+  const actionRequestId = runningActionRequestId(request);
+  const before = await readRunningReceipt(input.kernel, actionRequestId);
+  const typed = input.contract.caseId === "library.running-create-typed-sessions";
+  const sameDay = input.contract.caseId === "library.running-two-same-day-slots";
+  if (!typed && !sameDay) return executeRunningSessionSave(input);
+  if (before === undefined) {
+    const plan = await runtime.loadPlan(runningFixturePlanId(request));
+    if (plan === null) throw new Error("v12_native_acceptance_running_precondition_missing");
+    const definitions = typed
+      ? (["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const)
+        .map((kind, ordinal) => runningAggregateSession(plan, kind, ordinal, (["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const)[ordinal]!))
+      : [
+        runningAggregateSession(plan, "recovery", 0, "Monday"),
+        runningAggregateSession(plan, "long_run", 1, "Monday"),
+      ];
+    const { active: _active, lifecycle: _lifecycle, ...editable } = plan;
+    const saved = await runtime.savePlan({ ...editable, sessions: definitions, requestId: actionRequestId });
+    if ((typed && saved.sessions.length !== 7) || (sameDay && saved.sessions.filter(({ slot }) => slot.weekday === "Monday").length !== 2)) {
+      throw new Error("v12_native_acceptance_running_postcondition_failed");
+    }
+  }
+  return runningMutationFacts({
+    handler: input,
+    before,
+    expectedOperation: "edit",
+    verify: (plan) => {
+      if (typed && plan.sessions.length !== 7) throw new Error("v12_native_acceptance_running_postcondition_failed");
+      if (sameDay && plan.sessions.filter(({ slot }) => slot.weekday === "Monday").length !== 2) throw new Error("v12_native_acceptance_running_postcondition_failed");
+    },
+  });
+}
+
+async function executeRunningLifecycle(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const runtime = requireRunningRuntime(input);
+  const actionRequestId = runningActionRequestId(request);
+  const before = await readRunningReceipt(input.kernel, actionRequestId);
+  if (before === undefined) {
+    const preview = await runtime.previewLifecycle(runningFixturePlanId(request), "archive");
+    const result = await runtime.confirmLifecycle({ action: "archive", preview, requestId: actionRequestId });
+    if (result.lifecycle !== "archived") throw new Error("v12_native_acceptance_running_postcondition_failed");
+  }
+  return runningMutationFacts({
+    handler: input,
+    before,
+    expectedOperation: "archive",
+    verify: (plan) => {
+      if (plan.lifecycle !== "archived") throw new Error("v12_native_acceptance_running_postcondition_failed");
+    },
+  });
 }
 
 async function executeRunningGoalEdit(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
@@ -452,9 +676,25 @@ const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
 );
 
 const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptanceProductionHandler, "prepare" | "execute">>> = Object.freeze({
+  [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
+    prepare: prepareRunningFamilyB,
+    execute: executeRunningAggregateRead,
+  }),
+  [RUNNING_CREATE_HANDLER]: Object.freeze({
+    prepare: prepareRunningFamilyB,
+    execute: executeRunningCreateZeroSessions,
+  }),
   [RUNNING_GOAL_EDIT_HANDLER]: Object.freeze({
     prepare: prepareRunningGoalEdit,
     execute: executeRunningGoalEdit,
+  }),
+  [RUNNING_SOURCE_GRAPH_HANDLER]: Object.freeze({
+    prepare: prepareRunningFamilyB,
+    execute: executeRunningGraphSave,
+  }),
+  [RUNNING_LIFECYCLE_HANDLER]: Object.freeze({
+    prepare: prepareRunningFamilyB,
+    execute: executeRunningLifecycle,
   }),
 });
 
