@@ -400,7 +400,14 @@ describe("v1.2 native acceptance production executor", () => {
   });
 
   it("fails every operation-result and transaction integrity branch closed", async () => {
-    const readContract = v12NativeAcceptanceCaseContract("workout", "workout.root-identity");
+    const readContract = v12NativeAcceptanceCaseContract("library-running", "library.exercise-search");
+    const readRequest = request({
+      shard: "library-running", caseId: readContract.caseId, title: "Library and running",
+      source: "PHASE17_CASE_ACTION_CONTRACTS + PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS",
+      requirement: readContract.requirement, action: readContract.actionId,
+      readback: readContract.uiReadback.label, sourceProbe: readContract.sourceProbe,
+      authorityTables: readContract.probes.post.tables,
+    });
     const readRuntime = kernel();
     const readOperation = await dispatchV12NativeAcceptanceProductionOperation({ kernel: readRuntime, contract: readContract });
     const readFacts = readOperation.facts as Readonly<Record<string, unknown>>;
@@ -408,28 +415,28 @@ describe("v1.2 native acceptance production executor", () => {
     await expect(dispatchV12NativeAcceptanceProductionOperation({ kernel: {} as SqliteKernel, contract: readContract }))
       .rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
     await expect(executeV12NativeAcceptanceReadAction({
-      kernel: kernel(), request: request(), sha256,
+      kernel: kernel(), request: readRequest, sha256,
       executeOperation: async () => ({ result: "committed", facts: readFacts }),
     })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
     await expect(executeV12NativeAcceptanceReadAction({
-      kernel: kernel(), request: request(), sha256,
+      kernel: kernel(), request: readRequest, sha256,
       executeOperation: async () => ({ result: "read", facts: { ...readFacts, receipt_id: "forbidden-read-receipt" } }),
     })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
     await expect(executeV12NativeAcceptanceReadAction({
-      kernel: kernel(), request: request(), sha256,
+      kernel: kernel(), request: readRequest, sha256,
       executeOperation: async () => ({ result: "read", facts: { ...readFacts, authoritative_readback: undefined } }),
     })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
     await expect(executeV12NativeAcceptanceReadAction({
-      kernel: kernel(), request: request(), sha256,
+      kernel: kernel(), request: readRequest, sha256,
       executeOperation: async () => ({ result: "read", facts: { ...readFacts, authoritative_readback: {} } }),
     })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
     let digestCall = 0;
     await expect(executeV12NativeAcceptanceReadAction({
-      kernel: kernel(), request: request(),
+      kernel: kernel(), request: readRequest,
       sha256: async (value) => (++digestCall === 6 ? "bad" : sha256(value)),
       executeOperation: async () => readOperation,
     })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
-    await expect(execute(kernel({ snapshotValues: [1, 1, 1, 2, 1] }), request()))
+    await expect(execute(kernel({ snapshotValues: [1, 1, 1, 2, 1] }), readRequest))
       .rejects.toThrow("v12_native_acceptance_read_action_drift");
 
     const mutationContract = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");

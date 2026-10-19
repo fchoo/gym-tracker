@@ -35,8 +35,17 @@ import { migrateCustomExerciseMetricProfile } from "../domains/metrics/migrateCu
 import type { CustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
 import { createContentRepository } from "../platform/sqlite/repositories/contentRepository";
 import { createMetricRepository } from "../platform/sqlite/repositories/metricRepository";
+import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
+import { createWorkoutRepository } from "../platform/sqlite/repositories/workoutRepository";
+import { createRestRepository } from "../platform/sqlite/repositories/restRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
+import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
+import { parseFullBodyFoundation } from "../domains/content";
+import { activateStarterPlan } from "../domains/plans";
+import { startWorkout } from "../domains/workout/startWorkout";
+import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
+import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -271,6 +280,412 @@ function operationFacts(input: Readonly<{
     receipt_id: input.receiptId ?? null,
     outcome: input.outcome ?? null,
     committed_effects: input.committedEffects ?? 0,
+  });
+}
+
+/**
+ * Workout acceptance data is always built through the production starter-plan
+ * activation and start-workout commands.  The nonce is folded into the
+ * activation timestamp, so a state row from another acceptance request can
+ * never satisfy this case's durable identity.
+ */
+function workoutFixtureActivatedAt(request: V12NativeAcceptanceRequest): number {
+  return V12_RUNNING_SEED_AT_MS + Number.parseInt(request.nonce.slice(0, 8), 16);
+}
+
+function workoutFixturePlanId(request: V12NativeAcceptanceRequest): string {
+  return `plan_copy_${workoutFixtureActivatedAt(request)}`;
+}
+
+async function workoutFixtureSessionId(kernel: SqliteKernel, request: V12NativeAcceptanceRequest): Promise<string | null> {
+  const [session] = await kernel.queryAll<Readonly<{ id: string }>>(
+    `SELECT id FROM workout_sessions
+     WHERE plan_id = ? AND started_at_ms = ? AND source = 'alternate_day'
+     ORDER BY id LIMIT 1`,
+    [workoutFixturePlanId(request), workoutFixtureActivatedAt(request) + 1_000],
+  );
+  return session?.id ?? null;
+}
+
+async function prepareWorkoutFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  const request = requireRequest(input);
+  const planId = workoutFixturePlanId(request);
+  const [existing] = await input.kernel.queryAll<Readonly<{ id: string }>>(
+    "SELECT id FROM plans WHERE id = ? AND origin = 'copied' AND plan_kind = 'strength'",
+    [planId],
+  );
+  if (existing !== undefined) return;
+  const activation = await activateStarterPlan({
+    fixture: parseFullBodyFoundation(fullBodyFoundationAsset),
+    repository: createPlansWorkoutRepository(input.kernel),
+    activatedAtMs: workoutFixtureActivatedAt(request),
+    startLocalDate: "2027-01-15",
+    timezone: "UTC",
+  });
+  if (activation.plan.id !== planId || activation.days.length === 0) {
+    throw new Error("v12_native_acceptance_workout_fixture_seed_invalid");
+  }
+}
+
+async function workoutFixtureDayId(kernel: SqliteKernel, request: V12NativeAcceptanceRequest): Promise<string> {
+  const [day] = await kernel.queryAll<Readonly<{ id: string }>>(
+    "SELECT id FROM plan_days WHERE plan_id = ? ORDER BY ordinal LIMIT 1",
+    [workoutFixturePlanId(request)],
+  );
+  if (day === undefined) throw new Error("v12_native_acceptance_workout_fixture_day_missing");
+  return day.id;
+}
+
+async function prepareActiveWorkoutFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  await prepareWorkoutFixture(input);
+  const request = requireRequest(input);
+  const existingSessionId = await workoutFixtureSessionId(input.kernel, request);
+  if (existingSessionId !== null) return;
+  const started = await startWorkout({
+    repository: createPlansWorkoutRepository(input.kernel),
+    request: {
+      mode: "alternate",
+      planId: workoutFixturePlanId(request),
+      planDayId: await workoutFixtureDayId(input.kernel, request),
+      localDate: "2027-01-15",
+      timezone: "UTC",
+      startedAtMs: workoutFixtureActivatedAt(request) + 1_000,
+      commandIdentity: `v12:${request.caseId}:${request.nonce}`,
+    },
+  });
+  if (started.status !== "in_progress" || await workoutFixtureSessionId(input.kernel, request) !== started.id) {
+    throw new Error("v12_native_acceptance_workout_fixture_start_invalid");
+  }
+}
+
+async function workoutFixtureActiveSet(kernel: SqliteKernel, request: V12NativeAcceptanceRequest) {
+  const [set] = await kernel.queryAll<Readonly<{
+    session_id: string;
+    session_revision: number;
+    exercise_id: string;
+    exercise_revision: number;
+    set_id: string;
+    set_revision: number;
+    metric_profile: "load_reps" | "timed_hold" | "unscored" | "fixed_time" | "intervals";
+    metric_contract_version: number;
+    exercise_metric_generation: number;
+  }>>(
+    `SELECT session.id AS session_id, session.revision AS session_revision,
+            exercise.id AS exercise_id, exercise.revision AS exercise_revision,
+            set_row.id AS set_id, set_row.revision AS set_revision,
+            set_row.metric_profile, set_row.metric_contract_version,
+            set_row.exercise_metric_generation
+     FROM workout_sessions session
+     JOIN session_exercises exercise ON exercise.session_id = session.id
+     JOIN session_sets set_row ON set_row.session_exercise_id = exercise.id
+     WHERE session.id = ? AND session.status = 'in_progress'
+       AND set_row.set_kind = 'working' AND set_row.status IN ('planned', 'draft')
+     ORDER BY exercise.ordinal, set_row.ordinal
+     LIMIT 1`,
+    [await workoutFixtureSessionId(kernel, request)],
+  );
+  if (set === undefined) throw new Error("v12_native_acceptance_workout_fixture_set_missing");
+  return set;
+}
+
+async function workoutAuthorityReadback(input: V12NativeAcceptanceProductionHandlerInput): Promise<unknown> {
+  if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
+  return input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+}
+
+async function executeWorkoutRepositoryRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const requiresActiveWorkout = input.contract.operation.handlerId.startsWith("active-workout.")
+    || input.contract.operation.handlerId.startsWith("rest.")
+    || input.contract.operation.handlerId.startsWith("workout.workout-outcome-repository.get-session-detail");
+  if (requiresActiveWorkout) await prepareActiveWorkoutFixture(input);
+  else await prepareWorkoutFixture(input);
+  const plans = createPlansWorkoutRepository(input.kernel);
+  const sessionId = await workoutFixtureSessionId(input.kernel, request);
+  switch (input.contract.operation.handlerId) {
+    case "workout.plans-workout-repository.get-today-view":
+    case "workout.plans-workout-repository.get-plan-days": {
+      const days = await plans.getPlanDays(workoutFixturePlanId(request));
+      if (days.length === 0) throw new Error("v12_native_acceptance_workout_read_precondition_missing");
+      break;
+    }
+    case "active-workout.workout-repository.get-workout-session": {
+      if (sessionId === null || await createWorkoutRepository(input.kernel).getWorkoutSession(sessionId) === null) {
+        throw new Error("v12_native_acceptance_workout_read_precondition_missing");
+      }
+      break;
+    }
+    case "active-workout.workout-repository.get-active-workout": {
+      if (sessionId === null || (await createWorkoutRepository(input.kernel).getActiveWorkout(sessionId)).status !== "in_progress") {
+        throw new Error("v12_native_acceptance_workout_read_precondition_missing");
+      }
+      break;
+    }
+    case "rest.rest-repository.get-rest-context": {
+      if (sessionId === null || await createRestRepository(input.kernel).getRestContext(sessionId) === null) {
+        throw new Error("v12_native_acceptance_workout_read_precondition_missing");
+      }
+      break;
+    }
+    default:
+      throw new Error("v12_native_acceptance_workout_read_handler_unimplemented");
+  }
+  return Object.freeze({ result: "read" as const, facts: operationFacts({
+    contract: input.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input),
+  }) });
+}
+
+async function workoutMutationFacts(input: Readonly<{
+  handler: V12NativeAcceptanceProductionHandlerInput;
+  receiptId: string;
+  outcome: "committed" | "already_committed";
+  verify(): Promise<void>;
+}>): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await input.verify();
+  return Object.freeze({ result: "committed" as const, facts: operationFacts({
+    contract: input.handler.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input.handler),
+    receiptId: input.receiptId,
+    outcome: input.outcome,
+    committedEffects: input.outcome === "committed" ? 1 : 0,
+  }) });
+}
+
+async function executeWorkoutSetDraft(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const set = await workoutFixtureActiveSet(input.kernel, request);
+  if (set.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
+  const [before] = await input.kernel.queryAll<Readonly<{ observed_json: string | null }>>(
+    "SELECT observed_json FROM session_sets WHERE id = ?",
+    [set.set_id],
+  );
+  const expected = JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 12_500, reps: 5, source: "manual" });
+  const replay = before?.observed_json === expected;
+  if (!replay) {
+    await updateActiveSetDraft({
+      repository: createWorkoutRepository(input.kernel),
+      input: {
+        sessionId: set.session_id,
+        setId: set.set_id,
+        expectedSetRevision: set.set_revision,
+        metricIdentity: { profile: "load_reps", contractVersion: set.metric_contract_version, exerciseMetricGeneration: set.exercise_metric_generation },
+        observation: { version: 1, profile: "load_reps", loadGrams: 12_500, reps: 5, source: "manual" },
+        updatedAtMs: workoutFixtureActivatedAt(request) + 2_000,
+      },
+    });
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ session_id: set.session_id, set_id: set.set_id, nonce: request.nonce }),
+    outcome: replay ? "already_committed" : "committed",
+    verify: async () => {
+      const [row] = await input.kernel.queryAll<Readonly<{ observed_json: string | null }>>("SELECT observed_json FROM session_sets WHERE id = ?", [set.set_id]);
+      if (row?.observed_json !== expected) throw new Error("v12_native_acceptance_workout_set_postcondition_failed");
+    },
+  });
+}
+
+async function executeWorkoutAddSet(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const set = await workoutFixtureActiveSet(input.kernel, request);
+  const newSetId = `v12:workout:${request.caseId}:${request.nonce}:set`;
+  const [existing] = await input.kernel.queryAll<Readonly<{ id: string }>>("SELECT id FROM session_sets WHERE id = ?", [newSetId]);
+  if (existing === undefined) {
+    await addWorkingSet({
+      repository: createWorkoutRepository(input.kernel),
+      input: { sessionId: set.session_id, sessionExerciseId: set.exercise_id, sourceSetId: set.set_id, setId: newSetId, nowMs: workoutFixtureActivatedAt(request) + 2_000 },
+    });
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ session_id: set.session_id, set_id: newSetId, nonce: request.nonce }),
+    outcome: existing === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [row] = await input.kernel.queryAll<Readonly<{ id: string }>>("SELECT id FROM session_sets WHERE id = ? AND session_exercise_id = ?", [newSetId, set.exercise_id]);
+      if (row === undefined) throw new Error("v12_native_acceptance_workout_add_set_postcondition_failed");
+    },
+  });
+}
+
+async function executeWorkoutCompleteSet(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const key = `v12:workout:${request.caseId}:${request.nonce}:completion`;
+  const [replayed] = await input.kernel.queryAll<Readonly<{ id: string; session_id: string }>>(
+    `SELECT set_row.id, exercise.session_id
+     FROM session_sets set_row
+     JOIN session_exercises exercise ON exercise.id = set_row.session_exercise_id
+     WHERE set_row.completion_idempotency_key = ?`,
+    [key],
+  );
+  const set = replayed === undefined ? await workoutFixtureActiveSet(input.kernel, request) : null;
+  if (set !== null && set.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
+  if (set !== null) {
+    await completeSet({
+      repository: createWorkoutRepository(input.kernel),
+      haptics: { committed: async () => undefined, cue: async () => undefined },
+      invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: set.session_id, setId: set.set_id,
+        expectedSessionRevision: set.session_revision, expectedSetRevision: set.set_revision,
+        completionIdempotencyKey: key,
+        metricIdentity: { profile: "load_reps", contractVersion: set.metric_contract_version, exerciseMetricGeneration: set.exercise_metric_generation },
+        observation: { version: 1, profile: "load_reps", loadGrams: 12_500, reps: 5, source: "manual" },
+        completedAtMs: workoutFixtureActivatedAt(request) + 3_000,
+      },
+    });
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ completion_idempotency_key: key }),
+    outcome: replayed === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [row] = await input.kernel.queryAll<Readonly<{ status: string; completion_idempotency_key: string | null }>>(
+        "SELECT status, completion_idempotency_key FROM session_sets WHERE completion_idempotency_key = ?", [key],
+      );
+      if (row?.status !== "completed" || row.completion_idempotency_key !== key) throw new Error("v12_native_acceptance_workout_complete_postcondition_failed");
+    },
+  });
+}
+
+async function executeWorkoutStart(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareWorkoutFixture(input);
+  const request = requireRequest(input);
+  const before = await workoutFixtureSessionId(input.kernel, request);
+  if (before === null) {
+    const started = await startWorkout({
+      repository: createPlansWorkoutRepository(input.kernel),
+      request: {
+        mode: "alternate",
+        planId: workoutFixturePlanId(request),
+        planDayId: await workoutFixtureDayId(input.kernel, request),
+        localDate: "2027-01-15",
+        timezone: "UTC",
+        startedAtMs: workoutFixtureActivatedAt(request) + 1_000,
+        commandIdentity: `v12:${request.caseId}:${request.nonce}`,
+      },
+    });
+    if (started.status !== "in_progress") throw new Error("v12_native_acceptance_workout_start_postcondition_failed");
+  }
+  const sessionId = await workoutFixtureSessionId(input.kernel, request);
+  if (sessionId === null) throw new Error("v12_native_acceptance_workout_start_postcondition_failed");
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ workout_session_id: sessionId, nonce: request.nonce }),
+    outcome: before === null ? "committed" : "already_committed",
+    verify: async () => {
+      const [session] = await input.kernel.queryAll<Readonly<{ status: string; plan_id: string | null }>>(
+        "SELECT status, plan_id FROM workout_sessions WHERE id = ?", [sessionId],
+      );
+      if (session?.status !== "in_progress" || session.plan_id !== workoutFixturePlanId(request)) {
+        throw new Error("v12_native_acceptance_workout_start_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function workoutFixtureSessionRevision(kernel: SqliteKernel, request: V12NativeAcceptanceRequest): Promise<Readonly<{ id: string; revision: number }>> {
+  const sessionId = await workoutFixtureSessionId(kernel, request);
+  if (sessionId === null) throw new Error("v12_native_acceptance_workout_fixture_session_missing");
+  const [session] = await kernel.queryAll<Readonly<{ id: string; revision: number }>>(
+    "SELECT id, revision FROM workout_sessions WHERE id = ? AND status = 'in_progress'", [sessionId],
+  );
+  if (session === undefined) throw new Error("v12_native_acceptance_workout_fixture_session_missing");
+  return session;
+}
+
+async function ensureWorkoutRest(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ sessionId: string; restRevision: number }>> {
+  const request = requireRequest(input);
+  const repository = createRestRepository(input.kernel);
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const current = await repository.getRestContext(session.id);
+  if (current === null) throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
+  if (current.state.state === "idle") {
+    await startManualRest({
+      repository,
+      input: { sessionId: session.id, expectedSessionRevision: session.revision, expectedRestRevision: current.state.revision, nowMs: workoutFixtureActivatedAt(request) + 4_000 },
+    });
+  }
+  const started = await repository.getRestContext(session.id);
+  if (started === null || started.state.state === "idle") throw new Error("v12_native_acceptance_workout_rest_start_failed");
+  return Object.freeze({ sessionId: session.id, restRevision: started.state.revision });
+}
+
+async function executeWorkoutRestAdjust(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const repository = createRestRepository(input.kernel);
+  const started = await ensureWorkoutRest(input);
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const current = await repository.getRestContext(started.sessionId);
+  if (current === null) throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
+  const replay = current.state.state === "paused" && current.state.remainingMs > 0;
+  if (!replay) {
+    if (current.state.state !== "running") throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
+    await pauseRest({
+      repository,
+      input: { sessionId: started.sessionId, expectedSessionRevision: session.revision, expectedRestRevision: current.state.revision, nowMs: workoutFixtureActivatedAt(request) + 4_500 },
+    });
+    const paused = await repository.getRestContext(started.sessionId);
+    const freshSession = await workoutFixtureSessionRevision(input.kernel, request);
+    if (paused?.state.state !== "paused") throw new Error("v12_native_acceptance_workout_rest_pause_missing");
+    await adjustRest({
+      repository,
+      input: { sessionId: started.sessionId, expectedSessionRevision: freshSession.revision, expectedRestRevision: paused.state.revision, nowMs: workoutFixtureActivatedAt(request) + 4_500, deltaMs: 15_000 },
+    });
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ session_id: started.sessionId, operation: "adjust_rest", nonce: request.nonce }),
+    outcome: replay ? "already_committed" : "committed",
+    verify: async () => {
+      const context = await repository.getRestContext(started.sessionId);
+      if (context?.state.state !== "paused" || context.state.remainingMs < 15_000) {
+        throw new Error("v12_native_acceptance_workout_rest_adjust_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executeWorkoutRestResume(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const repository = createRestRepository(input.kernel);
+  const started = await ensureWorkoutRest(input);
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const current = await repository.getRestContext(started.sessionId);
+  if (current === null) throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
+  const replay = current.state.state === "running" && current.state.startedAtMs === workoutFixtureActivatedAt(request) + 5_000;
+  if (!replay) {
+    if (current.state.state !== "paused") {
+      if (current.state.state !== "running") throw new Error("v12_native_acceptance_workout_rest_precondition_missing");
+      await pauseRest({
+        repository,
+        input: { sessionId: started.sessionId, expectedSessionRevision: session.revision, expectedRestRevision: current.state.revision, nowMs: workoutFixtureActivatedAt(request) + 4_500 },
+      });
+    }
+    const paused = await repository.getRestContext(started.sessionId);
+    const freshSession = await workoutFixtureSessionRevision(input.kernel, request);
+    if (paused?.state.state !== "paused") throw new Error("v12_native_acceptance_workout_rest_pause_missing");
+    await resumeRest({
+      repository,
+      input: { sessionId: started.sessionId, expectedSessionRevision: freshSession.revision, expectedRestRevision: paused.state.revision, nowMs: workoutFixtureActivatedAt(request) + 5_000 },
+    });
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ session_id: started.sessionId, operation: "resume_rest", nonce: request.nonce }),
+    outcome: replay ? "already_committed" : "committed",
+    verify: async () => {
+      const context = await repository.getRestContext(started.sessionId);
+      if (context?.state.state !== "running" || context.state.startedAtMs !== workoutFixtureActivatedAt(request) + 5_000) {
+        throw new Error("v12_native_acceptance_workout_rest_resume_postcondition_failed");
+      }
+    },
   });
 }
 
@@ -747,6 +1162,12 @@ const CUSTOM_HIDDEN_HANDLER = "custom-exercise.custom-exercise-repository.set-ex
 const CUSTOM_ARCHIVE_HANDLER = "custom-exercise.custom-exercise-repository.set-custom-exercise-archived";
 const CUSTOM_COPY_HANDLER = "custom-exercise.custom-exercise-repository.create-custom-copy";
 const METRIC_MIGRATION_HANDLER = "metric-profile.metric-repository.migrate-custom-exercise-metric-profile";
+const WORKOUT_START_HANDLER = "workout.plans-workout-repository.start-workout";
+const WORKOUT_SET_DRAFT_HANDLER = "active-workout.workout-repository.update-active-set-draft";
+const WORKOUT_ADD_SET_HANDLER = "active-workout.workout-repository.add-working-set";
+const WORKOUT_COMPLETE_SET_HANDLER = "active-workout.workout-repository.complete-set";
+const WORKOUT_REST_ADJUST_HANDLER = "rest.rest-repository.adjust-rest";
+const WORKOUT_REST_RESUME_HANDLER = "rest.rest-repository.resume-rest";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
   return {
@@ -1271,6 +1692,50 @@ const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
 );
 
 const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptanceProductionHandler, "prepare" | "execute">>> = Object.freeze({
+  [WORKOUT_START_HANDLER]: Object.freeze({
+    prepare: prepareWorkoutFixture,
+    execute: executeWorkoutStart,
+  }),
+  [WORKOUT_SET_DRAFT_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutSetDraft,
+  }),
+  [WORKOUT_ADD_SET_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutAddSet,
+  }),
+  [WORKOUT_COMPLETE_SET_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutCompleteSet,
+  }),
+  [WORKOUT_REST_ADJUST_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutRestAdjust,
+  }),
+  [WORKOUT_REST_RESUME_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutRestResume,
+  }),
+  "workout.plans-workout-repository.get-today-view": Object.freeze({
+    prepare: prepareWorkoutFixture,
+    execute: executeWorkoutRepositoryRead,
+  }),
+  "workout.plans-workout-repository.get-plan-days": Object.freeze({
+    prepare: prepareWorkoutFixture,
+    execute: executeWorkoutRepositoryRead,
+  }),
+  "active-workout.workout-repository.get-workout-session": Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutRepositoryRead,
+  }),
+  "active-workout.workout-repository.get-active-workout": Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutRepositoryRead,
+  }),
+  "rest.rest-repository.get-rest-context": Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutRepositoryRead,
+  }),
   [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
     prepare: prepareRunningFamilyB,
     execute: executeRunningAggregateRead,

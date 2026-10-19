@@ -126,6 +126,14 @@ describe("v1.2 Workout and Library production operation registry", () => {
               "library.custom-exercise-edit", "library.custom-exercise-hide", "library.custom-exercise-unhide",
               "library.custom-exercise-copy-bundled", "library.custom-exercise-archive", "library.custom-exercise-reactivate",
               "library.copy-metric-migration", "library.metric-profile-migration",
+              "workout.start-alternate", "workout.row-edit", "workout.load-reps-editor",
+              "workout.duration-editor", "workout.all-metrics", "workout.add-set", "workout.complete-commit",
+              "workout.rest-controls", "workout.rest-recovery",
+              "workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty",
+              "workout.start-resume", "workout.active-layout", "workout.active-back",
+              "workout.exercise-disclosure", "workout.active-indicator", "workout.set-states",
+              "workout.warmup-order", "workout.completion-collapse", "workout.exercise-menu",
+              "workout.timing-flat", "workout.rest-dock",
             ].includes(contract.caseId)
             ? "v12_native_acceptance_request_required"
             : "v12_native_acceptance_mutation_receipt_missing";
@@ -133,7 +141,13 @@ describe("v1.2 Workout and Library production operation registry", () => {
             throw new Error(`${contract.caseId}:${messages.join(":")}`);
           }
         }
-      } else if (contract.operation.handlerId.startsWith("running-plan.")) {
+      } else if ([
+        "workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty",
+        "workout.start-resume", "workout.active-layout", "workout.active-back",
+        "workout.exercise-disclosure", "workout.active-indicator", "workout.set-states",
+        "workout.warmup-order", "workout.completion-collapse", "workout.exercise-menu",
+        "workout.timing-flat", "workout.rest-dock",
+      ].includes(contract.caseId) || contract.operation.handlerId.startsWith("running-plan.")) {
         await expect(execution).rejects.toThrow("v12_native_acceptance_request_required");
       } else if ([
         "workout.scheduled-rest-empty",
@@ -187,6 +201,46 @@ describe("v1.2 Workout and Library production operation registry", () => {
     expect(replay.source_receipt).toMatchObject({ command_outcome: "already_committed", committed_effects: 0 });
     expect(first.source_receipt.command_receipt_id).toBe(replay.source_receipt.command_receipt_id);
     expect(first.source_receipt.command_receipt_id).toContain(request.nonce);
+  });
+
+  it("executes Workout starter and active-set commands with nonce-bound production state", async () => {
+    const cases = [
+      "workout.start-alternate",
+      "workout.row-edit",
+      "workout.add-set",
+      "workout.complete-commit",
+      "workout.rest-controls",
+      "workout.rest-recovery",
+    ];
+    for (const [index, caseId] of cases.entries()) {
+      const kernel = await open();
+      const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.caseId === caseId)!;
+      const request: V12NativeAcceptanceRequest = {
+        shard: "workout", caseId, fixtureId: "v12-synthetic-fixtures-r18",
+        title: "Workout", source: "PHASE15_REQUIRED_CASES",
+        requirement: contract.requirement, action: contract.actionId,
+        readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
+        authorityTables: contract.probes.post.tables,
+        nonce: `${index.toString(16).padStart(2, "0")}${"a".repeat(46)}`,
+      };
+      const execute = () => executeV12NativeAcceptanceReadAction({
+        kernel, request,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+        prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest,
+        }),
+        executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest,
+        }),
+      });
+      const first = await execute();
+      const replay = await execute();
+      expect(first.source_receipt).toMatchObject({ command_outcome: "committed", committed_effects: 1 });
+      expect(replay.source_receipt).toMatchObject({
+        command_outcome: "already_committed", committed_effects: 0,
+        command_receipt_id: first.source_receipt.command_receipt_id,
+      });
+    }
   });
 
   it("runs every Running Family B contract through a case-owned production command or projection", async () => {
