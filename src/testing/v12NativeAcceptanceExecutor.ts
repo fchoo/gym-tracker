@@ -50,6 +50,7 @@ import { activateStarterPlan } from "../domains/plans";
 import { startWorkout } from "../domains/workout/startWorkout";
 import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
 import { addExercise, removeExercise, reorderExercises, replaceExercise } from "../domains/workout/sessionExerciseCommands";
+import { undoCompletedSet } from "../domains/workout/undoCompletedSet";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
@@ -776,6 +777,89 @@ async function executeWorkoutPreferenceWrite(input: V12NativeAcceptanceProductio
   });
 }
 
+async function executeWorkoutUndoCompletedSet(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const completionKey = `v12:workout:${request.caseId}:${request.nonce}:completion`;
+  const undoKey = `undo:${completionKey}`;
+  const [before] = await input.kernel.queryAll<Readonly<{
+    id: string;
+    completed_set_id: string;
+    consumed_at_ms: number | null;
+  }>>(
+    `SELECT id, completed_set_id, consumed_at_ms
+     FROM session_undo_snapshots
+     WHERE idempotency_key = ?`,
+    [undoKey],
+  );
+  if (before === undefined) {
+    const set = await workoutFixtureActiveSet(input.kernel, request);
+    if (set.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
+    const completed = await completeSet({
+      repository: createWorkoutRepository(input.kernel),
+      haptics: { committed: async () => undefined, cue: async () => undefined },
+      invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: set.session_id,
+        setId: set.set_id,
+        expectedSessionRevision: set.session_revision,
+        expectedSetRevision: set.set_revision,
+        completionIdempotencyKey: completionKey,
+        metricIdentity: {
+          profile: "load_reps",
+          contractVersion: set.metric_contract_version,
+          exerciseMetricGeneration: set.exercise_metric_generation,
+        },
+        observation: { version: 1, profile: "load_reps", loadGrams: 12_500, reps: 5, source: "manual" },
+        completedAtMs: workoutFixtureActivatedAt(request) + 3_000,
+      },
+    });
+    if (completed.outcome !== "committed") throw new Error("v12_native_acceptance_workout_undo_completion_failed");
+  }
+  const [snapshot] = await input.kernel.queryAll<Readonly<{
+    completed_set_id: string;
+    consumed_at_ms: number | null;
+  }>>(
+    `SELECT completed_set_id, consumed_at_ms
+     FROM session_undo_snapshots
+     WHERE idempotency_key = ?`,
+    [undoKey],
+  );
+  if (snapshot === undefined) throw new Error("v12_native_acceptance_workout_undo_receipt_missing");
+  if (snapshot.consumed_at_ms === null) {
+    const sessionId = await workoutFixtureSessionId(input.kernel, request);
+    if (sessionId === null) throw new Error("v12_native_acceptance_workout_fixture_session_missing");
+    const result = await undoCompletedSet({
+      repository: createWorkoutRepository(input.kernel),
+      input: {
+        sessionId,
+        completedSetId: snapshot.completed_set_id,
+        nowMs: workoutFixtureActivatedAt(request) + 4_000,
+      },
+    });
+    if (result.outcome !== "undone") throw new Error("v12_native_acceptance_workout_undo_failed");
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ idempotency_key: undoKey }),
+    outcome: before === undefined || before.consumed_at_ms === null ? "committed" : "already_committed",
+    verify: async () => {
+      const [receipt] = await input.kernel.queryAll<Readonly<{ consumed_at_ms: number | null }>>(
+        "SELECT consumed_at_ms FROM session_undo_snapshots WHERE idempotency_key = ?",
+        [undoKey],
+      );
+      const [set] = await input.kernel.queryAll<Readonly<{ status: string }>>(
+        "SELECT status FROM session_sets WHERE id = ?",
+        [snapshot.completed_set_id],
+      );
+      if (receipt?.consumed_at_ms !== workoutFixtureActivatedAt(request) + 4_000 || set?.status !== "planned") {
+        throw new Error("v12_native_acceptance_workout_undo_postcondition_failed");
+      }
+    },
+  });
+}
+
 async function executeWorkoutCompleteSet(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
   await prepareActiveWorkoutFixture(input);
   const request = requireRequest(input);
@@ -1438,6 +1522,7 @@ const WORKOUT_ADD_EXERCISE_HANDLER = "active-workout.workout-repository.add-exer
 const WORKOUT_REORDER_EXERCISES_HANDLER = "active-workout.workout-repository.reorder-exercises";
 const WORKOUT_REPLACE_EXERCISE_HANDLER = "active-workout.workout-repository.replace-exercise";
 const WORKOUT_REMOVE_EXERCISE_HANDLER = "active-workout.workout-repository.remove-exercise";
+const WORKOUT_UNDO_COMPLETED_SET_HANDLER = "active-workout.workout-repository.undo-completed-set";
 const WORKOUT_PREFERENCE_WRITE_HANDLER = "workout.workout-preference-repository.write";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
@@ -2002,6 +2087,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [WORKOUT_REMOVE_EXERCISE_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutRemoveExercise,
+  }),
+  [WORKOUT_UNDO_COMPLETED_SET_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutUndoCompletedSet,
   }),
   [WORKOUT_PREFERENCE_WRITE_HANDLER]: Object.freeze({
     prepare: prepareWorkoutFixture,
