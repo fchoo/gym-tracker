@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
-import { PHASE14_SHELL_EVIDENCE_CASES } from "../src/testing/contracts/phase14Shell.contract.ts";
+import { V12_SHELL_REQUIREMENT_REGISTRY } from "./v12-shell-requirement-registry.mjs";
+
+export { V12_SHELL_REQUIREMENT_REGISTRY } from "./v12-shell-requirement-registry.mjs";
 
 const HASH = /^[a-f0-9]{64}$/u;
 const RESULTS = new Set(["PASS", "FAIL", "NOT_RUN", "REVIEW_REQUIRED"]);
@@ -9,19 +11,6 @@ const fail = (code) => { throw new Error(`v12_shell_evidence_${code}`); };
 const exact = (value, keys) => value !== null && typeof value === "object" && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
-
-const shell = (id, actionIds, postconditionIds) => Object.freeze({
-  id, action_ids: Object.freeze(actionIds), postcondition_ids: Object.freeze(postconditionIds),
-});
-
-/** Executable projection of the source-owned Phase 14 registry. */
-export const V12_SHELL_REQUIREMENT_REGISTRY = Object.freeze(Object.fromEntries(
-  PHASE14_SHELL_EVIDENCE_CASES.map((entry) => [entry.requirement, shell(
-    entry.id,
-    entry.actions.map(({ id }) => id),
-    [...entry.postconditions],
-  )]),
-));
 
 const PHASE14_MANIFEST_PATH = "shell/phase14-build.json";
 const PHASE14_EVIDENCE_PATH = "shell/phase14-evidence.json";
@@ -123,16 +112,14 @@ function postconditionReceipt(identity, requirement, contract, postconditionId, 
 
 export function createV12ShellRequirementEvidence(evidence, phase14Manifest, manifest) {
   const identity = identityFromManifests(phase14Manifest, evidence, manifest);
-  if (!Array.isArray(evidence.evidence) || evidence.evidence.length !== PHASE14_SHELL_EVIDENCE_CASES.length
+  if (!Array.isArray(evidence.evidence) || evidence.evidence.length !== Object.keys(V12_SHELL_REQUIREMENT_REGISTRY).length
     || !Array.isArray(evidence.matrix_cells)) fail("phase14_coverage_invalid");
   const rows = new Map();
   for (const row of evidence.evidence) {
     if (typeof row?.requirement !== "string" || rows.has(row.requirement)) fail("phase14_coverage_invalid");
     rows.set(row.requirement, row);
   }
-  return Object.freeze(PHASE14_SHELL_EVIDENCE_CASES.map((sourceContract) => {
-    const requirement = sourceContract.requirement;
-    const contract = V12_SHELL_REQUIREMENT_REGISTRY[requirement];
+  return Object.freeze(Object.entries(V12_SHELL_REQUIREMENT_REGISTRY).map(([requirement, contract]) => {
     const row = rows.get(requirement);
     if (contract === undefined || row?.id !== contract.id || row.verdict !== "PASS" || row.native_verdict !== "PASS"
       || row.component_verdict !== "PASS" || !Array.isArray(row.matrix_cells) || row.matrix_cells.length === 0) fail("phase14_row_invalid");

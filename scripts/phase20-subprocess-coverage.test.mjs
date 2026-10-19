@@ -1889,6 +1889,10 @@ test("production-shaped retained evidence completes preseal and final readiness"
       return result.stdout;
     };
     const directMaestroTools = resolveV12NativeExecutionTools({ domain: true, env: liveEnvironment });
+    for (const [name, args] of [["adb", ["version"]], ["maestro", ["--version"]], ["unzip", ["-v"]]]) {
+      const output = executeDirectMaestroTool(directMaestroTools[name], args, { timeout: 60_000, maxBuffer: 64 * 1024 });
+      assert.ok(String(output).trim().length > 0, `${name} version output is empty`);
+    }
     for (const [args, expected] of [
       [["-s", serial, "get-state"], "device"],
       [["-s", serial, "shell", "pm", "list", "packages", build.build.package], `package:${build.build.package}`],
@@ -2165,10 +2169,14 @@ test("retained Phase 20 fixture executes the exact coverage CLI entrypoints", {
   try {
     for (const [file] of rootHelpers) rmSync(path.join(root, file));
     for (const [script, args, expectedStatus] of commands) {
+      const commandEnvironment = { ...environment };
+      if (["scripts/capture-v12-visual.mjs", "scripts/compare-v12-visual.mjs"].includes(script) && args.includes("--all")) {
+        delete commandEnvironment.NODE_V8_COVERAGE;
+      }
       const result = spawnSync(process.execPath, [path.join(projectRoot, script), ...args], {
         cwd: root,
         encoding: "utf8",
-        env: environment,
+        env: commandEnvironment,
         maxBuffer: 64 * 1024 * 1024,
         timeout: RETAINED_CLI_TIMEOUT_MS,
       });
