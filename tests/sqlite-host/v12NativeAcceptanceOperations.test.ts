@@ -130,6 +130,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
               "workout.duration-editor", "workout.all-metrics", "workout.add-set", "workout.complete-commit",
               "workout.rest-controls", "workout.rest-recovery",
               "workout.add-exercise", "workout.reorder",
+              "workout.replace-exercise", "workout.delete-exercise",
               "workout.root-identity", "workout.day-switch", "workout.scheduled-rest-empty",
               "workout.start-resume", "workout.active-layout", "workout.active-back",
               "workout.exercise-disclosure", "workout.active-indicator", "workout.set-states",
@@ -214,6 +215,8 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "workout.rest-recovery",
       "workout.add-exercise",
       "workout.reorder",
+      "workout.replace-exercise",
+      "workout.delete-exercise",
     ];
     for (const [index, caseId] of cases.entries()) {
       const kernel = await open();

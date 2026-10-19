@@ -48,7 +48,7 @@ import { parseFullBodyFoundation } from "../domains/content";
 import { activateStarterPlan } from "../domains/plans";
 import { startWorkout } from "../domains/workout/startWorkout";
 import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
-import { addExercise, reorderExercises } from "../domains/workout/sessionExerciseCommands";
+import { addExercise, removeExercise, reorderExercises, replaceExercise } from "../domains/workout/sessionExerciseCommands";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
@@ -654,6 +654,88 @@ async function executeWorkoutReorderExercises(input: V12NativeAcceptanceProducti
       );
       if (receipt?.operation !== "reorder_exercises" || receipt.ordered_session_exercise_ids_json !== JSON.stringify(ordered)) {
         throw new Error("v12_native_acceptance_workout_reorder_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executeWorkoutReplaceExercise(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const requestId = `v12:workout:${request.caseId}:${request.nonce}:action`;
+  const before = await workoutEditReceipt(input.kernel, requestId);
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const source = (await workoutFixtureExercises(input.kernel, request))[0]!;
+  const replacementSessionExerciseId = `v12:workout:${request.nonce}:replacement-exercise`;
+  const replacementSetId = `v12:workout:${request.nonce}:replacement-set`;
+  if (before === undefined) {
+    const result = await replaceExercise({
+      repository: createWorkoutRepository(input.kernel),
+      input: {
+        requestId,
+        requestSha256: await runtimeSha256(requestId),
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        sessionExerciseId: source.id,
+        expectedSessionExerciseRevision: source.revision,
+        occurredAtMs: workoutFixtureActivatedAt(request) + 2_000,
+        libraryExerciseId: await workoutAlternateLibraryExercise(input.kernel, request, source.exercise_id),
+        replacementSessionExerciseId,
+        replacementSetId,
+      },
+    });
+    if (result.outcome !== "committed") throw new Error("v12_native_acceptance_workout_replace_exercise_failed");
+  }
+  const receipt = await workoutEditReceipt(input.kernel, requestId);
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [replacement] = await input.kernel.queryAll<Readonly<{ id: string; session_id: string }>>(
+        "SELECT id, session_id FROM session_exercises WHERE id = ?", [replacementSessionExerciseId],
+      );
+      if (receipt?.operation !== "replace_exercise" || replacement?.session_id !== session.id) {
+        throw new Error("v12_native_acceptance_workout_replace_exercise_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executeWorkoutRemoveExercise(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const requestId = `v12:workout:${request.caseId}:${request.nonce}:action`;
+  const before = await workoutEditReceipt(input.kernel, requestId);
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const exercises = await workoutFixtureExercises(input.kernel, request);
+  const source = exercises.at(-1)!;
+  if (before === undefined) {
+    const result = await removeExercise({
+      repository: createWorkoutRepository(input.kernel),
+      input: {
+        requestId,
+        requestSha256: await runtimeSha256(requestId),
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        sessionExerciseId: source.id,
+        expectedSessionExerciseRevision: source.revision,
+        occurredAtMs: workoutFixtureActivatedAt(request) + 2_000,
+      },
+    });
+    if (result.outcome !== "committed") throw new Error("v12_native_acceptance_workout_remove_exercise_failed");
+  }
+  const receipt = await workoutEditReceipt(input.kernel, requestId);
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [removed] = await input.kernel.queryAll<Readonly<{ id: string; status: string }>>(
+        "SELECT id, status FROM session_exercises WHERE id = ?", [source.id],
+      );
+      if (receipt?.operation !== "remove_exercise" || removed?.status === "active") {
+        throw new Error("v12_native_acceptance_workout_remove_exercise_postcondition_failed");
       }
     },
   });
@@ -1319,6 +1401,8 @@ const WORKOUT_REST_ADJUST_HANDLER = "rest.rest-repository.adjust-rest";
 const WORKOUT_REST_RESUME_HANDLER = "rest.rest-repository.resume-rest";
 const WORKOUT_ADD_EXERCISE_HANDLER = "active-workout.workout-repository.add-exercise";
 const WORKOUT_REORDER_EXERCISES_HANDLER = "active-workout.workout-repository.reorder-exercises";
+const WORKOUT_REPLACE_EXERCISE_HANDLER = "active-workout.workout-repository.replace-exercise";
+const WORKOUT_REMOVE_EXERCISE_HANDLER = "active-workout.workout-repository.remove-exercise";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
   return {
@@ -1874,6 +1958,14 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [WORKOUT_REORDER_EXERCISES_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutReorderExercises,
+  }),
+  [WORKOUT_REPLACE_EXERCISE_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutReplaceExercise,
+  }),
+  [WORKOUT_REMOVE_EXERCISE_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutRemoveExercise,
   }),
   "workout.plans-workout-repository.get-today-view": Object.freeze({
     prepare: prepareWorkoutFixture,
