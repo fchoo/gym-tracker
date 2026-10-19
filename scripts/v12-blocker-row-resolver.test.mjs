@@ -179,6 +179,19 @@ test('GAR resolver requires the explicit domain, UI action, and readback members
     const value = structuredClone(substituted.get(key)); mutate(value); substituted.set(key, value);
     assert.throws(() => resolveV12GarminRequirement(selector, lookup => substituted.get(lookup), runIdentity), /garmin_/u);
   }
+  const crossRun = new Map(members);
+  const crossRunKey = `garmin-domain:${selector.domain_case_ids[0]}`;
+  const crossRunMember = structuredClone(crossRun.get(crossRunKey));
+  crossRunMember.bindings = crossRunMember.bindings.map(binding => ({
+    ...binding,
+    artifact: binding.artifact.replace(runIdentity.run_id, 'phase20-20261018T000000Z-bbbbbbbbbbbb'),
+  }));
+  crossRunMember.receipt.retained_artifacts = structuredClone(crossRunMember.bindings);
+  const { receipt_sha256: _crossRunDigest, ...crossRunUnsigned } = crossRunMember.receipt;
+  crossRunMember.receipt.receipt_sha256 = createHash('sha256').update(JSON.stringify(crossRunUnsigned)).digest('hex');
+  crossRun.set(crossRunKey, crossRunMember);
+  assert.throws(() => resolveV12GarminRequirement(selector, lookup => crossRun.get(lookup), runIdentity), /garmin_artifact_invalid/u,
+    'a recomputed receipt cannot substitute a member from another run');
   assert.throws(() => resolveV12GarminRequirement({ ...selector, domain_case_ids: [selector.domain_case_ids[0], selector.domain_case_ids[0]] },
     key => members.get(key), runIdentity), /garmin_selector_invalid/u);
 });

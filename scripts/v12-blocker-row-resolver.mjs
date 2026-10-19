@@ -102,6 +102,14 @@ const GARMIN_MEMBER_CONTRACTS = Object.freeze({
   readback: Object.freeze({ type: 'garmin-authoritative-readback', artifact_class: 'garmin-authoritative-case-readback', domain: 'v12-garmin-readback/v1' }),
 });
 
+function garminArtifactPath(runIdentity, relativePath) {
+  ensure(plain(runIdentity) && typeof runIdentity.run_id === 'string'
+    && typeof relativePath === 'string' && relativePath.length > 0
+    && !relativePath.includes('\\') && !relativePath.split('/').some(part => !part || part === '.' || part === '..'),
+  'garmin_artifact_invalid');
+  return `artifacts/native/v1.2/${runIdentity.run_id}/${relativePath}`;
+}
+
 function garminArtifactForCase(caseId) {
   if (['packaging', 'bridge-allowlist', 'account-lifecycle', 'recovery'].includes(caseId)) return 'garmin/packaging-auth.json';
   if (['canonical-json', 'sync-read', 'privacy'].includes(caseId)) return 'garmin/sync-read.json';
@@ -112,10 +120,15 @@ function garminArtifactForCase(caseId) {
 
 export function createV12GarminAuthenticatedMember({ kind, id, result: state, runIdentity, bindings, facts }) {
   const contract = GARMIN_MEMBER_CONTRACTS[kind];
+  const expectedRelativePaths = kind === 'ui'
+    ? ['comparison/index.json', 'screenshots/index.json']
+    : kind === 'readback' ? [garminArtifactForCase(id), 'maestro/garmin-progress.xml'] : [garminArtifactForCase(id)];
   ensure(contract !== undefined && typeof id === 'string' && id.length > 0 && plain(runIdentity)
     && Array.isArray(bindings) && bindings.length > 0 && bindings.every((binding) => plain(binding)
       && typeof binding.artifact === 'string' && HASH.test(binding.sha256 ?? ''))
-    && new Set(bindings.map(({ artifact }) => artifact)).size === bindings.length && plain(facts), 'garmin_member_invalid');
+    && new Set(bindings.map(({ artifact }) => artifact)).size === bindings.length
+    && same(bindings.map(({ artifact }) => artifact).sort(), expectedRelativePaths.map(relative => garminArtifactPath(runIdentity, relative)).sort())
+    && plain(facts), 'garmin_member_invalid');
   const normalizedResult = result(state);
   const unsigned = {
     schema_version: 1,
@@ -160,7 +173,8 @@ function validateV12GarminMember(value, { kind, id, runIdentity }) {
   const expectedSuffixes = kind === 'ui'
     ? ['comparison/index.json', 'screenshots/index.json']
     : kind === 'readback' ? [garminArtifactForCase(id), 'maestro/garmin-progress.xml'] : [garminArtifactForCase(id)];
-  ensure(same(value.bindings.map(({ artifact }) => artifact.split('/').slice(-2).join('/')).sort(), [...expectedSuffixes].sort()), 'garmin_artifact_invalid');
+  ensure(same(value.bindings.map(({ artifact }) => artifact).sort(), expectedSuffixes
+    .map(relative => garminArtifactPath(runIdentity, relative)).sort()), 'garmin_artifact_invalid');
   if (kind === 'ui') ensure(value.authoritative_facts.state_id === id
     && same(value.authoritative_facts.configuration_ids, V12_CONFIG_IDS), 'garmin_facts_invalid');
   else ensure(value.authoritative_facts.case_id === id && value.authoritative_facts.artifact_path === garminArtifactForCase(id)
