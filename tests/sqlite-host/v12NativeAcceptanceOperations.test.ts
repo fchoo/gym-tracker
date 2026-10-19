@@ -120,7 +120,11 @@ describe("v1.2 Workout and Library production operation registry", () => {
             current = current.cause;
           }
           const expectedFailure = (contract.caseId.startsWith("library.running-") && contract.caseId !== "library.running-conflict")
-            || contract.caseId === "library.exercise-favorites"
+            || [
+              "library.exercise-favorites", "library.create-exercise", "library.custom-exercise",
+              "library.custom-exercise-edit", "library.custom-exercise-hide", "library.custom-exercise-unhide",
+              "library.custom-exercise-archive", "library.custom-exercise-reactivate",
+            ].includes(contract.caseId)
             ? "v12_native_acceptance_request_required"
             : "v12_native_acceptance_mutation_receipt_missing";
           if (!messages.includes(expectedFailure)) {
@@ -274,5 +278,48 @@ describe("v1.2 Workout and Library production operation registry", () => {
       committed_effects: 0,
       command_receipt_id: first.source_receipt.command_receipt_id,
     });
+  });
+
+  it("runs the remaining custom-exercise command handlers with one receipt per nonce", async () => {
+    const ids = [
+      "library.create-exercise",
+      "library.custom-exercise-edit",
+      "library.custom-exercise-hide",
+      "library.custom-exercise-unhide",
+      "library.custom-exercise",
+      "library.custom-exercise-archive",
+      "library.custom-exercise-reactivate",
+    ];
+    for (const [index, caseId] of ids.entries()) {
+      const kernel = await open();
+      const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.caseId === caseId)!;
+      const request: V12NativeAcceptanceRequest = {
+        shard: "library-running", caseId, fixtureId: "v12-synthetic-fixtures-r18",
+        title: "Library and running", source: "PHASE17_CASE_ACTION_CONTRACTS",
+        requirement: contract.requirement, action: contract.actionId, readback: contract.uiReadback.label,
+        sourceProbe: contract.sourceProbe, authorityTables: contract.probes.post.tables,
+        nonce: `${index.toString(16).padStart(2, "0")}${"e".repeat(46)}`,
+      };
+      const execute = () => executeV12NativeAcceptanceReadAction({
+        kernel,
+        request,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+        prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest,
+          runtime: { customExercises: createCustomExerciseRepository(kernel) },
+        }),
+        executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest,
+          runtime: { customExercises: createCustomExerciseRepository(kernel) },
+        }),
+      });
+      const first = await execute();
+      const replay = await execute();
+      expect(first.source_receipt).toMatchObject({ command_outcome: "committed", committed_effects: 1 });
+      expect(replay.source_receipt).toMatchObject({
+        command_outcome: "already_committed", committed_effects: 0,
+        command_receipt_id: first.source_receipt.command_receipt_id,
+      });
+    }
   });
 });

@@ -21,8 +21,13 @@ import {
   type RunningSessionRevision,
 } from "../domains/running/contracts";
 import {
+  archiveCustomExercise,
   createCustomExercise,
+  editCustomExercise,
+  previewCustomExerciseArchive,
+  restoreCustomExercise,
   setExerciseFavorite,
+  setExerciseHidden,
 } from "../domains/library/customExerciseCommands";
 import type { CustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
 
@@ -728,6 +733,170 @@ async function executeCustomFavorite(input: V12NativeAcceptanceProductionHandler
   });
 }
 
+const CUSTOM_CREATE_HANDLER = "custom-exercise.custom-exercise-repository.create-custom-exercise";
+const CUSTOM_EDIT_HANDLER = "custom-exercise.custom-exercise-repository.edit-custom-exercise";
+const CUSTOM_HIDDEN_HANDLER = "custom-exercise.custom-exercise-repository.set-exercise-hidden";
+const CUSTOM_ARCHIVE_HANDLER = "custom-exercise.custom-exercise-repository.set-custom-exercise-archived";
+
+function customExerciseInput(requestId: string, exerciseId: string) {
+  return {
+    requestId,
+    exerciseId,
+    name: "V12 nonce-bound custom exercise",
+    aliases: ["V12 custom"],
+    exerciseType: "strength" as const,
+    movementClass: "compound" as const,
+    primaryMuscles: ["quadriceps"],
+    secondaryMuscles: ["glutes"],
+    equipment: ["barbell"],
+    metricIdentity: { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 },
+    defaultRestSeconds: 60,
+    progression: { kind: "manual_hold" as const, version: 1 as const },
+  };
+}
+
+async function customMutationFacts(input: Readonly<{
+  handler: V12NativeAcceptanceProductionHandlerInput;
+  before: Awaited<ReturnType<typeof customExerciseReceipt>>;
+  expectedMutationKind: string;
+  verify(): Promise<void>;
+}>): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input.handler);
+  const requestId = customExerciseActionRequestId(request);
+  const receipt = await customExerciseReceipt(input.handler.kernel, requestId);
+  if (receipt === undefined || receipt.mutation_kind !== input.expectedMutationKind || !receipt.request_json.includes(requestId)) {
+    throw new Error("v12_native_acceptance_custom_exercise_receipt_invalid");
+  }
+  await input.verify();
+  if (input.handler.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
+  const authoritativeReadback = await input.handler.kernel.readSnapshot((query) => readCaseFacts(query, input.handler.contract));
+  return Object.freeze({
+    result: "committed" as const,
+    facts: operationFacts({
+      contract: input.handler.contract,
+      authoritativeReadback,
+      receiptId: stableJson(Object.freeze({ request_id: receipt.request_id })),
+      outcome: input.before === undefined ? "committed" : "already_committed",
+      committedEffects: input.before === undefined ? 1 : 0,
+    }),
+  });
+}
+
+async function executeCustomCreate(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = requireCustomExerciseRepository(input);
+  const requestId = customExerciseActionRequestId(request);
+  const exerciseId = customExerciseFixtureId(request);
+  const before = await customExerciseReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const result = await createCustomExercise({
+      repository,
+      invalidate: async () => undefined,
+      input: { ...customExerciseInput(requestId, exerciseId), createdAtMs: V12_RUNNING_SEED_AT_MS + 1 },
+    });
+    if (result.outcome !== "committed" || result.exercise.exerciseId !== exerciseId) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+  }
+  return customMutationFacts({
+    handler: input,
+    before,
+    expectedMutationKind: "create",
+    verify: async () => {
+      if (await customExerciseRow(input.kernel, exerciseId) === undefined) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+    },
+  });
+}
+
+async function executeCustomEdit(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = requireCustomExerciseRepository(input);
+  const requestId = customExerciseActionRequestId(request);
+  const exerciseId = customExerciseFixtureId(request);
+  const before = await customExerciseReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const existing = await customExerciseRow(input.kernel, exerciseId);
+    if (existing === undefined) throw new Error("v12_native_acceptance_custom_exercise_precondition_missing");
+    const result = await editCustomExercise({
+      repository,
+      invalidate: async () => undefined,
+      input: {
+        ...customExerciseInput(requestId, exerciseId),
+        name: "V12 edited custom exercise",
+        aliases: ["V12 edited"],
+        expectedExerciseRevision: existing.revision,
+        editedAtMs: V12_RUNNING_SEED_AT_MS + 1,
+      },
+    });
+    if (result.outcome !== "committed" || result.exercise.revision !== existing.revision + 1) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+  }
+  return customMutationFacts({
+    handler: input,
+    before,
+    expectedMutationKind: "edit",
+    verify: async () => {
+      const row = await customExerciseRow(input.kernel, exerciseId);
+      if (row === undefined || row.revision < 2) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+    },
+  });
+}
+
+async function executeCustomHidden(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = requireCustomExerciseRepository(input);
+  const requestId = customExerciseActionRequestId(request);
+  const exerciseId = customExerciseFixtureId(request);
+  const hidden = input.contract.caseId !== "library.custom-exercise-unhide";
+  const before = await customExerciseReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const preference = await customExercisePreference(input.kernel, exerciseId);
+    const result = await setExerciseHidden({
+      repository,
+      invalidate: async () => undefined,
+      input: { requestId, exerciseId, expectedPreferenceRevision: preference?.revision ?? null, hidden, updatedAtMs: V12_RUNNING_SEED_AT_MS + 1 },
+    });
+    if (result.outcome !== "committed" || result.hidden !== hidden) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+  }
+  return customMutationFacts({
+    handler: input,
+    before,
+    expectedMutationKind: "hidden",
+    verify: async () => {
+      const [preference] = await input.kernel.queryAll<Readonly<{ hidden: number }>>("SELECT hidden FROM exercise_owner_preferences WHERE exercise_id = ?", [exerciseId]);
+      if (preference === undefined || preference.hidden !== (hidden ? 1 : 0)) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+    },
+  });
+}
+
+async function executeCustomArchive(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = requireCustomExerciseRepository(input);
+  const requestId = customExerciseActionRequestId(request);
+  const exerciseId = customExerciseFixtureId(request);
+  const archived = input.contract.caseId !== "library.custom-exercise-reactivate";
+  const before = await customExerciseReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const row = await customExerciseRow(input.kernel, exerciseId);
+    const preference = await customExercisePreference(input.kernel, exerciseId);
+    if (row === undefined) throw new Error("v12_native_acceptance_custom_exercise_precondition_missing");
+    const preview = await previewCustomExerciseArchive({ repository, input: { exerciseId, expectedExerciseRevision: row.revision } });
+    const command = archived ? archiveCustomExercise : restoreCustomExercise;
+    const result = await command({
+      repository,
+      invalidate: async () => undefined,
+      input: { requestId, exerciseId, expectedExerciseRevision: row.revision, expectedPreferenceRevision: preference?.revision ?? null, previewRevision: preview.previewRevision, updatedAtMs: V12_RUNNING_SEED_AT_MS + 1 },
+    });
+    if (result.outcome !== "committed" || result.archived !== archived) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+  }
+  return customMutationFacts({
+    handler: input,
+    before,
+    expectedMutationKind: "archive",
+    verify: async () => {
+      const [preference] = await input.kernel.queryAll<Readonly<{ archived: number }>>("SELECT archived FROM exercise_owner_preferences WHERE exercise_id = ?", [exerciseId]);
+      if (preference === undefined || preference.archived !== (archived ? 1 : 0)) throw new Error("v12_native_acceptance_custom_exercise_postcondition_failed");
+    },
+  });
+}
+
 /**
  * Executes the case-owned production boundary. Phase 13 cases use their exact
  * repository contract. Workout and Library cases use a case-scoped query or
@@ -827,6 +996,21 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [CUSTOM_FAVORITE_HANDLER]: Object.freeze({
     prepare: prepareCustomFavorite,
     execute: executeCustomFavorite,
+  }),
+  [CUSTOM_CREATE_HANDLER]: Object.freeze({
+    execute: executeCustomCreate,
+  }),
+  [CUSTOM_EDIT_HANDLER]: Object.freeze({
+    prepare: prepareCustomFavorite,
+    execute: executeCustomEdit,
+  }),
+  [CUSTOM_HIDDEN_HANDLER]: Object.freeze({
+    prepare: prepareCustomFavorite,
+    execute: executeCustomHidden,
+  }),
+  [CUSTOM_ARCHIVE_HANDLER]: Object.freeze({
+    prepare: prepareCustomFavorite,
+    execute: executeCustomArchive,
   }),
 });
 
