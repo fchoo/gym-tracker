@@ -32,7 +32,10 @@ import {
   setExerciseHidden,
 } from "../domains/library/customExerciseCommands";
 import { migrateCustomExerciseMetricProfile } from "../domains/metrics/migrateCustomExerciseMetricProfile";
-import type { CustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
+import {
+  createCustomExerciseRepository,
+  type CustomExerciseRepository,
+} from "../platform/sqlite/repositories/customExerciseRepository";
 import { createContentRepository } from "../platform/sqlite/repositories/contentRepository";
 import { createMetricRepository } from "../platform/sqlite/repositories/metricRepository";
 import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
@@ -45,6 +48,7 @@ import { parseFullBodyFoundation } from "../domains/content";
 import { activateStarterPlan } from "../domains/plans";
 import { startWorkout } from "../domains/workout/startWorkout";
 import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
+import { addExercise, reorderExercises } from "../domains/workout/sessionExerciseCommands";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
@@ -388,6 +392,57 @@ async function workoutFixtureActiveSet(kernel: SqliteKernel, request: V12NativeA
   return set;
 }
 
+async function workoutFixtureExercises(kernel: SqliteKernel, request: V12NativeAcceptanceRequest) {
+  const sessionId = await workoutFixtureSessionId(kernel, request);
+  if (sessionId === null) throw new Error("v12_native_acceptance_workout_fixture_session_missing");
+  const rows = await kernel.queryAll<Readonly<{ id: string; exercise_id: string; revision: number; ordinal: number }>>(
+    `SELECT id, exercise_id, revision, ordinal
+     FROM session_exercises
+     WHERE session_id = ?
+     ORDER BY ordinal, id`,
+    [sessionId],
+  );
+  if (rows.length === 0) throw new Error("v12_native_acceptance_workout_fixture_exercise_missing");
+  return Object.freeze(rows);
+}
+
+async function workoutAlternateLibraryExercise(kernel: SqliteKernel, request: V12NativeAcceptanceRequest, currentExerciseId: string): Promise<string> {
+  const readAvailable = async () => kernel.queryAll<Readonly<{ id: string }>>(
+    `SELECT entry.exercise_id AS id
+     FROM exercise_library_entries entry
+     JOIN exercises exercise ON exercise.id = entry.exercise_id
+     WHERE entry.exercise_id <> ? AND entry.availability = 'available'
+     ORDER BY exercise.name, entry.exercise_id LIMIT 1`,
+    [currentExerciseId],
+  );
+  let [exercise] = await readAvailable();
+  if (exercise === undefined) {
+    const exerciseId = `v12:workout:${request.nonce}:library-exercise`;
+    await createCustomExercise({
+      repository: createCustomExerciseRepository(kernel),
+      invalidate: async () => undefined,
+      input: {
+        requestId: `v12:workout:${request.nonce}:library-exercise-seed`,
+        exerciseId,
+        name: "V12 workout added exercise",
+        aliases: ["V12 added"],
+        exerciseType: "strength",
+        movementClass: "compound",
+        primaryMuscles: ["quadriceps"],
+        secondaryMuscles: ["glutes"],
+        equipment: ["barbell"],
+        metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+        defaultRestSeconds: 60,
+        progression: { kind: "manual_hold", version: 1 },
+        createdAtMs: workoutFixtureActivatedAt(request) + 1_500,
+      },
+    });
+    [exercise] = await readAvailable();
+  }
+  if (exercise === undefined) throw new Error("v12_native_acceptance_workout_library_exercise_missing");
+  return exercise.id;
+}
+
 async function workoutAuthorityReadback(input: V12NativeAcceptanceProductionHandlerInput): Promise<unknown> {
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
   return input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
@@ -506,6 +561,100 @@ async function executeWorkoutAddSet(input: V12NativeAcceptanceProductionHandlerI
     verify: async () => {
       const [row] = await input.kernel.queryAll<Readonly<{ id: string }>>("SELECT id FROM session_sets WHERE id = ? AND session_exercise_id = ?", [newSetId, set.exercise_id]);
       if (row === undefined) throw new Error("v12_native_acceptance_workout_add_set_postcondition_failed");
+    },
+  });
+}
+
+async function workoutEditReceipt(kernel: SqliteKernel, requestId: string) {
+  const [receipt] = await kernel.queryAll<Readonly<{ request_id: string; operation: string; result_session_revision: number }>>(
+    `SELECT request_id, operation, result_session_revision
+     FROM workout_session_exercise_edit_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
+async function executeWorkoutAddExercise(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const requestId = `v12:workout:${request.caseId}:${request.nonce}:action`;
+  const before = await workoutEditReceipt(input.kernel, requestId);
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const exercises = await workoutFixtureExercises(input.kernel, request);
+  const source = exercises[0]!;
+  const sessionExerciseId = `v12:workout:${request.nonce}:added-exercise`;
+  const setId = `v12:workout:${request.nonce}:added-set`;
+  if (before === undefined) {
+    const result = await addExercise({
+      repository: createWorkoutRepository(input.kernel),
+      input: {
+        requestId,
+        requestSha256: await runtimeSha256(requestId),
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        occurredAtMs: workoutFixtureActivatedAt(request) + 2_000,
+        libraryExerciseId: await workoutAlternateLibraryExercise(input.kernel, request, source.exercise_id),
+        sessionExerciseId,
+        setId,
+      },
+    });
+    if (result.outcome !== "committed") throw new Error("v12_native_acceptance_workout_add_exercise_failed");
+  }
+  const receipt = await workoutEditReceipt(input.kernel, requestId);
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [row] = await input.kernel.queryAll<Readonly<{ id: string; session_id: string }>>(
+        "SELECT id, session_id FROM session_exercises WHERE id = ?", [sessionExerciseId],
+      );
+      if (receipt?.operation !== "add_exercise" || row?.session_id !== session.id) {
+        throw new Error("v12_native_acceptance_workout_add_exercise_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executeWorkoutReorderExercises(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const requestId = `v12:workout:${request.caseId}:${request.nonce}:action`;
+  const [before] = await input.kernel.queryAll<Readonly<{ request_id: string; operation: string; ordered_session_exercise_ids_json: string }>>(
+    `SELECT request_id, operation, ordered_session_exercise_ids_json
+     FROM workout_session_exercise_reorder_receipts
+     WHERE request_id = ?`, [requestId],
+  );
+  const session = await workoutFixtureSessionRevision(input.kernel, request);
+  const exercises = await workoutFixtureExercises(input.kernel, request);
+  const ordered = Object.freeze([...exercises].reverse().map(({ id }) => id));
+  if (before === undefined) {
+    const result = await reorderExercises({
+      repository: createWorkoutRepository(input.kernel),
+      input: {
+        requestId,
+        requestSha256: await runtimeSha256(requestId),
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        occurredAtMs: workoutFixtureActivatedAt(request) + 2_000,
+        orderedSessionExerciseIds: ordered,
+        expectedSessionExerciseRevisions: exercises.slice().reverse().map(({ id, revision }) => ({ sessionExerciseId: id, revision })),
+      },
+    });
+    if (result.outcome !== "committed") throw new Error("v12_native_acceptance_workout_reorder_failed");
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [receipt] = await input.kernel.queryAll<Readonly<{ operation: string; ordered_session_exercise_ids_json: string }>>(
+        "SELECT operation, ordered_session_exercise_ids_json FROM workout_session_exercise_reorder_receipts WHERE request_id = ?", [requestId],
+      );
+      if (receipt?.operation !== "reorder_exercises" || receipt.ordered_session_exercise_ids_json !== JSON.stringify(ordered)) {
+        throw new Error("v12_native_acceptance_workout_reorder_postcondition_failed");
+      }
     },
   });
 }
@@ -1168,6 +1317,8 @@ const WORKOUT_ADD_SET_HANDLER = "active-workout.workout-repository.add-working-s
 const WORKOUT_COMPLETE_SET_HANDLER = "active-workout.workout-repository.complete-set";
 const WORKOUT_REST_ADJUST_HANDLER = "rest.rest-repository.adjust-rest";
 const WORKOUT_REST_RESUME_HANDLER = "rest.rest-repository.resume-rest";
+const WORKOUT_ADD_EXERCISE_HANDLER = "active-workout.workout-repository.add-exercise";
+const WORKOUT_REORDER_EXERCISES_HANDLER = "active-workout.workout-repository.reorder-exercises";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
   return {
@@ -1715,6 +1866,14 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [WORKOUT_REST_RESUME_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutRestResume,
+  }),
+  [WORKOUT_ADD_EXERCISE_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutAddExercise,
+  }),
+  [WORKOUT_REORDER_EXERCISES_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutReorderExercises,
   }),
   "workout.plans-workout-repository.get-today-view": Object.freeze({
     prepare: prepareWorkoutFixture,
