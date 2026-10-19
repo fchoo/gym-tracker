@@ -24,6 +24,7 @@ export function createControlledRunner() {
   const root = mkdtempSync(path.join(tmpdir(), "v12-production-launcher-"));
   cpSync(path.join(project, "scripts"), path.join(root, "scripts"), { recursive: true });
   mkdirSync(path.join(root, "src/testing/contracts"), { recursive: true });
+  cpSync(path.join(project, "src/testing/contracts/package.json"), path.join(root, "src/testing/contracts/package.json"));
   cpSync(path.join(project, "src/testing/contracts/v12Acceptance.contract.ts"), path.join(root, "src/testing/contracts/v12Acceptance.contract.ts"));
   for (const source of [
     "phase15Workout.contract.ts",
