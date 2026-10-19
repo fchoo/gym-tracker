@@ -13,6 +13,7 @@ import { migrations } from "../../src/platform/sqlite/migrations";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS } from "../../src/testing/contracts/phase15Workout.contract";
 import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
+import { createOwnedPlanRuntimePort } from "../../src/bootstrap/ownedPlanRuntime";
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
 import {
   dispatchV12NativeAcceptanceProductionOperation,
@@ -124,6 +125,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
               "library.exercise-favorites", "library.create-exercise", "library.custom-exercise",
               "library.custom-exercise-edit", "library.custom-exercise-hide", "library.custom-exercise-unhide",
               "library.custom-exercise-copy-bundled", "library.custom-exercise-archive", "library.custom-exercise-reactivate",
+              "library.copy-metric-migration", "library.metric-profile-migration",
             ].includes(contract.caseId)
             ? "v12_native_acceptance_request_required"
             : "v12_native_acceptance_mutation_receipt_missing";
@@ -312,6 +314,49 @@ describe("v1.2 Workout and Library production operation registry", () => {
         executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
           kernel, contract: operationContract, request: operationRequest,
           runtime: { customExercises: createCustomExerciseRepository(kernel) },
+        }),
+      });
+      const first = await execute();
+      const replay = await execute();
+      expect(first.source_receipt).toMatchObject({ command_outcome: "committed", committed_effects: 1 });
+      expect(replay.source_receipt).toMatchObject({
+        command_outcome: "already_committed", committed_effects: 0,
+        command_receipt_id: first.source_receipt.command_receipt_id,
+      });
+    }
+  });
+
+  it("migrates each metric-profile acceptance case with a nonce-bound production event and replay", async () => {
+    const ids = ["library.copy-metric-migration", "library.metric-profile-migration"];
+    for (const [index, caseId] of ids.entries()) {
+      const kernel = await open();
+      let generated = 0;
+      const ownedPlans = createOwnedPlanRuntimePort(kernel, {
+        nowMs: () => 1_800_000_000_000,
+        randomUUID: () => `metric-${index}-${++generated}`,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      });
+      const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.caseId === caseId)!;
+      const request: V12NativeAcceptanceRequest = {
+        shard: "library-running", caseId, fixtureId: "v12-synthetic-fixtures-r18",
+        title: "Library and running", source: "PHASE17_CASE_ACTION_CONTRACTS",
+        requirement: contract.requirement, action: contract.actionId, readback: contract.uiReadback.label,
+        sourceProbe: contract.sourceProbe, authorityTables: contract.probes.post.tables,
+        nonce: `${index.toString(16).padStart(2, "0")}${"f".repeat(46)}`,
+      };
+      const runtime = {
+        customExercises: createCustomExerciseRepository(kernel),
+        ownedPlans,
+      };
+      const execute = () => executeV12NativeAcceptanceReadAction({
+        kernel,
+        request,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+        prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest, runtime,
+        }),
+        executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest, runtime,
         }),
       });
       const first = await execute();

@@ -5272,6 +5272,7 @@ export function WorkoutAppRuntimeProvider({
           request: operationRequest,
           runtime: {
             running: requireServices().runningPlans,
+            ownedPlans: requireServices().ownedPlans,
             customExercises: requireServices().customExerciseRepository,
           },
         }),
@@ -5281,6 +5282,7 @@ export function WorkoutAppRuntimeProvider({
           request: operationRequest,
           runtime: {
             running: requireServices().runningPlans,
+            ownedPlans: requireServices().ownedPlans,
             customExercises: requireServices().customExerciseRepository,
           },
         }),

@@ -14,6 +14,7 @@ import {
   type MultiPlanRunningContractCaseId,
 } from "./contracts/multiPlanRunning.contract";
 import type { RunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
+import type { OwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
 import {
   runningTargetForDistance,
   type RunningPlanAggregate,
@@ -30,8 +31,10 @@ import {
   setExerciseFavorite,
   setExerciseHidden,
 } from "../domains/library/customExerciseCommands";
+import { migrateCustomExerciseMetricProfile } from "../domains/metrics/migrateCustomExerciseMetricProfile";
 import type { CustomExerciseRepository } from "../platform/sqlite/repositories/customExerciseRepository";
 import { createContentRepository } from "../platform/sqlite/repositories/contentRepository";
+import { createMetricRepository } from "../platform/sqlite/repositories/metricRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 
@@ -131,6 +134,7 @@ type V12NativeAcceptanceProductionHandlerInput = Readonly<{
  */
 export type V12NativeAcceptanceProductionRuntime = Readonly<{
   running?: RunningPlanRuntimePort;
+  ownedPlans?: OwnedPlanRuntimePort;
   customExercises?: CustomExerciseRepository;
 }>;
 
@@ -742,6 +746,7 @@ const CUSTOM_EDIT_HANDLER = "custom-exercise.custom-exercise-repository.edit-cus
 const CUSTOM_HIDDEN_HANDLER = "custom-exercise.custom-exercise-repository.set-exercise-hidden";
 const CUSTOM_ARCHIVE_HANDLER = "custom-exercise.custom-exercise-repository.set-custom-exercise-archived";
 const CUSTOM_COPY_HANDLER = "custom-exercise.custom-exercise-repository.create-custom-copy";
+const METRIC_MIGRATION_HANDLER = "metric-profile.metric-repository.migrate-custom-exercise-metric-profile";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
   return {
@@ -981,6 +986,215 @@ async function executeCustomCopy(input: V12NativeAcceptanceProductionHandlerInpu
   });
 }
 
+function requireOwnedPlanRuntime(input: V12NativeAcceptanceProductionHandlerInput): OwnedPlanRuntimePort {
+  const runtime = input.runtime?.ownedPlans;
+  if (runtime === undefined) throw new Error("v12_native_acceptance_owned_plan_runtime_required");
+  return runtime;
+}
+
+function metricFixtureExerciseId(request: V12NativeAcceptanceRequest): string {
+  return `v12:metric-exercise:${request.nonce}`;
+}
+
+function metricFixturePlanId(request: V12NativeAcceptanceRequest): string {
+  return `v12:metric-plan:${request.nonce}`;
+}
+
+function metricFixtureDayId(request: V12NativeAcceptanceRequest): string {
+  return `v12:metric-day:${request.nonce}`;
+}
+
+function metricFixtureOccurrenceId(request: V12NativeAcceptanceRequest): string {
+  return `v12:metric-occurrence:${request.nonce}`;
+}
+
+function metricFixtureTargetId(request: V12NativeAcceptanceRequest): string {
+  return `v12:metric-target:${request.nonce}`;
+}
+
+async function metricFixtureRows(kernel: SqliteKernel, request: V12NativeAcceptanceRequest) {
+  const [exercise] = await kernel.queryAll<Readonly<{
+    revision: number;
+    metric_profile: string;
+    metric_contract_version: number;
+    exercise_metric_generation: number;
+  }>>(
+    `SELECT revision, metric_profile, metric_contract_version,
+            exercise_metric_generation
+     FROM exercises
+     WHERE id = ? AND origin = 'custom'`,
+    [metricFixtureExerciseId(request)],
+  );
+  const [target] = await kernel.queryAll<Readonly<{ revision: number }>>(
+    "SELECT revision FROM owned_plan_working_set_targets WHERE id = ?",
+    [metricFixtureTargetId(request)],
+  );
+  const [policy] = await kernel.queryAll<Readonly<{ revision: number }>>(
+    "SELECT revision FROM owned_plan_progression_policies WHERE plan_day_exercise_id = ?",
+    [metricFixtureOccurrenceId(request)],
+  );
+  return Object.freeze({ exercise, target, policy });
+}
+
+async function prepareMetricMigration(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  const request = requireRequest(input);
+  const customExercises = requireCustomExerciseRepository(input);
+  const ownedPlans = requireOwnedPlanRuntime(input);
+  const exerciseId = metricFixtureExerciseId(request);
+  const planId = metricFixturePlanId(request);
+  if (await customExerciseRow(input.kernel, exerciseId) === undefined) {
+    const created = await createCustomExercise({
+      repository: customExercises,
+      invalidate: async () => undefined,
+      input: {
+        requestId: `${customExerciseSeedRequestId(request)}:metric`,
+        exerciseId,
+        name: "V12 metric migration fixture",
+        aliases: ["V12 metric fixture"],
+        exerciseType: "strength",
+        movementClass: "isolation",
+        primaryMuscles: ["core"],
+        secondaryMuscles: [],
+        equipment: ["bodyweight"],
+        metricIdentity: { profile: "timed_hold", contractVersion: 1, exerciseMetricGeneration: 1 },
+        defaultRestSeconds: 60,
+        progression: { kind: "manual_hold", version: 1 },
+        createdAtMs: V12_RUNNING_SEED_AT_MS,
+      },
+    });
+    if (created.outcome !== "committed") throw new Error("v12_native_acceptance_metric_seed_invalid");
+  }
+  if (await ownedPlans.loadPlan(planId) === null) {
+    const created = await ownedPlans.createFixtureDraft({
+      requestId: `${runningSeedRequestId(request)}:metric-plan`,
+      planId,
+      dayId: metricFixtureDayId(request),
+      name: "V12 metric migration plan",
+      dayName: "Metric day",
+    });
+    if (created.outcome !== "committed") throw new Error("v12_native_acceptance_metric_plan_seed_invalid");
+    const saved = await ownedPlans.savePlan({
+      requestId: `${runningSeedRequestId(request)}:metric-save`,
+      expectedRevision: created.plan.revision,
+      plan: {
+        id: planId,
+        name: "V12 metric migration plan",
+        days: [{
+          id: metricFixtureDayId(request), name: "Metric day", ordinal: 0,
+          occurrences: [{
+            id: metricFixtureOccurrenceId(request), exerciseId, ordinal: 0,
+            restSeconds: 60,
+            metricIdentity: { profile: "timed_hold", contractVersion: 1, exerciseMetricGeneration: 1 },
+            warmups: [],
+            targets: [{
+              id: metricFixtureTargetId(request), ordinal: 0,
+              target: { version: 1, profile: "timed_hold", durationSeconds: 45, perSide: false },
+              units: { version: 1, duration: "seconds" },
+            }],
+            policy: {
+              id: `v12:metric-policy:${request.nonce}`,
+              kind: "manual_hold", policyId: "manual-hold-v1", version: 1,
+              rule: { kind: "manual_hold", id: "manual-hold-v1", version: 1 },
+            },
+          }],
+        }],
+      },
+    });
+    if (saved.outcome !== "committed") throw new Error("v12_native_acceptance_metric_plan_seed_invalid");
+  }
+  const facts = await metricFixtureRows(input.kernel, request);
+  if (await metricMigrationEvent(input.kernel, customExerciseActionRequestId(request)) !== undefined) {
+    return;
+  }
+  if (facts.exercise === undefined || facts.exercise.revision !== 1) {
+    throw new Error("v12_native_acceptance_metric_exercise_precondition_missing");
+  }
+  if (facts.target === undefined || facts.target.revision !== 1) {
+    throw new Error("v12_native_acceptance_metric_target_precondition_missing");
+  }
+  if (facts.policy === undefined || facts.policy.revision !== 1) {
+    throw new Error("v12_native_acceptance_metric_policy_precondition_missing");
+  }
+}
+
+async function metricMigrationEvent(kernel: SqliteKernel, requestId: string) {
+  const [event] = await kernel.queryAll<Readonly<{
+    idempotency_key: string;
+    exercise_id: string;
+    exercise_revision: number;
+    to_exercise_metric_generation: number;
+    result_json: string;
+  }>>(
+    `SELECT idempotency_key, exercise_id, exercise_revision,
+            to_exercise_metric_generation, result_json
+     FROM metric_profile_migration_events
+     WHERE idempotency_key = ?`,
+    [requestId],
+  );
+  return event;
+}
+
+async function executeMetricMigration(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const requestId = customExerciseActionRequestId(request);
+  const before = await metricMigrationEvent(input.kernel, requestId);
+  const fixture = await metricFixtureRows(input.kernel, request);
+  if (fixture.exercise === undefined || fixture.target === undefined || fixture.policy === undefined) {
+    throw new Error("v12_native_acceptance_metric_precondition_missing");
+  }
+  if (before === undefined) {
+    const result = await migrateCustomExerciseMetricProfile({
+      repository: createMetricRepository(input.kernel),
+      input: {
+        exerciseId: metricFixtureExerciseId(request),
+        expectedExerciseRevision: fixture.exercise.revision,
+        fromIdentity: { profile: "timed_hold", contractVersion: 1, exerciseMetricGeneration: 1 },
+        toIdentity: { profile: "timed_hold", contractVersion: 2, exerciseMetricGeneration: 2 },
+        replacements: [{
+          targetId: metricFixtureTargetId(request),
+          expectedTargetRevision: fixture.target.revision,
+          target: { version: 2, profile: "timed_hold", durationMs: 45_000, perSide: false },
+          unit: { version: 2, duration: "milliseconds" },
+        }],
+        policyDecisions: [{
+          planDayExerciseId: metricFixtureOccurrenceId(request),
+          expectedPolicyRevision: fixture.policy.revision,
+          policy: { kind: "manual_hold", version: 1 },
+        }],
+        acknowledgedHistoryImmutable: true,
+        idempotencyKey: requestId,
+        migratedAtMs: V12_RUNNING_SEED_AT_MS + 1,
+      },
+    });
+    if (result.outcome !== "committed" || result.exerciseRevision !== fixture.exercise.revision + 1
+      || result.metricIdentity.exerciseMetricGeneration !== 2) {
+      throw new Error("v12_native_acceptance_metric_postcondition_failed");
+    }
+  }
+  const event = await metricMigrationEvent(input.kernel, requestId);
+  const post = await metricFixtureRows(input.kernel, request);
+  if (event === undefined || event.exercise_id !== metricFixtureExerciseId(request)
+    || event.exercise_revision !== 2 || event.to_exercise_metric_generation !== 2
+    || !event.result_json.includes('"outcome":"committed"')
+    || post.exercise?.exercise_metric_generation !== 2
+    || post.target === undefined || post.target.revision !== 2
+    || post.policy === undefined || post.policy.revision !== 2) {
+    throw new Error("v12_native_acceptance_metric_postcondition_failed");
+  }
+  if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
+  const authoritativeReadback = await input.kernel.readSnapshot((query) => readCaseFacts(query, input.contract));
+  return Object.freeze({
+    result: "committed" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback,
+      receiptId: stableJson(Object.freeze({ idempotency_key: event.idempotency_key })),
+      outcome: before === undefined ? "committed" : "already_committed",
+      committedEffects: before === undefined ? 1 : 0,
+    }),
+  });
+}
+
 /**
  * Executes the case-owned production boundary. Phase 13 cases use their exact
  * repository contract. Workout and Library cases use a case-scoped query or
@@ -1099,6 +1313,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [CUSTOM_COPY_HANDLER]: Object.freeze({
     prepare: prepareCustomCopy,
     execute: executeCustomCopy,
+  }),
+  [METRIC_MIGRATION_HANDLER]: Object.freeze({
+    prepare: prepareMetricMigration,
+    execute: executeMetricMigration,
   }),
 });
 

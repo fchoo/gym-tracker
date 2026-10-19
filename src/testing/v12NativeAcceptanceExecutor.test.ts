@@ -253,33 +253,11 @@ describe("v1.2 native acceptance production executor", () => {
     expect(result.ui_readback.readback_id).toBe("workout.root-identity:ui:Workout source contract observation");
   });
 
-  it("dispatches a case-specific serialized mutation and verifies committed authoritative readback", async () => {
-    const commands: string[] = [];
+  it("fails closed when a production mutation handler is called without its nonce-bound request", async () => {
     const contract = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
-    const result = await execute(kernel({ commands }), request({
-      shard: "library-running",
-      caseId: contract.caseId,
-      title: "Library and running",
-      source: "PHASE17_CASE_ACTION_CONTRACTS + PHASE17_FAMILY_A_CUSTOM_METRIC_MATRIX_CONTRACTS",
-      requirement: contract.requirement,
-      action: contract.actionId,
-      readback: contract.uiReadback.label,
-      sourceProbe: contract.sourceProbe,
-      authorityTables: contract.probes.post.tables,
-    }));
-
-    expect(result.source_receipt).toMatchObject({
-      operation_id: contract.operation.id,
-      operation_kind: "repository-mutation",
-      operation_result: "committed",
-      command_outcome: "already_committed",
-      committed_effects: 0,
-      authority_tables: ["metric_profile_migration_events", "exercises"],
-    });
-    expect(result.source_receipt.pre.facts_sha256).toBe(result.source_receipt.post.facts_sha256);
-    expect(commands.some((sql) => /SELECT COUNT\(\*\)/u.test(sql))).toBe(false);
-    expect(commands.some((sql) => /SET rowid\s*=\s*rowid/u.test(sql))).toBe(false);
-    expect(commands.some((sql) => sql.includes("app_settings"))).toBe(false);
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract,
+    })).rejects.toThrow("v12_native_acceptance_request_required");
   });
 
   it("maps source families to exact authority tables and rejects unowned probes", () => {
@@ -357,7 +335,7 @@ describe("v1.2 native acceptance production executor", () => {
       authorityTables: contract.probes.post.tables,
     });
     await expect(execute(kernel({ empty: true }), mutationRequest))
-      .rejects.toThrow("v12_native_acceptance_mutation_receipt_missing");
+      .rejects.toThrow("v12_native_acceptance_metric_precondition_missing");
     await expect(executeV12NativeAcceptanceReadAction({
       kernel: kernel(),
       request: mutationRequest,
@@ -392,7 +370,7 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
   });
 
-  it("requires a durable receipt and accepts replay only with the same receipt and no second mutation", async () => {
+  it("requires a durable receipt before mutation proof can be accepted", async () => {
     const contract = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
     const mutationRequest = request({
       shard: "library-running",
@@ -405,14 +383,20 @@ describe("v1.2 native acceptance production executor", () => {
       sourceProbe: contract.sourceProbe,
       authorityTables: contract.probes.post.tables,
     });
-    const runtime = kernel();
-    const run = () => execute(runtime, mutationRequest);
-    const first = await run();
-    const replay = await run();
-    expect(first.source_receipt.operation_result_sha256).toBe(replay.source_receipt.operation_result_sha256);
-    expect(first.source_receipt.command_receipt_id).toBe(replay.source_receipt.command_receipt_id);
-    expect(first.source_receipt.command_outcome).toBe("already_committed");
-    expect(replay.source_receipt.committed_effects).toBe(0);
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: kernel(), request: mutationRequest, sha256,
+      executeOperation: async ({ contract: operationContract }) => ({
+        result: "committed",
+        facts: {
+          handler_id: operationContract.operation.handlerId,
+          postcondition_id: operationContract.operation.postcondition.id,
+          receipt_id: null,
+          outcome: "committed",
+          committed_effects: 1,
+          authoritative_readback: {},
+        },
+      }),
+    })).rejects.toThrow("v12_native_acceptance_mutation_effect_missing");
   });
 
   it("fails every operation-result and transaction integrity branch closed", async () => {
@@ -459,51 +443,37 @@ describe("v1.2 native acceptance production executor", () => {
     await expect(dispatchV12NativeAcceptanceProductionOperation({
       kernel: kernel(),
       contract: { ...mutationContract, operation: { ...mutationContract.operation, receipt: null } },
-    })).rejects.toThrow("v12_native_acceptance_receipt_contract_missing");
+    })).rejects.toThrow("v12_native_acceptance_request_required");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
       kernel: kernel({ values: {
         idempotency_key: null, exercise_id: null, exercise_revision: null,
         to_exercise_metric_generation: null, result_json: null,
       } }),
-      contract: mutationContract,
-    })).rejects.toThrow("v12_native_acceptance_mutation_receipt_invalid");
+      contract: mutationContract, request: mutationRequest,
+    })).rejects.toThrow("v12_native_acceptance_metric_postcondition_failed");
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
       kernel: kernel({ values: { mutation_kind: "favorite" } }), contract: favorite,
     })).rejects.toThrow("v12_native_acceptance_request_required");
 
-    const authoritative = async (revision: number) => {
-      const operation = await dispatchV12NativeAcceptanceProductionOperation({
-        kernel: kernel({ initialRevision: revision }), contract: mutationContract,
+    const invalidProof = (outcome: "committed" | "already_committed", effects: number) =>
+      executeV12NativeAcceptanceReadAction({
+        kernel: kernel(), request: mutationRequest, sha256,
+        executeOperation: async () => ({
+          result: "committed",
+          facts: {
+            handler_id: mutationContract.operation.handlerId,
+            postcondition_id: mutationContract.operation.postcondition.id,
+            receipt_id: "durable-migration-receipt",
+            outcome,
+            committed_effects: effects,
+            authoritative_readback: {},
+          },
+        }),
       });
-      return (operation.facts as Readonly<Record<string, unknown>>).authoritative_readback;
-    };
-    const executeMutationProof = async (input: Readonly<{
-      outcome: "committed" | "already_committed";
-      effects: number;
-      snapshots: readonly number[];
-      authoritativeRevision: number;
-    }>) => executeV12NativeAcceptanceReadAction({
-      kernel: kernel({ snapshotValues: input.snapshots }), request: mutationRequest, sha256,
-      executeOperation: async () => ({
-        result: "committed",
-        facts: {
-          handler_id: mutationContract.operation.handlerId,
-          postcondition_id: mutationContract.operation.postcondition.id,
-          receipt_id: "durable-migration-receipt",
-          outcome: input.outcome,
-          committed_effects: input.effects,
-          authoritative_readback: await authoritative(input.authoritativeRevision),
-        },
-      }),
-    });
-    await expect(executeMutationProof({ outcome: "committed", effects: 1, snapshots: [1, 2, 2, 2], authoritativeRevision: 2 }))
-      .resolves.toMatchObject({ source_receipt: { command_outcome: "committed", committed_effects: 1 } });
-    await expect(executeMutationProof({ outcome: "committed", effects: 1, snapshots: [1, 1, 1, 1], authoritativeRevision: 1 }))
+    await expect(invalidProof("committed", 0))
       .rejects.toThrow("v12_native_acceptance_mutation_effect_missing");
-    await expect(executeMutationProof({ outcome: "already_committed", effects: 0, snapshots: [1, 2, 2, 2], authoritativeRevision: 2 }))
-      .rejects.toThrow("v12_native_acceptance_replay_mutated");
-    await expect(executeMutationProof({ outcome: "already_committed", effects: 0, snapshots: [1, 2, 2, 3], authoritativeRevision: 2 }))
-      .rejects.toThrow("v12_native_acceptance_postcondition_drift");
+    await expect(invalidProof("already_committed", 1))
+      .rejects.toThrow("v12_native_acceptance_operation_result_invalid");
   });
 });
