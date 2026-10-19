@@ -354,70 +354,73 @@ export async function runPhase20SubprocessCoverage({
   const { registeredModules, registeredTests } = validateCoverageProjects(projects, projectRoot);
   rmSync(outputDirectory, { force: true, recursive: true });
   mkdirSync(outputDirectory, { recursive: true });
-  const projectReports = await runBoundedProjects(projects, {
-    run: async (project, { signal }) => {
-      const projectDirectory = path.join(outputDirectory, "projects", project.name);
-      const rawDirectory = path.join(projectDirectory, "raw-v8");
-      const testReportPath = path.join(projectDirectory, "test-results.tap");
-      mkdirSync(rawDirectory, { recursive: true });
-      try {
-        await runTestProject(project, {
-          projectRoot,
-          rawDirectory,
-          testReportPath,
-          projectTimeoutMs: project.timeoutMs ?? projectTimeoutMs,
-          terminateGraceMs,
-          signal,
-          onProjectSignal,
-        });
-        assertNoSkippedTests(testReportPath, project.name);
-        if (project.coverage === false) return {
-          coverageMap: createCoverageMap({}),
-          files: {},
-        };
-        const projectCoverage = await loadPhase20CoverageMap({
-          projectRoot,
-          rawDirectory,
-          targetFiles: project.modules,
-        });
-        const report = summarizePhase20Coverage(projectCoverage);
-        writeFileSync(
-          path.join(projectDirectory, "coverage-summary.json"),
-          `${JSON.stringify(report.files, null, 2)}\n`,
-        );
-        return {
-          coverageMap: projectCoverage.coverageMap,
-          files: report.files,
-        };
-      } finally {
-        rmSync(rawDirectory, { recursive: true, force: true });
-      }
-    },
-  }, maxParallel);
-  const coverageMap = createCoverageMap({});
-  for (const projectReport of projectReports) coverageMap.merge(projectReport.coverageMap);
-  const absoluteTargets = new Map(registeredModules.map((relativePath) => {
-    const absolutePath = realpathSync(path.resolve(projectRoot, relativePath));
-    return [pathToFileURL(absolutePath).href, { absolutePath, relativePath }];
-  }));
-  const report = summarizePhase20Coverage({ absoluteTargets, coverageMap });
-  writeFileSync(
-    path.join(outputDirectory, "coverage-summary.json"),
-    `${JSON.stringify(report.files, null, 2)}\n`,
-  );
-  if (report.failures.length > 0) {
-    throw new Error(JSON.stringify({
-      error: "phase20_integrity_coverage_failed",
-      failures: report.failures,
+  try {
+    const projectReports = await runBoundedProjects(projects, {
+      run: async (project, { signal }) => {
+        const projectDirectory = path.join(outputDirectory, "projects", project.name);
+        const rawDirectory = path.join(projectDirectory, "raw-v8");
+        const testReportPath = path.join(projectDirectory, "test-results.tap");
+        mkdirSync(rawDirectory, { recursive: true });
+        try {
+          await runTestProject(project, {
+            projectRoot,
+            rawDirectory,
+            testReportPath,
+            projectTimeoutMs: project.timeoutMs ?? projectTimeoutMs,
+            terminateGraceMs,
+            signal,
+            onProjectSignal,
+          });
+          assertNoSkippedTests(testReportPath, project.name);
+          if (project.coverage === false) return {
+            coverageMap: createCoverageMap({}),
+            files: {},
+          };
+          const projectCoverage = await loadPhase20CoverageMap({
+            projectRoot,
+            rawDirectory,
+            targetFiles: project.modules,
+          });
+          const report = summarizePhase20Coverage(projectCoverage);
+          writeFileSync(
+            path.join(projectDirectory, "coverage-summary.json"),
+            `${JSON.stringify(report.files, null, 2)}\n`,
+          );
+          return {
+            coverageMap: projectCoverage.coverageMap,
+            files: report.files,
+          };
+        } finally {
+          rmSync(rawDirectory, { recursive: true, force: true });
+        }
+      },
+    }, maxParallel);
+    const coverageMap = createCoverageMap({});
+    for (const projectReport of projectReports) coverageMap.merge(projectReport.coverageMap);
+    const absoluteTargets = new Map(registeredModules.map((relativePath) => {
+      const absolutePath = realpathSync(path.resolve(projectRoot, relativePath));
+      return [pathToFileURL(absolutePath).href, { absolutePath, relativePath }];
     }));
+    const report = summarizePhase20Coverage({ absoluteTargets, coverageMap });
+    writeFileSync(
+      path.join(outputDirectory, "coverage-summary.json"),
+      `${JSON.stringify(report.files, null, 2)}\n`,
+    );
+    if (report.failures.length > 0) {
+      throw new Error(JSON.stringify({
+        error: "phase20_integrity_coverage_failed",
+        failures: report.failures,
+      }));
+    }
+    console.log(JSON.stringify({
+      ok: true,
+      project_count: projects.length,
+      test_count: registeredTests.length,
+      integrity_critical_files: registeredModules.length,
+      metrics: COVERAGE_METRICS,
+      required_percent: 100,
+    }));
+  } finally {
+    rmSync(path.join(outputDirectory, "blackbox-fixture"), { recursive: true, force: true });
   }
-  rmSync(path.join(outputDirectory, "blackbox-fixture"), { recursive: true, force: true });
-  console.log(JSON.stringify({
-    ok: true,
-    project_count: projects.length,
-    test_count: registeredTests.length,
-    integrity_critical_files: registeredModules.length,
-    metrics: COVERAGE_METRICS,
-    required_percent: 100,
-  }));
 }

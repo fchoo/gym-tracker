@@ -374,6 +374,42 @@ test("a converted raw V8 directory is gone before the next project starts", asyn
   }));
 });
 
+test("black-box fixture residue is removed when a coverage project fails", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase20-blackbox-fixture-cleanup-"));
+  const outputDirectory = path.join(root, "coverage");
+  const fixtureDirectory = path.join(outputDirectory, "blackbox-fixture");
+  try {
+    writeFileSync(path.join(root, "fails-after-fixture.test.mjs"), [
+      "import { mkdirSync, writeFileSync } from 'node:fs';",
+      "import test from 'node:test';",
+      "test('leaves a fixture before failing', () => {",
+      "  mkdirSync(process.env.PHASE20_BLACKBOX_FIXTURE_DIRECTORY, { recursive: true });",
+      "  writeFileSync(`${process.env.PHASE20_BLACKBOX_FIXTURE_DIRECTORY}/partial.txt`, 'partial');",
+      "  throw new Error('fixture-project-failed');",
+      "});",
+      "",
+    ].join("\n"));
+    await assert.rejects(
+      runPhase20SubprocessCoverage({
+        projectRoot: root,
+        outputDirectory,
+        maxParallel: 1,
+        projects: [{
+          name: "fixture-failure",
+          coverage: false,
+          tests: ["fails-after-fixture.test.mjs"],
+          env: { PHASE20_BLACKBOX_FIXTURE_DIRECTORY: fixtureDirectory },
+        }],
+        projectTimeoutMs: 10_000,
+      }),
+      /phase20_coverage_project_failed:fixture-failure/u,
+    );
+    assert.equal(existsSync(fixtureDirectory), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("child-only coverage instruments production CLI descendants without instrumenting the test worker", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-child-only-coverage-"));
   try {
@@ -2189,8 +2225,8 @@ test("production-shaped retained evidence completes preseal and final readiness"
 });
 
 test("retained Phase 20 fixture executes the exact coverage CLI entrypoints", {
+  timeout: 45 * 60_000,
   skip: process.env.V12_PHASE20_COVERAGE_FIXTURE === undefined,
-  timeout: 20 * 60_000,
 }, () => {
   const root = process.env.V12_PHASE20_COVERAGE_FIXTURE;
   const runId = readdirSync(path.join(root, "artifacts/native/v1.2"))

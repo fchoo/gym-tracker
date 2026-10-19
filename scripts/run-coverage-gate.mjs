@@ -282,20 +282,19 @@ const phase20EvidenceProjects = Object.freeze([
     name: "native-fixtures",
     concurrency: 1,
     coverage: false,
-    timeoutMs: 45 * 60_000,
     tests: [...phase20NativeActionTests].filter((file) => !phase20NativeCoverageTests.has(file)),
   }),
   Object.freeze({
     name: "cli-blackbox",
     concurrency: 1,
     coverage: false,
+    timeoutMs: 50 * 60_000,
     tests: [...phase20BlackBoxTests],
     env: Object.freeze({ V12_PHASE20_COVERAGE_FIXTURE: phase20CoverageFixture }),
   }),
   Object.freeze({
     name: "cli-coverage",
     concurrency: 1,
-    timeoutMs: 45 * 60_000,
     tests: [...phase20CliCoverageTests],
     modules: Object.freeze([
       "scripts/capture-v12-visual.mjs",

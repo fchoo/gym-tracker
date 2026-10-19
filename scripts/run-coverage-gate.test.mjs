@@ -123,8 +123,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
   );
   assert.deepEqual(coverageProjects.filter(({ timeoutMs }) => timeoutMs !== undefined)
     .map(({ name, timeoutMs }) => ({ name, timeoutMs })), [
-    { name: "native-fixtures", timeoutMs: 45 * 60_000 },
-    { name: "cli-coverage", timeoutMs: 45 * 60_000 },
+    { name: "cli-blackbox", timeoutMs: 50 * 60_000 },
   ]);
   const registeredProjectTests = coverageProjects.flatMap(({ tests }) => tests);
   assert.equal(registeredProjectTests.length, 49);
