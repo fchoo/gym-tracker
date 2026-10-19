@@ -6,7 +6,7 @@ import type {
   V12NativeAcceptanceReadbacks,
   V12NativeAcceptanceRequest,
 } from "../../../src/testing/v12NativeAcceptanceExecutor";
-import { v12NativeAcceptanceCaseContract } from "../../../src/testing/contracts/v12NativeAcceptance.contract";
+import { v12NativeAcceptanceCaseContract } from "../../../src/testing/contracts/phase15Workout.contract";
 
 let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;

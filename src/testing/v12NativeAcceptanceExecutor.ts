@@ -7,13 +7,13 @@ import {
   type V12NativeAcceptanceCaseContract,
   type V12NativeAcceptanceOperationKind,
   type V12NativeAcceptanceShard,
-} from "./contracts/v12NativeAcceptance.contract";
+} from "./contracts/phase15Workout.contract";
 import {
   runMultiPlanRunningContractCase,
   type MultiPlanRunningContractCaseId,
 } from "./contracts/multiPlanRunning.contract";
 
-export type { V12NativeAcceptanceShard } from "./contracts/v12NativeAcceptance.contract";
+export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
 export type V12NativeAcceptanceRequest = Readonly<{
   shard: V12NativeAcceptanceShard;

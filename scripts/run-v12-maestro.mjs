@@ -38,7 +38,7 @@ import {
 } from "./v12-maestro-source-registry.mjs";
 import {
   v12NativeAcceptanceCaseContract,
-} from "../src/testing/contracts/v12NativeAcceptance.contract.ts";
+} from "../src/testing/contracts/phase15Workout.contract.ts";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";

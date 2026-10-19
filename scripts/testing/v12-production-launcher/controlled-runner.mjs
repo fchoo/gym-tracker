@@ -28,7 +28,6 @@ export function createControlledRunner() {
   for (const source of [
     "phase15Workout.contract.ts",
     "phase17LibraryRunning.contract.ts",
-    "v12NativeAcceptance.contract.ts",
   ]) cpSync(path.join(project, "src/testing/contracts", source), path.join(root, "src/testing/contracts", source));
   cpSync(path.join(project, "src/testing/phase20CalendarFixture.ts"), path.join(root, "src/testing/phase20CalendarFixture.ts"));
   mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });

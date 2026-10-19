@@ -6,7 +6,7 @@ import { useWorkoutAppRuntime } from "../bootstrap/workoutAppRuntime";
 import {
   V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
   v12NativeAcceptanceCaseContract,
-} from "./contracts/v12NativeAcceptance.contract";
+} from "./contracts/phase15Workout.contract";
 import {
   authorityTablesForV12NativeAcceptance,
   type V12NativeAcceptanceReadbacks,
