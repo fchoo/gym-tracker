@@ -37,6 +37,7 @@ import {
   type CustomExerciseRepository,
 } from "../platform/sqlite/repositories/customExerciseRepository";
 import { createContentRepository } from "../platform/sqlite/repositories/contentRepository";
+import { createLibrarySearchRepository } from "../platform/sqlite/repositories/librarySearchRepository";
 import { createMetricRepository } from "../platform/sqlite/repositories/metricRepository";
 import { createPlansWorkoutRepository } from "../platform/sqlite/repositories/plansWorkoutRepository";
 import { createWorkoutRepository } from "../platform/sqlite/repositories/workoutRepository";
@@ -558,6 +559,25 @@ async function executeWorkoutCompleteSetConflict(input: V12NativeAcceptanceProdu
   );
   if (row?.status !== "planned" || row.revision !== set.set_revision) {
     throw new Error("v12_native_acceptance_workout_complete_conflict_postcondition_failed");
+  }
+  return Object.freeze({ result: "read" as const, facts: operationFacts({
+    contract: input.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input),
+  }) });
+}
+
+async function prepareLibrarySearch(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  requireRequest(input);
+  await createContentRepository(input.kernel).importAcceptedCatalog({
+    catalog: await parseAcceptedPhase2Catalog(runtimeSha256),
+  });
+}
+
+async function executeLibraryExerciseSearch(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  await prepareLibrarySearch(input);
+  const page = await createLibrarySearchRepository(input.kernel).searchExercises({ query: "press" });
+  if (page.state !== "page" || page.items.length === 0 || page.items.some((item) => item.canonicalName.trim() === "")) {
+    throw new Error("v12_native_acceptance_library_search_postcondition_failed");
   }
   return Object.freeze({ result: "read" as const, facts: operationFacts({
     contract: input.contract,
@@ -2203,6 +2223,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "workout.workout-presentation.project-accessibility": Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutPresentationRead,
+  }),
+  "library.library-search-repository.search-exercises": Object.freeze({
+    prepare: prepareLibrarySearch,
+    execute: executeLibraryExerciseSearch,
   }),
   [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
     prepare: prepareRunningFamilyB,

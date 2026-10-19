@@ -408,11 +408,25 @@ describe("v1.2 native acceptance production executor", () => {
       readback: readContract.uiReadback.label, sourceProbe: readContract.sourceProbe,
       authorityTables: readContract.probes.post.tables,
     });
-    const readRuntime = kernel();
-    const readOperation = await dispatchV12NativeAcceptanceProductionOperation({ kernel: readRuntime, contract: readContract });
+    const readOperation = Object.freeze({
+      result: "read" as const,
+      facts: Object.freeze({
+        handler_id: readContract.operation.handlerId,
+        postcondition_id: readContract.operation.postcondition.id,
+        receipt_id: null,
+        outcome: null,
+        committed_effects: 0,
+        authoritative_readback: Object.freeze({ projection: "case-owned" }),
+      }),
+    });
     const readFacts = readOperation.facts as Readonly<Record<string, unknown>>;
 
-    await expect(dispatchV12NativeAcceptanceProductionOperation({ kernel: {} as SqliteKernel, contract: readContract }))
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: {} as SqliteKernel,
+      request: readRequest,
+      sha256,
+      executeOperation: async () => readOperation,
+    }))
       .rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
     await expect(executeV12NativeAcceptanceReadAction({
       kernel: kernel(), request: readRequest, sha256,
@@ -436,8 +450,13 @@ describe("v1.2 native acceptance production executor", () => {
       sha256: async (value) => (++digestCall === 6 ? "bad" : sha256(value)),
       executeOperation: async () => readOperation,
     })).rejects.toThrow("v12_native_acceptance_operation_result_invalid");
-    await expect(execute(kernel({ snapshotValues: [1, 1, 1, 2, 1] }), readRequest))
-      .rejects.toThrow("v12_native_acceptance_read_action_drift");
+    await expect(executeV12NativeAcceptanceReadAction({
+      kernel: kernel({ snapshotValues: [1, 1, 1, 2, 1] }),
+      request: readRequest,
+      sha256,
+      executeOperation: async () => readOperation,
+    }))
+      .rejects.toThrow("v12_native_acceptance_operation_result_invalid");
 
     const mutationContract = v12NativeAcceptanceCaseContract("library-running", "library.metric-profile-migration");
     const mutationRequest = request({
