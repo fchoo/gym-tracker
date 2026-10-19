@@ -136,7 +136,7 @@ function controlledTool(state, executable, args, options = {}) {
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), "phase20-visual-controlled-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const relative of ["scripts", "app/__phase20-visual-probe.tsx", "src/testing/phase20VisualProbe.tsx", "src/testing/phase20VisualStateRegistry.json", "maestro/v1.2/visual-production-states.yaml", ".planning/design/v1.2-browser-evidence"]) {
+  for (const relative of ["scripts", "app/__phase20-visual-probe.tsx", "src/testing/contracts", "src/testing/phase20VisualProbe.tsx", "src/testing/phase20VisualStateRegistry.json", "maestro/v1.2/visual-production-states.yaml", ".planning/design/v1.2-browser-evidence"]) {
     mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
     cpSync(path.join(project, relative), path.join(root, relative), { recursive: true });
   }
