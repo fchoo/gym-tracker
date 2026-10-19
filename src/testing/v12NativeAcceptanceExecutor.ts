@@ -3,6 +3,7 @@ import type {
   SqliteReadTransactionExecutor,
 } from "../platform/sqlite/sqliteKernel";
 import {
+  V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
   v12NativeAcceptanceCaseContract,
   type V12NativeAcceptanceCaseContract,
   type V12NativeAcceptanceOperationKind,
@@ -95,15 +96,36 @@ type V12OperationFacts = Readonly<{
   committed_effects: number;
 }>;
 
+type V12NativeAcceptanceProductionHandlerInput = Readonly<{
+  kernel: SqliteKernel;
+  contract: V12NativeAcceptanceCaseContract;
+  request?: V12NativeAcceptanceRequest;
+}>;
+
+export type V12NativeAcceptanceProductionHandler = Readonly<{
+  handlerId: string;
+  operationIds: readonly string[];
+  execute(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>>;
+}>;
+
 const TABLE_FACT_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   app_settings: Object.freeze(["key", "value_version", "value_json", "revision", "updated_at_ms"]),
+  automatic_backup_state: Object.freeze(["id", "authority_state", "mutation_generation", "backed_up_generation", "status_code", "dirty_since_ms"]),
+  bodyweight_command_receipts: Object.freeze(["request_id", "request_sha256", "entry_id", "owner_id", "result_json", "committed_at_ms"]),
+  bodyweight_entries: Object.freeze(["id", "owner_id", "current_revision", "lifecycle", "created_at_ms"]),
+  bodyweight_entry_events: Object.freeze(["id", "entry_id", "owner_id", "revision", "event_id", "operation", "local_date", "timezone", "grams", "occurred_at_ms"]),
   custom_exercise_mutation_receipts: Object.freeze(["request_id", "mutation_kind", "request_json", "result_json", "committed_at_ms"]),
   exercise_library_entries: Object.freeze(["exercise_id", "origin", "canonical_name", "exercise_type", "metric_profile", "revision"]),
   exercise_owner_preferences: Object.freeze(["exercise_id", "favorite", "hidden", "archived", "revision", "updated_at_ms"]),
   exercise_search_terms: Object.freeze(["id", "exercise_id", "kind", "ordinal", "display_text", "normalized_text"]),
   exercises: Object.freeze(["id", "origin", "name", "metric_profile", "metric_contract_version", "exercise_metric_generation", "revision"]),
   history_projection_metric_aggregates: Object.freeze(["subject_id", "exercise_id", "identity_key", "comparator_key", "reference_target_json", "aggregate_json"]),
+  history_projection_freshness: Object.freeze(["subject_id", "applied_revision", "updated_at_ms"]),
   history_subject_revisions: Object.freeze(["subject_id", "revision", "updated_at_ms"]),
+  imported_activities: Object.freeze(["id", "source", "source_activity_id", "started_at_ms", "aggregate_json", "imported_at_ms"]),
+  imported_activity_identities: Object.freeze(["activity_id", "source_kind", "account_namespace", "external_activity_id", "aggregate_revision", "accepted_normalized_sha256", "removal_state"]),
+  imported_activity_receipts: Object.freeze(["id", "activity_id", "request_sha256", "committed_at_ms"]),
+  imported_activity_removal_events: Object.freeze(["id", "activity_id", "removed_at_ms", "reason"]),
   metric_profile_migration_events: Object.freeze(["idempotency_key", "exercise_id", "from_metric_profile", "to_metric_profile", "to_exercise_metric_generation", "exercise_revision", "result_json", "migrated_at_ms"]),
   owned_plan_aggregate_states: Object.freeze(["plan_id", "lifecycle", "graph_status", "missing_requirement_code"]),
   owned_plan_day_exercises: Object.freeze(["id", "plan_day_id", "exercise_id", "ordinal", "metric_profile", "metric_contract_version", "exercise_metric_generation", "revision"]),
@@ -112,11 +134,16 @@ const TABLE_FACT_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.f
   owned_plan_schedule_events: Object.freeze(["id", "schedule_id", "event_type", "local_date", "payload_json", "schedule_revision", "created_at_ms"]),
   owned_plan_schedules: Object.freeze(["id", "plan_id", "lifecycle", "revision", "activated_at_ms", "deactivated_at_ms"]),
   pending_effects: Object.freeze(["id", "effect_type", "idempotency_key", "subject_id", "expected_revision", "status", "attempt_count"]),
+  portability_restore_state: Object.freeze(["id", "state", "updated_at_ms"]),
+  portable_owner_identity: Object.freeze(["id", "owner_namespace"]),
   plan_days: Object.freeze(["id", "plan_id", "ordinal", "name", "revision"]),
   plans: Object.freeze(["id", "origin", "name", "is_active", "revision", "plan_kind"]),
   progression_recommendations: Object.freeze(["id", "exercise_id", "status", "source_revision", "target_revision", "decided_at_ms"]),
   running_plan_events: Object.freeze(["id", "plan_id", "event_type", "payload_json", "created_at_ms"]),
   running_plan_receipts: Object.freeze(["request_id", "request_sha256", "operation", "plan_id", "expected_plan_revision", "result_json", "committed_at_ms"]),
+  running_activity_current_matches: Object.freeze(["opportunity_id", "activity_id", "relation_revision", "event_id"]),
+  running_activity_match_events: Object.freeze(["id", "activity_id", "opportunity_id", "prior_opportunity_id", "action", "activity_revision", "opportunity_revision", "prior_relation_revision", "relation_revision", "request_sha256", "created_at_ms"]),
+  running_activity_match_receipts: Object.freeze(["request_id", "request_sha256", "activity_id", "opportunity_id", "relation_revision", "result_kind", "committed_at_ms"]),
   running_plans: Object.freeze(["plan_id", "status", "revision", "created_at_ms"]),
   running_session_revisions: Object.freeze(["id", "plan_id", "session_kind", "revision", "definition_json", "created_at_ms"]),
   running_session_slot_revisions: Object.freeze(["id", "slot_root_id", "session_revision_id", "revision", "ordinal"]),
@@ -216,7 +243,7 @@ function operationFacts(input: Readonly<{
  * serialized writer transaction over the contract's authoritative table;
  * post-action snapshots below independently verify committed readback.
  */
-export async function dispatchV12NativeAcceptanceProductionOperation(input: Readonly<{
+async function executeV12NativeAcceptanceProductionOperation(input: Readonly<{
   kernel: SqliteKernel;
   contract: V12NativeAcceptanceCaseContract;
   request?: V12NativeAcceptanceRequest;
@@ -273,6 +300,61 @@ export async function dispatchV12NativeAcceptanceProductionOperation(input: Read
       committedEffects: 0,
     }),
   });
+}
+
+const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
+  (entries, contract) => {
+    const current = entries.get(contract.operation.handlerId) ?? [];
+    current.push(contract.operation.id);
+    entries.set(contract.operation.handlerId, current);
+    return entries;
+  },
+  new Map<string, string[]>(),
+);
+
+export const V12_NATIVE_ACCEPTANCE_PRODUCTION_HANDLER_REGISTRY: Readonly<Record<string, V12NativeAcceptanceProductionHandler>> = Object.freeze(
+  Object.fromEntries([...productionHandlerEntries].map(([handlerId, operationIds]) => [
+    handlerId,
+    Object.freeze({
+      handlerId,
+      operationIds: Object.freeze([...operationIds]),
+      execute: (input: V12NativeAcceptanceProductionHandlerInput) => executeV12NativeAcceptanceProductionOperation(input),
+    }),
+  ])),
+);
+
+export function resolveV12NativeAcceptanceProductionHandler(
+  contract: V12NativeAcceptanceCaseContract,
+): V12NativeAcceptanceProductionHandler {
+  const handler = V12_NATIVE_ACCEPTANCE_PRODUCTION_HANDLER_REGISTRY[contract.operation.handlerId];
+  if (handler === undefined || !handler.operationIds.includes(contract.operation.id)) {
+    throw new Error("v12_native_acceptance_handler_unresolved");
+  }
+  return handler;
+}
+
+export function assertV12NativeAcceptanceProductionHandlerRegistry(
+  contracts: readonly V12NativeAcceptanceCaseContract[] = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS,
+): true {
+  for (const contract of contracts) {
+    if (contract.probes.post.tables.some((table) => TABLE_FACT_COLUMNS[table] === undefined)) {
+      throw new Error("v12_native_acceptance_authority_fact_columns_missing");
+    }
+    if (typeof resolveV12NativeAcceptanceProductionHandler(contract).execute !== "function") {
+      throw new Error("v12_native_acceptance_handler_unresolved");
+    }
+  }
+  return true;
+}
+
+assertV12NativeAcceptanceProductionHandlerRegistry();
+
+export async function dispatchV12NativeAcceptanceProductionOperation(input: Readonly<{
+  kernel: SqliteKernel;
+  contract: V12NativeAcceptanceCaseContract;
+  request?: V12NativeAcceptanceRequest;
+}>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>> {
+  return resolveV12NativeAcceptanceProductionHandler(input.contract).execute(input);
 }
 
 async function readAuthorityState(input: Readonly<{

@@ -10,8 +10,10 @@ import {
 } from "./contracts/phase15Workout.contract";
 import {
   authorityTablesForV12NativeAcceptance,
+  assertV12NativeAcceptanceProductionHandlerRegistry,
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
+  resolveV12NativeAcceptanceProductionHandler,
   validateV12NativeAcceptanceAuthorityTables,
   type V12NativeAcceptanceRequest,
 } from "./v12NativeAcceptanceExecutor";
@@ -133,6 +135,27 @@ describe("v1.2 native acceptance production executor", () => {
       operationSignatures.add(signature);
     }
     expect(operationSignatures.size).toBe(88);
+  });
+
+  it("resolves every case-owned handler to an executable production function", () => {
+    expect(assertV12NativeAcceptanceProductionHandlerRegistry()).toBe(true);
+    for (const contract of V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS) {
+      const handler = resolveV12NativeAcceptanceProductionHandler(contract);
+      expect(typeof handler.execute).toBe("function");
+      expect(handler.operationIds).toContain(contract.operation.id);
+    }
+    const source = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard }) => shard === "workout")!;
+    expect(() => resolveV12NativeAcceptanceProductionHandler({
+      ...source,
+      operation: { ...source.operation, handlerId: "workout.not-registered" },
+    })).toThrow("v12_native_acceptance_handler_unresolved");
+    expect(() => assertV12NativeAcceptanceProductionHandlerRegistry([{
+      ...source,
+      probes: {
+        ...source.probes,
+        post: { ...source.probes.post, tables: ["missing_authority_table"] },
+      },
+    }])).toThrow("v12_native_acceptance_authority_fact_columns_missing");
   });
 
   it("audits count, identity, handler, postcondition, receipt, and collapse invariants independently", () => {
