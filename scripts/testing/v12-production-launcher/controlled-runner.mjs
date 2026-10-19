@@ -31,6 +31,9 @@ export function createControlledRunner() {
     "phase17LibraryRunning.contract.ts",
   ]) cpSync(path.join(project, "src/testing/contracts", source), path.join(root, "src/testing/contracts", source));
   cpSync(path.join(project, "src/testing/phase20CalendarFixture.ts"), path.join(root, "src/testing/phase20CalendarFixture.ts"));
+  cpSync(path.join(project, "src/testing/phase20VisualStateRegistry.json"), path.join(root, "src/testing/phase20VisualStateRegistry.json"));
+  mkdirSync(path.join(root, ".planning/design"), { recursive: true });
+  cpSync(path.join(project, ".planning/design/v1.2-browser-evidence"), path.join(root, ".planning/design/v1.2-browser-evidence"), { recursive: true });
   mkdirSync(path.join(root, "maestro/v1.2"), { recursive: true });
   cpSync(path.join(project, "maestro/v1.2/calendar-requirements.yaml"), path.join(root, "maestro/v1.2/calendar-requirements.yaml"));
   execFileSync("git", ["init", "--quiet"], { cwd: root });

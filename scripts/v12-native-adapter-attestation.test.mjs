@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { createControlledRunner } from "./testing/v12-production-launcher/controlled-runner.mjs";
@@ -35,6 +36,7 @@ import {
   V12_VISUAL_COMMAND_GRAPH,
   V12_VISUAL_CAPTURE_PRODUCER_BOUND_MS,
   createV12NativeAdapter,
+  invokeV12NativeAdapter,
   invokeV12NativeAdapterEnvelope,
   signalV12OwnedProcessTree,
   superviseV12NativeProcess,
@@ -88,6 +90,38 @@ test("adapter envelope labels the checked-in fake as test-only provenance", (t) 
     for (const [key, value] of Object.entries(prior)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
+  }
+});
+test("public adapter wrappers bind CLI run identity and normalize Garmin execution", (t) => {
+  const runner = fixture(t);
+  const environment = markers(runner.root);
+  const options = {
+    root: runner.root,
+    environment,
+    command: environment.V12_NATIVE_ADAPTER_COMMAND,
+  };
+  assert.deepEqual(invokeV12NativeAdapter("acquire-lease", { run_id: runner.build.run_id }, options), { id: "lease" });
+  const priorArgv = process.argv;
+  try {
+    process.argv = [...priorArgv, "--run", runner.build.run_id];
+    const adapter = createV12NativeAdapter(options);
+    assert.throws(() => adapter.executionOrigin("garmin"), /execution_origin_missing/u);
+    const lease = adapter.acquireLease();
+    const settings = adapter.snapshotSettings(lease);
+    const visualRequest = { state_id: "BW-001", configuration_id: "AP-L-C360-P-F100" };
+    assert.ok(adapter.capture(visualRequest).png.length > 0);
+    assert.equal(adapter.captureBatch({ captures: [visualRequest] }).length, 1);
+    assert.equal(adapter.compare({ captures: [visualRequest] }).length, 1);
+    assert.equal(typeof adapter.observeAccessibility({}), "object");
+    assert.equal(typeof adapter.collectPerformance({}), "object");
+    assert.equal(adapter.executeSqlite({}).contract.status, "passed");
+    assert.ok(adapter.executeRecovery({}));
+    const garmin = adapter.executeGarmin(lease, settings, {});
+    assert.equal(garmin.execution_origin, "test-controlled/v1");
+    assert.equal(garmin.cases.length, 18);
+    assert.equal(adapter.releaseLease(lease), true);
+  } finally {
+    process.argv = priorArgv;
   }
 });
 test("default launcher provenance preserves a controlled toolchain as test-only evidence", (t) => {
@@ -331,6 +365,25 @@ test("minimal supervisor bootstrap acknowledges signal readiness before imports 
   });
   assert.deepEqual(result, { status: 1, signal: null });
 });
+test("direct adapter supervisor entry aborts after its target reports readiness", { timeout: 20_000 }, async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "v12-adapter-direct-entry-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const ready = path.join(root, "target.ready");
+  const child = spawn(process.execPath, [
+    new URL("./v12-native-adapter.mjs", import.meta.url).pathname,
+    "--supervise", "10000", process.execPath, "--input-type=module", "--eval",
+    `import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(ready)}, "ready\\n"); setInterval(() => {}, 1000);`,
+  ], { cwd: process.cwd(), env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+  child.stdin.end();
+  for (let attempt = 0; attempt < 1_000 && !existsSync(ready); attempt += 1) await delay(10);
+  assert.equal(readFileSync(ready, "utf8"), "ready\n");
+  child.kill("SIGTERM");
+  const result = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (status, signal) => resolve({ status, signal }));
+  });
+  assert.deepEqual(result, { status: 1, signal: null });
+});
 test("adapter provenance is immutable and action-scoped across borrowed-lease cleanup", (t) => {
   const runner = fixture(t);
   const environment = markers(runner.root);
@@ -382,6 +435,15 @@ test("fake command rejected outside explicit test mode", (t) => {
   const result = runner.invoke("acquire-lease", {}, { V12_NATIVE_ADAPTER_COMMAND: path.join(runner.root, "scripts/testing/v12-phase20-blackbox/fake-device-adapter.mjs") });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /command_override_forbidden/u);
+});
+test("fake command failure is normalized without exposing subprocess stderr", (t) => {
+  const runner = fixture(t);
+  const environment = markers(runner.root, { V12_FAKE_DEVICE_FAIL: "acquire-lease" });
+  assert.throws(() => invokeV12NativeAdapterEnvelope("acquire-lease", { run_id: runner.build.run_id }, {
+    root: runner.root,
+    command: environment.V12_NATIVE_ADAPTER_COMMAND,
+    environment,
+  }), /^Error: v12_native_adapter_command_failed$/u);
 });
 for (const field of ["NODE_ENV", "V12_NATIVE_ADAPTER_TEST_MODE", "V12_NATIVE_ADAPTER_TEST_PROCESS"]) {
   test(`partial test triplet rejected with and without override: ${field}`, (t) => {
