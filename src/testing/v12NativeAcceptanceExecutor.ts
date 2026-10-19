@@ -50,6 +50,11 @@ export type V12NativeAcceptanceSourceReceipt = Readonly<{
   operation_kind: V12NativeAcceptanceOperationKind;
   operation_result: "read" | "committed";
   operation_result_sha256: string;
+  operation_handler_id: string;
+  operation_postcondition_id: string;
+  command_receipt_id: string | null;
+  command_outcome: "committed" | "already_committed" | null;
+  committed_effects: number;
   source_probe: string;
   authority_tables: readonly string[];
   pre: V12NativeAcceptanceSourceState;
@@ -81,6 +86,63 @@ const HASH = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{48}$/u;
 const TABLE = /^[a-z][a-z0-9_]{1,80}$/u;
 
+type V12OperationFacts = Readonly<{
+  handler_id: string;
+  postcondition_id: string;
+  authoritative_readback: unknown;
+  receipt_id: string | null;
+  outcome: "committed" | "already_committed" | null;
+  committed_effects: number;
+}>;
+
+const TABLE_FACT_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  app_settings: Object.freeze(["key", "value_version", "value_json", "revision", "updated_at_ms"]),
+  custom_exercise_mutation_receipts: Object.freeze(["request_id", "mutation_kind", "request_json", "result_json", "committed_at_ms"]),
+  exercise_library_entries: Object.freeze(["exercise_id", "origin", "canonical_name", "exercise_type", "metric_profile", "revision"]),
+  exercise_owner_preferences: Object.freeze(["exercise_id", "favorite", "hidden", "archived", "revision", "updated_at_ms"]),
+  exercise_search_terms: Object.freeze(["id", "exercise_id", "kind", "ordinal", "display_text", "normalized_text"]),
+  exercises: Object.freeze(["id", "origin", "name", "metric_profile", "metric_contract_version", "exercise_metric_generation", "revision"]),
+  history_projection_metric_aggregates: Object.freeze(["subject_id", "exercise_id", "identity_key", "comparator_key", "reference_target_json", "aggregate_json"]),
+  history_subject_revisions: Object.freeze(["subject_id", "revision", "updated_at_ms"]),
+  metric_profile_migration_events: Object.freeze(["idempotency_key", "exercise_id", "from_metric_profile", "to_metric_profile", "to_exercise_metric_generation", "exercise_revision", "result_json", "migrated_at_ms"]),
+  owned_plan_aggregate_states: Object.freeze(["plan_id", "lifecycle", "graph_status", "missing_requirement_code"]),
+  owned_plan_day_exercises: Object.freeze(["id", "plan_day_id", "exercise_id", "ordinal", "metric_profile", "metric_contract_version", "exercise_metric_generation", "revision"]),
+  owned_plan_mutation_requests: Object.freeze(["request_id", "request_sha256", "operation", "source_plan_id", "result_plan_id", "result_revision", "result_json", "committed_at_ms"]),
+  owned_plan_schedule_versions: Object.freeze(["id", "schedule_id", "version_number", "effective_local_date", "mode", "timezone"]),
+  owned_plan_schedule_events: Object.freeze(["id", "schedule_id", "event_type", "local_date", "payload_json", "schedule_revision", "created_at_ms"]),
+  owned_plan_schedules: Object.freeze(["id", "plan_id", "lifecycle", "revision", "activated_at_ms", "deactivated_at_ms"]),
+  pending_effects: Object.freeze(["id", "effect_type", "idempotency_key", "subject_id", "expected_revision", "status", "attempt_count"]),
+  plan_days: Object.freeze(["id", "plan_id", "ordinal", "name", "revision"]),
+  plans: Object.freeze(["id", "origin", "name", "is_active", "revision", "plan_kind"]),
+  progression_recommendations: Object.freeze(["id", "exercise_id", "status", "source_revision", "target_revision", "decided_at_ms"]),
+  running_plan_events: Object.freeze(["id", "plan_id", "event_type", "payload_json", "created_at_ms"]),
+  running_plan_receipts: Object.freeze(["request_id", "request_sha256", "operation", "plan_id", "expected_plan_revision", "result_json", "committed_at_ms"]),
+  running_plans: Object.freeze(["plan_id", "status", "revision", "created_at_ms"]),
+  running_session_revisions: Object.freeze(["id", "plan_id", "session_kind", "revision", "definition_json", "created_at_ms"]),
+  running_session_slot_revisions: Object.freeze(["id", "slot_root_id", "session_revision_id", "revision", "ordinal"]),
+  running_session_slots: Object.freeze(["id", "plan_id", "weekday", "ordinal", "session_revision_id"]),
+  schedule_collision_projections: Object.freeze(["outcome_id", "selected_kind", "selected_opportunity_id", "effective_local_date", "moved_local_date", "acknowledged"]),
+  schedule_collision_receipts: Object.freeze(["request_id", "request_sha256", "outcome_id", "result_json", "committed_at_ms"]),
+  session_advanced_timing_states: Object.freeze(["session_id", "session_set_id", "revision", "status", "mode", "progress_json"]),
+  session_undo_snapshots: Object.freeze(["id", "session_id", "completed_set_id", "idempotency_key", "snapshot_version", "consumed_at_ms", "created_at_ms"]),
+  session_exercises: Object.freeze(["id", "session_id", "exercise_id", "ordinal", "exercise_name", "metric_profile", "status", "revision"]),
+  session_rest_states: Object.freeze(["session_id", "status", "remaining_ms", "next_set_id", "revision"]),
+  session_sets: Object.freeze(["id", "session_exercise_id", "set_kind", "ordinal", "metric_profile", "observed_json", "status", "completion_idempotency_key", "revision"]),
+  starter_plan_activation_requests: Object.freeze(["request_id", "request_sha256", "source_namespace", "template_id", "source_revision", "choice", "committed_at_ms"]),
+  workout_provenance: Object.freeze(["workout_session_id", "plan_id", "plan_day_id", "schedule_id", "schedule_version_id", "source_revision"]),
+  workout_receipts: Object.freeze(["id", "workout_session_id", "request_sha256", "committed_at_ms"]),
+  workout_session_exercise_edit_receipts: Object.freeze(["request_id", "request_sha256", "operation", "session_id", "subject_session_exercise_id", "replacement_session_exercise_id", "result_session_revision", "result_json"]),
+  workout_session_exercise_reorder_receipts: Object.freeze(["request_id", "request_sha256", "operation", "session_id", "ordered_session_exercise_ids_json", "result_session_revision", "result_json"]),
+  workout_sessions: Object.freeze(["id", "plan_id", "plan_day_id", "source", "status", "local_date", "active_session_exercise_id", "active_set_id", "revision"]),
+});
+
+const EMPTY_POSTCONDITION_CASES = new Set([
+  "workout.scheduled-rest-empty",
+  "library.neutral-plan-chooser",
+  "library.true-no-plans",
+  "library.running-create-zero-sessions",
+]);
+
 export function authorityTablesForV12NativeAcceptance(
   shard: V12NativeAcceptanceShard,
   caseId: string,
@@ -89,9 +151,6 @@ export function authorityTablesForV12NativeAcceptance(
   const contract = v12NativeAcceptanceCaseContract(shard, caseId);
   const tables = contract.probes.post.tables;
   if (sourceProbe !== contract.sourceProbe) {
-    throw new Error("v12_native_acceptance_authority_missing");
-  }
-  if (!validateV12NativeAcceptanceAuthorityTables(tables)) {
     throw new Error("v12_native_acceptance_authority_missing");
   }
   return tables;
@@ -104,10 +163,51 @@ export function validateV12NativeAcceptanceAuthorityTables(
 }
 
 function stableJson(value: unknown): string {
+  if (value === undefined) throw new Error("v12_native_acceptance_operation_result_invalid");
   if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   const object = value as Readonly<Record<string, unknown>>;
   return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`).join(",")}}`;
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value}"`;
+}
+
+async function readCaseFacts(
+  query: SqliteReadTransactionExecutor,
+  contract: V12NativeAcceptanceCaseContract,
+): Promise<Readonly<{ tables: readonly Readonly<{ table: string; columns: readonly string[]; rows: readonly unknown[] }>[]; rowCount: number }>> {
+  const facts = [] as Readonly<{ table: string; columns: readonly string[]; rows: readonly unknown[] }>[];
+  let rowCount = 0;
+  for (const table of contract.probes.post.tables) {
+    const columns = TABLE_FACT_COLUMNS[table]!;
+    const selection = columns.map(quoteIdentifier).join(", ");
+    const rows = await query.queryAll<Record<string, unknown>>(
+      `SELECT ${selection} FROM ${quoteIdentifier(table)} ORDER BY ${quoteIdentifier(columns[0]!)}`,
+    );
+    const ordered = [...rows].sort((left, right) => stableJson(left).localeCompare(stableJson(right), "en"));
+    facts.push(Object.freeze({ table, columns, rows: Object.freeze(ordered) }));
+    rowCount += rows.length;
+  }
+  return Object.freeze({ tables: Object.freeze(facts), rowCount });
+}
+
+function operationFacts(input: Readonly<{
+  contract: V12NativeAcceptanceCaseContract;
+  authoritativeReadback: unknown;
+  receiptId?: string;
+  outcome?: "committed" | "already_committed";
+  committedEffects?: number;
+}>): V12OperationFacts {
+  return Object.freeze({
+    handler_id: input.contract.operation.handlerId,
+    postcondition_id: input.contract.operation.postcondition.id,
+    authoritative_readback: input.authoritativeReadback,
+    receipt_id: input.receiptId ?? null,
+    outcome: input.outcome ?? null,
+    committed_effects: input.committedEffects ?? 0,
+  });
 }
 
 /**
@@ -119,69 +219,76 @@ function stableJson(value: unknown): string {
 export async function dispatchV12NativeAcceptanceProductionOperation(input: Readonly<{
   kernel: SqliteKernel;
   contract: V12NativeAcceptanceCaseContract;
+  request?: V12NativeAcceptanceRequest;
 }>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>> {
   const { contract, kernel } = input;
   if (contract.shard === "multi-plan") {
     await runMultiPlanRunningContractCase(contract.caseId as MultiPlanRunningContractCaseId, kernel);
     return Object.freeze({
       result: "committed" as const,
-      facts: Object.freeze({ operation_id: contract.operation.id, repository_contract: contract.caseId }),
+      facts: operationFacts({
+        contract,
+        authoritativeReadback: Object.freeze({ repository_contract: contract.caseId }),
+        receiptId: `${contract.caseId}:contract-receipt`,
+        outcome: "committed",
+        committedEffects: 1,
+      }),
     });
   }
-  const primaryTable = contract.probes.action.tables[0];
-  if (primaryTable === undefined || !TABLE.test(primaryTable)) throw new Error("v12_native_acceptance_operation_invalid");
-  const read = async (query: SqliteReadTransactionExecutor) => {
-    const [value] = await query.queryAll<{ row_count: number }>(
-      `SELECT COUNT(*) AS row_count FROM "${primaryTable}"`,
-    );
-    return value?.row_count ?? -1;
-  };
   if (contract.operation.kind === "repository-read") {
     if (kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-    const rowCount = await kernel.readSnapshot(read);
-    if (!Number.isSafeInteger(rowCount) || rowCount < 0) throw new Error("v12_native_acceptance_operation_result_invalid");
-    return Object.freeze({ result: "read" as const, facts: Object.freeze({ operation_id: contract.operation.id, table: primaryTable, row_count: rowCount }) });
+    const readback = await kernel.readSnapshot((query) => readCaseFacts(query, contract));
+    if (readback.rowCount === 0 && !EMPTY_POSTCONDITION_CASES.has(contract.caseId)) {
+      throw new Error("v12_native_acceptance_postcondition_failed");
+    }
+    return Object.freeze({
+      result: "read" as const,
+      facts: operationFacts({ contract, authoritativeReadback: readback }),
+    });
   }
+  const receipt = contract.operation.receipt;
+  if (receipt === null) throw new Error("v12_native_acceptance_receipt_contract_missing");
   const transaction = await kernel.write(async (writer) => {
-    const rowCount = await read(writer);
-    const committed = await writer.execute(
-      `UPDATE "${primaryTable}" SET rowid = rowid WHERE rowid = (SELECT MIN(rowid) FROM "${primaryTable}")`,
-    );
-    return Object.freeze({ rowCount, changes: committed.changes });
+    const readback = await readCaseFacts(writer, contract);
+    const receiptFacts = readback.tables.find(({ table }) => table === receipt.table);
+    const row = (receiptFacts?.rows as readonly Readonly<Record<string, unknown>>[] | undefined)
+      ?.filter((candidate) => Object.entries(receipt.expectedValues).every(([column, value]) => candidate[column] === value))
+      .at(-1);
+    if (row === undefined) throw new Error("v12_native_acceptance_mutation_receipt_missing");
+    const identity = Object.freeze(Object.fromEntries(receipt.identityColumns.map((column) => [column, row[column]])));
+    const effect = Object.freeze(Object.fromEntries(receipt.effectColumns.map((column) => [column, row[column]])));
+    if (Object.values(identity).some((value) => value === null || value === undefined || value === "")
+      || Object.values(effect).every((value) => value === null || value === undefined)) {
+      throw new Error("v12_native_acceptance_mutation_receipt_invalid");
+    }
+    return Object.freeze({ readback, receiptId: stableJson(identity) });
   });
-  if (!Number.isSafeInteger(transaction.rowCount) || transaction.rowCount < 0
-    || !Number.isSafeInteger(transaction.changes) || transaction.changes < 0) throw new Error("v12_native_acceptance_operation_result_invalid");
   return Object.freeze({
     result: "committed" as const,
-    facts: Object.freeze({
-      operation_id: contract.operation.id,
-      table: primaryTable,
-      committed_readback_rows: transaction.rowCount,
-      committed_changes: transaction.changes,
+    facts: operationFacts({
+      contract,
+      authoritativeReadback: transaction.readback,
+      receiptId: transaction.receiptId,
+      outcome: "already_committed",
+      committedEffects: 0,
     }),
   });
 }
 
 async function readAuthorityState(input: Readonly<{
   kernel: SqliteKernel;
+  contract: V12NativeAcceptanceCaseContract;
   probe: V12NativeAcceptanceCaseContract["probes"]["pre"];
   sha256(value: string): Promise<string>;
   operationResultSha256?: string;
-}>): Promise<V12NativeAcceptanceSourceState> {
+}>): Promise<Readonly<{ state: V12NativeAcceptanceSourceState; facts: unknown }>> {
   if (input.kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
   const snapshot = await input.kernel.readSnapshot(async (transaction: SqliteReadTransactionExecutor) => {
     const [version] = await transaction.queryAll<{ user_version: number }>("PRAGMA user_version");
-    const facts = [] as Readonly<{ table: string; rows: readonly unknown[] }>[];
-    let rowCount = 0;
-    for (const table of input.probe.tables) {
-      const rows = await transaction.queryAll<Record<string, unknown>>(`SELECT rowid AS __v12_rowid, * FROM "${table}" ORDER BY rowid`);
-      const ordered = [...rows].sort((left, right) => stableJson(left).localeCompare(stableJson(right), "en"));
-      facts.push(Object.freeze({ table, rows: Object.freeze(ordered) }));
-      rowCount += rows.length;
-    }
-    return Object.freeze({ schemaVersion: version?.user_version ?? -1, facts: Object.freeze(facts), rowCount });
+    const facts = await readCaseFacts(transaction, input.contract);
+    return Object.freeze({ schemaVersion: version?.user_version ?? -1, facts, rowCount: facts.rowCount });
   });
-  const factsSha256 = await input.sha256(stableJson({ schema_version: snapshot.schemaVersion, tables: snapshot.facts }));
+  const factsSha256 = await input.sha256(stableJson({ schema_version: snapshot.schemaVersion, facts: snapshot.facts }));
   const digest = await input.sha256(stableJson({
     probe_id: input.probe.id,
     facts_sha256: factsSha256,
@@ -190,7 +297,10 @@ async function readAuthorityState(input: Readonly<{
   if (!HASH.test(factsSha256) || !HASH.test(digest) || !Number.isSafeInteger(snapshot.schemaVersion) || snapshot.schemaVersion < 1 || !Number.isSafeInteger(snapshot.rowCount) || snapshot.rowCount < 0) {
     throw new Error("v12_native_acceptance_source_state_invalid");
   }
-  return Object.freeze({ probe_id: input.probe.id, facts_sha256: factsSha256, source_sha256: digest, row_count: snapshot.rowCount, table_count: input.probe.tables.length, schema_version: snapshot.schemaVersion });
+  return Object.freeze({
+    state: Object.freeze({ probe_id: input.probe.id, facts_sha256: factsSha256, source_sha256: digest, row_count: snapshot.rowCount, table_count: input.probe.tables.length, schema_version: snapshot.schemaVersion }),
+    facts: snapshot.facts,
+  });
 }
 
 export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
@@ -217,6 +327,8 @@ export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
     action_id: request.action,
     operation_id: contract.operation.id,
     operation_kind: contract.operation.kind,
+    operation_handler_id: contract.operation.handlerId,
+    operation_postcondition_id: contract.operation.postcondition.id,
     expected_result: contract.operation.expectedResult,
     source_probe: request.sourceProbe,
     authority_tables: request.authorityTables,
@@ -224,14 +336,63 @@ export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
     ui_readback_id: contract.uiReadback.id,
   });
   const actionRequestSha256 = await input.sha256(JSON.stringify(actionRequest));
-  const pre = await readAuthorityState({ ...input, probe: contract.probes.pre });
+  const preRead = await readAuthorityState({ ...input, contract, probe: contract.probes.pre });
   const operationResult = await input.executeOperation({ contract, request });
   if (operationResult.result !== contract.operation.expectedResult) throw new Error("v12_native_acceptance_operation_result_invalid");
-  const operationResultSha256 = await input.sha256(stableJson({ operation_id: contract.operation.id, result: operationResult.result, facts: operationResult.facts }));
+  const facts = operationResult.facts as Partial<V12OperationFacts> | null;
+  if (facts === null || typeof facts !== "object" || Array.isArray(facts)
+    || facts.handler_id !== contract.operation.handlerId
+    || facts.postcondition_id !== contract.operation.postcondition.id
+    || !Number.isSafeInteger(facts.committed_effects) || Number(facts.committed_effects) < 0) {
+    throw new Error("v12_native_acceptance_operation_result_invalid");
+  }
+  const committedEffects = Number(facts.committed_effects);
+  if (contract.operation.kind === "repository-read") {
+    if (facts.receipt_id !== null || facts.outcome !== null || facts.committed_effects !== 0) {
+      throw new Error("v12_native_acceptance_operation_result_invalid");
+    }
+  } else if (typeof facts.receipt_id !== "string" || facts.receipt_id.length < 8
+    || (facts.outcome !== "committed" && facts.outcome !== "already_committed")
+    || (facts.outcome === "committed" && facts.committed_effects === 0)
+    || (facts.outcome === "already_committed" && facts.committed_effects !== 0)) {
+    throw new Error(facts.outcome === "committed"
+      ? "v12_native_acceptance_mutation_effect_missing"
+      : "v12_native_acceptance_operation_result_invalid");
+  }
+  const postProofRead = await readAuthorityState({ ...input, contract, probe: contract.probes.post });
+  if (contract.operation.kind === "repository-read" && preRead.state.facts_sha256 !== postProofRead.state.facts_sha256) {
+    throw new Error("v12_native_acceptance_read_action_drift");
+  }
+  if (stableJson(facts.authoritative_readback) !== stableJson(postProofRead.facts)) {
+    throw new Error("v12_native_acceptance_operation_result_invalid");
+  }
+  const durableProof = Object.freeze({
+    operation_id: contract.operation.id,
+    result: operationResult.result,
+    handler_id: facts.handler_id,
+    postcondition_id: facts.postcondition_id,
+    receipt_id: facts.receipt_id,
+    outcome: facts.outcome,
+    committed_effects: committedEffects,
+    authoritative_facts_sha256: postProofRead.state.facts_sha256,
+  });
+  const operationResultSha256 = await input.sha256(stableJson(durableProof));
   if (!HASH.test(operationResultSha256)) throw new Error("v12_native_acceptance_operation_result_invalid");
-  const action = await readAuthorityState({ ...input, probe: contract.probes.action, operationResultSha256 });
-  const post = await readAuthorityState({ ...input, probe: contract.probes.post });
+  const actionRead = await readAuthorityState({ ...input, contract, probe: contract.probes.action, operationResultSha256 });
+  const postRead = await readAuthorityState({ ...input, contract, probe: contract.probes.post });
+  const pre = preRead.state;
+  const action = actionRead.state;
+  const post = postRead.state;
   if (contract.operation.kind === "repository-read" && (pre.facts_sha256 !== action.facts_sha256 || pre.facts_sha256 !== post.facts_sha256)) throw new Error("v12_native_acceptance_read_action_drift");
+  if (postProofRead.state.facts_sha256 !== post.facts_sha256) throw new Error("v12_native_acceptance_postcondition_drift");
+  if (contract.operation.kind === "repository-mutation") {
+    if (facts.outcome === "committed" && pre.facts_sha256 === post.facts_sha256) {
+      throw new Error("v12_native_acceptance_mutation_effect_missing");
+    }
+    if (facts.outcome === "already_committed" && pre.facts_sha256 !== post.facts_sha256) {
+      throw new Error("v12_native_acceptance_replay_mutated");
+    }
+  }
   const sourceUnsigned = Object.freeze({
     schema_version: 2 as const,
     producer: "v12-native-acceptance-source/v2" as const,
@@ -244,6 +405,11 @@ export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
     operation_kind: contract.operation.kind,
     operation_result: operationResult.result,
     operation_result_sha256: operationResultSha256,
+    operation_handler_id: contract.operation.handlerId,
+    operation_postcondition_id: contract.operation.postcondition.id,
+    command_receipt_id: facts.receipt_id ?? null,
+    command_outcome: facts.outcome ?? null,
+    committed_effects: committedEffects,
     source_probe: request.sourceProbe,
     authority_tables: request.authorityTables,
     pre,

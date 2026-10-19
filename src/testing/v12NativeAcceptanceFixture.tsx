@@ -123,6 +123,13 @@ function readbacksMatchRequest(
     && source.action_id === request.action && source.source_probe === request.sourceProbe
     && source.operation_id === contract.operation.id && source.operation_kind === contract.operation.kind
     && source.operation_result === contract.operation.expectedResult
+    && source.operation_handler_id === contract.operation.handlerId
+    && source.operation_postcondition_id === contract.operation.postcondition.id
+    && (contract.operation.kind === "repository-read"
+      ? source.command_receipt_id === null && source.command_outcome === null && source.committed_effects === 0
+      : typeof source.command_receipt_id === "string" && source.command_receipt_id.length >= 8
+        && (source.command_outcome === "committed" || source.command_outcome === "already_committed")
+        && (source.command_outcome === "committed" ? source.committed_effects > 0 : source.committed_effects === 0))
     && JSON.stringify(source.authority_tables) === JSON.stringify(request.authorityTables)
     && ui.schema_version === 2 && ui.producer === "v12-native-acceptance-ui-readback/v2"
     && ui.shard === request.shard && ui.case_id === request.caseId && ui.nonce === request.nonce

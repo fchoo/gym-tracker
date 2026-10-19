@@ -5265,9 +5265,10 @@ export function WorkoutAppRuntimeProvider({
         kernel: requireServices().kernel,
         request,
         sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
-        executeOperation: ({ contract }) => dispatchV12NativeAcceptanceProductionOperation({
+        executeOperation: ({ contract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
           kernel: requireServices().kernel,
           contract,
+          request: operationRequest,
         }),
       });
     },

@@ -339,6 +339,8 @@ const phase20EvidenceProjects = Object.freeze([
 ]);
 const phase20IntegrityCriticalFiles = [
   "src/bootstrap/v12AcceptanceBenchmark.ts",
+  "src/testing/v12NativeAcceptanceExecutor.ts",
+  "src/testing/contracts/phase15Workout.contract.ts",
   "src/testing/contracts/v12Acceptance.contract.ts",
   "src/testing/contracts/v12Accessibility.contract.ts",
   "src/testing/contracts/v12CalendarAcceptance.contract.ts",
@@ -826,9 +828,11 @@ if (focusPhase19) {
 }
 if (focusPhase20) {
   focusedIntegrityFiles.push(...phase20IntegrityCriticalFiles);
-  focusedProjects.push("unit");
+  focusedProjects.push("unit", "sqlite-host");
   jestForwarded.push(
     "src/bootstrap/v12AcceptanceBenchmark.test.ts",
+    "src/testing/v12NativeAcceptanceExecutor.test.ts",
+    "tests/sqlite-host/v12NativeAcceptanceOperations.test.ts",
     "src/testing/contracts/v12Acceptance.contract.test.ts",
     "src/testing/contracts/v12Accessibility.contract.test.ts",
     "src/testing/contracts/v12CalendarAcceptance.contract.test.ts",

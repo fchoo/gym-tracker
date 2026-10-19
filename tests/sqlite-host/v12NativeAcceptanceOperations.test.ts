@@ -1,0 +1,128 @@
+import { afterEach, describe, expect, it } from "@jest/globals";
+import { DatabaseSync } from "node:sqlite";
+
+import type {
+  SqliteConnection,
+  SqlitePreparedResult,
+  SqlitePreparedStatement,
+} from "../../src/platform/sqlite/connection";
+import { configureSqliteConnection } from "../../src/platform/sqlite/connection";
+import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
+import { migrations } from "../../src/platform/sqlite/migrations";
+import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
+import { V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS } from "../../src/testing/contracts/phase15Workout.contract";
+import { dispatchV12NativeAcceptanceProductionOperation } from "../../src/testing/v12NativeAcceptanceExecutor";
+
+class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
+  constructor(
+    readonly changes: number,
+    readonly lastInsertRowId: number,
+    private readonly rows: readonly Row[],
+  ) {}
+
+  async getAllAsync(): Promise<readonly Row[]> { return this.rows; }
+}
+
+class Statement implements SqlitePreparedStatement {
+  constructor(private readonly statement: ReturnType<DatabaseSync["prepare"]>) {}
+
+  async executeAsync<Row extends Record<string, unknown>>(
+    parameters: readonly (null | number | string | Uint8Array)[] = [],
+  ): Promise<SqlitePreparedResult<Row>> {
+    if (this.statement.columns().length > 0) {
+      return new Result(0, 0, this.statement.all(...parameters) as Row[]);
+    }
+    const result = this.statement.run(...parameters);
+    return new Result(Number(result.changes), Number(result.lastInsertRowid), []);
+  }
+
+  async finalizeAsync(): Promise<void> {}
+}
+
+class Connection implements SqliteConnection {
+  private closed = false;
+  constructor(private readonly database: DatabaseSync) {}
+  async execAsync(sql: string): Promise<void> { this.database.exec(sql); }
+  async prepareAsync(sql: string): Promise<SqlitePreparedStatement> { return new Statement(this.database.prepare(sql)); }
+  async isInTransactionAsync(): Promise<boolean> { return this.database.isTransaction; }
+  async closeAsync(): Promise<void> {
+    if (!this.closed) {
+      this.database.close();
+      this.closed = true;
+    }
+  }
+}
+
+const kernels = new Set<SqliteKernel>();
+
+afterEach(async () => {
+  await Promise.all([...kernels].map((kernel) => kernel.close()));
+  kernels.clear();
+});
+
+async function open(): Promise<SqliteKernel> {
+  const connection = new Connection(new DatabaseSync(":memory:"));
+  await configureSqliteConnection(connection, { enableWal: false });
+  const kernel = createSqliteKernel({ reader: connection, writer: connection });
+  kernels.add(kernel);
+  await createMigrationRunner({
+    databaseName: "v12-native-acceptance-operations-host",
+    kernel,
+    migrations,
+    recoveryBackup: {
+      createAndValidate: async (request) => ({
+        backupId: "host",
+        databaseName: request.databaseName,
+        fromVersion: request.fromVersion,
+        toVersion: request.toVersion,
+        validated: true,
+      }),
+    },
+  }).run();
+  return kernel;
+}
+
+describe("v1.2 Workout and Library production operation registry", () => {
+  it("delegates Phase 13 cases to their source-owned production contract", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
+      shard === "multi-plan" && caseId === "phase13-migration-failure-cuts"
+    ))!;
+    await expect(dispatchV12NativeAcceptanceProductionOperation({ kernel, contract }))
+      .resolves.toMatchObject({ result: "committed", facts: { outcome: "committed", committed_effects: 1 } });
+  });
+
+  it("executes every exact projection against schema 45 and refuses all 55 empty mutation receipts", async () => {
+    const kernel = await open();
+    const sourceOwned = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard !== "multi-plan");
+    expect(sourceOwned).toHaveLength(88);
+    expect(sourceOwned.filter(({ operation }) => operation.kind === "repository-mutation")).toHaveLength(55);
+
+    for (const contract of sourceOwned) {
+      const execution = dispatchV12NativeAcceptanceProductionOperation({ kernel, contract });
+      if (contract.operation.kind === "repository-mutation") {
+        try {
+          await execution;
+          throw new Error(`${contract.caseId}:unexpected_success`);
+        } catch (error) {
+          const messages: string[] = [];
+          let current: unknown = error;
+          while (current instanceof Error) {
+            messages.push(current.message);
+            current = current.cause;
+          }
+          if (!messages.includes("v12_native_acceptance_mutation_receipt_missing")) {
+            throw new Error(`${contract.caseId}:${messages.join(":")}`);
+          }
+        }
+      } else if ([
+        "workout.scheduled-rest-empty",
+        "library.neutral-plan-chooser",
+      ].includes(contract.caseId)) {
+        await expect(execution).resolves.toMatchObject({ result: "read" });
+      } else {
+        await expect(execution).rejects.toThrow("v12_native_acceptance_postcondition_failed");
+      }
+    }
+  });
+});

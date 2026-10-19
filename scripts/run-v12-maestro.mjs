@@ -46,6 +46,12 @@ const PACKAGE = "com.fchoo.gymtracker.devtest";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const GIT_HEAD = /^[a-f0-9]{40}$/u;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
+const stableJson = (value) => {
+  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value !== "object" || value === undefined) genericFail("source_readback_invalid");
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+};
 const LIVE_GENERIC_SHARDS = Object.freeze(["multi-plan", "workout", "library-running"]);
 const DIRECT_MAESTRO_TOOL_NAMES = Object.freeze(["adb", "maestro", "unzip"]);
 const DIRECT_MAESTRO_TOOL_VERSIONS = Object.freeze({
@@ -229,7 +235,7 @@ function commandRunner(dependencies, signal) {
     timeoutMs: options.timeoutMs, maxBuffer: options.maxBuffer });
 }
 
-const APP_SOURCE_RECEIPT_KEYS = Object.freeze(["schema_version", "producer", "authority", "shard", "case_id", "nonce", "action_id", "operation_id", "operation_kind", "operation_result", "operation_result_sha256", "source_probe", "authority_tables", "pre", "action", "post", "action_request_sha256", "source_receipt_sha256"]);
+const APP_SOURCE_RECEIPT_KEYS = Object.freeze(["schema_version", "producer", "authority", "shard", "case_id", "nonce", "action_id", "operation_id", "operation_kind", "operation_result", "operation_result_sha256", "operation_handler_id", "operation_postcondition_id", "command_receipt_id", "command_outcome", "committed_effects", "source_probe", "authority_tables", "pre", "action", "post", "action_request_sha256", "source_receipt_sha256"]);
 const APP_UI_READBACK_KEYS = Object.freeze(["schema_version", "producer", "shard", "case_id", "nonce", "declared_action", "declared_readback", "readback_id", "source_receipt_sha256", "ui_receipt_sha256"]);
 const APP_SOURCE_STATE_KEYS = Object.freeze(["probe_id", "facts_sha256", "source_sha256", "row_count", "table_count", "schema_version"]);
 
@@ -241,10 +247,6 @@ export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId
     || (sourceProbe !== undefined && sourceProbe !== contract.sourceProbe)
     || (declaredReadback !== undefined && declaredReadback !== contract.uiReadback.label)
     || (authorityTables !== undefined && JSON.stringify(authorityTables) !== JSON.stringify(contract.probes.post.tables))) genericFail("case_contract_invalid");
-  const normalizedOperationResult = operationResult ?? {
-    result: contract.operation.expectedResult,
-    sha256: sha256(JSON.stringify({ operation_id: contract.operation.id, result: contract.operation.expectedResult })),
-  };
   const sourceState = (value, probe) => Object.freeze({
     probe_id: probe.id,
     facts_sha256: value?.facts_sha256 ?? value?.source_sha256,
@@ -253,6 +255,27 @@ export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId
     table_count: probe.tables.length,
     schema_version: value?.schema_version,
   });
+  const preState = sourceState(pre, contract.probes.pre);
+  const actionState = sourceState(action, contract.probes.action);
+  const postState = sourceState(post, contract.probes.post);
+  const normalizedOperationResult = operationResult ?? Object.freeze({
+    result: contract.operation.expectedResult,
+    handler_id: contract.operation.handlerId,
+    postcondition_id: contract.operation.postcondition.id,
+    receipt_id: contract.operation.kind === "repository-mutation" ? `${caseId}:durable-test-receipt` : null,
+    outcome: contract.operation.kind === "repository-mutation" ? "already_committed" : null,
+    committed_effects: 0,
+  });
+  const operationProof = {
+    operation_id: contract.operation.id,
+    result: normalizedOperationResult.result,
+    handler_id: normalizedOperationResult.handler_id,
+    postcondition_id: normalizedOperationResult.postcondition_id,
+    receipt_id: normalizedOperationResult.receipt_id,
+    outcome: normalizedOperationResult.outcome,
+    committed_effects: normalizedOperationResult.committed_effects,
+    authoritative_facts_sha256: postState.facts_sha256,
+  };
   const actionRequest = {
     schema_version: 2,
     producer: "v12-native-acceptance-action-request/v2",
@@ -262,6 +285,8 @@ export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId
     action_id: contract.actionId,
     operation_id: contract.operation.id,
     operation_kind: contract.operation.kind,
+    operation_handler_id: contract.operation.handlerId,
+    operation_postcondition_id: contract.operation.postcondition.id,
     expected_result: contract.operation.expectedResult,
     source_probe: contract.sourceProbe,
     authority_tables: contract.probes.post.tables,
@@ -279,12 +304,17 @@ export function createV12AppFunctionalReadbacks({ shard, caseId, nonce, actionId
     operation_id: contract.operation.id,
     operation_kind: contract.operation.kind,
     operation_result: normalizedOperationResult.result,
-    operation_result_sha256: normalizedOperationResult.sha256,
+    operation_result_sha256: sha256(stableJson(operationProof)),
+    operation_handler_id: normalizedOperationResult.handler_id,
+    operation_postcondition_id: normalizedOperationResult.postcondition_id,
+    command_receipt_id: normalizedOperationResult.receipt_id,
+    command_outcome: normalizedOperationResult.outcome,
+    committed_effects: normalizedOperationResult.committed_effects,
     source_probe: contract.sourceProbe,
     authority_tables: contract.probes.post.tables,
-    pre: sourceState(pre, contract.probes.pre),
-    action: sourceState(action, contract.probes.action),
-    post: sourceState(post, contract.probes.post),
+    pre: preState,
+    action: actionState,
+    post: postState,
     action_request_sha256: sha256(JSON.stringify(actionRequest)),
   };
   const sourceReceipt = Object.freeze({ ...sourceUnsigned, source_receipt_sha256: sha256(JSON.stringify(sourceUnsigned)) });
@@ -313,6 +343,8 @@ function validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, sh
     || sourceReceipt.case_id !== caseId || sourceReceipt.nonce !== nonce || !FUNCTIONAL_NONCE.test(sourceReceipt.nonce ?? "")
     || sourceReceipt.action_id !== contract.actionId || sourceReceipt.operation_id !== contract.operation.id
     || sourceReceipt.operation_kind !== contract.operation.kind || sourceReceipt.operation_result !== contract.operation.expectedResult
+    || sourceReceipt.operation_handler_id !== contract.operation.handlerId
+    || sourceReceipt.operation_postcondition_id !== contract.operation.postcondition.id
     || !SHA256.test(sourceReceipt.operation_result_sha256 ?? "") || sourceReceipt.source_probe !== contract.sourceProbe
     || JSON.stringify(sourceReceipt.authority_tables) !== JSON.stringify(contract.probes.post.tables)
     || !Array.isArray(sourceReceipt.authority_tables) || sourceReceipt.authority_tables.length === 0
@@ -325,9 +357,31 @@ function validateV12AppFunctionalReadbackObjects({ sourceReceipt, uiReadback, sh
       || !Number.isSafeInteger(state.table_count) || state.table_count !== sourceReceipt.authority_tables.length
       || !Number.isSafeInteger(state.schema_version) || state.schema_version < 1) genericFail("source_readback_invalid");
   }
+  if (contract.operation.kind === "repository-read") {
+    if (sourceReceipt.command_receipt_id !== null || sourceReceipt.command_outcome !== null
+      || sourceReceipt.committed_effects !== 0 || sourceReceipt.pre.facts_sha256 !== sourceReceipt.post.facts_sha256) genericFail("source_readback_invalid");
+  } else {
+    if (typeof sourceReceipt.command_receipt_id !== "string" || sourceReceipt.command_receipt_id.length < 8
+      || !["committed", "already_committed"].includes(sourceReceipt.command_outcome)
+      || !Number.isSafeInteger(sourceReceipt.committed_effects) || sourceReceipt.committed_effects < 0
+      || (sourceReceipt.command_outcome === "committed" && (sourceReceipt.committed_effects === 0 || sourceReceipt.pre.facts_sha256 === sourceReceipt.post.facts_sha256))
+      || (sourceReceipt.command_outcome === "already_committed" && (sourceReceipt.committed_effects !== 0 || sourceReceipt.pre.facts_sha256 !== sourceReceipt.post.facts_sha256))) genericFail("source_readback_invalid");
+  }
+  const operationProof = {
+    operation_id: contract.operation.id,
+    result: sourceReceipt.operation_result,
+    handler_id: sourceReceipt.operation_handler_id,
+    postcondition_id: sourceReceipt.operation_postcondition_id,
+    receipt_id: sourceReceipt.command_receipt_id,
+    outcome: sourceReceipt.command_outcome,
+    committed_effects: sourceReceipt.committed_effects,
+    authoritative_facts_sha256: sourceReceipt.post.facts_sha256,
+  };
+  if (sourceReceipt.operation_result_sha256 !== sha256(stableJson(operationProof))) genericFail("source_readback_invalid");
   const actionRequest = {
     schema_version: 2, producer: "v12-native-acceptance-action-request/v2", shard, case_id: caseId, nonce,
     action_id: contract.actionId, operation_id: contract.operation.id, operation_kind: contract.operation.kind,
+    operation_handler_id: contract.operation.handlerId, operation_postcondition_id: contract.operation.postcondition.id,
     expected_result: contract.operation.expectedResult, source_probe: contract.sourceProbe,
     authority_tables: contract.probes.post.tables,
     probe_ids: [contract.probes.pre.id, contract.probes.action.id, contract.probes.post.id],
@@ -941,7 +995,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       const report = readFileSync(temporary, "utf8");
       let uiHierarchy;
       if (tools.test_only && dependencies.captureUiReadback === undefined) {
-        const state = { source_sha256: sha256(`test-source:${caseId}`), row_count: 0, table_count: 1, schema_version: 42 };
+        const state = { source_sha256: sha256(`test-source:${caseId}`), row_count: 1, table_count: 1, schema_version: 42 };
         const appReadbacks = createV12AppFunctionalReadbacks({
           shard, caseId, nonce, pre: state, action: state, post: state,
         });

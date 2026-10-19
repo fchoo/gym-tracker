@@ -106,7 +106,7 @@ test("evidence manifests match discovery and PR CI executes the active aggregate
     manifest.phase20_coverage.metrics,
     ["statements", "branches", "functions", "lines"],
   );
-  assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 6);
+  assert.equal(manifest.phase20_coverage.jest_istanbul_modules.length, 8);
   const coverageProjects = manifest.phase20_coverage.node_v8_projects;
   assert.equal(coverageProjects.length, 6);
   assert.deepEqual(coverageProjects.map(({ name }) => name), [
