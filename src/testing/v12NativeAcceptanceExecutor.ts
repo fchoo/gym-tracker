@@ -52,6 +52,8 @@ import { startWorkout } from "../domains/workout/startWorkout";
 import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
 import { addExercise, removeExercise, reorderExercises, replaceExercise } from "../domains/workout/sessionExerciseCommands";
 import { undoCompletedSet } from "../domains/workout/undoCompletedSet";
+import { presentWorkoutSession } from "../domains/workout/workoutPresentation";
+import { WorkoutCommandConflictError } from "../domains/workout/activeWorkout";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
@@ -495,6 +497,67 @@ async function executeWorkoutRepositoryRead(input: V12NativeAcceptanceProduction
     }
     default:
       throw new Error("v12_native_acceptance_workout_read_handler_unimplemented");
+  }
+  return Object.freeze({ result: "read" as const, facts: operationFacts({
+    contract: input.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input),
+  }) });
+}
+
+async function executeWorkoutPresentationRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const sessionId = await workoutFixtureSessionId(input.kernel, request);
+  if (sessionId === null) throw new Error("v12_native_acceptance_workout_read_precondition_missing");
+  const view = await createWorkoutRepository(input.kernel).getActiveWorkout(sessionId);
+  const projection = presentWorkoutSession(view);
+  if (projection.sessionId !== sessionId || projection.revision !== view.revision || projection.exercises.length === 0
+    || projection.exercises.some((exercise) => exercise.workingSets.length === 0)) {
+    throw new Error("v12_native_acceptance_workout_presentation_postcondition_failed");
+  }
+  return Object.freeze({ result: "read" as const, facts: operationFacts({
+    contract: input.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input),
+  }) });
+}
+
+async function executeWorkoutCompleteSetConflict(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const set = await workoutFixtureActiveSet(input.kernel, request);
+  if (set.metric_profile !== "load_reps") throw new Error("v12_native_acceptance_workout_metric_precondition_missing");
+  let conflict = false;
+  try {
+    await completeSet({
+      repository: createWorkoutRepository(input.kernel),
+      haptics: { committed: async () => undefined, cue: async () => undefined },
+      invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: set.session_id,
+        setId: set.set_id,
+        expectedSessionRevision: set.session_revision,
+        expectedSetRevision: set.set_revision + 1,
+        completionIdempotencyKey: `v12:workout:${request.caseId}:${request.nonce}:conflict`,
+        metricIdentity: {
+          profile: "load_reps",
+          contractVersion: set.metric_contract_version,
+          exerciseMetricGeneration: set.exercise_metric_generation,
+        },
+        observation: { version: 1, profile: "load_reps", loadGrams: 12_500, reps: 5, source: "manual" },
+        completedAtMs: workoutFixtureActivatedAt(request) + 3_000,
+      },
+    });
+  } catch (error) {
+    conflict = error instanceof WorkoutCommandConflictError && error.code === "complete_set_conflict";
+  }
+  if (!conflict) throw new Error("v12_native_acceptance_workout_complete_conflict_missing");
+  const [row] = await input.kernel.queryAll<Readonly<{ status: string; revision: number }>>(
+    "SELECT status, revision FROM session_sets WHERE id = ?",
+    [set.set_id],
+  );
+  if (row?.status !== "planned" || row.revision !== set.set_revision) {
+    throw new Error("v12_native_acceptance_workout_complete_conflict_postcondition_failed");
   }
   return Object.freeze({ result: "read" as const, facts: operationFacts({
     contract: input.contract,
@@ -2128,6 +2191,18 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "workout.workout-outcome-repository.get-session-detail": Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutRepositoryRead,
+  }),
+  "active-workout.workout-repository.complete-set-conflict": Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutCompleteSetConflict,
+  }),
+  "workout.workout-presentation.project-workout": Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutPresentationRead,
+  }),
+  "workout.workout-presentation.project-accessibility": Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutPresentationRead,
   }),
   [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
     prepare: prepareRunningFamilyB,
