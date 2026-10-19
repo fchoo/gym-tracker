@@ -67,7 +67,7 @@ describe("multi-plan Running lifecycle contract", () => {
         kernel: {
           queryAll: async <Row extends Record<string, unknown>>(sql: string) => (
             sql === "PRAGMA user_version" ? [{ user_version: 45 }] : []
-          ) as readonly Row[],
+          ) as unknown as readonly Row[],
           write: async <Result,>(command: (transaction: never) => Promise<Result>) => command({} as never),
         } as never,
         close: async () => { closed.push(caseId); },

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
+import { createHash } from "node:crypto";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { evaluateRunningReadiness } from "../../src/domains/running/contracts";
+import { discardWorkout } from "../../src/domains/workout/finishWorkout";
 import {
   type SqliteConnection,
   type SqlitePreparedResult,
@@ -14,9 +16,17 @@ import {
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
+import { createWorkoutOutcomeRepository } from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
 import type { SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
+import {
+  runPortableMergeContract,
+  type PortableMergeContractAdapter,
+} from "../../src/testing/contracts/portableMerge.contract";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
-import { runMultiPlanRunningContractCase } from "../../src/testing/contracts/multiPlanRunning.contract";
+import {
+  runMultiPlanRunningContractCase,
+  runMultiPlanRunningContractOnKernel,
+} from "../../src/testing/contracts/multiPlanRunning.contract";
 
 class NodePreparedResult<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {}
@@ -74,6 +84,90 @@ async function migratedKernel(): Promise<SqliteKernel> {
     },
   }).run();
   return kernel;
+}
+
+/**
+ * The v6 migration fixture deliberately represents a pre-owned Strength
+ * session and plan.  Canonical Phase 13 cases each own their own production
+ * setup, so retire only that historic fixture state before dispatching the
+ * complete wrapper.  Workout retirement stays on the real outcome command;
+ * the legacy plan has no schedule to transition and is normalized by its
+ * exact fixture identity.
+ */
+async function prepareCanonicalWrapperKernel(): Promise<SqliteKernel> {
+  const kernel = await migratedKernel();
+  const activeWorkouts = await kernel.queryAll<{ id: string; revision: number }>(
+    "SELECT id, revision FROM workout_sessions WHERE status = 'in_progress' ORDER BY id",
+  );
+  for (const active of activeWorkouts) {
+    await discardWorkout({
+      repository: createWorkoutOutcomeRepository(kernel),
+      input: {
+        sessionId: active.id,
+        expectedSessionRevision: active.revision,
+        confirmation: "discard_workout",
+        endedAtMs: 1_786_853_700_000,
+      },
+    });
+  }
+  await kernel.write((transaction) => transaction.execute(
+    "UPDATE plans SET is_active = 0 WHERE id = 'plan-copy' AND is_active = 1",
+  ));
+  return kernel;
+}
+
+function createHostPortableMergeAdapter(): PortableMergeContractAdapter {
+  const runtimes = new Map<string, Readonly<{ directory: string; databasePath: string }>>();
+  const recoveryBackup = {
+    async createAndValidate(request: Readonly<{
+      databaseName: string;
+      fromVersion: number;
+      toVersion: number;
+    }>) {
+      return {
+        backupId: `phase13-host-portable-${request.fromVersion}-${request.toVersion}`,
+        databaseName: request.databaseName,
+        fromVersion: request.fromVersion,
+        toVersion: request.toVersion,
+        validated: true as const,
+      };
+    },
+  };
+  const runtimeFor = (databaseKey: string) => {
+    const existing = runtimes.get(databaseKey);
+    if (existing !== undefined) return existing;
+    const directory = mkdtempSync(join(tmpdir(), "gym-phase13-portable-"));
+    directories.add(directory);
+    const runtime = Object.freeze({ directory, databasePath: join(directory, `${databaseKey}.db`) });
+    runtimes.set(databaseKey, runtime);
+    return runtime;
+  };
+
+  return {
+    recoveryBackup,
+    async createRuntime(databaseKey, observer = {}) {
+      const runtime = runtimeFor(databaseKey);
+      const writer = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+      const reader = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+      await configureSqliteConnection(writer, { enableWal: true });
+      await configureSqliteConnection(reader, { enableWal: false });
+      const kernel = createSqliteKernel({ writer, reader }, observer);
+      return {
+        databaseName: `${databaseKey}.db`,
+        kernel,
+        recoveryBackup,
+        close: () => kernel.close(),
+      };
+    },
+    async cleanup() {
+      for (const { directory } of runtimes.values()) {
+        rmSync(directory, { force: true, recursive: true });
+        directories.delete(directory);
+      }
+      runtimes.clear();
+    },
+    sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+  };
 }
 
 describe("minimum Running activation and ordered occurrences", () => {
@@ -159,6 +253,36 @@ describe("minimum Running activation and ordered occurrences", () => {
     await expect(
       runMultiPlanRunningContractCase("phase13-map01-activation", kernel),
     ).resolves.toBeUndefined();
+  });
+
+  it("runs the complete canonical 13-case wrapper against freshly migrated host SQLite", async () => {
+    const result = await runMultiPlanRunningContractOnKernel(async () => {
+      const kernel = await prepareCanonicalWrapperKernel();
+      return {
+        kernel,
+        close: async () => {
+          const index = kernels.indexOf(kernel);
+          if (index >= 0) kernels.splice(index, 1);
+          await kernel.close();
+        },
+        runPortableMergeContract: () => runPortableMergeContract(createHostPortableMergeAdapter()),
+      };
+    });
+
+    expect(result).toMatchObject({
+      status: "passed",
+      total: 13,
+      passed: 13,
+      failed: 0,
+      skipped: 0,
+    });
+    expect(result.cases.map(({ id }) => id)).toEqual([
+      "phase13-migration-failure-cuts", "phase13-map01-activation", "phase13-running-two-slots",
+      "phase13-strength-completion-retry", "phase13-import-normalized-identity", "phase13-import-remove-restore",
+      "phase13-match-invalidation", "phase13-stale-replay-no-resurrection", "phase13-bodyweight-correction-delete",
+      "phase13-backup-clean-restore", "phase13-merge-rebuild", "phase13-source-generation-neutrality",
+      "phase13-tim01-retirement",
+    ]);
   });
 
   it("persists and exactly replays a revision-fenced Running source graph", async () => {
