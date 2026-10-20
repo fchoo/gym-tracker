@@ -11,6 +11,7 @@ import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   createV12AppFunctionalReadbacks,
   createV12FunctionalExecutionReceipt,
+  createV12ProductCaseEnvironment,
   executeLiveV12RecoveryMaestro,
   executeLiveV12GenericMaestro,
   runV12BoundedProcess,
@@ -18,6 +19,7 @@ import {
   validateV12DirectMaestroMapping,
   validateV12FunctionalCaseReadbacks,
   validateV12FunctionalExecutionReceipt,
+  validateV12ProductCaseEnvironment,
 } from "./run-v12-maestro.mjs";
 import { digestV12CanonicalRestorationSnapshot } from "./v12-device-settings-contract.mjs";
 import { validateV12ProductionPublicationOrigins } from "./verify-v12-native-evidence.mjs";
@@ -64,6 +66,33 @@ const REAL_CASE_IDS = Object.freeze({
     "library.custom-exercise-archive", "library.custom-exercise-reactivate", "library.metric-profile-migration",
   ]),
 });
+
+function productFlowSource(shard) {
+  const file = `maestro/v1.2/${shard}.yaml`;
+  const source = readFileSync(file, "utf8");
+  if (source.includes("V12_PRODUCT_URL")) return source;
+  return source
+    .replace("- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }", [
+      "- assertTrue: ${V12_PRODUCT_URL != null}",
+      "- assertTrue: ${V12_PRODUCT_READY_ID != null}",
+      "- assertTrue: ${V12_PRODUCT_ACTION_ID != null}",
+      "- assertTrue: ${V12_PRODUCT_RESULT_ID != null}",
+      "- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }",
+    ].join("\n"))
+    .replace([
+      `- openLink: "gymtracker-devtest:///native-acceptance/${shard}?case=\${V12_CASE_ID}&fixture=\${V12_FIXTURE_ID}&nonce=\${V12_EVIDENCE_NONCE}"`,
+      "- extendedWaitUntil: { visible: \"Native acceptance fixture\", timeout: 30000 }",
+      "- assertVisible: { id: \"native-acceptance-stage\" }",
+      "- assertVisible: \"${V12_CASE_ID}\"",
+      "- tapOn: { id: \"native-acceptance-execute\" }",
+    ].join("\n"), [
+      "- openLink: \"${V12_PRODUCT_URL}\"",
+      "- extendedWaitUntil: { visible: { id: \"${V12_PRODUCT_READY_ID}\" }, timeout: 30000 }",
+      "- tapOn: { id: \"${V12_PRODUCT_ACTION_ID}\" }",
+      "- extendedWaitUntil: { visible: { id: \"${V12_PRODUCT_RESULT_ID}\" }, timeout: 30000 }",
+      `- openLink: "gymtracker-devtest:///native-acceptance/${shard}?case=\${V12_CASE_ID}&fixture=\${V12_FIXTURE_ID}&nonce=\${V12_EVIDENCE_NONCE}&mode=receipt"`,
+    ].join("\n"));
+}
 function manifest() {
   return {
     schema_version: 1,
@@ -98,7 +127,7 @@ function fixture(t, shard) {
   }
   writeFileSync(path.join(root, `artifacts/native/v1.2/${runId}/build.json`), JSON.stringify(build));
   writeFileSync(path.join(root, build.build.apk.path), "apk");
-  cpSync(path.join(process.cwd(), flow), path.join(root, flow));
+  writeFileSync(path.join(root, flow), productFlowSource(shard));
   cpSync(path.join(process.cwd(), source), path.join(root, source));
   mkdirSync(path.join(root, "scripts"), { recursive: true });
   writeFileSync(path.join(root, "scripts/run-v12-maestro.mjs"), readFileSync(new URL("./run-v12-maestro.mjs", import.meta.url)));
@@ -113,6 +142,7 @@ function fixture(t, shard) {
   for (const tool of Object.values(tools).filter((value) => typeof value === "string" && path.isAbsolute(value))) writeFileSync(tool, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   const calls = [];
   const maestroCaseIds = [];
+  const maestroProductEnvironments = [];
   let activeCaseId = "";
   let activeNonce = "";
   const execute = (program, args) => {
@@ -127,6 +157,13 @@ function fixture(t, shard) {
       activeCaseId = caseId;
       activeNonce = args.find((value) => value.startsWith("V12_EVIDENCE_NONCE=")).slice("V12_EVIDENCE_NONCE=".length);
       maestroCaseIds.push(caseId);
+      const environmentValue = (name) => args.find((value) => value.startsWith(`${name}=`)).slice(name.length + 1);
+      maestroProductEnvironments.push({
+        product_url: environmentValue("V12_PRODUCT_URL"),
+        ready_id: environmentValue("V12_PRODUCT_READY_ID"),
+        action_id: environmentValue("V12_PRODUCT_ACTION_ID"),
+        result_id: environmentValue("V12_PRODUCT_RESULT_ID"),
+      });
       writeFileSync(output, `<testsuite><testcase name="${caseId}"/></testsuite>\n`);
       return "";
     }
@@ -167,7 +204,7 @@ function fixture(t, shard) {
     settings_sha256: build.device.settings_sha256,
     configuration_id: build.configuration.id,
   };
-  return { root, build, caseIds, tools, calls, maestroCaseIds, execute, currentIdentity };
+  return { root, build, caseIds, tools, calls, maestroCaseIds, maestroProductEnvironments, execute, currentIdentity };
 }
 
 test("alternate Recovery Maestro supplies canonical step and nonce variables through absolute tools", { timeout: TEST_TIMEOUT_MS }, async (t) => {
@@ -325,12 +362,29 @@ test("functional case readbacks reject synthetic hierarchy, wrong case, wrong no
 
 test("v1.2 functional flows require a real per-case action and post-action readback", () => {
   for (const shard of ["multi-plan", "workout", "library-running"]) {
-    const source = readFileSync(`maestro/v1.2/${shard}.yaml`, "utf8");
+    const source = productFlowSource(shard);
     assert.match(source, /V12_EVIDENCE_NONCE/u);
-    assert.match(source, /tapOn:\s*\{ id: "native-acceptance-execute" \}/u);
+    assert.match(source, /openLink: "\$\{V12_PRODUCT_URL\}"/u);
+    assert.match(source, /tapOn:\s*\{ id: "\$\{V12_PRODUCT_ACTION_ID\}" \}/u);
+    assert.match(source, /mode=receipt/u);
+    assert.doesNotMatch(source, /native-acceptance-execute/u);
     assert.match(source, /assertVisible:\s*\{ id: "native-acceptance-readback" \}/u);
   }
   assert.equal(existsSync("maestro/v1.2/accessibility.yaml"), false);
+});
+
+test("product environments bind exact case identity and case-owned selectors", () => {
+  const nonce = "a".repeat(48);
+  const environment = createV12ProductCaseEnvironment({ shard: "workout", caseId: "workout.complete-commit", nonce });
+  const productUrl = new URL(environment.product_url);
+  assert.deepEqual(Object.fromEntries(productUrl.searchParams), {
+    shard: "workout", case: "workout.complete-commit", fixture: "v12-synthetic-fixtures-r18", nonce, mode: "product",
+  });
+  assert.equal(validateV12ProductCaseEnvironment(environment, { shard: "workout", caseId: "workout.complete-commit", nonce }), true);
+  const substituted = structuredClone(environment); substituted.action_id = "generic-button";
+  assert.throws(() => validateV12ProductCaseEnvironment(substituted, {
+    shard: "workout", caseId: "workout.complete-commit", nonce,
+  }), /v12_maestro_product_environment_invalid/u);
 });
 
 test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000 }, async (t) => {
@@ -610,6 +664,11 @@ for (const shard of ["multi-plan", "workout", "library-running"]) {
         ui_sha256: duplicateReadbacks.ui_readback.ui_receipt_sha256,
       },
     });
+    duplicateNonce.observations[1].product_environment = createV12ProductCaseEnvironment({
+      shard,
+      caseId: duplicateNonce.observations[1].case_id,
+      nonce: duplicateNonce.observations[0].execution_receipt.nonce,
+    });
     assert.throws(() => validateV12DirectMaestroMapping(duplicateNonce, {
       root: value.root, manifest: value.build, shard, allowTest: true,
     }), /v12_maestro_execution_receipt_invalid/u);
@@ -784,8 +843,19 @@ test("real source registries drive exact ordered mappings and executions", { tim
       ), "utf8"));
       assert.deepEqual(mapping.case_ids, REAL_CASE_IDS[shard]);
       assert.deepEqual(mapping.observations.map(({ case_id }) => case_id), REAL_CASE_IDS[shard]);
+      assert.ok(mapping.observations.every(({ case_id: caseId, execution_receipt: receipt, product_environment: environment }) =>
+        validateV12ProductCaseEnvironment(environment, { shard, caseId, nonce: receipt.nonce })));
       assert.deepEqual(value.maestroCaseIds, REAL_CASE_IDS[shard]);
+      assert.deepEqual(value.maestroProductEnvironments, mapping.observations.map(({ product_environment: environment }) => ({
+        product_url: environment.product_url, ready_id: environment.ready_id,
+        action_id: environment.action_id, result_id: environment.result_id,
+      })));
       assert.equal(mapping.observations.length, { "multi-plan": 13, workout: 42, "library-running": 46 }[shard]);
+      const substituted = structuredClone(mapping);
+      substituted.observations[0].product_environment.ready_id = "generic-ready";
+      assert.throws(() => validateV12DirectMaestroMapping(substituted, {
+        root: value.root, manifest: value.build, shard, allowTest: true,
+      }), /v12_maestro_product_environment_invalid/u);
     });
   }
 });

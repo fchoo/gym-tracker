@@ -68,6 +68,8 @@ const V12_RUN_ID = /^phase20-\d{8}T\d{6}Z-[a-f0-9]{12}$/u;
 const V12_PACKAGE = "com.fchoo.gymtracker.devtest";
 const FUNCTIONAL_NONCE = /^[a-f0-9]{48}$/u;
 const FUNCTIONAL_RECEIPT_PHASES = Object.freeze(["pre", "action", "post"]);
+const V12_PRODUCT_FIXTURE_ID = "v12-synthetic-fixtures-r18";
+const PRODUCT_ENVIRONMENT_KEYS = Object.freeze(["schema_version", "producer", "shard", "case_id", "fixture_id", "nonce", "mode", "product_url", "ready_id", "action_id", "result_id", "binding_sha256"]);
 export const V12_MAESTRO_COMMAND_BUDGETS = Object.freeze({
   version_ms: 10_000,
   adb_ms: 30_000,
@@ -507,10 +509,60 @@ export function validateV12FunctionalExecutionReceipt(receipt, { runId, shard, c
 }
 
 export function validateV12FunctionalMaestroFlow(flow) {
+  const productAction = typeof flow === "string" ? flow.indexOf('tapOn: { id: "${V12_PRODUCT_ACTION_ID}" }') : -1;
+  const receiptRoute = typeof flow === "string" ? flow.indexOf("/native-acceptance/") : -1;
   if (typeof flow !== "string" || !flow.includes("V12_EVIDENCE_NONCE")
-    || !/tapOn:\s*\{\s*id:\s*["']native-acceptance-execute["']\s*\}/u.test(flow)
+    || !["V12_PRODUCT_URL", "V12_PRODUCT_READY_ID", "V12_PRODUCT_ACTION_ID", "V12_PRODUCT_RESULT_ID"]
+      .every((name) => flow.includes(`${name} != null`))
+    || !flow.includes('openLink: "${V12_PRODUCT_URL}"')
+    || productAction < 0 || receiptRoute <= productAction || !flow.includes("mode=receipt")
+    || /native-acceptance-execute|Native acceptance fixture/u.test(flow)
     || !/assertVisible:\s*\{\s*id:\s*["']native-acceptance-source-receipt["']\s*\}/u.test(flow)
     || !/assertVisible:\s*\{\s*id:\s*["']native-acceptance-readback["']\s*\}/u.test(flow)) genericFail("functional_flow_not_executable");
+  return true;
+}
+
+function productSelectorPart(value) {
+  if (typeof value !== "string" || value.length === 0) genericFail("product_environment_invalid");
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-+|-+$/gu, "");
+  if (normalized.length === 0 || normalized.length > 160) genericFail("product_environment_invalid");
+  return normalized;
+}
+
+export function createV12ProductCaseEnvironment({ shard, caseId, nonce } = {}) {
+  if (!LIVE_GENERIC_SHARDS.includes(shard) || typeof caseId !== "string" || !FUNCTIONAL_NONCE.test(nonce ?? "")) genericFail("product_environment_invalid");
+  let contract;
+  try { contract = v12NativeAcceptanceCaseContract(shard, caseId); }
+  catch { genericFail("product_environment_invalid"); }
+  const productUrl = new URL("gymtracker-devtest:///");
+  for (const [key, value] of [["shard", shard], ["case", caseId], ["fixture", V12_PRODUCT_FIXTURE_ID], ["nonce", nonce], ["mode", "product"]]) {
+    productUrl.searchParams.append(key, value);
+  }
+  const selector = `v12-product-${productSelectorPart(shard)}-${productSelectorPart(caseId)}`;
+  const unsigned = {
+    schema_version: 1,
+    producer: "v12-product-case-environment/v1",
+    shard,
+    case_id: caseId,
+    fixture_id: V12_PRODUCT_FIXTURE_ID,
+    nonce,
+    mode: "product",
+    product_url: productUrl.href,
+    ready_id: `${selector}-ready`,
+    action_id: `${selector}-action-${productSelectorPart(contract.actionId)}`,
+    result_id: `${selector}-result-${sha256(contract.uiReadback.id).slice(0, 16)}`,
+  };
+  return Object.freeze({ ...unsigned, binding_sha256: sha256(JSON.stringify(unsigned)) });
+}
+
+export function validateV12ProductCaseEnvironment(environment, expected) {
+  if (!exactKeys(environment, PRODUCT_ENVIRONMENT_KEYS)) genericFail("product_environment_invalid");
+  const canonical = createV12ProductCaseEnvironment(expected);
+  if (JSON.stringify(environment) !== JSON.stringify(canonical)) genericFail("product_environment_invalid");
+  let productUrl;
+  try { productUrl = new URL(environment.product_url); } catch { genericFail("product_environment_invalid"); }
+  if (productUrl.protocol !== "gymtracker-devtest:" || productUrl.hostname !== "" || productUrl.pathname !== "/"
+    || JSON.stringify([...productUrl.searchParams.keys()]) !== JSON.stringify(["shard", "case", "fixture", "nonce", "mode"])) genericFail("product_environment_invalid");
   return true;
 }
 
@@ -848,8 +900,11 @@ export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest
     || origin.domain_source_sha256 !== sourceSha256(path.join(root, V12_MAESTRO_SOURCE_PATHS[shard].domain))) genericFail("mapping_origin_invalid");
   validateDirectMaestroToolAttestation(mapping.tool_attestation, shard, origin, allowTest);
   for (const observation of mapping.observations) {
-    if (!exactKeys(observation, ["case_id", "ordinal", "fixture_id", "report_sha256", "device_measurement", "execution_receipt"])
+    if (!exactKeys(observation, ["case_id", "ordinal", "fixture_id", "product_environment", "report_sha256", "device_measurement", "execution_receipt"])
       || !exactKeys(observation.device_measurement, ["before", "after"])) genericFail("measurement_invalid");
+    validateV12ProductCaseEnvironment(observation.product_environment, {
+      shard, caseId: observation.case_id, nonce: observation.execution_receipt?.nonce,
+    });
     validateDirectMaestroMeasurement(observation.device_measurement.before, manifest);
     validateDirectMaestroMeasurement(observation.device_measurement.after, manifest);
     if (JSON.stringify(observation.device_measurement.before) !== JSON.stringify(observation.device_measurement.after)) genericFail("measurement_drift");
@@ -1007,11 +1062,12 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       const before = await measureDirectMaestroDeviceAsync(adb, serial, manifest);
       assertDirectMaestroMeasurement(manifest, sourceIdentity, apkSha256, before.measurement);
       const nonce = randomBytes(24).toString("hex");
+      const productEnvironment = createV12ProductCaseEnvironment({ shard, caseId, nonce });
       const captureUiReadback = dependencies.captureUiReadback ?? ((input) => directMaestroUiReadback(input.adb, input.nonce));
       let after;
       let flowError;
       try {
-        await run(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", `V12_EVIDENCE_NONCE=${nonce}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", "V12_FIXTURE_ID=v12-synthetic-fixtures-r18", "--format", "junit", "--output", temporary, flowPath], { timeoutMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms, maxBuffer: 16 * 1024 * 1024 });
+        await run(tools.maestro, ["test", "--device", serial, "-e", `V12_CASE_ID=${caseId}`, "-e", `V12_EVIDENCE_NONCE=${nonce}`, "-e", "V12_CONFIG_ID=AP-L-C390-P-F100", "-e", `V12_FIXTURE_ID=${V12_PRODUCT_FIXTURE_ID}`, "-e", `V12_PRODUCT_URL=${productEnvironment.product_url}`, "-e", `V12_PRODUCT_READY_ID=${productEnvironment.ready_id}`, "-e", `V12_PRODUCT_ACTION_ID=${productEnvironment.action_id}`, "-e", `V12_PRODUCT_RESULT_ID=${productEnvironment.result_id}`, "--format", "junit", "--output", temporary, flowPath], { timeoutMs: V12_MAESTRO_COMMAND_BUDGETS.maestro_case_ms, maxBuffer: 16 * 1024 * 1024 });
       } catch (error) {
         flowError = new Error(error?.message === "v12_maestro_process_timeout" ? "v12_maestro_native_command_timeout"
           : error?.message === "v12_maestro_process_cancelled" ? "v12_maestro_native_command_cancelled" : "v12_maestro_native_command_failed");
@@ -1055,7 +1111,8 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
       observations.push(Object.freeze({
         case_id: caseId,
         ordinal: index + 1,
-        fixture_id: "v12-synthetic-fixtures-r18",
+        fixture_id: V12_PRODUCT_FIXTURE_ID,
+        product_environment: productEnvironment,
         report_sha256: sha256(report),
         device_measurement: Object.freeze({ before: before.measurement, after: after.measurement }),
         execution_receipt: executionReceipt,
