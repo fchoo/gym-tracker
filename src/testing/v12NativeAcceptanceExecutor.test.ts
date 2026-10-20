@@ -1373,6 +1373,72 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects every production strength-collision fixture transition before confirmation", async () => {
+    const collisionInput = (runtime: SqliteKernel) => {
+      const contract = v12NativeAcceptanceCaseContract("library-running", "library.running-conflict");
+      return { kernel: runtime, contract, request: requestForContract(contract) };
+    };
+    const fixtureKernel = (materialized = true) => {
+      const base = kernel();
+      const queryAll = base.queryAll.bind(base);
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM starter_plan_activation_requests")) {
+          return [{ request_id: params?.[0], result_plan_id: "strength-plan", result_schedule_id: "strength-schedule" }] as unknown as readonly Row[];
+        }
+        if (sql.includes("owned_plan_schedule_opportunities") && sql.includes("schedule_id = ?")) return [] as readonly Row[];
+        if (!materialized && sql.includes("FROM owned_plan_schedule_opportunities")) return [] as readonly Row[];
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    const state = { planId: "strength-plan", scheduleRevision: 1, planRevision: 1, localDate: "2027-01-18", version: { bindings: [{ planDayId: "strength-day" }] } };
+
+    const invalidState = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleRepository",
+      factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"), createScheduleRepository: () => ({ readActionState: async () => null }) }),
+    }]);
+    try {
+      await expect(invalidState.executor.dispatchV12NativeAcceptanceProductionOperation(collisionInput(fixtureKernel())))
+        .rejects.toThrow("v12_native_acceptance_collision_strength_precondition_missing");
+    } finally { jest.resetModules(); }
+
+    const rejectedOverride = isolateExecutorWithMocks([
+      { moduleName: "../platform/sqlite/repositories/scheduleRepository", factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"), createScheduleRepository: () => ({ readActionState: async () => state }) }) },
+      { moduleName: "../domains/scheduling/scheduleCommands", factory: () => ({ ...jest.requireActual<typeof import("../domains/scheduling/scheduleCommands")>("../domains/scheduling/scheduleCommands"), setDateOverride: async () => ({ outcome: "already_committed" }) }) },
+    ]);
+    try {
+      await expect(rejectedOverride.executor.dispatchV12NativeAcceptanceProductionOperation(collisionInput(fixtureKernel())))
+        .rejects.toThrow("v12_native_acceptance_collision_strength_override_failed");
+    } finally { jest.dontMock("../domains/scheduling/scheduleCommands"); jest.resetModules(); }
+
+    const missingOverride = isolateExecutorWithMocks([
+      { moduleName: "../platform/sqlite/repositories/scheduleRepository", factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"), createScheduleRepository: () => ({ readActionState: async () => state, readDateOverride: async () => null }) }) },
+      { moduleName: "../domains/scheduling/scheduleCommands", factory: () => ({ ...jest.requireActual<typeof import("../domains/scheduling/scheduleCommands")>("../domains/scheduling/scheduleCommands"), setDateOverride: async () => ({ outcome: "committed" }) }) },
+    ]);
+    try {
+      await expect(missingOverride.executor.dispatchV12NativeAcceptanceProductionOperation(collisionInput(fixtureKernel())))
+        .rejects.toThrow("v12_native_acceptance_collision_strength_override_missing");
+    } finally { jest.dontMock("../domains/scheduling/scheduleCommands"); jest.resetModules(); }
+
+    const rejectedConsumption = isolateExecutorWithMocks([
+      { moduleName: "../platform/sqlite/repositories/scheduleRepository", factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"), createScheduleRepository: () => ({ readActionState: async () => state, readDateOverride: async (input: Readonly<{ scheduleId: string }>) => ({ id: `v12:collision:${"b".repeat(48)}:strength-override`, state: "pending", revision: 1, scheduleId: input.scheduleId }) }) }) },
+      { moduleName: "../domains/scheduling/scheduleCommands", factory: () => ({ ...jest.requireActual<typeof import("../domains/scheduling/scheduleCommands")>("../domains/scheduling/scheduleCommands"), setDateOverride: async () => ({ outcome: "committed" }), consumeScheduleDateOverride: async () => ({ outcome: "already_committed" }) }) },
+    ]);
+    try {
+      await expect(rejectedConsumption.executor.dispatchV12NativeAcceptanceProductionOperation(collisionInput(fixtureKernel())))
+        .rejects.toThrow("v12_native_acceptance_collision_strength_consumption_failed");
+    } finally { jest.dontMock("../domains/scheduling/scheduleCommands"); jest.resetModules(); }
+
+    const missingMaterialization = isolateExecutorWithMocks([
+      { moduleName: "../platform/sqlite/repositories/scheduleRepository", factory: () => ({ ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"), createScheduleRepository: () => ({ readActionState: async () => state, readDateOverride: async () => ({ id: `v12:collision:${"b".repeat(48)}:strength-override`, state: "pending", revision: 1 }) }) }) },
+      { moduleName: "../domains/scheduling/scheduleCommands", factory: () => ({ ...jest.requireActual<typeof import("../domains/scheduling/scheduleCommands")>("../domains/scheduling/scheduleCommands"), setDateOverride: async () => ({ outcome: "committed" }), consumeScheduleDateOverride: async () => ({ outcome: "committed" }) }) },
+    ]);
+    try {
+      await expect(missingMaterialization.executor.dispatchV12NativeAcceptanceProductionOperation(collisionInput(fixtureKernel(false))))
+        .rejects.toThrow("v12_native_acceptance_collision_strength_materialization_missing");
+    } finally { jest.dontMock("../domains/scheduling/scheduleCommands"); jest.resetModules(); }
+  });
+
   it("rejects plan-impact handlers without their nonce-bound plan day or occurrence", async () => {
     const dayRemoval = v12NativeAcceptanceCaseContract("library-running", "library.day-removal-impact");
     await expect(dispatchV12NativeAcceptanceProductionOperation({
