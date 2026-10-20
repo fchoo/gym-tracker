@@ -10,8 +10,11 @@ import {
   type V12NativeAcceptanceShard,
 } from "./contracts/phase15Workout.contract";
 import {
-  runMultiPlanRunningContractCase,
+  createExpoMultiPlanRunningContractAdapter,
+  MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  runMultiPlanRunningContract,
   type MultiPlanRunningContractCaseId,
+  type MultiPlanRunningContractResult,
 } from "./contracts/multiPlanRunning.contract";
 import type { RunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
 import type { OwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
@@ -187,6 +190,10 @@ export type V12NativeAcceptanceProductionRuntime = Readonly<{
   running?: RunningPlanRuntimePort;
   ownedPlans?: OwnedPlanRuntimePort;
   customExercises?: CustomExerciseRepository;
+  /** Host SQLite tests inject the canonical fresh-runtime wrapper here. */
+  multiPlan?: Readonly<{
+    runWrapper(): Promise<MultiPlanRunningContractResult>;
+  }>;
 }>;
 
 export type V12NativeAcceptanceProductionHandler = Readonly<{
@@ -3745,69 +3752,44 @@ async function executeLogicalBackupCollection(input: V12NativeAcceptanceProducti
   });
 }
 
-/**
- * Executes the case-owned production boundary. Phase 13 cases use their exact
- * repository contract. Workout and Library cases use a case-scoped query or
- * serialized writer transaction over the contract's authoritative table;
- * post-action snapshots below independently verify committed readback.
- */
-async function executeV12NativeAcceptanceProductionOperation(input: Readonly<{
-  kernel: SqliteKernel;
-  contract: V12NativeAcceptanceCaseContract;
-  request?: V12NativeAcceptanceRequest;
-}>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>> {
-  const { contract, kernel } = input;
-  if (contract.shard === "multi-plan") {
-    await runMultiPlanRunningContractCase(contract.caseId as MultiPlanRunningContractCaseId, kernel);
+async function executeMultiPlanRunningWrapper(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const caseId = input.contract.caseId as MultiPlanRunningContractCaseId;
+  const adapter = input.runtime?.multiPlan;
+  const ownedAdapter = adapter === undefined
+    ? await createExpoMultiPlanRunningContractAdapter(`v12-native-acceptance-${request.nonce}`)
+    : undefined;
+  try {
+    const result = await (adapter?.runWrapper() ?? runMultiPlanRunningContract(ownedAdapter!));
+    const caseResult = result.cases.find(({ id }) => id === caseId);
+    if (result.status !== "passed" || result.total !== MULTI_PLAN_RUNNING_CONTRACT_CASES.length
+      || result.passed !== MULTI_PLAN_RUNNING_CONTRACT_CASES.length || result.failed !== 0
+      || result.skipped !== 0 || caseResult?.status !== "passed") {
+      throw new Error("v12_native_acceptance_multi_plan_wrapper_failed");
+    }
+    const projection = Object.freeze({
+      schemaVersion: result.schemaVersion,
+      contractVersion: result.contractVersion,
+      status: result.status,
+      total: result.total,
+      passed: result.passed,
+      failed: result.failed,
+      skipped: result.skipped,
+      case: Object.freeze({ id: caseResult.id, status: caseResult.status }),
+    });
     return Object.freeze({
       result: "committed" as const,
       facts: operationFacts({
-        contract,
-        authoritativeReadback: Object.freeze({ repository_contract: contract.caseId }),
-        receiptId: `${contract.caseId}:contract-receipt`,
+        contract: input.contract,
+        authoritativeReadback: projection,
+        receiptId: stableJson(Object.freeze({ nonce: request.nonce, case_id: caseId, wrapper: "multi-plan-running" })),
         outcome: "committed",
         committedEffects: 1,
       }),
     });
+  } finally {
+    await ownedAdapter?.cleanup?.();
   }
-  if (contract.operation.kind === "repository-read") {
-    if (kernel.readSnapshot === undefined) throw new Error("v12_native_acceptance_snapshot_unavailable");
-    const readback = await kernel.readSnapshot((query) => readCaseFacts(query, contract));
-    if (readback.rowCount === 0 && !EMPTY_POSTCONDITION_CASES.has(contract.caseId)) {
-      throw new Error("v12_native_acceptance_postcondition_failed");
-    }
-    return Object.freeze({
-      result: "read" as const,
-      facts: operationFacts({ contract, authoritativeReadback: readback }),
-    });
-  }
-  const receipt = contract.operation.receipt;
-  if (receipt === null) throw new Error("v12_native_acceptance_receipt_contract_missing");
-  const transaction = await kernel.write(async (writer) => {
-    const readback = await readCaseFacts(writer, contract);
-    const receiptFacts = readback.tables.find(({ table }) => table === receipt.table);
-    const row = (receiptFacts?.rows as readonly Readonly<Record<string, unknown>>[] | undefined)
-      ?.filter((candidate) => Object.entries(receipt.expectedValues).every(([column, value]) => candidate[column] === value))
-      .at(-1);
-    if (row === undefined) throw new Error("v12_native_acceptance_mutation_receipt_missing");
-    const identity = Object.freeze(Object.fromEntries(receipt.identityColumns.map((column) => [column, row[column]])));
-    const effect = Object.freeze(Object.fromEntries(receipt.effectColumns.map((column) => [column, row[column]])));
-    if (Object.values(identity).some((value) => value === null || value === undefined || value === "")
-      || Object.values(effect).every((value) => value === null || value === undefined)) {
-      throw new Error("v12_native_acceptance_mutation_receipt_invalid");
-    }
-    return Object.freeze({ readback, receiptId: stableJson(identity) });
-  });
-  return Object.freeze({
-    result: "committed" as const,
-    facts: operationFacts({
-      contract,
-      authoritativeReadback: transaction.readback,
-      receiptId: transaction.receiptId,
-      outcome: "already_committed",
-      committedEffects: 0,
-    }),
-  });
 }
 
 const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
@@ -3821,6 +3803,10 @@ const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
 );
 
 const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptanceProductionHandler, "prepare" | "execute">>> = Object.freeze({
+  ...Object.fromEntries(MULTI_PLAN_RUNNING_CONTRACT_CASES.map((caseId) => [
+    `migration.multi-plan-running-contract.${caseId}`,
+    Object.freeze({ execute: executeMultiPlanRunningWrapper }),
+  ])),
   "backup.logical-backup-repository.collect": Object.freeze({
     execute: executeLogicalBackupCollection,
   }),
@@ -4038,14 +4024,16 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
 export const V12_NATIVE_ACCEPTANCE_PRODUCTION_HANDLER_REGISTRY: Readonly<Record<string, V12NativeAcceptanceProductionHandler>> = Object.freeze(
   Object.fromEntries([...productionHandlerEntries].map(([handlerId, operationIds]) => {
     const executor = productionHandlerExecutors[handlerId];
+    if (executor === undefined || typeof executor.execute !== "function") {
+      throw new Error("v12_native_acceptance_handler_unresolved");
+    }
     return [
       handlerId,
       Object.freeze({
         handlerId,
         operationIds: Object.freeze([...operationIds]),
         ...(executor?.prepare === undefined ? {} : { prepare: executor.prepare }),
-        execute: executor?.execute
-          ?? ((input: V12NativeAcceptanceProductionHandlerInput) => executeV12NativeAcceptanceProductionOperation(input)),
+        execute: executor.execute,
       }),
     ];
   })),

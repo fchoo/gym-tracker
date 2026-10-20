@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 
@@ -12,6 +12,7 @@ import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS } from "../../src/testing/contracts/phase15Workout.contract";
+import { MULTI_PLAN_RUNNING_CONTRACT_CASES } from "../../src/testing/contracts/multiPlanRunning.contract";
 import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
 import { createOwnedPlanRuntimePort } from "../../src/bootstrap/ownedPlanRuntime";
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
@@ -97,13 +98,36 @@ async function open(): Promise<SqliteKernel> {
 }
 
 describe("v1.2 Workout and Library production operation registry", () => {
-  it("delegates Phase 13 cases to their source-owned production contract", async () => {
+  it("delegates each Phase 13 case through the full source-owned wrapper", async () => {
     const kernel = await open();
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-migration-failure-cuts"
     ))!;
+    const runWrapper = jest.fn(async () => ({
+      schemaVersion: 1 as const, contractVersion: 1 as const, status: "passed" as const,
+      total: 13, passed: 13, failed: 0, skipped: 0 as const,
+      cases: MULTI_PLAN_RUNNING_CONTRACT_CASES.map((id) => ({ id, status: "passed" as const, durationMs: 1 })),
+      startedAt: "2026-10-01T00:00:00.000Z", finishedAt: "2026-10-01T00:00:01.000Z",
+    }));
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel,
+      contract,
+      request: {
+        shard: contract.shard, caseId: contract.caseId, fixtureId: "v12-synthetic-fixtures-r18",
+        title: "Phase 13", source: "MULTI_PLAN_RUNNING_CONTRACT_CASES", requirement: contract.requirement,
+        action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
+        authorityTables: contract.probes.post.tables, nonce: `01${"a".repeat(46)}`,
+      },
+      runtime: { multiPlan: { runWrapper } },
+    })).resolves.toMatchObject({
+      result: "committed",
+      facts: { outcome: "committed", committed_effects: 1, authoritative_readback: {
+        status: "passed", total: 13, passed: 13, case: { id: contract.caseId, status: "passed" },
+      } },
+    });
+    expect(runWrapper).toHaveBeenCalledTimes(1);
     await expect(dispatchV12NativeAcceptanceProductionOperation({ kernel, contract }))
-      .resolves.toMatchObject({ result: "committed", facts: { outcome: "committed", committed_effects: 1 } });
+      .rejects.toThrow("v12_native_acceptance_request_required");
   });
 
   it("executes every exact projection against schema 46 and refuses all 55 empty mutation receipts", async () => {
