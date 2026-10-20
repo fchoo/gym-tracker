@@ -1133,6 +1133,26 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects Workout set mutations whose case or metric preconditions are substituted", async () => {
+    const duration = v12NativeAcceptanceCaseContract("workout", "workout.duration-editor");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: { ...duration, caseId: "workout.unimplemented-metric-draft" },
+      request: requestForContract(duration),
+    })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
+
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: duration,
+      request: requestForContract(duration),
+    })).rejects.toThrow("v12_native_acceptance_workout_metric_draft_precondition_missing");
+
+    const rowEdit = v12NativeAcceptanceCaseContract("workout", "workout.row-edit");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: rowEdit, request: requestForContract(rowEdit),
+    })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");

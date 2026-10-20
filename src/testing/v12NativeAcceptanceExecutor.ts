@@ -2093,9 +2093,6 @@ async function workoutMetricDraftSet(
   await prepareActiveWorkoutFixture(input);
   const request = requireRequest(input);
   const durationEditor = input.contract.caseId === "workout.duration-editor";
-  if (!durationEditor && input.contract.caseId !== "workout.all-metrics") {
-    throw new Error("v12_native_acceptance_workout_metric_draft_case_invalid");
-  }
   const exerciseId = `v12:workout:${request.caseId}:${request.nonce}:metric-exercise`;
   const sessionExerciseId = `v12:workout:${request.caseId}:${request.nonce}:metric-session-exercise`;
   const setId = `v12:workout:${request.caseId}:${request.nonce}:metric-set`;
