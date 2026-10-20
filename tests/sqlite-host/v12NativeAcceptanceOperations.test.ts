@@ -27,7 +27,9 @@ import {
 import {
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
+  prepareV12NativeAcceptanceProductCase,
   prepareV12NativeAcceptanceProductionOperation,
+  readV12NativeAcceptanceReceipt,
   type V12NativeAcceptanceRequest,
 } from "../../src/testing/v12NativeAcceptanceExecutor";
 
@@ -221,6 +223,55 @@ describe("v1.2 Workout and Library production operation registry", () => {
     }
     expect(receiptIds.size).toBe(55);
   }, 180_000);
+
+  it("retains pre-action evidence and reads a mutation receipt without dispatching again", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(
+      ({ caseId }) => caseId === "workout.outcomes",
+    )!;
+    const request = requestFor(contract, 224);
+    const hash = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const prepared = await prepareV12NativeAcceptanceProductCase({
+      kernel,
+      request,
+      sha256: hash,
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) =>
+        prepareV12NativeAcceptanceProductionOperation({
+          kernel,
+          contract: operationContract,
+          request: operationRequest,
+        }),
+    });
+    const productAction = await dispatchV12NativeAcceptanceProductionOperation({
+      kernel,
+      contract,
+      request,
+    });
+    expect(productAction).toMatchObject({ result: "committed" });
+    const readOnlyKernel = Object.freeze({
+      ...kernel,
+      write: async () => {
+        throw new Error("read_only_receipt_write_forbidden");
+      },
+    }) as SqliteKernel;
+
+    const readbacks = await readV12NativeAcceptanceReceipt({
+      kernel: readOnlyKernel,
+      request,
+      preparedProductCase: prepared,
+      sha256: hash,
+    });
+
+    expect(readbacks.source_receipt).toMatchObject({
+      case_id: request.caseId,
+      operation_result: "committed",
+      command_outcome: "committed",
+      committed_effects: 1,
+      pre: prepared.pre,
+    });
+    expect(readbacks.source_receipt.command_receipt_id)
+      .toMatch(/^\{"id":"finish-partial:/u);
+  });
 
   it("delegates each Phase 13 case through the full source-owned wrapper", async () => {
     const kernel = await open();

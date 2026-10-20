@@ -225,6 +225,9 @@ describe("logical backup repository", () => {
     );
     const replay = await repository.collect(input);
 
+    if (firstReceipt === undefined) {
+      throw new Error("logical_backup_receipt_missing");
+    }
     expect(firstReceipt).toMatchObject({
       request_id: expect.stringMatching(/^logical-backup:[a-f0-9]{64}$/u),
       request_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
@@ -237,11 +240,11 @@ describe("logical backup repository", () => {
       .rejects.toThrow("logical_backup_request_identity_conflict");
     await expect(kernel.queryAll(
       "SELECT request_id, snapshot_id, snapshot_sha256, total_rows FROM logical_backup_receipts WHERE request_id = ?",
-      [firstReceipt?.request_id],
+      [firstReceipt.request_id],
     )).resolves.toEqual([{
-      request_id: firstReceipt?.request_id,
+      request_id: firstReceipt.request_id,
       snapshot_id: input.snapshotId,
-      snapshot_sha256: firstReceipt?.snapshot_sha256,
+      snapshot_sha256: firstReceipt.snapshot_sha256,
       total_rows: first.manifest.totalRows,
     }]);
   });

@@ -24,6 +24,7 @@ export type V12NativeAcceptanceAuthorityProof = Readonly<{
   authorityTables: readonly string[];
   projectionRowCount: number;
   projectionSha256: string;
+  receiptId: string | null;
 }>;
 
 type AuthorityScope = Readonly<{
@@ -56,6 +57,7 @@ export type V12NativeAcceptanceAuthorityReader = Readonly<{
   caseId: string;
   operationKind: V12NativeAcceptanceOperationKind;
   authorityTables: readonly string[];
+  receipt: V12NativeAcceptanceCaseContract["operation"]["receipt"];
   queries: readonly V12NativeAcceptanceAuthorityQuery[];
   allowZeroRows: false;
   read(input: Readonly<{
@@ -133,7 +135,7 @@ function actionIdentity(caseId: string, nonce: string): string {
 }
 
 async function readExactProjection(
-  reader: Pick<V12NativeAcceptanceAuthorityReader, "operationId" | "caseId" | "operationKind" | "authorityTables" | "queries">,
+  reader: Pick<V12NativeAcceptanceAuthorityReader, "operationId" | "caseId" | "operationKind" | "authorityTables" | "queries" | "receipt">,
   input: Readonly<{
     query: SqliteReadTransactionExecutor;
     request: V12NativeAcceptanceAuthorityReaderRequest;
@@ -152,6 +154,25 @@ async function readExactProjection(
     projections.push(Object.freeze([...rows]));
   }
   if (projectionRowCount === 0) throw new Error("v12_native_acceptance_authority_reader_postcondition_missing");
+  let receiptId: string | null = null;
+  if (reader.operationKind === "repository-mutation") {
+    if (reader.receipt === null) {
+      throw new Error("v12_native_acceptance_authority_reader_receipt_missing");
+    }
+    const identities = new Set(projections.flatMap((projection) =>
+      (projection as readonly Readonly<Record<string, unknown>>[]).map((row) => {
+        const identity = Object.fromEntries(reader.receipt!.identityColumns.map((column) => {
+          const value = row[column];
+          if (typeof value !== "string" && typeof value !== "number") {
+            throw new Error("v12_native_acceptance_authority_reader_receipt_invalid");
+          }
+          return [column, value];
+        }));
+        return stableJson(identity);
+      })
+    ));
+    receiptId = identities.size === 1 ? [...identities][0] ?? null : null;
+  }
   const projectionSha256 = await input.sha256(stableJson(Object.freeze({ operationId: reader.operationId, projections })));
   if (!HASH.test(projectionSha256)) throw new Error("v12_native_acceptance_authority_reader_hash_invalid");
   return Object.freeze({
@@ -162,6 +183,7 @@ async function readExactProjection(
     authorityTables: reader.authorityTables,
     projectionRowCount,
     projectionSha256,
+    receiptId,
   });
 }
 
@@ -278,6 +300,7 @@ function createReader(spec: ReaderSpec): readonly [string, V12NativeAcceptanceAu
     caseId: contract.caseId,
     operationKind: contract.operation.kind,
     authorityTables: Object.freeze([...contract.probes.post.tables]),
+    receipt: contract.operation.receipt,
     queries: Object.freeze([query]),
     allowZeroRows: false as const,
   });

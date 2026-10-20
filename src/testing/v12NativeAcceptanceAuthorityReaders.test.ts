@@ -221,6 +221,7 @@ describe("v1.2 native acceptance case-specific authority readers", () => {
       authorityTables: ["app_settings"],
       projectionRowCount: 1,
       projectionSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      receiptId: null,
     });
     expect(JSON.stringify(proof)).not.toContain("exercises");
   });

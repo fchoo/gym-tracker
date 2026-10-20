@@ -165,6 +165,13 @@ export type V12NativeAcceptanceReadbacks = Readonly<{
   ui_readback: V12NativeAcceptanceUiReadback;
 }>;
 
+export type V12NativeAcceptancePreparedProductCase = Readonly<{
+  schema_version: 1;
+  operation_id: string;
+  action_request_sha256: string;
+  pre: V12NativeAcceptanceSourceState;
+}>;
+
 const HASH = /^[a-f0-9]{64}$/u;
 const NONCE = /^[a-f0-9]{48}$/u;
 const TABLE = /^[a-z][a-z0-9_]{1,80}$/u;
@@ -4224,26 +4231,20 @@ async function readAuthorityState(input: Readonly<{
   });
 }
 
-export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
-  kernel: SqliteKernel;
-  request: V12NativeAcceptanceRequest;
-  sha256(value: string): Promise<string>;
-  /** Case setup uses production commands and must finish before pre-state. */
-  prepareOperation?(input: Readonly<{
-    contract: V12NativeAcceptanceCaseContract;
-    request: V12NativeAcceptanceRequest;
-  }>): Promise<void>;
-  executeOperation(input: Readonly<{
-    contract: V12NativeAcceptanceCaseContract;
-    request: V12NativeAcceptanceRequest;
-  }>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>>;
-}>): Promise<V12NativeAcceptanceReadbacks> {
-  const { request } = input;
+async function resolveV12NativeAcceptanceActionContext(
+  request: V12NativeAcceptanceRequest,
+  sha256: (value: string) => Promise<string>,
+): Promise<Readonly<{
+  contract: V12NativeAcceptanceCaseContract;
+  actionRequestSha256: string;
+}>> {
   if (!NONCE.test(request.nonce)) throw new Error("v12_native_acceptance_request_invalid");
   const contract = v12NativeAcceptanceCaseContract(request.shard, request.caseId);
   const expectedTables = authorityTablesForV12NativeAcceptance(request.shard, request.caseId, request.sourceProbe);
   if (request.action !== contract.actionId || request.readback !== contract.uiReadback.label
-    || stableJson(expectedTables) !== stableJson(request.authorityTables)) throw new Error("v12_native_acceptance_authority_mismatch");
+    || stableJson(expectedTables) !== stableJson(request.authorityTables)) {
+    throw new Error("v12_native_acceptance_authority_mismatch");
+  }
   const actionRequest = Object.freeze({
     schema_version: 2,
     producer: "v12-native-acceptance-action-request/v2",
@@ -4261,9 +4262,74 @@ export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
     probe_ids: Object.freeze([contract.probes.pre.id, contract.probes.action.id, contract.probes.post.id]),
     ui_readback_id: contract.uiReadback.id,
   });
-  const actionRequestSha256 = await input.sha256(JSON.stringify(actionRequest));
-  await input.prepareOperation?.({ contract, request });
-  const preRead = await readAuthorityState({ ...input, contract, probe: contract.probes.pre });
+  const actionRequestSha256 = await sha256(JSON.stringify(actionRequest));
+  return Object.freeze({ contract, actionRequestSha256 });
+}
+
+export async function prepareV12NativeAcceptanceProductCase(input: Readonly<{
+  kernel: SqliteKernel;
+  request: V12NativeAcceptanceRequest;
+  sha256(value: string): Promise<string>;
+  prepareOperation(input: Readonly<{
+    contract: V12NativeAcceptanceCaseContract;
+    request: V12NativeAcceptanceRequest;
+  }>): Promise<void>;
+}>): Promise<V12NativeAcceptancePreparedProductCase> {
+  const { contract, actionRequestSha256 } = await resolveV12NativeAcceptanceActionContext(
+    input.request,
+    input.sha256,
+  );
+  if (contract.shard === "multi-plan") {
+    throw new Error("v12_native_acceptance_product_case_unsupported");
+  }
+  await input.prepareOperation({ contract, request: input.request });
+  const preRead = await readAuthorityState({
+    ...input,
+    contract,
+    probe: contract.probes.pre,
+  });
+  return Object.freeze({
+    schema_version: 1 as const,
+    operation_id: contract.operation.id,
+    action_request_sha256: actionRequestSha256,
+    pre: preRead.state,
+  });
+}
+
+export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
+  kernel: SqliteKernel;
+  request: V12NativeAcceptanceRequest;
+  sha256(value: string): Promise<string>;
+  preparedProductCase?: V12NativeAcceptancePreparedProductCase;
+  /** Case setup uses production commands and must finish before pre-state. */
+  prepareOperation?(input: Readonly<{
+    contract: V12NativeAcceptanceCaseContract;
+    request: V12NativeAcceptanceRequest;
+  }>): Promise<void>;
+  executeOperation(input: Readonly<{
+    contract: V12NativeAcceptanceCaseContract;
+    request: V12NativeAcceptanceRequest;
+  }>): Promise<Readonly<{ result: "read" | "committed"; facts: unknown }>>;
+}>): Promise<V12NativeAcceptanceReadbacks> {
+  const { request } = input;
+  const { contract, actionRequestSha256 } = await resolveV12NativeAcceptanceActionContext(
+    request,
+    input.sha256,
+  );
+  const prepared = input.preparedProductCase;
+  if (prepared !== undefined && (prepared.schema_version !== 1
+    || prepared.operation_id !== contract.operation.id
+    || prepared.action_request_sha256 !== actionRequestSha256)) {
+    throw new Error("v12_native_acceptance_prepared_case_mismatch");
+  }
+  if (prepared === undefined) {
+    await input.prepareOperation?.({ contract, request });
+  } else if (input.prepareOperation !== undefined) {
+    throw new Error("v12_native_acceptance_read_only_prepare_forbidden");
+  }
+  const preRead = prepared === undefined
+    ? await readAuthorityState({ ...input, contract, probe: contract.probes.pre })
+    : Object.freeze({ state: prepared.pre, facts: null });
   const operationResult = await input.executeOperation({ contract, request });
   if (operationResult.result !== contract.operation.expectedResult) throw new Error("v12_native_acceptance_operation_result_invalid");
   const facts = operationResult.facts as Partial<V12OperationFacts> | null;
@@ -4358,4 +4424,47 @@ export async function executeV12NativeAcceptanceReadAction(input: Readonly<{
   });
   const uiReadback = Object.freeze({ ...uiUnsigned, ui_receipt_sha256: await input.sha256(JSON.stringify(uiUnsigned)) });
   return Object.freeze({ source_receipt: sourceReceipt, ui_readback: uiReadback });
+}
+
+export async function readV12NativeAcceptanceReceipt(input: Readonly<{
+  kernel: SqliteKernel;
+  request: V12NativeAcceptanceRequest;
+  preparedProductCase: V12NativeAcceptancePreparedProductCase;
+  sha256(value: string): Promise<string>;
+}>): Promise<V12NativeAcceptanceReadbacks> {
+  return executeV12NativeAcceptanceReadAction({
+    ...input,
+    executeOperation: async ({ contract, request }) => {
+      if (contract.shard === "multi-plan") {
+        throw new Error("v12_native_acceptance_product_case_unsupported");
+      }
+      const postRead = await readAuthorityState({
+        kernel: input.kernel,
+        contract,
+        request,
+        probe: contract.probes.post,
+        sha256: input.sha256,
+      });
+      const proof = postRead.facts as Readonly<{ receiptId?: unknown }>;
+      const receiptId = proof.receiptId;
+      if (contract.operation.kind === "repository-mutation"
+        && (typeof receiptId !== "string" || receiptId.length < 8)) {
+        throw new Error("v12_native_acceptance_receipt_invalid");
+      }
+      return Object.freeze({
+        result: contract.operation.expectedResult,
+        facts: operationFacts({
+          contract,
+          authoritativeReadback: postRead.facts,
+          ...(contract.operation.kind === "repository-mutation"
+            ? {
+                receiptId: receiptId as string,
+                outcome: "committed" as const,
+                committedEffects: 1,
+              }
+            : {}),
+        }),
+      });
+    },
+  });
 }

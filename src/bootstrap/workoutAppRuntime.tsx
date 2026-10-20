@@ -91,6 +91,7 @@ import {
   type RecommendationDecision,
   type RecommendationDecisionInput,
   type ExerciseEffort,
+  type ProgressionRepository,
   type RecommendationDecisionResult,
 } from "../domains/progression";
 import {
@@ -129,6 +130,7 @@ import type {
   SelectedStrengthOccurrence,
   SessionDetail,
   TodayView,
+  WorkoutOutcomeRepository,
   WorkoutSessionView,
 } from "../domains/workout";
 import type {
@@ -402,7 +404,10 @@ import {
 import {
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
+  prepareV12NativeAcceptanceProductCase as prepareV12NativeAcceptanceProductCaseFromKernel,
   prepareV12NativeAcceptanceProductionOperation,
+  readV12NativeAcceptanceReceipt as readV12NativeAcceptanceReceiptFromKernel,
+  type V12NativeAcceptancePreparedProductCase,
   type V12NativeAcceptanceReadbacks,
   type V12NativeAcceptanceRequest,
 } from "../testing/v12NativeAcceptanceExecutor";
@@ -730,6 +735,8 @@ type RuntimeValue = RuntimeState & Readonly<{
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase20QualitySourceProof(): Promise<Phase20QualityWorkloadProof>;
   executeV12NativeAcceptanceCase(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
+  prepareV12NativeAcceptanceProductCase(request: V12NativeAcceptanceRequest): Promise<void>;
+  readV12NativeAcceptanceReceipt(request: V12NativeAcceptanceRequest): Promise<V12NativeAcceptanceReadbacks>;
   triggerPhase20ProgressRebuild(): Promise<void>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
@@ -1136,6 +1143,10 @@ type LocalContext = Readonly<{
   weekday: number;
 }>;
 
+type RuntimeOutcomeRepository = WorkoutOutcomeRepository
+  & ProgressionRepository
+  & Pick<ReturnType<typeof createWorkoutOutcomeRepository>, "getCalendarSessionDetail">;
+
 type RuntimeServices = Readonly<{
   automaticBackupRuntime?: AutomaticBackupRuntime;
   backupCommands: SecureBackupCommands;
@@ -1162,7 +1173,7 @@ type RuntimeServices = Readonly<{
   repository: ReturnType<typeof createPlansWorkoutRepository>;
   restRepository: ReturnType<typeof createRestRepository>;
   runningActivityMatches: ReturnType<typeof createRunningActivityMatchRepository>;
-  outcomeRepository: ReturnType<typeof createWorkoutOutcomeRepository>;
+  outcomeRepository: RuntimeOutcomeRepository;
   workoutRepository: ReturnType<typeof createWorkoutRepository>;
   workoutPreferenceRepository: ReturnType<typeof createWorkoutPreferenceRepository>;
 }>;
@@ -1201,7 +1212,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   ): ReturnType<typeof createRestRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
-  ): ReturnType<typeof createWorkoutOutcomeRepository>;
+  ): RuntimeOutcomeRepository;
   createWorkoutRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutRepository>;
@@ -1261,7 +1272,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
   ): ReturnType<typeof createRestRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
-  ): ReturnType<typeof createWorkoutOutcomeRepository>;
+  ): RuntimeOutcomeRepository;
   createWorkoutRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutRepository>;
@@ -1337,6 +1348,13 @@ const CalendarRangeReadContext = createContext<CalendarRangeReadPort | null>(nul
 const CalendarSessionReadContext = createContext<CalendarSessionReadPort | null>(null);
 const CalendarStrengthOccurrenceReadContext = createContext<CalendarStrengthOccurrenceReadPort | null>(null);
 const CalendarActivityReadContext = createContext<CalendarActivityReadPort | null>(null);
+
+/** Transient pre-action evidence may cross a devtest route remount. It never
+ * authorizes replay: the post-action receipt is still re-read from SQLite. */
+const v12NativeAcceptancePreparedProductCases = new Map<
+  string,
+  V12NativeAcceptancePreparedProductCase
+>();
 
 export function createWorkoutAppRuntimeDependencies(
   adapters: WorkoutAppRuntimeAdapters,
@@ -4302,7 +4320,7 @@ export function WorkoutAppRuntimeProvider({
 
   const runOutcomeMutation = useCallback(async <Result,>(
     mutation: (
-      repository: ReturnType<typeof createWorkoutOutcomeRepository>,
+      repository: RuntimeOutcomeRepository,
     ) => Promise<Result>,
   ): Promise<Result> => {
     const services = requireServices();
@@ -5020,6 +5038,53 @@ export function WorkoutAppRuntimeProvider({
           },
         }),
       });
+    },
+    prepareV12NativeAcceptanceProductCase: async (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("v12_native_acceptance_executor_unavailable");
+      }
+      const services = requireServices();
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      const prepared = await prepareV12NativeAcceptanceProductCaseFromKernel({
+        kernel: services.kernel,
+        request,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        prepareOperation: ({ contract, request: operationRequest }) =>
+          prepareV12NativeAcceptanceProductionOperation({
+            kernel: services.kernel,
+            contract,
+            request: operationRequest,
+            runtime: {
+              running: services.runningPlans,
+              ownedPlans: services.ownedPlans,
+              customExercises: services.customExerciseRepository,
+            },
+          }),
+      });
+      v12NativeAcceptancePreparedProductCases.set(
+        `${request.shard}:${request.caseId}:${request.nonce}`,
+        prepared,
+      );
+    },
+    readV12NativeAcceptanceReceipt: async (request) => {
+      if (!phase20QualitySourceProofEnabled()) {
+        throw new Error("v12_native_acceptance_executor_unavailable");
+      }
+      const key = `${request.shard}:${request.caseId}:${request.nonce}`;
+      const preparedProductCase = v12NativeAcceptancePreparedProductCases.get(key);
+      if (preparedProductCase === undefined) {
+        throw new Error("v12_native_acceptance_prepared_case_missing");
+      }
+      const services = requireServices();
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      const readbacks = await readV12NativeAcceptanceReceiptFromKernel({
+        kernel: services.kernel,
+        request,
+        preparedProductCase,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+      v12NativeAcceptancePreparedProductCases.delete(key);
+      return readbacks;
     },
     triggerPhase20ProgressRebuild: async () => {
       if (!phase20QualitySourceProofEnabled()) {

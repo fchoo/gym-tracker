@@ -18,7 +18,9 @@ import {
   assertV12NativeAcceptanceProductionHandlerRegistry,
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
+  prepareV12NativeAcceptanceProductCase,
   prepareV12NativeAcceptanceProductionOperation,
+  readV12NativeAcceptanceReceipt,
   resolveV12NativeAcceptanceProductionHandler,
   validateV12NativeAcceptanceAuthorityTables,
   type V12NativeAcceptanceRequest,
@@ -49,6 +51,47 @@ describe("v1.2 acceptance production API parity", () => {
     expect(backupSource).toContain("dependencies.collector.collect({");
     expect(executorSource).not.toContain("collectWithReceipt");
     expect(executorSource).not.toContain("completionWritebackProofs");
+    const prepareHookStart = runtimeSource.lastIndexOf("prepareV12NativeAcceptanceProductCase: async");
+    const readHookStart = runtimeSource.lastIndexOf("readV12NativeAcceptanceReceipt: async");
+    const nextHookStart = runtimeSource.indexOf("triggerPhase20ProgressRebuild:", readHookStart);
+    expect(prepareHookStart).toBeGreaterThan(-1);
+    expect(readHookStart).toBeGreaterThan(prepareHookStart);
+    expect(runtimeSource.slice(prepareHookStart, readHookStart))
+      .not.toContain("dispatchV12NativeAcceptanceProductionOperation");
+    expect(runtimeSource.slice(readHookStart, nextHookStart))
+      .not.toMatch(/prepareV12NativeAcceptanceProductionOperation|dispatchV12NativeAcceptanceProductionOperation/u);
+  });
+
+  it("separates product preparation from the read-only post-action receipt", async () => {
+    const commands: string[] = [];
+    const runtime = kernel({ commands });
+    const productRequest = request();
+    const prepareOperation = jest.fn(async () => undefined);
+
+    const prepared = await prepareV12NativeAcceptanceProductCase({
+      kernel: runtime,
+      request: productRequest,
+      sha256,
+      prepareOperation,
+    });
+    const commandCountAfterPrepare = commands.length;
+    const readbacks = await readV12NativeAcceptanceReceipt({
+      kernel: runtime,
+      request: productRequest,
+      preparedProductCase: prepared,
+      sha256,
+    });
+
+    expect(prepareOperation).toHaveBeenCalledTimes(1);
+    expect(readbacks.source_receipt).toMatchObject({
+      case_id: productRequest.caseId,
+      operation_result: "read",
+      command_receipt_id: null,
+      command_outcome: null,
+      committed_effects: 0,
+      pre: prepared.pre,
+    });
+    expect(commands.slice(commandCountAfterPrepare).every((sql) => /^SELECT |^PRAGMA /u.test(sql))).toBe(true);
   });
 });
 
