@@ -153,6 +153,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
         "workout.start-resume", "workout.active-layout", "workout.active-back",
         "workout.exercise-disclosure", "workout.active-indicator", "workout.set-states",
         "workout.complete-failure", "workout.readonly-presentation", "workout.accessibility", "workout.performance",
+        "workout.trend",
         "workout.completion-review",
         "library.exercise-search",
         "library.plan-groups", "library.owned-summary", "library.editor-draft-guards", "library.load-error-recovery", "workout.plan-after-workout",
@@ -264,6 +265,28 @@ describe("v1.2 Workout and Library production operation registry", () => {
         command_receipt_id: first.source_receipt.command_receipt_id,
       });
     }
+  });
+
+  it("loads the Workout trend through the history repository on a completed production session", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ caseId }) => caseId === "workout.trend")!;
+    const request: V12NativeAcceptanceRequest = {
+      shard: contract.shard, caseId: contract.caseId, fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Workout", source: "PHASE15_REQUIRED_CASES", requirement: contract.requirement,
+      action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
+      authorityTables: contract.probes.post.tables, nonce: `ee${"a".repeat(46)}`,
+    };
+    const result = await executeV12NativeAcceptanceReadAction({
+      kernel, request,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+    });
+    expect(result.source_receipt).toMatchObject({ operation_result: "read", command_receipt_id: null, committed_effects: 0 });
   });
 
   it("runs every Running Family B contract through a case-owned production command or projection", async () => {

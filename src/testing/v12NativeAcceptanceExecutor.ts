@@ -46,6 +46,8 @@ import { createRestRepository } from "../platform/sqlite/repositories/restReposi
 import { createWorkoutPreferenceRepository } from "../platform/sqlite/repositories/workoutPreferenceRepository";
 import { createOwnedPlanRepository } from "../platform/sqlite/repositories/ownedPlanRepository";
 import { createStarterPlanRepository } from "../platform/sqlite/repositories/starterPlanRepository";
+import { createHistoryRepository } from "../platform/sqlite/repositories/historyRepository";
+import { createHistoryProjectionRepository } from "../platform/sqlite/repositories/historyProjectionRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
@@ -59,6 +61,7 @@ import { addExercise, removeExercise, reorderExercises, replaceExercise } from "
 import { undoCompletedSet } from "../domains/workout/undoCompletedSet";
 import { presentWorkoutSession } from "../domains/workout/workoutPresentation";
 import { WorkoutCommandConflictError } from "../domains/workout/activeWorkout";
+import { finishPartial, PARTIAL_CONFIRMATION } from "../domains/workout/finishWorkout";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
@@ -563,6 +566,108 @@ async function executeWorkoutCompleteSetConflict(input: V12NativeAcceptanceProdu
   );
   if (row?.status !== "planned" || row.revision !== set.set_revision) {
     throw new Error("v12_native_acceptance_workout_complete_conflict_postcondition_failed");
+  }
+  return Object.freeze({ result: "read" as const, facts: operationFacts({
+    contract: input.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input),
+  }) });
+}
+
+async function prepareWorkoutHistoryFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const sessionId = await workoutFixtureSessionId(input.kernel, request);
+  if (sessionId === null) throw new Error("v12_native_acceptance_workout_fixture_session_missing");
+  const [session] = await input.kernel.queryAll<Readonly<{ status: string; revision: number }>>(
+    "SELECT status, revision FROM workout_sessions WHERE id = ?",
+    [sessionId],
+  );
+  if (session?.status === "in_progress") {
+    await executeWorkoutCompleteSet(input);
+    const [completedExercise] = await input.kernel.queryAll<Readonly<{ session_exercise_id: string }>>(
+      "SELECT session_exercise_id FROM session_sets WHERE completion_idempotency_key = ?",
+      [`v12:workout:${request.caseId}:${request.nonce}:completion`],
+    );
+    if (completedExercise === undefined) throw new Error("v12_native_acceptance_workout_history_precondition_missing");
+    for (;;) {
+      const [next] = await input.kernel.queryAll<Readonly<{
+        session_revision: number;
+        set_id: string;
+        set_revision: number;
+        metric_contract_version: number;
+        exercise_metric_generation: number;
+      }>>(
+        `SELECT session.revision AS session_revision, set_row.id AS set_id,
+                set_row.revision AS set_revision, set_row.metric_contract_version,
+                set_row.exercise_metric_generation
+         FROM workout_sessions session
+         JOIN session_sets set_row
+           ON set_row.session_exercise_id = ?
+         WHERE session.id = ?
+           AND set_row.set_kind = 'working'
+           AND set_row.status IN ('planned', 'draft')
+         ORDER BY set_row.ordinal, set_row.id
+         LIMIT 1`,
+        [completedExercise.session_exercise_id, sessionId],
+      );
+      if (next === undefined) break;
+      await completeSet({
+        repository: createWorkoutRepository(input.kernel),
+        haptics: { committed: async () => undefined, cue: async () => undefined },
+        invalidate: async () => undefined,
+        drainEffects: async () => undefined,
+        input: {
+          sessionId,
+          setId: next.set_id,
+          expectedSessionRevision: next.session_revision,
+          expectedSetRevision: next.set_revision,
+          completionIdempotencyKey: `v12:workout:${request.caseId}:${request.nonce}:history:${next.set_id}`,
+          metricIdentity: {
+            profile: "load_reps",
+            contractVersion: next.metric_contract_version,
+            exerciseMetricGeneration: next.exercise_metric_generation,
+          },
+          observation: { version: 1, profile: "load_reps", loadGrams: 12_500, reps: 5, source: "manual" },
+          completedAtMs: workoutFixtureActivatedAt(request) + 4_000,
+        },
+      });
+    }
+    const [fresh] = await input.kernel.queryAll<Readonly<{ status: string; revision: number }>>(
+      "SELECT status, revision FROM workout_sessions WHERE id = ?",
+      [sessionId],
+    );
+    if (fresh?.status !== "in_progress") throw new Error("v12_native_acceptance_workout_history_precondition_missing");
+    const result = await finishPartial({
+      repository: createWorkoutOutcomeRepository(input.kernel),
+      input: {
+        sessionId,
+        expectedSessionRevision: fresh.revision,
+        confirmation: PARTIAL_CONFIRMATION,
+        endedAtMs: workoutFixtureActivatedAt(request) + 6_000,
+      },
+    });
+    if (result.detail.status !== "partial") throw new Error("v12_native_acceptance_workout_history_precondition_missing");
+    await createHistoryProjectionRepository(input.kernel).rebuildAll({
+      nowMs: workoutFixtureActivatedAt(request) + 7_000,
+    });
+  }
+}
+
+async function executeWorkoutHistoryRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  await prepareWorkoutHistoryFixture(input);
+  const request = requireRequest(input);
+  const [exercise] = await input.kernel.queryAll<Readonly<{ exercise_id: string }>>(
+    `SELECT exercise.exercise_id
+     FROM session_sets set_row
+     JOIN session_exercises exercise ON exercise.id = set_row.session_exercise_id
+     WHERE set_row.completion_idempotency_key = ?
+     LIMIT 1`,
+    [`v12:workout:${request.caseId}:${request.nonce}:completion`],
+  );
+  if (exercise === undefined) throw new Error("v12_native_acceptance_workout_history_precondition_missing");
+  const history = await createHistoryRepository(input.kernel).loadExerciseMetricHistory({ exerciseId: exercise.exercise_id });
+  if (history.exerciseId !== exercise.exercise_id || history.segments.length === 0) {
+    throw new Error("v12_native_acceptance_workout_history_postcondition_failed");
   }
   return Object.freeze({ result: "read" as const, facts: operationFacts({
     contract: input.contract,
@@ -2501,6 +2606,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "workout.workout-presentation.project-accessibility": Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutPresentationRead,
+  }),
+  "history.history-repository.load-exercise-metric-history": Object.freeze({
+    prepare: prepareWorkoutHistoryFixture,
+    execute: executeWorkoutHistoryRead,
   }),
   "library.library-search-repository.search-exercises": Object.freeze({
     prepare: prepareLibrarySearch,
