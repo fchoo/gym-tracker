@@ -682,6 +682,42 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
+    const runtime = { customExercises: {} as never };
+    const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: favorite, request: requestForContract(favorite), runtime,
+    })).rejects.toThrow("v12_native_acceptance_custom_exercise_receipt_invalid");
+
+    const edit = v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-edit");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ empty: true }), contract: edit, request: requestForContract(edit), runtime,
+    })).rejects.toThrow("v12_native_acceptance_custom_exercise_precondition_missing");
+
+    const archive = v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-archive");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ empty: true }), contract: archive, request: requestForContract(archive), runtime,
+    })).rejects.toThrow("v12_native_acceptance_custom_exercise_precondition_missing");
+
+    const copy = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/contentRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/contentRepository")>("../platform/sqlite/repositories/contentRepository"),
+          createContentRepository: () => ({ importAcceptedCatalog: async () => undefined }),
+        }),
+      },
+    ]);
+    try {
+      const contract = copy.contracts.v12NativeAcceptanceCaseContract("library-running", "library.custom-exercise-copy-bundled");
+      await expect(copy.executor.prepareV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ empty: true }), contract, request: requestForContract(contract), runtime,
+      })).rejects.toThrow("v12_native_acceptance_copy_source_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
