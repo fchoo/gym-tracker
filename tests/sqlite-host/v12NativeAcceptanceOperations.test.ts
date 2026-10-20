@@ -121,7 +121,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
             current = current.cause;
           }
           const unresolvedProductionCommands = new Set([
-            "workout.plan-increment", "workout.completion-writeback", "workout.offline-recovery",
+            "workout.completion-writeback", "workout.offline-recovery",
             "library.schedule-editor", "library.replacement-impact", "library.day-removal-impact",
             "library.running-conflict",
           ]);
@@ -207,6 +207,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "workout.replace-exercise",
       "workout.delete-exercise",
       "workout.undo",
+      "workout.plan-increment",
       "workout.outcomes",
       "workout.timing-policy",
       "workout.appearance",

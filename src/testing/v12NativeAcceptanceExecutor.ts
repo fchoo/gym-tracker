@@ -64,6 +64,7 @@ import { presentWorkoutSession } from "../domains/workout/workoutPresentation";
 import { WorkoutCommandConflictError } from "../domains/workout/activeWorkout";
 import { finishPartial, PARTIAL_CONFIRMATION } from "../domains/workout/finishWorkout";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
+import { acceptRecommendation } from "../domains/progression";
 
 export type { V12NativeAcceptanceShard } from "./contracts/phase15Workout.contract";
 
@@ -203,6 +204,7 @@ const TABLE_FACT_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.f
   plan_days: Object.freeze(["id", "plan_id", "ordinal", "name", "revision"]),
   plans: Object.freeze(["id", "origin", "name", "is_active", "revision", "plan_kind"]),
   progression_recommendations: Object.freeze(["id", "exercise_id", "status", "source_revision", "target_revision", "decided_at_ms"]),
+  progression_recommendation_decision_receipts: Object.freeze(["request_id", "request_sha256", "recommendation_id", "decision", "result_json", "committed_at_ms"]),
   running_plan_events: Object.freeze(["id", "plan_id", "event_type", "payload_json", "created_at_ms"]),
   running_plan_receipts: Object.freeze(["request_id", "request_sha256", "operation", "plan_id", "expected_plan_revision", "result_json", "committed_at_ms"]),
   running_activity_current_matches: Object.freeze(["opportunity_id", "activity_id", "relation_revision", "event_id"]),
@@ -674,6 +676,119 @@ async function executeWorkoutHistoryRead(input: V12NativeAcceptanceProductionHan
     contract: input.contract,
     authoritativeReadback: await workoutAuthorityReadback(input),
   }) });
+}
+
+async function workoutPlanIncrementRecommendation(input: V12NativeAcceptanceProductionHandlerInput) {
+  await prepareWorkoutHistoryFixture(input);
+  const request = requireRequest(input);
+  const sessionId = await workoutFixtureSessionId(input.kernel, request);
+  if (sessionId === null) throw new Error("v12_native_acceptance_plan_increment_session_missing");
+  const repository = createWorkoutOutcomeRepository(input.kernel);
+  const session = await repository.getSessionDetail(sessionId);
+  if (session.status !== "partial" || !Number.isSafeInteger(session.revision)) {
+    throw new Error("v12_native_acceptance_plan_increment_precondition_missing");
+  }
+  await repository.generateRecommendationsForSession(
+    sessionId,
+    session.revision,
+    workoutFixtureActivatedAt(request) + 8_000,
+  );
+  const detail = await repository.getSessionDetail(sessionId);
+  const recommendation = detail.recommendations.find(({ status }) => status === "pending")
+    ?? detail.recommendations.find(({ status }) => status === "accepted");
+  if (recommendation === undefined) {
+    throw new Error("v12_native_acceptance_plan_increment_recommendation_missing");
+  }
+  const [row] = await input.kernel.queryAll<Readonly<{
+    id: string;
+    evidence_version: number;
+    source_revision: number;
+    target_revision: number;
+    status: string;
+  }>>(
+    `SELECT id, evidence_version, source_revision, target_revision, status
+     FROM progression_recommendations
+     WHERE id = ?`,
+    [recommendation.id],
+  );
+  if (row === undefined || row.id !== recommendation.id
+    || !Number.isSafeInteger(row.evidence_version)
+    || !Number.isSafeInteger(row.source_revision)
+    || !Number.isSafeInteger(row.target_revision)
+    || (row.status !== "pending" && row.status !== "accepted")) {
+    throw new Error("v12_native_acceptance_plan_increment_recommendation_invalid");
+  }
+  return Object.freeze({ repository, row });
+}
+
+async function executeWorkoutPlanIncrement(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const requestId = `v12:workout-plan-increment:${request.nonce}`;
+  const { repository, row } = await workoutPlanIncrementRecommendation(input);
+  const [before] = await input.kernel.queryAll<Readonly<{
+    request_id: string;
+    request_sha256: string;
+    recommendation_id: string;
+    decision: string;
+  }>>(
+    `SELECT request_id, request_sha256, recommendation_id, decision
+     FROM progression_recommendation_decision_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  const decidedAtMs = workoutFixtureActivatedAt(request) + 9_000;
+  const expectedTargetRevision = before === undefined
+    ? row.target_revision
+    : row.target_revision - 1;
+  if (!Number.isSafeInteger(expectedTargetRevision) || expectedTargetRevision < 1) {
+    throw new Error("v12_native_acceptance_plan_increment_replay_invalid");
+  }
+  const result = await acceptRecommendation({
+    repository,
+    input: {
+      recommendationId: row.id,
+      requestId,
+      decision: "use_target",
+      expectedEvidenceVersion: row.evidence_version,
+      expectedSourceRevision: row.source_revision,
+      expectedTargetRevision,
+      decidedAtMs,
+    },
+  });
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const [receipt] = await input.kernel.queryAll<Readonly<{
+        request_id: string;
+        recommendation_id: string;
+        decision: string;
+      }>>(
+        `SELECT request_id, recommendation_id, decision
+         FROM progression_recommendation_decision_receipts
+         WHERE request_id = ?`,
+        [requestId],
+      );
+      const [recommendation] = await input.kernel.queryAll<Readonly<{
+        id: string;
+        status: string;
+        decided_at_ms: number | null;
+      }>>(
+        `SELECT id, status, decided_at_ms
+         FROM progression_recommendations
+         WHERE id = ?`,
+        [row.id],
+      );
+      if (result.recommendationId !== row.id
+        || (result.status !== "accepted" && result.status !== "already_committed")
+        || receipt?.request_id !== requestId || receipt.recommendation_id !== row.id
+        || receipt.decision !== "use_target" || recommendation?.status !== "accepted"
+        || recommendation.decided_at_ms !== decidedAtMs) {
+        throw new Error("v12_native_acceptance_plan_increment_postcondition_failed");
+      }
+    },
+  });
 }
 
 async function prepareLibrarySearch(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
@@ -2297,6 +2412,7 @@ const WORKOUT_REPLACE_EXERCISE_HANDLER = "active-workout.workout-repository.repl
 const WORKOUT_REMOVE_EXERCISE_HANDLER = "active-workout.workout-repository.remove-exercise";
 const WORKOUT_UNDO_COMPLETED_SET_HANDLER = "active-workout.workout-repository.undo-completed-set";
 const WORKOUT_PREFERENCE_WRITE_HANDLER = "workout.workout-preference-repository.write";
+const WORKOUT_PLAN_INCREMENT_HANDLER = "workout.workout-outcome-repository.accept-recommendation";
 
 function customExerciseInput(requestId: string, exerciseId: string) {
   return {
@@ -2872,6 +2988,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [WORKOUT_PREFERENCE_WRITE_HANDLER]: Object.freeze({
     prepare: prepareWorkoutFixture,
     execute: executeWorkoutPreferenceWrite,
+  }),
+  [WORKOUT_PLAN_INCREMENT_HANDLER]: Object.freeze({
+    prepare: prepareWorkoutHistoryFixture,
+    execute: executeWorkoutPlanIncrement,
   }),
   "workout.plans-workout-repository.get-today-view": Object.freeze({
     prepare: prepareWorkoutFixture,
