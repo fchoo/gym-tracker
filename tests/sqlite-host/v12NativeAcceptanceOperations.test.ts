@@ -292,6 +292,50 @@ describe("v1.2 Workout and Library production operation registry", () => {
     expect(result.source_receipt).toMatchObject({ operation_result: "read", command_receipt_id: null, committed_effects: 0 });
   });
 
+  it("loads bundled exercise instructions through the production content repository", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ caseId }) => caseId === "library.builtin-exercise")!;
+    const request: V12NativeAcceptanceRequest = {
+      shard: contract.shard, caseId: contract.caseId, fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Library", source: "PHASE17_CASE_ACTION_CONTRACTS", requirement: contract.requirement,
+      action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
+      authorityTables: contract.probes.post.tables, nonce: `ef${"a".repeat(46)}`,
+    };
+    const result = await executeV12NativeAcceptanceReadAction({
+      kernel, request,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+    });
+    expect(result.source_receipt).toMatchObject({ operation_result: "read", command_receipt_id: null, committed_effects: 0 });
+  });
+
+  it("reads an absent owned-plan creation target through the owned-plan repository", async () => {
+    const kernel = await open();
+    const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ caseId }) => caseId === "library.neutral-plan-chooser")!;
+    const request: V12NativeAcceptanceRequest = {
+      shard: contract.shard, caseId: contract.caseId, fixtureId: "v12-synthetic-fixtures-r18",
+      title: "Library", source: "PHASE17_CASE_ACTION_CONTRACTS", requirement: contract.requirement,
+      action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
+      authorityTables: contract.probes.post.tables, nonce: `f0${"a".repeat(46)}`,
+    };
+    const result = await executeV12NativeAcceptanceReadAction({
+      kernel, request,
+      sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+      prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+      executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+        kernel, contract: operationContract, request: operationRequest,
+      }),
+    });
+    expect(result.source_receipt).toMatchObject({ operation_result: "read", command_receipt_id: null, committed_effects: 0 });
+  });
+
   it("runs every Running Family B contract through a case-owned production command or projection", async () => {
     const contracts = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ caseId }) => (
       caseId.startsWith("library.running-") && caseId !== "library.running-conflict"

@@ -694,6 +694,24 @@ async function executeLibraryExerciseSearch(input: V12NativeAcceptanceProduction
   }) });
 }
 
+async function executeBundledExerciseInstructionsRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  await prepareLibrarySearch(input);
+  const catalog = await parseAcceptedPhase2Catalog(runtimeSha256);
+  const exercise = catalog.exercises[0];
+  if (exercise === undefined) throw new Error("v12_native_acceptance_instruction_fixture_missing");
+  const instructions = await createContentRepository(input.kernel)
+    .readBundledExerciseInstructions(exercise.id);
+  if (instructions === null || instructions.exerciseId !== exercise.id
+    || instructions.steps.length === 0 || instructions.sourceNamespace.trim() === ""
+    || instructions.attribution.trim() === "") {
+    throw new Error("v12_native_acceptance_instruction_postcondition_failed");
+  }
+  return Object.freeze({ result: "read" as const, facts: operationFacts({
+    contract: input.contract,
+    authoritativeReadback: await workoutAuthorityReadback(input),
+  }) });
+}
+
 function ownedPlanReadFixtureId(request: V12NativeAcceptanceRequest): string {
   return `v12:owned-plan-read:${request.nonce}`;
 }
@@ -728,6 +746,22 @@ async function executeOwnedPlanRead(input: V12NativeAcceptanceProductionHandlerI
     contract: input.contract,
     authoritativeReadback: await workoutAuthorityReadback(input),
   }) });
+}
+
+async function executePlanCreateIntentRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const absentPlanId = `v12:plan-create-intent:${request.nonce}`;
+  const plan = await createOwnedPlanRepository(input.kernel).read(absentPlanId);
+  if (plan !== null) {
+    throw new Error("v12_native_acceptance_plan_create_intent_postcondition_failed");
+  }
+  return Object.freeze({
+    result: "read" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback: await workoutAuthorityReadback(input),
+    }),
+  });
 }
 
 function ownedPlanMutationFixtureId(request: V12NativeAcceptanceRequest): string {
@@ -2845,9 +2879,16 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
     prepare: prepareLibrarySearch,
     execute: executeLibraryExerciseSearch,
   }),
+  "library.content-repository.read-exercise-instructions": Object.freeze({
+    prepare: prepareLibrarySearch,
+    execute: executeBundledExerciseInstructionsRead,
+  }),
   "owned-plan.owned-plan-repository.read": Object.freeze({
     prepare: prepareOwnedPlanReadFixture,
     execute: executeOwnedPlanRead,
+  }),
+  "owned-plan.plan-create-intent.read": Object.freeze({
+    execute: executePlanCreateIntentRead,
   }),
   "owned-plan.owned-plan-repository.create-draft": Object.freeze({
     execute: executeOwnedPlanCreateDraft,
