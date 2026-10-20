@@ -889,6 +889,40 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects missing schedule and collision repository preconditions", async () => {
+    const schedule = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleRepository")>("../platform/sqlite/repositories/scheduleRepository"),
+        createScheduleRepository: () => ({ readActionState: async () => null }),
+      }),
+    }]);
+    try {
+      const contract = schedule.contracts.v12NativeAcceptanceCaseContract("library-running", "library.schedule-editor");
+      await expect(schedule.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_schedule_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+
+    const collision = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/scheduleCollisionRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/scheduleCollisionRepository")>("../platform/sqlite/repositories/scheduleCollisionRepository"),
+        createScheduleCollisionRepository: () => ({ previewForRunningPlan: async () => null }),
+      }),
+    }]);
+    try {
+      const contract = collision.contracts.v12NativeAcceptanceCaseContract("library-running", "library.running-conflict");
+      await expect(collision.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_collision_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
