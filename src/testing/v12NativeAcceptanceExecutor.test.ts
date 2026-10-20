@@ -759,6 +759,67 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects invalid Workout fixture revisions, set metrics, lists, and instruction catalogs", async () => {
+    const rest = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/restRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/restRepository")>("../platform/sqlite/repositories/restRepository"),
+        createRestRepository: () => ({
+          getRestContext: async () => ({ state: { state: "running", revision: 0, remainingMs: 10_000, startedAtMs: 0 } }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = rest.contracts.v12NativeAcceptanceCaseContract("workout", "workout.rest-dock");
+      await expect(rest.executor.prepareV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_rest_fixture_invalid");
+    } finally {
+      jest.resetModules();
+    }
+
+    const conflict = v12NativeAcceptanceCaseContract("workout", "workout.complete-failure");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ values: { metric_profile: "timed_hold" } }),
+      contract: conflict,
+      request: requestForContract(conflict),
+    })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
+
+    const remove = v12NativeAcceptanceCaseContract("workout", "workout.delete-exercise");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /FROM session_exercises\s+WHERE session_id = \?/u }),
+      contract: remove,
+      request: requestForContract(remove),
+    })).rejects.toThrow("v12_native_acceptance_workout_fixture_exercise_missing");
+
+    const instructions = isolateExecutorWithMocks([
+      {
+        moduleName: "./contracts/phase2Content.contract",
+        factory: () => ({
+          ...jest.requireActual<typeof import("./contracts/phase2Content.contract")>("./contracts/phase2Content.contract"),
+          parseAcceptedPhase2Catalog: async () => ({ exercises: [] }),
+        }),
+      },
+      {
+        moduleName: "../platform/sqlite/repositories/contentRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/contentRepository")>("../platform/sqlite/repositories/contentRepository"),
+          createContentRepository: () => ({ importAcceptedCatalog: async () => undefined }),
+        }),
+      },
+    ]);
+    try {
+      const contract = instructions.contracts.v12NativeAcceptanceCaseContract("library-running", "library.builtin-exercise");
+      await expect(instructions.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_instruction_fixture_missing");
+    } finally {
+      jest.dontMock("./contracts/phase2Content.contract");
+      jest.dontMock("../platform/sqlite/repositories/contentRepository");
+      jest.resetModules();
+    }
+  });
+
   it("rejects late Workout reader and conflict postconditions after valid setup", async () => {
     const rest = isolateExecutorWithMocks([{
       moduleName: "../platform/sqlite/repositories/restRepository",
