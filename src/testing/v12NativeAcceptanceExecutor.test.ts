@@ -2332,6 +2332,53 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects completion-writeback proofs whose receipt or final plan readback drifts", async () => {
+    const completion = isolateExecutorWithMocks([{
+      moduleName: "./v12NativeAcceptanceCompletionWriteback",
+      factory: () => ({
+        runV12NativeAcceptanceCompletionWriteback: async () => ({
+          request: { request_id: "completion-request", request_sha256: "request-digest" },
+          receipt: { receipt_id: "completion-request", receipt_sha256: "receipt-digest" },
+          first: {
+            authoritative_source: { plan_revision: 7 },
+            outcome: "committed", committed_effects: 1, durable_receipt_sha256: "receipt-digest",
+          },
+          replay: { outcome: "already_committed", committed_effects: 0, durable_receipt_sha256: "receipt-digest" },
+        }),
+      }),
+    }]);
+    const contract = completion.contracts.v12NativeAcceptanceCaseContract("workout", "workout.completion-writeback");
+    const runtime = (input: Readonly<{ requestSha?: string; revision?: number }>) => {
+      const base = kernel();
+      const queryAll = base.queryAll.bind(base);
+      base.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM owned_plan_mutation_requests")) {
+          return [{
+            request_id: "completion-request",
+            request_sha256: input.requestSha ?? "request-digest",
+            result_plan_id: "completion-plan",
+            result_revision: 7,
+          }] as unknown as readonly Row[];
+        }
+        if (sql.includes("SELECT revision AS plan_revision FROM plans")) {
+          return [{ plan_revision: input.revision ?? 7 }] as unknown as readonly Row[];
+        }
+        return queryAll(sql, params);
+      };
+      return base;
+    };
+    try {
+      await expect(completion.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runtime({ requestSha: "wrong-digest" }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_completion_writeback_postcondition_failed");
+      await expect(completion.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runtime({ revision: 6 }), contract, request: requestForContract(contract, "e".repeat(48)),
+      })).rejects.toThrow("v12_native_acceptance_completion_writeback_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects rest controls when a production rest command cannot establish a running context", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([
       {
