@@ -718,6 +718,25 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects Running handlers whose nonce-bound aggregate is absent", async () => {
+    const runtime = { running: { loadPlan: async () => null } as never };
+    const cases = [
+      ["workout", "workout.context-running", kernel()],
+      ["library-running", "library.running-session-common", kernel({ emptySql: /running_plan_receipts/u })],
+      ["library-running", "library.running-create-typed-sessions", kernel({ emptySql: /running_plan_receipts/u })],
+      ["library-running", "library.running-goal-edit", kernel({ emptySql: /running_plan_receipts/u })],
+    ] as const;
+    for (const [shard, caseId, runtimeKernel] of cases) {
+      const contract = v12NativeAcceptanceCaseContract(shard, caseId);
+      await expect(dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runtimeKernel,
+        contract,
+        request: requestForContract(contract),
+        runtime,
+      })).rejects.toThrow("v12_native_acceptance_running_precondition_missing");
+    }
+  });
+
   it("consumes the full multi-plan wrapper projection through the outer source receipt", async () => {
     const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find(({ shard, caseId }) => (
       shard === "multi-plan" && caseId === "phase13-map01-activation"
