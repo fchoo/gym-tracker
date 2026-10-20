@@ -112,6 +112,27 @@ type ExerciseRow = Readonly<{
   default_rest_seconds: number;
 }>;
 
+const SHA256 = /^[a-f0-9]{64}$/u;
+
+export async function sessionExerciseWriteBackRequestId(input: Readonly<{
+  sourceSessionId: string;
+  sha256(value: string): Promise<string>;
+}>): Promise<string> {
+  if (input.sourceSessionId.trim().length === 0
+    || input.sourceSessionId.length > 128) {
+    throw new Error("session_write_back_source_invalid");
+  }
+  const identitySha256 = await input.sha256(JSON.stringify({
+    version: 1,
+    operation: "session_exercise_edits",
+    sourceSessionId: input.sourceSessionId,
+  }));
+  if (!SHA256.test(identitySha256)) {
+    throw new Error("session_write_back_identity_invalid");
+  }
+  return `session-writeback:${identitySha256}`;
+}
+
 export function createOwnedPlanRuntimePort(
   kernel: SqliteKernel,
   dependencies: Readonly<{
@@ -261,6 +282,10 @@ export function createOwnedPlanRuntimePort(
       }
       inFlightSessionApplies.add(key);
       try {
+        const requestId = await sessionExerciseWriteBackRequestId({
+          sourceSessionId: input.sourceSessionId,
+          sha256: dependencies.sha256,
+        });
         return await applySessionExerciseEditsToPlan({
           repository,
           sha256: dependencies.sha256,
@@ -268,7 +293,7 @@ export function createOwnedPlanRuntimePort(
           invalidate: async () => undefined,
           input: {
             ...input,
-            requestId: `session-writeback:${input.previewToken}`,
+            requestId,
           },
         });
       } finally {

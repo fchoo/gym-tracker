@@ -32,6 +32,7 @@ type AuthorityScope = Readonly<{
   workoutPlanId: string;
   completionActivationRequestId: string;
   completionWritebackExerciseId: string;
+  logicalBackupSnapshotId: string;
   metricDraftExerciseId: string;
   runningPlanId: string;
   ownedReadPlanId: string;
@@ -89,6 +90,7 @@ function authorityScope(request: V12NativeAcceptanceAuthorityReaderRequest): Aut
     workoutPlanId: `plan_copy_${activatedAtMs}`,
     completionActivationRequestId: `v12:completion-writeback:${request.nonce}:starter`,
     completionWritebackExerciseId: `v12:completion-writeback:${request.nonce}:exercise`,
+    logicalBackupSnapshotId: `v12:logical-backup-snapshot:${request.nonce}`,
     metricDraftExerciseId: `v12:workout:${request.caseId}:${request.nonce}:metric-exercise`,
     runningPlanId: `v12:running:${request.nonce}`,
     ownedReadPlanId: `v12:owned-plan-read:${request.nonce}`,
@@ -210,14 +212,14 @@ const READER_SPECS: readonly ReaderSpec[] = Object.freeze([
   { shard: "workout", caseId: "workout.delete-exercise", sql: "SELECT request_id, operation, session_id, subject_session_exercise_id, result_session_revision, result_json FROM workout_session_exercise_edit_receipts WHERE request_id = ? AND operation = 'remove_exercise' LIMIT 8", parameterKeys: action },
   { shard: "workout", caseId: "workout.reorder", sql: "SELECT request_id, operation, session_id, ordered_session_exercise_ids_json, result_session_revision, result_json FROM workout_session_exercise_reorder_receipts WHERE request_id = ? AND operation = 'reorder_exercises' LIMIT 8", parameterKeys: action },
   { shard: "workout", caseId: "workout.undo", sql: "SELECT id, session_id, completed_set_id, idempotency_key, snapshot_version, consumed_at_ms FROM session_undo_snapshots WHERE idempotency_key = ? AND consumed_at_ms IS NOT NULL LIMIT 8", parameterKeys: action },
-  { shard: "workout", caseId: "workout.outcomes", sql: "SELECT id, workout_session_id, request_sha256, committed_at_ms FROM workout_receipts WHERE id = ? LIMIT 8", parameterKeys: action },
+  { shard: "workout", caseId: "workout.outcomes", sql: "SELECT receipt.id, receipt.workout_session_id, receipt.request_sha256, receipt.committed_at_ms FROM workout_receipts receipt JOIN workout_sessions session ON session.id = receipt.workout_session_id WHERE session.plan_id = ? AND receipt.id LIKE 'finish-partial:%' LIMIT 8", parameterKeys: workoutPlan },
   { shard: "workout", caseId: "workout.completion-review", sql: "SELECT session.id, session.status, session.completed_at_ms, session.revision, provenance.plan_id, provenance.plan_day_id, provenance.source_revision FROM workout_sessions session LEFT JOIN workout_provenance provenance ON provenance.workout_session_id = session.id WHERE session.plan_id = ? LIMIT 8", parameterKeys: workoutPlan },
   { shard: "workout", caseId: "workout.completion-writeback", sql: "SELECT mutation.request_id, mutation.request_sha256, mutation.operation, mutation.result_plan_id, mutation.result_revision, mutation.committed_at_ms, activation.request_id AS activation_request_id, activation.result_plan_id AS activation_plan_id, plan.revision AS plan_revision, day.id AS plan_day_id, occurrence.id AS occurrence_id, occurrence.exercise_id, occurrence.ordinal AS occurrence_ordinal, occurrence.revision AS occurrence_revision, target.id AS target_id, target.plan_day_exercise_id, target.ordinal AS target_ordinal, target.revision AS target_revision FROM starter_plan_activation_requests activation JOIN owned_plan_mutation_requests mutation ON mutation.result_plan_id = activation.result_plan_id JOIN plans plan ON plan.id = mutation.result_plan_id JOIN plan_days day ON day.plan_id = plan.id AND day.ordinal = 0 JOIN owned_plan_day_exercises occurrence ON occurrence.plan_day_id = day.id AND occurrence.exercise_id = ? JOIN owned_plan_working_set_targets target ON target.plan_day_exercise_id = occurrence.id WHERE activation.request_id = ? AND mutation.operation = 'save' AND json_extract(mutation.result_json, '$.operation') = 'session_exercise_edits' AND mutation.result_revision = plan.revision LIMIT 8", parameterKeys: ["completionWritebackExerciseId", "completionActivationRequestId"] },
   { shard: "workout", caseId: "workout.readonly-presentation", sql: "SELECT id, status, active_session_exercise_id, active_set_id, revision FROM workout_sessions WHERE plan_id = ? AND status = 'in_progress' LIMIT 8", parameterKeys: workoutPlan },
   { shard: "workout", caseId: "workout.timing-policy", sql: "SELECT key, value_version, value_json, revision FROM app_settings WHERE key = ? LIMIT 8", parameterKeys: preferenceKey },
   { shard: "workout", caseId: "workout.accessibility", sql: "SELECT id, status, active_session_exercise_id, active_set_id, revision FROM workout_sessions WHERE plan_id = ? AND status = 'in_progress' LIMIT 8", parameterKeys: workoutPlan },
   { shard: "workout", caseId: "workout.appearance", sql: "SELECT key, value_version, value_json, revision FROM app_settings WHERE key = ? LIMIT 8", parameterKeys: preferenceKey },
-  { shard: "workout", caseId: "workout.offline-recovery", sql: "SELECT request_id, request_sha256, snapshot_id, snapshot_sha256, total_rows, committed_at_ms FROM logical_backup_receipts WHERE request_id = ? LIMIT 8", parameterKeys: action },
+  { shard: "workout", caseId: "workout.offline-recovery", sql: "SELECT request_id, request_sha256, snapshot_id, snapshot_sha256, total_rows, committed_at_ms FROM logical_backup_receipts WHERE snapshot_id = ? LIMIT 8", parameterKeys: ["logicalBackupSnapshotId"] },
   { shard: "workout", caseId: "workout.performance", sql: "SELECT id, status, active_session_exercise_id, active_set_id, revision FROM workout_sessions WHERE plan_id = ? AND status = 'in_progress' LIMIT 8", parameterKeys: workoutPlan },
 
   { shard: "library-running", caseId: "library.remembered-state", sql: "SELECT key, value_version, value_json, revision FROM app_settings WHERE key = 'library.section' LIMIT 8", parameterKeys: [] },

@@ -48,6 +48,7 @@ describe("v1.2 acceptance production API parity", () => {
     expect(executorSource).toContain("await repository.collect(");
     expect(backupSource).toContain("dependencies.collector.collect({");
     expect(executorSource).not.toContain("collectWithReceipt");
+    expect(executorSource).not.toContain("completionWritebackProofs");
   });
 });
 
@@ -2658,11 +2659,10 @@ describe("v1.2 native acceptance production executor", () => {
         runV12NativeAcceptanceCompletionWriteback: async () => ({
           request: { request_id: "completion-request", request_sha256: "request-digest" },
           receipt: { receipt_id: "completion-request", receipt_sha256: "receipt-digest" },
-          first: {
+          action: {
             authoritative_source: { plan_revision: 7 },
             outcome: "committed", committed_effects: 1, durable_receipt_sha256: "receipt-digest",
           },
-          replay: { outcome: "already_committed", committed_effects: 0, durable_receipt_sha256: "receipt-digest" },
         }),
       }),
     }]);

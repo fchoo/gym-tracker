@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import type {
@@ -78,16 +84,21 @@ class Connection implements SqliteConnection {
 }
 
 const kernels = new Set<SqliteKernel>();
+const directories = new Set<string>();
 const sha256 = async (value: string): Promise<string> =>
   createHash("sha256").update(value).digest("hex");
 
 afterEach(async () => {
   await Promise.all([...kernels].map((kernel) => kernel.close()));
   kernels.clear();
+  for (const directory of directories) {
+    rmSync(directory, { force: true, recursive: true });
+  }
+  directories.clear();
 });
 
-async function migratedKernel(): Promise<SqliteKernel> {
-  const connection = new Connection(new DatabaseSync(":memory:"));
+async function migratedKernel(databasePath = ":memory:"): Promise<SqliteKernel> {
+  const connection = new Connection(new DatabaseSync(databasePath));
   await configureSqliteConnection(connection, { enableWal: false });
   const kernel = createSqliteKernel({ reader: connection, writer: connection });
   kernels.add(kernel);
@@ -111,22 +122,29 @@ async function migratedKernel(): Promise<SqliteKernel> {
 describe("v1.2 completion write-back production acceptance helper", () => {
   it("commits one nonce-bound source mutation then replays the identical durable receipt", async () => {
     const kernel = await migratedKernel();
-    const proof = await runV12NativeAcceptanceCompletionWriteback({
+    const first = await runV12NativeAcceptanceCompletionWriteback({
+      kernel,
+      nonce: "c".repeat(48),
+      sha256,
+    });
+    const replay = await runV12NativeAcceptanceCompletionWriteback({
       kernel,
       nonce: "c".repeat(48),
       sha256,
     });
 
-    expect(proof).toMatchObject({
+    expect(first).toMatchObject({
       schema_version: 1,
       case_id: "workout.completion-writeback",
-      first: {
+      action: {
         outcome: "committed",
         authoritative_source: {
           table: "owned_plan_day_exercises",
         },
       },
-      replay: {
+    });
+    expect(replay).toMatchObject({
+      action: {
         outcome: "already_committed",
         committed_effects: 0,
         authoritative_source: {
@@ -134,30 +152,61 @@ describe("v1.2 completion write-back production acceptance helper", () => {
         },
       },
     });
-    expect(proof.first.committed_effects).toBeGreaterThanOrEqual(1);
-    expect(proof.request.request_id).toBe(proof.receipt.receipt_id);
-    expect(proof.first.durable_receipt_sha256)
-      .toBe(proof.replay.durable_receipt_sha256);
-    expect(proof.first.authoritative_source)
-      .toEqual(proof.replay.authoritative_source);
-    expect(proof.first.authoritative_source.plan_revision)
-      .toBe(proof.seed_plan_revision + 1);
+    expect(first.action.committed_effects).toBeGreaterThanOrEqual(1);
+    expect(first.request.request_id).toBe(first.receipt.receipt_id);
+    expect(first.action.durable_receipt_sha256)
+      .toBe(replay.action.durable_receipt_sha256);
+    expect(first.action.authoritative_source)
+      .toEqual(replay.action.authoritative_source);
+    expect(first.action.authoritative_source.plan_revision)
+      .toBe(first.seed_plan_revision + 1);
 
     await expect(kernel.queryAll(
       `SELECT request_id, request_sha256, result_revision
        FROM owned_plan_mutation_requests
        WHERE request_id = ?`,
-      [proof.request.request_id],
+      [first.request.request_id],
     )).resolves.toEqual([{
-      request_id: proof.request.request_id,
-      request_sha256: proof.request.request_sha256,
-      result_revision: proof.first.authoritative_source.plan_revision,
+      request_id: first.request.request_id,
+      request_sha256: first.request.request_sha256,
+      result_revision: first.action.authoritative_source.plan_revision,
     }]);
 
-    const serialized = JSON.stringify(proof);
+    const serialized = JSON.stringify({ first, replay });
     expect(serialized).not.toMatch(
       /(?:bodyweight|device|filename|heart|payload|private|route|sql)/iu,
     );
+  });
+
+  it("returns the durable zero-effect replay after closing and reopening SQLite", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "gym-completion-writeback-"));
+    directories.add(directory);
+    const databasePath = join(directory, "gym-tracker.db");
+    const nonce = "d".repeat(48);
+    const firstKernel = await migratedKernel(databasePath);
+    const first = await runV12NativeAcceptanceCompletionWriteback({
+      kernel: firstKernel,
+      nonce,
+      sha256,
+    });
+    await firstKernel.close();
+    kernels.delete(firstKernel);
+
+    const reopenedKernel = await migratedKernel(databasePath);
+    const replay = await runV12NativeAcceptanceCompletionWriteback({
+      kernel: reopenedKernel,
+      nonce,
+      sha256,
+    });
+
+    expect(replay.action).toMatchObject({
+      outcome: "already_committed",
+      committed_effects: 0,
+      durable_receipt_sha256: first.action.durable_receipt_sha256,
+      authoritative_source: first.action.authoritative_source,
+    });
+    expect(replay.request).toEqual(first.request);
+    expect(replay.receipt).toEqual(first.receipt);
   });
 
   it("keeps action authority in the production runtime without generic proof scans", () => {
@@ -173,6 +222,7 @@ describe("v1.2 completion write-back production acceptance helper", () => {
     expect(source).not.toMatch(/COUNT\s*\(/iu);
     expect(source).not.toContain("app_settings");
     expect(source).not.toContain("INSERT INTO owned_plan_mutation_requests");
+    expect(source).not.toContain("receipt_preexisted");
     expect(source).not.toMatch(/console\.(?:debug|error|info|log|warn)/u);
   });
 });

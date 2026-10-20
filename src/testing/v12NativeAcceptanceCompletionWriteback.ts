@@ -1,4 +1,7 @@
-import { createOwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
+import {
+  createOwnedPlanRuntimePort,
+  sessionExerciseWriteBackRequestId,
+} from "../bootstrap/ownedPlanRuntime";
 import { createCustomExercise } from "../domains/library/customExerciseCommands";
 import {
   activateStarterPlan,
@@ -30,8 +33,10 @@ type Hash = (value: string) => Promise<string>;
 type DurableReceipt = Readonly<{
   request_id: string;
   request_sha256: string;
+  expected_revision: number;
   result_plan_id: string;
   result_revision: number;
+  result_json: string;
   committed_at_ms: number;
 }>;
 
@@ -48,6 +53,15 @@ type SourceTarget = Readonly<{
   plan_day_exercise_id: string;
   ordinal: number;
   revision: number;
+}>;
+
+type DurableResult = Readonly<{
+  outcome: "committed";
+  operation: "session_exercise_edits";
+  planId: string;
+  planRevision: number;
+  sourceSessionId: string;
+  currentWorkoutUnaffected: true;
 }>;
 
 export type V12CompletionWritebackActionProof = Readonly<{
@@ -75,8 +89,7 @@ export type V12CompletionWritebackAcceptanceProof = Readonly<{
     receipt_id: string;
     receipt_sha256: string;
   }>;
-  first: V12CompletionWritebackActionProof;
-  replay: V12CompletionWritebackActionProof;
+  action: V12CompletionWritebackActionProof;
 }>;
 
 type Seed = Readonly<{
@@ -381,36 +394,151 @@ async function readReceipt(
   requestId: string,
 ): Promise<DurableReceipt | undefined> {
   return (await kernel.queryAll<DurableReceipt>(
-    `SELECT request_id, request_sha256, result_plan_id, result_revision,
-            committed_at_ms
+    `SELECT request_id, request_sha256, expected_revision, result_plan_id,
+            result_revision, result_json, committed_at_ms
      FROM owned_plan_mutation_requests WHERE request_id = ?`,
     [requestId],
   ))[0];
 }
 
-async function readSourceState(input: Readonly<{
+function parseDurableResult(receipt: DurableReceipt): DurableResult {
+  let value: unknown;
+  try {
+    value = JSON.parse(receipt.result_json);
+  } catch {
+    throw new Error("v12_completion_writeback_receipt_invalid");
+  }
+  const result = value as Partial<DurableResult> | null;
+  if (result === null || typeof result !== "object"
+    || result.outcome !== "committed"
+    || result.operation !== "session_exercise_edits"
+    || typeof result.planId !== "string"
+    || !Number.isSafeInteger(result.planRevision)
+    || typeof result.sourceSessionId !== "string"
+    || result.currentWorkoutUnaffected !== true) {
+    throw new Error("v12_completion_writeback_receipt_invalid");
+  }
+  return result as DurableResult;
+}
+
+async function readDurableSourceState(input: Readonly<{
   kernel: SqliteKernel;
+  seed: Seed;
+  receipt: DurableReceipt;
+}>): Promise<Readonly<{
   occurrenceId: string;
   targetId: string;
-}>): Promise<Readonly<{
-  occurrence: SourceOccurrence;
-  target: SourceTarget;
+  state: Readonly<{ occurrence: SourceOccurrence; target: SourceTarget }>;
 }>> {
-  const [occurrence] = await input.kernel.queryAll<SourceOccurrence>(
+  const occurrences = await input.kernel.queryAll<SourceOccurrence>(
     `SELECT id, plan_day_id, exercise_id, ordinal, revision
-     FROM owned_plan_day_exercises WHERE id = ?`,
-    [input.occurrenceId],
+       FROM owned_plan_day_exercises
+      WHERE plan_day_id = ? AND exercise_id = ?
+        AND id LIKE ?
+      ORDER BY ordinal, id`,
+    [input.seed.planDayId, input.seed.customExerciseId,
+      `session-writeback:${input.receipt.request_sha256}:occurrence:%`],
   );
-  const [target] = await input.kernel.queryAll<SourceTarget>(
-    `SELECT id, plan_day_exercise_id, ordinal, revision
-     FROM owned_plan_working_set_targets WHERE id = ?`,
-    [input.targetId],
-  );
-  if (occurrence === undefined || target === undefined
-    || target.plan_day_exercise_id !== occurrence.id) {
+  const occurrence = occurrences[0];
+  if (occurrences.length !== 1 || occurrence === undefined) {
     throw new Error("v12_completion_writeback_source_postcondition_missing");
   }
-  return Object.freeze({ occurrence, target });
+  const targets = await input.kernel.queryAll<SourceTarget>(
+    `SELECT id, plan_day_exercise_id, ordinal, revision
+       FROM owned_plan_working_set_targets
+      WHERE plan_day_exercise_id = ?
+      ORDER BY ordinal, id`,
+    [occurrence.id],
+  );
+  const target = targets[0];
+  const occurrenceId = `session-writeback:${input.receipt.request_sha256}:occurrence:${occurrence.ordinal}`;
+  const targetId = `session-writeback:${input.receipt.request_sha256}:target:${occurrence.ordinal}:0`;
+  if (targets.length !== 1 || target === undefined
+    || occurrence.id !== occurrenceId || target.id !== targetId
+    || target.plan_day_exercise_id !== occurrence.id || target.ordinal !== 0) {
+    throw new Error("v12_completion_writeback_source_postcondition_missing");
+  }
+  return Object.freeze({
+    occurrenceId,
+    targetId,
+    state: Object.freeze({ occurrence, target }),
+  });
+}
+
+async function completionWritebackProof(input: Readonly<{
+  kernel: SqliteKernel;
+  nonce: string;
+  sha256: Hash;
+  seed: Seed;
+  requestId: string;
+  receipt: DurableReceipt;
+  outcome: "committed" | "already_committed";
+}>): Promise<V12CompletionWritebackAcceptanceProof> {
+  const result = parseDurableResult(input.receipt);
+  if (input.receipt.request_id !== input.requestId
+    || !HASH.test(input.receipt.request_sha256)
+    || !Number.isSafeInteger(input.receipt.expected_revision)
+    || input.receipt.expected_revision < 1
+    || input.receipt.result_plan_id !== input.seed.planId
+    || input.receipt.result_revision !== input.receipt.expected_revision + 1
+    || input.receipt.committed_at_ms !== activatedAtMs(input.nonce) + 5_000
+    || result.planId !== input.seed.planId
+    || result.planRevision !== input.receipt.result_revision
+    || result.sourceSessionId !== input.seed.sessionId) {
+    throw new Error("v12_completion_writeback_receipt_invalid");
+  }
+  const source = await readDurableSourceState({
+    kernel: input.kernel,
+    seed: input.seed,
+    receipt: input.receipt,
+  });
+  const planRevision = await readPlanRevision(input.kernel, input.seed.planId);
+  if (planRevision !== input.receipt.result_revision
+    || source.state.occurrence.exercise_id !== input.seed.customExerciseId
+    || source.state.occurrence.plan_day_id !== input.seed.planDayId) {
+    throw new Error("v12_completion_writeback_source_postcondition_invalid");
+  }
+  const receiptSha256 = await digest(input.sha256, input.receipt);
+  const identitySha256 = await digest(input.sha256, {
+    occurrenceId: source.occurrenceId,
+    targetId: source.targetId,
+  });
+  const stateSha256 = await digest(input.sha256, source.state);
+  const observedEffects = [
+    input.receipt.request_id === input.requestId,
+    planRevision === input.receipt.expected_revision + 1,
+    source.state.occurrence.exercise_id === input.seed.customExerciseId,
+    source.state.target.plan_day_exercise_id === source.state.occurrence.id,
+  ].filter(Boolean).length;
+  if (input.outcome === "committed" && observedEffects < 1) {
+    throw new Error("v12_completion_writeback_committed_effect_missing");
+  }
+  const authoritativeSource = Object.freeze({
+    table: "owned_plan_day_exercises" as const,
+    identity_sha256: identitySha256,
+    state_sha256: stateSha256,
+    plan_revision: planRevision,
+  });
+  return Object.freeze({
+    schema_version: 1 as const,
+    case_id: CASE_ID,
+    nonce_sha256: await digest(input.sha256, input.nonce),
+    seed_plan_revision: input.receipt.expected_revision,
+    request: Object.freeze({
+      request_id: input.receipt.request_id,
+      request_sha256: input.receipt.request_sha256,
+    }),
+    receipt: Object.freeze({
+      receipt_id: input.receipt.request_id,
+      receipt_sha256: receiptSha256,
+    }),
+    action: Object.freeze({
+      outcome: input.outcome,
+      committed_effects: input.outcome === "committed" ? observedEffects : 0,
+      durable_receipt_sha256: receiptSha256,
+      authoritative_source: authoritativeSource,
+    }),
+  });
 }
 
 /**
@@ -427,6 +555,20 @@ export async function runV12NativeAcceptanceCompletionWriteback(input: Readonly<
     throw new Error("v12_completion_writeback_nonce_invalid");
   }
   const seed = await seedCompletionWritebackGraph(input);
+  const requestId = await sessionExerciseWriteBackRequestId({
+    sourceSessionId: seed.sessionId,
+    sha256: input.sha256,
+  });
+  const existingReceipt = await readReceipt(input.kernel, requestId);
+  if (existingReceipt !== undefined) {
+    return completionWritebackProof({
+      ...input,
+      seed,
+      requestId,
+      receipt: existingReceipt,
+      outcome: "already_committed",
+    });
+  }
   const runtime = createOwnedPlanRuntimePort(input.kernel, {
     nowMs: () => activatedAtMs(input.nonce) + 5_000,
     randomUUID: () => `completion-writeback-${input.nonce.slice(0, 16)}`,
@@ -445,11 +587,7 @@ export async function runV12NativeAcceptanceCompletionWriteback(input: Readonly<
   if (manual === undefined || manual.targets.length !== 1) {
     throw new Error("v12_completion_writeback_composition_invalid");
   }
-  const requestId = `session-writeback:${preview.previewToken}`;
   const seedPlanRevision = await readPlanRevision(input.kernel, seed.planId);
-  if (await readReceipt(input.kernel, requestId) !== undefined) {
-    throw new Error("v12_completion_writeback_receipt_preexisted");
-  }
   const preexistingSource = await input.kernel.queryAll<Readonly<{
     id: string;
   }>>(
@@ -473,90 +611,15 @@ export async function runV12NativeAcceptanceCompletionWriteback(input: Readonly<
   }
   const firstReceipt = await readReceipt(input.kernel, requestId);
   if (firstReceipt === undefined || firstReceipt.result_plan_id !== seed.planId
+    || firstReceipt.expected_revision !== seedPlanRevision
     || firstReceipt.result_revision !== seedPlanRevision + 1) {
     throw new Error("v12_completion_writeback_receipt_missing");
   }
-  const occurrenceId = `session-writeback:${firstReceipt.request_sha256}:occurrence:${manual.ordinal}`;
-  const targetId = `session-writeback:${firstReceipt.request_sha256}:target:${manual.ordinal}:0`;
-  const firstState = await readSourceState({
-    kernel: input.kernel,
-    occurrenceId,
-    targetId,
-  });
-  if (firstState.occurrence.exercise_id !== seed.customExerciseId
-    || firstState.occurrence.plan_day_id !== seed.planDayId
-    || firstState.occurrence.ordinal !== manual.ordinal) {
-    throw new Error("v12_completion_writeback_source_postcondition_invalid");
-  }
-  const firstPlanRevision = await readPlanRevision(input.kernel, seed.planId);
-  const firstReceiptSha256 = await digest(input.sha256, firstReceipt);
-  const firstIdentitySha256 = await digest(input.sha256, {
-    occurrenceId,
-    targetId,
-  });
-  const firstStateSha256 = await digest(input.sha256, firstState);
-  const firstCommittedEffects = [
-    firstReceipt.request_id === requestId,
-    firstPlanRevision === seedPlanRevision + 1,
-    firstState.occurrence.exercise_id === seed.customExerciseId,
-    firstState.target.plan_day_exercise_id === firstState.occurrence.id,
-  ].filter(Boolean).length;
-  if (firstCommittedEffects < 1) {
-    throw new Error("v12_completion_writeback_committed_effect_missing");
-  }
-
-  const replayResult = await runtime.applySessionExerciseEdits(command);
-  if (replayResult.outcome !== "already_committed") {
-    throw new Error("v12_completion_writeback_replay_not_idempotent");
-  }
-  const replayReceipt = await readReceipt(input.kernel, requestId);
-  if (replayReceipt === undefined) {
-    throw new Error("v12_completion_writeback_replay_receipt_missing");
-  }
-  const replayState = await readSourceState({
-    kernel: input.kernel,
-    occurrenceId,
-    targetId,
-  });
-  const replayPlanRevision = await readPlanRevision(input.kernel, seed.planId);
-  const replayReceiptSha256 = await digest(input.sha256, replayReceipt);
-  const replayStateSha256 = await digest(input.sha256, replayState);
-  if (replayReceiptSha256 !== firstReceiptSha256
-    || replayStateSha256 !== firstStateSha256
-    || replayPlanRevision !== firstPlanRevision) {
-    throw new Error("v12_completion_writeback_replay_mutated");
-  }
-
-  const authoritativeSource = Object.freeze({
-    table: "owned_plan_day_exercises" as const,
-    identity_sha256: firstIdentitySha256,
-    state_sha256: firstStateSha256,
-    plan_revision: firstPlanRevision,
-  });
-  return Object.freeze({
-    schema_version: 1 as const,
-    case_id: CASE_ID,
-    nonce_sha256: await digest(input.sha256, input.nonce),
-    seed_plan_revision: seedPlanRevision,
-    request: Object.freeze({
-      request_id: firstReceipt.request_id,
-      request_sha256: firstReceipt.request_sha256,
-    }),
-    receipt: Object.freeze({
-      receipt_id: firstReceipt.request_id,
-      receipt_sha256: firstReceiptSha256,
-    }),
-    first: Object.freeze({
-      outcome: firstResult.outcome,
-      committed_effects: firstCommittedEffects,
-      durable_receipt_sha256: firstReceiptSha256,
-      authoritative_source: authoritativeSource,
-    }),
-    replay: Object.freeze({
-      outcome: replayResult.outcome,
-      committed_effects: 0,
-      durable_receipt_sha256: replayReceiptSha256,
-      authoritative_source: authoritativeSource,
-    }),
+  return completionWritebackProof({
+    ...input,
+    seed,
+    requestId,
+    receipt: firstReceipt,
+    outcome: "committed",
   });
 }

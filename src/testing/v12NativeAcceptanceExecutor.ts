@@ -90,7 +90,6 @@ import {
 import { previewDayRemoval, previewExerciseReplacement, removePlanDayWithImpact, replacePlanExercise } from "../domains/plans/planImpactCommands";
 import {
   runV12NativeAcceptanceCompletionWriteback,
-  type V12CompletionWritebackAcceptanceProof,
 } from "./v12NativeAcceptanceCompletionWriteback";
 import {
   assertV12NativeAcceptanceAuthorityReaderRegistry,
@@ -186,7 +185,6 @@ type V12NativeAcceptanceProductionHandlerInput = Readonly<{
   runtime?: V12NativeAcceptanceProductionRuntime;
 }>;
 
-const completionWritebackProofs = new WeakMap<SqliteKernel, Map<string, V12CompletionWritebackAcceptanceProof>>();
 const multiPlanWrapperProjections = new WeakMap<SqliteKernel, Map<string, unknown>>();
 
 /**
@@ -2724,21 +2722,11 @@ async function ensureWorkoutRest(input: V12NativeAcceptanceProductionHandlerInpu
 
 async function executeCompletionWriteback(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
   const request = requireRequest(input);
-  let proofs = completionWritebackProofs.get(input.kernel);
-  if (proofs === undefined) {
-    proofs = new Map();
-    completionWritebackProofs.set(input.kernel, proofs);
-  }
-  let proof = proofs.get(request.nonce);
-  const firstDispatch = proof === undefined;
-  if (proof === undefined) {
-    proof = await runV12NativeAcceptanceCompletionWriteback({
-      kernel: input.kernel,
-      nonce: request.nonce,
-      sha256: runtimeSha256,
-    });
-    proofs.set(request.nonce, proof);
-  }
+  const proof = await runV12NativeAcceptanceCompletionWriteback({
+    kernel: input.kernel,
+    nonce: request.nonce,
+    sha256: runtimeSha256,
+  });
   const [receipt] = await input.kernel.queryAll<Readonly<{
     request_id: string;
     request_sha256: string;
@@ -2750,12 +2738,13 @@ async function executeCompletionWriteback(input: V12NativeAcceptanceProductionHa
      WHERE request_id = ?`,
     [proof.request.request_id],
   );
-  const action = firstDispatch ? proof.first : proof.replay;
+  const { action } = proof;
   if (receipt?.request_id !== proof.receipt.receipt_id
     || receipt.request_sha256 !== proof.request.request_sha256
-    || receipt.result_revision !== proof.first.authoritative_source.plan_revision
-    || action.outcome !== (firstDispatch ? "committed" : "already_committed")
-    || action.committed_effects !== (firstDispatch ? proof.first.committed_effects : 0)
+    || receipt.result_revision !== proof.action.authoritative_source.plan_revision
+    || (action.outcome !== "committed" && action.outcome !== "already_committed")
+    || (action.outcome === "committed" && action.committed_effects < 1)
+    || (action.outcome === "already_committed" && action.committed_effects !== 0)
     || action.durable_receipt_sha256 !== proof.receipt.receipt_sha256) {
     throw new Error("v12_native_acceptance_completion_writeback_postcondition_failed");
   }
@@ -2770,7 +2759,7 @@ async function executeCompletionWriteback(input: V12NativeAcceptanceProductionHa
         `SELECT revision AS plan_revision FROM plans WHERE id = ?`,
         [receipt.result_plan_id],
       );
-      if (state?.plan_revision !== proof.first.authoritative_source.plan_revision) {
+      if (state?.plan_revision !== proof.action.authoritative_source.plan_revision) {
         throw new Error("v12_native_acceptance_completion_writeback_postcondition_failed");
       }
     },
