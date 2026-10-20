@@ -54,7 +54,7 @@ import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v
 import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
 import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
 import { parseFullBodyFoundation } from "../domains/content";
-import { activateStarterPlan, createStarterPlanActivationConfirmationToken, parseAcceptedStarterPlanPack } from "../domains/plans";
+import { activateStarterPlan, createStarterPlanActivationConfirmationToken, createStarterPlanCopy, parseAcceptedStarterPlanPack } from "../domains/plans";
 import { startWorkout } from "../domains/workout/startWorkout";
 import { addWorkingSet, completeSet, updateActiveSetDraft } from "../domains/workout/setCommands";
 import { addExercise, removeExercise, reorderExercises, replaceExercise } from "../domains/workout/sessionExerciseCommands";
@@ -963,6 +963,170 @@ async function executeAcceptedStarterActivation(input: V12NativeAcceptanceProduc
       );
       if (receipt?.request_id !== requestId || receipt.choice !== "initial" || plan?.id !== receipt.result_plan_id || plan.is_active !== 1) {
         throw new Error("v12_native_acceptance_starter_activation_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function prepareStarterPlanCopyFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  requireRequest(input);
+  await createContentRepository(input.kernel).importAcceptedCatalog({
+    catalog: await parseAcceptedPhase2Catalog(runtimeSha256),
+  });
+}
+
+async function acceptedStarterCopyTemplate() {
+  const pack = await parseAcceptedStarterPlanPack({
+    starterPackBytes: prettyJson(starterPlansAsset),
+    acceptanceBytes: prettyJson(starterPlansAcceptanceAsset),
+    sha256: runtimeSha256,
+  });
+  const template = pack.templates.find(({ id }) => id === "full-body-foundation");
+  if (template === undefined) throw new Error("v12_native_acceptance_starter_template_missing");
+  return Object.freeze({ template, schedule: acceptedStarterSchedule(template) });
+}
+
+async function createDirectStarterCopy(input: V12NativeAcceptanceProductionHandlerInput, requestId: string) {
+  const request = requireRequest(input);
+  const { template, schedule } = await acceptedStarterCopyTemplate();
+  return createStarterPlanCopy({
+    starterPackBytes: prettyJson(starterPlansAsset),
+    acceptanceBytes: prettyJson(starterPlansAcceptanceAsset),
+    sha256: runtimeSha256,
+    repository: createStarterPlanRepository(input.kernel),
+    requestId,
+    createdAtMs: workoutFixtureActivatedAt(request),
+    sourceOwnedPlanId: `starter:${template.id}:r${template.revision}`,
+    expectedSourcePlanRevision: template.revision,
+    expectedActiveScheduleRevision: null,
+    templateId: template.id,
+    templateRevision: template.revision,
+    ...schedule,
+    bindings: schedule.bindings as never,
+  });
+}
+
+async function prepareLegacyStarterTemplateUpdateSource(
+  input: V12NativeAcceptanceProductionHandlerInput,
+): Promise<Readonly<{ id: string; revision: number }>> {
+  const request = requireRequest(input);
+  const sourceId = workoutFixturePlanId(request);
+  const [existing] = await input.kernel.queryAll<Readonly<{
+    id: string;
+    revision: number;
+    origin: string;
+    source_namespace: string | null;
+    upstream_id: string | null;
+  }>>(
+    `SELECT id, revision, origin, source_namespace, upstream_id
+     FROM plans
+     WHERE id = ?`,
+    [sourceId],
+  );
+  if (existing === undefined) {
+    const activation = await activateStarterPlan({
+      fixture: parseFullBodyFoundation(fullBodyFoundationAsset),
+      repository: createPlansWorkoutRepository(input.kernel),
+      activatedAtMs: workoutFixtureActivatedAt(request),
+      startLocalDate: "2027-01-15",
+      timezone: "UTC",
+    });
+    if (activation.plan.id !== sourceId) {
+      throw new Error("v12_native_acceptance_starter_template_update_source_create_failed");
+    }
+  }
+  const [source] = await input.kernel.queryAll<Readonly<{
+    id: string;
+    revision: number;
+    origin: string;
+    source_namespace: string | null;
+    upstream_id: string | null;
+  }>>(
+    `SELECT id, revision, origin, source_namespace, upstream_id
+     FROM plans
+     WHERE id = ?`,
+    [sourceId],
+  );
+  if (source?.origin !== "copied"
+    || source.source_namespace !== "gym-tracker.original"
+    || source.upstream_id !== "full-body-foundation") {
+    throw new Error("v12_native_acceptance_starter_template_update_source_invalid");
+  }
+  return Object.freeze({ id: source.id, revision: source.revision });
+}
+
+async function starterCopyReceipt(kernel: SqliteKernel, requestId: string) {
+  const [receipt] = await kernel.queryAll<Readonly<{
+    request_id: string;
+    operation: string;
+    source_plan_id: string | null;
+    result_plan_id: string;
+    result_revision: number;
+  }>>(
+    `SELECT request_id, operation, source_plan_id, result_plan_id, result_revision
+     FROM owned_plan_mutation_requests
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
+async function executeStarterEditableCopy(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareStarterPlanCopyFixture(input);
+  const request = requireRequest(input);
+  const requestId = `v12:starter-editable-copy:${request.nonce}`;
+  const before = await starterCopyReceipt(input.kernel, requestId);
+  if (before === undefined) await createDirectStarterCopy(input, requestId);
+  const receipt = await starterCopyReceipt(input.kernel, requestId);
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const plan = receipt === undefined ? null : await createOwnedPlanRepository(input.kernel).read(receipt.result_plan_id);
+      if (receipt?.request_id !== requestId || receipt.operation !== "create" || receipt.source_plan_id !== null
+        || receipt.result_revision < 1 || plan?.isActive !== false || plan.lifecycle !== "ready") {
+        throw new Error("v12_native_acceptance_starter_editable_copy_postcondition_failed");
+      }
+    },
+  });
+}
+
+async function executeStarterTemplateUpdateCopy(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareStarterPlanCopyFixture(input);
+  const request = requireRequest(input);
+  const updateRequestId = `v12:starter-template-update-copy:${request.nonce}`;
+  const source = await prepareLegacyStarterTemplateUpdateSource(input);
+  const before = await starterCopyReceipt(input.kernel, updateRequestId);
+  if (before === undefined) {
+    const { template, schedule } = await acceptedStarterCopyTemplate();
+    await createStarterPlanCopy({
+      starterPackBytes: prettyJson(starterPlansAsset),
+      acceptanceBytes: prettyJson(starterPlansAcceptanceAsset),
+      sha256: runtimeSha256,
+      repository: createStarterPlanRepository(input.kernel),
+      requestId: updateRequestId,
+      createdAtMs: workoutFixtureActivatedAt(request) + 1_000,
+      sourceOwnedPlanId: source.id,
+      expectedSourcePlanRevision: source.revision,
+      expectedActiveScheduleRevision: null,
+      templateId: template.id,
+      templateRevision: template.revision,
+      ...schedule,
+      bindings: schedule.bindings as never,
+    });
+  }
+  const receipt = await starterCopyReceipt(input.kernel, updateRequestId);
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: updateRequestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const plan = receipt === undefined ? null : await createOwnedPlanRepository(input.kernel).read(receipt.result_plan_id);
+      if (receipt?.request_id !== updateRequestId || receipt.operation !== "duplicate"
+        || receipt.source_plan_id !== source.id || receipt.result_plan_id === source.id
+        || plan?.isActive !== false || plan.lifecycle !== "ready") {
+        throw new Error("v12_native_acceptance_starter_template_copy_postcondition_failed");
       }
     },
   });
@@ -2630,6 +2794,14 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   }),
   "starter-plan.starter-plan-repository.activate-accepted-starter-plan": Object.freeze({
     execute: executeAcceptedStarterActivation,
+  }),
+  "starter-plan.starter-plan-repository.create-editable-copy": Object.freeze({
+    prepare: prepareStarterPlanCopyFixture,
+    execute: executeStarterEditableCopy,
+  }),
+  "starter-plan.starter-plan-repository.create-template-update-copy": Object.freeze({
+    prepare: prepareStarterPlanCopyFixture,
+    execute: executeStarterTemplateUpdateCopy,
   }),
   [RUNNING_AGGREGATE_READ_HANDLER]: Object.freeze({
     prepare: prepareRunningFamilyB,

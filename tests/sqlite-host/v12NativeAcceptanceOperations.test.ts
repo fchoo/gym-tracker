@@ -231,6 +231,8 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "workout.timing-policy",
       "workout.appearance",
       "library.starter-activation",
+      "library.starter-detail",
+      "library.template-update",
       "library.true-no-plans",
       "library.create-strength",
       "library.owned-lifecycle",
