@@ -1009,6 +1009,66 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects workout exercise commands that report a replay before a nonce-bound receipt exists", async () => {
+    const { executor, contracts } = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/sessionExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/workout/sessionExerciseCommands")>("../domains/workout/sessionExerciseCommands"),
+        addExercise: async () => ({ outcome: "already_committed" }),
+        reorderExercises: async () => ({ outcome: "already_committed" }),
+        replaceExercise: async () => ({ outcome: "already_committed" }),
+        removeExercise: async () => ({ outcome: "already_committed" }),
+      }),
+    }]);
+    try {
+      const cases = [
+        ["workout.add-exercise", "v12_native_acceptance_workout_add_exercise_failed"],
+        ["workout.reorder", "v12_native_acceptance_workout_reorder_failed"],
+        ["workout.replace-exercise", "v12_native_acceptance_workout_replace_exercise_failed"],
+        ["workout.delete-exercise", "v12_native_acceptance_workout_remove_exercise_failed"],
+      ] as const;
+      for (const [caseId, error] of cases) {
+        const contract = contracts.v12NativeAcceptanceCaseContract("workout", caseId);
+        await expect(executor.dispatchV12NativeAcceptanceProductionOperation({
+          kernel: kernel({ emptySql: /workout_session_exercise_(?:edit|reorder)_receipts/u }),
+          contract,
+          request: requestForContract(contract),
+        })).rejects.toThrow(error);
+      }
+    } finally {
+      jest.resetModules();
+    }
+
+    const postconditions = isolateExecutorWithMocks([{
+      moduleName: "../domains/workout/sessionExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/workout/sessionExerciseCommands")>("../domains/workout/sessionExerciseCommands"),
+        addExercise: async () => ({ outcome: "committed" }),
+        reorderExercises: async () => ({ outcome: "committed" }),
+        replaceExercise: async () => ({ outcome: "committed" }),
+        removeExercise: async () => ({ outcome: "committed" }),
+      }),
+    }]);
+    try {
+      const cases = [
+        ["workout.add-exercise", "v12_native_acceptance_workout_add_exercise_postcondition_failed"],
+        ["workout.reorder", "v12_native_acceptance_workout_reorder_postcondition_failed"],
+        ["workout.replace-exercise", "v12_native_acceptance_workout_replace_exercise_postcondition_failed"],
+        ["workout.delete-exercise", "v12_native_acceptance_workout_remove_exercise_postcondition_failed"],
+      ] as const;
+      for (const [caseId, error] of cases) {
+        const contract = postconditions.contracts.v12NativeAcceptanceCaseContract("workout", caseId);
+        await expect(postconditions.executor.dispatchV12NativeAcceptanceProductionOperation({
+          kernel: kernel({ emptySql: /workout_session_exercise_(?:edit|reorder)_receipts/u }),
+          contract,
+          request: requestForContract(contract),
+        })).rejects.toThrow(error);
+      }
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
