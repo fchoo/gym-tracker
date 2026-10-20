@@ -146,7 +146,7 @@ function validPassword(value: string): boolean {
 
 // Keep every emitted producer schema explicit. Trigger-only schemas remain on
 // their prior format; a format bump is required when the archived graph grows.
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45] as const);
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
@@ -268,7 +268,7 @@ async function validateRows(
     LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]
   ).includes(snapshot.schemaVersion);
   const formatMatchesSchema = snapshot.version === 10
-    ? snapshot.schemaVersion === 45
+    ? snapshot.schemaVersion === 45 || snapshot.schemaVersion === 46
     : snapshot.version === 9
     ? snapshot.schemaVersion === 43 || snapshot.schemaVersion === 44
     : snapshot.version === 8

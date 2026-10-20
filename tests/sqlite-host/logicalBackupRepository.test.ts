@@ -5,6 +5,7 @@ import {
   it,
 } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   rmSync,
@@ -200,6 +201,43 @@ function collect(kernel: SqliteKernel): Promise<LogicalBackupSnapshot> {
 }
 
 describe("logical backup repository", () => {
+  it("persists a request-bound snapshot receipt and replays only the exact source digest", async () => {
+    const kernel = await open();
+    const repository = createLogicalBackupRepository(kernel);
+    const collectWithReceipt = repository.collectWithReceipt;
+    if (collectWithReceipt === undefined) throw new Error("logical_backup_receipt_command_missing");
+    const input = Object.freeze({
+      requestId: "logical-backup-request",
+      requestSha256: "a".repeat(64),
+      snapshotId: "logical-backup-snapshot",
+      createdAtMs: 1_786_853_900_000,
+      sha256: async (value: string) => createHash("sha256").update(value).digest("hex"),
+    });
+
+    const first = await collectWithReceipt(input);
+    const replay = await collectWithReceipt(input);
+
+    expect(first.outcome).toBe("committed");
+    expect(first.receipt).toMatchObject({
+      requestId: input.requestId,
+      requestSha256: input.requestSha256,
+      snapshotId: input.snapshotId,
+      totalRows: first.snapshot.manifest.totalRows,
+    });
+    expect(replay).toMatchObject({ outcome: "already_committed", receipt: first.receipt });
+    await expect(collectWithReceipt({ ...input, requestSha256: "b".repeat(64) }))
+      .rejects.toThrow("logical_backup_request_identity_conflict");
+    await expect(kernel.queryAll(
+      "SELECT request_id, snapshot_id, snapshot_sha256, total_rows FROM logical_backup_receipts WHERE request_id = ?",
+      [input.requestId],
+    )).resolves.toEqual([{
+      request_id: input.requestId,
+      snapshot_id: input.snapshotId,
+      snapshot_sha256: first.receipt.snapshotSha256,
+      total_rows: first.snapshot.manifest.totalRows,
+    }]);
+  });
+
   it("keeps every logical-table foreign key represented by the restore reference registry", async () => {
     const kernel = await open();
     const actual: string[] = [];

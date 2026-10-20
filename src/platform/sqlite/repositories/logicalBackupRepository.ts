@@ -19,6 +19,26 @@ export type LogicalBackupRepository = Readonly<{
     snapshotId: string;
     createdAtMs: number;
   }>): Promise<LogicalBackupSnapshot>;
+  collectWithReceipt?(input: Readonly<{
+    requestId: string;
+    requestSha256: string;
+    snapshotId: string;
+    createdAtMs: number;
+    sha256(value: string): Promise<string>;
+  }>): Promise<Readonly<{
+    outcome: "committed" | "already_committed";
+    snapshot: LogicalBackupSnapshot;
+    receipt: LogicalBackupReceipt;
+  }>>;
+}>;
+
+export type LogicalBackupReceipt = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  snapshotId: string;
+  snapshotSha256: string;
+  totalRows: number;
+  committedAtMs: number;
 }>;
 
 export class LogicalBackupRepositoryError extends Error {
@@ -26,10 +46,71 @@ export class LogicalBackupRepositoryError extends Error {
   readonly retryable = true;
   readonly correlationCode = "GT-BACKUP02" as const;
 
-  constructor(readonly code: "logical_backup_collection_failed") {
+  constructor(readonly code: "logical_backup_collection_failed" | "logical_backup_request_identity_conflict") {
     super(code);
     this.name = "LogicalBackupRepositoryError";
   }
+}
+
+const SHA256 = /^[a-f0-9]{64}$/u;
+
+function receiptInputValid(input: Readonly<{
+  requestId: string;
+  requestSha256: string;
+  snapshotId: string;
+  createdAtMs: number;
+}>): boolean {
+  return input.requestId.trim().length > 0 && input.requestId.length <= 128
+    && SHA256.test(input.requestSha256)
+    && input.snapshotId.trim().length > 0 && input.snapshotId.length <= 128
+    && Number.isSafeInteger(input.createdAtMs) && input.createdAtMs >= 0;
+}
+
+function nestedLogicalBackupError(error: unknown): LogicalBackupRepositoryError | null {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+  while (typeof current === "object" && current !== null && !visited.has(current)) {
+    if (current instanceof LogicalBackupRepositoryError) return current;
+    visited.add(current);
+    current = "cause" in current ? current.cause : null;
+  }
+  return null;
+}
+
+async function readReceipt(
+  transaction: SqliteReadTransactionExecutor,
+  requestId: string,
+): Promise<LogicalBackupReceipt | null> {
+  const rows = await transaction.queryAll<Readonly<{
+    request_id: string;
+    request_sha256: string;
+    snapshot_id: string;
+    snapshot_sha256: string;
+    total_rows: number;
+    committed_at_ms: number;
+  }>>(
+    `SELECT request_id, request_sha256, snapshot_id, snapshot_sha256,
+            total_rows, committed_at_ms
+       FROM logical_backup_receipts
+      WHERE request_id = ?`,
+    [requestId],
+  );
+  const row = rows[0];
+  if (rows.length === 0) return null;
+  if (rows.length !== 1 || row === undefined || !SHA256.test(row.request_sha256)
+    || !SHA256.test(row.snapshot_sha256) || !Number.isSafeInteger(row.total_rows)
+    || row.total_rows < 1 || !Number.isSafeInteger(row.committed_at_ms)
+    || row.committed_at_ms < 0) {
+    throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+  }
+  return Object.freeze({
+    requestId: row.request_id,
+    requestSha256: row.request_sha256,
+    snapshotId: row.snapshot_id,
+    snapshotSha256: row.snapshot_sha256,
+    totalRows: row.total_rows,
+    committedAtMs: row.committed_at_ms,
+  });
 }
 
 function identifier(value: string): string {
@@ -249,6 +330,54 @@ export function createLogicalBackupRepository(
         return await kernel.write((transaction) =>
           collectLogicalBackupSnapshot(transaction, input));
       } catch {
+        throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+      }
+    },
+    async collectWithReceipt(input) {
+      if (!receiptInputValid(input)) {
+        throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+      }
+      try {
+        return await kernel.write(async (transaction) => {
+          const existing = await readReceipt(transaction, input.requestId);
+          if (existing !== null && (existing.requestSha256 !== input.requestSha256
+            || existing.snapshotId !== input.snapshotId)) {
+            throw new LogicalBackupRepositoryError("logical_backup_request_identity_conflict");
+          }
+          const snapshot = await collectLogicalBackupSnapshot(transaction, input);
+          const snapshotSha256 = await input.sha256(JSON.stringify(snapshot));
+          if (!SHA256.test(snapshotSha256)) {
+            throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+          }
+          if (existing !== null) {
+            if (existing.snapshotSha256 !== snapshotSha256 || existing.totalRows !== snapshot.manifest.totalRows) {
+              throw new LogicalBackupRepositoryError("logical_backup_request_identity_conflict");
+            }
+            return Object.freeze({ outcome: "already_committed" as const, snapshot, receipt: existing });
+          }
+          const receipt: LogicalBackupReceipt = Object.freeze({
+            requestId: input.requestId,
+            requestSha256: input.requestSha256,
+            snapshotId: input.snapshotId,
+            snapshotSha256,
+            totalRows: snapshot.manifest.totalRows,
+            committedAtMs: input.createdAtMs,
+          });
+          const inserted = await transaction.execute(
+            `INSERT INTO logical_backup_receipts
+              (request_id, request_sha256, snapshot_id, snapshot_sha256, total_rows, committed_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [receipt.requestId, receipt.requestSha256, receipt.snapshotId,
+              receipt.snapshotSha256, receipt.totalRows, receipt.committedAtMs],
+          );
+          if (inserted.changes !== 1) {
+            throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+          }
+          return Object.freeze({ outcome: "committed" as const, snapshot, receipt });
+        });
+      } catch (error) {
+        const nested = nestedLogicalBackupError(error);
+        if (nested !== null) throw nested;
         throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
       }
     },

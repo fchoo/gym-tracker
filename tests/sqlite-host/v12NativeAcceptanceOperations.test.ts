@@ -101,7 +101,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
       .resolves.toMatchObject({ result: "committed", facts: { outcome: "committed", committed_effects: 1 } });
   });
 
-  it("executes every exact projection against schema 45 and refuses all 55 empty mutation receipts", async () => {
+  it("executes every exact projection against schema 46 and refuses all 55 empty mutation receipts", async () => {
     const kernel = await open();
     const sourceOwned = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.filter(({ shard }) => shard !== "multi-plan");
     expect(sourceOwned).toHaveLength(88);
@@ -120,13 +120,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
             messages.push(current.message);
             current = current.cause;
           }
-          const unresolvedProductionCommands = new Set([
-            "workout.offline-recovery",
-          ]);
-          const expectedFailure = unresolvedProductionCommands.has(contract.caseId)
-            ? "v12_native_acceptance_mutation_receipt_missing"
-            : "v12_native_acceptance_request_required";
-          if (!messages.includes(expectedFailure)) {
+          if (!messages.includes("v12_native_acceptance_request_required")) {
             throw new Error(`${contract.caseId}:${messages.join(":")}`);
           }
         }

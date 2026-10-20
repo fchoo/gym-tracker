@@ -156,7 +156,8 @@ function workoutTables(caseId: string): readonly string[] {
   if (caseId === "workout.trend") return WORKOUT_TABLES.history;
   if (["workout.plan-increment", "workout.plan-after-workout"].includes(caseId)) return WORKOUT_TABLES.plan;
   if (["workout.add-exercise", "workout.replace-exercise", "workout.delete-exercise", "workout.reorder", "workout.undo"].includes(caseId)) return WORKOUT_TABLES.edit;
-  if (["workout.outcomes", "workout.completion-review", "workout.completion-writeback", "workout.offline-recovery"].includes(caseId)) return WORKOUT_TABLES.completion;
+  if (caseId === "workout.offline-recovery") return tables("logical_backup_receipts", "portable_owner_identity");
+  if (["workout.outcomes", "workout.completion-review", "workout.completion-writeback"].includes(caseId)) return WORKOUT_TABLES.completion;
   if (["workout.timing-policy", "workout.appearance", "workout.accessibility", "workout.performance", "workout.readonly-presentation"].includes(caseId)) return WORKOUT_TABLES.settings;
   if (["workout.set-states", "workout.row-edit", "workout.load-reps-editor", "workout.duration-editor", "workout.all-metrics", "workout.warmup-order", "workout.add-set", "workout.complete-commit", "workout.complete-failure", "workout.completion-collapse"].includes(caseId)) return WORKOUT_TABLES.set;
   return WORKOUT_TABLES.active;
@@ -362,7 +363,7 @@ const WORKOUT_OPERATION_RECEIPTS: Readonly<Record<string, ReturnType<typeof enti
   "workout.completion-writeback": entityReceipt("owned_plan_mutation_requests", ["request_id"], ["operation", "result_plan_id", "result_revision"]),
   "workout.timing-policy": entityReceipt("app_settings", ["key"], ["value_json", "revision"]),
   "workout.appearance": entityReceipt("app_settings", ["key"], ["value_json", "revision"]),
-  "workout.offline-recovery": entityReceipt("workout_receipts", ["id"], ["workout_session_id", "committed_at_ms"]),
+  "workout.offline-recovery": entityReceipt("logical_backup_receipts", ["request_id"], ["snapshot_id", "snapshot_sha256", "total_rows"]),
 });
 
 const familyAReceiptRows = [

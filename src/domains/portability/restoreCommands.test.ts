@@ -406,6 +406,8 @@ describe("restore preflight", () => {
     [8, 42],
     [9, 43],
     [9, 44],
+    [10, 45],
+    [10, 46],
   ])("accepts logical format v%i at its explicit schema-%i compatibility boundary", async (version, schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({

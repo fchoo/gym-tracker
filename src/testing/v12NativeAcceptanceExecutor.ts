@@ -53,6 +53,7 @@ import { createRunningPlanRepository } from "../platform/sqlite/repositories/run
 import { createScheduleCollisionRepository } from "../platform/sqlite/repositories/scheduleCollisionRepository";
 import { createHistoryRepository } from "../platform/sqlite/repositories/historyRepository";
 import { createHistoryProjectionRepository } from "../platform/sqlite/repositories/historyProjectionRepository";
+import { createLogicalBackupRepository } from "../platform/sqlite/repositories/logicalBackupRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
 import { parseAcceptedPhase2Catalog } from "./contracts/phase2Content.contract";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
@@ -204,6 +205,7 @@ const TABLE_FACT_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.f
   history_projection_metric_aggregates: Object.freeze(["subject_id", "exercise_id", "identity_key", "comparator_key", "reference_target_json", "aggregate_json"]),
   history_projection_freshness: Object.freeze(["subject_id", "applied_revision", "updated_at_ms"]),
   history_subject_revisions: Object.freeze(["subject_id", "revision", "updated_at_ms"]),
+  logical_backup_receipts: Object.freeze(["request_id", "request_sha256", "snapshot_id", "snapshot_sha256", "total_rows", "committed_at_ms"]),
   imported_activities: Object.freeze(["id", "source", "source_activity_id", "started_at_ms", "aggregate_json", "imported_at_ms"]),
   imported_activity_identities: Object.freeze(["activity_id", "source_kind", "account_namespace", "external_activity_id", "aggregate_revision", "accepted_normalized_sha256", "removal_state"]),
   imported_activity_receipts: Object.freeze(["id", "activity_id", "request_sha256", "committed_at_ms"]),
@@ -3603,6 +3605,78 @@ async function executeMetricMigration(input: V12NativeAcceptanceProductionHandle
   });
 }
 
+async function executeLogicalBackupCollection(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const requestId = `v12:logical-backup:${request.nonce}`;
+  const snapshotId = `v12:logical-backup-snapshot:${request.nonce}`;
+  const requestSha256 = await runtimeSha256(stableJson(Object.freeze({
+    operation: input.contract.operation.id,
+    requestId,
+    snapshotId,
+    nonce: request.nonce,
+  })));
+  const repository = createLogicalBackupRepository(input.kernel);
+  if (repository.collectWithReceipt === undefined) {
+    throw new Error("v12_native_acceptance_logical_backup_command_unavailable");
+  }
+  const collected = await repository.collectWithReceipt({
+    requestId,
+    requestSha256,
+    snapshotId,
+    createdAtMs: workoutFixtureActivatedAt(request) + 12_000,
+    sha256: runtimeSha256,
+  });
+  const [durable, owner] = await Promise.all([
+    input.kernel.queryAll<Readonly<{
+      request_id: string;
+      request_sha256: string;
+      snapshot_id: string;
+      snapshot_sha256: string;
+      total_rows: number;
+      committed_at_ms: number;
+    }>>(
+      `SELECT request_id, request_sha256, snapshot_id, snapshot_sha256,
+              total_rows, committed_at_ms
+         FROM logical_backup_receipts
+        WHERE request_id = ?`,
+      [requestId],
+    ),
+    input.kernel.queryAll<Readonly<{ id: number; owner_namespace: string }>>(
+      "SELECT id, owner_namespace FROM portable_owner_identity WHERE id = 1",
+    ),
+  ]);
+  const snapshotOwner = collected.snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
+  const row = durable[0];
+  if (durable.length !== 1 || row === undefined || row.request_id !== requestId
+    || row.request_sha256 !== requestSha256 || row.snapshot_id !== snapshotId
+    || row.snapshot_sha256 !== collected.receipt.snapshotSha256
+    || row.total_rows !== collected.snapshot.manifest.totalRows || row.total_rows < 1
+    || row.committed_at_ms !== collected.receipt.committedAtMs
+    || owner[0]?.id !== 1 || owner[0]?.owner_namespace !== snapshotOwner) {
+    throw new Error("v12_native_acceptance_logical_backup_postcondition_failed");
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson(Object.freeze({ request_id: requestId })),
+    outcome: collected.outcome,
+    verify: async () => {
+      const [receipt] = await input.kernel.queryAll<Readonly<{
+        request_id: string; snapshot_id: string; snapshot_sha256: string; total_rows: number;
+      }>>(
+        `SELECT request_id, snapshot_id, snapshot_sha256, total_rows
+           FROM logical_backup_receipts
+          WHERE request_id = ?`,
+        [requestId],
+      );
+      if (receipt?.request_id !== requestId || receipt.snapshot_id !== snapshotId
+        || receipt.snapshot_sha256 !== collected.receipt.snapshotSha256
+        || receipt.total_rows !== collected.snapshot.manifest.totalRows) {
+        throw new Error("v12_native_acceptance_logical_backup_postcondition_failed");
+      }
+    },
+  });
+}
+
 /**
  * Executes the case-owned production boundary. Phase 13 cases use their exact
  * repository contract. Workout and Library cases use a case-scoped query or
@@ -3679,6 +3753,9 @@ const productionHandlerEntries = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.reduce(
 );
 
 const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptanceProductionHandler, "prepare" | "execute">>> = Object.freeze({
+  "backup.logical-backup-repository.collect": Object.freeze({
+    execute: executeLogicalBackupCollection,
+  }),
   [WORKOUT_START_HANDLER]: Object.freeze({
     prepare: prepareWorkoutFixture,
     execute: executeWorkoutStart,
