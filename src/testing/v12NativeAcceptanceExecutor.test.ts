@@ -520,7 +520,7 @@ describe("v1.2 native acceptance production executor", () => {
     try {
       const contract = invalidRecommendation.contracts.v12NativeAcceptanceCaseContract("workout", "workout.plan-increment");
       await expect(invalidRecommendation.executor.dispatchV12NativeAcceptanceProductionOperation({
-        kernel: kernel(), contract, request: requestForContract(contract),
+        kernel: kernel({ emptySql: /owned_plan_mutation_requests/u }), contract, request: requestForContract(contract),
       })).rejects.toThrow("v12_native_acceptance_plan_increment_recommendation_invalid");
     } finally {
       jest.resetModules();
@@ -1235,6 +1235,105 @@ describe("v1.2 native acceptance production executor", () => {
         contract,
         request: requestForContract(contract),
       })).rejects.toThrow("v12_native_acceptance_starter_activation_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
+  it("rejects missing starter-copy templates and proves rotation schedules use the production copy command", async () => {
+    const missing = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans")>("../domains/plans"),
+        parseAcceptedStarterPlanPack: async () => ({ templates: [] }),
+      }),
+    }]);
+    try {
+      const contract = missing.contracts.v12NativeAcceptanceCaseContract("library-running", "library.starter-detail");
+      await expect(missing.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_mutation_requests/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_starter_template_missing");
+    } finally {
+      jest.dontMock("../domains/plans");
+      jest.resetModules();
+    }
+
+    const rotation = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans")>("../domains/plans"),
+        parseAcceptedStarterPlanPack: async () => ({
+          templates: [{ id: "full-body-foundation", revision: 1, scheduleSuggestion: { mode: "rotation", rotation: ["rotation-day"] } }],
+        }),
+        createStarterPlanCopy: async (input: Readonly<{ mode: string; bindings: readonly unknown[] }>) => {
+          if (input.mode !== "rotation" || input.bindings.length !== 1) throw new Error("rotation schedule was not materialized");
+          throw new Error("v12_native_acceptance_rotation_copy_reached");
+        },
+      }),
+    }]);
+    try {
+      const contract = rotation.contracts.v12NativeAcceptanceCaseContract("library-running", "library.starter-detail");
+      await expect(rotation.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /owned_plan_mutation_requests/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_rotation_copy_reached");
+    } finally {
+      jest.dontMock("../domains/plans");
+      jest.resetModules();
+    }
+  });
+
+  it("rejects invalid starter-template source and copy receipts", async () => {
+    const wrongSource = isolateExecutorWithMocks([{
+      moduleName: "../domains/plans",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/plans")>("../domains/plans"),
+        activateStarterPlan: async () => ({ plan: { id: "wrong-plan" } }),
+      }),
+    }]);
+    try {
+      const contract = wrongSource.contracts.v12NativeAcceptanceCaseContract("library-running", "library.template-update");
+      await expect(wrongSource.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /FROM plans/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_starter_template_update_source_create_failed");
+    } finally {
+      jest.dontMock("../domains/plans");
+      jest.resetModules();
+    }
+
+    const template = v12NativeAcceptanceCaseContract("library-running", "library.template-update");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: template, request: requestForContract(template),
+    })).rejects.toThrow("v12_native_acceptance_starter_template_update_source_invalid");
+
+    const detail = v12NativeAcceptanceCaseContract("library-running", "library.starter-detail");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(), contract: detail, request: requestForContract(detail),
+    })).rejects.toThrow("v12_native_acceptance_starter_editable_copy_postcondition_failed");
+
+    const staleCopy = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/ownedPlanRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/ownedPlanRepository")>("../platform/sqlite/repositories/ownedPlanRepository"),
+        createOwnedPlanRepository: () => ({ read: async () => ({ isActive: false, lifecycle: "draft" }) }),
+      }),
+    }]);
+    const requestValue = requestForContract(template);
+    const receiptKernel = kernel();
+    const queryAll = receiptKernel.queryAll.bind(receiptKernel);
+    receiptKernel.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+      const sourcePlanId = `plan_copy_${1_800_000_000_000 + Number.parseInt(requestValue.nonce.slice(0, 8), 16)}`;
+      if (sql.includes("FROM plans") && params?.[0] === sourcePlanId) {
+        return [{ id: params[0], revision: 1, origin: "copied", source_namespace: "gym-tracker.original", upstream_id: "full-body-foundation" }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM owned_plan_mutation_requests")) {
+        return [{ request_id: params?.[0], operation: "duplicate", source_plan_id: sourcePlanId, result_plan_id: "copied-plan", result_revision: 1 }] as unknown as readonly Row[];
+      }
+      return queryAll(sql, params);
+    };
+    try {
+      await expect(staleCopy.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: receiptKernel, contract: template, request: requestValue,
+      })).rejects.toThrow("v12_native_acceptance_starter_template_copy_postcondition_failed");
     } finally {
       jest.resetModules();
     }
