@@ -480,7 +480,7 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_running_runtime_required");
   });
 
-  it("rejects invalid Workout fixture writers before a handler can observe their synthetic state", async () => {
+  it("rejects invalid Workout fixture writers and plan-increment projections before a handler can observe them", async () => {
     let isolatedExecutor: typeof import("./v12NativeAcceptanceExecutor") | undefined;
     let isolatedContracts: typeof import("./contracts/phase15Workout.contract") | undefined;
     jest.isolateModules(() => {
@@ -500,6 +500,94 @@ describe("v1.2 native acceptance production executor", () => {
       await expect(isolatedExecutor.dispatchV12NativeAcceptanceProductionOperation({
         kernel: kernel({ empty: true }), contract: workout, request: fixtureRequest,
       })).rejects.toThrow("v12_native_acceptance_workout_fixture_seed_invalid");
+    } finally {
+      jest.resetModules();
+    }
+
+    const invalidRecommendation = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          getSessionDetail: async () => ({
+            status: "partial", revision: 1,
+            recommendations: [{ id: "expected-recommendation", status: "pending" }],
+          }),
+          generateRecommendationsForSession: async () => undefined,
+        }),
+      }),
+    }]);
+    try {
+      const contract = invalidRecommendation.contracts.v12NativeAcceptanceCaseContract("workout", "workout.plan-increment");
+      await expect(invalidRecommendation.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_plan_increment_recommendation_invalid");
+    } finally {
+      jest.resetModules();
+    }
+
+    const invalidReplay = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          getSessionDetail: async () => ({
+            status: "partial", revision: 1,
+            recommendations: [{ id: "replay-recommendation", status: "accepted" }],
+          }),
+          generateRecommendationsForSession: async () => undefined,
+        }),
+      }),
+    }]);
+    try {
+      const contract = invalidReplay.contracts.v12NativeAcceptanceCaseContract("workout", "workout.plan-increment");
+      await expect(invalidReplay.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ values: { id: "replay-recommendation", target_revision: 1, status: "accepted" } }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_plan_increment_replay_invalid");
+    } finally {
+      jest.resetModules();
+    }
+
+    const rejectedDecision = isolateExecutorWithMocks([
+      {
+        moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+          createWorkoutOutcomeRepository: () => ({
+            getSessionDetail: async () => ({
+              status: "partial", revision: 1,
+              recommendations: [{ id: "accepted-recommendation", status: "pending" }],
+            }),
+            generateRecommendationsForSession: async () => undefined,
+          }),
+        }),
+      },
+      {
+        moduleName: "../domains/progression",
+        factory: () => ({
+          ...jest.requireActual<typeof import("../domains/progression")>("../domains/progression"),
+          acceptRecommendation: async () => ({ recommendationId: "wrong-recommendation", status: "rejected" }),
+        }),
+      },
+    ]);
+    try {
+      const contract = rejectedDecision.contracts.v12NativeAcceptanceCaseContract("workout", "workout.plan-increment");
+      await expect(rejectedDecision.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({
+          emptySql: /progression_recommendation_decision_receipts/u,
+          values: {
+            id: "accepted-recommendation",
+            evidence_version: 1,
+            source_revision: 1,
+            target_revision: 2,
+            status: "pending",
+          },
+        }),
+        contract,
+        request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_plan_increment_postcondition_failed");
     } finally {
       jest.resetModules();
     }
