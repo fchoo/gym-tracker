@@ -1044,6 +1044,16 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_running_seed_invalid");
   });
 
+  it("rejects a substituted Running session kind before the runtime can save it", async () => {
+    const contract = v12NativeAcceptanceCaseContract("library-running", "library.running-session-common");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel(),
+      contract: { ...contract, caseId: "library.running-unimplemented" },
+      request: requestForContract(contract),
+      runtime: { running: {} as never },
+    })).rejects.toThrow("v12_native_acceptance_running_case_unimplemented");
+  });
+
   it("rejects an unavailable logical-backup production command", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([{
       moduleName: "../platform/sqlite/repositories/logicalBackupRepository",
