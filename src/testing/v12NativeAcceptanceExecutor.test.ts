@@ -1153,6 +1153,46 @@ describe("v1.2 native acceptance production executor", () => {
     })).rejects.toThrow("v12_native_acceptance_workout_metric_precondition_missing");
   });
 
+  it("rejects missing Workout set, exercise, alternate-library, and snapshot facts", async () => {
+    const rowEdit = v12NativeAcceptanceCaseContract("workout", "workout.row-edit");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /FROM workout_sessions session[\s\S]*session_sets/u }),
+      contract: rowEdit,
+      request: requestForContract(rowEdit),
+    })).rejects.toThrow("v12_native_acceptance_workout_fixture_set_missing");
+
+    const addExercise = v12NativeAcceptanceCaseContract("workout", "workout.add-exercise");
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: kernel({ emptySql: /FROM session_exercises\s+WHERE session_id/u }),
+      contract: addExercise,
+      request: requestForContract(addExercise),
+    })).rejects.toThrow("v12_native_acceptance_workout_fixture_exercise_missing");
+
+    const alternate = isolateExecutorWithMocks([{
+      moduleName: "../domains/library/customExerciseCommands",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../domains/library/customExerciseCommands")>("../domains/library/customExerciseCommands"),
+        createCustomExercise: async () => ({ outcome: "committed", exercise: { exerciseId: "seed" } }),
+      }),
+    }]);
+    try {
+      const contract = alternate.contracts.v12NativeAcceptanceCaseContract("workout", "workout.add-exercise");
+      await expect(alternate.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel({ emptySql: /(?:workout_session_exercise_edit_receipts|exercise_library_entries)/u }), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_library_exercise_missing");
+    } finally {
+      jest.resetModules();
+    }
+
+    const daySwitch = v12NativeAcceptanceCaseContract("workout", "workout.day-switch");
+    const base = kernel();
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: { queryAll: base.queryAll, write: base.write } as SqliteKernel,
+      contract: daySwitch,
+      request: requestForContract(daySwitch),
+    })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
+  });
+
   it("rejects custom-exercise handlers when durable receipts or exercise preconditions are absent", async () => {
     const runtime = { customExercises: {} as never };
     const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
