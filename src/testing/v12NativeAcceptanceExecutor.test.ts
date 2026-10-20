@@ -2219,6 +2219,58 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects a logical-backup receipt that drifts after its initial durable check", async () => {
+    let command: Readonly<{ requestId: string; requestSha256: string; snapshotId: string }> | undefined;
+    const backup = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/logicalBackupRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/logicalBackupRepository")>("../platform/sqlite/repositories/logicalBackupRepository"),
+        createLogicalBackupRepository: () => ({
+          collectWithReceipt: async (input: Readonly<{ requestId: string; requestSha256: string; snapshotId: string }>) => {
+            command = input;
+            return {
+              outcome: "committed",
+              receipt: { snapshotSha256: "initial-digest", committedAtMs: 1 },
+              snapshot: {
+                manifest: { totalRows: 1 },
+                tables: { portable_owner_identity: [{ owner_namespace: "owner" }] },
+              },
+            };
+          },
+        }),
+      }),
+    }]);
+    try {
+      const contract = backup.contracts.v12NativeAcceptanceCaseContract("workout", "workout.offline-recovery");
+      const runtime = kernel();
+      const queryAll = runtime.queryAll.bind(runtime);
+      let receiptReads = 0;
+      runtime.queryAll = async <Row extends Record<string, unknown>,>(sql: string, params?: readonly SqliteParameter[]) => {
+        if (sql.includes("FROM logical_backup_receipts")) {
+          receiptReads += 1;
+          const digest = receiptReads === 1 ? "initial-digest" : "drifted-digest";
+          return [{
+            request_id: command?.requestId ?? params?.[0],
+            request_sha256: command?.requestSha256,
+            snapshot_id: command?.snapshotId,
+            snapshot_sha256: digest,
+            total_rows: 1,
+            committed_at_ms: 1,
+          }] as unknown as readonly Row[];
+        }
+        if (sql.includes("FROM portable_owner_identity")) {
+          return [{ id: 1, owner_namespace: "owner" }] as unknown as readonly Row[];
+        }
+        return queryAll(sql, params);
+      };
+      await expect(backup.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: runtime, contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_logical_backup_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects rest controls when a production rest command cannot establish a running context", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([
       {
