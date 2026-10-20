@@ -1335,6 +1335,37 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects custom-exercise receipt paths when an authoritative snapshot is unavailable", async () => {
+    const withoutSnapshot = (values: Readonly<Record<string, unknown>>): SqliteKernel => {
+      const base = kernel({ values });
+      return { queryAll: base.queryAll, write: base.write } as SqliteKernel;
+    };
+    const favorite = v12NativeAcceptanceCaseContract("library-running", "library.exercise-favorites");
+    const favoriteRequest = requestForContract(favorite, "d".repeat(48));
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: withoutSnapshot({
+        mutation_kind: "favorite",
+        request_json: `v12:custom-exercise:${favorite.caseId}:${favoriteRequest.nonce}:action`,
+        favorite: 1,
+      }),
+      contract: favorite,
+      request: favoriteRequest,
+      runtime: { customExercises: {} as never },
+    })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
+
+    const create = v12NativeAcceptanceCaseContract("library-running", "library.create-exercise");
+    const createRequest = requestForContract(create, "e".repeat(48));
+    await expect(dispatchV12NativeAcceptanceProductionOperation({
+      kernel: withoutSnapshot({
+        mutation_kind: "create",
+        request_json: `v12:custom-exercise:${create.caseId}:${createRequest.nonce}:action`,
+      }),
+      contract: create,
+      request: createRequest,
+      runtime: { customExercises: {} as never },
+    })).rejects.toThrow("v12_native_acceptance_snapshot_unavailable");
+  });
+
   it("rejects Running handlers whose nonce-bound aggregate is absent", async () => {
     const runtime = { running: { loadPlan: async () => null } as never };
     const cases = [
