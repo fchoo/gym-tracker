@@ -728,10 +728,13 @@ describe("v1.2 native acceptance production executor", () => {
         moduleName: "../bootstrap/librarySectionPreferencePort",
         factory: () => ({
           ...jest.requireActual<typeof import("../bootstrap/librarySectionPreferencePort")>("../bootstrap/librarySectionPreferencePort"),
-          createLibrarySectionPreferencePort: () => ({
-            read: async () => ({ section: "plans", revision: 0 }),
-            write: async () => ({ section: "plans", revision: 0 }),
-          }),
+          createLibrarySectionPreferencePort: (_kernel: SqliteKernel, nowMs: () => number) => {
+            nowMs();
+            return {
+              read: async () => ({ section: "plans", revision: 0 }),
+              write: async () => ({ section: "plans", revision: 0 }),
+            };
+          },
         }),
       },
     ]);
@@ -752,11 +755,14 @@ describe("v1.2 native acceptance production executor", () => {
         moduleName: "../bootstrap/libraryRuntimeReadPort",
         factory: () => ({
           ...jest.requireActual<typeof import("../bootstrap/libraryRuntimeReadPort")>("../bootstrap/libraryRuntimeReadPort"),
-          readLibraryRuntimeSnapshot: async () => ({
-            sectionPreference: { section: "plans", revision: 0 },
-            plans: { owned: [] },
-            exerciseFilterOptions: { exerciseTypes: [] },
-          }),
+          readLibraryRuntimeSnapshot: async ({ nowMs }: Readonly<{ nowMs(): number }>) => {
+            nowMs();
+            return {
+              sectionPreference: { section: "plans", revision: 0 },
+              plans: { owned: [] },
+              exerciseFilterOptions: { exerciseTypes: [] },
+            };
+          },
         }),
       },
     ]);
