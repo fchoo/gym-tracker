@@ -26,6 +26,9 @@ import type {
   V12AcceptanceBenchmarkPort,
 } from "../../bootstrap/v12AcceptanceBenchmark";
 import {
+  LIBRARY_ACTION_SHEET_CONFIGURATION,
+} from "../../bootstrap/libraryRuntimeReadPort";
+import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
@@ -1662,7 +1665,8 @@ export function LibraryScreen({
                 headerAction,
                 (
                   <SecondaryAction
-                    label="Actions"
+                    label={LIBRARY_ACTION_SHEET_CONFIGURATION.triggerLabel}
+                    nativeID="library-actions-trigger"
                     onPress={() => setActionsVisible(true)}
                     ref={actionsActionRef}
                   />
@@ -1939,31 +1943,26 @@ export function LibraryScreen({
         />
       )}
       <BottomSheet
-        heading="Library actions"
+        heading={LIBRARY_ACTION_SHEET_CONFIGURATION.heading}
         onCancel={() => setActionsVisible(false)}
         restoreFocusRef={actionsActionRef}
-        testID="library-actions-sheet-frame"
+        testID={LIBRARY_ACTION_SHEET_CONFIGURATION.sheetTestId}
         visible={actionsVisible}
       >
-        <PrimaryAction
-          label="Create plan"
-          onPress={() => {
-            setActionsVisible(false);
-            onCreatePlan();
-          }}
-        />
-        <SecondaryAction
-          label="Create exercise"
-          onPress={() => {
-            setActionsVisible(false);
-            onCreateExercise();
-          }}
-        />
-        <SecondaryAction
-          disabled
-          label="Import plan, unavailable, Later"
-          onPress={noOp}
-        />
+        {LIBRARY_ACTION_SHEET_CONFIGURATION.actions.map((action) => {
+          const onPress = action.id === "create-plan"
+            ? () => { setActionsVisible(false); onCreatePlan(); }
+            : action.id === "create-exercise"
+              ? () => { setActionsVisible(false); onCreateExercise(); }
+              : noOp;
+          const Action = action.tone === "primary" ? PrimaryAction : SecondaryAction;
+          return <Action
+            disabled={!action.enabled}
+            key={action.id}
+            label={action.label}
+            onPress={onPress}
+          />;
+        })}
       </BottomSheet>
       <BottomSheet
         heading="Exercise library changes"

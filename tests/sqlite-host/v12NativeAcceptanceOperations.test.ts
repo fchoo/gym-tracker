@@ -16,6 +16,11 @@ import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRun
 import { createOwnedPlanRuntimePort } from "../../src/bootstrap/ownedPlanRuntime";
 import { createCustomExerciseRepository } from "../../src/platform/sqlite/repositories/customExerciseRepository";
 import {
+  LIBRARY_ACCESSIBILITY_RECOVERY_PROFILE,
+  LIBRARY_ACTION_SHEET_CONFIGURATION,
+  readLibraryRuntimeSnapshot,
+} from "../../src/bootstrap/libraryRuntimeReadPort";
+import {
   dispatchV12NativeAcceptanceProductionOperation,
   executeV12NativeAcceptanceReadAction,
   prepareV12NativeAcceptanceProductionOperation,
@@ -132,7 +137,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
         "workout.trend",
         "workout.completion-review",
         "library.exercise-search", "library.builtin-exercise", "library.remembered-state", "library.neutral-plan-chooser",
-        "library.plan-groups", "library.owned-summary", "library.editor-draft-guards", "library.load-error-recovery", "workout.plan-after-workout",
+        "library.plan-groups", "library.actions-sheet", "library.accessibility-recovery", "library.owned-summary", "library.editor-draft-guards", "library.load-error-recovery", "workout.plan-after-workout",
         "workout.warmup-order", "workout.completion-collapse", "workout.exercise-menu",
         "workout.timing-flat", "workout.rest-dock",
       ].includes(contract.caseId) || contract.operation.handlerId.startsWith("running-plan.")) {
@@ -311,6 +316,51 @@ describe("v1.2 Workout and Library production operation registry", () => {
       }),
     });
     expect(result.source_receipt).toMatchObject({ operation_result: "read", command_receipt_id: null, committed_effects: 0 });
+  });
+
+  it("projects Library actions and accessibility recovery from the production runtime boundary", async () => {
+    for (const [index, caseId] of ["library.actions-sheet", "library.accessibility-recovery"].entries()) {
+      const kernel = await open();
+      const contract = V12_NATIVE_ACCEPTANCE_CASE_CONTRACTS.find((entry) => entry.caseId === caseId)!;
+      const request: V12NativeAcceptanceRequest = {
+        shard: contract.shard, caseId, fixtureId: "v12-synthetic-fixtures-r18",
+        title: "Library", source: "PHASE17_CASE_ACTION_CONTRACTS", requirement: contract.requirement,
+        action: contract.actionId, readback: contract.uiReadback.label, sourceProbe: contract.sourceProbe,
+        authorityTables: contract.probes.post.tables, nonce: `${(0xfa + index).toString(16)}${"a".repeat(46)}`,
+      };
+      await prepareV12NativeAcceptanceProductionOperation({ kernel, contract, request });
+      const operation = await dispatchV12NativeAcceptanceProductionOperation({ kernel, contract, request });
+      expect(operation).toMatchObject({ result: "read" });
+      const snapshot = await readLibraryRuntimeSnapshot({
+        kernel, nowMs: () => 1_800_000_000_000, starterPlans: [], templates: [],
+      });
+      expect(snapshot).toMatchObject({
+        sectionPreference: { section: "exercises" }, plans: { owned: [expect.any(Object)] },
+      });
+      expect(snapshot.exerciseFilterOptions.exerciseTypes.length).toBeGreaterThan(0);
+      expect(LIBRARY_ACTION_SHEET_CONFIGURATION.actions).toEqual([
+        { id: "create-plan", label: "Create plan", tone: "primary", enabled: true },
+        { id: "create-exercise", label: "Create exercise", tone: "secondary", enabled: true },
+        { id: "import-plan", label: "Import plan, unavailable, Later", tone: "secondary", enabled: false },
+      ]);
+      const result = await executeV12NativeAcceptanceReadAction({
+        kernel, request,
+        sha256: async (value) => createHash("sha256").update(value).digest("hex"),
+        prepareOperation: ({ contract: operationContract, request: operationRequest }) => prepareV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest,
+        }),
+        executeOperation: ({ contract: operationContract, request: operationRequest }) => dispatchV12NativeAcceptanceProductionOperation({
+          kernel, contract: operationContract, request: operationRequest,
+        }),
+      });
+      expect(result.source_receipt).toMatchObject({ operation_result: "read", command_receipt_id: null, committed_effects: 0 });
+      if (caseId === "library.accessibility-recovery") {
+        expect(LIBRARY_ACCESSIBILITY_RECOVERY_PROFILE).toMatchObject({
+          actionSheetTestId: "library-actions-sheet-frame",
+          focusRestore: "library-actions-trigger", minimumTouchTargetDp: 48, respectsReducedMotion: true,
+        });
+      }
+    }
   });
 
   it("reads an absent owned-plan creation target through the owned-plan repository", async () => {

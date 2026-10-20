@@ -17,6 +17,11 @@ import type { RunningPlanRuntimePort } from "../bootstrap/runningPlanRuntime";
 import type { OwnedPlanRuntimePort } from "../bootstrap/ownedPlanRuntime";
 import { createLibrarySectionPreferencePort } from "../bootstrap/librarySectionPreferencePort";
 import {
+  LIBRARY_ACCESSIBILITY_RECOVERY_PROFILE,
+  LIBRARY_ACTION_SHEET_CONFIGURATION,
+  readLibraryRuntimeSnapshot,
+} from "../bootstrap/libraryRuntimeReadPort";
+import {
   runningTargetForDistance,
   type RunningPlanAggregate,
   type RunningSessionKind,
@@ -241,6 +246,7 @@ const TABLE_FACT_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.f
   session_rest_states: Object.freeze(["session_id", "status", "remaining_ms", "next_set_id", "revision"]),
   session_sets: Object.freeze(["id", "session_exercise_id", "set_kind", "ordinal", "metric_profile", "observed_json", "status", "completion_idempotency_key", "revision"]),
   starter_plan_activation_requests: Object.freeze(["request_id", "request_sha256", "source_namespace", "template_id", "source_revision", "choice", "committed_at_ms"]),
+  taxonomy_terms: Object.freeze(["kind", "slug", "display_name"]),
   workout_provenance: Object.freeze(["workout_session_id", "plan_id", "plan_day_id", "schedule_id", "schedule_version_id", "source_revision"]),
   workout_receipts: Object.freeze(["id", "workout_session_id", "request_sha256", "committed_at_ms"]),
   workout_session_exercise_edit_receipts: Object.freeze(["request_id", "request_sha256", "operation", "session_id", "subject_session_exercise_id", "replacement_session_exercise_id", "result_session_revision", "result_json"]),
@@ -926,6 +932,68 @@ async function executeLibrarySectionPreferenceRead(input: V12NativeAcceptancePro
   ).read();
   if (preference.section !== "exercises" || preference.revision < 1) {
     throw new Error("v12_native_acceptance_library_section_postcondition_failed");
+  }
+  return Object.freeze({
+    result: "read" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback: await workoutAuthorityReadback(input),
+    }),
+  });
+}
+
+/**
+ * The two screen-only Library cases still require source data: action affordances
+ * are read against the real Library snapshot, with fixture prerequisites created
+ * through the content and owned-plan production commands before the audit pre-state.
+ */
+async function prepareLibraryRuntimeProjection(input: V12NativeAcceptanceProductionHandlerInput): Promise<void> {
+  await Promise.all([
+    prepareLibrarySearch(input),
+    prepareLibrarySectionPreference(input),
+    prepareOwnedPlanReadFixture(input),
+  ]);
+}
+
+async function readLibraryRuntimeProjection(input: V12NativeAcceptanceProductionHandlerInput) {
+  const request = requireRequest(input);
+  return readLibraryRuntimeSnapshot({
+    kernel: input.kernel,
+    nowMs: () => workoutFixtureActivatedAt(request),
+    starterPlans: [],
+    templates: [],
+  });
+}
+
+async function executeLibraryActionAvailabilityRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  const snapshot = await readLibraryRuntimeProjection(input);
+  const actions = LIBRARY_ACTION_SHEET_CONFIGURATION.actions;
+  if (snapshot.sectionPreference.section !== "exercises" || snapshot.sectionPreference.revision < 1
+    || snapshot.plans.owned.length !== 1 || snapshot.exerciseFilterOptions.exerciseTypes.length === 0
+    || actions.length !== 3 || actions[0]?.id !== "create-plan" || actions[0].enabled !== true
+    || actions[1]?.id !== "create-exercise" || actions[1].enabled !== true
+    || actions[2]?.id !== "import-plan" || actions[2].enabled !== false) {
+    throw new Error("v12_native_acceptance_library_actions_postcondition_failed");
+  }
+  return Object.freeze({
+    result: "read" as const,
+    facts: operationFacts({
+      contract: input.contract,
+      authoritativeReadback: await workoutAuthorityReadback(input),
+    }),
+  });
+}
+
+async function executeLibraryAccessibilityRecoveryRead(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "read"; facts: unknown }>> {
+  const snapshot = await readLibraryRuntimeProjection(input);
+  const profile = LIBRARY_ACCESSIBILITY_RECOVERY_PROFILE;
+  if (snapshot.sectionPreference.section !== "exercises" || snapshot.plans.owned.length !== 1
+    || snapshot.exerciseFilterOptions.exerciseTypes.length === 0
+    || !profile.supportedSections.includes(snapshot.sectionPreference.section)
+    || profile.actionSheetTestId !== LIBRARY_ACTION_SHEET_CONFIGURATION.sheetTestId
+    || profile.focusRestore !== "library-actions-trigger"
+    || profile.minimumTouchTargetDp !== 48 || profile.respectsReducedMotion !== true) {
+    throw new Error("v12_native_acceptance_library_accessibility_postcondition_failed");
   }
   return Object.freeze({
     result: "read" as const,
@@ -3866,6 +3934,14 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "library.app-settings-repository.read-library-view-state": Object.freeze({
     prepare: prepareLibrarySectionPreference,
     execute: executeLibrarySectionPreferenceRead,
+  }),
+  "library.library-runtime.read-action-availability": Object.freeze({
+    prepare: prepareLibraryRuntimeProjection,
+    execute: executeLibraryActionAvailabilityRead,
+  }),
+  "library.library-runtime.read-accessibility-recovery": Object.freeze({
+    prepare: prepareLibraryRuntimeProjection,
+    execute: executeLibraryAccessibilityRecoveryRead,
   }),
   "owned-plan.owned-plan-repository.read": Object.freeze({
     prepare: prepareOwnedPlanReadFixture,
