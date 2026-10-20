@@ -630,6 +630,63 @@ describe("v1.2 native acceptance production executor", () => {
     }
   });
 
+  it("rejects invalid Workout history and plan-increment repository projections", async () => {
+    const history = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/historyRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/historyRepository")>("../platform/sqlite/repositories/historyRepository"),
+        createHistoryRepository: () => ({
+          loadExerciseMetricHistory: async () => ({ exerciseId: "unrelated-exercise", segments: [] }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = history.contracts.v12NativeAcceptanceCaseContract("workout", "workout.trend");
+      await expect(history.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_workout_history_postcondition_failed");
+    } finally {
+      jest.resetModules();
+    }
+
+    const invalidSession = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          getSessionDetail: async () => ({ status: "in_progress", revision: 1, recommendations: [] }),
+        }),
+      }),
+    }]);
+    try {
+      const contract = invalidSession.contracts.v12NativeAcceptanceCaseContract("workout", "workout.plan-increment");
+      await expect(invalidSession.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_plan_increment_precondition_missing");
+    } finally {
+      jest.resetModules();
+    }
+
+    const absentRecommendation = isolateExecutorWithMocks([{
+      moduleName: "../platform/sqlite/repositories/workoutOutcomeRepository",
+      factory: () => ({
+        ...jest.requireActual<typeof import("../platform/sqlite/repositories/workoutOutcomeRepository")>("../platform/sqlite/repositories/workoutOutcomeRepository"),
+        createWorkoutOutcomeRepository: () => ({
+          getSessionDetail: async () => ({ status: "partial", revision: 1, recommendations: [] }),
+          generateRecommendationsForSession: async () => undefined,
+        }),
+      }),
+    }]);
+    try {
+      const contract = absentRecommendation.contracts.v12NativeAcceptanceCaseContract("workout", "workout.plan-increment");
+      await expect(absentRecommendation.executor.dispatchV12NativeAcceptanceProductionOperation({
+        kernel: kernel(), contract, request: requestForContract(contract),
+      })).rejects.toThrow("v12_native_acceptance_plan_increment_recommendation_missing");
+    } finally {
+      jest.resetModules();
+    }
+  });
+
   it("rejects Library search and instruction projections that omit case-owned content", async () => {
     const { executor, contracts } = isolateExecutorWithMocks([
       {
