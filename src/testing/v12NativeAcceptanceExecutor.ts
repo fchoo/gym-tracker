@@ -1541,6 +1541,67 @@ async function executeWorkoutCompleteSet(input: V12NativeAcceptanceProductionHan
   });
 }
 
+async function executeWorkoutFinishPartial(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  await prepareActiveWorkoutFixture(input);
+  const request = requireRequest(input);
+  const sessionId = await workoutFixtureSessionId(input.kernel, request);
+  if (sessionId === null) throw new Error("v12_native_acceptance_workout_finish_partial_precondition_missing");
+  const requestId = `v12:workout-finish-partial:${request.nonce}`;
+  const requestSha256 = await runtimeSha256(stableJson(Object.freeze({
+    request_id: requestId,
+    workout_session_id: sessionId,
+    nonce: request.nonce,
+    action: input.contract.actionId,
+  })));
+  const [before] = await input.kernel.queryAll<Readonly<{
+    id: string;
+    workout_session_id: string;
+    request_sha256: string;
+  }>>(
+    `SELECT id, workout_session_id, request_sha256
+     FROM workout_receipts
+     WHERE id = ?`,
+    [requestId],
+  );
+  const session = before === undefined
+    ? await workoutFixtureSessionRevision(input.kernel, request)
+    : null;
+  const repository = createWorkoutOutcomeRepository(input.kernel);
+  if (repository.finishPartialWithReceipt === undefined) {
+    throw new Error("v12_native_acceptance_workout_finish_partial_handler_missing");
+  }
+  const result = await repository.finishPartialWithReceipt({
+    sessionId,
+    expectedSessionRevision: session?.revision ?? 1,
+    confirmation: PARTIAL_CONFIRMATION,
+    endedAtMs: workoutFixtureActivatedAt(request) + 7_000,
+    requestId,
+    requestSha256,
+  });
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson(Object.freeze({ id: requestId })),
+    outcome: result.outcome,
+    verify: async () => {
+      const [receipt] = await input.kernel.queryAll<Readonly<{
+        id: string;
+        workout_session_id: string;
+        request_sha256: string;
+      }>>(
+        `SELECT id, workout_session_id, request_sha256
+         FROM workout_receipts
+         WHERE id = ?`,
+        [requestId],
+      );
+      const detail = await createWorkoutOutcomeRepository(input.kernel).getSessionDetail(sessionId);
+      if (receipt?.id !== requestId || receipt.workout_session_id !== sessionId
+        || receipt.request_sha256 !== requestSha256 || detail.status !== "partial") {
+        throw new Error("v12_native_acceptance_workout_finish_partial_postcondition_failed");
+      }
+    },
+  });
+}
+
 async function executeWorkoutStart(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
   await prepareWorkoutFixture(input);
   const request = requireRequest(input);
@@ -2155,6 +2216,7 @@ const WORKOUT_START_HANDLER = "workout.plans-workout-repository.start-workout";
 const WORKOUT_SET_DRAFT_HANDLER = "active-workout.workout-repository.update-active-set-draft";
 const WORKOUT_ADD_SET_HANDLER = "active-workout.workout-repository.add-working-set";
 const WORKOUT_COMPLETE_SET_HANDLER = "active-workout.workout-repository.complete-set";
+const WORKOUT_FINISH_PARTIAL_HANDLER = "workout.workout-outcome-repository.finish-partial";
 const WORKOUT_REST_ADJUST_HANDLER = "rest.rest-repository.adjust-rest";
 const WORKOUT_REST_RESUME_HANDLER = "rest.rest-repository.resume-rest";
 const WORKOUT_ADD_EXERCISE_HANDLER = "active-workout.workout-repository.add-exercise";
@@ -2702,6 +2764,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   [WORKOUT_COMPLETE_SET_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,
     execute: executeWorkoutCompleteSet,
+  }),
+  [WORKOUT_FINISH_PARTIAL_HANDLER]: Object.freeze({
+    prepare: prepareActiveWorkoutFixture,
+    execute: executeWorkoutFinishPartial,
   }),
   [WORKOUT_REST_ADJUST_HANDLER]: Object.freeze({
     prepare: prepareActiveWorkoutFixture,

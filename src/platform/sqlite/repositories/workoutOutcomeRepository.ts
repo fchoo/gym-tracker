@@ -201,6 +201,17 @@ type RecommendationDecisionReceiptRow = Readonly<{
   result_json: string;
 }>;
 
+export type FinishPartialWithReceiptInput = FinishPartialInput & Readonly<{
+  requestId: string;
+  requestSha256: string;
+}>;
+
+export type FinishPartialWithReceiptResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  detail: FinishOutcomeResult["detail"];
+  invalidationScopes: FinishOutcomeResult["invalidationScopes"];
+}>;
+
 type CompleteRecommendationDecisionInput = Readonly<{
   recommendationId: string;
   decidedAtMs: number;
@@ -2469,9 +2480,11 @@ export function createWorkoutOutcomeRepository(
   kernel: SqliteKernel,
 ): WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
   getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+  finishPartialWithReceipt?(input: FinishPartialWithReceiptInput): Promise<FinishPartialWithReceiptResult>;
 }> {
   const repository: WorkoutOutcomeRepository & ProgressionRepository & Readonly<{
     getCalendarSessionDetail(sessionId: string): Promise<SessionDetail | null>;
+    finishPartialWithReceipt?(input: FinishPartialWithReceiptInput): Promise<FinishPartialWithReceiptResult>;
   }> = {
     getSessionDetail: (sessionId) => loadSessionDetail(kernel, sessionId),
     getSessionDetailAtRevision: async (sessionId, sourceRevision) => {
@@ -2524,6 +2537,52 @@ export function createWorkoutOutcomeRepository(
       kernel.write((transaction) =>
         finish(transaction, input, "finish_partial"),
       ),
+
+    async finishPartialWithReceipt(input) {
+      if (!/^[A-Za-z0-9:_-]{8,160}$/u.test(input.requestId)
+        || !/^[a-f0-9]{64}$/u.test(input.requestSha256)) {
+        throw new WorkoutOutcomeConflictError("finish_partial_receipt_input_invalid");
+      }
+      return kernel.write(async (transaction) => {
+        const [receipt] = await transaction.queryAll<Readonly<{
+          id: string;
+          workout_session_id: string;
+          request_sha256: string;
+        }>>(
+          `SELECT id, workout_session_id, request_sha256
+           FROM workout_receipts
+           WHERE id = ?`,
+          [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (receipt.workout_session_id !== input.sessionId
+            || receipt.request_sha256 !== input.requestSha256) {
+            throw new WorkoutOutcomeConflictError("finish_partial_receipt_identity_conflict");
+          }
+          const detail = await loadSessionDetail(transaction, input.sessionId);
+          if (detail.status !== "partial") {
+            throw new WorkoutOutcomeConflictError("finish_partial_receipt_state_invalid");
+          }
+          return Object.freeze({
+            outcome: "already_committed" as const,
+            detail,
+            invalidationScopes: Object.freeze([
+              ["today"],
+              ["session-detail", input.sessionId],
+              ["workout-completion", input.sessionId],
+            ] as const),
+          });
+        }
+        const result = await finish(transaction, input, "finish_partial");
+        await transaction.execute(
+          `INSERT INTO workout_receipts
+            (id, workout_session_id, request_sha256, committed_at_ms)
+           VALUES (?, ?, ?, ?)`,
+          [input.requestId, input.sessionId, input.requestSha256, input.endedAtMs],
+        );
+        return Object.freeze({ outcome: "committed" as const, ...result });
+      });
+    },
 
     saveZeroSetWorkout: (input: SaveZeroSetInput) =>
       kernel.write((transaction) =>

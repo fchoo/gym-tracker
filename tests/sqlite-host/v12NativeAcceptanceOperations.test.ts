@@ -228,6 +228,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "workout.replace-exercise",
       "workout.delete-exercise",
       "workout.undo",
+      "workout.outcomes",
       "workout.timing-policy",
       "workout.appearance",
       "library.starter-activation",
