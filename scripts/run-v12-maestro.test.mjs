@@ -7,9 +7,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY } from "../src/testing/v12NativeAcceptanceProductRegistry.ts";
 import { phase18DeviceIdentitySha256 } from "./phase18-device-identity.mjs";
 import {
   createV12AppFunctionalReadbacks,
+  assertV12ProductCaseEnvironmentRegistry,
   createV12FunctionalExecutionReceipt,
   createV12ProductCaseEnvironment,
   executeLiveV12RecoveryMaestro,
@@ -129,6 +131,12 @@ function fixture(t, shard) {
   writeFileSync(path.join(root, build.build.apk.path), "apk");
   writeFileSync(path.join(root, flow), productFlowSource(shard));
   cpSync(path.join(process.cwd(), source), path.join(root, source));
+  for (const file of new Set(V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY.flatMap((entry) => [
+    entry.routeSource, entry.controlSource, entry.readySource, entry.resultSource, entry.phaseFlowSource,
+  ]))) {
+    mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    cpSync(path.join(process.cwd(), file), path.join(root, file));
+  }
   mkdirSync(path.join(root, "scripts"), { recursive: true });
   writeFileSync(path.join(root, "scripts/run-v12-maestro.mjs"), readFileSync(new URL("./run-v12-maestro.mjs", import.meta.url)));
   const tools = {
@@ -385,6 +393,21 @@ test("product environments bind exact case identity and case-owned selectors", (
   assert.throws(() => validateV12ProductCaseEnvironment(substituted, {
     shard: "workout", caseId: "workout.complete-commit", nonce,
   }), /v12_maestro_product_environment_invalid/u);
+});
+
+test("all 101 product environments resolve through production UI selectors and callbacks", () => {
+  assert.equal(assertV12ProductCaseEnvironmentRegistry({ root: process.cwd() }), true);
+  const nonce = "c".repeat(48);
+  const environments = Object.entries(REAL_CASE_IDS).flatMap(([shard, caseIds]) =>
+    caseIds.map((caseId) => createV12ProductCaseEnvironment({ shard, caseId, nonce })));
+
+  assert.equal(environments.length, 101);
+  assert.equal(new Set(environments.map(({ case_id: caseId }) => caseId)).size, 101);
+  assert.equal(new Set(environments.map(({ action_id: actionId }) => actionId)).size, 101);
+  for (const environment of environments) {
+    assert.notEqual(new URL(environment.product_url).pathname, "/", environment.case_id);
+    assert.doesNotMatch(environment.action_id, /synthetic|generic/u, environment.case_id);
+  }
 });
 
 test("bounded supervisor kills a TERM-resistant process tree", { timeout: 10_000 }, async (t) => {

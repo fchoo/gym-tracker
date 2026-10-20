@@ -1,6 +1,6 @@
 appId: com.fchoo.gymtracker.devtest
 name: V1.2 source-owned Library and Running flow
-tags: [v1.2, phase-20, source-owned, synthetic-fixture]
+tags: [v1.2, phase-20, source-owned, production-ui, case-registry]
 ---
 - assertTrue: ${V12_CASE_ID != null}
 - assertTrue: ${V12_EVIDENCE_NONCE != null}
@@ -9,6 +9,7 @@ tags: [v1.2, phase-20, source-owned, synthetic-fixture]
 - assertTrue: ${V12_PRODUCT_READY_ID != null}
 - assertTrue: ${V12_PRODUCT_ACTION_ID != null}
 - assertTrue: ${V12_PRODUCT_RESULT_ID != null}
+- assertTrue: ${V12_PRODUCT_READY_ID != V12_PRODUCT_ACTION_ID && V12_PRODUCT_ACTION_ID != V12_PRODUCT_RESULT_ID}
 - launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
 - openLink: "${V12_PRODUCT_URL}"
 - extendedWaitUntil: { visible: { id: "${V12_PRODUCT_READY_ID}" }, timeout: 30000 }

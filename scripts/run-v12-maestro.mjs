@@ -39,6 +39,11 @@ import {
 import {
   v12NativeAcceptanceCaseContract,
 } from "../src/testing/contracts/phase15Workout.contract.ts";
+import {
+  V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY,
+  v12NativeAcceptanceProductDefinition,
+} from "../src/testing/v12NativeAcceptanceProductRegistry.ts";
+import { PHASE20_VISUAL_STATE_REGISTRY } from "../src/testing/phase20VisualStateRegistry.generated.ts";
 
 const ROOT = process.cwd();
 const FLOW = "maestro/v1.2/calendar.yaml";
@@ -514,6 +519,7 @@ export function validateV12FunctionalMaestroFlow(flow) {
   if (typeof flow !== "string" || !flow.includes("V12_EVIDENCE_NONCE")
     || !["V12_PRODUCT_URL", "V12_PRODUCT_READY_ID", "V12_PRODUCT_ACTION_ID", "V12_PRODUCT_RESULT_ID"]
       .every((name) => flow.includes(`${name} != null`))
+    || !flow.includes("V12_PRODUCT_READY_ID != V12_PRODUCT_ACTION_ID")
     || !flow.includes('openLink: "${V12_PRODUCT_URL}"')
     || productAction < 0 || receiptRoute <= productAction || !flow.includes("mode=receipt")
     || /native-acceptance-execute|Native acceptance fixture/u.test(flow)
@@ -522,23 +528,16 @@ export function validateV12FunctionalMaestroFlow(flow) {
   return true;
 }
 
-function productSelectorPart(value) {
-  if (typeof value !== "string" || value.length === 0) genericFail("product_environment_invalid");
-  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-+|-+$/gu, "");
-  if (normalized.length === 0 || normalized.length > 160) genericFail("product_environment_invalid");
-  return normalized;
-}
-
 export function createV12ProductCaseEnvironment({ shard, caseId, nonce } = {}) {
   if (!LIVE_GENERIC_SHARDS.includes(shard) || typeof caseId !== "string" || !FUNCTIONAL_NONCE.test(nonce ?? "")) genericFail("product_environment_invalid");
-  let contract;
-  try { contract = v12NativeAcceptanceCaseContract(shard, caseId); }
+  let definition;
+  try { definition = v12NativeAcceptanceProductDefinition(shard, caseId); }
   catch { genericFail("product_environment_invalid"); }
-  const productUrl = new URL("gymtracker-devtest:///");
+  const productUrl = new URL(`gymtracker-devtest://${definition.productPath(nonce)}`);
+  for (const [key, value] of Object.entries(definition.routeParams)) productUrl.searchParams.append(key, value);
   for (const [key, value] of [["shard", shard], ["case", caseId], ["fixture", V12_PRODUCT_FIXTURE_ID], ["nonce", nonce], ["mode", "product"]]) {
     productUrl.searchParams.append(key, value);
   }
-  const selector = `v12-product-${productSelectorPart(shard)}-${productSelectorPart(caseId)}`;
   const unsigned = {
     schema_version: 1,
     producer: "v12-product-case-environment/v1",
@@ -548,9 +547,9 @@ export function createV12ProductCaseEnvironment({ shard, caseId, nonce } = {}) {
     nonce,
     mode: "product",
     product_url: productUrl.href,
-    ready_id: `${selector}-ready`,
-    action_id: `${selector}-action-${productSelectorPart(contract.actionId)}`,
-    result_id: `${selector}-result-${sha256(contract.uiReadback.id).slice(0, 16)}`,
+    ready_id: definition.readyId,
+    action_id: definition.actionId,
+    result_id: definition.resultId,
   };
   return Object.freeze({ ...unsigned, binding_sha256: sha256(JSON.stringify(unsigned)) });
 }
@@ -561,8 +560,46 @@ export function validateV12ProductCaseEnvironment(environment, expected) {
   if (JSON.stringify(environment) !== JSON.stringify(canonical)) genericFail("product_environment_invalid");
   let productUrl;
   try { productUrl = new URL(environment.product_url); } catch { genericFail("product_environment_invalid"); }
-  if (productUrl.protocol !== "gymtracker-devtest:" || productUrl.hostname !== "" || productUrl.pathname !== "/"
-    || JSON.stringify([...productUrl.searchParams.keys()]) !== JSON.stringify(["shard", "case", "fixture", "nonce", "mode"])) genericFail("product_environment_invalid");
+  let definition;
+  try { definition = v12NativeAcceptanceProductDefinition(expected.shard, expected.caseId); }
+  catch { genericFail("product_environment_invalid"); }
+  const expectedKeys = [...Object.keys(definition.routeParams), "shard", "case", "fixture", "nonce", "mode"];
+  if (productUrl.protocol !== "gymtracker-devtest:" || productUrl.hostname !== ""
+    || decodeURIComponent(productUrl.pathname) !== decodeURIComponent(definition.productPath(expected.nonce))
+    || JSON.stringify([...productUrl.searchParams.keys()]) !== JSON.stringify(expectedKeys)) genericFail("product_environment_invalid");
+  return true;
+}
+
+export function assertV12ProductCaseEnvironmentRegistry({ root = ROOT } = {}) {
+  if (V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY.length !== 101) genericFail("product_registry_invalid");
+  const visualStates = new Map(PHASE20_VISUAL_STATE_REGISTRY.map((state) => [state.id, state]));
+  for (const definition of V12_NATIVE_ACCEPTANCE_PRODUCT_REGISTRY) {
+    if ([definition.routeSource, definition.controlSource, definition.readySource, definition.resultSource]
+      .some((file) => !/^(?:app|src)\//u.test(file) || /(?:^|\/)(?:__tests__|testing)(?:\/|$)|\.test\./u.test(file))) {
+      genericFail("product_registry_non_production_source");
+    }
+    let routeSource; let controlSource; let readySource; let resultSource; let phaseFlowSource;
+    try {
+      routeSource = readFileSync(path.join(root, definition.routeSource), "utf8");
+      controlSource = readFileSync(path.join(root, definition.controlSource), "utf8");
+      readySource = readFileSync(path.join(root, definition.readySource), "utf8");
+      resultSource = readFileSync(path.join(root, definition.resultSource), "utf8");
+      phaseFlowSource = readFileSync(path.join(root, definition.phaseFlowSource), "utf8");
+    } catch { genericFail("product_registry_source_missing"); }
+    const visualState = visualStates.get(definition.visualStateId);
+    if (!routeSource.includes("nativeAcceptanceAction")
+      || (!controlSource.includes("nativeAcceptanceAction.actionId") && !controlSource.includes("nativeAcceptanceAction?.actionId"))
+      || !controlSource.includes("nativeAcceptanceAction.execute")
+      || !controlSource.includes(definition.normalCallbackToken)
+      || !readySource.includes(definition.readyId)
+      || !resultSource.includes(definition.resultId)
+      || !phaseFlowSource.includes(definition.caseId)
+      || visualState === undefined || visualState.route.startsWith("/__")
+      || !visualState.readiness.test_ids.includes(definition.readyId)
+      || definition.actionId.includes("synthetic") || definition.actionId.includes("generic")) {
+      genericFail("product_registry_binding_invalid");
+    }
+  }
   return true;
 }
 
@@ -885,6 +922,7 @@ export function validateV12DirectMaestroMapping(mapping, { root = ROOT, manifest
     || mapping.schema_version !== 2 || mapping.producer !== "v12-maestro-source-map/v2" || mapping.shard !== shard
     || !manifest || mapping.run_id !== manifest.run_id || !SHA256.test(mapping.git_attestation_sha256 ?? "")) genericFail("mapping_invalid");
   const contract = V12_MAESTRO_FLOW_CONTRACTS[shard];
+  if (!allowTest) assertV12ProductCaseEnvironmentRegistry({ root });
   const caseIds = deriveV12MaestroCaseIdsFromSource(shard, readFileSync(path.join(root, contract.sources[0]), "utf8"));
   if (JSON.stringify(mapping.case_ids) !== JSON.stringify(caseIds)) genericFail("mapping_invalid");
   validateSourceOrderedObservations(mapping.observations, caseIds, shard);
@@ -1035,6 +1073,7 @@ export async function executeLiveV12GenericMaestro(args = process.argv.slice(2),
   if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]+$/u.test(serial) || serial.startsWith("emulator-")) genericFail("ephemeral_device_required");
   const tools = resolvedExecutionTools(dependencies.executionTools
     ?? resolveV12NativeExecutionTools({ domain: true, env: dependencies.environment ?? process.env }));
+  if (!tools.test_only) assertV12ProductCaseEnvironmentRegistry({ root });
   const runnerDependencies = tools.test_only && dependencies.runProcess === undefined && dependencies.execFileSync === undefined
     ? { ...dependencies, execFileSync } : dependencies;
   const run = commandRunner(runnerDependencies, dependencies.signal);
