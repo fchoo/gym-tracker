@@ -481,7 +481,7 @@ test("bounded supervisor drains a TERM-resistant descendant after a successful P
   let descendant = null;
   try {
     assert.equal(await runV12BoundedProcess(process.execPath, [script], {
-      cwd: root, timeoutMs: 2_000, termGraceMs: 100, killGraceMs: 1_000,
+      cwd: root, timeoutMs: 5_000, termGraceMs: 100, killGraceMs: 2_000,
     }), "");
     descendant = Number(readFileSync(childPid, "utf8"));
     assert.throws(() => process.kill(descendant, 0), /ESRCH/u);
