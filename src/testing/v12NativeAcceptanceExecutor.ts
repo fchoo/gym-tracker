@@ -49,6 +49,8 @@ import { createOwnedPlanRepository } from "../platform/sqlite/repositories/owned
 import { createStarterPlanRepository } from "../platform/sqlite/repositories/starterPlanRepository";
 import { createScheduleRepository } from "../platform/sqlite/repositories/scheduleRepository";
 import { createPlanImpactRepository } from "../platform/sqlite/repositories/planImpactRepository";
+import { createRunningPlanRepository } from "../platform/sqlite/repositories/runningPlanRepository";
+import { createScheduleCollisionRepository } from "../platform/sqlite/repositories/scheduleCollisionRepository";
 import { createHistoryRepository } from "../platform/sqlite/repositories/historyRepository";
 import { createHistoryProjectionRepository } from "../platform/sqlite/repositories/historyProjectionRepository";
 import { runtimeSha256 } from "../platform/crypto/runtimeSha256";
@@ -67,7 +69,12 @@ import { WorkoutCommandConflictError } from "../domains/workout/activeWorkout";
 import { finishPartial, PARTIAL_CONFIRMATION } from "../domains/workout/finishWorkout";
 import { adjustRest, pauseRest, resumeRest, startManualRest } from "../domains/rest/restCommands";
 import { acceptRecommendation } from "../domains/progression";
-import { createScheduleVersionPreviewToken, saveScheduleVersion } from "../domains/scheduling/scheduleCommands";
+import {
+  consumeScheduleDateOverride,
+  createScheduleVersionPreviewToken,
+  saveScheduleVersion,
+  setDateOverride,
+} from "../domains/scheduling/scheduleCommands";
 import { previewDayRemoval, previewExerciseReplacement, removePlanDayWithImpact, replacePlanExercise } from "../domains/plans/planImpactCommands";
 import {
   runV12NativeAcceptanceCompletionWriteback,
@@ -1170,6 +1177,16 @@ type ScheduleEditorFixture = Readonly<{
   scheduleId: string;
 }>;
 
+type ScheduleCollisionFixture = Readonly<{
+  strengthPlanId: string;
+  strengthScheduleId: string;
+  strengthOpportunityId: string;
+  runningPlanId: string;
+  runningScheduleId: string;
+  runningOpportunityId: string;
+  localDate: string;
+}>;
+
 function nextUtcLocalDate(localDate: string): string {
   const date = new Date(`${localDate}T00:00:00.000Z`);
   if (Number.isNaN(date.valueOf())) throw new Error("v12_native_acceptance_schedule_local_date_invalid");
@@ -1231,6 +1248,258 @@ async function prepareScheduleEditorFixture(input: V12NativeAcceptanceProduction
     throw new Error("v12_native_acceptance_schedule_fixture_seed_invalid");
   }
   return Object.freeze({ planId: activation.plan.id, scheduleId: activation.schedule.id });
+}
+
+function scheduleCollisionFixtureId(request: V12NativeAcceptanceRequest, suffix: string): string {
+  return `v12:collision:${request.nonce}:${suffix}`;
+}
+
+function scheduleCollisionFixtureTime(request: V12NativeAcceptanceRequest, offset: number): number {
+  return workoutFixtureActivatedAt(request) + 80_000 + offset;
+}
+
+/**
+ * Seeds the collision through the same product writers that create a real
+ * schedule: Starter activation owns Strength, its override command materializes
+ * the pending Strength opportunity, and the Running repository materializes
+ * the matching Running occurrence.  No acceptance fixture SQL writes source
+ * facts, so collision confirmation sees the exact production shape.
+ */
+async function prepareScheduleCollisionFixture(input: V12NativeAcceptanceProductionHandlerInput): Promise<ScheduleCollisionFixture> {
+  const request = requireRequest(input);
+  const strength = await prepareScheduleEditorFixture(input);
+  const localDate = "2027-01-18";
+  const strengthOpportunityId = scheduleCollisionFixtureId(request, "strength-opportunity");
+  const runningPlanId = scheduleCollisionFixtureId(request, "running-plan");
+  const runningScheduleId = scheduleCollisionFixtureId(request, "running-schedule");
+  const runningVersionId = scheduleCollisionFixtureId(request, "running-version");
+  const runningOpportunityId = scheduleCollisionFixtureId(request, "running-opportunity");
+
+  const [strengthExisting] = await input.kernel.queryAll<Readonly<{ id: string }>>(
+    "SELECT id FROM owned_plan_schedule_opportunities WHERE id = ? AND schedule_id = ? AND state = 'pending'",
+    [strengthOpportunityId, strength.scheduleId],
+  );
+  if (strengthExisting === undefined) {
+    const schedules = createScheduleRepository(input.kernel);
+    const state = await schedules.readActionState({
+      scheduleId: strength.scheduleId,
+      instantMs: Date.parse(`${localDate}T12:00:00.000Z`),
+    });
+    const day = state?.version.bindings[0]?.planDayId;
+    if (state === null || state.planId !== strength.planId || day === undefined) {
+      throw new Error("v12_native_acceptance_collision_strength_precondition_missing");
+    }
+    const overrideId = scheduleCollisionFixtureId(request, "strength-override");
+    const override = await setDateOverride({
+      repository: schedules,
+      invalidate: async () => undefined,
+      sha256: runtimeSha256,
+      input: {
+        requestId: scheduleCollisionFixtureId(request, "strength-override-request"),
+        scheduleId: strength.scheduleId,
+        planId: strength.planId,
+        expectedScheduleRevision: state.scheduleRevision,
+        expectedPlanRevision: state.planRevision,
+        expectedOverrideRevision: 0,
+        overrideId,
+        localDate,
+        replacement: Object.freeze({ kind: "plan_day" as const, planDayId: day }),
+        occurredAtMs: scheduleCollisionFixtureTime(request, 1_000),
+      },
+    });
+    if (override.outcome !== "committed") {
+      throw new Error("v12_native_acceptance_collision_strength_override_failed");
+    }
+    const [nextState, currentOverride] = await Promise.all([
+      schedules.readActionState({
+        scheduleId: strength.scheduleId,
+        instantMs: Date.parse(`${localDate}T12:00:00.000Z`),
+      }),
+      schedules.readDateOverride({ scheduleId: strength.scheduleId, localDate }),
+    ]);
+    if (nextState === null || currentOverride?.id !== overrideId || currentOverride.state !== "pending") {
+      throw new Error("v12_native_acceptance_collision_strength_override_missing");
+    }
+    const consumed = await consumeScheduleDateOverride({
+      repository: schedules,
+      invalidate: async () => undefined,
+      sha256: runtimeSha256,
+      input: {
+        requestId: scheduleCollisionFixtureId(request, "strength-opportunity-request"),
+        scheduleId: strength.scheduleId,
+        planId: strength.planId,
+        expectedScheduleRevision: nextState.scheduleRevision,
+        expectedPlanRevision: nextState.planRevision,
+        expectedOverrideRevision: currentOverride.revision,
+        overrideId,
+        localDate,
+        opportunityId: strengthOpportunityId,
+        occurredAtMs: scheduleCollisionFixtureTime(request, 2_000),
+      },
+    });
+    if (consumed.outcome !== "committed") {
+      throw new Error("v12_native_acceptance_collision_strength_consumption_failed");
+    }
+    const [materialized] = await input.kernel.queryAll<Readonly<{ id: string; schedule_id: string; local_date: string; state: string }>>(
+      "SELECT id, schedule_id, local_date, state FROM owned_plan_schedule_opportunities WHERE id = ?",
+      [strengthOpportunityId],
+    );
+    if (materialized?.schedule_id !== strength.scheduleId || materialized.local_date !== localDate || materialized.state !== "pending") {
+      throw new Error("v12_native_acceptance_collision_strength_materialization_missing");
+    }
+  }
+
+  const [runningExisting] = await input.kernel.queryAll<Readonly<{ id: string }>>(
+    "SELECT id FROM plans WHERE id = ? AND plan_kind = 'running'",
+    [runningPlanId],
+  );
+  if (runningExisting === undefined) {
+    const running = createRunningPlanRepository(input.kernel);
+    const createdAtMs = scheduleCollisionFixtureTime(request, 10_000);
+    await running.createInactiveMinimum({
+      planId: runningPlanId,
+      planName: "V12 collision Running",
+      anchorDayId: scheduleCollisionFixtureId(request, "running-day"),
+      scheduleId: runningScheduleId,
+      scheduleVersionId: runningVersionId,
+      scheduleBindingId: scheduleCollisionFixtureId(request, "running-binding"),
+      createdAtMs,
+      effectiveLocalDate: localDate,
+      timezone: "UTC",
+      recoveryRevisionId: scheduleCollisionFixtureId(request, "running-recovery"),
+      slots: [Object.freeze({
+        id: scheduleCollisionFixtureId(request, "running-slot"),
+        weekday: "Monday" as const,
+        ordinal: 0,
+        sessionRevisionId: scheduleCollisionFixtureId(request, "running-recovery"),
+      })],
+    });
+    await running.activateMinimum({
+      planId: runningPlanId,
+      scheduleId: runningScheduleId,
+      expectedPlanRevision: 1,
+      expectedScheduleRevision: 1,
+      activatedAtMs: createdAtMs + 1,
+    });
+    const occurrences = await running.materializeOccurrences({
+      planId: runningPlanId,
+      scheduleId: runningScheduleId,
+      scheduleVersionId: runningVersionId,
+      localDate,
+      timezone: "UTC",
+      createdAtMs: createdAtMs + 2,
+      occurrenceIds: [runningOpportunityId],
+    });
+    if (occurrences.length !== 1 || occurrences[0]?.id !== runningOpportunityId) {
+      throw new Error("v12_native_acceptance_collision_running_materialization_missing");
+    }
+  }
+  return Object.freeze({
+    strengthPlanId: strength.planId,
+    strengthScheduleId: strength.scheduleId,
+    strengthOpportunityId,
+    runningPlanId,
+    runningScheduleId,
+    runningOpportunityId,
+    localDate,
+  });
+}
+
+async function scheduleCollisionReceipt(kernel: SqliteKernel, requestId: string) {
+  const [receipt] = await kernel.queryAll<Readonly<{
+    request_id: string;
+    request_sha256: string;
+    outcome_id: string;
+    result_json: string;
+  }>>(
+    `SELECT request_id, request_sha256, outcome_id, result_json
+     FROM schedule_collision_receipts WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
+async function executeScheduleCollisionConfirmation(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const fixture = await prepareScheduleCollisionFixture(input);
+  const repository = createScheduleCollisionRepository(input.kernel, runtimeSha256);
+  const preview = await repository.previewForRunningPlan(fixture.runningPlanId);
+  if (
+    preview === null
+    || preview.running.occurrenceId !== fixture.runningOpportunityId
+    || preview.running.scheduleId !== fixture.runningScheduleId
+    || preview.strength.occurrenceId !== fixture.strengthOpportunityId
+    || preview.strength.scheduleId !== fixture.strengthScheduleId
+    || preview.running.localDate !== fixture.localDate
+    || preview.strength.localDate !== fixture.localDate
+  ) {
+    throw new Error("v12_native_acceptance_collision_precondition_missing");
+  }
+  const requestId = scheduleCollisionFixtureId(request, "confirm");
+  const before = await scheduleCollisionReceipt(input.kernel, requestId);
+  const result = await repository.confirm({
+    requestId,
+    choice: "keep_both",
+    preview,
+    committedAtMs: scheduleCollisionFixtureTime(request, 20_000),
+  });
+  if (
+    result.outcome !== (before === undefined ? "committed" : "already_committed")
+    || result.choice !== "keep_both"
+  ) {
+    throw new Error("v12_native_acceptance_collision_command_failed");
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: result.outcome,
+    verify: async () => {
+      const receipt = await scheduleCollisionReceipt(input.kernel, requestId);
+      const [outcome] = await input.kernel.queryAll<Readonly<{
+        id: string;
+        request_id: string;
+        choice: string;
+        running_opportunity_id: string;
+        strength_opportunity_id: string;
+        shared_local_date: string;
+      }>>(
+        `SELECT id, request_id, choice, running_opportunity_id,
+                strength_opportunity_id, shared_local_date
+           FROM schedule_collision_outcomes WHERE id = ?`,
+        [result.outcomeId],
+      );
+      const [projection] = await input.kernel.queryAll<Readonly<{
+        outcome_id: string;
+        selected_kind: string;
+        selected_opportunity_id: string | null;
+        effective_local_date: string;
+        moved_local_date: string | null;
+        acknowledged: number;
+      }>>(
+        `SELECT outcome_id, selected_kind, selected_opportunity_id,
+                effective_local_date, moved_local_date, acknowledged
+           FROM schedule_collision_projections WHERE outcome_id = ?`,
+        [result.outcomeId],
+      );
+      if (
+        receipt?.request_id !== requestId
+        || receipt.outcome_id !== result.outcomeId
+        || outcome?.request_id !== requestId
+        || outcome.choice !== "keep_both"
+        || outcome.running_opportunity_id !== fixture.runningOpportunityId
+        || outcome.strength_opportunity_id !== fixture.strengthOpportunityId
+        || outcome.shared_local_date !== fixture.localDate
+        || projection?.outcome_id !== result.outcomeId
+        || projection.selected_kind !== "none"
+        || projection.selected_opportunity_id !== null
+        || projection.effective_local_date !== fixture.localDate
+        || projection.moved_local_date !== null
+        || projection.acknowledged !== 1
+      ) {
+        throw new Error("v12_native_acceptance_collision_postcondition_failed");
+      }
+    },
+  });
 }
 
 async function scheduleEditorReceipt(kernel: SqliteKernel, requestId: string) {
@@ -3548,6 +3817,10 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   "plan-impact.plan-impact-repository.apply-exercise-replacement": Object.freeze({
     prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await prepareScheduleEditorFixture(input); },
     execute: executePlanExerciseReplacement,
+  }),
+  "schedule-collision.schedule-collision-repository.confirm": Object.freeze({
+    prepare: async (input: V12NativeAcceptanceProductionHandlerInput) => { await prepareScheduleCollisionFixture(input); },
+    execute: executeScheduleCollisionConfirmation,
   }),
   "starter-plan.starter-plan-repository.activate-accepted-starter-plan": Object.freeze({
     execute: executeAcceptedStarterActivation,

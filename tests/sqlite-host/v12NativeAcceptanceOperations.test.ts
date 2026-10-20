@@ -122,7 +122,6 @@ describe("v1.2 Workout and Library production operation registry", () => {
           }
           const unresolvedProductionCommands = new Set([
             "workout.offline-recovery",
-            "library.running-conflict",
           ]);
           const expectedFailure = unresolvedProductionCommands.has(contract.caseId)
             ? "v12_native_acceptance_mutation_receipt_missing"
@@ -221,6 +220,7 @@ describe("v1.2 Workout and Library production operation registry", () => {
       "library.schedule-editor",
       "library.replacement-impact",
       "library.day-removal-impact",
+      "library.running-conflict",
     ];
     for (const [index, caseId] of cases.entries()) {
       const kernel = await open();
