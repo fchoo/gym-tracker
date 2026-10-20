@@ -731,6 +731,45 @@ async function executeOwnedPlanArchive(input: V12NativeAcceptanceProductionHandl
   });
 }
 
+async function executeOwnedPlanSave(input: V12NativeAcceptanceProductionHandlerInput): Promise<Readonly<{ result: "committed"; facts: unknown }>> {
+  const request = requireRequest(input);
+  const repository = createOwnedPlanRepository(input.kernel);
+  const requestId = `v12:owned-plan-save:${request.nonce}`;
+  const before = await ownedPlanMutationReceipt(input.kernel, requestId);
+  if (before === undefined) {
+    const fixture = await ensureOwnedPlanMutationFixture(input);
+    const saved = await repository.save({
+      requestId,
+      requestSha256: await runtimeSha256(requestId),
+      planId: fixture.planId,
+      name: "V12 saved owned plan",
+      expectedRevision: fixture.revision,
+      savedAtMs: workoutFixtureActivatedAt(request) + 2_000,
+      days: [{
+        id: `${fixture.planId}:day`,
+        name: "V12 saved day",
+        ordinal: 0,
+        occurrences: [],
+      }],
+    });
+    if (saved.outcome !== "committed" || saved.operation !== "save" || saved.plan.name !== "V12 saved owned plan") {
+      throw new Error("v12_native_acceptance_owned_plan_save_failed");
+    }
+  }
+  return workoutMutationFacts({
+    handler: input,
+    receiptId: stableJson({ request_id: requestId }),
+    outcome: before === undefined ? "committed" : "already_committed",
+    verify: async () => {
+      const receipt = await ownedPlanMutationReceipt(input.kernel, requestId);
+      const plan = receipt === undefined ? null : await repository.read(receipt.result_plan_id);
+      if (receipt?.operation !== "save" || plan?.name !== "V12 saved owned plan" || plan.revision !== receipt.result_revision) {
+        throw new Error("v12_native_acceptance_owned_plan_save_postcondition_failed");
+      }
+    },
+  });
+}
+
 function prettyJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -2476,6 +2515,9 @@ const productionHandlerExecutors: Readonly<Record<string, Pick<V12NativeAcceptan
   }),
   "owned-plan.owned-plan-repository.archive": Object.freeze({
     execute: executeOwnedPlanArchive,
+  }),
+  "owned-plan.owned-plan-repository.save": Object.freeze({
+    execute: executeOwnedPlanSave,
   }),
   "starter-plan.starter-plan-repository.activate-accepted-starter-plan": Object.freeze({
     execute: executeAcceptedStarterActivation,
